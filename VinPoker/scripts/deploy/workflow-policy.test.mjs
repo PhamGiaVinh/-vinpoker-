@@ -36,6 +36,20 @@ test("shared workflow has no automatic Edge deployment path", () => {
   assert.doesNotMatch(workflow, /supabase\s+functions\s+deploy/);
 });
 
+test("Floor clock deploy remains an explicit protected critical selection", () => {
+  const criticalJob = workflow.slice(
+    workflow.indexOf("deploy-critical-edge:"),
+    workflow.indexOf("deploy-frontend:"),
+  );
+  assert.match(workflow, /deploy_tournament_live_clock:/);
+  assert.match(workflow, /selected\+=\("tournament-live-clock"\)/);
+  assert.match(workflow, /validate-critical-environment:/);
+  assert.match(
+    criticalJob,
+    /needs:\s*\n\s*- plan\s*\n\s*- target-preflight\s*\n\s*- validate-critical-environment/,
+  );
+});
+
 test("every live probe derives its profile from the exact target checkout", () => {
   const probes = [...workflow.matchAll(/probe-live-schema-contracts\.mjs([\s\S]{0,300})/g)];
   assert.equal(probes.length, 4);
@@ -64,13 +78,18 @@ test("target preflight invokes catalog tooling from the control-plane checkout",
 });
 
 test("profile-specific Deno tests run only for the exact derived target contract", () => {
-  const targetDenoTests = workflow.slice(
-    workflow.indexOf("Run current policy and target Deno tests"),
-    workflow.indexOf("Run target static Dealer Swing hardening checks when present"),
+  const stepStart = workflow.indexOf("- name: Run current policy and target Deno tests");
+  const stepEnd = workflow.indexOf("\n      - name:", stepStart + 1);
+  const denoTestStep = workflow.slice(stepStart, stepEnd);
+
+  assert.notEqual(stepStart, -1);
+  assert.notEqual(stepEnd, -1);
+  assert.match(
+    denoTestStep,
+    /env:\s*[\s\S]*CONTRACT_PROFILE: \$\{\{ needs\.plan\.outputs\.contract_profile \}\}/,
   );
-  assert.match(targetDenoTests, /CONTRACT_PROFILE: \$\{\{ needs\.plan\.outputs\.contract_profile \}\}/);
-  assert.match(targetDenoTests, /--arg profile "\$CONTRACT_PROFILE"/);
-  assert.match(targetDenoTests, /denoTestsByContractProfile\[\$profile\]/);
+  assert.match(denoTestStep, /--arg profile "\$CONTRACT_PROFILE"/);
+  assert.match(denoTestStep, /denoTestsByContractProfile\[\$profile\]/);
 });
 
 test("pinned actionlint validation is read-only and uses no production secret", () => {

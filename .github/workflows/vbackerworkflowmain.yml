@@ -25,6 +25,11 @@ on:
         required: true
         default: false
         type: boolean
+      deploy_tournament_live_clock:
+        description: "Deploy critical Edge function tournament-live-clock"
+        required: true
+        default: false
+        type: boolean
       deploy_frontend:
         description: "Deploy the reviewed frontend source at commit_sha"
         required: true
@@ -53,6 +58,8 @@ jobs:
       noncritical_functions: ${{ steps.plan.outputs.noncritical_functions }}
       critical_changed: ${{ steps.plan.outputs.critical_changed }}
       required_critical_for_frontend: ${{ steps.plan.outputs.required_critical_for_frontend }}
+      retained_for_frontend: ${{ steps.plan.outputs.retained_for_frontend }}
+      missing_retained_for_frontend: ${{ steps.plan.outputs.missing_retained_for_frontend }}
       frontend: ${{ steps.plan.outputs.frontend }}
       frontend_held: ${{ steps.plan.outputs.frontend_held }}
       frontend_reason: ${{ steps.plan.outputs.frontend_reason }}
@@ -108,6 +115,7 @@ jobs:
           DEPLOY_PROCESS_SWING: ${{ inputs.deploy_process_swing || false }}
           DEPLOY_MASS_ASSIGN: ${{ inputs.deploy_mass_assign || false }}
           DEPLOY_CHECKOUT_DEALER: ${{ inputs.deploy_checkout_dealer || false }}
+          DEPLOY_TOURNAMENT_LIVE_CLOCK: ${{ inputs.deploy_tournament_live_clock || false }}
           DEPLOY_FRONTEND: ${{ inputs.deploy_frontend || false }}
         run: |
           set -euo pipefail
@@ -115,6 +123,7 @@ jobs:
           [[ "$DEPLOY_PROCESS_SWING" == "true" ]] && selected+=("process-swing")
           [[ "$DEPLOY_MASS_ASSIGN" == "true" ]] && selected+=("mass-assign")
           [[ "$DEPLOY_CHECKOUT_DEALER" == "true" ]] && selected+=("checkout-dealer")
+          [[ "$DEPLOY_TOURNAMENT_LIVE_CLOCK" == "true" ]] && selected+=("tournament-live-clock")
           selected_csv="$(IFS=,; echo "${selected[*]-}")"
           node control-plane/VinPoker/scripts/deploy/plan-edge-deployment.mjs \
             --event "${{ github.event_name }}" \

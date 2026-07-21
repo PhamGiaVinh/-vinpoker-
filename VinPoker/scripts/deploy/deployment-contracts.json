@@ -7,13 +7,24 @@
       "vitest": [
         "src/components/ops/dealer-swing/DealerPhoneCompletionStates.test.tsx",
         "src/hooks/useDealerSwingPhoneRollout.test.tsx",
-        "src/components/cashier/dealer-swing/__tests__/swingTableStatus.test.ts"
+        "src/components/cashier/dealer-swing/__tests__/swingTableStatus.test.ts",
+        "src/lib/tournament/clockControlState.test.ts",
+        "tests/floorProduction/floorDbEdgeContracts.test.ts"
       ]
     },
     "contracts": [
       { "type": "relation", "name": "public.clubs" },
       { "type": "relation", "name": "public.club_members" },
-      { "type": "relation", "name": "public.club_settings" }
+      { "type": "relation", "name": "public.club_settings" },
+      {
+        "type": "function",
+        "name": "public.floor_control_tournament_clock",
+        "arguments": ["p_tournament_id", "p_action", "p_delta_seconds", "p_expected_control_revision"],
+        "argumentTypes": ["uuid", "text", "integer", "text"],
+        "allowOtherOverloads": false,
+        "acl": { "authenticated": true, "anon": false, "service_role": false },
+        "dependencyKind": "transitive_server"
+      }
     ]
   },
   "contractProfiles": {
@@ -25,7 +36,8 @@
       "functions": {
         "process-swing": { "additionalContracts": [] },
         "mass-assign": { "additionalContracts": [] },
-        "checkout-dealer": { "additionalContracts": [] }
+        "checkout-dealer": { "additionalContracts": [] },
+        "tournament-live-clock": { "additionalContracts": [] }
       }
     },
     "dealer_mass_open_v1": {
@@ -137,7 +149,8 @@
           "additionalContracts": [
             { "type": "relation", "name": "public.dealer_mass_open_rollout" }
           ]
-        }
+        },
+        "tournament-live-clock": { "additionalContracts": [] }
       }
     }
   },
@@ -273,6 +286,68 @@
             "p_override_reason",
             "p_actor"
           ]
+        }
+      ]
+    },
+    "tournament-live-clock": {
+      "path": "VinPoker/supabase/functions/tournament-live-clock",
+      "critical": true,
+      "autoDeployOnPush": false,
+      "frontendRequirement": "floorClockRevisionV1",
+      "retainedFrontendCompatibility": {
+        "requirement": "floorClockLegacyBridgeV1",
+        "whenTargetRequirement": "floorClockRevisionV1",
+        "files": [
+          {
+            "path": "VinPoker/supabase/functions/tournament-live-clock/index.ts",
+            "contains": ["readLegacyControlRevision(", "floor_control_tournament_clock"]
+          },
+          {
+            "path": "VinPoker/supabase/functions/tournament-live-clock/controlPolicy.ts",
+            "contains": ["export function readLegacyControlRevision"]
+          }
+        ]
+      },
+      "verifyJwt": true,
+      "receiptEnvironment": "receipt-vinpoker-edge-tournament-live-clock",
+      "quality": {
+        "denoTests": [
+          "VinPoker/supabase/functions/tournament-live-clock/controlPolicy.test.ts"
+        ]
+      },
+      "contracts": [
+        { "type": "relation", "name": "public.tournaments" },
+        {
+          "type": "function",
+          "name": "public.get_my_floor_operator_scope",
+          "arguments": [],
+          "argumentTypes": [],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": true, "anon": false, "service_role": false }
+        },
+        {
+          "type": "function",
+          "name": "public.floor_start_tournament_clock",
+          "arguments": ["p_tournament_id"],
+          "argumentTypes": ["uuid"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": true, "anon": false, "service_role": false }
+        },
+        {
+          "type": "function",
+          "name": "public.floor_control_tournament_clock",
+          "arguments": ["p_tournament_id", "p_action", "p_delta_seconds", "p_expected_control_revision"],
+          "argumentTypes": ["uuid", "text", "integer", "text"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": true, "anon": false, "service_role": false }
+        },
+        {
+          "type": "function",
+          "name": "public.get_tournament_clock",
+          "arguments": ["p_tournament_id"],
+          "argumentTypes": ["uuid"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": true, "anon": true, "service_role": true }
         }
       ]
     },

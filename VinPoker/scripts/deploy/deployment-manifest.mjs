@@ -9,7 +9,9 @@ const REQUIRED_CRITICAL_POSTURE = new Map([
   ["process-swing", false],
   ["mass-assign", true],
   ["checkout-dealer", true],
+  ["tournament-live-clock", true],
 ]);
+const TARGET_REQUIREMENTS = new Set(["floorClockRevisionV1"]);
 
 export function loadDeploymentManifest(path = DEFAULT_MANIFEST_PATH) {
   const manifest = JSON.parse(readFileSync(path, "utf8"));
@@ -59,8 +61,23 @@ export function validateDeploymentManifest(manifest, repositoryRoot) {
       throw new Error(`critical function ${name} has an unexpected verifyJwt posture`);
     }
   }
+  if (manifest.functions["tournament-live-clock"].frontendRequirement !== "floorClockRevisionV1") {
+    throw new Error("tournament-live-clock must remain tied to the Floor revision frontend requirement");
+  }
+  if (!manifest.frontend.contracts.some((contract) =>
+    contract.type === "function" &&
+    contract.name === "public.floor_control_tournament_clock" &&
+    contract.allowOtherOverloads === false &&
+    contract.acl?.authenticated === true &&
+    contract.acl?.anon === false &&
+    contract.acl?.service_role === false &&
+    JSON.stringify(contract.argumentTypes) === JSON.stringify(["uuid", "text", "integer", "text"])
+  )) {
+    throw new Error("frontend deployment must always probe the exact clock-control RPC and ACL");
+  }
 
   const seenPaths = new Set();
+  const retainedRequirements = new Set();
   for (const [name, config] of Object.entries(manifest.functions)) {
     if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) throw new Error(`invalid Edge function name: ${name}`);
     if (typeof config.path !== "string" || !config.path.startsWith("VinPoker/supabase/functions/")) {
@@ -75,6 +92,41 @@ export function validateDeploymentManifest(manifest, repositoryRoot) {
       throw new Error(`Edge function ${name} cannot auto-deploy from the shared production workflow`);
     }
     if (typeof config.verifyJwt !== "boolean") throw new Error(`verifyJwt must be boolean for ${name}`);
+    if (config.frontendRequirement !== undefined
+        && (typeof config.frontendRequirement !== "string" || !config.frontendRequirement)) {
+      throw new Error(`${name} frontend requirement must be a non-empty string`);
+    }
+    if (config.frontendRequirement !== undefined && !TARGET_REQUIREMENTS.has(config.frontendRequirement)) {
+      throw new Error(`${name} references unknown frontend target requirement ${config.frontendRequirement}`);
+    }
+    if (config.retainedFrontendCompatibility !== undefined) {
+      const gate = config.retainedFrontendCompatibility;
+      if (typeof gate.requirement !== "string" || !gate.requirement) {
+        throw new Error(`${name} retained frontend compatibility requirement must be named`);
+      }
+      if (retainedRequirements.has(gate.requirement)) {
+        throw new Error(`duplicate retained frontend compatibility requirement ${gate.requirement}`);
+      }
+      retainedRequirements.add(gate.requirement);
+      if (gate.whenTargetRequirement !== config.frontendRequirement) {
+        throw new Error(`${name} retained compatibility must match its frontend target requirement`);
+      }
+      if (!Array.isArray(gate.files) || gate.files.length === 0) {
+        throw new Error(`${name} retained compatibility must declare exact receipt files`);
+      }
+      for (const file of gate.files) {
+        if (typeof file.path !== "string" || !file.path.startsWith(`${config.path}/`)) {
+          throw new Error(`${name} retained compatibility evidence must stay inside its function source`);
+        }
+        if (!Array.isArray(file.contains) || file.contains.length === 0
+            || file.contains.some((marker) => typeof marker !== "string" || !marker)) {
+          throw new Error(`${name} retained compatibility evidence markers must be non-empty strings`);
+        }
+        if (repositoryRoot && !existsSync(resolve(repositoryRoot, file.path))) {
+          throw new Error(`${name} retained compatibility evidence file does not exist: ${file.path}`);
+        }
+      }
+    }
     if (!Array.isArray(config.contracts) || config.contracts.length === 0) {
       throw new Error(`live contracts are missing for ${name}`);
     }
@@ -218,6 +270,10 @@ export function resolveContractProfile(manifest, profileName) {
     functions,
     deriveImportedGraphDependencies: chain.every((item) => item.deriveImportedGraphDependencies),
   };
+}
+
+export function resolveTargetContracts(manifest, selection) {
+  return resolveContractProfile(manifest, selection.profile);
 }
 
 export function parseTargetList(rawTargets) {

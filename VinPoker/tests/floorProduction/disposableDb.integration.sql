@@ -3,6 +3,7 @@
 -- Disposable PostgreSQL fixture only. It deliberately has no project ref,
 -- application credentials, production data, or production connection string.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS dblink;
 CREATE SCHEMA IF NOT EXISTS auth;
 
 DO $$
@@ -14,6 +15,12 @@ END $$;
 DO $$
 BEGIN
   CREATE ROLE authenticated;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  CREATE ROLE service_role;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -220,8 +227,18 @@ CREATE TABLE public.tournament_levels (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id uuid NOT NULL,
   level_number integer NOT NULL,
-  duration_minutes integer DEFAULT 20
+  duration_minutes integer DEFAULT 20,
+  small_blind integer DEFAULT 0,
+  big_blind integer DEFAULT 0,
+  ante integer DEFAULT 0,
+  is_break boolean DEFAULT false
 );
+
+-- Supabase projects grant table reads to runtime roles and enforce row access
+-- with RLS. This disposable schema has no platform bootstrap, so reproduce only
+-- the read privilege needed by the SECURITY INVOKER clock projection.
+GRANT SELECT ON public.tournaments, public.tournament_levels
+TO anon, authenticated, service_role;
 
 CREATE TABLE public.tournament_state_transitions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -263,11 +280,14 @@ $$;
 \ir ../../supabase/migrations/20261241000000_floor_clock_start_atomic.sql
 \ir ../../supabase/migrations/20261242000000_floor_operator_scope.sql
 \ir ../../supabase/migrations/20270104000001_floor_chip_cas_rpc.sql
+\ir ../../supabase/migrations/20270104000004_floor_clock_control_atomic.sql
 
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
 
 INSERT INTO public.clubs (id, owner_id)
-VALUES ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001');
+VALUES
+  ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001'),
+  ('00000000-0000-0000-0000-000000000020', '00000000-0000-0000-0000-000000000099');
 
 INSERT INTO public.club_cashiers (club_id, user_id)
 VALUES ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000002');
@@ -300,6 +320,15 @@ SELECT public.floor_test_assert(
       AND can_floor AND NOT can_owner AND NOT can_cashier
   ),
   'floor capability derives from club_floors without user_roles'
+);
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000099', false);
+SELECT public.floor_test_assert(
+  EXISTS (
+    SELECT 1 FROM public.get_my_floor_operator_scope()
+    WHERE club_id = '00000000-0000-0000-0000-000000000020'
+      AND can_owner AND NOT can_cashier AND NOT can_floor
+  ),
+  'cross-club actor has a real but unrelated owner membership'
 );
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
 
@@ -395,7 +424,10 @@ SELECT public.floor_test_assert(
 INSERT INTO public.tournaments (id, club_id, status, current_level)
 VALUES ('00000000-0000-0000-0000-000000000110', '00000000-0000-0000-0000-000000000010', 'registration', NULL);
 INSERT INTO public.tournament_levels (tournament_id, level_number, duration_minutes)
-VALUES ('00000000-0000-0000-0000-000000000110', 1, 20);
+VALUES
+  ('00000000-0000-0000-0000-000000000110', 1, 20),
+  ('00000000-0000-0000-0000-000000000110', 2, 30),
+  ('00000000-0000-0000-0000-000000000110', 3, 40);
 
 SELECT public.floor_test_assert(
   (public.floor_start_tournament_clock('00000000-0000-0000-0000-000000000110')->>'ok')::boolean,
@@ -410,6 +442,428 @@ SELECT public.floor_test_assert(
   'clock status, level and start timestamp are committed together'
 );
 
+CREATE TEMP TABLE floor_clock_client_snapshots (
+  label text PRIMARY KEY,
+  revision text NOT NULL
+);
+GRANT SELECT, INSERT ON floor_clock_client_snapshots TO authenticated;
+INSERT INTO floor_clock_client_snapshots (label, revision)
+SELECT 'started_l1', public.get_tournament_clock(
+  '00000000-0000-0000-0000-000000000110'
+)->>'control_revision';
+
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000003', false);
+SET ROLE authenticated;
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'pause',
+    NULL,
+    NULL
+  )->>'error') = 'expected_control_revision_required',
+  'post-start controls reject a missing browser revision'
+);
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'pause',
+    NULL,
+    'not-a-revision'
+  )->>'error') = 'expected_control_revision_required',
+  'post-start controls reject a malformed browser revision'
+);
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'pause',
+    NULL,
+    (SELECT revision FROM floor_clock_client_snapshots WHERE label = 'started_l1')
+  )->>'ok')::boolean,
+  'floor membership can pause through the narrow clock RPC'
+);
+SELECT public.floor_test_assert(
+  (SELECT clock_paused_at IS NOT NULL FROM public.tournaments WHERE id = '00000000-0000-0000-0000-000000000110'),
+  'pause commits a server timestamp without changing the clock start'
+);
+SELECT public.floor_test_assert(
+  public.get_tournament_clock(
+    '00000000-0000-0000-0000-000000000110'
+  )->>'clock_paused_at' IS NOT NULL,
+  'clock projection retains the pause marker for reviewed legacy frontend rollback'
+);
+INSERT INTO floor_clock_client_snapshots (label, revision)
+SELECT 'paused_l1', public.get_tournament_clock(
+  '00000000-0000-0000-0000-000000000110'
+)->>'control_revision';
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'pause',
+    NULL,
+    (SELECT revision FROM floor_clock_client_snapshots WHERE label = 'started_l1')
+  )->>'error') = 'stale_clock_state',
+  'double pause with the same snapshot is rejected'
+);
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'next_level',
+    NULL,
+    (SELECT revision FROM floor_clock_client_snapshots WHERE label = 'paused_l1')
+  )->>'ok')::boolean,
+  'floor membership can advance a paused clock through the narrow RPC'
+);
+SELECT public.floor_test_assert(
+  (SELECT current_level = 2
+       AND clock_paused_at = clock_started_at
+       AND pause_accumulated = 0
+   FROM public.tournaments
+   WHERE id = '00000000-0000-0000-0000-000000000110'),
+  'paused level advance resets the level anchor and preserves paused state'
+);
+INSERT INTO floor_clock_client_snapshots (label, revision)
+SELECT 'paused_l2', public.get_tournament_clock(
+  '00000000-0000-0000-0000-000000000110'
+)->>'control_revision';
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'next_level',
+    NULL,
+    (SELECT revision FROM floor_clock_client_snapshots WHERE label = 'paused_l1')
+  )->>'error') = 'stale_clock_state',
+  'double level advance with one initial snapshot is rejected'
+);
+SELECT public.floor_test_assert(
+  (SELECT current_level = 2 FROM public.tournaments WHERE id = '00000000-0000-0000-0000-000000000110'),
+  'stale level action cannot advance a second time'
+);
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'resume',
+    NULL,
+    (SELECT revision FROM floor_clock_client_snapshots WHERE label = 'paused_l2')
+  )->>'ok')::boolean,
+  'floor membership can resume the reset paused level'
+);
+SELECT public.floor_test_assert(
+  (SELECT clock_paused_at IS NULL AND pause_accumulated >= 0
+   FROM public.tournaments
+   WHERE id = '00000000-0000-0000-0000-000000000110'),
+  'resume clears the pause marker and retains non-negative accumulated time'
+);
+RESET ROLE;
+
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
+SET ROLE authenticated;
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'next_level',
+    NULL,
+    public.get_tournament_clock(
+      '00000000-0000-0000-0000-000000000110'
+    )->>'control_revision'
+  )->>'ok')::boolean,
+  'owner can advance a running clock through the caller-bound RPC'
+);
+SELECT public.floor_test_assert(
+  (SELECT current_level = 3
+       AND clock_paused_at IS NULL
+       AND pause_accumulated = 0
+       AND clock_started_at >= clock_timestamp() - interval '5 seconds'
+   FROM public.tournaments
+   WHERE id = '00000000-0000-0000-0000-000000000110'),
+  'running level advance resets the level anchor to a full new level'
+);
+SELECT public.floor_test_assert(
+  ((public.get_tournament_clock('00000000-0000-0000-0000-000000000110')->>'remaining_seconds')::integer BETWEEN 2395 AND 2400),
+  'running level advance starts with the target level full duration'
+);
+RESET ROLE;
+
+UPDATE public.tournaments
+SET clock_started_at = clock_timestamp() - interval '50 minutes',
+    clock_paused_at = NULL,
+    pause_accumulated = 0
+WHERE id = '00000000-0000-0000-0000-000000000110';
+
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', false);
+SET ROLE authenticated;
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'adjust_time',
+    60,
+    public.get_tournament_clock(
+      '00000000-0000-0000-0000-000000000110'
+    )->>'control_revision'
+  )->>'outcome') = 'clock_time_adjusted',
+  'cashier can add time to an expired running clock'
+);
+SELECT public.floor_test_assert(
+  ((public.get_tournament_clock('00000000-0000-0000-0000-000000000110')->>'remaining_seconds')::integer BETWEEN 59 AND 60),
+  'expired clock plus sixty seconds becomes exactly one displayed minute'
+);
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'adjust_time',
+    86400,
+    public.get_tournament_clock(
+      '00000000-0000-0000-0000-000000000110'
+    )->>'control_revision'
+  )->>'outcome') = 'clock_time_adjusted',
+  'positive adjustment clamps at the current level duration'
+);
+SELECT public.floor_test_assert(
+  ((public.get_tournament_clock('00000000-0000-0000-0000-000000000110')->>'remaining_seconds')::integer BETWEEN 2395 AND 2400),
+  'upper clamp cannot exceed the current level duration'
+);
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'adjust_time',
+    -86400,
+    public.get_tournament_clock(
+      '00000000-0000-0000-0000-000000000110'
+    )->>'control_revision'
+  )->>'outcome') = 'clock_time_adjusted',
+  'negative adjustment clamps at zero'
+);
+SELECT public.floor_test_assert(
+  (public.get_tournament_clock('00000000-0000-0000-0000-000000000110')->>'remaining_seconds')::integer = 0,
+  'lower clamp cannot make remaining time negative'
+);
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'pause',
+    NULL,
+    public.get_tournament_clock(
+      '00000000-0000-0000-0000-000000000110'
+    )->>'control_revision'
+  )->>'ok')::boolean,
+  'cashier can pause the expired clock before a paused adjustment'
+);
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'adjust_time',
+    60,
+    public.get_tournament_clock(
+      '00000000-0000-0000-0000-000000000110'
+    )->>'control_revision'
+  )->>'outcome') = 'clock_time_adjusted',
+  'cashier can adjust a paused clock without unpausing it'
+);
+SELECT public.floor_test_assert(
+  (SELECT clock_paused_at IS NOT NULL FROM public.tournaments
+   WHERE id = '00000000-0000-0000-0000-000000000110')
+  AND (public.get_tournament_clock('00000000-0000-0000-0000-000000000110')->>'remaining_seconds')::integer = 60,
+  'paused adjustment preserves pause state and exact remaining time'
+);
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'resume',
+    NULL,
+    public.get_tournament_clock(
+      '00000000-0000-0000-0000-000000000110'
+    )->>'control_revision'
+  )->>'ok')::boolean,
+  'cashier can resume after a paused adjustment'
+);
+RESET ROLE;
+
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000003', false);
+SET ROLE authenticated;
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'previous_level',
+    NULL,
+    public.get_tournament_clock(
+      '00000000-0000-0000-0000-000000000110'
+    )->>'control_revision'
+  )->>'ok')::boolean,
+  'floor membership can rewind one existing level'
+);
+SELECT public.floor_test_assert(
+  (SELECT current_level = 2
+       AND clock_paused_at IS NULL
+       AND pause_accumulated = 0
+       AND clock_started_at >= clock_timestamp() - interval '5 seconds'
+   FROM public.tournaments
+   WHERE id = '00000000-0000-0000-0000-000000000110'),
+  'running level rewind resets the level anchor'
+);
+SELECT public.floor_test_assert(
+  ((public.get_tournament_clock('00000000-0000-0000-0000-000000000110')->>'remaining_seconds')::integer BETWEEN 1795 AND 1800),
+  'running level rewind starts with the target level full duration'
+);
+RESET ROLE;
+
+SELECT public.floor_test_assert(
+  (SELECT count(*) = 11 FROM public.audit_logs
+   WHERE entity_id = '00000000-0000-0000-0000-000000000110'
+     AND action = 'floor_tournament_clock_controlled'),
+  'every changed post-start clock action is audited once'
+);
+
+-- Two independent database sessions echo the same browser snapshot. Exactly
+-- one mutation may win the row lock; the other must observe a stale revision.
+INSERT INTO public.tournaments (id, club_id, status, current_level)
+VALUES ('00000000-0000-0000-0000-000000000113', '00000000-0000-0000-0000-000000000010', 'registration', NULL);
+INSERT INTO public.tournament_levels (tournament_id, level_number, duration_minutes)
+VALUES
+  ('00000000-0000-0000-0000-000000000113', 1, 20),
+  ('00000000-0000-0000-0000-000000000113', 2, 20),
+  ('00000000-0000-0000-0000-000000000113', 3, 20);
+
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000003', false);
+SET ROLE authenticated;
+SELECT public.floor_test_assert(
+  (public.floor_start_tournament_clock(
+    '00000000-0000-0000-0000-000000000113'
+  )->>'ok')::boolean,
+  'concurrency fixture clock starts once'
+);
+RESET ROLE;
+
+CREATE OR REPLACE FUNCTION public.floor_test_concurrent_next(
+  p_tournament_id uuid,
+  p_revision text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM set_config(
+    'request.jwt.claim.sub',
+    '00000000-0000-0000-0000-000000000003',
+    true
+  );
+  RETURN public.floor_control_tournament_clock(
+    p_tournament_id,
+    'next_level',
+    NULL,
+    p_revision
+  );
+END;
+$$;
+
+INSERT INTO floor_clock_client_snapshots (label, revision)
+SELECT 'concurrent_l1', public.get_tournament_clock(
+  '00000000-0000-0000-0000-000000000113'
+)->>'control_revision';
+
+SELECT dblink_connect('clock_a', 'dbname=' || current_database());
+SELECT dblink_connect('clock_b', 'dbname=' || current_database());
+SELECT dblink_send_query(
+  'clock_a',
+  format(
+    'SELECT public.floor_test_concurrent_next(%L::uuid, %L)',
+    '00000000-0000-0000-0000-000000000113',
+    (SELECT revision FROM floor_clock_client_snapshots WHERE label = 'concurrent_l1')
+  )
+);
+SELECT dblink_send_query(
+  'clock_b',
+  format(
+    'SELECT public.floor_test_concurrent_next(%L::uuid, %L)',
+    '00000000-0000-0000-0000-000000000113',
+    (SELECT revision FROM floor_clock_client_snapshots WHERE label = 'concurrent_l1')
+  )
+);
+
+CREATE TEMP TABLE floor_clock_concurrency_results (result jsonb NOT NULL);
+INSERT INTO floor_clock_concurrency_results (result)
+SELECT result FROM dblink_get_result('clock_a') AS t(result jsonb);
+INSERT INTO floor_clock_concurrency_results (result)
+SELECT result FROM dblink_get_result('clock_b') AS t(result jsonb);
+SELECT public.floor_test_assert(
+  (SELECT count(*) FROM floor_clock_concurrency_results
+    WHERE (result->>'ok')::boolean IS TRUE) = 1
+  AND (SELECT count(*) FROM floor_clock_concurrency_results
+    WHERE result->>'error' = 'stale_clock_state') = 1,
+  'two database sessions with one snapshot produce one winner and one stale rejection'
+);
+SELECT public.floor_test_assert(
+  (SELECT current_level = 2 FROM public.tournaments
+    WHERE id = '00000000-0000-0000-0000-000000000113'),
+  'concurrent level actions advance exactly one level'
+);
+SELECT public.floor_test_assert(
+  (SELECT count(*) = 1 FROM public.audit_logs
+    WHERE entity_id = '00000000-0000-0000-0000-000000000113'
+      AND action = 'floor_tournament_clock_controlled'),
+  'only the winning concurrent action writes an audit record'
+);
+SELECT dblink_disconnect('clock_a');
+SELECT dblink_disconnect('clock_b');
+
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000099', false);
+SET ROLE authenticated;
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'pause',
+    NULL,
+    public.get_tournament_clock(
+      '00000000-0000-0000-0000-000000000110'
+    )->>'control_revision'
+  )->>'error') = 'actor_not_allowed',
+  'cross-club actor cannot mutate the tournament clock'
+);
+SELECT public.floor_test_assert(
+  (SELECT current_level = 2 AND clock_paused_at IS NULL
+   FROM public.tournaments WHERE id = '00000000-0000-0000-0000-000000000110'),
+  'real cross-club membership cannot change another club clock'
+);
+RESET ROLE;
+
+UPDATE public.tournaments
+SET status = 'finished'
+WHERE id = '00000000-0000-0000-0000-000000000110';
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000003', false);
+SET ROLE authenticated;
+SELECT public.floor_test_assert(
+  (public.floor_control_tournament_clock(
+    '00000000-0000-0000-0000-000000000110',
+    'pause',
+    NULL,
+    public.get_tournament_clock(
+      '00000000-0000-0000-0000-000000000110'
+    )->>'control_revision'
+  )->>'error') = 'tournament_not_open',
+  'finished tournament rejects post-start clock controls'
+);
+SELECT public.floor_test_assert(
+  (public.floor_start_tournament_clock(
+    '00000000-0000-0000-0000-000000000110'
+  )->>'error') = 'tournament_not_open',
+  'finished tournament cannot be restarted through the direct start RPC'
+);
+RESET ROLE;
+
+INSERT INTO public.tournaments (id, club_id, status, current_level)
+VALUES ('00000000-0000-0000-0000-000000000112', '00000000-0000-0000-0000-000000000010', 'registration', NULL);
+INSERT INTO public.tournament_levels (tournament_id, level_number, duration_minutes)
+VALUES ('00000000-0000-0000-0000-000000000112', 1, 20);
+INSERT INTO public.tournament_close_report (tournament_id, club_id)
+VALUES ('00000000-0000-0000-0000-000000000112', '00000000-0000-0000-0000-000000000010');
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000003', false);
+SET ROLE authenticated;
+SELECT public.floor_test_assert(
+  (public.floor_start_tournament_clock(
+    '00000000-0000-0000-0000-000000000112'
+  )->>'error') = 'tournament_already_closed',
+  'close-report tournament cannot be started through the direct RPC'
+);
+RESET ROLE;
+
 SELECT public.floor_test_assert(
   NOT has_function_privilege('anon', 'public.floor_bust_player(uuid,uuid,integer,text)'::regprocedure, 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.floor_bust_player(uuid,uuid,integer,text)'::regprocedure, 'EXECUTE'),
@@ -419,6 +873,24 @@ SELECT public.floor_test_assert(
   NOT has_function_privilege('anon', 'public.floor_start_tournament_clock(uuid)'::regprocedure, 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.floor_start_tournament_clock(uuid)'::regprocedure, 'EXECUTE'),
   'clock RPC denies anon and grants authenticated'
+);
+SELECT public.floor_test_assert(
+  NOT has_function_privilege(
+    'anon',
+    'public.floor_control_tournament_clock(uuid,text,integer,text)'::regprocedure,
+    'EXECUTE'
+  )
+  AND has_function_privilege(
+    'authenticated',
+    'public.floor_control_tournament_clock(uuid,text,integer,text)'::regprocedure,
+    'EXECUTE'
+  )
+  AND NOT has_function_privilege(
+    'service_role',
+    'public.floor_control_tournament_clock(uuid,text,integer,text)'::regprocedure,
+    'EXECUTE'
+  ),
+  'post-start clock RPC grants only authenticated among runtime roles'
 );
 SELECT public.floor_test_assert(
   NOT has_function_privilege('anon', 'public.get_my_floor_operator_scope()'::regprocedure, 'EXECUTE')

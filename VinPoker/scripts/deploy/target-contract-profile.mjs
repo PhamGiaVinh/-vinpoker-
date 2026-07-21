@@ -17,6 +17,13 @@ const FRONTEND_EVIDENCE_FILES = [
   "VinPoker/src/lib/dealerMassOpen.ts",
 ];
 
+const FLOOR_CLOCK_EDGE_ENTRY =
+  "VinPoker/supabase/functions/tournament-live-clock/index.ts";
+const FLOOR_CLOCK_FRONTEND_FILES = [
+  "VinPoker/src/components/cashier/tournament-live/ClockPanel.tsx",
+  "VinPoker/src/pages/ops/OpsTournamentCockpit.tsx",
+];
+
 function marker(files, sources, predicate) {
   return files.filter((file) => predicate(file, sources.get(file) ?? ""));
 }
@@ -35,6 +42,15 @@ export function selectTargetContractProfile({ targetRoot }) {
   for (const relativePath of FRONTEND_EVIDENCE_FILES) {
     if (existsSync(resolve(targetRoot, relativePath))) files.add(relativePath);
   }
+  if (existsSync(resolve(targetRoot, FLOOR_CLOCK_EDGE_ENTRY))) {
+    for (const imported of inspectImportGraph(
+      resolve(targetRoot, FLOOR_CLOCK_EDGE_ENTRY),
+      targetRoot,
+    )) files.add(imported);
+  }
+  for (const relativePath of FLOOR_CLOCK_FRONTEND_FILES) {
+    if (existsSync(resolve(targetRoot, relativePath))) files.add(relativePath);
+  }
 
   const orderedFiles = [...files].sort();
   const sources = new Map(orderedFiles.map((file) => [file, readFileSync(resolve(targetRoot, file), "utf8")]));
@@ -48,6 +64,29 @@ export function selectTargetContractProfile({ targetRoot }) {
       source.includes("dealer_mass_open_rollout") || source.includes("get_dealer_mass_open_rollout")),
     frontendOperationRpc: marker(orderedFiles, sources, (_file, source) =>
       source.includes("operator_open_dealer_tables") || source.includes("get_dealer_open_operation")),
+    floorClockRevisionUi: marker(
+      orderedFiles,
+      sources,
+      (file, source) =>
+        FLOOR_CLOCK_FRONTEND_FILES.includes(file) &&
+        source.includes("expected_control_revision") &&
+        source.includes("control_revision"),
+    ),
+    floorClockRevisionEdge: marker(
+      orderedFiles,
+      sources,
+      (file, source) =>
+        file === FLOOR_CLOCK_EDGE_ENTRY &&
+        source.includes("p_expected_control_revision") &&
+        source.includes("floor_control_tournament_clock"),
+    ),
+    floorClockRevisionPolicy: marker(
+      orderedFiles,
+      sources,
+      (file, source) =>
+        file.endsWith("/tournament-live-clock/controlPolicy.ts") &&
+        source.includes("readExpectedControlRevision"),
+    ),
   };
 
   const has = (key) => evidence[key].length > 0;
@@ -73,12 +112,31 @@ export function selectTargetContractProfile({ targetRoot }) {
     throw error;
   }
 
+  const floorClockRevisionComplete =
+    evidence.floorClockRevisionUi.length === FLOOR_CLOCK_FRONTEND_FILES.length &&
+    evidence.floorClockRevisionEdge.length === 1 &&
+    evidence.floorClockRevisionPolicy.length === 1;
+  const anyFloorClockRevisionMarker = evidence.floorClockRevisionUi.length > 0 ||
+    evidence.floorClockRevisionEdge.length > 0 ||
+    evidence.floorClockRevisionPolicy.length > 0;
+  if (anyFloorClockRevisionMarker && !floorClockRevisionComplete) {
+    const error = new Error(
+      "UNKNOWN_TARGET_CONTRACT_PROFILE: Floor clock revision markers are incomplete or contradictory",
+    );
+    error.code = "UNKNOWN_TARGET_CONTRACT_PROFILE";
+    error.evidence = evidence;
+    throw error;
+  }
+
   const hash = createHash("sha256");
   for (const file of orderedFiles) hash.update(`${file}\0${sources.get(file)}\0`);
   return {
     profile,
     sourceFingerprint: `sha256:${hash.digest("hex")}`,
     evidence,
+    requirements: {
+      floorClockRevisionV1: floorClockRevisionComplete,
+    },
     evidenceFiles: orderedFiles,
   };
 }

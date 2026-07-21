@@ -8,6 +8,7 @@ const clockMigration = read("supabase/migrations/20261241000000_floor_clock_star
 const operatorScopeMigration = read("supabase/migrations/20261242000000_floor_operator_scope.sql");
 const cleanupIndexMigration = read("supabase/migrations/20270104000000_floor_cleanup_rotation_schedule_index.sql");
 const chipCasMigration = read("supabase/migrations/20270104000001_floor_chip_cas_rpc.sql");
+const clockControlMigration = read("supabase/migrations/20270104000004_floor_clock_control_atomic.sql");
 const drawEdge = read("supabase/functions/tournament-live-draw/index.ts");
 const clockEdge = read("supabase/functions/tournament-live-clock/index.ts");
 const operatorClubsHook = read("src/hooks/useOperatorClubs.ts");
@@ -17,6 +18,8 @@ const desktopFloor = read("src/pages/FloorDashboard.tsx");
 const floorTableMap = read("src/components/cashier/tournament-live/FloorTableMapPanel.tsx");
 const playersGrouped = read("src/components/cashier/tournament-live/PlayersGroupedPanel.tsx");
 const editChipsDialog = read("src/components/cashier/tournament-live/EditChipsDialog.tsx");
+const clockPanel = read("src/components/cashier/tournament-live/ClockPanel.tsx");
+const opsCockpit = read("src/pages/ops/OpsTournamentCockpit.tsx");
 
 function body(name: string, next?: string) {
   const start = migration.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
@@ -102,6 +105,50 @@ describe("Floor V2 DB and Edge contracts", () => {
     expect(clockMigration).toContain("floor_tournament_clock_started");
   });
 
+  it("routes every post-start clock write through one caller-bound locked RPC", () => {
+    expect(clockControlMigration).toContain("CREATE OR REPLACE FUNCTION public.floor_control_tournament_clock");
+    expect(clockControlMigration).toContain("v_actor UUID := auth.uid()");
+    expect(clockControlMigration).toContain("SECURITY DEFINER");
+    expect(clockControlMigration).toContain("SET search_path = public");
+    expect(clockControlMigration).toContain("FOR UPDATE");
+    expect(clockControlMigration).toContain(
+      "v_tour.status::TEXT IN ('completed', 'cancelled', 'finished')",
+    );
+    expect(clockControlMigration).toContain("p_expected_control_revision TEXT");
+    expect(clockControlMigration).toContain("v_current_control_revision := md5(jsonb_build_array(");
+    expect(clockControlMigration).toContain("p_expected_control_revision !~ '^[0-9a-f]{32}$'");
+    expect(clockControlMigration).toContain("IS DISTINCT FROM p_expected_control_revision");
+    expect(clockControlMigration).toContain("'expected_control_revision_required'");
+    expect(clockControlMigration).toContain("'clock_paused_at', v_tournament.clock_paused_at");
+    expect(clockControlMigration).toContain("'stale_clock_state'");
+    expect(clockControlMigration).toContain("clock_started_at = v_now");
+    expect(clockControlMigration).toContain("pause_accumulated = 0");
+    expect(clockControlMigration).toContain("v_target_elapsed_seconds");
+    expect(clockControlMigration).toContain("v_new_started_at := v_reference_time");
+    expect(clockControlMigration).toContain("FROM public.club_cashiers cc");
+    expect(clockControlMigration).toContain("FROM public.club_floors cf");
+    expect(clockControlMigration).not.toContain("public.user_roles");
+    for (const action of ["pause", "resume", "next_level", "previous_level", "adjust_time"]) {
+      expect(clockControlMigration).toContain(`'${action}'`);
+    }
+    expect(clockControlMigration).toContain("floor_tournament_clock_controlled");
+    const clockControlSignature = String.raw`UUID,\s*TEXT,\s*INTEGER,\s*TEXT`;
+    expect(clockControlMigration).toMatch(
+      new RegExp(
+        String.raw`REVOKE ALL ON FUNCTION public\.floor_control_tournament_clock\(\s*${clockControlSignature}\s*\) FROM PUBLIC, anon, service_role;`,
+      ),
+    );
+    expect(clockControlMigration).toMatch(
+      new RegExp(
+        String.raw`GRANT EXECUTE ON FUNCTION public\.floor_control_tournament_clock\(\s*${clockControlSignature}\s*\) TO authenticated;`,
+      ),
+    );
+    expect(clockControlMigration).not.toMatch(/CREATE POLICY[\s\S]*ON public\.tournaments/i);
+    expect(clockControlMigration).not.toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.floor_control_tournament_clock\([\s\S]*?\) TO service_role;/,
+    );
+  });
+
   it("binds Floor operator scope to auth.uid and real club memberships", () => {
     expect(operatorScopeMigration).toContain("auth.uid()");
     expect(operatorScopeMigration).toContain("clubs.owner_id");
@@ -147,8 +194,24 @@ describe("Floor V2 DB and Edge contracts", () => {
     expect(drawEdge).toMatch(/supabase\.rpc\(\s*"floor_bust_player"/);
     expect(drawEdge).toContain('error: "draw_operation_failed"');
     expect(clockEdge).toMatch(/supabase\.rpc\(\s*"floor_start_tournament_clock"/);
-    expect(clockEdge).toContain("stale_clock_state");
+    expect(clockEdge).toMatch(/supabase\.rpc\(\s*"floor_control_tournament_clock"/);
+    expect(clockEdge).toContain("readExpectedControlRevision(body)");
+    expect(clockEdge).toContain("readLegacyControlRevision(");
+    expect(clockEdge).toContain("p_expected_control_revision: expectedControlRevision");
+    expect(clockEdge).not.toContain("p_expected_current_level");
+    expect(clockEdge).not.toContain("p_expected_clock_started_at");
+    expect(clockEdge).not.toContain("p_expected_clock_paused_at");
+    expect(clockEdge).toContain("isTerminalTournamentStatus(tournament.status)");
+    expect(clockEdge).not.toMatch(/\.from\("tournaments"\)\s*\.update/);
+    expect(clockEdge).not.toContain("stale_clock_state");
     expect(clockEdge).toContain('error: "clock_operation_failed"');
+    for (const ui of [clockPanel, opsCockpit]) {
+      expect(ui).toContain("expected_control_revision: expectedControlRevision");
+      expect(ui).toContain("canUseTournamentClockPostStartControls");
+      expect(
+        ui.includes("await loadClock()") || ui.includes("await Promise.all([loadClk()"),
+      ).toBe(true);
+    }
   });
 
   it("keeps the applied cleanup index as a standalone idempotent source contract", () => {
