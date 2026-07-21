@@ -215,11 +215,20 @@ test("Management API transport uses only the approved project and never places c
 });
 
 test("Management API transport aborts a hung request at the bounded timeout", async () => {
+  let observedAbort = false;
   const hangingFetch = async (_url, init) =>
     new Promise((_resolve, reject) => {
+      const failSafe = setTimeout(
+        () => reject(new Error("timeout signal did not abort the request")),
+        1_000,
+      );
       init.signal.addEventListener(
         "abort",
-        () => reject(init.signal.reason ?? new Error("aborted")),
+        () => {
+          observedAbort = true;
+          clearTimeout(failSafe);
+          reject(init.signal.reason ?? new Error("aborted"));
+        },
         { once: true },
       );
     });
@@ -233,6 +242,7 @@ test("Management API transport aborts a hung request at the bounded timeout", as
     }),
     /Management API network request failed/,
   );
+  assert.equal(observedAbort, true);
 });
 
 test("mutation transport ambiguity is classified as outcome unknown", async () => {
@@ -270,4 +280,15 @@ test("workflow is manual-only, exact-SHA, protected and contains no broad deploy
   assert.doesNotMatch(workflow, /vercel\s+(?:--prod|deploy)/i);
   assert.doesNotMatch(workflow, /schema_migrations/i);
   assert.match(validationWorkflow, /\.github\/workflows\/floor-clock-control-apply\.yml/);
+  for (const exactValidationPath of [
+    "VinPoker/scripts/floor/apply-floor-clock-control.mjs",
+    "VinPoker/scripts/floor/apply-floor-clock-control.test.mjs",
+    "VinPoker/supabase/migrations/20270104000004_floor_clock_control_atomic.sql",
+  ]) {
+    assert.match(validationWorkflow, new RegExp(exactValidationPath.replaceAll(".", "\\.")));
+  }
+  assert.match(
+    validationWorkflow,
+    /node --test VinPoker\/scripts\/floor\/apply-floor-clock-control\.test\.mjs/,
+  );
 });
