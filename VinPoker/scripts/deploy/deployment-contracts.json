@@ -166,7 +166,12 @@
           "VinPoker/supabase/functions/process-swing/requestScope.test.ts",
           "VinPoker/supabase/functions/_shared/__tests__/rotationSolver.test.ts",
           "VinPoker/supabase/functions/_shared/__tests__/pickNextDealer.test.ts"
-        ]
+        ],
+        "denoTestsByContractProfile": {
+          "dealer_mass_open_v1": [
+            "VinPoker/supabase/functions/process-swing/executionSafety.test.ts"
+          ]
+        }
       },
       "contracts": [
         { "type": "relation", "name": "public.dealer_assignments" },
