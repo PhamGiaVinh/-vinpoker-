@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -78,6 +79,29 @@ describe("Floor button coverage manifest", () => {
     }
   });
 
+  it("keeps clock and chip action IDs distinct and removes the legacy combined adjustment", () => {
+    const ids = floorButtonCoverageManifest.map((entry) => entry.id);
+    expect(ids).toHaveLength(74);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of [
+      "clock-start",
+      "clock-pause",
+      "clock-resume",
+      "clock-level-next",
+      "clock-level-previous",
+      "clock-adjust-minus",
+      "clock-adjust-plus",
+      "player-chip",
+      "player-chip-save",
+    ]) {
+      expect(ids).toContain(id);
+    }
+    expect(ids).not.toContain("clock-adjust");
+    expect(
+      createHash("sha256").update([...ids].sort().join("\n")).digest("hex"),
+    ).toBe("1d821a12495700388993cee059a7896c6aba097cb23ce99186da7d72db98ce93");
+  });
+
   it("waits for a visible control instead of the responsive shell's hidden first control", () => {
     expect(coverageSpec).toContain("controls.filter({ visible: true })");
     expect(coverageSpec).toContain("visibleControls.first()");
@@ -94,6 +118,15 @@ describe("Floor button coverage manifest", () => {
 
   it("pins the browser audit to the locale used by manifest labels", () => {
     expect(coverageSpec).toContain('locale: "vi-VN"');
+  });
+
+  it("installs a fail-closed read-only egress guard for every inventory context", () => {
+    expect(coverageSpec).toContain("installInventoryEgressGuard(context, baseURL, assignment)");
+    expect(coverageSpec).toContain('serviceWorkers: "block"');
+    expect(coverageSpec).toContain("context.routeWebSocket");
+    expect(coverageSpec).toContain("assignment.allowedTournamentIds.includes");
+    expect(coverageSpec).toContain("attempted forbidden browser egress");
+    expect(coverageSpec).not.toContain("request.headers()");
   });
 
   it("classifies every enabled desktop shell control discovered on Floor", () => {

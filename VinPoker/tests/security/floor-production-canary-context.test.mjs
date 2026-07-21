@@ -1,17 +1,29 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
+  browserStateRootPath,
   chipCasBrowserRequestBlockReason,
+  cleanupExactLedger,
+  cleanupRecoveryLedger,
   clockBrowserRequestBlockReason,
   createRunId,
   deleteExactAuthUsersBestEffort,
   discoverCleanupScope,
   expectedBlockedBrowserRequestReason,
+  finalizeControlEvidence,
   payoutBrowserRequestBlockReason,
+  readOnlyBrowserRequestBlockReason,
+  recoveryLedgerPath,
   recoverAttemptedAuthUserIds,
   requireProductionCanaryContext,
+  runSequentialBrowserPhases,
+  tableOpsBrowserRequestBlockReason,
+  validateRecoveryLedger,
 } from "../../scripts/floor/floor-production-canary.mjs";
 
 const canarySource = readFileSync(new URL("../../scripts/floor/floor-production-canary.mjs", import.meta.url), "utf8");
@@ -51,23 +63,194 @@ test("fails closed for an unknown canary mode", () => {
   );
 });
 
-test("run mode fails closed until the full browser action matrix is reviewed", () => {
+test("fails closed when the run-mode browser action matrix is not ready", () => {
   assert.throws(
-    () => requireProductionCanaryContext({ ...valid, FLOOR_CANARY_BROWSER_ACTIONS_READY: "false" }),
+    () => requireProductionCanaryContext({
+      ...valid,
+      FLOOR_CANARY_BROWSER_ACTIONS_READY: "false",
+    }),
     /browser_action_matrix_not_ready/,
   );
-  assert.doesNotThrow(() => requireProductionCanaryContext({
+});
+
+test("cleanup mode does not require the browser action matrix to be ready", () => {
+  assert.equal(requireProductionCanaryContext({
     ...valid,
     FLOOR_CANARY_MODE: "cleanup",
     FLOOR_CANARY_BROWSER_ACTIONS_READY: "false",
-  }));
+  }).mode, "cleanup");
+});
+
+test("recovery journal is exact, runner-temp confined, and can remove actors before any club exists", async () => {
+  const runId = "CODEX_FLOOR_CANARY_20990101120000_aaaaaaaa";
+  const actorId = "10000000-0000-4000-8000-000000000001";
+  const recovery = validateRecoveryLedger({
+    version: 1,
+    runId,
+    authUserIds: [actorId],
+    clubIds: [],
+  });
+  assert.equal(recovery.runId, runId);
+  assert.throws(
+    () => recoveryLedgerPath({
+      RUNNER_TEMP: "D:/runner-temp",
+      FLOOR_CANARY_RECOVERY_LEDGER: "D:/outside/recovery.json",
+    }),
+    /recovery_ledger_path_outside_runner_temp/,
+  );
+  assert.match(browserStateRootPath({
+    RUNNER_TEMP: "D:/runner-temp",
+    FLOOR_CANARY_STATE_ROOT: "D:/runner-temp/floor-canary-state-123-1",
+  }), /floor-canary-state-123-1$/);
+  assert.throws(
+    () => browserStateRootPath({
+      RUNNER_TEMP: "D:/runner-temp",
+      FLOOR_CANARY_STATE_ROOT: "D:/outside/floor-canary-state-123-1",
+    }),
+    /browser_state_root_outside_runner_temp/,
+  );
+  assert.throws(
+    () => validateRecoveryLedger({ ...recovery, authUserIds: ["not-a-uuid"] }),
+    /recovery_ledger_invalid/,
+  );
+
+  const users = new Set([actorId]);
+  const deleted = [];
+  const admin = {
+    auth: {
+      admin: {
+        getUserById: async (id) => users.has(id)
+          ? { error: null, data: { user: { id, email: `${runId.toLowerCase()}-floor@floor-canary.invalid` } } }
+          : { error: { status: 404, code: "user_not_found" }, data: { user: null } },
+        deleteUser: async (id) => {
+          deleted.push(id);
+          users.delete(id);
+          return { error: null };
+        },
+      },
+    },
+  };
+  await cleanupRecoveryLedger(admin, recovery);
+  assert.deepEqual(deleted, [actorId]);
+  assert.equal(users.size, 0);
+});
+
+function exactCleanupAdmin({ clubRow = null, failClubDelete = false, authUsers = new Set() } = {}) {
+  let remainingClub = clubRow;
+  const authDeletes = [];
+  const dbDeletes = [];
+  return {
+    authDeletes,
+    dbDeletes,
+    auth: {
+      admin: {
+        getUserById: async (id) => authUsers.has(id)
+          ? { error: null, data: { user: { id, email: "unexpected@example.invalid" } } }
+          : { error: { status: 404, code: "user_not_found" }, data: { user: null } },
+        deleteUser: async (id) => {
+          authDeletes.push(id);
+          authUsers.delete(id);
+          return { error: null };
+        },
+      },
+    },
+    from(table) {
+      const state = { operation: null, columns: null, options: null };
+      return {
+        select(columns, options) {
+          state.operation = "select";
+          state.columns = columns;
+          state.options = options;
+          return this;
+        },
+        delete() {
+          state.operation = "delete";
+          return this;
+        },
+        in(column, ids) {
+          if (state.operation === "delete") {
+            dbDeletes.push({ table, column, ids: [...ids] });
+            if (table === "clubs" && failClubDelete) {
+              return Promise.resolve({ data: null, error: { code: "23503" } });
+            }
+            if (table === "clubs") remainingClub = null;
+            return Promise.resolve({ data: [], error: null });
+          }
+          if (state.options?.head === true) {
+            return Promise.resolve({
+              data: null,
+              error: null,
+              count: table === "clubs" && remainingClub ? 1 : 0,
+            });
+          }
+          if (table === "clubs" && state.columns === "id,name,region,owner_id") {
+            return Promise.resolve({ data: remainingClub ? [remainingClub] : [], error: null });
+          }
+          return Promise.resolve({ data: [], error: null });
+        },
+      };
+    },
+  };
+}
+
+test("relational cleanup failure preserves exact Auth actors for a safe retry", async () => {
+  const clubId = "10000000-0000-4000-8000-000000000001";
+  const actorId = "20000000-0000-4000-8000-000000000001";
+  const admin = exactCleanupAdmin({ failClubDelete: true, authUsers: new Set([actorId]) });
+  const ledger = {
+    runId: "CODEX_FLOOR_CANARY_20990101120000_aaaaaaaa",
+    clubIds: [clubId],
+    tournamentIds: [],
+    tournamentTableIds: [],
+    gameTableIds: [],
+    levels: [],
+    entries: [],
+    seats: [],
+    auditRows: [],
+    auditLogIds: [],
+    cashierMemberships: [],
+    floorMemberships: [],
+    authUserIds: [actorId],
+    userIds: [actorId],
+    stakingDealIds: [],
+    childRows: {},
+  };
+  await assert.rejects(cleanupExactLedger(admin, ledger), /CLEANUP FAIL - REMAINING_ROWS/);
+  assert.deepEqual(admin.authDeletes, []);
+});
+
+test("recovery cleanup accepts an exact journal club after its Auth owner was already deleted", async () => {
+  const runId = "CODEX_FLOOR_CANARY_20990101120000_aaaaaaaa";
+  const clubId = "10000000-0000-4000-8000-000000000001";
+  const actorIds = [
+    "20000000-0000-4000-8000-000000000001",
+    "20000000-0000-4000-8000-000000000002",
+    "20000000-0000-4000-8000-000000000003",
+    "20000000-0000-4000-8000-000000000004",
+  ];
+  const admin = exactCleanupAdmin({
+    clubRow: {
+      id: clubId,
+      name: `${runId}_ACCESS`,
+      region: "TEST",
+      owner_id: null,
+    },
+  });
+  await cleanupRecoveryLedger(admin, {
+    version: 1,
+    runId,
+    authUserIds: actorIds,
+    clubIds: [clubId],
+  });
+  assert.ok(admin.dbDeletes.some((entry) => entry.table === "clubs" && entry.ids[0] === clubId));
+  assert.deepEqual(admin.authDeletes, []);
 });
 
 test("cleanup mode branches before provisioning or browser execution", () => {
   const cleanupBranch = canarySource.indexOf('if (context.mode === "cleanup")');
   assert.notEqual(cleanupBranch, -1);
   const cleanupBody = canarySource.slice(cleanupBranch, canarySource.indexOf("const runId", cleanupBranch));
-  assert.match(cleanupBody, /await runCleanupCanary\(admin\)/);
+  assert.match(cleanupBody, /await runCleanupCanary\(admin, \{/);
   assert.doesNotMatch(cleanupBody, /createUser|createActor|createFixture|createCrossClub|runApiCanary|runBrowserManifest|invokeFunction|chromium/);
 });
 
@@ -140,6 +323,7 @@ test("scenario fixtures share one owned TEST club and finally uses an exact reco
   assert.match(canarySource, /const tableName = `\$\{runId\}_\$\{scenario\}_T1`/);
   assert.equal((canarySource.match(/table_name: tableName/g) ?? []).length, 2);
   assert.match(canarySource, /await buildCleanupLedger\(admin, \{ runId, clubs \}, userIds\)/);
+  assert.match(canarySource, /runBrowserManifest\(admin, actors, fixtures, owned\.clubs\)/);
   assert.match(canarySource, /finally \{[\s\S]{0,200}await cleanupCurrentRun\(admin, context\.anonKey, context\.url, runId, owned\)/);
   assert.match(canarySource, /edge_draw_chip_cas_owner_write/);
   assert.match(canarySource, /async function updateSeatChip[\s\S]{0,900}safeEdgeResultDetail\(response\)/);
@@ -184,9 +368,17 @@ test("payout preview/template and close report cleanup remain exact-owned", () =
 
 test("browser payout is preview-only and closes only after exact owned UI confirmation", () => {
   const prepare = canarySource.indexOf("await preparePayoutCloseInvariant");
-  const browser = canarySource.indexOf("await runBrowserManifest", prepare);
-  const verify = canarySource.indexOf("await verifyPayoutCloseAfterBrowser", browser);
-  assert.ok(prepare >= 0 && browser > prepare && verify > browser);
+  const manifest = canarySource.slice(
+    canarySource.indexOf("async function runBrowserManifest"),
+    canarySource.indexOf("async function deleteExact"),
+  );
+  const payoutPhaseStart = manifest.indexOf('"payout_close",');
+  const payoutPhaseEnd = manifest.indexOf('"public_tv_controls",', payoutPhaseStart);
+  const payoutPhase = manifest.slice(payoutPhaseStart, payoutPhaseEnd);
+  const browser = payoutPhase.indexOf("await runPayoutAndCloseBrowserFlow");
+  const verify = payoutPhase.indexOf("await verifyPayoutCloseAfterBrowser", browser);
+  assert.ok(prepare >= 0 && payoutPhaseStart >= 0 && payoutPhaseEnd > payoutPhaseStart && browser >= 0 && verify > browser);
+  assert.match(manifest, /const runClickedAction = async \(manifestIds, action\) => \{\s*try \{\s*await action\(\);\s*markClicked\(manifestIds\);/);
   assert.match(canarySource, /payoutBrowserRequestBlockReason/);
   assert.match(canarySource, /isExactPayoutPreviewBody\(body, policy\.fixture\.tournamentId\)/);
   assert.match(canarySource, /browser_payout_official_excluded/);
@@ -453,8 +645,298 @@ test("Playwright child receives only an allowlisted non-secret environment", () 
   );
   assert.match(childEnvironment, /PLAYWRIGHT_BASE_URL/);
   assert.match(childEnvironment, /FLOOR_UAT_STORAGE_STATE_DIR/);
+  assert.match(childEnvironment, /FLOOR_UAT_CONTROL_EVIDENCE_PATH/);
   assert.doesNotMatch(childEnvironment, /\.\.\.process\.env/);
   assert.doesNotMatch(childEnvironment, /SUPABASE_(ANON_KEY|SERVICE_ROLE_KEY)/);
+});
+
+test("read-only browser policy permits exact TEST reads and blocks every mutation", () => {
+  const actorId = "30000000-0000-4000-8000-000000000001";
+  const tournamentId = "40000000-0000-4000-8000-000000000001";
+  const policy = {
+    baseUrl: "https://vinpoker.vercel.app",
+    actorIds: [actorId],
+    tournamentIds: [tournamentId],
+    allowAuthToken: true,
+    authEmail: "codex_floor_canary_20990101120000_aaaaaaaa-floor@floor-canary.invalid",
+    authPassword: "x".repeat(32),
+  };
+  const request = (url, method, body = null) => ({ url, method, body });
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/auth/v1/token?grant_type=password",
+    "POST",
+    {
+      email: policy.authEmail,
+      password: policy.authPassword,
+      gotrue_meta_security: {},
+    },
+  ), policy), null);
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    `https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/tournaments?select=id&id=eq.${tournamentId}`,
+    "GET",
+  ), policy), null);
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://vinpoker.vercel.app/ops/tournaments",
+    "GET",
+  ), policy), null);
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/rpc/get_my_floor_operator_scope",
+    "POST",
+    {},
+  ), policy), null);
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/rpc/get_tournament_clock",
+    "POST",
+    { p_tournament_id: tournamentId },
+  ), policy), null);
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-draw",
+    "POST",
+    { tournament_id: tournamentId, action: "get_seats" },
+  ), policy), null);
+  for (const [url, body] of [
+    ["https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/tournaments", { status: "completed" }],
+    ["https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-draw", { tournament_id: tournamentId, action: "update_seats" }],
+    ["https://bank.example.test/pay", {}],
+  ]) {
+    assert.notEqual(readOnlyBrowserRequestBlockReason(request(url, "POST", body), policy), null);
+  }
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/auth/v1/token",
+    "POST",
+    {},
+  ), { ...policy, allowAuthToken: false }), "unexpected_mutation");
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/auth/v1/token?grant_type=password",
+    "POST",
+    {
+      email: "existing-production-user@example.com",
+      password: policy.authPassword,
+      gotrue_meta_security: {},
+    },
+  ), policy), "unexpected_mutation");
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/auth/v1/token?grant_type=refresh_token",
+    "POST",
+    {
+      email: policy.authEmail,
+      password: policy.authPassword,
+      gotrue_meta_security: {},
+    },
+  ), policy), "unexpected_mutation");
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/auth/v1/token?grant_type=password",
+    "POST",
+    {
+      email: policy.authEmail,
+      password: policy.authPassword,
+      gotrue_meta_security: {},
+      extra: true,
+    },
+  ), policy), "unexpected_mutation");
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/auth/v1/token?grant_type=password",
+    "POST",
+    {
+      email: policy.authEmail,
+      password: "wrong-test-password",
+      gotrue_meta_security: {},
+    },
+  ), policy), "unexpected_mutation");
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/tournaments?select=*",
+    "GET",
+  ), policy), "unexpected_read");
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/tournaments?select=id&id=eq.40000000-0000-4000-8000-000000000099",
+    "GET",
+  ), policy), "unexpected_read");
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    `https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/tournaments?select=id&or=(id.eq.${tournamentId},status.eq.active)`,
+    "GET",
+  ), policy), "unexpected_read");
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-draw",
+    "GET",
+  ), policy), "unexpected_read");
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/unknown?actor_id=eq.30000000-0000-4000-8000-000000000001",
+    "HEAD",
+  ), policy), "unexpected_read");
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/rpc/unknown",
+    "OPTIONS",
+  ), policy), "unexpected_read");
+  assert.equal(readOnlyBrowserRequestBlockReason(request(
+    "https://vinpoker.vercel.app/api/unknown",
+    "GET",
+  ), policy), "unexpected_read");
+});
+
+test("table browser policy allows only exact run-owned Floor mutations", () => {
+  const tournamentId = "40000000-0000-4000-8000-000000000001";
+  const tableId = "50000000-0000-4000-8000-000000000001";
+  const targetTableId = "50000000-0000-4000-8000-000000000002";
+  const entryId = "60000000-0000-4000-8000-000000000001";
+  const seatId = "70000000-0000-4000-8000-000000000001";
+  const playerId = "80000000-0000-4000-8000-000000000001";
+  const createdSeatId = "90000000-0000-4000-8000-000000000001";
+  const policy = {
+    baseUrl: "https://vinpoker.vercel.app",
+    actorId: "30000000-0000-4000-8000-000000000001",
+    tournamentIds: [tournamentId],
+    ownedRecordIds: [createdSeatId],
+    mutation: {
+      openTable: { tournamentId, tableNumber: 22, maxSeats: 9 },
+      addPlayer: { tournamentId, playerName: "CODEX_FLOOR_CANARY_PLAYER", tournamentTableId: tableId, seatNumber: 1 },
+      movePlayer: { entryId, toTournamentTableId: targetTableId, toSeatNumber: 3, reason: "cân bàn" },
+      closeTable: { tournamentTableId: tableId, drawMode: "redraw_balanced", reason: "table_break" },
+      redraw: { tournamentId },
+      bustSeat: {
+        tournamentId,
+        seatId,
+        playerId,
+        entryNumber: 1,
+        tableId,
+        seatNumber: 1,
+        chipCount: 0,
+        playerName: "CODEX_FLOOR_CANARY_PLAYER",
+      },
+      restorePlayer: { entryId, toTournamentTableId: targetTableId, toSeatNumber: 1 },
+    },
+  };
+  const post = (path, body) => ({
+    url: `https://orlesggcjamwuknxwcpk.supabase.co${path}`,
+    method: "POST",
+    body,
+  });
+  const allowed = [
+    post("/rest/v1/rpc/open_tournament_table", { p_tournament_id: tournamentId, p_table_number: 22, p_max_seats: 9 }),
+    post("/rest/v1/rpc/floor_assign_player_to_seat", { p_tournament_id: tournamentId, p_player_name: "CODEX_FLOOR_CANARY_PLAYER", p_tournament_table_id: tableId, p_seat_number: 1 }),
+    post("/rest/v1/rpc/move_player_seat", { p_entry_id: entryId, p_to_tournament_table_id: targetTableId, p_to_seat_number: 3, p_reason: "cân bàn" }),
+    post("/rest/v1/rpc/close_tournament_table", { p_tournament_table_id: tableId, p_draw_mode: "redraw_balanced", p_reason: "table_break" }),
+    post("/rest/v1/rpc/redraw_tournament", { p_tournament_id: tournamentId, p_mode: "final_table", p_eligible_entry_ids: null, p_target_table_count: null, p_draw_mode: "redraw_balanced", p_dry_run: true }),
+    post("/functions/v1/tournament-live-draw", { tournament_id: tournamentId, action: "update_seats", seats: [{ seat_id: seatId, player_id: playerId, entry_number: 1, table_id: tableId, seat_number: 1, expected_chip_count: 0, chip_count: 0, is_active: false, player_name: "CODEX_FLOOR_CANARY_PLAYER" }] }),
+    post("/rest/v1/rpc/restore_busted_player_to_seat", { p_entry_id: entryId, p_to_tournament_table_id: targetTableId, p_to_seat_number: 1, p_reason: "floor_restore" }),
+  ];
+  for (const request of allowed) assert.equal(tableOpsBrowserRequestBlockReason(request, policy), null);
+  assert.equal(tableOpsBrowserRequestBlockReason({
+    url: `https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/tournament_seats?select=*&id=eq.${createdSeatId}`,
+    method: "GET",
+    body: null,
+  }, policy), null);
+  assert.equal(tableOpsBrowserRequestBlockReason({
+    url: "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/tournament_seats?select=*&id=eq.90000000-0000-4000-8000-000000000099",
+    method: "GET",
+    body: null,
+  }, policy), "unexpected_read");
+  assert.equal(tableOpsBrowserRequestBlockReason(post(
+    "/rest/v1/rpc/open_tournament_table",
+    { p_tournament_id: tournamentId, p_table_number: 23, p_max_seats: 9 },
+  ), policy), "unexpected_mutation");
+  assert.equal(tableOpsBrowserRequestBlockReason(post(
+    "/functions/v1/tournament-live-draw",
+    { tournament_id: tournamentId, action: "update_seats", seats: [{ seat_id: seatId, player_id: playerId, entry_number: 1, table_id: tableId, seat_number: 1, expected_chip_count: 0, chip_count: 1, is_active: false, player_name: "CODEX_FLOOR_CANARY_PLAYER" }] },
+  ), policy), "unexpected_mutation");
+  assert.equal(tableOpsBrowserRequestBlockReason({
+    url: "https://bank.example.test/pay",
+    method: "POST",
+    body: {},
+  }, policy), "external_origin");
+});
+
+test("browser phase aggregation continues after failure and reports exact phase names", async () => {
+  const executed = [];
+  const failures = await runSequentialBrowserPhases([
+    ["first", async () => { executed.push("first"); }],
+    ["middle", async () => {
+      executed.push("middle");
+      throw new Error("sensitive detail must not escape");
+    }],
+    ["last", async () => { executed.push("last"); }],
+  ]);
+  assert.deepEqual(executed, ["first", "middle", "last"]);
+  assert.deepEqual(failures, ["middle"]);
+});
+
+test("button evidence finalizer requires complete known terminal evidence", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "floor-evidence-test-"));
+  const evidencePath = join(directory, "evidence.jsonl");
+  const record = (manifestId, status, phase = "baseline") => ({
+    manifestId,
+    status,
+    phase,
+    route: "/floor",
+    role: "floor",
+    viewport: "all",
+    stateMismatch: false,
+  });
+  try {
+    await writeFile(
+      evidencePath,
+      [
+        record("action", "BLOCKED"),
+        record("navigation", "BLOCKED"),
+        record("navigation", "NAVIGATION_ONLY", "discovery"),
+        record("excluded", "EXCLUDED_WITH_REASON"),
+      ].map((entry) => JSON.stringify(entry)).join("\n"),
+    );
+    const complete = await finalizeControlEvidence(
+      evidencePath,
+      new Map([["action", "CLICKED_PASS"]]),
+      3,
+    );
+    assert.equal(complete.total, 3);
+    await writeFile(
+      evidencePath,
+      [
+        record("action", "BLOCKED"),
+        { ...record("action", "BLOCKED", "discovery"), stateMismatch: true },
+        record("navigation", "NAVIGATION_ONLY"),
+        record("excluded", "EXCLUDED_WITH_REASON"),
+      ].map((entry) => JSON.stringify(entry)).join("\n"),
+    );
+    await assert.rejects(
+      finalizeControlEvidence(evidencePath, new Map([["action", "CLICKED_PASS"]]), 3),
+      /button_evidence_incomplete/,
+    );
+    await writeFile(
+      evidencePath,
+      [
+        record("action", "BLOCKED"),
+        record("navigation", "BLOCKED"),
+        record("navigation", "NAVIGATION_ONLY", "discovery"),
+        record("excluded", "EXCLUDED_WITH_REASON"),
+      ].map((entry) => JSON.stringify(entry)).join("\n"),
+    );
+    await assert.rejects(
+      finalizeControlEvidence(evidencePath, new Map(), 3),
+      /button_evidence_incomplete/,
+    );
+    await assert.rejects(
+      finalizeControlEvidence(evidencePath, new Map([["unknown", "CLICKED_PASS"]]), 3),
+      /button_action_unknown_manifest_id/,
+    );
+    await assert.rejects(
+      finalizeControlEvidence(evidencePath, new Map([["action", "CLICKED_FAIL"]]), 3),
+      /button_evidence_incomplete/,
+    );
+    await assert.rejects(
+      finalizeControlEvidence(evidencePath, new Map([["action", "CLICKED_PASS"]]), 4),
+      /button_evidence_manifest_count_mismatch/,
+    );
+    await assert.rejects(
+      finalizeControlEvidence(
+        evidencePath,
+        new Map([["action", "CLICKED_PASS"]]),
+        3,
+        "0".repeat(64),
+      ),
+      /button_evidence_manifest_ids_mismatch/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("browser clock policy permits only exact owned clock controls", () => {
@@ -466,32 +948,64 @@ test("browser clock policy permits only exact owned clock controls", () => {
     fixture: { tournamentId, scenario: "SETUP_CLOCK" },
   };
   const request = (url, method, body = null) => ({ url, method, body });
+  const revision = "a".repeat(32);
   assert.equal(clockBrowserRequestBlockReason(request(
     "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/rpc/get_tournament_clock",
     "POST",
     { p_tournament_id: tournamentId },
   ), policy), null);
-  for (const action of ["start", "pause", "resume"]) {
+  assert.equal(clockBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-clock",
+    "POST",
+    { tournament_id: tournamentId, action: "start" },
+  ), { ...policy, fixture: { tournamentId, scenario: "ACCESS" } }), null);
+  for (const action of ["pause", "resume", "next_level", "previous_level"]) {
     assert.equal(clockBrowserRequestBlockReason(request(
       "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-clock",
       "POST",
-      { tournament_id: tournamentId, action },
+      { tournament_id: tournamentId, action, expected_control_revision: revision },
+    ), policy), null);
+  }
+  for (const delta_seconds of [-60, 60]) {
+    assert.equal(clockBrowserRequestBlockReason(request(
+      "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-clock",
+      "POST",
+      { tournament_id: tournamentId, action: "adjust_time", delta_seconds, expected_control_revision: revision },
     ), policy), null);
   }
   assert.equal(clockBrowserRequestBlockReason(request(
     "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-clock",
     "POST",
-    { tournament_id: tournamentId, action: "next_level", current_level: 2 },
-  ), policy), null);
+    { tournament_id: tournamentId, action: "next_level", expected_control_revision: revision },
+  ), { ...policy, fixture: { tournamentId, scenario: "ACCESS" } }), "unexpected_mutation");
   assert.equal(clockBrowserRequestBlockReason(request(
     "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-clock",
     "POST",
-    { tournament_id: "40000000-0000-4000-8000-000000000002", action: "pause" },
+    {
+      tournament_id: "40000000-0000-4000-8000-000000000002",
+      action: "pause",
+      expected_control_revision: revision,
+    },
   ), policy), "unexpected_mutation");
   assert.equal(clockBrowserRequestBlockReason(request(
     "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-clock",
     "POST",
-    { tournament_id: tournamentId, action: "adjust_time", delta_seconds: -60 },
+    { tournament_id: tournamentId, action: "pause" },
+  ), policy), "unexpected_mutation");
+  assert.equal(clockBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-clock",
+    "POST",
+    { tournament_id: tournamentId, action: "resume", expected_control_revision: "not-a-revision" },
+  ), policy), "unexpected_mutation");
+  assert.equal(clockBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-clock",
+    "POST",
+    {
+      tournament_id: tournamentId,
+      action: "adjust_time",
+      delta_seconds: 120,
+      expected_control_revision: revision,
+    },
   ), policy), "unexpected_mutation");
   assert.equal(clockBrowserRequestBlockReason(request(
     "https://bank.example.test/pay",
@@ -503,7 +1017,7 @@ test("browser clock policy permits only exact owned clock controls", () => {
 test("blocked browser evidence contains only reason, method, and pathname", () => {
   const safeDetail = canarySource.slice(
     canarySource.indexOf("function safeBlockedBrowserRequestDetail"),
-    canarySource.indexOf("function payoutBrowserRequestBlockReason"),
+    canarySource.indexOf("const CANARY_REST_READ_FILTERS"),
   );
   assert.match(safeDetail, /reason=\$\{reason\} method=\$\{method\} path=\$\{safePath\}/);
   assert.match(safeDetail, /new URL\(request\.url\)\.pathname/);
@@ -582,7 +1096,17 @@ test("workflow has fail-closed run, cleanup, and hold modes", () => {
   assert.match(workflow, /pull_request\.base\.ref == 'main'/);
   assert.match(workflow, /if: env\.FLOOR_CANARY_MODE == 'run'/);
   assert.match(workflow, /FLOOR_CANARY_MODE:/);
+  assert.match(workflow, /Validate canary safety and button evidence contracts/);
+  assert.match(workflow, /floorActionEvidenceLedger\.test\.ts/);
   assert.match(workflow, /FLOOR_CANARY_BROWSER_ACTIONS_READY: "true"/);
+  assert.match(workflow, /FLOOR_CANARY_RECOVERY_LEDGER: \$\{\{ runner\.temp \}\}/);
+  assert.match(workflow, /FLOOR_CANARY_STATE_ROOT: \$\{\{ runner\.temp \}\}/);
+  assert.match(workflow, /Always verify exact canary cleanup after run/);
+  assert.match(workflow, /if: always\(\) && env\.FLOOR_CANARY_MODE == 'run'/);
+  assert.match(workflow, /FLOOR_CANARY_CLEANUP_ALLOW_EMPTY: "true"/);
+  assert.match(workflow, /timeout-minutes: 45/);
+  assert.match(workflow, /timeout-minutes: 15/);
+  assert.match(canarySource, /try \{\s*if \(browser\) await browser\.close\(\);\s*\} finally \{\s*await rm\(stateDirectory/);
   assert.doesNotMatch(workflow, /SUPABASE_ACCESS_TOKEN|SUPABASEACCESSTOKEN/);
   assert.doesNotMatch(workflow, /supabase functions deploy|database\/query/);
 });
