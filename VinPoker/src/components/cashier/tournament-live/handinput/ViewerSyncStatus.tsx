@@ -7,14 +7,15 @@
 
 import { Radio, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 
-export type SyncPhase = "idle" | "sending" | "sent" | "error";
+export type SyncPhase = "idle" | "sending" | "sent" | "error" | "uncertain";
 
 interface ViewerSyncStatusProps {
   phase: SyncPhase;
   lastLabel: string | null;
+  onReload?: () => void;
 }
 
-export function ViewerSyncStatus({ phase, lastLabel }: ViewerSyncStatusProps) {
+export function ViewerSyncStatus({ phase, lastLabel, onReload }: ViewerSyncStatusProps) {
   if (phase === "sending") {
     return (
       <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-[11px] text-amber-300" role="status" aria-live="polite">
@@ -39,6 +40,20 @@ export function ViewerSyncStatus({ phase, lastLabel }: ViewerSyncStatusProps) {
       <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-red-600/50 bg-red-950/30 text-[11px] text-red-300" role="alert">
         <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
         <span className="font-medium">Lỗi gửi — vui lòng thử lại</span>
+      </div>
+    );
+  }
+
+  if (phase === "uncertain") {
+    return (
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-red-600/50 bg-red-950/30 text-[11px] text-red-300" role="alert">
+        <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
+        <span className="font-medium">Chua xac minh duoc server - khong thao tac tiep</span>
+        {onReload && (
+          <button type="button" onClick={onReload} className="rounded border border-red-400/60 px-2 py-0.5 font-semibold hover:bg-red-500/15">
+            Tai lai
+          </button>
+        )}
       </div>
     );
   }

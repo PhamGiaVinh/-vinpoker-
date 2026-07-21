@@ -86,7 +86,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
   }
 
   const bigBlind = hook.bigBlind;
-  const disabled = hook.submitting || hook.isReadOnly;
+  const disabled = hook.submitting || hook.isReadOnly || hook.actionSyncBlocked;
   // P2-5: include EMPTY physical seats so a DEAD button is visible on an empty seat
   // and the operator can tap one to set it. TrackerRacetrack renders `isEmpty` seats.
   const rich = FEATURES.trackerRacetrackRich;
@@ -124,7 +124,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           buttonConfirmed={hook.buttonConfirmed}
           onTapSeat={hook.handleSeatTap}
           onStartHand={hook.handleStartHand}
-          submitting={hook.submitting}
+          submitting={disabled}
           lastHandId={hook.lastHandId}
           onVoid={hook.handleVoid}
           // A2 express: right after a recorded hand (number + button pre-seeded) the
@@ -145,7 +145,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
                 players={hook.players}
                 maxSeats={hook.maxSeats}
                 avatarSupported={hook.avatarSupported}
-                disabled={hook.submitting}
+                disabled={disabled}
                 onSetSeat={hook.handleSetRosterSeat}
               />
             ) : FEATURES.trackerChipQuickEdit && hook.players.length > 0 ? (
@@ -153,7 +153,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
                 tournamentId={hook.tournamentId}
                 tableId={hook.tableId}
                 players={hook.players}
-                disabled={hook.submitting}
+                disabled={disabled}
                 onUpdated={hook.handleChipQuickEdit}
               />
             ) : undefined
@@ -175,7 +175,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           showdownLayers={hook.showdownLayers}
           onSubmit={hook.handleSubmitHand}
           onBack={() => hook.setEndingStacks({})}
-          submitting={hook.submitting}
+          submitting={disabled}
           rankShifts={FEATURES.trackerChipQuickEdit ? hook.rankShifts : undefined}
           diagnostics={FEATURES.trackerWorkflowAids}
         />
@@ -351,7 +351,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
       <div className="flex items-center gap-2">
         <TrackerSoundToggle />
         <HandGuideDrawer />
-        <ViewerSyncStatus phase={hook.syncPhase} lastLabel={hook.syncLabel} />
+        <ViewerSyncStatus phase={hook.syncPhase} lastLabel={hook.syncLabel} onReload={hook.reloadAfterActionUncertainty} />
       </div>
     </div>
   );
@@ -364,7 +364,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           <div className="flex gap-2">
             <button
               type="button"
-              disabled={hook.submitting}
+              disabled={disabled}
               onClick={() => hook.handleContinueOrphan()}
               className="rounded-lg border border-emerald-500/60 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-200 disabled:opacity-40"
             >
@@ -372,7 +372,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
             </button>
             <button
               type="button"
-              disabled={hook.submitting}
+              disabled={disabled}
               onClick={hook.handleVoidOrphan}
               className="rounded-lg border border-red-500/50 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-300 disabled:opacity-40"
             >
@@ -401,7 +401,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
         boardCards={boardCards}
         pot={hook.potSize}
         bigBlind={bigBlind}
-        onSeatTap={hook.isReadOnly ? undefined : hook.handleSeatNumberTap}
+        onSeatTap={disabled ? undefined : hook.handleSeatNumberTap}
         rich={rich}
         potBreakdown={rich ? hook.potBreakdown : undefined}
         engineToActSeatNumber={rich ? hook.engineActor?.seat_number ?? null : undefined}
@@ -424,7 +424,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
             onReset={hook.resetHand}
             onVoid={hook.handleVoid}
             hasVoidTarget={!!(hook.lastHandId || hook.handStarted)}
-            disabled={hook.submitting}
+            disabled={disabled}
             streetRollback={hook.streetRollbackUi}
             onStreetRollback={hook.handleStreetRollback}
           />
@@ -463,7 +463,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
                 players={hook.players}
                 maxSeats={hook.maxSeats}
                 avatarSupported={hook.avatarSupported}
-                disabled={hook.submitting}
+                disabled={disabled}
                 onSetSeat={hook.handleSetRosterSeat}
                 handInProgress
                 onSetSeatDisplay={hook.handleSetSeatDisplay}

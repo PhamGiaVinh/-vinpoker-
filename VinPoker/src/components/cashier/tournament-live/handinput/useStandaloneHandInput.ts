@@ -59,7 +59,15 @@ import {
 import type { RailSeat } from "./SeatRail";
 import type { InputTableSummary } from "./InputTableMap";
 import { formatStack } from "./format";
-import { friendlyValidationError, isValidationCode } from "./validationMessages";
+import { friendlyValidationError } from "./validationMessages";
+import {
+  buildNextHandNumberRequest,
+  classifyActionWriteFailure,
+  createActionWriteGuard,
+  createTableLoadGuard,
+  isConfirmedActionWrite,
+  type TableLoadToken,
+} from "./trackerAsyncGuards";
 import type { SyncPhase } from "./ViewerSyncStatus";
 import type { User } from "@supabase/supabase-js";
 import {
@@ -155,6 +163,10 @@ function lockFieldsFrom(lock: any) {
   };
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
 export function useStandaloneHandInput(tournamentId: string) {
   const [tableId, setTableId] = useState("");
   const [tableName, setTableName] = useState("");
@@ -196,6 +208,7 @@ export function useStandaloneHandInput(tournamentId: string) {
   const [liveLevel, setLiveLevel] = useState<ClockLevel | null>(null);
   const [blindFetchedAt, setBlindFetchedAt] = useState<Date | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [actionSyncBlocked, setActionSyncBlocked] = useState(false);
   const [syncPhase, setSyncPhase] = useState<SyncPhase>("idle");
   const [syncLabel, setSyncLabel] = useState<string | null>(null);
   const [handId, setHandId] = useState<string | null>(null);
@@ -240,6 +253,12 @@ export function useStandaloneHandInput(tournamentId: string) {
   const [leaderboardBefore, setLeaderboardBefore] = useState<{ player_id: string; chip_count: number }[] | null>(
     null
   );
+  // Async table loads and action writes must not outlive the table/hand that created
+  // them. The refs provide synchronous protection before React can re-render.
+  const tableLoadGuardRef = useRef(createTableLoadGuard());
+  const actionWriteGuardRef = useRef(createActionWriteGuard());
+  const actionScopeRef = useRef("");
+  const blockedActionScopeRef = useRef<string | null>(null);
 
   // ----- URL params -------------------------------------------------------
   // `table` is authoritative (drives the resume-on-return flow). hand/street/actor
@@ -262,6 +281,15 @@ export function useStandaloneHandInput(tournamentId: string) {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
+  }, []);
+
+  useEffect(() => {
+    actionScopeRef.current = `${tableId}:${handId ?? "draft"}`;
+  }, [tableId, handId]);
+
+  useEffect(() => {
+    const guard = tableLoadGuardRef.current;
+    return () => guard.dispose();
   }, []);
 
   // ----- Load tables (read-only enrichment, no new RPC) -------------------
@@ -406,7 +434,11 @@ export function useStandaloneHandInput(tournamentId: string) {
     if (label !== undefined) setSyncLabel(label);
   }, []);
 
-  const resetHand = useCallback((opts?: { restoreStacks?: boolean }) => {
+  const reloadAfterActionUncertainty = useCallback(() => {
+    if (actionSyncBlocked) window.location.reload();
+  }, [actionSyncBlocked]);
+
+  const resetHand = useCallback((opts?: { restoreStacks?: boolean; tableId?: string; loadToken?: TableLoadToken }) => {
     // C2 hard-gate (ref: stable callback, no dep churn): never wipe local state while
     // the rollback chain is mid-flight — server deletes would keep landing on it.
     if (streetRollbackRef.current) {
@@ -441,11 +473,13 @@ export function useStandaloneHandInput(tournamentId: string) {
     // not-yet-started felt). restoreStacks is true ONLY from handleVoid — see
     // clearBettingState's doc for why any other restore would be wrong.
     setPlayers((prev) => clearBettingState(prev, opts?.restoreStacks === true));
-    if (tableId) {
+    const targetTableId = opts?.tableId ?? tableId;
+    const loadToken = opts?.loadToken ?? tableLoadGuardRef.current.capture(targetTableId);
+    if (targetTableId) {
       supabase
-        .rpc("get_next_hand_number", { p_tournament_id: tournamentId, p_table_id: tableId })
+        .rpc("get_next_hand_number", buildNextHandNumberRequest(tournamentId, targetTableId))
         .then(({ data }) => {
-          if (data) setHandNumber(data);
+          if (data && tableLoadGuardRef.current.isCurrent(loadToken)) setHandNumber(data);
         });
     }
   }, [tableId, tournamentId]);
@@ -619,7 +653,15 @@ export function useStandaloneHandInput(tournamentId: string) {
   // ----- Table select -----------------------------------------------------
   const handleTableChange = useCallback(
     async (newTableId: string) => {
+      const loadToken = tableLoadGuardRef.current.begin(newTableId);
+      const isCurrentLoad = () => tableLoadGuardRef.current.isCurrent(loadToken);
+      actionScopeRef.current = `${newTableId}:draft`;
+      blockedActionScopeRef.current = null;
+      setActionSyncBlocked(false);
       setTableId(newTableId);
+      setHandId(null);
+      setHandStarted(false);
+      setLastHandId(null);
       setButtonConfirmed(false);
       // P2-5: a fresh table load resets the dead-button anchor → the first hand has no
       // suggestion (operator sets the button); subsequent hands auto-suggest.
@@ -643,7 +685,9 @@ export function useStandaloneHandInput(tournamentId: string) {
         .eq("tournament_id", tournamentId)
         .eq("table_id", newTableId)
         .maybeSingle()
-        .then(({ data }) => setMaxSeats((data as any)?.max_seats ?? 9));
+        .then(({ data }) => {
+          if (isCurrentLoad()) setMaxSeats((data as any)?.max_seats ?? 9);
+        });
 
       // trackerSeatSetup: pull the per-seat avatar_url under the flag. If the migration
       // isn't applied yet the column is missing → 42703 → mark unsupported + retry
@@ -661,6 +705,7 @@ export function useStandaloneHandInput(tournamentId: string) {
           .eq("table_id", newTableId)
           .eq("is_active", true)
           .order("seat_number");
+        if (!isCurrentLoad()) return;
         if (r.error && (r.error as any).code === "42703") {
           setAvatarSupported(false);
         } else {
@@ -676,10 +721,12 @@ export function useStandaloneHandInput(tournamentId: string) {
           .eq("table_id", newTableId)
           .eq("is_active", true)
           .order("seat_number");
+        if (!isCurrentLoad()) return;
         loadedSeats = r.data as any[] | null;
         error = r.error;
       }
 
+      if (!isCurrentLoad()) return;
       if (error) {
         toast.error("Không thể tải danh sách người chơi");
         setPlayers([]);
@@ -711,6 +758,7 @@ export function useStandaloneHandInput(tournamentId: string) {
           .from("profiles")
           .select("user_id, avatar_url")
           .in("user_id", seatPlayerIds);
+        if (!isCurrentLoad()) return;
         (seatProfiles ?? []).forEach((p: any) => avatarByUser.set(p.user_id, p.avatar_url ?? null));
       }
       // Avatar priority: operator-set per-seat avatar wins over the player's profile pic;
@@ -721,7 +769,7 @@ export function useStandaloneHandInput(tournamentId: string) {
           avatar_url: (loadedSeats![i] as any)?.avatar_url ?? avatarByUser.get(p.player_id) ?? null,
         }))
       );
-      resetHand();
+      resetHand({ tableId: newTableId, loadToken });
 
       const activeNums = loadedSeats
         .filter((s) => s.player_id)
@@ -737,14 +785,9 @@ export function useStandaloneHandInput(tournamentId: string) {
         .limit(1)
         .maybeSingle();
 
+      if (!isCurrentLoad()) return;
       if (lastHand?.button_seat) setButtonSeat(nextButton(activeNums, lastHand.button_seat));
       else setButtonSeat(activeNums[0] ?? 1);
-
-      const { data: nextHand } = await supabase.rpc("get_next_hand_number", {
-        p_tournament_id: tournamentId,
-        p_table_id: newTableId,
-      });
-      if (nextHand) setHandNumber(nextHand);
 
       const { data: orphan } = await supabase
         .from("tournament_hands")
@@ -754,6 +797,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         .eq("status", "in_progress")
         .limit(1)
         .maybeSingle();
+      if (!isCurrentLoad()) return;
       if (orphan) {
         setOrphanHand(orphan);
         setAutoResumeArmed(orphan.id); // A5: fires once seats for THIS table have loaded
@@ -1412,67 +1456,115 @@ export function useStandaloneHandInput(tournamentId: string) {
       }
     }
 
-    const preSnapshot = { players, actions, currentStreet, nextActionOrder };
-    setUndoStack((prev) => [...prev, preSnapshot]);
-
     const currentOrder = nextActionOrder;
-    setNextActionOrder((prev) => prev + 1);
-    setPlayers(newPlayers);
-    setActions((prev) => [
-      ...prev,
-      {
-        street: currentStreet,
-        player_id: playerId,
-        display_name: player.display_name,
-        seat_number: player.seat_number,
-        action_type: actionType,
-        amount,
-        action_order: currentOrder,
-      },
-    ]);
-    setBetAmount("");
-    // C4: audible press feedback the moment the action is accepted locally (flag-gated
-    // + mute-gated inside; action_type strings map 1:1 onto PokerLiveSound kinds).
-    if (ACTION_SOUND_KINDS.has(actionType)) playTrackerSound(actionType as PokerLiveSound);
+    const actionScope = `${tableId}:${handId ?? "draft"}`;
+    if (actionSyncBlocked || blockedActionScopeRef.current === actionScope || actionWriteGuardRef.current.isBlocked(actionScope)) {
+      toast.error("Trang thai truoc chua xac minh. Hay tai lai truoc khi thao tac tiep.");
+      return false;
+    }
+    const writeToken = actionWriteGuardRef.current.begin(actionScope);
+    if (!writeToken) {
+      toast.warning("Dang ghi hanh dong truoc - vui long cho xong.");
+      return false;
+    }
+    const preSnapshot = { players, actions, currentStreet, nextActionOrder };
+    const actionRecord: ActionRecord = {
+      street: currentStreet,
+      player_id: playerId,
+      display_name: player.display_name,
+      seat_number: player.seat_number,
+      action_type: actionType,
+      amount,
+      action_order: currentOrder,
+    };
+    const finishWrite = () => {
+      const finished = actionWriteGuardRef.current.finish(writeToken);
+      if (actionScopeRef.current === writeToken.scope) setSubmitting(false);
+      return finished;
+    };
+    const blockForAuthoritativeReload = () => {
+      actionWriteGuardRef.current.markUncertain(writeToken);
+      if (actionScopeRef.current !== writeToken.scope) return false;
+      blockedActionScopeRef.current = writeToken.scope;
+      setActionSyncBlocked(true);
+      setSubmitting(false);
+      setSelectedActorId(null);
+      markSync("uncertain", "Trang thai chua xac minh - tai lai truoc khi tiep tuc");
+      toast.error("Khong xac minh duoc hanh dong tren server. Ban da bi khoa - hay tai lai.");
+      return false;
+    };
+    const commitConfirmedAction = () => {
+      if (actionScopeRef.current !== writeToken.scope) {
+        finishWrite();
+        return false;
+      }
+      setUndoStack((prev) => [...prev, preSnapshot]);
+      setNextActionOrder((prev) => prev + 1);
+      setPlayers(newPlayers);
+      setActions((prev) => [...prev, actionRecord]);
+      setBetAmount("");
+      if (ACTION_SOUND_KINDS.has(actionType)) playTrackerSound(actionType as PokerLiveSound);
+      markSync("sent", `S${player.seat_number} ${formatActionLabel(actionRecord)}`);
+      finishWrite();
+      return true;
+    };
 
-    if (handId) {
+    setSubmitting(true);
+
+    if (!handId) return commitConfirmedAction();
+
+    {
       markSync("sending", `S${player.seat_number} ${actionType}`);
-      const { data, error } = await supabase.functions.invoke("tournament-live-update", {
-        body: buildRecordActionBody({
-          tournamentId,
-          handId,
-          playerId,
-          entryNumber: player.entry_number,
-          street: currentStreet,
-          actionType,
-          actionAmount: amount,
-          actionOrder: currentOrder,
-        }),
-      });
+      let data: unknown;
+      let error: unknown;
+      try {
+        ({ data, error } = await supabase.functions.invoke("tournament-live-update", {
+          body: buildRecordActionBody({
+            tournamentId,
+            handId,
+            playerId,
+            entryNumber: player.entry_number,
+            street: currentStreet,
+            actionType,
+            actionAmount: amount,
+            actionOrder: currentOrder,
+          }),
+        }));
+      } catch {
+        return blockForAuthoritativeReload();
+      }
+      if (actionScopeRef.current !== writeToken.scope) {
+        finishWrite();
+        return false;
+      }
       let rejCode: string | undefined;
       let rejMsg: string | undefined;
+      const dataRecord = asRecord(data);
+      const errorRecord = asRecord(error);
       if (error) {
         try {
-          const errBody = await (error as any)?.context?.json?.();
-          rejCode = errBody?.code ?? errBody?.validation?.code;
-          rejMsg = errBody?.error;
+          const context = asRecord(errorRecord?.context);
+          const parseJson = context?.json;
+          const errBody = typeof parseJson === "function" ? await parseJson() : null;
+          const errorBody = asRecord(errBody);
+          const validation = asRecord(errorBody?.validation);
+          rejCode = typeof errorBody?.code === "string" ? errorBody.code : typeof validation?.code === "string" ? validation.code : undefined;
+          rejMsg = typeof errorBody?.error === "string" ? errorBody.error : undefined;
         } catch {
           /* body was not JSON */
         }
-        if (!rejMsg) rejMsg = (error as any)?.message;
-      } else if ((data as any)?.error) {
-        rejCode = (data as any)?.code;
-        rejMsg = (data as any)?.error;
+        if (!rejMsg && typeof errorRecord?.message === "string") rejMsg = errorRecord.message;
+      } else if (dataRecord?.error) {
+        rejCode = typeof dataRecord.code === "string" ? dataRecord.code : undefined;
+        rejMsg = typeof dataRecord.error === "string" ? dataRecord.error : undefined;
       }
 
-      if (isValidationCode(rejCode)) {
-        setPlayers(preSnapshot.players);
-        setActions(preSnapshot.actions);
-        setCurrentStreet(preSnapshot.currentStreet);
-        setNextActionOrder(preSnapshot.nextActionOrder);
-        setUndoStack((prev) => prev.slice(0, -1));
-        setBetAmount("");
+      if (error || dataRecord?.error) {
+        if (classifyActionWriteFailure({ code: rejCode, message: rejMsg, data }) !== "validation") {
+          return blockForAuthoritativeReload();
+        }
         setSelectedActorId(null);
+        finishWrite();
         toast.error(friendlyValidationError(rejCode, rejMsg), { description: `Mã lỗi: ${rejCode}` });
         markSync("error");
         return false;
@@ -1481,6 +1573,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         markSync("error");
         return false;
       } else {
+        if (!isConfirmedActionWrite(data)) return blockForAuthoritativeReload();
         if ((data as any)?.validation?.code) {
           toast.warning(
             `Cảnh báo luật: ${friendlyValidationError((data as any).validation.code, (data as any).validation.message)}`
@@ -1500,7 +1593,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         );
       }
     }
-    return true;
+    return commitConfirmedAction();
   };
 
   const handleDockAction = (type: string, betTo?: number) => {
@@ -2374,6 +2467,8 @@ export function useStandaloneHandInput(tournamentId: string) {
     // sync
     syncPhase,
     syncLabel,
+    actionSyncBlocked,
+    reloadAfterActionUncertainty,
     // blind setup
     blindSbSeat,
     blindBbSeat,
