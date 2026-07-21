@@ -1,0 +1,365 @@
+name: Floor frontend one-shot rollout
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type DEPLOY_REVIEWED_FLOOR_CLOCK_FRONTEND"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  deployments: write
+
+concurrency:
+  group: floor-frontend-one-shot
+  cancel-in-progress: false
+
+env:
+  PRODUCTION_BASELINE_SHA: cdb67da6e4f77caa9e3277cea0fe6994f9d41cb6
+  TARGET_SHA: 3d54c87e7c1fab1209494c94b7b2cca042053e2d
+  REVIEWED_MERGE_SHA: ee77f095f27bdbc7c9b9bfbc561969fe2b5559ad
+  EXPECTED_PRODUCTION_DEPLOYMENT_ID: "5526237863"
+  PRODUCTION_REF: orlesggcjamwuknxwcpk
+  CRITICAL_ENVIRONMENT: dealer-swing-production-critical
+
+jobs:
+  preflight:
+    name: Verify immutable Floor frontend target
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current control plane
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          path: control-plane
+
+      - name: Checkout exact reviewed Floor source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TARGET_SHA }}
+          path: target-source
+
+      - name: Verify dispatch, ancestry and exact frontend allowlist
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$CONFIRMATION" = "DEPLOY_REVIEWED_FLOOR_CLOCK_FRONTEND"
+          cd control-plane
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          git merge-base --is-ancestor "$REVIEWED_MERGE_SHA" origin/main
+          test "$(git rev-parse "${TARGET_SHA}^")" = "$PRODUCTION_BASELINE_SHA"
+          test "$(git rev-parse "$TARGET_SHA")" = "$TARGET_SHA"
+          test "$(git rev-parse "$REVIEWED_MERGE_SHA")" = "$REVIEWED_MERGE_SHA"
+
+          expected="$(printf '%s\n' \
+            VinPoker/src/components/cashier/tournament-live/ClockPanel.tsx \
+            VinPoker/src/lib/tournament/clockControlState.test.ts \
+            VinPoker/src/lib/tournament/clockControlState.ts \
+            VinPoker/src/pages/ops/OpsTournamentCockpit.tsx | sort)"
+          actual="$(git diff --name-only "$PRODUCTION_BASELINE_SHA" "$TARGET_SHA" -- \
+            VinPoker/src \
+            VinPoker/public \
+            VinPoker/index.html \
+            VinPoker/package.json \
+            VinPoker/package-lock.json \
+            VinPoker/vite.config.ts \
+            VinPoker/vercel.json | sort)"
+          test "$actual" = "$expected"
+          git diff --quiet "$TARGET_SHA" "$REVIEWED_MERGE_SHA" -- $expected
+          git diff --quiet "$TARGET_SHA" origin/main -- $expected
+          node -e 'const c=require("./VinPoker/vercel.json"); if(c.git?.deploymentEnabled!==false) process.exit(1)'
+
+      - name: Verify latest successful production deployment is the pinned baseline
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          latest_id=""
+          latest_sha=""
+          while read -r deployment_id deployment_sha; do
+            state="$(gh api "repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses?per_page=1" --jq '.[0].state // ""')"
+            if [[ "$state" == "success" ]]; then
+              latest_id="$deployment_id"
+              latest_sha="$deployment_sha"
+              break
+            fi
+          done < <(gh api "repos/${GITHUB_REPOSITORY}/deployments?environment=Production&per_page=30" --jq '.[] | "\(.id) \(.sha)"')
+          test "$latest_id" = "$EXPECTED_PRODUCTION_DEPLOYMENT_ID"
+          test "$latest_sha" = "$PRODUCTION_BASELINE_SHA"
+          echo "Pinned production baseline verified: deployment=${latest_id} sha=${latest_sha}"
+
+      - name: Verify protected environment still requires a reviewer
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/environments/${CRITICAL_ENVIRONMENT}" \
+            --jq '.protection_rules | any(.type == "required_reviewers" and ((.reviewers // []) | length > 0))' \
+            | grep -qx true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: target-source/VinPoker/package-lock.json
+
+      - name: Validate one-shot policy
+        run: node --test VinPoker/scripts/deploy/floor-frontend-one-shot-policy.test.mjs
+        working-directory: control-plane
+
+      - name: Install exact target dependencies
+        run: npm ci --ignore-scripts
+        working-directory: target-source/VinPoker
+
+      - name: Test and build exact reviewed Floor frontend
+        shell: bash
+        working-directory: target-source/VinPoker
+        env:
+          VITE_SUPABASE_URL: https://orlesggcjamwuknxwcpk.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: static-preflight-placeholder
+        run: |
+          set -euo pipefail
+          npx vitest run src/lib/tournament/clockControlState.test.ts
+          npx eslint \
+            src/components/cashier/tournament-live/ClockPanel.tsx \
+            src/lib/tournament/clockControlState.ts \
+            src/lib/tournament/clockControlState.test.ts \
+            src/pages/ops/OpsTournamentCockpit.tsx
+          npm run build
+
+  deploy:
+    name: Deploy exact reviewed Floor frontend
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: dealer-swing-production-critical
+    steps:
+      - name: Checkout current control plane
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          path: control-plane
+
+      - name: Checkout exact reviewed Floor source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TARGET_SHA }}
+          path: target-source
+
+      - name: Re-verify immutable source after approval
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd control-plane
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          git merge-base --is-ancestor "$REVIEWED_MERGE_SHA" origin/main
+          test "$(git rev-parse "${TARGET_SHA}^")" = "$PRODUCTION_BASELINE_SHA"
+          git diff --quiet "$TARGET_SHA" "$REVIEWED_MERGE_SHA" -- \
+            VinPoker/src/components/cashier/tournament-live/ClockPanel.tsx \
+            VinPoker/src/lib/tournament/clockControlState.test.ts \
+            VinPoker/src/lib/tournament/clockControlState.ts \
+            VinPoker/src/pages/ops/OpsTournamentCockpit.tsx
+          git diff --quiet "$TARGET_SHA" origin/main -- \
+            VinPoker/src/components/cashier/tournament-live/ClockPanel.tsx \
+            VinPoker/src/lib/tournament/clockControlState.test.ts \
+            VinPoker/src/lib/tournament/clockControlState.ts \
+            VinPoker/src/pages/ops/OpsTournamentCockpit.tsx
+
+      - name: Re-verify production has not moved since preflight
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          latest_id=""
+          latest_sha=""
+          while read -r deployment_id deployment_sha; do
+            state="$(gh api "repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses?per_page=1" --jq '.[0].state // ""')"
+            if [[ "$state" == "success" ]]; then
+              latest_id="$deployment_id"
+              latest_sha="$deployment_sha"
+              break
+            fi
+          done < <(gh api "repos/${GITHUB_REPOSITORY}/deployments?environment=Production&per_page=30" --jq '.[] | "\(.id) \(.sha)"')
+          test "$latest_id" = "$EXPECTED_PRODUCTION_DEPLOYMENT_ID"
+          test "$latest_sha" = "$PRODUCTION_BASELINE_SHA"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: target-source/VinPoker/package-lock.json
+
+      - name: Install exact target dependencies
+        run: npm ci --ignore-scripts
+        working-directory: target-source/VinPoker
+
+      - name: Install pinned deployment CLIs
+        run: |
+          npm install --global supabase@2.101.0
+          npm install --global vercel@56.4.1
+
+      - name: Verify live frontend RPC contracts without mutation
+        shell: bash
+        working-directory: target-source/VinPoker
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          test "$SUPABASE_PROJECT_REF" = "$PRODUCTION_REF"
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          supabase db dump --linked --schema public --file "${RUNNER_TEMP}/live-schema.sql"
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/capture-live-schema-contract-catalog.mjs" \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --output "${RUNNER_TEMP}/live-schema-catalog.json"
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/probe-live-schema-contracts.mjs" \
+            --catalog "${RUNNER_TEMP}/live-schema-catalog.json" \
+            --targets frontend \
+            --target-root "${GITHUB_WORKSPACE}/target-source"
+
+      - name: Verify frontend credential scope
+        run: >-
+          node control-plane/VinPoker/scripts/deploy/verify-component-credential-scope.mjs
+          --selected-functions ''
+          --deploy-frontend true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          VERCEL_TOKEN: ${{ secrets.VERCELTOKEN }}
+
+      - name: Build exact bundle with the existing Vercel production environment
+        shell: bash
+        working-directory: target-source
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCELTOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.USERIDVERRCEL }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
+        run: |
+          set -euo pipefail
+          test -n "$VERCEL_TOKEN"
+          test -n "$VERCEL_ORG_ID"
+          test -n "$VERCEL_PROJECT_ID"
+          mkdir -p .vercel
+          trap 'rm -f .vercel/project.json' EXIT
+          node -e '
+            const { writeFileSync } = require("node:fs");
+            writeFileSync(
+              ".vercel/project.json",
+              JSON.stringify({
+                orgId: process.env.VERCEL_ORG_ID,
+                projectId: process.env.VERCEL_PROJECT_ID,
+              }),
+              { mode: 0o600 },
+            );
+          '
+          vercel env run --environment=production -- bash -c '
+            set -euo pipefail
+            test "$VITE_SUPABASE_URL" = "https://orlesggcjamwuknxwcpk.supabase.co"
+            test -n "$VITE_SUPABASE_PUBLISHABLE_KEY"
+            npm --prefix VinPoker run build
+          '
+
+      - name: Deploy only the prebuilt reviewed bundle
+        shell: bash
+        working-directory: target-source
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCELTOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.USERIDVERRCEL }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
+        run: |
+          set -euo pipefail
+          test -n "$VERCEL_TOKEN"
+          test -n "$VERCEL_ORG_ID"
+          test -n "$VERCEL_PROJECT_ID"
+          mkdir -p .vercel/output/static
+          trap 'rm -f .vercel/project.json' EXIT
+          node -e '
+            const { mkdirSync, writeFileSync } = require("node:fs");
+            mkdirSync(".vercel", { recursive: true });
+            writeFileSync(
+              ".vercel/project.json",
+              JSON.stringify({
+                orgId: process.env.VERCEL_ORG_ID,
+                projectId: process.env.VERCEL_PROJECT_ID,
+              }),
+              { mode: 0o600 },
+            );
+          '
+          cp -r VinPoker/dist/. .vercel/output/static/
+          printf '%s' '{"version":3,"routes":[{"src":"/assets/(.*)","headers":{"Cache-Control":"no-cache, must-revalidate"},"continue":true},{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' > .vercel/output/config.json
+          vercel deploy --prebuilt --prod --yes > "${RUNNER_TEMP}/floor-frontend-deployment-url.txt"
+
+      - name: Verify production serves the exact built version and asset policy
+        shell: bash
+        working-directory: target-source
+        run: |
+          set -euo pipefail
+          served_version="${RUNNER_TEMP}/served-version.json"
+          matched=false
+          for attempt in $(seq 1 24); do
+            if curl --silent --show-error --fail \
+              "https://vinpoker.vercel.app/version.json?rollout=${GITHUB_RUN_ID}" \
+              --output "$served_version" \
+              && cmp --silent VinPoker/dist/version.json "$served_version"; then
+              matched=true
+              break
+            fi
+            sleep 5
+          done
+          test "$matched" = true
+
+          asset_path="$(node -e '
+            const html = require("node:fs").readFileSync("VinPoker/dist/index.html", "utf8");
+            const match = html.match(/\/assets\/[^" ]+\.js/u);
+            if (!match) process.exit(1);
+            process.stdout.write(match[0]);
+          ')"
+          curl --silent --show-error --fail --head \
+            "https://vinpoker.vercel.app${asset_path}" \
+            --output "${RUNNER_TEMP}/asset-headers.txt"
+          grep -iq '^cache-control:[[:space:]]*no-cache, must-revalidate\r\?$' \
+            "${RUNNER_TEMP}/asset-headers.txt"
+
+      - name: Record receipt only after successful deploy
+        run: >-
+          node control-plane/VinPoker/scripts/deploy/deployment-receipts.mjs record
+          --repository "${GITHUB_REPOSITORY}"
+          --component frontend
+          --sha "${TARGET_SHA}"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Publish metadata-only receipt
+        shell: bash
+        run: |
+          {
+            echo "## Floor frontend one-shot rollout"
+            echo ""
+            echo "- Baseline SHA: \`${PRODUCTION_BASELINE_SHA}\`"
+            echo "- Exact source SHA: \`${TARGET_SHA}\`"
+            echo "- Reviewed merge SHA: \`${REVIEWED_MERGE_SHA}\`"
+            echo "- Frontend allowlist: 4 files"
+            echo "- Edge deploy: false"
+            echo "- DB apply: false"
+            echo "- Feature flags: unchanged"
+          } >> "$GITHUB_STEP_SUMMARY"
