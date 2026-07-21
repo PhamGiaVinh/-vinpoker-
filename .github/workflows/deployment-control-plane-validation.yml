@@ -43,3 +43,11 @@ jobs:
             .github/workflows/vbackerworkflowmain.yml \
             .github/workflows/floor-clock-control-apply.yml \
             .github/workflows/deployment-control-plane-validation.yml
+
+      - name: Setup Node.js 20 for Floor runner tests
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "20"
+
+      - name: Test exact Floor clock apply runner
+        run: node --test VinPoker/scripts/floor/apply-floor-clock-control.test.mjs
