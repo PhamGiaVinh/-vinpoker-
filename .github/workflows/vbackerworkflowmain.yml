@@ -244,6 +244,7 @@ jobs:
         shell: bash
         env:
           TARGETS: ${{ needs.plan.outputs.critical_functions }}
+          CONTRACT_PROFILE: ${{ needs.plan.outputs.contract_profile }}
           TARGET_REPO_ROOT: ${{ github.workspace }}/target-source
           TARGET_FUNCTIONS: ${{ needs.plan.outputs.critical_functions }}
           CONTROL_PLANE_MANIFEST: ${{ github.workspace }}/control-plane/VinPoker/scripts/deploy/deployment-contracts.json
