@@ -6,6 +6,9 @@ on:
       - ".github/workflows/vbackerworkflowmain.yml"
       - ".github/workflows/floor-clock-control-apply.yml"
       - ".github/workflows/deployment-control-plane-validation.yml"
+      - "VinPoker/scripts/floor/apply-floor-clock-control.mjs"
+      - "VinPoker/scripts/floor/apply-floor-clock-control.test.mjs"
+      - "VinPoker/supabase/migrations/20270104000004_floor_clock_control_atomic.sql"
       - "VinPoker/scripts/deploy/**"
       - "VinPoker/docs/dealer-swing/CONTROL_PLANE_RUNBOOK.md"
   workflow_dispatch:

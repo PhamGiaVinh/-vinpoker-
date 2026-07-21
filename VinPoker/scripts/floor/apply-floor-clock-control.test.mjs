@@ -280,6 +280,13 @@ test("workflow is manual-only, exact-SHA, protected and contains no broad deploy
   assert.doesNotMatch(workflow, /vercel\s+(?:--prod|deploy)/i);
   assert.doesNotMatch(workflow, /schema_migrations/i);
   assert.match(validationWorkflow, /\.github\/workflows\/floor-clock-control-apply\.yml/);
+  for (const exactValidationPath of [
+    "VinPoker/scripts/floor/apply-floor-clock-control.mjs",
+    "VinPoker/scripts/floor/apply-floor-clock-control.test.mjs",
+    "VinPoker/supabase/migrations/20270104000004_floor_clock_control_atomic.sql",
+  ]) {
+    assert.match(validationWorkflow, new RegExp(exactValidationPath.replaceAll(".", "\\.")));
+  }
   assert.match(
     validationWorkflow,
     /node --test VinPoker\/scripts\/floor\/apply-floor-clock-control\.test\.mjs/,
