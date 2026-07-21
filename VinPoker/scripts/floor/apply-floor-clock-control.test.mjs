@@ -15,6 +15,7 @@ import {
   contractProblems,
   extractFunctionBody,
   managementQuery,
+  normalizedFunctionBodyHash,
   postApplyProblems,
   preApplyDecision,
   predecessorProblems,
@@ -38,6 +39,11 @@ test("exact reviewed clock migration passes the immutable safety contract", () =
   assert.equal(MIGRATION_SHA256.length, 64);
   assert.deepEqual(validateMigration(migration), []);
   assert.match(extractFunctionBody(migration, "floor_control_tournament_clock"), /stale_clock_state/);
+  const startBody = extractFunctionBody(migration, "floor_start_tournament_clock");
+  assert.equal(
+    normalizedFunctionBodyHash(startBody),
+    normalizedFunctionBodyHash(startBody.replaceAll("\n", "\r\n")),
+  );
   assert.notEqual(REVIEWED_BODY_HASHES.post.start, REVIEWED_BODY_HASHES.predecessor.start);
   assert.notEqual(REVIEWED_BODY_HASHES.post.get, REVIEWED_BODY_HASHES.predecessor.get);
 });
@@ -162,9 +168,11 @@ test("live contract verification is fail-closed for ACL or overload drift", () =
     get_control_revision: false,
     get_body_contract: false,
     control_body_contract: false,
+    start_service_role_execute: true,
     get_public_execute: true,
     control_authenticated_execute: false,
-    get_execute_grantees: ["PUBLIC", "anon", "authenticated"],
+    start_execute_grantees: ["authenticated", "service_role"],
+    get_execute_grantees: ["PUBLIC", "anon", "authenticated", "service_role"],
     control_execute_grantees: [],
     start_hash: REVIEWED_BODY_HASHES.predecessor.start,
     get_hash: REVIEWED_BODY_HASHES.predecessor.get,
@@ -178,7 +186,7 @@ test("live contract verification is fail-closed for ACL or overload drift", () =
     "unknown_live_drift",
   );
   assert.equal(
-    preApplyDecision({ ...predecessor, start_service_role_execute: true }).reason,
+    preApplyDecision({ ...predecessor, start_service_role_execute: false }).reason,
     "unknown_live_drift",
   );
   assert.equal(
