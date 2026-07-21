@@ -9,6 +9,7 @@ const operatorScopeMigration = read("supabase/migrations/20261242000000_floor_op
 const cleanupIndexMigration = read("supabase/migrations/20270104000000_floor_cleanup_rotation_schedule_index.sql");
 const chipCasMigration = read("supabase/migrations/20270104000001_floor_chip_cas_rpc.sql");
 const clockControlMigration = read("supabase/migrations/20270104000004_floor_clock_control_atomic.sql");
+const operatorScopeAclMigration = read("supabase/migrations/20270104000005_floor_operator_scope_acl.sql");
 const drawEdge = read("supabase/functions/tournament-live-draw/index.ts");
 const clockEdge = read("supabase/functions/tournament-live-clock/index.ts");
 const operatorClubsHook = read("src/hooks/useOperatorClubs.ts");
@@ -157,6 +158,13 @@ describe("Floor V2 DB and Edge contracts", () => {
     expect(operatorScopeMigration).not.toContain("public.user_roles");
     expect(operatorScopeMigration).toContain("REVOKE ALL ON FUNCTION public.get_my_floor_operator_scope() FROM PUBLIC, anon");
     expect(operatorScopeMigration).toContain("GRANT EXECUTE ON FUNCTION public.get_my_floor_operator_scope() TO authenticated");
+    expect(operatorScopeAclMigration).toContain(
+      "FROM PUBLIC, anon, service_role;",
+    );
+    expect(operatorScopeAclMigration).toContain(
+      "TO authenticated;",
+    );
+    expect(operatorScopeAclMigration).not.toMatch(/TO\s+service_role\s*;/i);
   });
 
   it("uses caller-bound capability scope in Floor UI and Edge handlers", () => {

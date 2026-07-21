@@ -282,6 +282,13 @@ $$;
 \ir ../../supabase/migrations/20270104000001_floor_chip_cas_rpc.sql
 \ir ../../supabase/migrations/20270104000004_floor_clock_control_atomic.sql
 
+-- Reproduce the exact reviewed live predecessor drift. Vanilla PostgreSQL does
+-- not include Supabase's direct service_role function grant by default, so the
+-- forward migration must prove that it removes this grant rather than passing
+-- only because the disposable database started stricter than production.
+GRANT EXECUTE ON FUNCTION public.get_my_floor_operator_scope() TO service_role;
+\ir ../../supabase/migrations/20270104000005_floor_operator_scope_acl.sql
+
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
 
 INSERT INTO public.clubs (id, owner_id)
@@ -894,8 +901,13 @@ SELECT public.floor_test_assert(
 );
 SELECT public.floor_test_assert(
   NOT has_function_privilege('anon', 'public.get_my_floor_operator_scope()'::regprocedure, 'EXECUTE')
-  AND has_function_privilege('authenticated', 'public.get_my_floor_operator_scope()'::regprocedure, 'EXECUTE'),
-  'operator-scope RPC revokes anon and grants authenticated'
+  AND has_function_privilege('authenticated', 'public.get_my_floor_operator_scope()'::regprocedure, 'EXECUTE')
+  AND NOT has_function_privilege(
+    'service_role',
+    'public.get_my_floor_operator_scope()'::regprocedure,
+    'EXECUTE'
+  ),
+  'operator-scope RPC grants only authenticated among runtime roles'
 );
 
 INSERT INTO public.tournament_entries (
