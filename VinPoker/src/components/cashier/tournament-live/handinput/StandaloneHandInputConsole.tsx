@@ -75,7 +75,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
   });
   const displayCards = hook.communityCards.map((c) => (c ?? "") as string);
 
-  const disabled = hook.submitting || hook.isReadOnly;
+  const disabled = hook.submitting || hook.isReadOnly || hook.actionSyncBlocked;
   const showActionFallback =
     hook.handStarted && !hook.isSummary && hook.showActionStep;
   const showSizingChips =
@@ -102,7 +102,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           buttonConfirmed={hook.buttonConfirmed}
           onTapSeat={hook.handleSeatTap}
           onStartHand={hook.handleStartHand}
-          submitting={hook.submitting}
+          submitting={disabled}
           lastHandId={hook.lastHandId}
           onVoid={hook.handleVoid}
           // Pre-hand roster setup takes precedence when trackerSeatSetup is on; else the
@@ -115,7 +115,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
                 players={hook.players}
                 maxSeats={hook.maxSeats}
                 avatarSupported={hook.avatarSupported}
-                disabled={hook.submitting}
+                disabled={disabled}
                 onSetSeat={hook.handleSetRosterSeat}
               />
             ) : FEATURES.trackerChipQuickEdit && hook.players.length > 0 ? (
@@ -123,7 +123,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
                 tournamentId={hook.tournamentId}
                 tableId={hook.tableId}
                 players={hook.players}
-                disabled={hook.submitting}
+                disabled={disabled}
                 onUpdated={hook.handleChipQuickEdit}
               />
             ) : undefined
@@ -145,7 +145,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           showdownLayers={hook.showdownLayers}
           onSubmit={hook.handleSubmitHand}
           onBack={() => hook.setEndingStacks({})}
-          submitting={hook.submitting}
+          submitting={disabled}
           rankShifts={FEATURES.trackerChipQuickEdit ? hook.rankShifts : undefined}
           diagnostics={FEATURES.trackerWorkflowAids}
         />
@@ -321,7 +321,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
         </div>
         <div className="flex items-center gap-2">
           <HandGuideDrawer />
-          <ViewerSyncStatus phase={hook.syncPhase} lastLabel={hook.syncLabel} />
+          <ViewerSyncStatus phase={hook.syncPhase} lastLabel={hook.syncLabel} onReload={hook.reloadAfterActionUncertainty} />
         </div>
       </div>
 
@@ -334,7 +334,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           <div className="flex gap-2">
             <button
               type="button"
-              disabled={hook.submitting}
+              disabled={disabled}
               onClick={() => hook.handleContinueOrphan()}
               className="rounded-lg border border-emerald-500/60 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-200 disabled:opacity-40"
             >
@@ -342,7 +342,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
             </button>
             <button
               type="button"
-              disabled={hook.submitting}
+              disabled={disabled}
               onClick={hook.handleVoidOrphan}
               className="rounded-lg border border-red-500/50 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-300 disabled:opacity-40"
             >
@@ -439,7 +439,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
               onReset={hook.resetHand}
               onVoid={hook.handleVoid}
               hasVoidTarget={!!(hook.lastHandId || hook.handStarted)}
-              disabled={hook.submitting}
+              disabled={disabled}
               streetRollback={hook.streetRollbackUi}
               onStreetRollback={hook.handleStreetRollback}
             />
