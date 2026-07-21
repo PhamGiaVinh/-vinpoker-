@@ -5,10 +5,14 @@ on:
     paths:
       - ".github/workflows/vbackerworkflowmain.yml"
       - ".github/workflows/floor-clock-control-apply.yml"
+      - ".github/workflows/floor-operator-scope-acl-apply.yml"
       - ".github/workflows/deployment-control-plane-validation.yml"
       - "VinPoker/scripts/floor/apply-floor-clock-control.mjs"
       - "VinPoker/scripts/floor/apply-floor-clock-control.test.mjs"
+      - "VinPoker/scripts/floor/apply-floor-operator-scope-acl.mjs"
+      - "VinPoker/scripts/floor/apply-floor-operator-scope-acl.test.mjs"
       - "VinPoker/supabase/migrations/20270104000004_floor_clock_control_atomic.sql"
+      - "VinPoker/supabase/migrations/20270104000005_floor_operator_scope_acl.sql"
       - "VinPoker/scripts/deploy/**"
       - "VinPoker/docs/dealer-swing/CONTROL_PLANE_RUNBOOK.md"
   workflow_dispatch:
@@ -45,6 +49,7 @@ jobs:
           "${RUNNER_TEMP}/actionlint" \
             .github/workflows/vbackerworkflowmain.yml \
             .github/workflows/floor-clock-control-apply.yml \
+            .github/workflows/floor-operator-scope-acl-apply.yml \
             .github/workflows/deployment-control-plane-validation.yml
 
       - name: Setup Node.js 20 for Floor runner tests
@@ -52,5 +57,5 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Test exact Floor clock apply runner
-        run: node --test VinPoker/scripts/floor/apply-floor-clock-control.test.mjs
+      - name: Test exact Floor production apply runners
+        run: node --test VinPoker/scripts/floor/apply-floor-clock-control.test.mjs VinPoker/scripts/floor/apply-floor-operator-scope-acl.test.mjs
