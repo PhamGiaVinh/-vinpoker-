@@ -22,6 +22,10 @@ const workflow = readFileSync(
   resolve(repositoryRoot, ".github/workflows/floor-clock-control-apply.yml"),
   "utf8",
 );
+const validationWorkflow = readFileSync(
+  resolve(repositoryRoot, ".github/workflows/deployment-control-plane-validation.yml"),
+  "utf8",
+);
 
 test("exact reviewed clock migration passes the immutable safety contract", () => {
   assert.equal(MIGRATION_SHA256.length, 64);
@@ -95,4 +99,5 @@ test("workflow is manual-only, exact-SHA, protected and contains no broad deploy
   assert.doesNotMatch(workflow, /supabase\s+functions\s+deploy/i);
   assert.doesNotMatch(workflow, /vercel\s+(?:--prod|deploy)/i);
   assert.doesNotMatch(workflow, /schema_migrations/i);
+  assert.match(validationWorkflow, /\.github\/workflows\/floor-clock-control-apply\.yml/);
 });

@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/vbackerworkflowmain.yml"
+      - ".github/workflows/floor-clock-control-apply.yml"
       - ".github/workflows/deployment-control-plane-validation.yml"
       - "VinPoker/scripts/deploy/**"
       - "VinPoker/docs/dealer-swing/CONTROL_PLANE_RUNBOOK.md"
@@ -40,4 +41,5 @@ jobs:
           set -euo pipefail
           "${RUNNER_TEMP}/actionlint" \
             .github/workflows/vbackerworkflowmain.yml \
+            .github/workflows/floor-clock-control-apply.yml \
             .github/workflows/deployment-control-plane-validation.yml
