@@ -287,7 +287,7 @@ jobs:
         run: |
           supabase link --project-ref "${SUPABASE_PROJECT_REF}"
           supabase db dump --linked --schema public --file "${RUNNER_TEMP}/live-schema.sql"
-          node control-plane/VinPoker/scripts/deploy/capture-live-schema-contract-catalog.mjs \
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/capture-live-schema-contract-catalog.mjs" \
             --project-ref "${SUPABASE_PROJECT_REF}" \
             --output "${RUNNER_TEMP}/live-schema-catalog.json"
         working-directory: target-source/VinPoker
