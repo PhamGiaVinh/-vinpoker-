@@ -8,6 +8,7 @@
 
 import { type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickNextDealer } from "../../_shared/dealer-utils.ts";
+import { isCandidateSnapshotFailure } from "../../_shared/pickNextDealer.ts";
 import { sendPreAssignTelegramWithFallback } from "../../_shared/preAssignTelegram.ts";
 import { SWING_POLICY } from "../../_shared/swingPolicy.ts";
 
@@ -528,6 +529,7 @@ export async function pass2PreAssignNext(
           result.skipped_count++;
         }
       } catch (error: any) {
+        if (isCandidateSnapshotFailure(error)) throw error;
         result.errors.push({
           table_id: assignment.table_id,
           error: error.message,
@@ -547,6 +549,7 @@ export async function pass2PreAssignNext(
 
     return result;
   } catch (error: any) {
+    if (isCandidateSnapshotFailure(error)) throw error;
     console.error("[Pass 2] ❌ Fatal error:", error.message);
     return result;
   }

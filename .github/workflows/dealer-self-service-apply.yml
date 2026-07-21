@@ -26,13 +26,13 @@ jobs:
         working-directory: ./VinPoker
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
         run: node scripts/dealer-swing/apply_dealer_self_service_rpcs.mjs --preflight
 
       - name: Apply — self-service RPCs + post-verify
         working-directory: ./VinPoker
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
           CONFIRM_APPLY_DEALER_SS: APPLY_DEALER_SELF_SERVICE
         run: node scripts/dealer-swing/apply_dealer_self_service_rpcs.mjs --apply

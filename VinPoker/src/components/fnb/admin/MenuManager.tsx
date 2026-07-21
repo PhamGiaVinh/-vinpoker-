@@ -15,15 +15,29 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Loader2, Plus, Pencil, ImagePlus, X } from "lucide-react";
+import { Loader2, Plus, Pencil, ImagePlus, X, Eye, UtensilsCrossed } from "lucide-react";
+import { FnbGuestMenuPreviewDialog } from "@/components/fnb/admin/FnbGuestMenuPreviewDialog";
 
 const NO_CATEGORY = "__none__";
 
-export function MenuManager({ clubId }: { clubId: string }) {
+type FnbRpcError = {
+  message?: string;
+  details?: string;
+  detail?: string;
+  hint?: string;
+  code?: string;
+};
+type FnbRpcCall = (
+  functionName: string,
+  args: Record<string, unknown>,
+) => Promise<{ data: unknown; error: FnbRpcError | null }>;
+
+export function MenuManager({ clubId, clubName }: { clubId: string; clubName: string }) {
   const qc = useQueryClient();
   const { data, isLoading } = useFnbMenu(clubId);
   const [editing, setEditing] = useState<FnbMenuItem | null>(null);
   const [open, setOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["fnb", "menu", clubId] });
   const items = data?.items ?? [];
@@ -37,9 +51,14 @@ export function MenuManager({ clubId }: { clubId: string }) {
           <h3 className="font-semibold text-base">Thực đơn</h3>
           <p className="text-xs text-muted-foreground">Giá ở đây là giá bán; sửa giá không làm thay đổi đơn đã thanh toán.</p>
         </div>
-        <Button size="sm" onClick={() => { setEditing(null); setOpen(true); }}>
-          <Plus className="w-4 h-4 mr-1" /> Thêm món
-        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => setPreviewOpen(true)} disabled={items.length === 0}>
+            <Eye className="w-4 h-4 mr-1" /> Xem như khách
+          </Button>
+          <Button size="sm" onClick={() => { setEditing(null); setOpen(true); }}>
+            <Plus className="w-4 h-4 mr-1" /> Thêm món
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -65,13 +84,29 @@ export function MenuManager({ clubId }: { clubId: string }) {
             <TableBody>
               {items.map((m) => (
                 <TableRow key={m.id}>
-                  <TableCell className="font-medium">{m.name}</TableCell>
+                  <TableCell>
+                    <div className="flex min-w-48 items-center gap-3">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/30">
+                        {m.image_url ? (
+                          <img src={m.image_url} alt={m.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <UtensilsCrossed className="h-5 w-5 text-muted-foreground/50" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{m.name}</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          {m.image_url ? "Ảnh đang hiển thị" : "Chưa có ảnh"}
+                        </div>
+                      </div>
+                    </div>
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{catName(m.category_id)}</TableCell>
-                  <TableCell className="text-right font-mono">{formatVND(m.price_vnd)}</TableCell>
+                  <TableCell className="fnb-number text-right">{formatVND(m.price_vnd)}</TableCell>
                   <TableCell className="text-center">
                     {m.is_active
-                      ? <Badge variant="outline" className="text-[10px] border-success/40 text-success">Đang bán</Badge>
-                      : <Badge variant="outline" className="text-[10px] text-muted-foreground">Tắt</Badge>}
+                      ? <Badge variant="outline" className="border-success/40 text-xs text-success">Đang bán</Badge>
+                      : <Badge variant="outline" className="text-xs text-muted-foreground">Tắt</Badge>}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button size="sm" variant="ghost" onClick={() => { setEditing(m); setOpen(true); }}>
@@ -88,6 +123,13 @@ export function MenuManager({ clubId }: { clubId: string }) {
       <MenuItemDialog
         clubId={clubId} open={open} onOpenChange={setOpen}
         editing={editing} categories={categories} onSaved={refresh}
+      />
+      <FnbGuestMenuPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        clubName={clubName}
+        categories={categories}
+        items={items}
       />
     </Card>
   );
@@ -123,8 +165,8 @@ function MenuItemDialog({
       const { data: pub } = supabase.storage.from("fnb-menu").getPublicUrl(path);
       setImageUrl(pub.publicUrl);
       toast.success("Đã tải ảnh lên.");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Tải ảnh thất bại.");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Tải ảnh thất bại.");
     } finally {
       setUploading(false);
     }
@@ -145,7 +187,8 @@ function MenuItemDialog({
     if (!name.trim()) { toast.error("Vui lòng nhập tên món."); return; }
     const priceNum = Math.max(0, Math.floor(Number(price) || 0));
     setSaving(true);
-    const { data, error } = await (supabase.rpc as any)("fnb_upsert_menu_item", {
+    const callRpc = supabase.rpc as unknown as FnbRpcCall;
+    const { data, error } = await callRpc("fnb_upsert_menu_item", {
       p_club_id: clubId,
       p_id: editing?.id ?? null,
       p_category_id: categoryId === NO_CATEGORY ? null : categoryId,
@@ -156,7 +199,7 @@ function MenuItemDialog({
       p_sort_order: editing?.sort_order ?? 0,
     });
     setSaving(false);
-    const res = data as any;
+    const res = data as { error?: string } | null;
     if (error || res?.error) { toast.error(mapFnbError(res?.error ?? error)); return; }
     toast.success(editing ? "Đã cập nhật món." : "Đã thêm món.");
     onOpenChange(false);
@@ -190,7 +233,7 @@ function MenuItemDialog({
             <div>
               <Label htmlFor="mi-price">Giá bán (₫) *</Label>
               <Input id="mi-price" type="number" value={price} onChange={(e) => setPrice(e.target.value)}
-                className="bg-card border-border text-foreground text-right font-mono" />
+                className="fnb-number bg-card border-border text-right text-foreground" />
             </div>
           </div>
           <div>

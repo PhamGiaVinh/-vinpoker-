@@ -45,6 +45,8 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
 import { resolveViewerIdentity } from "./viewer-hub/viewerIdentity";
+import { resolveReplayCandidates, type ReplayTarget, type ReplayTargetState } from "./viewer-hub/replayTarget";
+import { deriveReplayHeaderMetadata } from "./viewer-hub/replayMetadata";
 
 const SOUND_KINDS = new Set<string>([
   "fold", "check", "call", "bet", "raise", "all_in", "post_sb", "post_bb", "post_ante",
@@ -80,7 +82,9 @@ export function TournamentLiveView({
   orientationOverride = null,
   spectator = false,
   selectedTableIdOverride = null,
+  initialReplayTarget = null,
   initialReplayHandNumber = null,
+  onReplayTargetChange,
 }: {
   tournamentId: string;
   /** Presentational only: force the felt orientation (set by the viewer hub's
@@ -96,12 +100,23 @@ export function TournamentLiveView({
       view). When set + valid it wins over the internal selector so the featured
       felt shows that table. Operator callers omit it → null → existing behaviour. */
   selectedTableIdOverride?: string | null;
-  /** Deep-link from the spectator hand feed (?hand=N): open this hand in replay.
-      ADDITIVE — omit/null keeps live mode (operator callers are unchanged). */
+  /** Canonical replay target. UUID is authoritative; hand number is legacy only. */
+  initialReplayTarget?: ReplayTarget | null;
+  /** Deprecated compatibility prop for callers that still provide `?hand=N`. */
   initialReplayHandNumber?: number | null;
+  onReplayTargetChange?: (target: ReplayTarget) => void;
 }) {
   const { t } = useTranslation();
   const { isStaffOps, isClubAdmin } = useAuth();
+  const requestedReplayTarget = useMemo<ReplayTarget | null>(() => {
+    if (initialReplayTarget) return initialReplayTarget;
+    return initialReplayHandNumber != null
+      ? { handId: null, tableId: null, handNumber: initialReplayHandNumber }
+      : null;
+  }, [
+    initialReplayTarget,
+    initialReplayHandNumber,
+  ]);
   const canTdAi = isStaffOps || isClubAdmin;
   const [tdAiOpen, setTdAiOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -158,6 +173,7 @@ export function TournamentLiveView({
   const [replayFrame, setReplayFrame] = useState<ReplayFrame | null>(null);
   const [replayFrameSource, setReplayFrameSource] = useState<ReplayFrameSource>("jump");
   const [replayMotionEpoch, setReplayMotionEpoch] = useState(0);
+  const [replayTargetState, setReplayTargetState] = useState<ReplayTargetState>({ kind: "idle" });
   // Snapshot of the LIVE table the moment replay was entered. The live machinery
   // keeps advancing in the background while the felt is frozen on the replay frame;
   // comparing against this baseline tells us when to surface "live đã có diễn biến
@@ -879,13 +895,26 @@ export function TournamentLiveView({
     [bigBlind]
   );
 
+  const isReplay = mode === "replay";
+  const selectedReplayHand = useMemo(() => {
+    if (!replayHand || !requestedReplayTarget) return replayHand;
+    if (requestedReplayTarget.handId) {
+      return replayHand.hand_id === requestedReplayTarget.handId ? replayHand : null;
+    }
+    return replayTargetState.kind === "resolved" && replayTargetState.handId === replayHand.hand_id
+      ? replayHand
+      : null;
+  }, [replayHand, replayTargetState, requestedReplayTarget]);
+  const selectedReplayFrame = selectedReplayHand ? replayFrame : null;
+
   // Replay uses the historical hand's own big blind (the live clock may have moved on).
-  const replayBigBlind = replayHand ? detectBigBlind(replayHand) : 0;
+  const replayBigBlind = selectedReplayHand ? detectBigBlind(selectedReplayHand) : 0;
   const replayFormatBB = useCallback(
     (n: number) =>
       replayBigBlind > 0 ? `${(n / replayBigBlind).toFixed(1).replace(/\.0$/, "")} BB` : null,
     [replayBigBlind]
   );
+  const replayHeaderMetadata = useMemo(() => deriveReplayHeaderMetadata(selectedReplayHand), [selectedReplayHand]);
 
   // PR-A1 (liveFeltCompact) status bar blinds. Live = the clock level; replay = the
   // HAND's own posts (sb/ante scanned from its actions, bb via detectBigBlind — the
@@ -894,14 +923,14 @@ export function TournamentLiveView({
   const feltBlinds = useMemo(() => {
     if (!compactFelt) return null;
     if (mode === "replay") {
-      if (!replayHand || replayBigBlind <= 0) return null;
-      const sb = replayHand.actions.find((a) => a.action_type === "post_sb")?.action_amount ?? 0;
-      const ante = replayHand.actions.find((a) => a.action_type === "post_ante")?.action_amount ?? 0;
+      if (!selectedReplayHand || replayBigBlind <= 0) return null;
+      const sb = selectedReplayHand.actions.find((a) => a.action_type === "post_sb")?.action_amount ?? 0;
+      const ante = selectedReplayHand.actions.find((a) => a.action_type === "post_ante")?.action_amount ?? 0;
       return { sb, bb: replayBigBlind, ante };
     }
     if (!clockData || clockData.big_blind <= 0) return null;
     return { sb: clockData.small_blind, bb: clockData.big_blind, ante: clockData.ante };
-  }, [compactFelt, mode, replayHand, replayBigBlind, clockData]);
+  }, [compactFelt, mode, selectedReplayHand, replayBigBlind, clockData]);
 
   // trackerShowdownRevealOrder (spectator): the player_ids in the order they should
   // table their cards at showdown — last aggressor on the final betting street first,
@@ -918,18 +947,18 @@ export function TournamentLiveView({
     let acts: { street: string; seat_number: number; action_type: string; action_order: number }[];
     let btn: number;
     if (mode === "replay") {
-      if (!replayHand) return undefined;
-      const seatOfPid = new Map((replayHand.players || []).map((p) => [p.player_id, p.seat_number]));
-      shown = (replayHand.players || [])
+      if (!selectedReplayHand) return undefined;
+      const seatOfPid = new Map((selectedReplayHand.players || []).map((p) => [p.player_id, p.seat_number]));
+      shown = (selectedReplayHand.players || [])
         .filter((p) => p.hole_cards && p.hole_cards.length === 2)
         .map((p) => ({ player_id: p.player_id, seat_number: p.seat_number }));
-      acts = (replayHand.actions || []).map((a) => ({
+      acts = (selectedReplayHand.actions || []).map((a) => ({
         street: a.street,
         seat_number: seatOfPid.get(a.player_id) ?? 0,
         action_type: a.action_type,
         action_order: a.action_order,
       }));
-      btn = replayHand.button_seat;
+      btn = selectedReplayHand.button_seat;
     } else {
       shown = seats
         .filter((s) => s.hole_cards && s.hole_cards.length === 2 && !s.is_folded)
@@ -954,7 +983,7 @@ export function TournamentLiveView({
     return showdownRevealOrder({ shownSeatNumbers: shown.map((s) => s.seat_number), buttonSeat: btn, finalAggressorSeat })
       .map((sn) => seatToPid.get(sn))
       .filter((x): x is string => !!x);
-  }, [showRevealOrder, mode, replayHand, seats, actions, buttonSeat]);
+  }, [showRevealOrder, mode, selectedReplayHand, seats, actions, buttonSeat]);
 
   // The most recent actor gets the spotlight ring on the felt.
   const latestAction = actions.length > 0 ? actions[actions.length - 1] : null;
@@ -973,10 +1002,67 @@ export function TournamentLiveView({
   }, []);
 
   // Deep-link (?hand=N from the spectator hand feed): jump into replay on that hand.
-  // The HandSelector below selects the matching hand via `initialHandNumber`.
+  // Resolve the replay target before choosing a table. A hand UUID is scoped to
+  // this tournament; legacy hand numbers are accepted only when unambiguous.
   useEffect(() => {
-    if (initialReplayHandNumber != null) enterReplay();
-  }, [initialReplayHandNumber, enterReplay]);
+    let cancelled = false;
+    if (!requestedReplayTarget) {
+      setReplayTargetState({ kind: "idle" });
+      return;
+    }
+
+    // Never leave a prior hand visible while a new URL target is being
+    // resolved. A missing or ambiguous target must not look like a fallback.
+    setReplayHandId(null);
+    setReplayHand(null);
+    setReplayFrame(null);
+    setReplayFrameSource("jump");
+    setReplayMotionEpoch((epoch) => epoch + 1);
+    setReplayTargetState({ kind: "loading" });
+    const resolve = async () => {
+      if (requestedReplayTarget.handId) {
+        const { data, error } = await supabase
+          .from("tournament_hands")
+          .select("id, table_id, hand_number, status, is_voided")
+          .eq("tournament_id", tournamentId)
+          .eq("id", requestedReplayTarget.handId)
+          .eq("is_voided", false)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error) {
+          setReplayTargetState({ kind: "query_error" });
+          return;
+        }
+        setReplayTargetState(resolveReplayCandidates(requestedReplayTarget, data ? [data] : []));
+        return;
+      }
+
+      let query = supabase
+        .from("tournament_hands")
+        .select("id, table_id, hand_number, status, is_voided")
+        .eq("tournament_id", tournamentId)
+        .eq("hand_number", requestedReplayTarget.handNumber!)
+        .eq("is_voided", false)
+        .neq("status", "in_progress")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(2);
+      if (requestedReplayTarget.tableId) query = query.eq("table_id", requestedReplayTarget.tableId);
+      const { data, error } = await query;
+      if (cancelled) return;
+      if (error) {
+        setReplayTargetState({ kind: "query_error" });
+      } else {
+        setReplayTargetState(resolveReplayCandidates(requestedReplayTarget, data ?? []));
+      }
+    };
+    void resolve();
+    return () => { cancelled = true; };
+  }, [requestedReplayTarget, tournamentId]);
+
+  useEffect(() => {
+    if (requestedReplayTarget) enterReplay();
+  }, [requestedReplayTarget, enterReplay]);
 
   // ----- Multi-table resolution: never mix table_ids on one felt -----
   const tableIds = useMemo(
@@ -984,15 +1070,17 @@ export function TournamentLiveView({
     [seats]
   );
 
-  // Hub table-map pick (public) wins, then the operator's internal selection,
-  // then the live hand's table, then the single table.
+  // A resolved replay hand owns its historical table. While a replay target is
+  // loading or invalid, do not substitute the active table or another hand.
   const effectiveTableId = useMemo(() => {
+    if (replayTargetState.kind === "resolved") return replayTargetState.tableId;
+    if (requestedReplayTarget) return null;
     if (selectedTableIdOverride && tableIds.includes(selectedTableIdOverride)) return selectedTableIdOverride;
     if (selectedTableId && tableIds.includes(selectedTableId)) return selectedTableId;
     if (handTableId && tableIds.includes(handTableId)) return handTableId;
     if (tableIds.length === 1) return tableIds[0];
     return null;
-  }, [selectedTableIdOverride, selectedTableId, handTableId, tableIds]);
+  }, [replayTargetState, requestedReplayTarget, selectedTableIdOverride, selectedTableId, handTableId, tableIds]);
 
   const multiTableUnresolved = tableIds.length > 1 && !effectiveTableId;
 
@@ -1093,7 +1181,12 @@ export function TournamentLiveView({
     );
   }
 
-  const isReplay = mode === "replay";
+  const headerHandNumber = isReplay ? replayHeaderMetadata.handNumber : handNumber;
+  const headerPlayerCount = isReplay ? replayHeaderMetadata.playerCount : playersRemaining;
+  const headerAverageStack = isReplay ? replayHeaderMetadata.averageStack : averageStack;
+  const headerPotSize = isReplay ? replayHeaderMetadata.potSize : potSize;
+  const headerFormatBB = isReplay ? replayFormatBB : formatBB;
+  const headerStreet = isReplay ? selectedReplayFrame?.currentStreet ?? null : currentStreet;
   // Has the live table advanced since the spectator entered replay? Same-hand new
   // actions get a count; a new hand (or board change) shows the generic prompt.
   const sameLiveHand = liveBaseline != null && handNumber === liveBaseline.handNumber;
@@ -1112,22 +1205,22 @@ export function TournamentLiveView({
     handNumber != null && (handTableId == null || handTableId === effectiveTableId);
   // The felt renders either live state or the current replay frame — same props.
   const feltProps = isReplay
-    ? replayFrame
+    ? selectedReplayFrame
       ? {
-          seats: replayFrame.seats,
-          lastActorId: replayFrame.lastActorId,
+          seats: selectedReplayFrame.seats,
+          lastActorId: selectedReplayFrame.lastActorId,
           toActId: null,
-          displayCards: replayFrame.displayCards,
-          potSize: replayFrame.potSize,
-          potBreakdown: replayFrame.potBreakdown,
+          displayCards: selectedReplayFrame.displayCards,
+          potSize: selectedReplayFrame.potSize,
+          potBreakdown: selectedReplayFrame.potBreakdown,
           multiTableUnresolved: false,
-          handNumber: replayHand?.hand_number ?? null,
-          latestAction: replayFrame.latestAction,
-          showdownResult: replayFrame.showdownResult,
+          handNumber: selectedReplayHand?.hand_number ?? null,
+          latestAction: selectedReplayFrame.latestAction,
+          showdownResult: selectedReplayFrame.showdownResult,
           formatBB: replayFormatBB,
-          buttonSeat: replayHand?.button_seat ?? null,
-          motionHandKey: replayHand
-            ? `${replayHand.hand_id ?? `hand-${replayHand.hand_number}`}:run-${replayMotionEpoch}`
+          buttonSeat: selectedReplayHand?.button_seat ?? null,
+          motionHandKey: selectedReplayHand
+            ? `${selectedReplayHand.hand_id ?? `hand-${selectedReplayHand.hand_number}`}:run-${replayMotionEpoch}`
             : null,
         }
       : {
@@ -1182,12 +1275,12 @@ export function TournamentLiveView({
           : feltProps.latestAction,
       }
     : feltProps;
-  const viewerReplayPlayers = guardViewerIdentity && replayHand
-    ? replayHand.players.map((player) => ({
+  const viewerReplayPlayers = guardViewerIdentity && selectedReplayHand
+    ? selectedReplayHand.players.map((player) => ({
         ...player,
         display_name: safeViewerName(player.display_name, player.player_id),
       }))
-    : replayHand?.players;
+    : selectedReplayHand?.players;
 
   return (
     <div className="space-y-3">
@@ -1222,26 +1315,32 @@ export function TournamentLiveView({
       <div className="flex items-center justify-between flex-wrap gap-2 p-3 bg-gradient-to-r from-card to-card/80 border border-emerald-500/20 rounded-lg border-l-4 border-l-emerald-500 shadow-sm">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="text-lg font-bold text-emerald-400 tracking-wide">
-            {handNumber ? `Hand #${handNumber}` : "Waiting..."}
+            {headerHandNumber
+              ? `Hand #${headerHandNumber}`
+              : isReplay
+                ? replayTargetState.kind === "idle" || replayTargetState.kind === "loading"
+                  ? "Loading replay..."
+                  : "Replay unavailable"
+                : "Waiting..."}
           </div>
-          {currentStreet && (
+          {headerStreet && (
             <span
               className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-widest border ${
-                currentStreet === "showdown"
+                headerStreet === "showdown"
                   ? "bg-red-500/15 text-red-400 border-red-500/30"
                   : "bg-amber-500/15 text-amber-300 border-amber-500/30"
               }`}
             >
-              {currentStreet}
+              {headerStreet}
             </span>
           )}
-          {clockData && (
+          {!isReplay && clockData && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/20 text-amber-400 rounded-md text-sm font-mono font-bold border border-amber-500/20">
               <Clock className="w-4 h-4" />
               {formatTime(Math.max(0, localRemaining))}
             </span>
           )}
-          {clockData?.current_level && (
+          {!isReplay && clockData?.current_level && (
             <span className="text-xs text-muted-foreground font-mono">
               Lv.{clockData.current_level} &middot; {formatStack(clockData.small_blind)}/
               {formatStack(clockData.big_blind)}
@@ -1265,20 +1364,26 @@ export function TournamentLiveView({
               <Bot className="w-3.5 h-3.5 mr-1" /> {t("tdAi.entry")}
             </Button>
           )}
-          <span className="flex items-center gap-1">
-            <Users className="w-3.5 h-3.5" /> {playersRemaining} {t("tournamentLive.liveView.players")}
-          </span>
-          <span className="flex items-center gap-1">
-            <Layers className="w-3.5 h-3.5" /> AVG: {formatStack(averageStack)}
-          </span>
-          <span className="flex items-center gap-1">
-            <Coins className="w-3.5 h-3.5 text-emerald-400" /> Pot:{" "}
-            <strong className="text-emerald-400 text-sm">{formatStack(potSize)}</strong>
-            {potSize > 0 && formatBB(potSize) && (
-              <span className="text-[10px] text-muted-foreground">({formatBB(potSize)})</span>
-            )}
-          </span>
-          {lastUpdatedAt && (
+          {headerPlayerCount != null && (
+            <span className="flex items-center gap-1">
+              <Users className="w-3.5 h-3.5" /> {headerPlayerCount} {t("tournamentLive.liveView.players")}
+            </span>
+          )}
+          {headerAverageStack != null && (
+            <span className="flex items-center gap-1">
+              <Layers className="w-3.5 h-3.5" /> AVG: {formatStack(headerAverageStack)}
+            </span>
+          )}
+          {headerPotSize != null && (
+            <span className="flex items-center gap-1">
+              <Coins className="w-3.5 h-3.5 text-emerald-400" /> Pot:{" "}
+              <strong className="text-emerald-400 text-sm">{formatStack(headerPotSize)}</strong>
+              {headerPotSize > 0 && headerFormatBB(headerPotSize) && (
+                <span className="text-[10px] text-muted-foreground">({headerFormatBB(headerPotSize)})</span>
+              )}
+            </span>
+          )}
+          {!isReplay && lastUpdatedAt && (
             <span className="text-[10px] text-muted-foreground/70" title="Lần cập nhật dữ liệu thành công gần nhất">
               ↻ {formatClockTime(lastUpdatedAt)}
             </span>
@@ -1347,7 +1452,9 @@ export function TournamentLiveView({
             tournamentId={tournamentId}
             tableId={effectiveTableId}
             selectedHandId={replayHandId}
-            initialHandNumber={initialReplayHandNumber}
+            replayTarget={requestedReplayTarget}
+            replayTargetState={replayTargetState}
+            onSelectReplayTarget={onReplayTargetChange}
             onLoadStart={(id) => {
               setReplayHandId(id);
               setReplayHand(null);
@@ -1358,6 +1465,7 @@ export function TournamentLiveView({
               setReplayMotionEpoch((current) => current + 1);
             }}
             onSelectHand={(id, h) => {
+              if (requestedReplayTarget && (replayTargetState.kind !== "resolved" || replayTargetState.handId !== id)) return;
               setReplayHandId(id);
               setReplayHand(h);
             }}
@@ -1375,10 +1483,10 @@ export function TournamentLiveView({
         />
       )}
 
-      <div className={spectator && isReplay && replayHand && FEATURES.liveReplayHud
+      <div className={spectator && isReplay && selectedReplayHand && FEATURES.liveReplayHud
         ? "grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] md:items-start"
         : spectator ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3"}>
-        <div className={spectator && isReplay && replayHand && FEATURES.liveReplayHud ? "min-w-0" : undefined}>
+        <div className={spectator && isReplay && selectedReplayHand && FEATURES.liveReplayHud ? "min-w-0" : undefined}>
           {spectator && FEATURES.liveViewerPulseV2 && !isReplay && activeSeatsToRender.length === 0 ? (
             <div className="grid min-h-72 place-items-center rounded-[28px] border border-[hsl(var(--viewer-neon)_/_0.28)] bg-card/55 px-5 text-center">
               <div><Users className="mx-auto h-7 w-7 text-[hsl(var(--viewer-neon))]" /><p className="mt-3 text-sm font-bold text-foreground">Đang đồng bộ người chơi</p><p className="mt-1 text-xs text-muted-foreground">Bàn và action sẽ hiện ngay khi snapshot của ván được tải.</p></div>
@@ -1400,10 +1508,10 @@ export function TournamentLiveView({
               motionSpeed={isReplay ? replayMotionSpeed : 1}
             />
           )}
-          {isReplay && replayHand && !(spectator && FEATURES.liveReplayHud) && (
+          {isReplay && selectedReplayHand && !(spectator && FEATURES.liveReplayHud) && (
             <ReplayScrubber
-              key={replayHand.hand_id ?? `hand-${replayHand.hand_number}`}
-              hand={replayHand}
+              key={selectedReplayHand.hand_id ?? `hand-${selectedReplayHand.hand_number}`}
+              hand={selectedReplayHand}
               onFrame={handleReplayFrame}
               hud={spectator && FEATURES.liveReplayHud}
               trackBets={spectator && FEATURES.liveFeltCompact}
@@ -1413,14 +1521,14 @@ export function TournamentLiveView({
 
           {/* Public spectator-only broadcast action breakdown. Spectator-gated →
               the operator render path emits nothing new. */}
-          {spectator && isReplay && replayHand && !FEATURES.liveReplayHud && (
+          {spectator && isReplay && selectedReplayHand && !FEATURES.liveReplayHud && (
             <HandBreakdown
-              actions={replayHand.actions}
-              players={viewerReplayPlayers || replayHand.players}
-              buttonSeat={replayHand.button_seat}
+              actions={selectedReplayHand.actions}
+              players={viewerReplayPlayers || selectedReplayHand.players}
+              buttonSeat={selectedReplayHand.button_seat}
               bigBlind={replayBigBlind}
-              highlightActionOrder={replayFrame?.latestAction?.action_order}
-              showdownResult={replayFrame?.showdownResult}
+              highlightActionOrder={selectedReplayFrame?.latestAction?.action_order}
+              showdownResult={selectedReplayFrame?.showdownResult}
             />
           )}
           {spectator && !isReplay && liveHandOnView && actions.length > 0 && (
@@ -1438,11 +1546,11 @@ export function TournamentLiveView({
           )}
         </div>
 
-        {spectator && isReplay && replayHand && FEATURES.liveReplayHud && (
+        {spectator && isReplay && selectedReplayHand && FEATURES.liveReplayHud && (
           <aside className="min-w-0 md:sticky md:top-[calc(env(safe-area-inset-top)+3.75rem)]">
             <ReplayScrubber
-              key={replayHand.hand_id ?? `hand-${replayHand.hand_number}`}
-              hand={replayHand}
+              key={selectedReplayHand.hand_id ?? `hand-${selectedReplayHand.hand_number}`}
+              hand={selectedReplayHand}
               onFrame={handleReplayFrame}
               hud
               trackBets={FEATURES.liveFeltCompact}

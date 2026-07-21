@@ -20,6 +20,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getFeatureTablePoolIds, getReservedDealerIds } from "./featureTableGate.ts"; // Patch 5b/5d: feature/final pool gate + reserved exclusivity
+import { classifyPostgrestError } from "./postgrestError.ts";
 import { SWING_POLICY } from "./swingPolicy.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -124,8 +125,54 @@ export interface PickDiagnostics {
 export interface BuildCandidatesResult {
   candidates: DealerCandidate[];
   avgBreakRatio: number | null;
+  status: "ok" | "dependency_unavailable" | "query_failed";
+  errorCode?: string;
   /** Present on the normal path; omitted on the early no-dealer/error returns. */
   diag?: PickDiagnostics;
+}
+
+export type CandidateSnapshotStatus = Exclude<BuildCandidatesResult["status"], "ok">;
+
+/** A query/dependency failure is never equivalent to a valid empty dealer pool. */
+export class CandidateSnapshotFailure extends Error {
+  override readonly name = "CandidateSnapshotFailure";
+
+  constructor(
+    readonly status: CandidateSnapshotStatus,
+    readonly errorCode: string,
+  ) {
+    super(errorCode);
+  }
+}
+
+export function isCandidateSnapshotFailure(error: unknown): error is CandidateSnapshotFailure {
+  return error instanceof CandidateSnapshotFailure;
+}
+
+function requireCandidateSnapshot(result: BuildCandidatesResult): BuildCandidatesResult {
+  if (result.status === "ok") return result;
+  throw new CandidateSnapshotFailure(
+    result.status,
+    result.errorCode ?? `candidate_snapshot_${result.status}`,
+  );
+}
+
+export interface PickNextDealerResult {
+  candidate: DealerCandidate | null;
+  status: BuildCandidatesResult["status"];
+  errorCode?: string;
+}
+
+interface CandidateQueryError {
+  code?: string | null;
+  message?: string | null;
+}
+
+function candidateQueryFailure(error: unknown, stage: string): BuildCandidatesResult {
+  const { status } = classifyPostgrestError(error);
+  const errorCode = `candidate_${stage}_${status}`;
+  console.error(`[pickNextDealer] ${errorCode}`);
+  return { candidates: [], avgBreakRatio: null, status, errorCode };
 }
 
 export type SupabaseAdmin = any;
@@ -270,15 +317,19 @@ export async function buildDealerCandidates(
   const minInterSwingRestMinutes = Math.max(0, rawMinInterSwingRestMinutes ?? SWING_POLICY.rest.minInterSwingRestMinutes);
 
   // Step 1: Get active dealer IDs for this club
-  const { data: clubDealers } = (await admin
+  const { data: clubDealers, error: clubDealersError } = (await admin
     .from("dealers")
     .select("id")
     .eq("club_id", clubId)
     .eq("status", "active")
-    .is("deleted_at", null)) as unknown as { data: DealerIdRow[] | null };  // Patch 5b A6: exclude soft-deleted dealers
+    .is("deleted_at", null)) as unknown as {
+      data: DealerIdRow[] | null;
+      error: CandidateQueryError | null;
+    };  // Patch 5b A6: exclude soft-deleted dealers
+  if (clubDealersError) return candidateQueryFailure(clubDealersError, "club_dealers");
   const dealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
   // Step 1 edge case: no dealers → return empty with null avgBreakRatio
-  if (dealerIds.length === 0) return { candidates: [], avgBreakRatio: null };
+  if (dealerIds.length === 0) return { candidates: [], avgBreakRatio: null, status: "ok" };
 
   // Patch 5b — feature/final pool gate (app_settings-gated; INERT when kill-switch off).
   // When the gate is active (kill-switch ON + currentTableId is feature/final), restrict the
@@ -287,14 +338,19 @@ export async function buildDealerCandidates(
   // accrual preserved). Shared helper mirrors the SQL trigger/_assert + WRAPPER self-pick so the
   // picker and DB enforcement never disagree. Gated on app_settings, NOT on FEATURES (UI-only).
   {
-    const poolIds = currentTableId ? await getFeatureTablePoolIds(admin, currentTableId) : null;
+    let poolIds: Set<string> | null;
+    try {
+      poolIds = currentTableId ? await getFeatureTablePoolIds(admin, currentTableId) : null;
+    } catch (error) {
+      return candidateQueryFailure(error, "feature_pool");
+    }
     if (poolIds) { // non-null = gate active (kill-switch on + special table)
       const restricted = dealerIds.filter((id) => poolIds.has(id));
       if (restricted.length === 0) {
         // Special table with no eligible pool dealer → no candidate. The caller's existing
         // null→no_dealer path keeps the seat (OT) — a CLEAN shortage, never a trigger-rollback.
         console.warn(`[pickNextDealer] feature/final table ${currentTableId}: pool empty/none eligible → clean shortage (no candidate)`);
-        return { candidates: [], avgBreakRatio: null };
+        return { candidates: [], avgBreakRatio: null, status: "ok" };
       }
       dealerIds.length = 0;
       dealerIds.push(...restricted); // restrict candidate set to the pool (mutate in place; Step 2 reads dealerIds)
@@ -323,7 +379,7 @@ export async function buildDealerCandidates(
           `[pickNextDealer] Reserved-dealer lookup failed — failing safe (no candidates) for table=${currentTableId}:`,
           reservedErr instanceof Error ? reservedErr.message : reservedErr
         );
-        return { candidates: [], avgBreakRatio: null };
+        return candidateQueryFailure(reservedErr, "reserved_dealers");
       }
     }
     // else: currentTableId is undefined — this is a GLOBAL/shared candidate build (e.g.
@@ -374,14 +430,11 @@ export async function buildDealerCandidates(
     .in("dealer_id", dealerIds)
     .or(`current_state.eq.available,current_state.eq.on_break`)) as unknown as {
       data: AttendancePoolRow[] | null;
-      error: { message: string } | null;
+      error: CandidateQueryError | null;
     };
 
   // Step 2 edge case: query error or empty rows
-  if (error) {
-    console.error("[pickNextDealer] query error:", error.message);
-    return { candidates: [], avgBreakRatio: null };
-  }
+  if (error) return candidateQueryFailure(error, "attendance_pool");
 
   const rowsByDealer = new Map<string, AttendancePoolRow>();
   let duplicateDealerRows = 0;
@@ -408,10 +461,14 @@ export async function buildDealerCandidates(
   // Step 3: Query dealer_shift_metrics separately
   const attendanceIds = rows.map((r) => r.id);
   const nowMs = Date.now();
-  const { data: metricsRows } = (await admin
+  const { data: metricsRows, error: metricsError } = (await admin
     .from("dealer_shift_metrics")
     .select("attendance_id, minutes_since_rest, total_assignments, total_break_minutes, total_worked_minutes")
-    .in("attendance_id", attendanceIds)) as unknown as { data: AssignmentMetricRow[] | null };
+    .in("attendance_id", attendanceIds)) as unknown as {
+      data: AssignmentMetricRow[] | null;
+      error: CandidateQueryError | null;
+    };
+  if (metricsError) return candidateQueryFailure(metricsError, "shift_metrics");
   const metricsMap = new Map(
     (metricsRows ?? []).map((m) => [m.attendance_id, m])
   );
@@ -543,7 +600,7 @@ export async function buildDealerCandidates(
         .not("pool_entered_at", "is", null)
         .gt("pool_entered_at", poolCutoff)) as unknown as {
           data: RestingDealerRow[] | null;
-          error: { message: string } | null;
+          error: CandidateQueryError | null;
         };
       if (poolErr) {
         // Fail-SAFE (P2 hardening, audit 2026-07-02): this used to just log and continue,
@@ -552,7 +609,7 @@ export async function buildDealerCandidates(
         // picked. Mirror Step 2's error handling above: bail with no candidates rather than
         // proceed on data this guard couldn't verify.
         console.error(`[pickNextDealer] Pool cooldown query error — failing safe (no candidates): ${poolErr.message}`);
-        return { candidates: [], avgBreakRatio: null };
+        return candidateQueryFailure(poolErr, "pool_cooldown");
       }
       if (poolDealers && poolDealers.length > 0) {
         for (const pd of poolDealers) {
@@ -566,7 +623,7 @@ export async function buildDealerCandidates(
     } catch (poolCatchErr) {
       // Same fail-safe as above — an exception here must not silently skip the exclusion.
       console.error(`[pickNextDealer] Pool cooldown exception — failing safe (no candidates):`, poolCatchErr);
-      return { candidates: [], avgBreakRatio: null };
+      return candidateQueryFailure(poolCatchErr, "pool_cooldown");
     }
   }
 
@@ -727,10 +784,14 @@ export async function buildDealerCandidates(
   // null = insufficient data → skip break equity penalty entirely
   let avgBreakRatio: number | null = clubAvgBreakRatio ?? null;
   if (includeScoreBreakdown && avgBreakRatio === null && clubId) {
-    const { data: allMetricsRaw } = (await admin
+    const { data: allMetricsRaw, error: allMetricsError } = (await admin
       .from("dealer_shift_metrics")
       .select("total_worked_minutes, total_break_minutes")
-      .eq("club_id", clubId)) as unknown as { data: ClubMetricRow[] | null };
+      .eq("club_id", clubId)) as unknown as {
+        data: ClubMetricRow[] | null;
+        error: CandidateQueryError | null;
+      };
+    if (allMetricsError) return candidateQueryFailure(allMetricsError, "club_shift_metrics");
     const totalW = (allMetricsRaw ?? []).reduce(
       (s: number, m) => s + (m.total_worked_minutes ?? 0), 0
     );
@@ -1103,7 +1164,7 @@ export async function buildDealerCandidates(
   }
 
   candidates.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  return { candidates, avgBreakRatio, diag };
+  return { candidates, avgBreakRatio, diag, status: "ok" };
 }
 
 // ─── pickNextDealer ───────────────────────────────────────────────────────────
@@ -1113,8 +1174,23 @@ export async function pickNextDealer(
   clubId: string,
   options: PickDealerOptions = {}
 ): Promise<DealerCandidate | null> {
-  const { candidates } = await buildDealerCandidates(admin, clubId, options);
+  const { candidates } = requireCandidateSnapshot(
+    await buildDealerCandidates(admin, clubId, options),
+  );
   return candidates[0] ?? null;
+}
+
+export async function pickNextDealerWithStatus(
+  admin: SupabaseAdmin,
+  clubId: string,
+  options: PickDealerOptions = {},
+): Promise<PickNextDealerResult> {
+  const result = await buildDealerCandidates(admin, clubId, options);
+  return {
+    candidate: result.candidates[0] ?? null,
+    status: result.status,
+    ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+  };
 }
 
 // ─── pickTopDealers ───────────────────────────────────────────────────────────
@@ -1125,7 +1201,9 @@ export async function pickTopDealers(
   topN: number,
   options: Omit<PickDealerOptions, "returnTopN"> = {}
 ): Promise<DealerCandidate[]> {
-  const { candidates } = await buildDealerCandidates(admin, clubId, options);
+  const { candidates } = requireCandidateSnapshot(
+    await buildDealerCandidates(admin, clubId, options),
+  );
   return candidates.slice(0, topN);
 }
 
@@ -1139,7 +1217,9 @@ export async function pickTopDealersWithDiagnostics(
   topN: number,
   options: Omit<PickDealerOptions, "returnTopN"> = {}
 ): Promise<{ candidates: DealerCandidate[]; diag?: PickDiagnostics; avgBreakRatio: number | null }> {
-  const { candidates, avgBreakRatio, diag } = await buildDealerCandidates(admin, clubId, options);
+  const { candidates, avgBreakRatio, diag } = requireCandidateSnapshot(
+    await buildDealerCandidates(admin, clubId, options),
+  );
   return { candidates: candidates.slice(0, topN), diag, avgBreakRatio };
 }
 
@@ -1156,6 +1236,13 @@ export interface RotationSupplyEntry extends DealerCandidate {
   eligible_at_ms: number;
 }
 
+export type RotationSupplyResult = {
+  supply: RotationSupplyEntry[];
+  avgBreakRatio: number | null;
+  status: BuildCandidatesResult["status"];
+  errorCode?: string;
+};
+
 export async function buildRotationSupply(
   admin: SupabaseAdmin,
   clubId: string,
@@ -1165,7 +1252,7 @@ export async function buildRotationSupply(
     clubBreakDurationMinutes?: number;
     requiredGameTypes?: string[];
   } = {}
-): Promise<{ supply: RotationSupplyEntry[]; avgBreakRatio: number | null }> {
+): Promise<RotationSupplyResult> {
   // Plan-time eligibility floor MUST match the execute-time gate
   // (SWING_POLICY.rest.executeMinRestFloorMinutes), else the planner locks a dealer
   // who cannot pass the execute rest gate → the table stays stuck on OT while rested
@@ -1176,7 +1263,7 @@ export async function buildRotationSupply(
   );
   const poolCooldownMs = 60_000;
 
-  const { candidates, avgBreakRatio } = await buildDealerCandidates(admin, clubId, {
+  const candidateResult = await buildDealerCandidates(admin, clubId, {
     excludeAttendanceIds: options.excludeAttendanceIds,
     clubBreakDurationMinutes: options.clubBreakDurationMinutes ?? 20,
     minInterSwingRestMinutes: restMinutes,
@@ -1190,12 +1277,23 @@ export async function buildRotationSupply(
     ).toISOString(),
   });
 
-  if (candidates.length === 0) return { supply: [], avgBreakRatio };
+  if (candidateResult.status !== "ok") {
+    return {
+      supply: [],
+      avgBreakRatio: candidateResult.avgBreakRatio,
+      status: candidateResult.status,
+      ...(candidateResult.errorCode ? { errorCode: candidateResult.errorCode } : {}),
+    };
+  }
+
+  const { candidates, avgBreakRatio } = candidateResult;
+
+  if (candidates.length === 0) return { supply: [], avgBreakRatio, status: "ok" };
 
   const attendanceIds = candidates.map((c) => c.id);
 
   // Latest released session per candidate → prev session length + rest anchor.
-  const { data: releasedRows } = await admin
+  const { data: releasedRows, error: releasedRowsError } = await admin
     .from("dealer_assignments")
     .select("attendance_id, assigned_at, released_at")
     .in("attendance_id", attendanceIds)
@@ -1204,6 +1302,15 @@ export async function buildRotationSupply(
     // Global ordering means a prolific dealer's rows could crowd others out;
     // ~25 sessions/dealer/day is well above any real shift.
     .limit(Math.min(1000, attendanceIds.length * 25));
+  if (releasedRowsError) {
+    const failure = classifyPostgrestError(releasedRowsError);
+    return {
+      supply: [],
+      avgBreakRatio,
+      status: failure.status,
+      errorCode: `rotation_supply_released_sessions_${failure.status}`,
+    };
+  }
 
   const lastSession = new Map<string, { assignedAtMs: number; releasedAtMs: number }>();
   for (const row of (releasedRows ?? []) as Array<{ attendance_id: string; assigned_at: string | null; released_at: string }>) {
@@ -1214,10 +1321,19 @@ export async function buildRotationSupply(
     });
   }
 
-  const { data: poolRows } = await admin
+  const { data: poolRows, error: poolRowsError } = await admin
     .from("dealer_attendance")
     .select("id, pool_entered_at")
     .in("id", attendanceIds);
+  if (poolRowsError) {
+    const failure = classifyPostgrestError(poolRowsError);
+    return {
+      supply: [],
+      avgBreakRatio,
+      status: failure.status,
+      errorCode: `rotation_supply_pool_timestamps_${failure.status}`,
+    };
+  }
 
   const poolEnteredAt = new Map<string, number>();
   for (const row of (poolRows ?? []) as Array<{ id: string; pool_entered_at: string | null }>) {
@@ -1238,7 +1354,7 @@ export async function buildRotationSupply(
     };
   });
 
-  return { supply, avgBreakRatio };
+  return { supply, avgBreakRatio, status: "ok" };
 }
 
 // ─── buildScoreLabel ──────────────────────────────────────────────────────────

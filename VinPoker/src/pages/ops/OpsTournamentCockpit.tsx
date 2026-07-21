@@ -11,6 +11,10 @@ import { useTournamentTvData } from "@/hooks/useTournamentTvData";
 import { groupPayoutRows } from "@/lib/tv/payoutBands";
 import { getDisplayableSatelliteRows } from "@/lib/satellitePayout";
 import { floorOpsErrorMessage, floorOpsResponseErrorCode } from "@/lib/floorOpsErrors";
+import {
+  canUseTournamentClockPostStartControls,
+  getTournamentClockPrimaryAction,
+} from "@/lib/tournament/clockControlState";
 import { RoomGrid } from "@/components/ops/shared/RoomGrid";
 import { useFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { FloorPlayerActions, type FloorSeatTarget } from "@/components/ops/shared/FloorPlayerActions";
@@ -49,7 +53,7 @@ const mmss = (s: number) => {
 
 interface LevelRow { level_number: number; small_blind: number; big_blind: number; ante: number; duration_minutes: number; is_break: boolean }
 /** Nhánh dữ liệu đồng hồ dùng cho ĐIỀU KHIỂN (from `get_tournament_clock`, giống ClockPanel). */
-interface OpsClock { is_running: boolean; remaining_seconds: number; clock_paused_at?: string | null; current_level: { level_number: number } | null }
+interface OpsClock { status: string; is_running: boolean; remaining_seconds: number; current_level: { level_number: number } | null; next_level?: { level_number: number } | null; message?: string | null; control_revision: string }
 /** Người đã bị loại — từ `tournament_entries` (status='busted') + prize join (không có ghế active). */
 interface BustedRow { entry_id: string; player_id: string; entry_number: number; player_name: string; finished_place: number | null; prize: number | null; last_chip: number | null }
 
@@ -106,6 +110,10 @@ export default function OpsTournamentCockpit() {
   //    công — auto để desktop/TV lo, tránh 2 client cùng nhảy level).
   const [clk, setClk] = useState<OpsClock | null>(null);
   const [clkBusy, setClkBusy] = useState(false);
+  const primaryClockAction = clk ? getTournamentClockPrimaryAction(clk) : null;
+  const canUsePostStartControls = clk
+    ? canUseTournamentClockPostStartControls(clk)
+    : false;
   const loadClk = useCallback(async () => {
     if (!id) return;
     const { data, error } = await supabase.rpc("get_tournament_clock", { p_tournament_id: id });
@@ -115,11 +123,29 @@ export default function OpsTournamentCockpit() {
   useEffect(() => { if (tab === "status") loadClk(); }, [tab, loadClk]);
   const clockAct = useCallback(async (action: string, extra?: Record<string, unknown>) => {
     if (!id || clkBusy) return;
+    const expectedControlRevision = action === "start" ? null : clk?.control_revision;
+    if (action !== "start" && !expectedControlRevision) {
+      await loadClk();
+      return;
+    }
     setClkBusy(true);
     try {
-      const { data, error } = await supabase.functions.invoke("tournament-live-clock", { body: { tournament_id: id, action, ...extra } });
+      const { data, error } = await supabase.functions.invoke("tournament-live-clock", {
+        body: {
+          tournament_id: id,
+          action,
+          ...extra,
+          ...(expectedControlRevision
+            ? { expected_control_revision: expectedControlRevision }
+            : {}),
+        },
+      });
       const err = floorOpsResponseErrorCode(data) ?? error?.message;
-      if (err) { toast.error(floorOpsErrorMessage(err, "Không thực hiện được")); return; }
+      if (err) {
+        toast.error(floorOpsErrorMessage(err, "Không thực hiện được"));
+        await Promise.all([loadClk(), tv.refetch()]);
+        return;
+      }
       await Promise.all([loadClk(), tv.refetch()]);   // không optimistic
     } catch (e) {
       toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Không thực hiện được");
@@ -127,7 +153,7 @@ export default function OpsTournamentCockpit() {
       setClkBusy(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, clkBusy, loadClk]);
+  }, [id, clkBusy, clk?.control_revision, loadClk]);
 
   // ── Floor cockpit (cờ cockpitFloorActions): S2 sơ đồ bàn inline + S3 danh sách 3-tab thao tác ──
   const cockpitOn = FEATURES.cockpitFloorActions;
@@ -309,18 +335,19 @@ export default function OpsTournamentCockpit() {
           {clk && (
             <div className="ios-card space-y-2.5 p-3.5">
               <div className="flex items-center gap-2">
-                {!clk.is_running ? (
+                {primaryClockAction === "start" && (
                   <button disabled={clkBusy} onClick={() => clockAct("start")}
                     className="ios-press ios-primary flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-bold disabled:opacity-40">
                     <Play className="h-[18px] w-[18px]" /> Bắt đầu
                   </button>
-                ) : (
+                )}
+                {primaryClockAction === "pause" && (
                   <button disabled={clkBusy} onClick={() => clockAct("pause")}
                     className="ios-press flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-amber-400/15 py-3 text-[15px] font-bold text-amber-300 disabled:opacity-40">
                     <Pause className="h-[18px] w-[18px]" /> Tạm dừng
                   </button>
                 )}
-                {clk.clock_paused_at && (
+                {primaryClockAction === "resume" && (
                   <button disabled={clkBusy} onClick={() => clockAct("resume")}
                     className="ios-press ios-primary flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-bold disabled:opacity-40">
                     <Play className="h-[18px] w-[18px]" /> Tiếp tục
@@ -328,22 +355,22 @@ export default function OpsTournamentCockpit() {
                 )}
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <button disabled={clkBusy || (clk.current_level?.level_number ?? 1) <= 1} onClick={() => clockAct("previous_level")}
+                <button disabled={clkBusy || !canUsePostStartControls || (clk.current_level?.level_number ?? 1) <= 1} onClick={() => clockAct("previous_level")}
                   className="ios-press ios-fill flex min-h-11 items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-medium text-[#f2ece6] disabled:opacity-40">
                   <SkipBack className="h-4 w-4" /> Level trước
                 </button>
-                <button disabled={clkBusy} onClick={() => clockAct("next_level", { current_level: (clk.current_level?.level_number ?? 0) + 1 })}
+                <button disabled={clkBusy || !canUsePostStartControls || !clk.next_level} onClick={() => clockAct("next_level")}
                   className="ios-press ios-fill flex min-h-11 items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-medium text-[#f2ece6] disabled:opacity-40">
                   <SkipForward className="h-4 w-4" /> Level tiếp
                 </button>
               </div>
               <div className="flex items-center justify-center gap-2">
                 <span className="text-[12px] text-[#9b8e97]">Chỉnh giờ:</span>
-                <button disabled={clkBusy || !clk.current_level} onClick={() => clockAct("adjust_time", { delta_seconds: -60 })}
+                <button disabled={clkBusy || !canUsePostStartControls} onClick={() => clockAct("adjust_time", { delta_seconds: -60 })}
                   className="ios-press-sm ios-fill flex min-h-11 items-center gap-1 rounded-xl px-3 py-2 text-[13px] text-[#f2ece6] disabled:opacity-40">
                   <Minus className="h-3.5 w-3.5" /> 1 phút
                 </button>
-                <button disabled={clkBusy || !clk.current_level} onClick={() => clockAct("adjust_time", { delta_seconds: 60 })}
+                <button disabled={clkBusy || !canUsePostStartControls} onClick={() => clockAct("adjust_time", { delta_seconds: 60 })}
                   className="ios-press-sm ios-fill flex min-h-11 items-center gap-1 rounded-xl px-3 py-2 text-[13px] text-[#f2ece6] disabled:opacity-40">
                   <Plus className="h-3.5 w-3.5" /> 1 phút
                 </button>

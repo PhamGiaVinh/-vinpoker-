@@ -24,6 +24,8 @@ function makeAdmin(fix: {
   dealerIds: string[];
   poolRows: Row[];
   metricsRows: Row[];
+  metricsError?: { code?: string; message: string };
+  clubMetricsError?: { code?: string; message: string };
   // INV-2 (orphan-aware Step 5b) fixtures — optional, default empty so every
   // pre-existing test is byte-identical (dealer_assignments stays [], the
   // checked-out lookup stays []).
@@ -74,7 +76,14 @@ function makeAdmin(fix: {
         }
         return { data: [], error: null }; // busy / restGuard / poolCooldown (no error) / step5c → empty
       }
-      if (table === "dealer_shift_metrics") return { data: fix.metricsRows, error: null };
+      if (table === "dealer_shift_metrics") {
+        const error = sel().includes("attendance_id")
+          ? fix.metricsError
+          : fix.clubMetricsError;
+        return error
+          ? { data: null, error }
+          : { data: fix.metricsRows, error: null };
+      }
       if (table === "dealer_assignments") {
         // The Step-5b busy cross-check is the ONLY dealer_assignments query that
         // selects dealer_id + status + attendance_id together. Every other one
@@ -412,4 +421,43 @@ Deno.test("P2 fix: normal-table pick unaffected when the reserved-dealer lookup 
   });
   const { candidates } = await buildDealerCandidates(admin, "club", { currentTableId: "T2" });
   assertEquals(candidates.length, 1, "normal path is unchanged when the reserved-dealer lookup succeeds");
+});
+
+Deno.test("metrics relation missing fails closed instead of becoming an empty metrics snapshot", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["d1"],
+    poolRows: [poolRow("a1", "d1")],
+    metricsRows: [],
+    metricsError: { code: "42P01", message: "relation dealer_shift_metrics does not exist" },
+  });
+  const result = await buildDealerCandidates(admin, "club", {});
+  assertEquals(result.candidates, []);
+  assertEquals(result.status, "dependency_unavailable");
+  assertEquals(result.errorCode, "candidate_shift_metrics_dependency_unavailable");
+});
+
+Deno.test("metrics runtime query failure fails closed instead of changing scoring inputs", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["d1"],
+    poolRows: [poolRow("a1", "d1")],
+    metricsRows: [],
+    metricsError: { code: "XX000", message: "connection reset" },
+  });
+  const result = await buildDealerCandidates(admin, "club", {});
+  assertEquals(result.candidates, []);
+  assertEquals(result.status, "query_failed");
+  assertEquals(result.errorCode, "candidate_shift_metrics_query_failed");
+});
+
+Deno.test("club break-equity metrics failure fails closed when score breakdown is requested", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["d1"],
+    poolRows: [poolRow("a1", "d1")],
+    metricsRows: [metric("a1", 30)],
+    clubMetricsError: { code: "XX000", message: "connection reset" },
+  });
+  const result = await buildDealerCandidates(admin, "club", { includeScoreBreakdown: true });
+  assertEquals(result.candidates, []);
+  assertEquals(result.status, "query_failed");
+  assertEquals(result.errorCode, "candidate_club_shift_metrics_query_failed");
 });

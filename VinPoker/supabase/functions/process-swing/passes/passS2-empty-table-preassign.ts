@@ -41,6 +41,9 @@ export interface EmptyTablePreAssignResult {
   executed: number;
   reserved: number;
   cancelled: number;
+  /** A failed candidate snapshot is not a normal no-candidate reservation result. */
+  candidateStatus?: "dependency_unavailable" | "query_failed";
+  candidateErrorCode?: string;
 }
 
 export async function runEmptyTablePreAssign(
@@ -164,7 +167,17 @@ export async function runEmptyTablePreAssign(
   // Soon-free candidates (reservationMode admits dealers whose rest completes
   // within the planning horizon). Step 2 targets ON_BREAK dealers only — an
   // available dealer would have been used by Step-1 immediate fill.
-  const { supply } = await buildRotationSupply(admin, clubId, { minInterSwingRestMinutes: restMin });
+  const supplyResult = await buildRotationSupply(admin, clubId, { minInterSwingRestMinutes: restMin });
+  if (supplyResult.status !== "ok") {
+    res.candidateStatus = supplyResult.status;
+    res.candidateErrorCode = supplyResult.errorCode ?? `candidate_snapshot_${supplyResult.status}`;
+    slog("candidate_snapshot_unavailable", {
+      status: res.candidateStatus,
+      error_code: res.candidateErrorCode,
+    });
+    return res;
+  }
+  const { supply } = supplyResult;
   const candidates = (supply ?? [])
     .filter((c: any) => c.current_state === "on_break")
     .sort((a: any, b: any) => (a.eligible_at_ms ?? 0) - (b.eligible_at_ms ?? 0));

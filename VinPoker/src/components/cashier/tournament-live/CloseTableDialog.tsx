@@ -10,28 +10,9 @@ import { toast } from "sonner";
 import { Lock, Loader2, AlertTriangle, CheckCircle2, Printer } from "lucide-react";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
+import { closeTableErrorMessage, parseCloseTableRpcResult, type CloseTableMove } from "./closeTableResponse";
 
 type DrawMode = "redraw_balanced" | "fill_lowest_table";
-interface Move {
-  player_name: string;
-  from_seat: number;
-  to_table_number: number | null;
-  to_seat_number: number;
-  receipt_code: string;
-}
-
-function mapError(res: { error?: string; need?: number; have?: number } | null, raw?: string): string {
-  const code = res?.error ?? raw;
-  switch (code) {
-    case "unauthorized": return "Bạn cần đăng nhập lại.";
-    case "actor_not_allowed": return "Không có quyền đóng bàn cho CLB này.";
-    case "tournament_not_open": return "Giải đã kết thúc/huỷ.";
-    case "table_not_found": return "Không tìm thấy bàn.";
-    case "insufficient_capacity":
-      return `Không đủ ghế trống (cần ${res?.need ?? "?"}, có ${res?.have ?? "?"}) — mở thêm bàn trước khi đóng.`;
-    default: return code ? `Đóng bàn thất bại (${code})` : "Đóng bàn thất bại";
-  }
-}
 
 /**
  * "Đóng bàn" — break a table. Re-draws ONLY this table's players into empty seats
@@ -41,7 +22,7 @@ function mapError(res: { error?: string; need?: number; have?: number } | null, 
  */
 export function CloseTableDialog({
   open, onOpenChange, tournamentName, tournamentDate,
-  tableTtId, tableNumber, occupiedCount, onDone,
+  tableTtId, tableNumber, occupiedCount, unlinkedActiveSeatCount = 0, onDone,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -50,37 +31,59 @@ export function CloseTableDialog({
   tableTtId: string;
   tableNumber: number | null;
   occupiedCount: number;
+  /** UX guard only. The RPC repeats this check under row locks. */
+  unlinkedActiveSeatCount?: number;
   onDone: () => void;
 }) {
   const [drawMode, setDrawMode] = useState<DrawMode>("redraw_balanced");
   const [phase, setPhase] = useState<"confirm" | "running" | "done">("confirm");
-  const [moves, setMoves] = useState<Move[]>([]);
+  const [moves, setMoves] = useState<CloseTableMove[]>([]);
   const [busy, setBusy] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<SeatReceiptData | null>(null);
   const [receiptOpen, setReceiptOpen] = useState(false);
 
   const run = async () => {
+    if (unlinkedActiveSeatCount > 0) {
+      setErrorMessage(`Không thể đóng bàn khi còn ${unlinkedActiveSeatCount} ghế đang chơi chưa gắn entry. Hãy sửa dữ liệu ghế trước.`);
+      return;
+    }
     setBusy(true);
     setPhase("running");
+    setErrorMessage(null);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC source 20260914000000; not in generated types yet
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- close-table RPC is not in generated types yet
       const { data, error } = await (supabase.rpc as any)("close_tournament_table", {
         p_tournament_table_id: tableTtId,
         p_draw_mode: drawMode,
         p_reason: "table_break",
       });
-      const res = (data ?? null) as { ok?: boolean; error?: string; need?: number; have?: number; moved?: Move[] } | null;
-      if (error || !res?.ok) { toast.error(mapError(res, error?.message)); setPhase("confirm"); return; }
-      setMoves(res.moved ?? []);
+      const result = parseCloseTableRpcResult(data, error, occupiedCount);
+      if (result.kind === "error") {
+        const message = closeTableErrorMessage(
+          result.response,
+          result.rpcError?.message ?? result.code,
+        );
+        setErrorMessage(message);
+        toast.error(message);
+        setPhase("confirm");
+        return;
+      }
+      setMoves(result.response.moved);
       setPhase("done");
-      toast.success(`Đã đóng Bàn ${tableNumber ?? "?"} · chuyển ${res.moved?.length ?? 0} người`);
+      toast.success(`Đã đóng Bàn ${tableNumber ?? "?"} · chuyển ${result.response.moved_count} người`);
       onDone();
+    } catch (cause) {
+      const message = cause instanceof Error ? `Không thể đóng bàn: ${cause.message}` : "Không thể đóng bàn.";
+      setErrorMessage(message);
+      toast.error(message);
+      setPhase("confirm");
     } finally {
       setBusy(false);
     }
   };
 
-  const reprint = (m: Move) => {
+  const reprint = (m: CloseTableMove) => {
     setReceipt({
       tournamentName, tournamentDate,
       playerName: m.player_name,
@@ -96,7 +99,7 @@ export function CloseTableDialog({
   const close = (v: boolean) => {
     if (busy) return;
     onOpenChange(v);
-    if (!v) { setPhase("confirm"); setMoves([]); }
+    if (!v) { setPhase("confirm"); setMoves([]); setErrorMessage(null); }
   };
 
   return (
@@ -116,6 +119,16 @@ export function CloseTableDialog({
 
           {phase === "confirm" && (
             <div className="space-y-3">
+              {unlinkedActiveSeatCount > 0 && (
+                <div role="alert" className="rounded-md border border-destructive/45 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  Không thể đóng bàn: phát hiện {unlinkedActiveSeatCount} ghế đang chơi chưa gắn entry. Máy chủ cũng sẽ chặn thao tác này.
+                </div>
+              )}
+              {errorMessage && (
+                <div role="alert" className="rounded-md border border-destructive/45 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  {errorMessage}
+                </div>
+              )}
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300 flex items-start gap-2">
                 <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                 Nếu không đủ ghế trống ở các bàn khác, thao tác sẽ bị chặn — hãy mở thêm bàn trước.
@@ -162,7 +175,7 @@ export function CloseTableDialog({
             {phase === "confirm" && (
               <>
                 <Button variant="outline" onClick={() => close(false)}>Quay lại</Button>
-                <Button variant="destructive" onClick={run} disabled={busy}>
+                <Button variant="destructive" onClick={run} disabled={busy || unlinkedActiveSeatCount > 0}>
                   <Lock className="w-3.5 h-3.5 mr-1" /> Đóng bàn
                 </Button>
               </>

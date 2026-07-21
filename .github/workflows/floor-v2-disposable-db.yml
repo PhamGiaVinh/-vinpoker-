@@ -9,6 +9,8 @@ on:
       - "VinPoker/supabase/migrations/20261242000000_floor_operator_scope.sql"
       - "VinPoker/supabase/migrations/20270104000000_floor_cleanup_rotation_schedule_index.sql"
       - "VinPoker/supabase/migrations/20270104000001_floor_chip_cas_rpc.sql"
+      - "VinPoker/supabase/migrations/20270104000004_floor_clock_control_atomic.sql"
+      - "VinPoker/supabase/migrations/20270104000005_floor_operator_scope_acl.sql"
       - "VinPoker/tests/floorProduction/**"
   workflow_dispatch:
 

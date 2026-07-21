@@ -3,6 +3,14 @@ import { corsHeaders, jsonResponse, fillEmptyTables, computeSwingDuration } from
 import { formatMassAssignMessage, sendTelegramNotification, getClubTelegramChatId } from "../_shared/telegram.ts";
 import { idempotentResponse } from "../_shared/idempotency.ts";
 import { authenticateUser } from "../_shared/staking-common.ts";
+import { fillOpenOperation } from "../_shared/fillOpenOperation.ts";
+import {
+  legacyFillFailureContract,
+  operationFailureContract,
+  queryFailureContract,
+} from "./failureContract.ts";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -18,8 +26,11 @@ Deno.serve(async (req) => {
     const uid = authResult.uid;
 
     const body = await req.json().catch(() => ({}));
-    const { club_id, shift_id } = body ?? {};
+    const { club_id, shift_id, operation_id } = body ?? {};
     if (!club_id) return jsonResponse({ error: "club_id required" }, 400);
+    if (operation_id != null && (typeof operation_id !== "string" || !UUID_RE.test(operation_id))) {
+      return jsonResponse({ error: "operation_id must be a UUID" }, 400);
+    }
 
     const { data: isControl } = await admin.rpc("is_club_dealer_control", { _user_id: uid, _club_id: club_id });
     if (!isControl) return jsonResponse({ error: "Forbidden" }, 403);
@@ -27,22 +38,18 @@ Deno.serve(async (req) => {
     // B1.2 — idempotent on an optional client key: dedups double-click / retry, returns the
     // cached aggregate ("N assigned", not 0) on replay, 409 on a concurrent duplicate. Degrades
     // to a plain run until the B1.1 RPCs are applied (zero regression).
-    const idemKey = (body?.idempotency_key as string | undefined) ?? null;
-    return await idempotentResponse(admin, {
-      key: idemKey,
-      scope: "mass-assign",
-      clubId: club_id,
-      actorId: uid,
-      fingerprint: { action: "mass-assign", club_id, shift_id: shift_id ?? null },
-      json: (b, s) => jsonResponse(b, s),
-      run: async () => {
+    const runMassAssign = async () => {
     // ── Compute swing duration (batch-consistent) ──────────────────────────
-    const { data: swingConfig } = await admin
+    const { data: swingConfig, error: swingConfigError } = await admin
       .from("swing_config")
       .select("*")
       .eq("club_id", club_id)
       .eq("table_type", "tournament")
       .maybeSingle();
+    if (swingConfigError) {
+      const failure = queryFailureContract(swingConfigError, "swing_config");
+      return jsonResponse(failure.body, failure.httpStatus);
+    }
 
     const durResult = await computeSwingDuration(admin, club_id, {
       swing_duration_minutes: swingConfig?.swing_duration_minutes ?? 45,
@@ -57,11 +64,31 @@ Deno.serve(async (req) => {
       `(${durResult.durationRationale}), dueAt=${swingDueAt}`
     );
 
-    // Use shared fillEmptyTables with pre-calculated swing_due_at for batch consistency
-    const { assignments } = await fillEmptyTables(
-      admin, club_id, shift_id ?? null, botToken,
-      undefined, swingDueAt
-    );
+    let operationResult: Awaited<ReturnType<typeof fillOpenOperation>> | null = null;
+    let assignments;
+    if (operation_id) {
+      try {
+        operationResult = await fillOpenOperation(admin, operation_id, {
+          expectedClubId: club_id,
+          actorId: uid,
+          swingDueAt,
+        });
+      } catch (error) {
+        const code = error instanceof Error ? error.message : String(error);
+        const failure = operationFailureContract(code);
+        return jsonResponse(failure.body, failure.httpStatus);
+      }
+      assignments = operationResult.assignments;
+    } else {
+      // Legacy fallback is unchanged while the durable rollout is dark.
+      const legacyResult = await fillEmptyTables(
+        admin, club_id, shift_id ?? null, botToken,
+        undefined, swingDueAt
+      );
+      const legacyFailure = legacyFillFailureContract(legacyResult);
+      if (legacyFailure) return jsonResponse(legacyFailure.body, legacyFailure.httpStatus);
+      assignments = legacyResult.assignments;
+    }
 
     // Audit logs
     for (const a of assignments) {
@@ -70,7 +97,13 @@ Deno.serve(async (req) => {
         actor_id: uid,
         action: "mass_assign",
         entity_type: "dealer_assignment",
-        payload: { table_name: a.table_name, dealer_name: a.full_name, mode: "mass_assign", tier: "tournament" },
+        payload: {
+          table_name: a.table_name,
+          dealer_name: a.full_name,
+          mode: operation_id ? "open_operation" : "mass_assign",
+          operation_id: operation_id ?? null,
+          tier: "tournament",
+        },
       }); } catch {}
     }
 
@@ -126,19 +159,39 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       success: true,
-      assigned: assignments.length,
+      requested: operationResult?.requested ?? assignments.length,
+      assigned: operationResult?.assigned ?? assignments.length,
+      assigned_this_run: assignments.length,
+      remaining: operationResult?.remaining ?? 0,
+      operation_status: operationResult?.operation_status ?? "completed",
+      operation_id: operation_id ?? null,
+      outcomes: operationResult?.outcomes ?? [],
+      candidate_snapshot_builds: operationResult?.candidate_snapshot_builds ?? null,
       swingConfig: {
         durationMinutes: durResult.durationMinutes,
         isDynamic: durResult.isDynamic,
         rationale: durResult.durationRationale,
       },
       assignments: assignments.map(a => ({
+        table_id: a.table_id,
         table_name: a.table_name,
         dealer_name: a.full_name,
         tier: "tournament",
       })),
     });
-      },
+    };
+
+    if (operation_id) return await runMassAssign();
+
+    const idemKey = (body?.idempotency_key as string | undefined) ?? null;
+    return await idempotentResponse(admin, {
+      key: idemKey,
+      scope: "mass-assign",
+      clubId: club_id,
+      actorId: uid,
+      fingerprint: { action: "mass-assign", club_id, shift_id: shift_id ?? null },
+      json: (b, s) => jsonResponse(b, s),
+      run: runMassAssign,
     });
   } catch (e) {
     return jsonResponse({ error: (e as Error).message }, 500);

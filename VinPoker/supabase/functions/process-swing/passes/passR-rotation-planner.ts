@@ -16,7 +16,11 @@
 // planned_relief_at, visible OT — not a due-date push.
 // ═══════════════════════════════════════════════════════════
 
-import { buildRotationSupply } from "../../_shared/pickNextDealer.ts";
+import {
+  buildRotationSupply,
+  CandidateSnapshotFailure,
+  isCandidateSnapshotFailure,
+} from "../../_shared/pickNextDealer.ts";
 import { solveRotationPlan } from "../../_shared/rotationSolver.ts";
 import { SWING_POLICY } from "../../_shared/swingPolicy.ts";
 import { getFeatureTablePoolsByTable, getReservedDealerIds } from "../../_shared/featureTableGate.ts"; // Patch 5c/5d: planner pool gate + reserved exclusivity
@@ -61,6 +65,9 @@ export interface PassRResult {
   earlyBreakEnds: number;
   errors: Array<{ scope: string; error: string }>;
   solverDurationMs: number;
+  /** A failed candidate snapshot is never represented as an honest shortage. */
+  candidateStatus?: "dependency_unavailable" | "query_failed";
+  candidateErrorCode?: string;
 }
 
 interface ActiveAssignmentRow {
@@ -562,12 +569,23 @@ export async function passRRotationPlanner(
 
     // Phase B — snapshot
     const tournamentInfo = await fetchTournamentInfo(admin, assignments.map((a) => a.table_id));
-    const { supply } = await buildRotationSupply(admin, ctx.clubId, {
+    const supplyResult = await buildRotationSupply(admin, ctx.clubId, {
       excludeAttendanceIds: ctx.cycleExcludedIds,
       minInterSwingRestMinutes: ctx.minInterSwingRestMinutes,
       clubBreakDurationMinutes: ctx.clubBreakDurationMinutes,
       requiredGameTypes: ctx.requiredGameTypes,
     });
+    if (supplyResult.status !== "ok") {
+      result.candidateStatus = supplyResult.status;
+      result.candidateErrorCode = supplyResult.errorCode ?? `candidate_snapshot_${supplyResult.status}`;
+      result.errors.push({
+        scope: "candidate_snapshot",
+        error: result.candidateErrorCode,
+      });
+      result.solverDurationMs = Date.now() - started;
+      return result;
+    }
+    const { supply } = supplyResult;
 
     const candidates: RotationPlanCandidate[] = supply.map((s) => ({
       attendanceId: s.id,
@@ -699,12 +717,19 @@ export async function replanSingleTable(
     }
 
     // 2. Pick the replacement with full planner semantics (single-table solve).
-    const { supply } = await buildRotationSupply(admin, ctx.clubId, {
+    const supplyResult = await buildRotationSupply(admin, ctx.clubId, {
       excludeAttendanceIds,
       minInterSwingRestMinutes: ctx.minInterSwingRestMinutes,
       clubBreakDurationMinutes: ctx.clubBreakDurationMinutes,
       requiredGameTypes: ctx.requiredGameTypes,
     });
+    if (supplyResult.status !== "ok") {
+      throw new CandidateSnapshotFailure(
+        supplyResult.status,
+        supplyResult.errorCode ?? `candidate_snapshot_${supplyResult.status}`,
+      );
+    }
+    const { supply } = supplyResult;
     const candidates: RotationPlanCandidate[] = supply
       .filter((s) => !excludeAttendanceIds.has(s.id))
       .map((s) => ({
@@ -764,6 +789,7 @@ export async function replanSingleTable(
       ? { relocked: true, detail: `relocked:${slot0.inDealerName ?? slot0.inAttendanceId}` }
       : { relocked: false, detail: "lock_pending_announce_time" };
   } catch (err: any) {
+    if (isCandidateSnapshotFailure(err)) throw err;
     return { relocked: false, detail: `error: ${err?.message ?? String(err)}` };
   }
 }

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { FunctionsHttpError } from "@supabase/supabase-js";
@@ -7,12 +7,20 @@ import { FEATURES } from "@/lib/featureFlags";
 import {
   ChevronLeft, Repeat, Users, Coffee, ArrowRightLeft, History, Lightbulb, QrCode,
   Monitor, LogOut, ArrowRight, Clock, FlagTriangleRight, Loader2, LogIn,
-  CalendarDays, AlertTriangle, Send, UserPlus,
+  CalendarDays, AlertTriangle, Send,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
-import { useOperatorClubs } from "@/hooks/useOperatorClubs";
+import { useOperatorClubs, type OperatorClubRow } from "@/hooks/useOperatorClubs";
+import {
+  usePublishedDealerSchedule,
+  type PublishedScheduleAssignment,
+} from "@/hooks/usePublishedDealerSchedule";
+import { useDealerSwingPhoneRollout } from "@/hooks/useDealerSwingPhoneRollout";
+import { DealerPhoneCheckinSheet } from "@/components/ops/dealer-swing/DealerPhoneCheckinSheet";
+import { DealerPhoneCloseTablesSheet } from "@/components/ops/dealer-swing/DealerPhoneCloseTablesSheet";
+import { DealerPhoneReconcileSheet } from "@/components/ops/dealer-swing/DealerPhoneReconcileSheet";
 import {
   useActiveTables, useActiveAssignmentsWithTimeline, useCheckedInDealers,
   useTodayCheckedOutDealers,
@@ -31,7 +39,7 @@ import type { AvailabilityRequest } from "@/types/shiftPlanner";
  * check-out / đóng-tour / sửa-nhầm-bàn / duyệt-yêu-cầu / gợi-ý-dealer — mirror desktop DealerSwingTab
  * (perform_swing / assign-dealer / manage-break / checkout-dealer / archive_and_close_dealer_tour /
  * reconcile_dealer_room_state / review_availability_request). Đọc chi tiết (lịch sử bàn / ca hôm nay)
- * là read-only luôn live. Lưới lịch tuần (SCHEDULE_DAYS) giữ dạng xem trước — xếp lịch trên máy tính.
+ * là read-only luôn live. Lịch phone chỉ đọc các run đã phát hành và assignment đã lưu.
  */
 const BREAK_PRESETS = [15, 30, 45, 60];
 const PILLS = [
@@ -57,9 +65,6 @@ type EnrichedAssignment = DealerAssignment & {
 /** Target cho break picker — cần attendance_id + club_id (edge manage-break yêu cầu). */
 type BreakTarget = { attendanceId: string; clubId: string; name: string };
 
-/** Dealer đủ điều kiện check-in (mirror loadCheckinDealers desktop). */
-type CheckinDealer = { id: string; full_name: string; tier: string; wasCheckedOut: boolean };
-
 /** Gợi ý dealer từ edge assign-dealer (return_suggestions_only=true). */
 type Sug = { dealer_id: string; dealer_name: string; tier?: string | null; score?: number | null; reason?: string | null };
 
@@ -74,116 +79,103 @@ const DEALER_CHIP: Record<string, { label: string; cls: string }> = {
   checked_out: { label: "Đã về", cls: "bg-white/6 text-[#7c7079]" },
 };
 
-type ScheduleTone = "ok" | "warn" | "danger" | "final" | "info";
-
+type ScheduleTone = "ok" | "warn";
 const toneCls: Record<ScheduleTone, string> = {
   ok: "bg-emerald-400/12 text-emerald-300",
   warn: "bg-amber-400/12 text-amber-300",
-  danger: "bg-rose-400/12 text-rose-300",
-  final: "bg-pink-400/12 text-pink-300",
-  info: "bg-sky-400/12 text-sky-300",
 };
 
-const toneTextCls: Record<ScheduleTone, string> = {
-  ok: "text-emerald-300",
-  warn: "text-amber-300",
-  danger: "text-rose-300",
-  final: "text-pink-300",
-  info: "text-sky-300",
+const SCHEDULE_STATE: Record<PublishedScheduleAssignment["state"], { label: string; cls: string }> = {
+  published: { label: "Đã xếp", cls: "bg-sky-400/12 text-sky-300" },
+  confirmed: { label: "Đã xác nhận", cls: "bg-emerald-400/12 text-emerald-300" },
+  waiting: { label: "Đã đến · chờ ca", cls: "bg-amber-400/12 text-amber-300" },
+  in_pool: { label: "Trong pool", cls: "bg-emerald-400/12 text-emerald-300" },
+  closed: { label: "Đã kết ca", cls: "bg-white/6 text-[#9b8e97]" },
 };
 
-const SCHEDULE_DAYS = [
-  { label: "T2", day: "06", status: "normal" },
-  { label: "T3", day: "07", status: "active" },
-  { label: "T4", day: "08", status: "issue" },
-  { label: "T5", day: "09", status: "normal" },
-  { label: "T6", day: "10", status: "normal" },
-  { label: "T7", day: "11", status: "issue" },
-  { label: "CN", day: "12", status: "normal" },
-] as const;
+function vnDateAtOffset(offset: number) {
+  const vnNow = new Date(Date.now() + 7 * 3_600_000);
+  const date = new Date(Date.UTC(vnNow.getUTCFullYear(), vnNow.getUTCMonth(), vnNow.getUTCDate() + offset));
+  return date.toISOString().slice(0, 10);
+}
 
-const SCHEDULE_STATS = [
-  { label: "dealer đi làm", value: "18", tone: "ok" as const },
-  { label: "lượt ca cần", value: "21", tone: "info" as const },
-  { label: "thiếu người", value: "3", tone: "danger" as const },
-  { label: "xin nghỉ/đổi", value: "2", tone: "warn" as const },
-];
-
-const SHIFT_BLOCKS = [
-  {
-    id: "early",
-    label: "Ca sớm",
-    from: "12:00",
-    to: "18:00",
-    need: 7,
-    assigned: 7,
-    note: "7 cần · 7 đã xếp · 1 dealer final",
-    tags: [
-      { label: "Đủ", tone: "ok" as const },
-      { label: "Lan final", tone: "final" as const },
-    ],
-  },
-  {
-    id: "night",
-    label: "Ca tối",
-    from: "18:00",
-    to: "02:00",
-    need: 11,
-    assigned: 8,
-    note: "11 cần · 8 đã xếp · thiếu bàn 12/15/20",
-    tags: [
-      { label: "Thiếu 3", tone: "danger" as const },
-      { label: "OT cao", tone: "warn" as const },
-    ],
-  },
-] as const;
-
-const TIMELINE_BLOCKS = [
-  {
-    time: "18:00",
-    title: "Mở ca tối",
-    note: "Cần 6 dealer bắt đầu ca · 5 đã có mặt",
-    dealers: [
-      { name: "Minh", detail: "B7" },
-      { name: "Hoa", detail: "B8" },
-      { name: "Tú", detail: "B9" },
-      { name: "Trang", detail: "B10" },
-      { name: "Vy", detail: "B11" },
-      { name: "+ thiếu", detail: "B12", empty: true },
-    ],
-  },
-  {
-    time: "20:30",
-    title: "Swing wave 1",
-    note: "4 bàn tới giờ thay · ưu tiên dealer đã nghỉ đủ",
-    dealers: [
-      { name: "Quang", detail: "vào B8" },
-      { name: "Hằng", detail: "vào B10" },
-      { name: "+ chọn", detail: "B12", empty: true },
-    ],
-  },
-  {
-    time: "21:30",
-    title: "Final table",
-    note: "Cần dealer chỉ định · không tự thay người",
-    dealers: [
-      { name: "Lan", detail: "Final", final: true },
-      { name: "+ backup", detail: "dự phòng", empty: true },
-    ],
-  },
-] as const;
+function scheduleDateParts(value: string) {
+  const date = new Date(`${value}T00:00:00Z`);
+  return {
+    weekday: new Intl.DateTimeFormat("vi-VN", { weekday: "short", timeZone: "UTC" }).format(date),
+    day: new Intl.DateTimeFormat("vi-VN", { day: "2-digit", timeZone: "UTC" }).format(date),
+    full: new Intl.DateTimeFormat("vi-VN", {
+      weekday: "long",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(date),
+  };
+}
 
 export default function OpsDealerSwing() {
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
-  const { loading: clubsLoading, user, clubs, clubIds, dealerClubIds } = useOperatorClubs();
-  const scopedIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
+  const { loading, user, clubs, clubIds, dealerClubIds, error } = useOperatorClubs();
+  const [activeClubId, setActiveClubId] = useState<string | null>(null);
+  const eligibleIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
+  const eligibleClubs = useMemo(
+    () => (clubs ?? []).filter((club) => eligibleIds.includes(club.id)),
+    [clubs, eligibleIds],
+  );
+  const eligibleKey = eligibleClubs.map((club) => club.id).sort().join(",");
+
+  useEffect(() => {
+    const currentEligibleIds = eligibleKey ? eligibleKey.split(",") : [];
+    if (currentEligibleIds.length === 1) {
+      setActiveClubId(currentEligibleIds[0]);
+      return;
+    }
+    if (!activeClubId || !currentEligibleIds.includes(activeClubId)) {
+      setActiveClubId(null);
+    }
+  }, [eligibleKey, activeClubId]);
+
+  if (loading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập và phạm vi CLB." onBack={() => navigate("/")} />;
+  if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản có quyền dealer để xem bảng xoay ca thật." onBack={() => navigate("/")} />;
+  if (error) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi CLB" sub={error} onBack={() => navigate("/")} />;
+  if (eligibleClubs.length === 0) return <Guard icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền điều phối dealer." onBack={() => navigate("/")} />;
+  if (!activeClubId) {
+    return <ClubPicker clubs={eligibleClubs} onSelect={setActiveClubId} onBack={() => navigate("/")} />;
+  }
+
+  return (
+    <DealerSwingClubView
+      key={activeClubId}
+      activeClubId={activeClubId}
+      clubs={eligibleClubs}
+      onSelectClub={setActiveClubId}
+    />
+  );
+}
+
+function DealerSwingClubView({
+  activeClubId,
+  clubs,
+  onSelectClub,
+}: {
+  activeClubId: string;
+  clubs: OperatorClubRow[];
+  onSelectClub: (clubId: string) => void;
+}) {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const scopedIds = useMemo(() => [activeClubId], [activeClubId]);
 
   const tablesQ = useActiveTables(scopedIds);
   const asgQ = useActiveAssignmentsWithTimeline(scopedIds);
   const rosterQ = useCheckedInDealers(scopedIds);
   const outQ = useTodayCheckedOutDealers(scopedIds);
-  const todayVN = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10); // YYYY-MM-DD giờ VN
+  const todayVN = useMemo(() => vnDateAtOffset(0), []);
+  const scheduleDates = useMemo(() => Array.from({ length: 7 }, (_, index) => vnDateAtOffset(index)), []);
+  const [selectedScheduleDate, setSelectedScheduleDate] = useState(todayVN);
+  const scheduleQ = usePublishedDealerSchedule(activeClubId, scheduleDates);
+  const phoneCompletionQ = useDealerSwingPhoneRollout(activeClubId);
   const planQ = useShiftPlanner({ clubIds: scopedIds, workDate: todayVN, mode: "live" }); // yêu cầu xin ca/nghỉ
 
   const [pill, setPill] = useState<Pill>("tables");
@@ -192,12 +184,11 @@ export default function OpsDealerSwing() {
   const [pickFor, setPickFor] = useState<TableVM | null>(null);
   const [breakFor, setBreakFor] = useState<BreakTarget | null>(null);
   const [checkinOpen, setCheckinOpen] = useState(false);
+  const [closeTablesOpen, setCloseTablesOpen] = useState(false);
+  const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [reconcileInitialTableId, setReconcileInitialTableId] = useState<string | null>(null);
   const [suggestTableOpen, setSuggestTableOpen] = useState(false); // chọn bàn thiếu người để gợi ý dealer
   const [placeFor, setPlaceFor] = useState<DealerAttendance | null>(null);   // đưa dealer này vào 1 bàn
-  const [checkinList, setCheckinList] = useState<CheckinDealer[] | null>(null); // null = chưa tải
-  const [checkinSel, setCheckinSel] = useState<Set<string>>(new Set());
-  const [checkinLoading, setCheckinLoading] = useState(false);
-  const [fixTable, setFixTable] = useState<TableVM | null>(null);              // sửa nhầm bàn: chọn dealer thật ở bàn này
   const [tourList, setTourList] = useState<{ id: string; clubId: string; name: string }[] | null>(null);
   const [tourToClose, setTourToClose] = useState<string | null>(null);
   const [dongTour, setDongTour] = useState("");
@@ -213,6 +204,18 @@ export default function OpsDealerSwing() {
 
   const assignments = useMemo(() => (asgQ.data ?? []) as EnrichedAssignment[], [asgQ.data]);
   const roster = useMemo(() => rosterQ.data ?? [], [rosterQ.data]);
+  const selectedScheduleDay = scheduleQ.daysByDate[selectedScheduleDate] ?? null;
+  const scheduleAssignments = useMemo(() => selectedScheduleDay?.assignments ?? [], [selectedScheduleDay]);
+  const todayScheduleAssignments = useMemo(
+    () => scheduleQ.daysByDate[todayVN]?.assignments ?? [],
+    [scheduleQ.daysByDate, todayVN],
+  );
+  const scheduleStats = useMemo(() => ({
+    total: scheduleAssignments.length,
+    confirmed: scheduleAssignments.filter((assignment) => assignment.state === "confirmed").length,
+    arrived: scheduleAssignments.filter((assignment) => assignment.arrivalAt !== null).length,
+    waiting: scheduleAssignments.filter((assignment) => assignment.state === "waiting").length,
+  }), [scheduleAssignments]);
 
   // Yêu cầu xin ca/nghỉ (đọc live qua useShiftPlanner) + resolve tên dealer / nhãn ca
   const reqDealers = planQ.data?.dealers ?? [];
@@ -232,6 +235,13 @@ export default function OpsDealerSwing() {
     const m = new Map<string, string>();
     for (const a of assignments) if (a.attendance_id) m.set(a.attendance_id, a.game_tables?.table_name ?? "");
     return m;
+  }, [assignments]);
+  const tableIdByAttendance = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const assignment of assignments) {
+      if (assignment.attendance_id) map.set(assignment.attendance_id, assignment.table_id);
+    }
+    return map;
   }, [assignments]);
 
   const tableVMs = useMemo<TableVM[]>(() => {
@@ -253,19 +263,39 @@ export default function OpsDealerSwing() {
     for (const d of roster) byState[d.current_state as keyof typeof byState] = (byState[d.current_state as keyof typeof byState] ?? 0) + 1;
     return { openTables: tableVMs.length, inShift: roster.length, ...byState };
   }, [roster, tableVMs.length]);
+  const phoneCloseTables = useMemo(
+    () => tableVMs.map((table) => ({ id: table.id, name: table.name, dealer: table.dealer })),
+    [tableVMs],
+  );
+  const phoneReconcileTables = useMemo(
+    () => tableVMs.map((table) => ({
+      id: table.id,
+      name: table.name,
+      recordedAttendanceId: table.assignment?.attendance_id ?? null,
+      recordedDealerName: table.dealer,
+    })),
+    [tableVMs],
+  );
+  const phoneReconcileDealers = useMemo(
+    () => roster.map((dealer) => ({
+      attendanceId: dealer.id,
+      dealerName: dealer.dealers?.full_name ?? "Dealer",
+      currentTableId: tableIdByAttendance.get(dealer.id) ?? null,
+      state: dealer.current_state,
+    })),
+    [roster, tableIdByAttendance],
+  );
 
   const go = <T,>(setter: (v: T) => void, v: T) => { setTableSheet(null); setDealerSheet(null); requestAnimationFrame(() => setter(v)); };
-  const soon = () => { setTableSheet(null); setDealerSheet(null); setPickFor(null); setBreakFor(null); setCheckinOpen(false); setSuggestTableOpen(false); toast("Nút này đang được nối — sẽ bật sau khi anh xác nhận bảng thật đúng (UAT)"); };
 
-  // ── Nối hành động THẬT (gate opsSwingActions). Cờ OFF → mọi nút giữ nhắc "đang nối"
-  // (soon), 0 gọi RPC/edge. Handlers mirror desktop DealerSwingTab 1:1 (perform_swing /
-  // assign-dealer / manage-break / checkout-dealer) — cùng server, cùng RLS. ──
+  // Existing mobile actions share the same server paths as desktop. The build
+  // flag remains a hard stop and never falls through to an RPC/Edge call.
   const LIVE = FEATURES.opsSwingActions;
   const busyRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const reloadAll = () => { tablesQ.refetch(); asgQ.refetch(); rosterQ.refetch(); outQ.refetch(); };
   const runAction = async (fn: () => Promise<void>) => {
-    if (!LIVE) { soon(); return; }                 // chưa bật cờ → stub
+    if (!LIVE) { toast.warning("Bản dựng này đang ở chế độ chỉ xem."); return; }
     if (busyRef.current) return;                   // chống double-tap (ref đồng bộ)
     busyRef.current = true; setBusy(true);
     try { await fn(); } catch (e: any) { toast.error(e?.message ?? "Lỗi mạng"); } finally { busyRef.current = false; setBusy(false); }
@@ -353,63 +383,6 @@ export default function OpsDealerSwing() {
     reloadAll();
   });
 
-  // Tải danh sách dealer đủ điều kiện check-in (mirror loadCheckinDealers desktop; read-only)
-  const loadCheckin = async () => {
-    setCheckinLoading(true);
-    try {
-      const today = new Date().toISOString().split("T")[0];
-      const { data: activeDealers } = await supabase.from("dealers")
-        .select("id, full_name, tier, club_id").in("club_id", scopedIds).eq("status", "active").order("full_name");
-      const map = new Map<string, { id: string; full_name: string; tier: string }>();
-      for (const d of activeDealers ?? []) map.set(d.id, { id: d.id, full_name: d.full_name, tier: d.tier });
-      const dealerIds = [...map.keys()];
-      if (!dealerIds.length) { setCheckinList([]); return; }
-      // loại dealer đang checked-in / đang ở bàn
-      const { data: activeAtt } = await supabase.from("dealer_attendance").select("dealer_id")
-        .in("dealer_id", dealerIds).eq("status", "checked_in").in("current_state", ["available", "assigned", "on_break", "pre_assigned"]);
-      const skip = new Set((activeAtt ?? []).map((a) => a.dealer_id));
-      const { data: activeAssigns } = await supabase.from("dealer_assignments").select("dealer_id").eq("status", "assigned").in("dealer_id", dealerIds);
-      for (const a of activeAssigns ?? []) skip.add(a.dealer_id);
-      // phân loại: checked-out hôm nay → re-check-in; chưa có attendance → mới
-      const { data: todayAtt } = await supabase.from("dealer_attendance").select("dealer_id, status").eq("shift_date", today).in("dealer_id", dealerIds);
-      const checkedOut = new Set((todayAtt ?? []).filter((a) => a.status === "checked_out").map((a) => a.dealer_id));
-      const withAtt = new Set((todayAtt ?? []).map((a) => a.dealer_id));
-      const out: CheckinDealer[] = [];
-      for (const id of dealerIds) {
-        if (skip.has(id)) continue;
-        const d = map.get(id)!;
-        if (checkedOut.has(id)) out.push({ ...d, wasCheckedOut: true });
-        else if (!withAtt.has(id)) out.push({ ...d, wasCheckedOut: false });
-      }
-      setCheckinList(out);
-    } catch (e: any) { toast.error(e?.message ?? "Lỗi tải danh sách"); setCheckinList([]); }
-    finally { setCheckinLoading(false); }
-  };
-
-  // Check-in các dealer đã chọn → INSERT dealer_attendance (mirror doCheckin desktop; giữ lịch sử)
-  const doCheckin = (ids: string[]) => runAction(async () => {
-    if (!ids.length) return;
-    const today = new Date().toISOString().split("T")[0];
-    const { data: shifts } = await supabase.from("dealer_shifts").select("id").in("club_id", scopedIds).order("start_time").limit(1);
-    const shiftId = (shifts ?? [])[0]?.id ?? null;
-    let ok = 0, fail = 0;
-    for (const dealerId of ids) {
-      const { data: active } = await supabase.from("dealer_attendance").select("id")
-        .eq("dealer_id", dealerId).eq("shift_date", today).eq("status", "checked_in").maybeSingle();
-      if (active) { ok++; continue; }               // idempotency: đã check-in
-      const { error } = await supabase.from("dealer_attendance").insert({
-        dealer_id: dealerId, shift_id: shiftId, shift_date: today, status: "checked_in",
-        current_state: "available", check_in_time: new Date().toISOString(),
-      });
-      if (error) { if (error.code === "23505") { ok++; continue; } fail++; continue; }  // 23505 = đã check-in đồng thời
-      ok++;
-    }
-    if (fail > 0) toast.warning(`Check-in: ${ok} thành công, ${fail} thất bại`);
-    else toast.success(`Đã check-in ${ok} dealer`);
-    setCheckinOpen(false); setCheckinSel(new Set()); setCheckinList(null);
-    reloadAll();
-  });
-
   // Tải danh sách tour (dealer_shifts) để chọn tour đóng (mirror useTours desktop; read-only)
   const loadTours = async () => {
     const { data } = await supabase.from("dealer_shifts").select("id, club_id, tour_name").in("club_id", scopedIds).order("start_time");
@@ -439,61 +412,6 @@ export default function OpsDealerSwing() {
       }).catch(() => {});
     }
     setDongTour(""); setTourToClose(null); setTourList(null);
-    reloadAll();
-  });
-
-  // Sửa nhầm bàn → RPC reconcile_dealer_room_state (mirror CorrectWrongTableDealerModal: dry-run → apply
-  // với CAS plan). Mặc định điện thoại: effective=bây giờ, swap-về-gốc, displaced→pool, KHÔNG admin-override
-  // (sửa quá 120 phút phải làm trên máy tính). Server-authoritative + ghi audit.
-  const doFixWrongTable = (table: TableVM, actual: DealerAttendance) => runAction(async () => {
-    const tableId = table.id, clubId = table.clubId;
-    const recordedBId = table.assignment?.attendance_id ?? null;   // dealer đang ĐƯỢC GHI ở bàn này (B)
-    const actualId = actual.id;                                     // dealer THẬT ở bàn này (A)
-    if (recordedBId === actualId) { toast.info("Dealer này đã đúng bàn — không cần sửa."); setFixTable(null); return; }
-    const aAt = assignments.find((a) => a.attendance_id === actualId && a.table_id !== tableId); // A đang ghi ở bàn khác?
-    const reason = "Dealer vào nhầm bàn (sửa từ điện thoại)";
-    const build = () => {
-      const corrections: any[] = [{ table_id: tableId, actual_attendance_id: actualId }];
-      const displaced: any[] = [];
-      if (aAt) {
-        if (recordedBId && recordedBId !== actualId) corrections.push({ table_id: aAt.table_id, actual_attendance_id: recordedBId });
-        else corrections.push({ table_id: aAt.table_id, actual_attendance_id: null, confirm_empty: true });
-      } else if (recordedBId && recordedBId !== actualId) {
-        displaced.push({ attendance_id: recordedBId, resolution: "pool_available", reason });
-      }
-      return { corrections, displaced };
-    };
-    const call = async (dryRun: boolean, plan: any[] | null) => {
-      const { corrections, displaced } = build();
-      if (plan) for (const c of corrections) {
-        const p = plan.find((r: any) => r.table_id === c.table_id);
-        if (p?.expected_assignment_id) c.expected_assignment_id = p.expected_assignment_id;
-        if (p?.expected_version != null) c.expected_version = p.expected_version;
-      }
-      const { data, error } = await (supabase as any).rpc("reconcile_dealer_room_state", {
-        p_club_id: clubId, p_corrections: corrections, p_effective_at: new Date().toISOString(),
-        p_reason: reason, p_displaced: displaced, p_dry_run: dryRun, p_admin_override: false,
-      });
-      if (error) throw new Error(error.message);
-      return data as any;
-    };
-    const dry = await call(true, null);
-    if (dry?.outcome === "noop") { toast.info("Hệ thống đã khớp thực tế — không cần sửa."); setFixTable(null); return; }
-    if (dry?.outcome !== "dry_run" || !dry?.can_apply) {
-      const m: Record<string, string> = {
-        dealer_not_checked_in: "Dealer này chưa check-in.", effective_at_too_old: "Quá 120 phút — sửa trên máy tính (cần quyền admin).",
-        forbidden: "Không có quyền sửa bàn cho CLB này.", override_forbidden: "Chỉ admin sửa quá 120 phút.",
-      };
-      toast.error(m[dry?.outcome] ?? `Không sửa được: ${dry?.detail ?? dry?.outcome ?? "xung đột trạng thái"}`); return;
-    }
-    const r = await call(false, dry.plan ?? null);
-    if (r?.outcome === "applied") {
-      const s = r.summary ?? {};
-      toast.success(`Đã sửa nhầm bàn ${table.name}`, { description: `Chuyển: ${s.moved ?? 0} · Gán: ${s.assigned ?? 0} · Giải phóng: ${s.released ?? 0}` });
-    } else if (r?.outcome === "noop") toast.info("Không cần sửa.");
-    else if (r?.outcome === "race_lost") toast.warning("Trạng thái phòng vừa đổi — thử lại.");
-    else toast.error(`Sửa thất bại: ${r?.outcome ?? "lỗi"}`);
-    setFixTable(null);
     reloadAll();
   });
 
@@ -569,13 +487,7 @@ export default function OpsDealerSwing() {
     planQ.refetch();
   });
 
-  // ---- guards (ordered: auth → login → clubs → permission) ----
-  if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." onBack={() => navigate("/")} />;
-  if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản có quyền dealer để xem bảng xoay ca thật." onBack={() => navigate("/")} />;
-  if (clubs === null) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải bảng…" sub="Lấy dữ liệu câu lạc bộ." onBack={() => navigate("/")} />;
-  if (scopedIds.length === 0 && !isAdmin) return <Guard icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền điều phối dealer." onBack={() => navigate("/")} />;
-
-  const clubName = clubs && clubs.length ? clubs.map((c) => c.name).join(", ") : "Toàn quyền";
+  const activeClub = clubs.find((club) => club.id === activeClubId)!;
 
   return (
     <div className="ios-in space-y-4 pt-1">
@@ -584,8 +496,26 @@ export default function OpsDealerSwing() {
           <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> App chính
         </button>
         <h1 className="mt-1 text-[26px] font-bold leading-tight text-[#f2ece6]">Dealer Swing</h1>
-        <p className="mt-0.5 text-[14px] text-[#9b8e97]">{clubName} · việc gấp tự nổi lên đầu</p>
+        <p className="mt-0.5 text-[14px] text-[#9b8e97]">{activeClub.name} · việc gấp tự nổi lên đầu</p>
       </header>
+
+      {clubs.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto px-1 pb-1" aria-label="Chọn câu lạc bộ">
+          {clubs.map((club) => (
+            <button
+              key={club.id}
+              type="button"
+              onClick={() => onSelectClub(club.id)}
+              className={cn(
+                "ios-press-sm shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-medium",
+                club.id === activeClubId ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]",
+              )}
+            >
+              {club.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {LIVE ? (
         <div className="rounded-xl bg-emerald-400/8 px-3 py-2 text-[12px] text-emerald-300/90">
@@ -593,7 +523,14 @@ export default function OpsDealerSwing() {
         </div>
       ) : (
         <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">
-          Dữ liệu <b>thật</b>. Các nút hành động đang được nối — bấm sẽ nhắc; sẽ bật sau khi anh xác nhận bảng đúng.
+          Dữ liệu thật · bản dựng này đang ở chế độ chỉ xem.
+        </div>
+      )}
+
+      {phoneCompletionQ.error && (
+        <div role="alert" className="flex items-start gap-2 rounded-xl bg-rose-400/8 px-3 py-2 text-[12px] text-rose-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>Không kiểm tra được quyền thao tác phone: {phoneCompletionQ.error}</span>
         </div>
       )}
 
@@ -659,7 +596,7 @@ export default function OpsDealerSwing() {
         )
       )}
 
-      {/* D4a — Lịch dealer swing (UI mobile mock, không đổi logic xếp ca) */}
+      {/* D4a — Lịch dealer swing đã phát hành, chỉ xem trên phone */}
       {pill === "schedule" && (
         <div className="space-y-3">
           <div className="ios-card overflow-hidden p-4">
@@ -667,14 +604,25 @@ export default function OpsDealerSwing() {
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#c9a86a]/12 text-[#c9a86a]">
                 <CalendarDays className="h-5 w-5" />
               </span>
-              <span className="rounded-full bg-emerald-400/12 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">mobile draft</span>
+              {selectedScheduleDay && (
+                <span className="rounded-full bg-emerald-400/12 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+                  Đã phát hành
+                </span>
+              )}
             </div>
-            <h2 className="mt-3 text-[18px] font-semibold leading-tight text-[#f2ece6]">Lịch Dealer Swing</h2>
-            <p className="mt-1 text-[13px] leading-5 text-[#9b8e97]">Bản UI mobile để floor xem coverage, thiếu ca, final table và yêu cầu đổi lịch trong cùng một luồng.</p>
+            <h2 className="mt-3 text-[18px] font-semibold leading-tight text-[#f2ece6]">Lịch đã phát hành</h2>
+            <p className="mt-1 text-[13px] leading-5 text-[#9b8e97]">
+              {scheduleDateParts(selectedScheduleDate).full} · chỉ xem lịch đã được lưu và phát hành.
+            </p>
             <div className="mt-3 grid grid-cols-4 gap-2">
-              {SCHEDULE_STATS.map((stat) => (
+              {[
+                { label: "lượt đã xếp", value: scheduleStats.total, cls: "text-sky-300" },
+                { label: "đã xác nhận", value: scheduleStats.confirmed, cls: "text-emerald-300" },
+                { label: "đã check-in", value: scheduleStats.arrived, cls: "text-[#c9a86a]" },
+                { label: "đang chờ ca", value: scheduleStats.waiting, cls: "text-amber-300" },
+              ].map((stat) => (
                 <div key={stat.label} className="rounded-2xl border border-white/8 bg-black/20 px-2.5 py-2">
-                  <div className={cn("text-[20px] font-bold leading-none tabular-nums", toneTextCls[stat.tone])}>{stat.value}</div>
+                  <div className={cn("text-[20px] font-bold leading-none tabular-nums", stat.cls)}>{stat.value}</div>
                   <div className="mt-1 min-h-[26px] text-[10.5px] font-medium leading-[13px] text-[#91a49b]">{stat.label}</div>
                 </div>
               ))}
@@ -682,105 +630,102 @@ export default function OpsDealerSwing() {
           </div>
 
           <div className="ios-card p-3.5">
-            <SectionLabel>Tuần này</SectionLabel>
+            <SectionLabel>7 ngày tới</SectionLabel>
             <div className="mt-2 grid grid-cols-7 gap-1.5">
-              {SCHEDULE_DAYS.map((day) => (
-                <button
-                  key={`${day.label}-${day.day}`}
-                  onClick={soon}
-                  className={cn(
-                    "ios-press-sm rounded-2xl border px-1.5 py-2 text-center",
-                    day.status === "active" && "border-[#c9a86a]/60 bg-[#c9a86a]/15 text-[#f2ece6]",
-                    day.status === "issue" && "border-rose-400/30 bg-rose-400/10 text-rose-200",
-                    day.status === "normal" && "border-white/8 bg-white/[0.035] text-[#9b8e97]",
-                  )}
-                >
-                  <span className="block text-[10px] font-semibold uppercase leading-none">{day.label}</span>
-                  <span className="mt-1 block text-[15px] font-semibold leading-none tabular-nums">{day.day}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="ios-card p-3.5">
-            <div className="flex items-center justify-between gap-3">
-              <SectionLabel>Coverage theo ca</SectionLabel>
-              <span className="rounded-full bg-rose-400/12 px-2 py-0.5 text-[11px] font-semibold text-rose-300">thiếu 3</span>
-            </div>
-            <div className="mt-3 space-y-2.5">
-              {SHIFT_BLOCKS.map((shift) => {
-                const pct = Math.min(100, Math.round((shift.assigned / shift.need) * 100));
-                const isShort = shift.assigned < shift.need;
+              {scheduleDates.map((date) => {
+                const parts = scheduleDateParts(date);
+                const selected = date === selectedScheduleDate;
+                const published = Boolean(scheduleQ.daysByDate[date]);
                 return (
-                  <div key={shift.id} className="rounded-2xl border border-white/8 bg-black/20 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[15px] font-semibold text-[#f2ece6]">{shift.label}</div>
-                        <div className="mt-0.5 text-[12px] leading-4 text-[#9b8e97]">{shift.note}</div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className={cn("text-[18px] font-bold leading-none tabular-nums", isShort ? "text-rose-300" : "text-emerald-300")}>{shift.assigned}/{shift.need}</div>
-                        <div className="mt-1 text-[10px] font-medium text-[#6f8078]">{shift.from}-{shift.to}</div>
-                      </div>
-                    </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/8">
-                      <div className={cn("h-full rounded-full", isShort ? "bg-rose-400" : "bg-[#c9a86a]")} style={{ width: `${pct}%` }} />
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {shift.tags.map((tag) => <ToneChip key={tag.label} label={tag.label} tone={tag.tone} />)}
-                    </div>
-                  </div>
+                  <button
+                    key={date}
+                    type="button"
+                    onClick={() => setSelectedScheduleDate(date)}
+                    aria-pressed={selected}
+                    className={cn(
+                      "ios-press-sm relative rounded-2xl border px-1.5 py-2 text-center",
+                      selected
+                        ? "border-[#c9a86a]/60 bg-[#c9a86a]/15 text-[#f2ece6]"
+                        : "border-white/8 bg-white/[0.035] text-[#9b8e97]",
+                    )}
+                  >
+                    <span className="block text-[10px] font-semibold uppercase leading-none">{parts.weekday}</span>
+                    <span className="mt-1 block text-[15px] font-semibold leading-none tabular-nums">{parts.day}</span>
+                    {published && <span className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-emerald-300" />}
+                  </button>
                 );
               })}
             </div>
           </div>
-
-          <div className="ios-card p-3.5">
-            <div className="flex items-center justify-between gap-3">
-              <SectionLabel>Timeline tối nay</SectionLabel>
-              <span className="text-[11px] font-semibold text-[#c9a86a]">18:00-02:00</span>
+          {phoneCompletionQ.allowed && tableVMs.length > 0 && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setCloseTablesOpen(true)}
+                className="ios-press ios-fill flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-[13px] font-semibold text-[#f2ece6]"
+              >
+                <FlagTriangleRight className="h-4 w-4 text-rose-300" /> Đóng bàn
+              </button>
+              <button
+                type="button"
+                onClick={() => { setReconcileInitialTableId(null); setReconcileOpen(true); }}
+                className="ios-press ios-fill flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-[13px] font-semibold text-[#f2ece6]"
+              >
+                <ArrowRightLeft className="h-4 w-4 text-[#c9a86a]" /> Sửa sơ đồ
+              </button>
             </div>
-            <div className="mt-3 space-y-3">
-              {TIMELINE_BLOCKS.map((block) => (
-                <div key={block.time} className="flex gap-3">
-                  <div className="w-[48px] shrink-0 text-[14px] font-semibold leading-6 tabular-nums text-[#c9a86a]">{block.time}</div>
-                  <div className="min-w-0 flex-1 rounded-2xl border border-white/8 bg-black/18 p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="text-[15px] font-semibold leading-tight text-[#f2ece6]">{block.title}</div>
-                      {block.title.includes("Final") && <ToneChip label="final" tone="final" />}
+          )}
+
+          {scheduleQ.loading ? (
+            <div className="ios-card p-8 text-center text-[13px] text-[#9b8e97]">
+              <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-[#c9a86a]" />
+              Đang tải lịch đã phát hành…
+            </div>
+          ) : scheduleQ.error ? (
+            <div className="ios-card p-5 text-center">
+              <AlertTriangle className="mx-auto h-6 w-6 text-rose-300" />
+              <p className="mt-2 text-[13px] text-rose-200">{scheduleQ.error}</p>
+              <button type="button" onClick={scheduleQ.refetch} className="ios-press ios-fill mt-3 rounded-xl px-4 py-2 text-[13px] font-semibold text-[#f2ece6]">
+                Thử lại
+              </button>
+            </div>
+          ) : !selectedScheduleDay ? (
+            <Empty text="CLB chưa phát hành lịch cho ngày này." />
+          ) : scheduleAssignments.length === 0 ? (
+            <Empty text="Lịch đã phát hành nhưng chưa có dealer nào được xếp." />
+          ) : (
+            <div className="ios-group">
+              {scheduleAssignments.map((assignment) => {
+                const state = SCHEDULE_STATE[assignment.state];
+                return (
+                  <div key={assignment.id} className="ios-row-inset px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[15px] font-semibold text-[#f2ece6]">{assignment.dealerName}</div>
+                        <div className="mt-0.5 text-[12px] tabular-nums text-[#9b8e97]">
+                          {hhmm(assignment.scheduledStartAt)}-{hhmm(assignment.scheduledEndAt)}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                        {assignment.late && <span className="rounded-full bg-rose-400/12 px-2 py-0.5 text-[10.5px] font-semibold text-rose-300">Đi trễ</span>}
+                        <span className={cn("rounded-full px-2 py-0.5 text-[10.5px] font-semibold", state.cls)}>{state.label}</span>
+                      </div>
                     </div>
-                    <div className="mt-1 text-[12px] leading-4 text-[#9b8e97]">{block.note}</div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {block.dealers.map((dealer) => (
-                        <button
-                          key={`${block.time}-${dealer.name}-${dealer.detail}`}
-                          onClick={dealer.empty ? () => setSuggestTableOpen(true) : soon}
-                          className={cn(
-                            "ios-press-sm rounded-full border px-2.5 py-1.5 text-left",
-                            dealer.empty && "border-dashed border-[#c9a86a]/45 bg-[#c9a86a]/10 text-[#c9a86a]",
-                            dealer.final && "border-pink-400/30 bg-pink-400/10 text-pink-200",
-                            !dealer.empty && !dealer.final && "border-white/8 bg-white/[0.04] text-[#f2ece6]",
-                          )}
-                        >
-                          <span className="block text-[11px] font-semibold leading-none">{dealer.name}</span>
-                          <span className="mt-1 block text-[10px] leading-none text-[#91a49b]">{dealer.detail}</span>
-                        </button>
-                      ))}
-                    </div>
+                    {(assignment.arrivalAt || assignment.payrollStartAt) && (
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-[#91a49b]">
+                        <span>Đến CLB <b className="font-semibold text-[#d8cec6]">{hhmm(assignment.arrivalAt)}</b></span>
+                        <span>Bắt đầu công <b className="font-semibold text-[#d8cec6]">{hhmm(assignment.payrollStartAt)}</b></span>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => setSuggestTableOpen(true)} className="ios-press ios-primary flex min-h-[46px] items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[13px] font-bold">
-              <UserPlus className="h-4 w-4" /> Chọn dealer
-            </button>
-            <button onClick={() => setPill("requests")} className="ios-press ios-fill flex min-h-[46px] items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[13px] font-semibold text-[#f2ece6]">
-              <Send className="h-4 w-4 text-[#c9a86a]" /> Yêu cầu
-            </button>
-          </div>
+          <button onClick={() => setPill("requests")} className="ios-press ios-fill flex min-h-[46px] w-full items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[13px] font-semibold text-[#f2ece6]">
+            <Send className="h-4 w-4 text-[#c9a86a]" /> Xem yêu cầu đổi lịch
+          </button>
         </div>
       )}
 
@@ -855,10 +800,12 @@ export default function OpsDealerSwing() {
             <Line l="Sẵn sàng" v={String(staff.available)} />
           </div>
           <div className="ios-group">
-            <button onClick={() => { setCheckinOpen(true); loadCheckin(); }} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left">
-              <QrCode className="h-5 w-5 text-[#d8bc85]" />
-              <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">Check-in dealer mới</span><span className="block text-[12px] text-[#9b8e97]">chọn từ danh sách dealer đang rảnh</span></span>
-            </button>
+            {phoneCompletionQ.allowed && (
+              <button onClick={() => setCheckinOpen(true)} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left">
+                <QrCode className="h-5 w-5 text-[#d8bc85]" />
+                <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">Check-in dealer mới</span><span className="block text-[12px] text-[#9b8e97]">quét QR, dán mã hoặc chọn danh sách</span></span>
+              </button>
+            )}
             <button onClick={() => setPill("schedule")} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left">
               <Monitor className="h-5 w-5 text-[#9b8e97]" />
               <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">Gợi ý điều phối &amp; xếp lịch</span><span className="block text-[12px] text-[#9b8e97]">xem bản mobile trong tab Lịch</span></span>
@@ -972,7 +919,18 @@ export default function OpsDealerSwing() {
               <SheetRow icon={<Coffee className="h-5 w-5 text-amber-300" />} label={`Cho ${tableSheet.dealer ?? "dealer"} nghỉ`}
                 onTap={() => go(setBreakFor, { attendanceId: tableSheet.assignment!.attendance_id, clubId: tableSheet.clubId, name: tableSheet.dealer ?? "dealer" })} />
             )}
-            <SheetRow icon={<ArrowRightLeft className="h-5 w-5 text-[#9b8e97]" />} label="Sửa nhầm bàn (chọn dealer thật)" onTap={() => tableSheet && go(setFixTable, tableSheet)} />
+            {phoneCompletionQ.allowed && (
+              <SheetRow
+                icon={<ArrowRightLeft className="h-5 w-5 text-[#9b8e97]" />}
+                label="Sửa nhầm bàn (mở sơ đồ)"
+                onTap={() => {
+                  const tableId = tableSheet?.id ?? null;
+                  setTableSheet(null);
+                  setReconcileInitialTableId(tableId);
+                  setReconcileOpen(true);
+                }}
+              />
+            )}
             <SheetRow icon={<History className="h-5 w-5 text-[#9b8e97]" />} label="Lịch sử bàn này" onTap={() => tableSheet && openTableHistory(tableSheet)} />
           </div>
         </SheetContent>
@@ -1141,33 +1099,6 @@ export default function OpsDealerSwing() {
         </SheetContent>
       </Sheet>
 
-      {/* sửa nhầm bàn — chọn dealer THẬT đang ngồi ở bàn này */}
-      <Sheet open={fixTable !== null} onOpenChange={(v) => { if (!v) setFixTable(null); }}>
-        <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
-          <div className="ios-grabber mb-3 mt-1" />
-          <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Ai đang thật sự ở {fixTable?.name}?</SheetTitle></SheetHeader>
-          <div className="mt-1 text-center text-[12px] leading-4 text-[#9b8e97]">Hệ thống đang ghi: <b>{fixTable?.dealer ?? "trống"}</b>. Chọn dealer thật đang ngồi — server sẽ sửa + ghi audit.</div>
-          <div className="ios-group mt-3 max-h-[46vh] overflow-y-auto">
-            {roster.filter((d) => d.dealers?.club_id === fixTable?.clubId).length === 0
-              ? <div className="px-4 py-6 text-center text-[13px] text-[#9b8e97]">Không có dealer đang trong ca.</div>
-              : roster.filter((d) => d.dealers?.club_id === fixTable?.clubId).map((d) => {
-                const isRecorded = fixTable?.assignment?.attendance_id === d.id;
-                return (
-                  <button key={d.id} disabled={busy} onClick={() => fixTable && doFixWrongTable(fixTable, d)}
-                    className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left disabled:opacity-50">
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[15px] text-[#f2ece6]">{d.dealers?.full_name ?? "—"}</span>
-                      <span className="block text-[12px] text-[#9b8e97]">{DEALER_CHIP[d.current_state]?.label ?? d.current_state}{tableByAttendance.get(d.id) ? ` · ${tableByAttendance.get(d.id)}` : ""}</span>
-                    </span>
-                    {isRecorded ? <span className="rounded-full bg-white/6 px-2 py-0.5 text-[11px] text-[#9b8e97]">đang ghi</span> : <span className="text-[13px] text-[#c9a86a]">chọn</span>}
-                  </button>
-                );
-              })}
-          </div>
-          <div className="mt-2.5 text-center text-[12px] text-[#7c7079]">sửa quá 120 phút hoặc nhiều bàn domino → làm trên máy tính</div>
-        </SheetContent>
-      </Sheet>
-
       {/* đưa dealer vào bàn — chọn bàn đang thiếu người */}
       <Sheet open={placeFor !== null} onOpenChange={(v) => { if (!v) setPlaceFor(null); }}>
         <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
@@ -1191,42 +1122,43 @@ export default function OpsDealerSwing() {
         </SheetContent>
       </Sheet>
 
-      {/* P2 — check-in (chọn từ danh sách dealer đủ điều kiện) */}
-      <Sheet open={checkinOpen} onOpenChange={(v) => { setCheckinOpen(v); if (!v) { setCheckinSel(new Set()); setCheckinList(null); } }}>
-        <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
-          <div className="ios-grabber mb-3 mt-1" />
-          <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Check-in dealer</SheetTitle></SheetHeader>
-          <div className="mt-3 grid h-[56px] place-items-center rounded-2xl border border-dashed border-white/12 text-[12px] text-[#7c7079]">
-            <span className="flex items-center gap-1.5"><QrCode className="h-4 w-4" /> Quét QR sẽ bổ sung sau — chọn từ danh sách bên dưới</span>
-          </div>
-          {checkinLoading ? (
-            <div className="mt-3 flex items-center justify-center gap-2 py-6 text-[13px] text-[#9b8e97]"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải…</div>
-          ) : !checkinList || checkinList.length === 0 ? (
-            <div className="mt-3 py-6 text-center text-[13px] text-[#9b8e97]">Không có dealer nào để check-in (tất cả đang trong ca).</div>
-          ) : (
-            <>
-              <div className="ios-group mt-3 max-h-[46vh] overflow-y-auto">
-                {checkinList.map((d) => {
-                  const on = checkinSel.has(d.id);
-                  return (
-                    <button key={d.id} onClick={() => setCheckinSel((s) => { const n = new Set(s); n.has(d.id) ? n.delete(d.id) : n.add(d.id); return n; })}
-                      className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
-                      <span className={cn("grid h-5 w-5 place-items-center rounded-md border", on ? "border-[#c9a86a] bg-[#c9a86a] text-[#241A08]" : "border-white/20 text-transparent")}>✓</span>
-                      <span className="min-w-0 flex-1 text-[15px] text-[#f2ece6]">{d.full_name}</span>
-                      {d.wasCheckedOut && <span className="rounded-full bg-white/6 px-2 py-0.5 text-[11px] text-[#9b8e97]">vào lại</span>}
-                      <span className="rounded-full bg-white/6 px-1.5 py-0.5 text-[11px] text-[#9b8e97]">{d.tier}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <button disabled={checkinSel.size === 0 || busy} onClick={() => doCheckin([...checkinSel])}
-                className="ios-press ios-fill mt-3 w-full rounded-2xl py-3 text-[14px] font-medium text-[#f2ece6] disabled:opacity-40">
-                Check-in {checkinSel.size} dealer đã chọn
-              </button>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
+      {phoneCompletionQ.allowed && (
+        <DealerPhoneCheckinSheet
+          open={checkinOpen}
+          activeClubId={activeClubId}
+          scheduleAssignments={todayScheduleAssignments}
+          onOpenChange={setCheckinOpen}
+          onCompleted={() => { reloadAll(); scheduleQ.refetch(); }}
+          onRolloutDisabled={phoneCompletionQ.refetch}
+        />
+      )}
+      {phoneCompletionQ.allowed && (
+        <DealerPhoneCloseTablesSheet
+          open={closeTablesOpen}
+          activeClubId={activeClubId}
+          tables={phoneCloseTables}
+          onOpenChange={setCloseTablesOpen}
+          onCompleted={reloadAll}
+          onConflict={reloadAll}
+          onRolloutDisabled={phoneCompletionQ.refetch}
+        />
+      )}
+      {phoneCompletionQ.allowed && (
+        <DealerPhoneReconcileSheet
+          open={reconcileOpen}
+          activeClubId={activeClubId}
+          initialTableId={reconcileInitialTableId}
+          tables={phoneReconcileTables}
+          dealers={phoneReconcileDealers}
+          onOpenChange={(nextOpen) => {
+            setReconcileOpen(nextOpen);
+            if (!nextOpen) setReconcileInitialTableId(null);
+          }}
+          onApplied={reloadAll}
+          onRaceLost={reloadAll}
+          onRolloutDisabled={phoneCompletionQ.refetch}
+        />
+      )}
     </div>
   );
 }
@@ -1277,6 +1209,32 @@ function SheetRow({ icon, label, onTap }: { icon: React.ReactNode; label: React.
 }
 function Empty({ text }: { text: string }) {
   return <div className="ios-card py-10 text-center text-[14px] text-[#9b8e97]">{text}</div>;
+}
+function ClubPicker({ clubs, onSelect, onBack }: { clubs: OperatorClubRow[]; onSelect: (clubId: string) => void; onBack: () => void }) {
+  return (
+    <div className="ios-in space-y-4 pt-1">
+      <header className="px-1">
+        <button onClick={onBack} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
+          <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> App chính
+        </button>
+        <h1 className="mt-1 text-[26px] font-bold leading-tight text-[#f2ece6]">Dealer Swing</h1>
+        <p className="mt-0.5 text-[14px] text-[#9b8e97]">Chọn CLB cần điều hành trong ca này.</p>
+      </header>
+      <div className="ios-group">
+        {clubs.map((club) => (
+          <button
+            key={club.id}
+            type="button"
+            onClick={() => onSelect(club.id)}
+            className="ios-press-sm ios-row-inset flex w-full items-center justify-between gap-3 px-4 py-4 text-left"
+          >
+            <span className="min-w-0 truncate text-[15px] font-semibold text-[#f2ece6]">{club.name}</span>
+            <ArrowRight className="h-4 w-4 shrink-0 text-[#c9a86a]" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 function Guard({ icon, title, sub, onBack }: { icon: React.ReactNode; title: string; sub: string; onBack: () => void }) {
   return (

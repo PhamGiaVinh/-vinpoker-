@@ -1,5 +1,8 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { buildDealerCandidates } from "../../_shared/pickNextDealer.ts";
+import {
+  buildDealerCandidates,
+  type BuildCandidatesResult,
+} from "../../_shared/pickNextDealer.ts";
 import { solveGreedyLazy } from "../../_shared/rotationSolver.ts";
 import type { SolverOptions } from "../../_shared/rotationSolver.ts";
 import {
@@ -15,6 +18,11 @@ import type {
 
 const RPC_TIMEOUT_MS = parseInt(Deno.env.get("PASS15_RPC_TIMEOUT_MS") ?? "5000");
 const MAX_PAIRS_PER_RUN = parseInt(Deno.env.get("PASS15_MAX_PAIRS") ?? "10");
+
+export interface Pass15Dependencies {
+  candidateBuilder?: typeof buildDealerCandidates;
+  solver?: typeof solveGreedyLazy;
+}
 
 async function callWithTimeout<T>(
   promise: any,
@@ -47,7 +55,8 @@ async function verifyStillUnassigned(
 export async function pass15RotationPlanner(
   admin: any,
   clubId: string,
-  options: Pass15Options
+  options: Pass15Options,
+  dependencies: Pass15Dependencies = {},
 ): Promise<Pass15Result> {
   const { dryRun, preAnnounceMinutes, requiredGameTypes, cycleExcludedIds } = options;
   const solverStart = Date.now();
@@ -109,14 +118,30 @@ export async function pass15RotationPlanner(
     };
   }
 
-  // Step 3: Build rotation candidates via buildDealerCandidates
-  const { candidates: rawCandidates, avgBreakRatio } = await buildDealerCandidates(
+  // Step 3: A failed snapshot is not a valid empty dealer pool. Stop before the
+  // solver or any pre-assignment RPC; process-swing maps this explicitly.
+  const candidateResult: BuildCandidatesResult = await (
+    dependencies.candidateBuilder ?? buildDealerCandidates
+  )(
     admin, clubId, {
       excludeAttendanceIds: cycleExcludedIds,
       includeScoreBreakdown: true,
       clubBreakDurationMinutes: 20,
     }
   );
+  if (candidateResult.status !== "ok") {
+    return {
+      assigned: 0,
+      unassigned: 0,
+      raceLost: 0,
+      errors: [],
+      missReasons: {},
+      solverDurationMs: Date.now() - solverStart,
+      candidateStatus: candidateResult.status,
+      candidateErrorCode: candidateResult.errorCode ?? `candidate_snapshot_${candidateResult.status}`,
+    };
+  }
+  const { candidates: rawCandidates, avgBreakRatio } = candidateResult;
 
   // Dedup + convert to RotationCandidate
   const rotationCandidates = [];
@@ -133,7 +158,7 @@ export async function pass15RotationPlanner(
     clubBreakDurationMinutes: 20,
   };
 
-  const result = solveGreedyLazy(tables, rotationCandidates, solverOpts);
+  const result = (dependencies.solver ?? solveGreedyLazy)(tables, rotationCandidates, solverOpts);
 
   const missReasons: Partial<Record<MissedTableReason, number>> = {};
   for (const { reason } of result.unassignedTables) {

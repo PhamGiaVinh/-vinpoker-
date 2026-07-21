@@ -7,8 +7,12 @@ import {
   computeNextSwingAt,
   fillEmptyTables,
   getTableIdsForClub,
+  type FillResult,
 } from "../_shared/dealer-utils.ts";
-import { buildDealerCandidates } from "../_shared/pickNextDealer.ts";
+import {
+  buildDealerCandidates,
+  isCandidateSnapshotFailure,
+} from "../_shared/pickNextDealer.ts";
 import { getFeatureTablePoolIds } from "../_shared/featureTableGate.ts"; // Patch 5b: feature/final pool gate
 import { scaleLockTimeoutSeconds } from "../_shared/lockTimeout.ts";
 import {
@@ -47,6 +51,27 @@ import {
   sortPass3Candidates,
 } from "../_shared/preAssignState.ts";
 import { SWING_POLICY } from "../_shared/swingPolicy.ts";
+import { parseRequestedClubIds } from "./requestScope.ts";
+import {
+  assessEmptyFillOutcome,
+  parseProcessSwingDispatchContext,
+  type ProcessSwingDispatchContext,
+} from "./dispatchContext.ts";
+import { assessPreAssignPreflight } from "./preAssignPreflight.ts";
+import {
+  assessAllTablesOtAlert,
+  assessAvailableDealerCount,
+  assessCandidateSnapshotFailure,
+  assessCoreQueryFailure,
+  assessDealerInventory,
+  assessLockOwnershipLoss,
+  assessShortageNotifySetting,
+  ensureLockOwnership,
+  LockOwnershipLost,
+  mergeDispatchOutcome,
+  type DispatchSafetyOutcome,
+  type ProcessSwingDispatchState,
+} from "./executionSafety.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -510,41 +535,6 @@ async function bulkClearDealerPreAssignedFields(
   return success;
 }
 
-// ─── B2.2b lock fencing — ownership guard ───────────────────────────────────
-// Thrown when this run no longer holds the club lock (lease expired → reclaimed by
-// another runner). Caught per-club → graceful abort of remaining passes + release.
-class LockOwnershipLost extends Error {
-  constructor(clubId: string) {
-    super(`lock ownership lost for club ${clubId}`);
-    this.name = "LockOwnershipLost";
-  }
-}
-
-// Heartbeat-extend the club lease (B2.2b). Throws LockOwnershipLost if we no longer own
-// it (token mismatch / lease already expired = reclaimed). Transient RPC errors are logged
-// but NON-fatal (keep working with the lease we hold). lockToken null → no-op (legacy path).
-async function ensureLockOwnership(
-  admin: any,
-  clubId: string,
-  lockToken: string | null,
-  leaseSeconds: number,
-): Promise<void> {
-  if (!lockToken) return;
-  const { data, error } = await admin.rpc("extend_club_lock_lease", {
-    p_club_id: clubId,
-    p_lock_token: lockToken,
-    p_timeout_seconds: leaseSeconds,
-  });
-  if (error) {
-    console.error(`[process-swing] extend_club_lock_lease failed club=${clubId}; aborting before mutation:`, error.message);
-    throw new LockOwnershipLost(clubId);
-  }
-  if (data !== true) {
-    console.warn(`[process-swing] \U0001F512 lock ownership LOST club=${clubId} — lease reclaimed; aborting remaining passes`);
-    throw new LockOwnershipLost(clubId);
-  }
-}
-
 type ProcessSwingAuth = { internal: boolean; uid: string | null };
 
 async function authenticateProcessSwingRequest(
@@ -611,11 +601,36 @@ Deno.serve(async (req: Request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  let dispatchAdmin: any = null;
+  let dispatchContext: ProcessSwingDispatchContext | null = null;
+  let dispatchFinalState: ProcessSwingDispatchState = "completed";
+  let dispatchErrorCode: string | null = null;
+  const dispatchDiagnostics: Array<{ club_id: string; stage: string; code: string }> = [];
+  const markDispatchOutcome = (
+    state: ProcessSwingDispatchState,
+    errorCode: string | null,
+  ) => {
+    const merged = mergeDispatchOutcome(
+      { state: dispatchFinalState, errorCode: dispatchErrorCode },
+      { state, errorCode },
+    );
+    dispatchFinalState = merged.state;
+    dispatchErrorCode = merged.errorCode;
+  };
+  const recordDispatchSafetyOutcome = (
+    clubId: string,
+    outcome: DispatchSafetyOutcome,
+  ) => {
+    markDispatchOutcome(outcome.dispatchState, outcome.dispatchErrorCode);
+    dispatchDiagnostics.push({ club_id: clubId, ...outcome.diagnostic });
+  };
+
   try {
     const admin: any = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+    dispatchAdmin = admin;
 
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
     if (!botToken) {
@@ -626,9 +641,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const body = await req.json().catch(() => ({}));
+    const parsedBody = await req.json().catch(() => ({}));
+    const body: any = parsedBody && typeof parsedBody === "object" && !Array.isArray(parsedBody)
+      ? parsedBody
+      : {};
     const {
       club_id: clubId,
+      club_ids: requestedClubIdsValue,
       shift_id: shiftId,
       force_all: forceAll = false,
       dry_run: dryRun = false,
@@ -646,6 +665,95 @@ Deno.serve(async (req: Request) => {
     );
     if (authResult instanceof Response) return authResult;
 
+    if (!authResult.internal && requestedClubIdsValue !== undefined) {
+      return new Response(JSON.stringify({ error: "club_ids is restricted to internal callers" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    let requestedClubIds: string[] | undefined;
+    try {
+      requestedClubIds = parseRequestedClubIds(requestedClubIdsValue);
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "Invalid club_ids" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (clubId && requestedClubIds !== undefined) {
+      return new Response(JSON.stringify({ error: "Use club_id or club_ids, not both" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      dispatchContext = parseProcessSwingDispatchContext(body);
+    } catch (err) {
+      return new Response(JSON.stringify({
+        error: "invalid_dispatch_context",
+        detail: err instanceof Error ? err.message : "Invalid dispatch context",
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (dispatchContext) {
+      if (!authResult.internal) {
+        return new Response(JSON.stringify({ error: "dispatch_context_requires_internal_auth" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: claim, error: claimError } = await admin.rpc(
+        "claim_process_swing_dispatch",
+        {
+          p_run_id: dispatchContext.runId,
+          p_request_id: dispatchContext.requestId,
+          p_club_id: dispatchContext.clubId,
+        },
+      );
+      if (claimError) {
+        dispatchFinalState = "dependency_unavailable";
+        dispatchErrorCode = "dispatch_claim_unavailable";
+        return new Response(JSON.stringify({
+          ok: false,
+          status: "dependency_unavailable",
+          error_code: dispatchErrorCode,
+        }), {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const claimOutcome = String(claim?.outcome ?? "invalid_claim_response");
+      if (claimOutcome === "duplicate") {
+        return new Response(JSON.stringify({
+          ok: true,
+          status: "duplicate",
+          business_state: claim?.business_state ?? null,
+          run_id: dispatchContext.runId,
+          request_id: dispatchContext.requestId,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (claimOutcome !== "claimed") {
+        return new Response(JSON.stringify({
+          ok: false,
+          status: "business_failed",
+          error_code: `dispatch_${claimOutcome}`,
+        }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const startTime = Date.now();
     // B2.2b: per-invocation owner id stamped on the fenced club lock (observability).
     const runOwnerId = `process-swing:${crypto.randomUUID()}`;
@@ -653,7 +761,10 @@ Deno.serve(async (req: Request) => {
 
     let clubIds: string[] = [];
     if (clubId) {
-      clubIds = [clubId];
+      clubIds = [String(clubId)];
+    } else if (requestedClubIds !== undefined) {
+      // An explicit [] is a valid no-work scope from run_process_swing_cron().
+      clubIds = requestedClubIds;
     } else {
       const { data: clubs } = await admin
         .from("clubs")
@@ -713,12 +824,14 @@ Deno.serve(async (req: Request) => {
 
         if (lockErr) {
           console.error(`[process-swing] \u274C Lock RPC failed for ${cid}:`, lockErr.message);
+          markDispatchOutcome("business_failed", "club_lock_query_failed");
           clubsSkippedError++;
           continue;
         }
 
         if (!lockResult || typeof lockResult !== "object" || !("acquired" in lockResult)) {
           console.error(`[process-swing] \u274C Invalid lock result for ${cid}:`, JSON.stringify(lockResult));
+          markDispatchOutcome("business_failed", "club_lock_invalid_response");
           clubsSkippedError++;
           continue;
         }
@@ -726,6 +839,7 @@ Deno.serve(async (req: Request) => {
         const acquired = (lockResult as LockAcquisitionResult).acquired === true;
         if (!acquired) {
           console.log(`[process-swing] \U0001F512 Club ${cid} locked by another instance`);
+          markDispatchOutcome("locked", "club_lock_held");
           clubsSkippedLocked++;
           continue;
         }
@@ -734,6 +848,7 @@ Deno.serve(async (req: Request) => {
         lockAcquired = true;
       } catch (err) {
         console.error(`[process-swing] \u274C Lock acquisition exception for ${cid}:`, err);
+        markDispatchOutcome("business_failed", "club_lock_exception");
         clubsSkippedError++;
         continue;
       }
@@ -745,6 +860,7 @@ Deno.serve(async (req: Request) => {
           clubCfg = getClubConfig(allClubConfigs, cid);
         } catch (err) {
           console.error(`[process-swing] \u274C Failed to get config for club ${cid}:`, err);
+          markDispatchOutcome("business_failed", "club_config_failed");
           clubsSkippedError++;
           continue;
         }
@@ -765,6 +881,7 @@ Deno.serve(async (req: Request) => {
           clubTableIds = await getTableIdsForClub(admin, cid);
         } catch (err) {
           console.error(`[process-swing] \u274C getTableIdsForClub failed for club ${cid}:`, err);
+          markDispatchOutcome("business_failed", "club_tables_failed");
           clubsSkippedError++;
           continue;
         }
@@ -836,16 +953,26 @@ Deno.serve(async (req: Request) => {
         console.log(`[process-swing] Club ${cid}: querying dealers...`);
         let cidDealerIds: string[];
         try {
-          const { data: clubDealers } = await admin
+          const { data: clubDealers, error: clubDealersError } = await admin
             .from("dealers")
             .select("id")
             .eq("club_id", cid);
-          cidDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
+          const inventory = assessDealerInventory(clubDealers, clubDealersError);
+          if (inventory.failure) {
+            recordDispatchSafetyOutcome(
+              cid,
+              inventory.failure,
+            );
+            clubsSkippedError++;
+            continue;
+          }
+          cidDealerIds = inventory.dealerIds;
         } catch (err) {
-          console.error(
-            `[process-swing] ❌ Dealer query failed for club ${cid}:`,
-            err instanceof Error ? err.stack : err
+          recordDispatchSafetyOutcome(
+            cid,
+            assessCoreQueryFailure("dealer_inventory", err),
           );
+          clubsSkippedError++;
           continue;
         }
 
@@ -857,13 +984,31 @@ Deno.serve(async (req: Request) => {
         // ── PASS 0b — Query available dealer count for break deadlock guard ──
         let availableDealerCount: number | undefined;
         if (!dryRun) {
-          const { count } = await admin
-            .from("dealer_attendance")
-            .select("id", { head: true, count: "exact" })
-            .in("dealer_id", cidDealerIds)
-            .eq("current_state", "available")
-            .eq("status", "checked_in");
-          availableDealerCount = count ?? 0;
+          try {
+            const { count, error: availableCountError } = await admin
+              .from("dealer_attendance")
+              .select("id", { head: true, count: "exact" })
+              .in("dealer_id", cidDealerIds)
+              .eq("current_state", "available")
+              .eq("status", "checked_in");
+            const availability = assessAvailableDealerCount(count, availableCountError);
+            if (availability.failure) {
+              recordDispatchSafetyOutcome(
+                cid,
+                availability.failure,
+              );
+              clubsSkippedError++;
+              continue;
+            }
+            availableDealerCount = availability.count;
+          } catch (err) {
+            recordDispatchSafetyOutcome(
+              cid,
+              assessCoreQueryFailure("available_dealer_count", err),
+            );
+            clubsSkippedError++;
+            continue;
+          }
         }
 
         mark("pass0c");
@@ -1432,7 +1577,14 @@ Deno.serve(async (req: Request) => {
         // ── PASS 1 — Auto-fill empty tables ───────────────────────────────
         // RUNS FIRST (before pre-assign) so tables with NO dealer get priority.
         // Pre-assign only targets tables that ALREADY have a dealer due to swing soon.
-        let fillResult = { assignments: [] as Array<{table_id:string;table_name:string;attendance_id:string;full_name:string}>, assignedAttendanceIds: new Set<string>() };
+        let fillResult: FillResult = {
+          status: "ok",
+          error_code: null,
+          assignments: [],
+          assignedAttendanceIds: new Set<string>(),
+          diagnostics: [],
+        };
+        let fillAssessment = assessEmptyFillOutcome("ok", null);
         // Auto-fill empty ACTIVE tables. Gated: legacy global flag (OFF) OR the
         // Step-1 per-club opt-in (owner policy 2026-06-15, default OFF). Manual
         // "Gán" / "Gán loạt" buttons (assign-dealer / mass-assign) call
@@ -1447,6 +1599,22 @@ Deno.serve(async (req: Request) => {
             clubCfg.min_inter_swing_rest_minutes,
             autoStaffThisClub, // availableOnly — only on the per-club Step-1 path
           );
+          fillAssessment = assessEmptyFillOutcome(
+            fillResult.status,
+            fillResult.error_code,
+          );
+          if (fillResult.status !== "ok") {
+            markDispatchOutcome(
+              fillAssessment.dispatchState,
+              fillAssessment.dispatchErrorCode,
+            );
+            console.error("[process-swing] empty_fill_degraded", JSON.stringify({
+              club_id: cid,
+              status: fillResult.status,
+              error_code: fillResult.error_code,
+              diagnostics: fillResult.diagnostics,
+            }));
+          }
           for (const aid of fillResult.assignedAttendanceIds) cycleExcludedIds.add(aid);
           // Pass 1 swing_in intentionally NOT enqueued here:
           // formatMassAssignMessage already sends "Mở Bàn (N bàn)" batch.
@@ -1480,6 +1648,19 @@ Deno.serve(async (req: Request) => {
               minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
               swingDurationMinutes: (clubCfg as any).swing_duration_minutes ?? undefined,
             });
+            if (s2.candidateStatus) {
+              recordDispatchSafetyOutcome(
+                cid,
+                assessCandidateSnapshotFailure(
+                  "passS2_candidate_snapshot",
+                  s2.candidateStatus,
+                  s2.candidateErrorCode,
+                ),
+              );
+              clubsSkippedError++;
+              console.warn(`[passS2] candidate snapshot unavailable for club ${cid}; remaining passes aborted.`);
+              continue;
+            }
             if (s2.executed || s2.reserved || s2.cancelled) {
               console.log(`[passS2] club=${cid} executed=${s2.executed} reserved=${s2.reserved} cancelled=${s2.cancelled}`);
             }
@@ -2094,6 +2275,19 @@ if (tier2Count > 0) {
         if (scheduleDriven && !dryRun) {
           try {
             const passRResult = await passRRotationPlanner(admin, passRCtx);
+            if (passRResult.candidateStatus) {
+              recordDispatchSafetyOutcome(
+                cid,
+                assessCandidateSnapshotFailure(
+                  "passR_candidate_snapshot",
+                  passRResult.candidateStatus,
+                  passRResult.candidateErrorCode,
+                ),
+              );
+              clubsSkippedError++;
+              console.warn(`[Pass R] candidate snapshot unavailable for club ${cid}; remaining passes aborted.`);
+              continue;
+            }
             metrics.total += passRResult.locked;
             metrics.success += passRResult.locked;
             if (passRResult.errors.length > 0) {
@@ -2103,6 +2297,15 @@ if (tier2Count > 0) {
               );
             }
           } catch (err: any) {
+            if (isCandidateSnapshotFailure(err)) {
+              recordDispatchSafetyOutcome(
+                cid,
+                assessCandidateSnapshotFailure("passR_candidate_snapshot", err.status, err.errorCode),
+              );
+              clubsSkippedError++;
+              console.warn(`[Pass R] candidate snapshot unavailable for club ${cid}; remaining passes aborted.`);
+              continue;
+            }
             console.error(`[Pass R] ❌ Unhandled error:`, err?.message ?? err);
           }
         }
@@ -2118,6 +2321,19 @@ if (tier2Count > 0) {
               cycleExcludedIds,
               clubId: cid,
             });
+            if (p15Result.candidateStatus) {
+              recordDispatchSafetyOutcome(
+                cid,
+                assessCandidateSnapshotFailure(
+                  "pass15_candidate_snapshot",
+                  p15Result.candidateStatus,
+                  p15Result.candidateErrorCode,
+                ),
+              );
+              clubsSkippedError++;
+              console.warn(`[Pass 1.5] candidate snapshot unavailable for club ${cid}; remaining passes aborted.`);
+              continue;
+            }
             console.log(
               `[Pass 1.5] ${p15Result.assigned} assigned, ` +
               `${p15Result.unassigned} unassigned` +
@@ -2130,6 +2346,15 @@ if (tier2Count > 0) {
               );
             }
           } catch (err: any) {
+            if (isCandidateSnapshotFailure(err)) {
+              recordDispatchSafetyOutcome(
+                cid,
+                assessCandidateSnapshotFailure("pass15_candidate_snapshot", err.status, err.errorCode),
+              );
+              clubsSkippedError++;
+              console.warn(`[Pass 1.5] candidate snapshot unavailable for club ${cid}; remaining passes aborted.`);
+              continue;
+            }
             console.error(`[Pass 1.5] ❌ Error:`, err.message);
           }
         }
@@ -2159,6 +2384,15 @@ if (tier2Count > 0) {
               pass2Options,
             );
           } catch (err) {
+            if (isCandidateSnapshotFailure(err)) {
+              recordDispatchSafetyOutcome(
+                cid,
+                assessCandidateSnapshotFailure("pass2_candidate_snapshot", err.status, err.errorCode),
+              );
+              clubsSkippedError++;
+              console.warn(`[Pass 2] candidate snapshot unavailable for club ${cid}; remaining passes aborted.`);
+              continue;
+            }
             console.error(
               `[Pass 2] ❌ Unhandled error for club ${cid}:`,
               err instanceof Error ? err.stack : err
@@ -2368,6 +2602,32 @@ if (tier2Count > 0) {
             updated_at: string | null;
             last_swing_attempted_at: string | null;
           } | null;
+        };
+
+        const releasePass3Lock = async (locked: any, reason: string) => {
+          if (dryRun || !(locked as any).__locked) return true;
+
+          let query = admin
+            .from("dealer_assignments")
+            .update({ swing_in_progress: false })
+            .eq("id", locked.id)
+            .eq("swing_in_progress", true)
+            .eq("version", (locked as any).__lockedVersion ?? locked.version);
+
+          if (locked.last_swing_attempted_at) {
+            query = query.eq("last_swing_attempted_at", locked.last_swing_attempted_at);
+          }
+
+          const { data, error } = await query
+            .select("id")
+            .maybeSingle();
+          if (error || !data) {
+            console.warn(`[Pass 3] lock release CAS lost for ${locked.id} (${reason})`, error?.message ?? "no row");
+            return false;
+          }
+
+          (locked as any).__locked = false;
+          return true;
         };
 
         const runReplacementFallback = async (
@@ -2790,18 +3050,39 @@ if (tier2Count > 0) {
 
           if (assignment.pre_assigned_attendance_id) {
             // ── Pre-assigned swing path ───────────────────────────────────
-            const { data: preflightAtt } = await admin
+            const { data: preflightRaw, error: preflightError } = await admin
               .from("dealer_attendance")
-              .select("current_state, status, full_name, last_released_at")
+              .select("current_state, status, last_released_at, dealers(full_name)")
               .eq("id", assignment.pre_assigned_attendance_id)
               .maybeSingle();
-            const preflightInvalid = !preflightAtt
-              || preflightAtt.current_state === "checked_out"
-              || preflightAtt.current_state === "on_break"
-              || preflightAtt.status === "checked_out";
+            const preflight = assessPreAssignPreflight(
+              preflightRaw as any,
+              preflightError,
+              EXECUTE_MIN_REST_MINUTES,
+            );
+
+            if (preflight.kind === "query_error") {
+              await logPass3Diagnostic(
+                "preflight_query_error",
+                assignment,
+                {
+                  message: `Preflight query failed for ${tableName}`,
+                  level: "ERROR",
+                  error: preflight.error,
+                  action: "keep_outgoing_ot_retry_next_tick",
+                },
+                { pre_assigned_attendance_id: assignment.pre_assigned_attendance_id },
+              );
+              await releasePass3Lock(assignment, "preflight_query_error");
+              metrics.failed++;
+              continue;
+            }
+
+            const preflightAtt = preflight.attendance;
+            const preflightInvalid = preflight.kind === "invalid";
             if (preflightInvalid) {
               await logPass3Diagnostic(
-                "preflight_invalid_pre_assign",
+                "invalid_preassign",
                 assignment,
                 {
                   message: `Preflight invalid for ${tableName}`,
@@ -2812,42 +3093,89 @@ if (tier2Count > 0) {
                 },
                 { pre_assigned_attendance_id: assignment.pre_assigned_attendance_id },
               );
-            }
-            // Stale pre-assign guard: incoming dealer is no longer in pre_assigned state.
-            // preflightInvalid already handles checked_out/on_break; this catches "available"
-            // (dealer cleanly released since this tick's query ran). Without this guard,
-            // the RPC fires anyway and returns race_lost with no fallback triggered.
-            if (preflightAtt?.current_state === "available") {
-              console.warn("[process-swing][pass3][guard-stale-preassign]", {
-                club_id: cid,
-                table_id: assignment.table_id,
-                table_name: tableName,
-                assignment_id: assignment.id,
-                incoming_dealer_id: assignment.pre_assigned_attendance_id,
-                incoming_dealer_name: preflightAtt.full_name,
-                current_state: preflightAtt.current_state,
-                attendance_status: preflightAtt.status,
-                pre_assign_status: preAssignStatus,
-                reason: "dealer_released_to_available",
-              });
+
+              const lockedVersion = (assignment as any).__lockedVersion ?? assignment.version;
+              const { data: cleared, error: clearError } = await admin
+                .from("dealer_assignments")
+                .update({
+                  pre_assigned_attendance_id: null,
+                  pre_assigned_at: null,
+                  is_emergency_pre_assign: false,
+                  swing_in_progress: false,
+                })
+                .eq("id", assignment.id)
+                .eq("version", lockedVersion)
+                .eq("swing_in_progress", true)
+                .eq("pre_assigned_attendance_id", assignment.pre_assigned_attendance_id)
+                .select("id, version, status, swing_processed_at, overtime_started_at")
+                .maybeSingle();
+
+              if (clearError || !cleared) {
+                await logPass3Diagnostic(
+                  "replan_outcome",
+                  assignment,
+                  {
+                    message: `Invalid pre-assign cleanup race lost for ${tableName}`,
+                    level: "WARNING",
+                    outcome: "race_lost",
+                    error: clearError?.message ?? null,
+                  },
+                );
+                metrics.skipped++;
+                continue;
+              }
+              (assignment as any).__locked = false;
+
+              await admin
+                .from("dealer_attendance")
+                .update({
+                  current_state: "available",
+                  pre_assigned_table_id: null,
+                  pre_assigned_at: null,
+                })
+                .eq("id", assignment.pre_assigned_attendance_id)
+                .eq("current_state", "pre_assigned")
+                .eq("pre_assigned_table_id", assignment.table_id);
+
               if (scheduleDriven) {
-                // Dead lock at execution time: cancel the slot, clear the
-                // stale pre-assign, and re-plan + re-lock THIS tick.
-                // The table never sits stuck waiting for zombie cleanup.
                 const staleExcludes = new Set([
                   ...cycleExcludedIds,
                   assignment.attendance_id,
                   assignment.pre_assigned_attendance_id,
                 ]);
                 const replan = await replanSingleTable(
-                  admin, passRCtx, assignment.id, staleExcludes, "preflight_stale_lock",
+                  admin, passRCtx, assignment.id, staleExcludes, "invalid_preassign",
                 );
-                console.log(`[Pass 3] ${tableName}: stale lock re-planned — ${replan.detail}`);
+                await logPass3Diagnostic(
+                  "replan_outcome",
+                  assignment,
+                  {
+                    message: `Invalid pre-assign replan for ${tableName}`,
+                    level: replan.relocked ? "INFO" : "WARNING",
+                    outcome: replan.relocked ? "relocked" : "no_replacement",
+                    detail: replan.detail,
+                  },
+                );
                 if (replan.relocked) metrics.success++;
                 else metrics.skipped++;
-                continue;
+              } else {
+                await runReplacementFallback(
+                  assignment,
+                  tableName,
+                  outgoingDealer,
+                  "invalid_preassign",
+                  cleared,
+                );
+                await logPass3Diagnostic(
+                  "replan_outcome",
+                  assignment,
+                  {
+                    message: `Legacy replacement attempted for ${tableName}`,
+                    level: "INFO",
+                    outcome: "fallback_attempted",
+                  },
+                );
               }
-              metrics.skipped++;
               continue;
             }
 
@@ -2858,9 +3186,9 @@ if (tier2Count > 0) {
             // keep the current dealer on OT (Pass R already stamped it) and alert.
             // The pre-assign lock is left intact so a later tick swings once the
             // incoming dealer is rested. No force-release, no auto-pick, no bypass.
-            const incomingRestMin = preflightAtt?.last_released_at
-              ? (Date.now() - new Date(preflightAtt.last_released_at).getTime()) / 60_000
-              : Infinity; // never released this shift → fully rested
+            const incomingRestMin = preflight.kind === "rest_blocked" || preflight.kind === "ready"
+              ? preflight.restMinutes
+              : Number.POSITIVE_INFINITY;
             if (incomingRestMin < EXECUTE_MIN_REST_MINUTES) {
               console.warn("[process-swing][pass3][rest-revalidation-block]", {
                 club_id: cid,
@@ -3077,13 +3405,20 @@ if (tier2Count > 0) {
                 if (incomingId) {
                   const { data, error } = await admin
                     .from("dealer_attendance")
-                    .select("current_state, status, full_name")
+                    .select("current_state, status, dealers(full_name)")
                     .eq("id", incomingId)
                     .single();
                   if (error || !data) {
                     isNoShow = true;
                   } else {
-                    incomingAtt = data;
+                    const dealer = Array.isArray((data as any).dealers)
+                      ? (data as any).dealers[0]
+                      : (data as any).dealers;
+                    incomingAtt = {
+                      current_state: (data as any).current_state,
+                      status: (data as any).status,
+                      full_name: dealer?.full_name ?? "Unknown",
+                    };
                     // PATCH J: a dealer who cleanly released to 'available' between the
                     // preflight check and the RPC is a BENIGN race, not a no-show — do
                     // not blame them. Fall through to the normal race_lost fallback
@@ -3927,6 +4262,7 @@ if (tier2Count > 0) {
             }
           }
           } catch (swingErr: any) {
+            if (isCandidateSnapshotFailure(swingErr)) throw swingErr;
             metrics.failed++;
             console.error(
               `[Pass 3] ❌ Swing failed for assignment ${assignment.id} (table ${assignment.table_id}):`,
@@ -3965,11 +4301,7 @@ if (tier2Count > 0) {
             // would permanently skip this assignment.
             if (!dryRun && (assignment as any).__locked) {
               try {
-                await admin
-                  .from("dealer_assignments")
-                  .update({ swing_in_progress: false })
-                  .eq("id", assignment.id);
-                (assignment as any).__locked = false;
+                await releasePass3Lock(assignment, "pass3_finally");
               } catch (resetErr: any) {
                 console.error(
                   `[Pass 3] ⚠️ Failed to reset swing_in_progress for ${assignment.id}:`,
@@ -3993,24 +4325,27 @@ if (tier2Count > 0) {
           }
         }
 
-        // ── PASS 4b — Refresh dealer pool summary (monitoring) ────────────
-        if (!dryRun) {
-          console.log("[Pass 4b] 🔄 Refreshing dealer pool summary...");
-          const poolStartTime = Date.now();
+        let shortageNotifyDecision: ReturnType<typeof assessShortageNotifySetting> | null = null;
+        const resolveShortageNotifyDecision = async () => {
+          if (shortageNotifyDecision) return shortageNotifyDecision;
           try {
-            const { error: refreshErr } = await admin.rpc("refresh_dealer_pool_summary");
-            if (refreshErr) {
-              console.warn("[Pass 4b] ⚠️ Pool summary refresh failed:", refreshErr.message);
-            } else {
-              console.log(`[Pass 4b] ✅ Pool summary refreshed (${Date.now() - poolStartTime}ms)`);
-            }
-          } catch (err: any) {
-            console.warn("[Pass 4b] ⚠️ Pool summary refresh exception:", err.message);
+            const { data: settingsRow, error: settingsError } = await admin
+              .from("club_settings")
+              .select("shortage_notify_telegram")
+              .eq("club_id", cid)
+              .maybeSingle();
+            shortageNotifyDecision = assessShortageNotifySetting(settingsRow as any, settingsError);
+          } catch (error) {
+            shortageNotifyDecision = assessShortageNotifySetting(null, error);
           }
-        }
+          if (shortageNotifyDecision.failure) {
+            recordDispatchSafetyOutcome(cid, shortageNotifyDecision.failure);
+          }
+          return shortageNotifyDecision;
+        };
 
         // ── SHORTAGE ESCALATION ──────────────────────────────────────────
-        if (!dryRun && metrics.total > 0 && metrics.failed === 0) {
+        if (!dryRun && fillAssessment.shortageAlertsAllowed && metrics.total > 0 && metrics.failed === 0) {
           const noDealerRatio = metrics.no_dealer / metrics.total;
           if (noDealerRatio > 0.5 && metrics.no_dealer >= 3) {
             console.warn(
@@ -4018,13 +4353,7 @@ if (tier2Count > 0) {
               `(${(noDealerRatio * 100).toFixed(1)}%)`
             );
 
-            const { data: settingsRow } = await admin
-              .from("club_settings")
-              .select("shortage_notify_telegram")
-              .eq("club_id", cid)
-              .maybeSingle();
-
-            const notifyTelegram = (settingsRow as any)?.shortage_notify_telegram ?? true;
+            const { notify: notifyTelegram } = await resolveShortageNotifyDecision();
 
             if (notifyTelegram) {
               const chatId = await getClubTelegramChatId(admin, cid);
@@ -4042,27 +4371,49 @@ if (tier2Count > 0) {
         // Query total active assignments for this club (not just Pass 3 window).
         // If NO active assignment is free of OT, the entire pool is stuck.
         // Note: clubTableIds is cached at the start of club processing
-        const { count: totalActiveCount } = await admin
-          .from("dealer_assignments")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "assigned")
-          .in("table_id", clubTableIds);
+        let allTablesOtAssessment: ReturnType<typeof assessAllTablesOtAlert>;
+        try {
+          const [totalActiveResult, nonOvertimeResult] = await Promise.all([
+            admin
+              .from("dealer_assignments")
+              .select("id", { count: "exact", head: true })
+              .eq("status", "assigned")
+              .in("table_id", clubTableIds),
+            admin
+              .from("dealer_assignments")
+              .select("id", { count: "exact", head: true })
+              .is("overtime_started_at", null)
+              .eq("status", "assigned")
+              .in("table_id", clubTableIds),
+          ]);
+          allTablesOtAssessment = assessAllTablesOtAlert(
+            fillAssessment.shortageAlertsAllowed,
+            { count: totalActiveResult.count, error: totalActiveResult.error },
+            { count: nonOvertimeResult.count, error: nonOvertimeResult.error },
+          );
+        } catch (error) {
+          allTablesOtAssessment = {
+            shouldSend: false,
+            failure: assessCoreQueryFailure("all_tables_ot_snapshot", error),
+          };
+        }
 
-        const { count: nonOtInClub } = await admin
-          .from("dealer_assignments")
-          .select("id", { count: "exact", head: true })
-          .is("overtime_started_at", null)
-          .eq("status", "assigned")
-          .in("table_id", clubTableIds);
-
-        if ((totalActiveCount ?? 0) > 0 && (nonOtInClub ?? 0) === 0) {
-          const chatId = await getClubTelegramChatId(admin, cid);
-          if (botToken && chatId) {
-            await sendTelegramNotification(
-              botToken, chatId,
-              `🚨 *TOÀN BỘ ${totalActiveCount} BÀN ĐANG OT* — Pool dealer rỗng hoàn toàn.\nCần check-in thêm dealer hoặc đóng bớt bàn ngay!`,
-              {}
-            );
+        if (!allTablesOtAssessment.shouldSend && allTablesOtAssessment.failure) {
+          recordDispatchSafetyOutcome(cid, allTablesOtAssessment.failure);
+        }
+        if (allTablesOtAssessment.shouldSend) {
+          const { notify: notifyTelegram } = await resolveShortageNotifyDecision();
+          if (!notifyTelegram) {
+            console.warn(`[process-swing] all-tables-OT alert suppressed by shortage notification setting for ${cid}`);
+          } else {
+            const chatId = await getClubTelegramChatId(admin, cid);
+            if (botToken && chatId) {
+              await sendTelegramNotification(
+                botToken, chatId,
+                `🚨 *TOÀN BỘ ${allTablesOtAssessment.totalActiveCount} BÀN ĐANG OT* — Pool dealer rỗng hoàn toàn.\nCần check-in thêm dealer hoặc đóng bớt bàn ngay!`,
+                {}
+              );
+            }
           }
         }
 
@@ -4092,10 +4443,26 @@ if (tier2Count > 0) {
         clubsProcessed++; // Track successful club processing
 
       } catch (err) {
-        if (err instanceof LockOwnershipLost) {
-          // B2.2b: graceful abort \u2014 another runner reclaimed the lease. NOT an error.
-          console.warn(`[process-swing] club ${cid}: ${err.message} \u2014 remaining passes aborted, releasing.`);
+        if (isCandidateSnapshotFailure(err)) {
+          recordDispatchSafetyOutcome(
+            cid,
+            assessCandidateSnapshotFailure("candidate_snapshot", err.status, err.errorCode),
+          );
+          clubsSkippedError++;
+          console.warn(`[process-swing] club ${cid}: candidate snapshot unavailable; remaining passes aborted, releasing.`);
+        } else if (err instanceof LockOwnershipLost) {
+          const ownershipOutcome = assessLockOwnershipLoss(err);
+          recordDispatchSafetyOutcome(cid, ownershipOutcome);
+          if (err.reason === "lease_reclaimed") {
+            clubsSkippedLocked++;
+          } else {
+            clubsSkippedError++;
+          }
+          console.warn(
+            `[process-swing] club ${cid}: ${ownershipOutcome.dispatchErrorCode}; remaining passes aborted, releasing.`,
+          );
         } else {
+          markDispatchOutcome("business_failed", "club_processing_exception");
           clubsSkippedError++;
           console.error(
             `[process-swing] \u274C Unhandled error for club ${cid}:`,
@@ -4142,6 +4509,23 @@ if (tier2Count > 0) {
       }
     } // END club processing loop
 
+    // Global monitoring view: refresh once per invocation, never once per club.
+    // No successful club or dry-run means no refresh work.
+    if (!dryRun && clubsProcessed > 0) {
+      console.log("[process-swing] 🔄 Refreshing dealer pool summary once...");
+      const poolStartTime = Date.now();
+      try {
+        const { error: refreshErr } = await admin.rpc("refresh_dealer_pool_summary");
+        if (refreshErr) {
+          console.warn("[process-swing] ⚠️ Pool summary refresh failed:", refreshErr.message);
+        } else {
+          console.log(`[process-swing] ✅ Pool summary refreshed (${Date.now() - poolStartTime}ms)`);
+        }
+      } catch (err: any) {
+        console.warn("[process-swing] ⚠️ Pool summary refresh exception:", err.message);
+      }
+    }
+
     const totalExecutionMs = Date.now() - executionStartTime;
 
     // ═══════════════════════════════════════════════════════════════
@@ -4152,21 +4536,78 @@ if (tier2Count > 0) {
       processed: clubsProcessed,
       skipped_locked: clubsSkippedLocked,
       skipped_error: clubsSkippedError,
+      diagnostics: dispatchDiagnostics,
       execution_time_ms: totalExecutionMs,
       timestamp: new Date().toISOString(),
     }));
 
+    if (dispatchContext) {
+      const { data: finishResult, error: finishError } = await admin.rpc(
+        "finish_process_swing_dispatch",
+        {
+          p_run_id: dispatchContext.runId,
+          p_request_id: dispatchContext.requestId,
+          p_club_id: dispatchContext.clubId,
+          p_business_state: dispatchFinalState,
+          p_error_code: dispatchErrorCode,
+          p_diagnostics: {
+            execution_time_ms: totalExecutionMs,
+            processed: clubsProcessed,
+            skipped_locked: clubsSkippedLocked,
+            skipped_error: clubsSkippedError,
+            dispatch_diagnostics: dispatchDiagnostics,
+          },
+        },
+      );
+      const finishOutcome = String(finishResult?.outcome ?? "invalid_finish_response");
+      if (finishError || !["recorded", "idempotent_replay"].includes(finishOutcome)) {
+        console.error("[process-swing] dispatch_finalize_failed", JSON.stringify({
+          run_id: dispatchContext.runId,
+          request_id: dispatchContext.requestId,
+          outcome: finishOutcome,
+        }));
+        return new Response(JSON.stringify({
+          ok: false,
+          status: "dependency_unavailable",
+          error_code: "dispatch_finalize_unavailable",
+        }), {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     return new Response(
       JSON.stringify({
         ok: true,
+        status: dispatchContext ? dispatchFinalState : "completed",
+        error_code: dispatchContext ? dispatchErrorCode : null,
+        run_id: dispatchContext?.runId ?? null,
+        request_id: dispatchContext?.requestId ?? null,
         execution_time_ms: totalExecutionMs,
         metrics: metricsPerClub,
+        diagnostics: dispatchDiagnostics,
         dry_run: dryRun,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (dispatchAdmin && dispatchContext) {
+      try {
+        await dispatchAdmin.rpc("finish_process_swing_dispatch", {
+          p_run_id: dispatchContext.runId,
+          p_request_id: dispatchContext.requestId,
+          p_club_id: dispatchContext.clubId,
+          p_business_state: "business_failed",
+          p_error_code: "unhandled_process_swing_error",
+          p_diagnostics: null,
+        });
+      } catch {
+        // Best effort only: the response remains non-2xx and retry is fenced by
+        // claim_process_swing_dispatch.
+      }
+    }
     return new Response(
       JSON.stringify({ error: "Internal error", detail: msg }),
       {

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,6 +19,40 @@ import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialo
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 
 type StatusKey = "open" | "running" | "paused" | "closed";
+
+type TournamentTableRow = {
+  id: string;
+  table_id: string;
+  table_number: number | null;
+  table_name: string | null;
+  max_seats: number | null;
+  status: string | null;
+};
+
+type AtomicBustResult = {
+  place?: number;
+  player_name?: string;
+};
+
+type AtomicBustPreview = {
+  can_confirm?: boolean;
+  place?: number;
+  prize?: number;
+  active_count_revision?: number;
+};
+
+type UntypedRpc = (
+  functionName: string,
+  args: Record<string, unknown>,
+) => Promise<{ data: unknown; error: { message: string } | null }>;
+
+const callUntypedRpc = supabase.rpc.bind(supabase) as unknown as UntypedRpc;
+
+function responseError(data: unknown): string | null {
+  return data && typeof data === "object" && "error" in data && typeof data.error === "string"
+    ? data.error
+    : null;
+}
 
 const STATUS_META: Record<StatusKey, { label: string; dot: string; text: string }> = {
   open: { label: "Mở / trống", dot: "bg-primary", text: "text-primary" },
@@ -64,7 +97,6 @@ export function FloorTableMapPanel({
   tournament: Tournament;
   refreshTrigger: number;
 }) {
-  const { user } = useAuth();
   const tid = tournament.id;
   const onBreak = tournament.status === "break";
   const [tables, setTables] = useState<MapTable[] | null>(null);
@@ -98,14 +130,16 @@ export function FloorTableMapPanel({
   useEffect(() => {
     let alive = true;
     (async () => {
-      if (!user) { setCanMove(false); return; }
-      const { data: ids } = await supabase.rpc("cashier_club_ids", { _user_id: user.id });
+      const { data: scope, error } = await supabase.rpc("get_my_floor_operator_scope");
       if (!alive) return;
-      const allowed = (ids ?? []).map((r: any) => (typeof r === "string" ? r : r.cashier_club_ids ?? r));
-      setCanMove(allowed.includes(tournament.club_id));
+      if (error) { setCanMove(false); return; }
+      setCanMove((scope ?? []).some((row) => (
+        row.club_id === tournament.club_id
+        && (row.can_owner || row.can_cashier || row.can_floor)
+      )));
     })();
     return () => { alive = false; };
-  }, [user, tournament.club_id]);
+  }, [tournament.club_id]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,7 +151,7 @@ export function FloorTableMapPanel({
         supabase.functions.invoke("tournament-live-draw", { body: { tournament_id: tid, action: "get_seats" } }),
         supabase.from("tournament_seats").select("id, entry_id").eq("tournament_id", tid),
       ]);
-      const built: MapTable[] = ((ttRes.data ?? []) as any[])
+      const built: MapTable[] = ((ttRes.data ?? []) as TournamentTableRow[])
         .map((t) => ({
           tt_id: t.id,
           table_id: t.table_id,
@@ -234,14 +268,14 @@ export function FloorTableMapPanel({
     setBusting(true);
     try {
       if (FEATURES.floorAtomicPayout) {
-        const { data, error } = await supabase.rpc("bust_tournament_player_with_payout" as any, {
+        const { data, error } = await callUntypedRpc("bust_tournament_player_with_payout", {
           p_tournament_id: tid,
           p_seat_id: target.seat_id,
           p_expected_active_count: activeCount,
           p_idempotency_key: crypto.randomUUID(),
-        } as any);
+        });
         if (error) { toast.error(error.message); return; }
-        const result = data as any;
+        const result = data as AtomicBustResult;
         toast.success(`Đã chốt hạng ${result?.place ?? ""} cho ${result?.player_name || target.player_name || "người chơi"}`);
         setSelected(null);
         setInfoTarget(null);
@@ -259,13 +293,14 @@ export function FloorTableMapPanel({
           }],
         },
       });
-      if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
+      const edgeError = responseError(data);
+      if (error || edgeError) { toast.error(edgeError || error?.message); return; }
       toast.success(`Đã loại ${target.player_name || "người chơi"}`);
       setSelected(null);
       setInfoTarget(null);
       load();
-    } catch (e: any) {
-      toast.error(e.message || "Lỗi");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Lỗi");
     } finally {
       setBusting(false);
     }
@@ -279,12 +314,12 @@ export function FloorTableMapPanel({
     if (!target) return;
     if (!FEATURES.floorOutConfirm) { bustSeat(target); return; }
     if (FEATURES.floorAtomicPayout) {
-      const { data, error } = await supabase.rpc("preview_tournament_bust" as any, {
+      const { data, error } = await callUntypedRpc("preview_tournament_bust", {
         p_tournament_id: tid,
         p_seat_id: target.seat_id,
-      } as any);
+      });
       if (error) { toast.error(error.message); return; }
-      const preview = data as any;
+      const preview = data as AtomicBustPreview;
       if (!preview?.can_confirm) {
         toast.error("Đăng ký vẫn mở: chưa thể chốt payout ITM.");
         return;
@@ -435,6 +470,9 @@ export function FloorTableMapPanel({
         tournamentId={tid}
         tournamentName={tournament.name}
         tournamentDate={(tournament as Tournament & { start_time?: string | null }).start_time ?? null}
+        unlinkedActiveSeatCount={detailTable
+          ? (seatsByTable[detailTable.table_id] ?? []).filter((seat) => !entryBySeat[seat.seat_id]).length
+          : 0}
         onChanged={load}
       />
 

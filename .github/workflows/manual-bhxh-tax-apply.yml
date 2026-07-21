@@ -22,12 +22,12 @@ jobs:
         working-directory: ./VinPoker
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
         run: node scripts/payroll/apply_manual_bhxh_tax.mjs --preflight
       - name: Apply (golden BEFORE -> col + fn -> golden AFTER -> post-verify)
         working-directory: ./VinPoker
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
           CONFIRM_APPLY_MANUAL_BHXH_TAX: APPLY_MANUAL_BHXH_TAX
         run: node scripts/payroll/apply_manual_bhxh_tax.mjs --apply

@@ -20,6 +20,7 @@ import {
 } from "@/components/ops/shared/floorAdapter";
 import type { MockSeat, MockTable } from "@/components/ops/mock/opsData";
 import type { Tournament } from "@/types/tournament";
+import { closeTableErrorMessage, parseCloseTableRpcResult } from "@/components/cashier/tournament-live/closeTableResponse";
 
 /**
  * Bàn (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads). Ghế/người gắn theo GIẢI:
@@ -62,18 +63,6 @@ function openTableError(code?: string): string {
     case "invalid_max_seats": return "Số ghế không hợp lệ (2–10).";
     case "invalid_table_number": return "Số bàn không hợp lệ.";
     default: return code ? `Mở bàn thất bại (${code})` : "Mở bàn thất bại";
-  }
-}
-/** Copy VERBATIM từ CloseTableDialog.mapError (kèm need/have cho insufficient_capacity). */
-function closeTableError(res: { error?: string; need?: number; have?: number } | null, raw?: string): string {
-  const code = res?.error ?? raw;
-  switch (code) {
-    case "unauthorized": return "Bạn cần đăng nhập lại.";
-    case "actor_not_allowed": return "Không có quyền đóng bàn cho CLB này.";
-    case "tournament_not_open": return "Giải đã kết thúc/huỷ.";
-    case "table_not_found": return "Không tìm thấy bàn.";
-    case "insufficient_capacity": return `Không đủ ghế trống (cần ${res?.need ?? "?"}, có ${res?.have ?? "?"}) — mở thêm bàn trước khi đóng.`;
-    default: return code ? `Đóng bàn thất bại (${code})` : "Đóng bàn thất bại";
   }
 }
 type CloseDrawMode = "redraw_balanced" | "fill_lowest_table";
@@ -263,9 +252,15 @@ export default function OpsTables() {
         p_draw_mode: closeMode,
         p_reason: "table_break",
       });
-      const res = (data ?? null) as { ok?: boolean; error?: string; need?: number; have?: number; moved?: unknown[] } | null;
-      if (error || !res?.ok) { toast.error(closeTableError(res, error?.message)); return; }
-      toast.success(`Đã đóng ${closeTable.name} · chuyển ${res.moved?.length ?? 0} người`);
+      const result = parseCloseTableRpcResult(data, error, closeTable.seats.length);
+      if (result.kind === "error") {
+        toast.error(closeTableErrorMessage(
+          result.response,
+          result.rpcError?.message ?? result.code,
+        ));
+        return;
+      }
+      toast.success(`Đã đóng ${closeTable.name} · chuyển ${result.response.moved_count} người`);
       setCloseTable(null);
       floor.reload();
     } catch (e) {

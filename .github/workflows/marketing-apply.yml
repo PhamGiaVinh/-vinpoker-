@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
       CONFIRM_APPLY_MARKETING: APPLY_MARKETING_MIGRATIONS
     steps:
       - name: Checkout main

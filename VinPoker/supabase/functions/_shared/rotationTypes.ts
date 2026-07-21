@@ -106,6 +106,9 @@ export type Pass15Result = {
     wouldAssignName: string;
     score: number;
   }>;
+  /** Present only when the candidate snapshot failed; never a clean shortage. */
+  candidateStatus?: "dependency_unavailable" | "query_failed";
+  candidateErrorCode?: string;
 };
 
 export function normalizeGameTypes(types: string[] | null | undefined): string[] {

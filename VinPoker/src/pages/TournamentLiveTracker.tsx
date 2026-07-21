@@ -9,6 +9,7 @@ import { TournamentLiveView } from "@/components/cashier/tournament-live/Tournam
 import { LiveHub } from "@/components/cashier/tournament-live/viewer-hub/LiveHub";
 import { defaultViewerTab, parseViewerTab } from "@/components/cashier/tournament-live/viewer-hub/viewerUrlState";
 import type { ViewerTab } from "@/components/cashier/tournament-live/viewer-hub/viewerTypes";
+import { parseReplayTarget, replaceReplayTargetParams, type ReplayTarget } from "@/components/cashier/tournament-live/viewer-hub/replayTarget";
 import { FEATURES } from "@/lib/featureFlags";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -20,25 +21,25 @@ const TournamentLiveTracker = () => {
   const [loading, setLoading] = useState(true);
   const isMobile = useIsMobile();
 
-  // Deep-link: ?hand=N opens that completed hand in the viewer's replay.
-  const deepHandRaw = Number(searchParams.get("hand"));
-  const deepHandNumber = Number.isFinite(deepHandRaw) && deepHandRaw > 0 ? deepHandRaw : null;
+  // `handId` is canonical. Legacy `?hand=N` stays supported only when the
+  // replay resolver can prove it maps to one completed hand in this tournament.
+  const replayTarget = parseReplayTarget(searchParams);
   const focusedPostId = searchParams.get("post")?.trim() || null;
   const activeTab = parseViewerTab(
     searchParams.get("tab"),
     FEATURES.liveViewerPulseV2
-      ? defaultViewerTab({ isMobile, hasDeepLinkedHand: deepHandNumber != null })
-      : deepHandNumber != null ? "hands" : "updates",
+      ? defaultViewerTab({ isMobile, hasDeepLinkedHand: replayTarget != null })
+      : replayTarget != null ? "hands" : "updates",
   );
 
   useEffect(() => {
-    if (!FEATURES.liveViewerPulseV2 || !isMobile || searchParams.has("tab") || deepHandNumber != null) return;
+    if (!FEATURES.liveViewerPulseV2 || !isMobile || searchParams.has("tab") || replayTarget != null) return;
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous);
       next.set("tab", "hands");
       return next;
     }, { replace: true });
-  }, [deepHandNumber, isMobile, searchParams, setSearchParams]);
+  }, [isMobile, replayTarget, searchParams, setSearchParams]);
 
   const shareUrl = useCallback(
     async (url: string, ok: string) => {
@@ -65,27 +66,32 @@ const TournamentLiveTracker = () => {
 
   const handleShare = useCallback(() => shareUrl(window.location.href, "Đã sao chép link live tracker"), [shareUrl]);
 
-  // Hand-feed "Chia sẻ" → a link to that specific hand (?hand=N).
+  // Hand-feed links use UUID identity so duplicate per-table hand numbers cannot
+  // silently open the newest hand on the current live table.
   const handleShareHand = useCallback(
-    (n: number) => {
+    (target: ReplayTarget) => {
       const u = new URL(window.location.href);
       if (FEATURES.liveViewerRPTShell) u.searchParams.set("tab", "hands");
-      u.searchParams.set("hand", String(n));
-      return shareUrl(u.toString(), `Đã sao chép link ván #${n}`);
+      u.searchParams.delete("hand");
+      if (target.handId) u.searchParams.set("handId", target.handId);
+      if (target.tableId) u.searchParams.set("tableId", target.tableId);
+      return shareUrl(u.toString(), `Đã sao chép link ván #${target.handNumber ?? "?"}`);
     },
     [shareUrl],
   );
 
-  // Hand-feed "Xem ván" → set ?hand=N (drives the viewer into replay) + scroll up to
+  // Hand-feed "Xem ván" → set canonical identity + scroll to the featured felt.
   // the featured felt.
   const handleViewHand = useCallback(
-    (n: number) => {
+    (target: ReplayTarget) => {
       setSearchParams(
         (prev) => {
           const p = new URLSearchParams(prev);
           if (FEATURES.liveViewerRPTShell) p.set("tab", "hands");
           p.delete("post");
-          p.set("hand", String(n));
+          p.delete("hand");
+          if (target.handId) p.set("handId", target.handId);
+          if (target.tableId) p.set("tableId", target.tableId);
           return p;
         },
         { replace: false },
@@ -95,12 +101,28 @@ const TournamentLiveTracker = () => {
     [setSearchParams],
   );
 
-  // Leaving the felt (Quay lại) → drop ?hand so a refresh stays on the tabs.
+  const handleReplayTargetChange = useCallback(
+    (target: ReplayTarget) => {
+      setSearchParams(
+        (prev) => {
+          const p = replaceReplayTargetParams(prev, target);
+          if (FEATURES.liveViewerRPTShell) p.set("tab", "hands");
+          return p;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+
+  // Leaving the felt drops every replay identity so a refresh stays on the tabs.
   const handleCloseHand = useCallback(() => {
     setSearchParams(
       (prev) => {
         const p = new URLSearchParams(prev);
         p.delete("hand");
+        p.delete("handId");
+        p.delete("tableId");
         if (FEATURES.liveViewerRPTShell) p.set("tab", "hands");
         return p;
       },
@@ -115,7 +137,11 @@ const TournamentLiveTracker = () => {
         (prev) => {
           const p = new URLSearchParams(prev);
           p.set("tab", tab);
-          if (tab !== "hands") p.delete("hand");
+          if (tab !== "hands") {
+            p.delete("hand");
+            p.delete("handId");
+            p.delete("tableId");
+          }
           if (tab !== "updates") p.delete("post");
           return p;
         },
@@ -131,6 +157,8 @@ const TournamentLiveTracker = () => {
       u.searchParams.set("tab", "updates");
       u.searchParams.set("post", postId);
       u.searchParams.delete("hand");
+      u.searchParams.delete("handId");
+      u.searchParams.delete("tableId");
       return shareUrl(u.toString(), "Đã sao chép link tin giải đấu");
     },
     [shareUrl],
@@ -203,8 +231,9 @@ const TournamentLiveTracker = () => {
         buyIn={tournament.buy_in}
         startingStack={tournament.starting_stack}
         onShare={handleShare}
-        initialReplayHandNumber={deepHandNumber}
+        initialReplayTarget={replayTarget}
         onViewHand={handleViewHand}
+        onReplayTargetChange={handleReplayTargetChange}
         onShareHand={handleShareHand}
         activeTab={activeTab}
         onTabChange={handleTabChange}

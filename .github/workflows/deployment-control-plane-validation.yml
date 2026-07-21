@@ -1,0 +1,61 @@
+name: Validate deployment control plane
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/vbackerworkflowmain.yml"
+      - ".github/workflows/floor-clock-control-apply.yml"
+      - ".github/workflows/floor-operator-scope-acl-apply.yml"
+      - ".github/workflows/deployment-control-plane-validation.yml"
+      - "VinPoker/scripts/floor/apply-floor-clock-control.mjs"
+      - "VinPoker/scripts/floor/apply-floor-clock-control.test.mjs"
+      - "VinPoker/scripts/floor/apply-floor-operator-scope-acl.mjs"
+      - "VinPoker/scripts/floor/apply-floor-operator-scope-acl.test.mjs"
+      - "VinPoker/supabase/migrations/20270104000004_floor_clock_control_atomic.sql"
+      - "VinPoker/supabase/migrations/20270104000005_floor_operator_scope_acl.sql"
+      - "VinPoker/scripts/deploy/**"
+      - "VinPoker/docs/dealer-swing/CONTROL_PLANE_RUNBOOK.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: Pinned actionlint on exact source revision
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact revision under validation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download and verify actionlint 1.7.7
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/actionlint_1.7.7_linux_amd64.tar.gz"
+          curl --fail --location --silent --show-error \
+            --output "$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz"
+          echo "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757  $archive" \
+            | sha256sum --check --strict
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP" actionlint
+
+      - name: Validate exact workflow revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/actionlint" \
+            .github/workflows/vbackerworkflowmain.yml \
+            .github/workflows/floor-clock-control-apply.yml \
+            .github/workflows/floor-operator-scope-acl-apply.yml \
+            .github/workflows/deployment-control-plane-validation.yml
+
+      - name: Setup Node.js 20 for Floor runner tests
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "20"
+
+      - name: Test exact Floor production apply runners
+        run: node --test VinPoker/scripts/floor/apply-floor-clock-control.test.mjs VinPoker/scripts/floor/apply-floor-operator-scope-acl.test.mjs

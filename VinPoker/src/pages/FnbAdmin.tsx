@@ -74,6 +74,7 @@ function FnbAdminInner() {
   }
 
   const activeClub = clubId || clubs[0].id;
+  const activeClubName = clubs.find((club) => club.id === activeClub)?.name ?? "VinPoker Club";
 
   return (
     <div className="container mx-auto max-w-5xl px-4 py-6 space-y-4">
@@ -111,7 +112,7 @@ function FnbAdminInner() {
           <TabsTrigger value="settings">Cài đặt</TabsTrigger>
         </TabsList>
         <TabsContent value="menu" className="mt-4">
-          <MenuManager clubId={activeClub} />
+          <MenuManager clubId={activeClub} clubName={activeClubName} />
         </TabsContent>
         <TabsContent value="category" className="mt-4">
           <CategoryManager clubId={activeClub} />
