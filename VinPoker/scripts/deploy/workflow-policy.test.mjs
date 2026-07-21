@@ -54,6 +54,12 @@ test("live contract approval uses the read-only catalog instead of parsing a raw
   assert.match(workflow, /deploy-frontend:[\s\S]*Verify frontend scoped credentials[\s\S]*VERCEL_TOKEN/);
 });
 
+test("profile-specific Deno tests run only for the exact derived target contract", () => {
+  assert.match(workflow, /CONTRACT_PROFILE: \$\{\{ needs\.plan\.outputs\.contract_profile \}\}/);
+  assert.match(workflow, /--arg profile "\$CONTRACT_PROFILE"/);
+  assert.match(workflow, /denoTestsByContractProfile\[\$profile\]/);
+});
+
 test("pinned actionlint validation is read-only and uses no production secret", () => {
   assert.match(validationWorkflow, /pull_request:/);
   assert.match(validationWorkflow, /contents: read/);

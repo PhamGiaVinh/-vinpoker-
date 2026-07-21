@@ -13,6 +13,9 @@ This CRITICAL/RED change remains **NOT_READY** until every production gate has c
   `20270104000003_dealer_shift_metrics_contract.sql`, after owner review.
 - Durable mass-open stays dark by default: `enabled=false`, `all_clubs_enabled=false`, and an empty allowlist.
 - Existing assignments remain untouched. Do not reset the 19 staffed incident tables.
+- Git-triggered Vercel deployments are disabled in the project-root `VinPoker/vercel.json`.
+  This DB/Edge wave must not create a frontend deployment. A future frontend release remains
+  an explicit `deploy_frontend=true` manual control-plane action with its own owner gate.
 
 ## Component-scoped credentials
 

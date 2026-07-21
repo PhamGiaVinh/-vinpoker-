@@ -208,6 +208,7 @@ jobs:
         if: needs.plan.outputs.critical_functions != '[]'
         env:
           TARGETS: ${{ needs.plan.outputs.critical_functions }}
+          CONTRACT_PROFILE: ${{ needs.plan.outputs.contract_profile }}
         run: >-
           node control-plane/VinPoker/scripts/deploy/verify-target-source.mjs
           --target-root "${GITHUB_WORKSPACE}/target-source"
@@ -241,11 +242,11 @@ jobs:
           set -euo pipefail
           deno test --allow-env --allow-read --allow-net \
             control-plane/VinPoker/scripts/deploy/target-source-policy.test.ts
-          mapfile -t tests < <(jq -r --argjson targets "$TARGETS" '
+          mapfile -t tests < <(jq -r --argjson targets "$TARGETS" --arg profile "$CONTRACT_PROFILE" '
             [.functions | to_entries[]
              | select(.key as $name | $targets | index($name))
-             | .value.quality.denoTests[]] | unique[]
-          ' control-plane/VinPoker/scripts/deploy/deployment-contracts.json)
+             | ((.value.quality.denoTests // []) + (.value.quality.denoTestsByContractProfile[$profile] // []))[]] | unique[]
+            ' control-plane/VinPoker/scripts/deploy/deployment-contracts.json)
           deno test --allow-env --allow-net --allow-read "${tests[@]/#/target-source/}"
 
       - name: Run target static Dealer Swing hardening checks when present
