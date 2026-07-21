@@ -16,6 +16,7 @@ export const PREDECESSOR_GET_MIGRATION_PATH =
 export const MIGRATION_SHA256 =
   "20e63d51c3f910ea69c4a179162ab36b7a6196a01fd5f650c35eab0eed263e24";
 export const CONFIRMATION = "APPLY_FLOOR_CLOCK_CONTROL_20270104000004";
+export const MANAGEMENT_REQUEST_TIMEOUT_MS = 90_000;
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const vinPokerRoot = resolve(scriptDirectory, "..", "..");
@@ -513,7 +514,13 @@ export function postApplyProblems(before, after) {
   return problems;
 }
 
-export async function managementQuery({ projectRef, token, query, fetchImpl = fetch }) {
+export async function managementQuery({
+  projectRef,
+  token,
+  query,
+  fetchImpl = fetch,
+  timeoutMs = MANAGEMENT_REQUEST_TIMEOUT_MS,
+}) {
   let response;
   try {
     response = await fetchImpl(
@@ -525,6 +532,7 @@ export async function managementQuery({ projectRef, token, query, fetchImpl = fe
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ query }),
+        signal: AbortSignal.timeout(timeoutMs),
       },
     );
   } catch {

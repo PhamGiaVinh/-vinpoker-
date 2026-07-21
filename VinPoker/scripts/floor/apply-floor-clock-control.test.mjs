@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   CONFIRMATION,
+  MANAGEMENT_REQUEST_TIMEOUT_MS,
   MIGRATION_PATH,
   MIGRATION_SHA256,
   PROJECT_REF,
@@ -209,6 +210,29 @@ test("Management API transport uses only the approved project and never places c
   assert.equal(calls[0].url, `https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`);
   assert.doesNotMatch(calls[0].url, /test-token-not-logged/);
   assert.equal(JSON.parse(calls[0].init.body).query, "select true as ok");
+  assert.equal(calls[0].init.signal instanceof AbortSignal, true);
+  assert.equal(MANAGEMENT_REQUEST_TIMEOUT_MS, 90_000);
+});
+
+test("Management API transport aborts a hung request at the bounded timeout", async () => {
+  const hangingFetch = async (_url, init) =>
+    new Promise((_resolve, reject) => {
+      init.signal.addEventListener(
+        "abort",
+        () => reject(init.signal.reason ?? new Error("aborted")),
+        { once: true },
+      );
+    });
+  await assert.rejects(
+    managementQuery({
+      projectRef: PROJECT_REF,
+      token: "test-token-not-logged",
+      query: "select true",
+      fetchImpl: hangingFetch,
+      timeoutMs: 10,
+    }),
+    /Management API network request failed/,
+  );
 });
 
 test("mutation transport ambiguity is classified as outcome unknown", async () => {
@@ -231,6 +255,7 @@ test("workflow is manual-only, exact-SHA, protected and contains no broad deploy
   assert.match(workflow, /any\(\.type == "required_reviewers"/);
   assert.match(workflow, /needs:\s*validate-critical-environment/);
   assert.match(workflow, /environment:\s*dealer-swing-production-critical/);
+  assert.match(workflow, /timeout-minutes:\s*20/);
   assert.match(workflow, /ref: \$\{\{ inputs\.commit_sha \}\}/);
   assert.match(workflow, /git merge-base --is-ancestor/);
   assert.match(workflow, new RegExp(CONFIRMATION));
