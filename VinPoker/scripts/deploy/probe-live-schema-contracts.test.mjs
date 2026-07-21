@@ -19,6 +19,7 @@ import { inspectTargetSource } from "./verify-target-source.mjs";
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const manifest = loadDeploymentManifest();
 const PRE_922_SHA = "1fdc210d4ae1689091e0ad874c559592b0ecd690";
+const PRE_FLOOR_CLOCK_BRIDGE_RECEIPT_SHA = "37e2306dd34ba2a9bf9447d9b1e22f52c9253e07";
 const CRITICAL_TARGETS = "process-swing,mass-assign,checkout-dealer";
 const productionMetricsViewFixture = readFileSync(
   resolve(repositoryRoot, "VinPoker/scripts/deploy/fixtures/dealer_shift_metrics-production-view.sql"),
@@ -374,7 +375,7 @@ test("pre-922 rollback runs planning, source quality and target-aware contract p
     const baselines = {
       frontend: { sha: currentMain, source: "github_deployment_receipt" },
       functions: Object.fromEntries(Object.keys(manifest.functions).map((name) => [name, {
-        sha: currentMain,
+        sha: name === "tournament-live-clock" ? PRE_FLOOR_CLOCK_BRIDGE_RECEIPT_SHA : currentMain,
         source: "github_deployment_receipt",
       }])),
     };
