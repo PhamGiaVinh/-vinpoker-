@@ -43,7 +43,11 @@ test("one-shot Floor frontend rollout cannot mutate DB, Edge, flags or payment p
   assert.doesNotMatch(workflow, /sepay|staking|bank[_ -]?transfer/iu);
   assert.doesNotMatch(workflow, /--token\b/iu);
   assert.doesNotMatch(workflow, /vercel pull/iu);
+  assert.match(workflow, /vercel env run --environment=production/u);
   assert.match(workflow, /trap 'rm -f \.vercel\/project\.json' EXIT/u);
+  assert.match(workflow, /"Cache-Control":"no-cache, must-revalidate"/u);
+  assert.match(workflow, /git diff --quiet "\$TARGET_SHA" origin\/main/u);
+  assert.match(workflow, /cmp --silent VinPoker\/dist\/version\.json/u);
   assert.match(workflow, /--component frontend/u);
 });
 
