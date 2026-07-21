@@ -11,6 +11,9 @@ import { buildComponentDiffs, buildDeploymentPlan, isFrontendPath, renderPlanSum
 const manifest = loadDeploymentManifest();
 const TARGET = "a".repeat(40);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+// This reviewed main ancestor predates the Floor legacy bridge. It keeps the
+// rollback test deterministic when origin/main later gains that bridge.
+const PRE_FLOOR_CLOCK_BRIDGE_RECEIPT_SHA = "37e2306dd34ba2a9bf9447d9b1e22f52c9253e07";
 const MASS_OPEN_SELECTION = {
   profile: "dealer_mass_open_v1",
   sourceFingerprint: `sha256:${"a".repeat(64)}`,
@@ -342,7 +345,7 @@ test("pre-922 rollback target can be planned with current control-plane", () => 
   const baselines = {
     frontend: { sha: currentMain, source: "github_deployment_receipt" },
     functions: Object.fromEntries(Object.keys(manifest.functions).map((name) => [name, {
-      sha: currentMain,
+      sha: name === "tournament-live-clock" ? PRE_FLOOR_CLOCK_BRIDGE_RECEIPT_SHA : currentMain,
       source: "github_deployment_receipt",
     }])),
   };
