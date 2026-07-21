@@ -48,6 +48,10 @@ test("one-shot Floor frontend rollout cannot mutate DB, Edge, flags or payment p
   assert.match(workflow, /"Cache-Control":"no-cache, must-revalidate"/u);
   assert.match(workflow, /git diff --quiet "\$TARGET_SHA" origin\/main/u);
   assert.match(workflow, /cmp --silent VinPoker\/dist\/version\.json/u);
+  assert.match(
+    workflow,
+    /tr -d '\\r'[\s\S]*grep -iqx 'cache-control:\[\[:space:\]\]\*no-cache, must-revalidate'/u,
+  );
   assert.match(workflow, /--component frontend/u);
 });
 

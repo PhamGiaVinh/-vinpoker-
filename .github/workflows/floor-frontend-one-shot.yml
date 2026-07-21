@@ -337,8 +337,8 @@ jobs:
           curl --silent --show-error --fail --head \
             "https://vinpoker.vercel.app${asset_path}" \
             --output "${RUNNER_TEMP}/asset-headers.txt"
-          grep -iq '^cache-control:[[:space:]]*no-cache, must-revalidate\r\?$' \
-            "${RUNNER_TEMP}/asset-headers.txt"
+          tr -d '\r' < "${RUNNER_TEMP}/asset-headers.txt" \
+            | grep -iqx 'cache-control:[[:space:]]*no-cache, must-revalidate'
 
       - name: Record receipt only after successful deploy
         run: >-
