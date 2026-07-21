@@ -15,3 +15,14 @@ test("PG16 disposable preparation removes only unsupported MAINTAIN privileges",
     '-- PG16 disposable compatibility: stripped unsupported MAINTAIN privilege: GRANT MAINTAIN ON TABLE "public"."obsolete" TO "authenticated";\n',
   ].join(""));
 });
+
+test("PG16 disposable preparation strips only the unsupported transaction_timeout setting", () => {
+  const source = [
+    'SET transaction_timeout = 0;\n',
+    'SET statement_timeout = 0;\n',
+  ].join("");
+  assert.equal(normalizeForPostgres16(source), [
+    '-- PG16 disposable compatibility: stripped unsupported transaction_timeout setting: SET transaction_timeout = 0;\n',
+    'SET statement_timeout = 0;\n',
+  ].join(""));
+});

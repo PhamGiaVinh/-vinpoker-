@@ -7,6 +7,7 @@ import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
   getFeatureTablePoolIds,
   getFeatureTablePoolsByTable,
+  getFeatureTablePoolsByTableWithStatus,
   getReservedDealerIds,
 } from "../featureTableGate.ts";
 
@@ -149,6 +150,27 @@ Deno.test("getFeatureTablePoolsByTable P2 fix: dealer_table_pool_members error �
   const result = await getFeatureTablePoolsByTable(admin, ["T1", "T2"]);
   assertEquals(result.get("T1")!.size, 0, "T1 (known special) stays gated+empty, not populated");
   assertEquals(result.has("T2"), false, "T2 was already confirmed normal — no need to also gate it");
+});
+
+Deno.test("feature pool query diagnostics retain only a stable error code", async () => {
+  const privateDetail = "private database endpoint must not be logged";
+  const admin = makeAdmin({
+    appSettings: { data: null, error: { message: privateDetail } },
+    dealerTableProfiles: NONE,
+    dealerTablePoolMembers: NONE,
+  });
+  const lines: string[] = [];
+  const previousWarn = console.warn;
+  console.warn = (...args: unknown[]) => lines.push(JSON.stringify(args));
+  try {
+    const result = await getFeatureTablePoolsByTableWithStatus(admin, ["T1"]);
+    assertEquals(result.status, "query_failed");
+    assertEquals(result.errorCode, "feature_table_pools_app_settings_query_failed");
+  } finally {
+    console.warn = previousWarn;
+  }
+  assertEquals(lines.some((line) => line.includes(privateDetail)), false);
+  assertEquals(lines.some((line) => line.includes("QUERY_FAILED")), true);
 });
 
 // ══════════════════════════════════════════════════════════════════════════

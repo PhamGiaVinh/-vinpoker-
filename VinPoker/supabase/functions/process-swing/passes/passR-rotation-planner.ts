@@ -23,7 +23,11 @@ import {
 } from "../../_shared/pickNextDealer.ts";
 import { solveRotationPlan } from "../../_shared/rotationSolver.ts";
 import { SWING_POLICY } from "../../_shared/swingPolicy.ts";
-import { getFeatureTablePoolsByTable, getReservedDealerIds } from "../../_shared/featureTableGate.ts"; // Patch 5c/5d: planner pool gate + reserved exclusivity
+import {
+  getFeatureTablePoolsByTable,
+  getFeatureTablePoolsByTableWithStatus,
+  getReservedDealerIds,
+} from "../../_shared/featureTableGate.ts"; // Patch 5c/5d: planner pool gate + reserved exclusivity
 import { tierForBuyIn } from "../../_shared/rotationTypes.ts";
 import type {
   DealerTier,
@@ -610,9 +614,30 @@ export async function passRRotationPlanner(
     // Phase C — solve (pure). Patch 5c: gate the planner to each special table's pool
     // (parity with pickNextDealer's reactive gate) so it never announces a non-pool
     // dealer that the seat trigger would reject (DT006) → stuck table.
-    const featurePoolMap = await getFeatureTablePoolsByTable(admin, assignments.map((a) => a.table_id));
+    const featurePoolSnapshot = await getFeatureTablePoolsByTableWithStatus(
+      admin,
+      assignments.map((a) => a.table_id),
+    );
+    if (featurePoolSnapshot.status !== "ok") {
+      result.candidateStatus = featurePoolSnapshot.status;
+      result.candidateErrorCode = featurePoolSnapshot.errorCode
+        ?? `feature_table_pools_${featurePoolSnapshot.status}`;
+      result.errors.push({ scope: "feature_table_pools", error: result.candidateErrorCode });
+      result.solverDurationMs = Date.now() - started;
+      return result;
+    }
+    const featurePoolMap = featurePoolSnapshot.pools;
     // Patch 5d — reserved feature/final pool dealers are excluded from NORMAL tables.
-    const reservedDealerIds = [...await getReservedDealerIds(admin)];
+    let reservedDealerIds: string[];
+    try {
+      reservedDealerIds = [...await getReservedDealerIds(admin)];
+    } catch {
+      result.candidateStatus = "query_failed";
+      result.candidateErrorCode = "reserved_dealers_query_failed";
+      result.errors.push({ scope: "reserved_dealers", error: result.candidateErrorCode });
+      result.solverDurationMs = Date.now() - started;
+      return result;
+    }
     const plan = solveRotationPlan(
       buildSolverTables(assignments, tournamentInfo, ctx, featurePoolMap),
       candidates,

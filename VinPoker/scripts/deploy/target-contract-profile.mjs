@@ -5,6 +5,7 @@ import { inspectImportGraph } from "./verify-target-source.mjs";
 
 export const LEGACY_PROFILE = "dealer_swing_legacy";
 export const MASS_OPEN_PROFILE = "dealer_mass_open_v1";
+export const SHORTAGE_ALERT_PROFILE = "dealer_shortage_alert_v1";
 
 const EDGE_EVIDENCE_ROOTS = [
   "VinPoker/supabase/functions/process-swing/index.ts",
@@ -64,6 +65,14 @@ export function selectTargetContractProfile({ targetRoot }) {
       source.includes("dealer_mass_open_rollout") || source.includes("get_dealer_mass_open_rollout")),
     frontendOperationRpc: marker(orderedFiles, sources, (_file, source) =>
       source.includes("operator_open_dealer_tables") || source.includes("get_dealer_open_operation")),
+    shortageAlertImport: marker(
+      orderedFiles,
+      sources,
+      (file) => file.endsWith("/process-swing/shortageAlert.ts"),
+    ),
+    shortageLedger: marker(orderedFiles, sources, (_file, source) =>
+      source.includes("advance_dealer_shortage_alert_incident") &&
+      source.includes("complete_dealer_shortage_alert_notification")),
     floorClockRevisionUi: marker(
       orderedFiles,
       sources,
@@ -100,10 +109,20 @@ export function selectTargetContractProfile({ targetRoot }) {
     || has("operationColumn")
     || has("rollout")
     || has("frontendOperationRpc");
+  const shortageAlertComplete = massOpenComplete
+    && has("shortageAlertImport")
+    && has("shortageLedger");
+  const anyShortageAlertMarker = has("shortageAlertImport") || has("shortageLedger");
   const legacyComplete = has("fillEmptyTablesImport") && !anyMassOpenMarker;
 
   let profile;
-  if (massOpenComplete) profile = MASS_OPEN_PROFILE;
+  if (shortageAlertComplete) profile = SHORTAGE_ALERT_PROFILE;
+  else if (anyShortageAlertMarker) {
+    const error = new Error("UNKNOWN_TARGET_CONTRACT_PROFILE: shortage alert source markers are incomplete or contradictory");
+    error.code = "UNKNOWN_TARGET_CONTRACT_PROFILE";
+    error.evidence = evidence;
+    throw error;
+  } else if (massOpenComplete) profile = MASS_OPEN_PROFILE;
   else if (legacyComplete) profile = LEGACY_PROFILE;
   else {
     const error = new Error("UNKNOWN_TARGET_CONTRACT_PROFILE: target source markers are incomplete or contradictory");
@@ -136,6 +155,7 @@ export function selectTargetContractProfile({ targetRoot }) {
     evidence,
     requirements: {
       floorClockRevisionV1: floorClockRevisionComplete,
+      dealerShortageAlertV1: shortageAlertComplete,
     },
     evidenceFiles: orderedFiles,
   };

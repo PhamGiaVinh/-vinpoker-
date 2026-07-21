@@ -9,6 +9,7 @@ import {
   assertTargetContractProfile,
   LEGACY_PROFILE,
   MASS_OPEN_PROFILE,
+  SHORTAGE_ALERT_PROFILE,
   selectTargetContractProfile,
 } from "./target-contract-profile.mjs";
 
@@ -55,13 +56,16 @@ function extractRevision(sha) {
   return { root, targetRoot };
 }
 
-test("current reviewed target derives dealer_mass_open_v1 from exact imported source", () => {
+test("current reviewed target derives dealer_shortage_alert_v1 from exact imported source", () => {
   const selection = selectTargetContractProfile({ targetRoot: repositoryRoot });
-  assert.equal(selection.profile, MASS_OPEN_PROFILE);
+  assert.equal(selection.profile, SHORTAGE_ALERT_PROFILE);
   assert.match(selection.sourceFingerprint, /^sha256:[0-9a-f]{64}$/);
   assert.equal(selection.evidence.fillOpenOperationImport.length > 0, true);
   assert.equal(selection.evidence.frontendOperationRpc.length > 0, true);
+  assert.equal(selection.evidence.shortageAlertImport.length > 0, true);
+  assert.equal(selection.evidence.shortageLedger.length > 0, true);
   assert.equal(selection.requirements.floorClockRevisionV1, true);
+  assert.equal(selection.requirements.dealerShortageAlertV1, true);
 });
 
 test("pre-922 exact target derives dealer_swing_legacy", () => {
@@ -101,12 +105,58 @@ test("operator cannot force current mass-open source through the legacy profile"
   );
 });
 
+test("operator cannot force current shortage-alert source through the mass-open profile", () => {
+  assert.throws(
+    () => assertTargetContractProfile({ targetRoot: repositoryRoot, expectedProfile: MASS_OPEN_PROFILE }),
+    (error) => error.code === "TARGET_CONTRACT_PROFILE_MISMATCH",
+  );
+});
+
 test("adding the shared fillOpenOperation import switches source to mass-open", () => {
   const root = makeLegacyTarget();
   try {
     assert.equal(selectTargetContractProfile({ targetRoot: root }).profile, LEGACY_PROFILE);
     addMassOpenSource(root);
     assert.equal(selectTargetContractProfile({ targetRoot: root }).profile, MASS_OPEN_PROFILE);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("adding the complete shortage alert module switches mass-open source to alert", () => {
+  const root = makeLegacyTarget();
+  try {
+    addMassOpenSource(root);
+    assert.equal(selectTargetContractProfile({ targetRoot: root }).profile, MASS_OPEN_PROFILE);
+    put(root, "VinPoker/supabase/functions/process-swing/index.ts", `
+      import "../_shared/fillEmptyTables.ts";
+      import "./shortageAlert.ts";
+    `);
+    put(root, "VinPoker/supabase/functions/process-swing/shortageAlert.ts", `
+      client.rpc("advance_dealer_shortage_alert_incident");
+      client.rpc("complete_dealer_shortage_alert_notification");
+    `);
+    assert.equal(selectTargetContractProfile({ targetRoot: root }).profile, SHORTAGE_ALERT_PROFILE);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("partial shortage alert markers fail closed", () => {
+  const root = makeLegacyTarget();
+  try {
+    addMassOpenSource(root);
+    put(root, "VinPoker/supabase/functions/process-swing/index.ts", `
+      import "../_shared/fillEmptyTables.ts";
+      import "./shortageAlert.ts";
+    `);
+    put(root, "VinPoker/supabase/functions/process-swing/shortageAlert.ts", `
+      client.rpc("advance_dealer_shortage_alert_incident");
+    `);
+    assert.throws(
+      () => selectTargetContractProfile({ targetRoot: root }),
+      (error) => error.code === "UNKNOWN_TARGET_CONTRACT_PROFILE",
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
