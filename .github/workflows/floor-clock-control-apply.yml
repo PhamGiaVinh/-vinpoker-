@@ -1,0 +1,109 @@
+name: Floor clock control - exact migration apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Exact reviewed main SHA containing migration 20270104000004"
+        required: true
+        type: string
+      mode:
+        description: "Read-only preflight or exact apply"
+        required: true
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - apply
+      confirmation:
+        description: "For apply: APPLY_FLOOR_CLOCK_CONTROL_20270104000004"
+        required: true
+        default: HOLD
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  deployments: write
+
+concurrency:
+  group: floor-clock-control-exact-apply
+  cancel-in-progress: false
+
+env:
+  CRITICAL_ENVIRONMENT: dealer-swing-production-critical
+
+jobs:
+  validate-critical-environment:
+    name: Require protected critical environment
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail closed unless required reviewers are configured
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          environment_json="$(gh api "repos/${GITHUB_REPOSITORY}/environments/${CRITICAL_ENVIRONMENT}")"
+          jq -e '
+            .protection_rules
+            | any(.type == "required_reviewers" and ((.reviewers // []) | length > 0))
+          ' <<<"$environment_json" >/dev/null
+
+  exact-apply:
+    needs: validate-critical-environment
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: dealer-swing-production-critical
+    steps:
+      - name: Checkout exact reviewed source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+
+      - name: Verify exact SHA belongs to current main
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.commit_sha }}
+          APPLY_MODE: ${{ inputs.mode }}
+          APPLY_CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          if [[ "$APPLY_MODE" == "apply" ]]; then
+            test "$APPLY_CONFIRMATION" = "APPLY_FLOOR_CLOCK_CONTROL_20270104000004"
+          else
+            test "$APPLY_MODE" = "preflight"
+          fi
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@1e60f620b9541d7c243d3cde6fda4547d0b9ab75
+        with:
+          node-version: "20"
+
+      - name: Validate exact runner and migration policy
+        working-directory: VinPoker
+        run: node --test scripts/floor/apply-floor-clock-control.test.mjs
+
+      - name: Read-only live preflight
+        working-directory: VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: node scripts/floor/apply-floor-clock-control.mjs --preflight
+
+      - name: Apply exact clock migration and verify live contract
+        if: inputs.mode == 'apply'
+        working-directory: VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          CONFIRM_APPLY_FLOOR_CLOCK: APPLY_FLOOR_CLOCK_CONTROL_20270104000004
+        run: node scripts/floor/apply-floor-clock-control.mjs --apply
