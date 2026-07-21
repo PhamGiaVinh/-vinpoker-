@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { FEATURES, isTrackerAtomicResettleAvailable } from "@/lib/featureFlags";
 import { HandEditPanel } from "./HandEditPanel";
 import { buildEditCompletedHandArgs, type HandEditPatch } from "./handEditDiff";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
+import { createHandHistoryLoadGuard } from "./handHistoryLoadGuard";
 import {
   runClientResettle,
   buildApplyResettleArgs,
@@ -110,6 +111,8 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string>("all");
   const [tables, setTables] = useState<{ id: string; name: string }[]>([]);
+  const loadGuardRef = useRef<ReturnType<typeof createHandHistoryLoadGuard> | null>(null);
+  if (!loadGuardRef.current) loadGuardRef.current = createHandHistoryLoadGuard();
   // Đợt G3 — resettle-forward (chips). resettleSupported degrades to false on a 42883
   // (apply RPC not applied) so the flow shows "chưa áp dụng" instead of crashing.
   const [resettleSupported, setResettleSupported] = useState(true);
@@ -145,6 +148,8 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
 
   const loadHands = useCallback(async () => {
     if (!tournamentId) return;
+    const request = loadGuardRef.current!.begin();
+    const isCurrentLoad = () => loadGuardRef.current!.isCurrent(request);
     setLoading(true);
     setLoadError(null);
 
@@ -160,6 +165,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
     }
 
     const { data: handRows, error } = await query;
+    if (!isCurrentLoad()) return;
     if (error || !handRows) {
       setLoadError(error?.message ?? "Không tải được dữ liệu");
       setHands([]);
@@ -178,6 +184,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
     // applied; the column is selected only if present (feature-detect). Fall back to the
     // tournament_seats roster only for old rows the snapshot didn't capture.
     const snap = await handPlayersHasSnapshot();
+    if (!isCurrentLoad()) return;
     const baseHpCols = "hand_id, player_id, entry_number, seat_number, starting_stack, ending_stack, is_eliminated, hole_cards";
     const [playersRes, actionsRes] = await Promise.all([
       supabase
@@ -190,9 +197,18 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
         .in("hand_id", handIds)
         .order("action_order"),
     ]);
+    if (!isCurrentLoad()) return;
+    const historyError = playersRes.error || actionsRes.error;
+    if (historyError) {
+      setLoadError(historyError.message || "Không tải được chi tiết hand");
+      setHands([]);
+      setLoading(false);
+      return;
+    }
 
     const needIds = (playersRes.data || []).filter((p: any) => !p.player_name).map((p: any) => p.player_id);
     const display = await fetchHandPlayerDisplay(tournamentId, needIds);
+    if (!isCurrentLoad()) return;
     const nameMap = new Map<string, string>();
     (playersRes.data || []).forEach((p: any) => {
       nameMap.set(p.player_id, p.player_name || display.get(p.player_id)?.name || p.player_id.slice(0, 6));
@@ -246,7 +262,10 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
     setLoading(false);
   }, [tournamentId, selectedTableId]);
 
-  useEffect(() => { loadHands(); }, [loadHands]);
+  useEffect(() => {
+    void loadHands();
+    return () => loadGuardRef.current?.invalidate();
+  }, [loadHands]);
   useEffect(() => { setEditMode(false); setResettleView(null); }, [selectedHandId]);
 
   const handleSaveEdit = async (patch: HandEditPatch, reason: string) => {
