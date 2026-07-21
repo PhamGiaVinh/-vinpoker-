@@ -68,6 +68,15 @@ test("live contract approval uses the read-only catalog instead of parsing a raw
   assert.match(workflow, /deploy-frontend:[\s\S]*Verify frontend scoped credentials[\s\S]*VERCEL_TOKEN/);
 });
 
+test("target preflight invokes catalog tooling from the control-plane checkout", () => {
+  const targetPreflight = workflow.slice(workflow.indexOf("target-preflight:"), workflow.indexOf("validate-critical-environment:"));
+  assert.match(
+    targetPreflight,
+    /node "\$\{GITHUB_WORKSPACE\}\/control-plane\/VinPoker\/scripts\/deploy\/capture-live-schema-contract-catalog\.mjs"/,
+  );
+  assert.doesNotMatch(targetPreflight, /node control-plane\/VinPoker\/scripts\/deploy\/capture-live-schema-contract-catalog\.mjs/);
+});
+
 test("profile-specific Deno tests run only for the exact derived target contract", () => {
   const stepStart = workflow.indexOf("- name: Run current policy and target Deno tests");
   const stepEnd = workflow.indexOf("\n      - name:", stepStart + 1);
