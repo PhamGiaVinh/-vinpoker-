@@ -35,6 +35,10 @@ function normalizedLf(value) {
   return value.replace(/\r\n/g, "\n");
 }
 
+export function normalizedFunctionBodyHash(value) {
+  return md5(normalizedLf(value));
+}
+
 export function extractFunctionBody(sql, functionName) {
   const escapedName = functionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const header = new RegExp(
@@ -66,15 +70,21 @@ function reviewedBodyHashes() {
   );
   return Object.freeze({
     post: Object.freeze({
-      start: md5(extractFunctionBody(postSql, "floor_start_tournament_clock")),
-      get: md5(extractFunctionBody(postSql, "get_tournament_clock")),
-      control: md5(extractFunctionBody(postSql, "floor_control_tournament_clock")),
+      start: normalizedFunctionBodyHash(
+        extractFunctionBody(postSql, "floor_start_tournament_clock"),
+      ),
+      get: normalizedFunctionBodyHash(extractFunctionBody(postSql, "get_tournament_clock")),
+      control: normalizedFunctionBodyHash(
+        extractFunctionBody(postSql, "floor_control_tournament_clock"),
+      ),
     }),
     predecessor: Object.freeze({
-      start: md5(
+      start: normalizedFunctionBodyHash(
         extractFunctionBody(predecessorStartSql, "floor_start_tournament_clock"),
       ),
-      get: md5(extractFunctionBody(predecessorGetSql, "get_tournament_clock")),
+      get: normalizedFunctionBodyHash(
+        extractFunctionBody(predecessorGetSql, "get_tournament_clock"),
+      ),
     }),
   });
 }
@@ -229,9 +239,9 @@ select
       where a.privilege_type='EXECUTE' and a.grantee<>p.proowner
     ) grant_rows
   ) from control_fn p), '[]'::jsonb) as control_execute_grantees,
-  coalesce((select md5(prosrc) from start_fn), '') as start_hash,
-  coalesce((select md5(prosrc) from get_fn), '') as get_hash,
-  coalesce((select md5(prosrc) from control_fn), '') as control_hash,
+  coalesce((select md5(replace(prosrc, chr(13) || chr(10), chr(10))) from start_fn), '') as start_hash,
+  coalesce((select md5(replace(prosrc, chr(13) || chr(10), chr(10))) from get_fn), '') as get_hash,
+  coalesce((select md5(replace(prosrc, chr(13) || chr(10), chr(10))) from control_fn), '') as control_hash,
   coalesce((select md5(coalesce(relacl::text,'')) from pg_class where oid=to_regclass('public.tournaments')), '') as tournaments_acl_hash,
   coalesce(has_table_privilege('authenticated','public.tournaments','UPDATE'), false) as authenticated_tournaments_update,
   exists(
@@ -405,6 +415,7 @@ export function predecessorProblems(state) {
   }
   for (const key of [
     "start_authenticated_execute",
+    "start_service_role_execute",
     "get_authenticated_execute",
     "get_anon_execute",
     "get_service_role_execute",
@@ -417,7 +428,6 @@ export function predecessorProblems(state) {
   }
   for (const key of [
     "start_anon_execute",
-    "start_service_role_execute",
     "start_public_execute",
     "control_authenticated_execute",
     "control_anon_execute",
@@ -463,13 +473,13 @@ export function predecessorProblems(state) {
     problems,
     "start_execute_grantees",
     state.start_execute_grantees,
-    ["authenticated"],
+    ["authenticated", "service_role"],
   );
   requireExactGrantees(
     problems,
     "get_execute_grantees",
     state.get_execute_grantees,
-    ["PUBLIC", "anon", "authenticated"],
+    ["PUBLIC", "anon", "authenticated", "service_role"],
   );
   requireExactGrantees(problems, "control_execute_grantees", state.control_execute_grantees, []);
   return problems;
