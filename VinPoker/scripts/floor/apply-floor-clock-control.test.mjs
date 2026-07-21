@@ -256,6 +256,10 @@ test("workflow is manual-only, exact-SHA, protected and contains no broad deploy
   assert.match(workflow, /needs:\s*validate-critical-environment/);
   assert.match(workflow, /environment:\s*dealer-swing-production-critical/);
   assert.match(workflow, /timeout-minutes:\s*20/);
+  assert.match(
+    workflow,
+    /actions\/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020/,
+  );
   assert.match(workflow, /ref: \$\{\{ inputs\.commit_sha \}\}/);
   assert.match(workflow, /git merge-base --is-ancestor/);
   assert.match(workflow, new RegExp(CONFIRMATION));
