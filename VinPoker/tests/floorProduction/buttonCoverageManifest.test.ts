@@ -82,7 +82,7 @@ describe("Floor button coverage manifest", () => {
 
   it("keeps clock and chip action IDs distinct and removes the legacy combined adjustment", () => {
     const ids = floorButtonCoverageManifest.map((entry) => entry.id);
-    expect(ids).toHaveLength(74);
+    expect(ids).toHaveLength(85);
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of [
       "clock-start",
@@ -100,7 +100,7 @@ describe("Floor button coverage manifest", () => {
     expect(ids).not.toContain("clock-adjust");
     expect(
       createHash("sha256").update([...ids].sort().join("\n")).digest("hex"),
-    ).toBe("1d821a12495700388993cee059a7896c6aba097cb23ce99186da7d72db98ce93");
+    ).toBe("e6c7b3403b3a6297f625db5954afe0c3626b698fbf6b22eaf7b69b295368f39e");
   });
 
   it("waits for a visible control instead of the responsive shell's hidden first control", () => {
@@ -115,6 +115,28 @@ describe("Floor button coverage manifest", () => {
     expect(coverageSpec).toContain("context.close().catch(() => undefined)");
     expect(coverageSpec).toContain('"owned_tournament_selected"');
     expect(coverageSpec).toContain('"tab_selected"');
+  });
+
+  it("waits for route-owned controls and records conditional navigation evidence", () => {
+    expect(coverageSpec).toContain("prepareRouteForCoverageDiscovery");
+    expect(coverageSpec).toContain("auditConditionalRouteControls");
+    expect(coverageSpec).toContain("appendVerifiedControlEvidence");
+    expect(coverageSpec).toContain("auditScopedControlInventory");
+    expect(coverageSpec).toContain('case "/ops/tournaments"');
+    expect(coverageSpec).toContain('case "/ops/cashier"');
+    expect(coverageSpec).toContain('case "/ops/tables"');
+    expect(coverageSpec).toContain('case "/ops/tournaments/:id"');
+    expect(coverageSpec).toContain('case "/floor"');
+    expect(coverageSpec).toContain('"tournament-cancel"');
+    expect(coverageSpec).toContain('"tournament-confirm"');
+    expect(coverageSpec).toContain('"tables-clock"');
+    expect(coverageSpec).toContain('"tournament-actions-close"');
+    expect(coverageSpec).toContain('"tables-seat-empty"');
+    expect(coverageSpec).toContain("has enabled controls without a manifest entry");
+    expect(coverageSpec).toContain("visibleButtonContainingExactText(page, assignment.ownedTournamentName)");
+    expect(coverageSpec).not.toContain("visibleButton(page, assignment.ownedTournamentName).click");
+    expect(canaryRunner).toContain("ownedTournamentName: access.tournamentName");
+    expect(canaryRunner).toContain("ownedTournamentName: lifecycle.tournamentName");
   });
 
   it("pins the browser audit to the locale used by manifest labels", () => {

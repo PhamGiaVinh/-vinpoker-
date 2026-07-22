@@ -30,7 +30,7 @@ type RouteAssignment = {
   tabName?: string;
 };
 
-const ownedTournamentNamePattern = /^CODEX_FLOOR_CANARY_[0-9]{14}_[a-f0-9]{8}_(ACCESS|PAYOUT_CLOSE)$/u;
+const ownedTournamentNamePattern = /^CODEX_FLOOR_CANARY_[0-9]{14}_[a-f0-9]{8}_(ACCESS|SETUP_CLOCK|TABLE_LIFECYCLE|CLOSE_ORPHAN|REDRAW|CHIP_CAS|BUST_RESTORE|PAYOUT_CLOSE|CONCURRENCY)$/u;
 const exactUuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 const productionSupabaseOrigin = "https://orlesggcjamwuknxwcpk.supabase.co";
 
@@ -133,6 +133,238 @@ function controlEvidencePath() {
 
 function appendControlEvidence(evidence: FloorControlEvidence) {
   appendFileSync(controlEvidencePath(), `${JSON.stringify(evidence)}\n`, { encoding: "utf8" });
+}
+
+function visibleButton(
+  page: import("@playwright/test").Page,
+  name: string | RegExp,
+) {
+  return page.getByRole("button", { name, exact: typeof name === "string" })
+    .filter({ visible: true })
+    .first();
+}
+
+function visibleButtonContainingExactText(
+  page: import("@playwright/test").Page,
+  text: string,
+) {
+  return page.getByRole("button")
+    .filter({ has: page.getByText(text, { exact: true }), visible: true })
+    .first();
+}
+
+async function prepareRouteForCoverageDiscovery(
+  page: import("@playwright/test").Page,
+  assignment: RouteAssignment,
+  manifestRoute: string,
+  viewport: ConcreteFloorAuditViewport,
+) {
+  switch (manifestRoute) {
+    case "/ops/tournaments": {
+      await expect(visibleButton(page, "Tạo giải")).toBeVisible({ timeout: 30_000 });
+      const allTournaments = visibleButton(page, /^Tất cả(?: \(\d+\))?$/u);
+      await expect(allTournaments).toBeVisible({ timeout: 15_000 });
+      await allTournaments.click({ timeout: 15_000 });
+      if (!assignment.ownedTournamentName) throw new Error("Tournament inventory requires an exact-owned fixture name");
+      await expect(visibleButtonContainingExactText(page, assignment.ownedTournamentName)).toBeVisible({ timeout: 15_000 });
+      logAuditPhase(manifestRoute, assignment.role, viewport, "owned_tournament_visible");
+      return;
+    }
+    case "/ops/cashier":
+      await expect(visibleButton(page, "Hàng chờ")).toBeVisible({ timeout: 30_000 });
+      return;
+    case "/ops/tables":
+      if (!assignment.ownedTournamentName) throw new Error("Table inventory requires an exact-owned fixture name");
+      await expect(visibleButton(page, assignment.ownedTournamentName)).toBeVisible({ timeout: 30_000 });
+      await expect(visibleButton(page, /^\d+\s+\d+\/\d+$/u)).toBeVisible({ timeout: 30_000 });
+      logAuditPhase(manifestRoute, assignment.role, viewport, "owned_table_visible");
+      return;
+    case "/ops/tournaments/:id":
+      await expect(visibleButton(page, "Trạng thái")).toBeVisible({ timeout: 30_000 });
+      await expect(visibleButton(page, "Sơ đồ bàn")).toBeVisible({ timeout: 30_000 });
+      return;
+    case "/floor": {
+      if (!assignment.ownedTournamentName) throw new Error("Floor inventory requires an exact-owned fixture name");
+      logAuditPhase(manifestRoute, assignment.role, viewport, "owned_tournament_wait");
+      const ownedTournament = visibleButton(page, assignment.ownedTournamentName);
+      await expect(ownedTournament).toBeVisible({ timeout: 15_000 });
+      await ownedTournament.click({ timeout: 15_000 });
+      await expect(visibleButton(page, "Tất cả giải")).toBeVisible({ timeout: 15_000 });
+      logAuditPhase(manifestRoute, assignment.role, viewport, "owned_tournament_selected");
+      if (!assignment.tabName) throw new Error("Floor inventory requires an exact tab name");
+      await page.getByRole("tab", { name: assignment.tabName, exact: true })
+        .filter({ visible: true })
+        .first()
+        .click({ timeout: 15_000 });
+      logAuditPhase(manifestRoute, assignment.role, viewport, "tab_selected");
+      await expect(visibleButton(page, "Vận hành CLB")).toBeVisible({ timeout: 15_000 });
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+function appendVerifiedControlEvidence(
+  manifest: ReturnType<typeof entriesForViewport>,
+  manifestId: string,
+  viewport: ConcreteFloorAuditViewport,
+  enabled: boolean,
+) {
+  const entry = manifest.find((candidate) => candidate.id === manifestId);
+  if (!entry) throw new Error(`Missing manifest entry for conditional control ${manifestId}`);
+  appendControlEvidence(discoveryEvidence(entry, viewport, enabled));
+}
+
+async function auditScopedControlInventory(
+  scope: import("@playwright/test").Locator,
+  manifest: ReturnType<typeof entriesForViewport>,
+  expectedManifestIds: string[],
+  viewport: ConcreteFloorAuditViewport,
+  description: string,
+) {
+  const expectedEntries = expectedManifestIds.map((manifestId) => {
+    const entry = manifest.find((candidate) => candidate.id === manifestId);
+    if (!entry) throw new Error(`Missing manifest entry for ${description}:${manifestId}`);
+    return entry;
+  });
+  const controls = scope.locator(interactiveControlSelector);
+  const observedControls = await controls.evaluateAll((nodes) => nodes.flatMap((node) => {
+    const element = node as HTMLElement;
+    const style = window.getComputedStyle(element);
+    const bounds = element.getBoundingClientRect();
+    const visible = style.display !== "none"
+      && style.visibility !== "hidden"
+      && style.opacity !== "0"
+      && bounds.width > 0
+      && bounds.height > 0;
+    if (!visible) return [];
+    const nativeDisabled = element instanceof HTMLButtonElement || element instanceof HTMLInputElement
+      ? element.disabled
+      : false;
+    return [{
+      label: element.getAttribute("data-testid")
+        ?? element.getAttribute("aria-label")
+        ?? element.getAttribute("title")
+        ?? element.innerText
+        ?? element.getAttribute("value")
+        ?? "",
+      enabled: !nativeDisabled && element.getAttribute("aria-disabled") !== "true",
+    }];
+  }));
+  const matchedManifestIds = new Set<string>();
+  const unclassifiedEnabled: string[] = [];
+  const stateMismatches: string[] = [];
+  for (const control of observedControls) {
+    const observed = normalise(control.label) || "<unlabelled-enabled-control>";
+    const candidates = expectedEntries.filter((entry) => {
+      const expected = normalise(entry.testId ?? entry.label);
+      const patternMatches = entry.labelPattern ? new RegExp(entry.labelPattern, "iu").test(observed) : false;
+      return observed === expected || observed.startsWith(`${expected} `) || patternMatches;
+    });
+    const known = candidates.find((entry) => (
+      control.enabled
+        ? !["disabled", "hidden"].includes(entry.expectedState)
+        : ["disabled", "hidden"].includes(entry.expectedState)
+    )) ?? candidates[0];
+    if (!known) {
+      if (control.enabled) unclassifiedEnabled.push(observed);
+      continue;
+    }
+    matchedManifestIds.add(known.id);
+    appendVerifiedControlEvidence(manifest, known.id, viewport, control.enabled);
+    if (control.enabled && ["disabled", "hidden"].includes(known.expectedState)) {
+      stateMismatches.push(`${known.id}:expected_${known.expectedState}_observed_enabled`);
+    }
+    if (!control.enabled && ["enabled", "navigation-only"].includes(known.expectedState)) {
+      stateMismatches.push(`${known.id}:expected_${known.expectedState}_observed_disabled`);
+    }
+  }
+  const missingManifestIds = expectedManifestIds.filter((manifestId) => !matchedManifestIds.has(manifestId));
+  expect(unclassifiedEnabled, `${description} has enabled controls without a manifest entry`).toEqual([]);
+  expect(stateMismatches, `${description} has manifest state mismatches`).toEqual([]);
+  expect(missingManifestIds, `${description} did not expose every expected manifest control`).toEqual([]);
+  return [...matchedManifestIds];
+}
+
+async function auditConditionalRouteControls(
+  page: import("@playwright/test").Page,
+  assignment: RouteAssignment,
+  manifestRoute: string,
+  viewport: ConcreteFloorAuditViewport,
+  manifest: ReturnType<typeof entriesForViewport>,
+) {
+  switch (manifestRoute) {
+    case "/ops/tournaments": {
+      if (!assignment.ownedTournamentName) throw new Error("Tournament conditional audit requires an exact-owned fixture name");
+      await visibleButtonContainingExactText(page, assignment.ownedTournamentName).click({ timeout: 15_000 });
+      const actionSheet = page.locator('[role="dialog"]').filter({
+        has: page.getByRole("button", { name: "Cập nhật live — người / level / blind", exact: true }),
+        visible: true,
+      }).first();
+      await expect(actionSheet).toBeVisible({ timeout: 15_000 });
+      const actionSheetIds = await auditScopedControlInventory(
+        actionSheet,
+        manifest,
+        [
+          "tournament-actions-close",
+          "tournament-enter-operations",
+          "tournament-update-live",
+          "tournament-edit",
+          "tournament-payout-structure",
+          "tournament-history",
+          "tournament-close-prompt",
+          "tournament-delete-prompt",
+        ],
+        viewport,
+        "tournament action sheet",
+      );
+      await actionSheet.getByRole("button", { name: "Chốt giải", exact: true }).click({ timeout: 15_000 });
+      const dialog = page.locator('[role="alertdialog"]').filter({
+        has: page.getByText(`Chốt giải ${assignment.ownedTournamentName}?`, { exact: true }),
+      }).first();
+      await expect(dialog).toBeVisible({ timeout: 15_000 });
+      const cancel = dialog.getByRole("button", { name: "Huỷ", exact: true });
+      const dialogIds = await auditScopedControlInventory(
+        dialog,
+        manifest,
+        ["tournament-cancel", "tournament-confirm"],
+        viewport,
+        "tournament close confirmation",
+      );
+      await cancel.click({ timeout: 15_000 });
+      await expect(dialog).toBeHidden({ timeout: 15_000 });
+      logAuditPhase(manifestRoute, assignment.role, viewport, "conditional_controls_verified");
+      return [...actionSheetIds, ...dialogIds];
+    }
+    case "/ops/tables": {
+      await visibleButton(page, /^\d+\s+\d+\/\d+$/u).click({ timeout: 15_000 });
+      const tableSheet = page.locator('[role="dialog"]').filter({
+        has: page.getByRole("button", { name: "Đồng hồ", exact: true }),
+        visible: true,
+      }).first();
+      await expect(tableSheet).toBeVisible({ timeout: 15_000 });
+      const tableSheetIds = await auditScopedControlInventory(
+        tableSheet,
+        manifest,
+        [
+          "tables-sheet-close",
+          "tables-seat-occupied",
+          "tables-seat-empty",
+          "tables-player-row",
+          "tables-add-player",
+          "tables-clock",
+          "tables-close",
+        ],
+        viewport,
+        "owned table sheet",
+      );
+      logAuditPhase(manifestRoute, assignment.role, viewport, "conditional_controls_verified");
+      return tableSheetIds;
+    }
+    default:
+      return [];
+  }
 }
 
 function exactObjectKeys(value: unknown, expectedKeys: string[]) {
@@ -444,26 +676,8 @@ for (const viewport of floorAuditViewports) {
         ).toBeVisible({ timeout: 30_000 });
         await assertNoRootError(page, manifestRoute, assignment.role, viewport, runtimeErrors);
         logAuditPhase(manifestRoute, assignment.role, viewport, "route_ready");
-        if (assignment.ownedTournamentName) {
-          logAuditPhase(manifestRoute, assignment.role, viewport, "owned_tournament_wait");
-          const ownedTournament = page
-            .getByRole("button", { name: assignment.ownedTournamentName, exact: true })
-            .filter({ visible: true })
-            .first();
-          await expect(ownedTournament).toBeVisible({ timeout: 15_000 });
-          await ownedTournament.click({ timeout: 15_000 });
-          await expect(
-            page.getByRole("button", { name: "Tất cả giải", exact: true }).filter({ visible: true }).first(),
-          ).toBeVisible({ timeout: 15_000 });
-          logAuditPhase(manifestRoute, assignment.role, viewport, "owned_tournament_selected");
-        }
-        if (assignment.tabName) {
-          await page.getByRole("tab", { name: assignment.tabName, exact: true })
-            .filter({ visible: true })
-            .first()
-            .click({ timeout: 15_000 });
-          logAuditPhase(manifestRoute, assignment.role, viewport, "tab_selected");
-        }
+        await prepareRouteForCoverageDiscovery(page, assignment, manifestRoute, viewport);
+        await assertNoRootError(page, manifestRoute, assignment.role, viewport, runtimeErrors);
         const manifest = entriesForViewport(viewport).filter((entry) => entry.route === manifestRoute && entry.role === assignment.role);
         const unclassified: string[] = [];
         const stateMismatches: string[] = [];
@@ -531,6 +745,9 @@ for (const viewport of floorAuditViewports) {
         expect(matchedManifestIds.size, `${assignment.role} ${manifestRoute} must match at least one manifest control`).toBeGreaterThan(0);
         expect(unclassified, `${assignment.role} ${manifestRoute} has enabled controls without a manifest entry`).toEqual([]);
         expect(stateMismatches, `${assignment.role} ${manifestRoute} has manifest state mismatches`).toEqual([]);
+        for (const manifestId of await auditConditionalRouteControls(page, assignment, manifestRoute, viewport, manifest)) {
+          matchedManifestIds.add(manifestId);
+        }
         expect(
           blockedEgress.expectedBlockedEgress.every((entry) => entry.startsWith("expected_blocked_optional_bootstrap_read:")),
           `${assignment.role} ${manifestRoute} classified an unknown expected-blocked read`,

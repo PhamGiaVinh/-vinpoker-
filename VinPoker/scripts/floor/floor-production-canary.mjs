@@ -10,8 +10,8 @@ const PRODUCTION_REF = "orlesggcjamwuknxwcpk";
 const REQUIRED_CONFIRMATION = "RUN_FLOOR_PRODUCTION_CANARY";
 const CANARY_BROWSER_LOCALE = "vi-VN";
 const CANARY_SIGN_IN_LABEL = "Đăng nhập";
-const EXPECTED_BUTTON_MANIFEST_COUNT = 74;
-const EXPECTED_BUTTON_MANIFEST_ID_HASH = "1d821a12495700388993cee059a7896c6aba097cb23ce99186da7d72db98ce93";
+const EXPECTED_BUTTON_MANIFEST_COUNT = 85;
+const EXPECTED_BUTTON_MANIFEST_ID_HASH = "e6c7b3403b3a6297f625db5954afe0c3626b698fbf6b22eaf7b69b295368f39e";
 const CANARY_MODES = new Set(["run", "cleanup", "hold"]);
 const SCENARIOS = [
   "ACCESS",
@@ -3975,10 +3975,10 @@ async function runBrowserManifest(admin, actors, fixtures, additionalOwnedRecord
     );
 
     const routeAssignments = JSON.stringify([
-      { route: "/ops/tournaments", role: "owner", actorId: actors.owner.id, allowedTournamentIds: ownedTournamentIds, allowedRecordIds: ownedRecordIds },
+      { route: "/ops/tournaments", role: "owner", actorId: actors.owner.id, allowedTournamentIds: ownedTournamentIds, allowedRecordIds: ownedRecordIds, ownedTournamentName: access.tournamentName },
       { route: "/ops/cashier", role: "owner", actorId: actors.owner.id, allowedTournamentIds: ownedTournamentIds, allowedRecordIds: ownedRecordIds },
       { route: "/ops/cashier", role: "cashier", actorId: actors.cashier.id, allowedTournamentIds: ownedTournamentIds, allowedRecordIds: ownedRecordIds },
-      { route: `/ops/tables?tour=${lifecycle.tournamentId}`, manifestRoute: "/ops/tables", role: "floor", actorId: actors.floor.id, allowedTournamentIds: ownedTournamentIds, allowedRecordIds: ownedRecordIds },
+      { route: `/ops/tables?tour=${lifecycle.tournamentId}`, manifestRoute: "/ops/tables", role: "floor", actorId: actors.floor.id, allowedTournamentIds: ownedTournamentIds, allowedRecordIds: ownedRecordIds, ownedTournamentName: lifecycle.tournamentName },
       { route: `/ops/tournaments/${setupClock.tournamentId}`, manifestRoute: "/ops/tournaments/:id", role: "floor", actorId: actors.floor.id, allowedTournamentIds: ownedTournamentIds, allowedRecordIds: ownedRecordIds },
       {
         route: "/floor",
