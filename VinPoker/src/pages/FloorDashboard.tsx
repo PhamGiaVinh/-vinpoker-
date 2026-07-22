@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { useOperatorClubs } from "@/hooks/useOperatorClubs";
+import { useStableFloorClubIds } from "@/hooks/useStableFloorClubIds";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, LayoutGrid } from "lucide-react";
@@ -21,7 +22,7 @@ export default function FloorDashboard() {
   const { clubs, operatorClubIds, dealerClubIds } = useOperatorClubs();
   // Capability IDs come from the caller-bound scope RPC. `clubs` is display
   // metadata and can be RLS-filtered, so it must never decide Floor access.
-  const scopedIds = Array.from(new Set([...operatorClubIds, ...dealerClubIds]));
+  const scopedIds = useStableFloorClubIds(operatorClubIds, dealerClubIds);
 
   useEffect(() => {
     if (loading) return;
