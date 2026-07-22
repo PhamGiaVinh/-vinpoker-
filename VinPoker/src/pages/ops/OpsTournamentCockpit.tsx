@@ -23,7 +23,7 @@ import type { MockTable } from "@/components/ops/mock/opsData";
 import type { TournamentLeaderboardPlayer } from "@/types/tournament";
 
 type UnappliedFloorRpcResult = { data: unknown; error: { message?: string; code?: string } | null };
-const untypedFloorRpc = supabase.rpc as unknown as (
+const untypedFloorRpc = supabase.rpc.bind(supabase) as unknown as (
   name: string,
   args: Record<string, unknown>,
 ) => Promise<UnappliedFloorRpcResult>;
