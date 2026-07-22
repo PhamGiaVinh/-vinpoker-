@@ -1545,6 +1545,16 @@ function isExactPayoutPreviewBody(body, tournamentId) {
   return isFiniteNumber(body.itm_percent) && body.itm_percent > 0 && body.itm_percent <= 1;
 }
 
+const EXPECTED_BLOCKED_BOOTSTRAP_APP_PATHS = new Set(["/", "/version.json"]);
+const EXPECTED_BLOCKED_BOOTSTRAP_REST_TABLES = new Set([
+  "dealer_assignments",
+  "dealer_attendance",
+  "dealers",
+  "gto_spot_ranges",
+  "tournament_registrations",
+  "user_roles",
+]);
+
 function expectedBlockedBrowserRequestReason(request, policy = null) {
   const url = new URL(request.url);
   const method = request.method.toUpperCase();
@@ -1580,6 +1590,22 @@ function expectedBlockedBrowserRequestReason(request, policy = null) {
       || exactObjectKeys(request.body, [])
     )
   ) return "expected_blocked_welcome_email";
+  const baseOrigin = typeof policy?.baseUrl === "string"
+    ? new URL(policy.baseUrl).origin
+    : null;
+  const restTable = url.pathname.match(/^\/rest\/v1\/([A-Za-z0-9_]+)$/u)?.[1] ?? null;
+  const optionalBootstrapRead = ["GET", "HEAD"].includes(method) && (
+    (url.origin === baseOrigin && EXPECTED_BLOCKED_BOOTSTRAP_APP_PATHS.has(url.pathname))
+    || (
+      url.origin === supabaseOrigin
+      && restTable !== null
+      && EXPECTED_BLOCKED_BOOTSTRAP_REST_TABLES.has(restTable)
+    )
+  );
+  if (
+    optionalBootstrapRead
+    && browserReadDecision(request, policy).reason === "unexpected_read"
+  ) return "expected_blocked_optional_bootstrap_read";
   return null;
 }
 

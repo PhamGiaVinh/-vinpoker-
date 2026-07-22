@@ -530,7 +530,14 @@ test("browser chip CAS policy permits only one exact owned stale-snapshot race",
 
 test("browser guards block known startup telemetry and push without allowing arbitrary egress", () => {
   const actorId = "30000000-0000-4000-8000-000000000001";
-  const policy = { actorId };
+  const tournamentId = "40000000-0000-4000-8000-000000000001";
+  const policy = {
+    actorId,
+    actorIds: [actorId],
+    baseUrl: "https://vinpoker.vercel.app",
+    ownedRecordIds: [actorId, tournamentId],
+    tournamentIds: [tournamentId],
+  };
   const request = (url, method, body = null, bodyPresent = body != null) => ({
     url,
     method,
@@ -555,6 +562,29 @@ test("browser guards block known startup telemetry and push without allowing arb
     "POST",
     {},
   ), policy), "expected_blocked_welcome_email");
+  for (const url of [
+    "https://vinpoker.vercel.app/?history=1",
+    "https://vinpoker.vercel.app/version.json?cache=1",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/gto_spot_ranges",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/user_roles",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/dealers",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/dealer_assignments",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/dealer_attendance",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/tournament_registrations",
+  ]) {
+    assert.equal(
+      expectedBlockedBrowserRequestReason(request(url, "GET"), policy),
+      "expected_blocked_optional_bootstrap_read",
+    );
+  }
+  assert.equal(expectedBlockedBrowserRequestReason(request(
+    `https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/tournament_registrations?tournament_id=eq.${tournamentId}`,
+    "GET",
+  ), policy), null);
+  assert.equal(expectedBlockedBrowserRequestReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/unknown_table",
+    "GET",
+  ), policy), null);
   assert.equal(expectedBlockedBrowserRequestReason(request(
     `https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/profiles?user_id=eq.${actorId}`,
     "PATCH",
@@ -1111,7 +1141,8 @@ test("workflow has fail-closed run, cleanup, and hold modes", () => {
   assert.match(cleanupStep, /FLOOR_CANARY_RECOVERY_LEDGER: \$\{\{ runner\.temp \}\}\/floor-canary-recovery-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}\.json/);
   assert.match(cleanupStep, /FLOOR_CANARY_STATE_ROOT: \$\{\{ runner\.temp \}\}\/floor-canary-state-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
   assert.match(workflow, /Always verify exact canary cleanup after run/);
-  assert.match(workflow, /if: always\(\) && env\.FLOOR_CANARY_MODE == 'run'/);
+  assert.match(cleanupStep, /if: "\$\{\{ always\(\) && \(\(github\.event_name == 'workflow_dispatch' && inputs\.mode == 'run'\) \|\| \(github\.event_name == 'pull_request' && github\.event\.pull_request\.title == 'test\(floor\): controlled production canary runner \[run\]'\)\) \}\}"/);
+  assert.doesNotMatch(cleanupStep, /if:.*env\.FLOOR_CANARY_MODE/);
   assert.match(workflow, /FLOOR_CANARY_CLEANUP_ALLOW_EMPTY: "true"/);
   assert.match(workflow, /timeout-minutes: 45/);
   assert.match(workflow, /timeout-minutes: 15/);

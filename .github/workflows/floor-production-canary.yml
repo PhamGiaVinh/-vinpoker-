@@ -72,7 +72,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/floor/floor-production-canary.mjs
       - name: Always verify exact canary cleanup after run
-        if: always() && env.FLOOR_CANARY_MODE == 'run'
+        if: "${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.mode == 'run') || (github.event_name == 'pull_request' && github.event.pull_request.title == 'test(floor): controlled production canary runner [run]')) }}"
         timeout-minutes: 15
         working-directory: VinPoker
         env:
