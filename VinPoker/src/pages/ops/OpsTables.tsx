@@ -21,6 +21,7 @@ import {
 import type { MockSeat, MockTable } from "@/components/ops/mock/opsData";
 import type { Tournament } from "@/types/tournament";
 import { closeTableErrorMessage, parseCloseTableRpcResult } from "@/components/cashier/tournament-live/closeTableResponse";
+import { resolveOpsTablesTournamentId } from "@/pages/ops/opsTablesTournamentSelection";
 
 /**
  * Bàn (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads). Ghế/người gắn theo GIẢI:
@@ -126,10 +127,14 @@ export default function OpsTables() {
   // Seed từ deep-link (nếu có) thay cho null; giải này nằm trong tourOptions nên guard không đè.
   const [tourId, setTourId] = useState<string | null>(deepLinkTourIdRef.current);
   useEffect(() => {
-    if (tourOptions.length === 0) { setTourId(null); return; }
-    if (tourId == null || !tourOptions.some((t) => t.id === tourId)) setTourId(tourOptions[0].id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tourOptions.map((t) => t.id).join(","), clubId]);
+    setTourId((currentTournamentId) => resolveOpsTablesTournamentId({
+      currentTournamentId,
+      tournamentOptions: tourOptions,
+      selectedClubId: clubId,
+      operatorClubsLoading: clubsLoading,
+      tournamentsLoading: toursLoading,
+    }));
+  }, [tourOptions, clubId, clubsLoading, toursLoading]);
 
   const selectedTour = tourOptions.find((t) => t.id === tourId) ?? null;
   const onBreak = selectedTour?.status === "break";
