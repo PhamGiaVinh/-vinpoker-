@@ -3,7 +3,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { floorAuditViewports, floorButtonCoverageManifest } from "../../e2e/floor-button-coverage.manifest";
-import { rankedManifestEntries } from "../../e2e/floor-action-evidence";
+import {
+  advanceFailClosedInventory,
+  advanceStableInventory,
+  discoveryEvidence,
+  evaluateControlInventory,
+  rankedManifestEntries,
+} from "../../e2e/floor-action-evidence";
 
 const coverageSpec = readFileSync(resolve(process.cwd(), "e2e/floor-button-coverage.spec.ts"), "utf8");
 const canaryRunner = readFileSync(resolve(process.cwd(), "scripts/floor/floor-production-canary.mjs"), "utf8");
@@ -119,6 +125,124 @@ describe("Floor button coverage manifest", () => {
     expect(coverageSpec).toContain('"tab_selected"');
   });
 
+  it("keeps a transiently disabled navigation-only refresh fail-closed", () => {
+    const refresh = floorButtonCoverageManifest.find((entry) => entry.id === "floor-refresh");
+    expect(refresh).toBeTruthy();
+    if (!refresh) throw new Error("floor-refresh manifest entry is required");
+
+    const inventory = evaluateControlInventory([refresh], [{ label: "Làm mới", enabled: false }]);
+    expect(inventory.stateMismatches).toEqual([
+      "floor-refresh:expected_navigation-only_observed_disabled",
+    ]);
+    expect(inventory.ready).toBe(false);
+    expect(discoveryEvidence(refresh, "tablet-portrait", false)).toMatchObject({
+      status: "BLOCKED",
+      stateMismatch: true,
+    });
+  });
+
+  it("accepts Floor inventory only after two identical steady-state snapshots", () => {
+    const refresh = floorButtonCoverageManifest.find((entry) => entry.id === "floor-refresh");
+    expect(refresh).toBeTruthy();
+    if (!refresh) throw new Error("floor-refresh manifest entry is required");
+
+    const disabled = evaluateControlInventory([refresh], [{ label: "Làm mới", enabled: false }]);
+    const enabled = evaluateControlInventory([refresh], [{ label: "Làm mới", enabled: true }]);
+    let progress = advanceStableInventory(undefined, disabled, 2);
+    expect(progress).toMatchObject({ consecutive: 0, accepted: false });
+    progress = advanceStableInventory(progress, enabled, 2);
+    expect(progress).toMatchObject({ consecutive: 1, accepted: false });
+    progress = advanceStableInventory(progress, enabled, 2);
+    expect(progress).toMatchObject({ consecutive: 2, accepted: true });
+    progress = advanceStableInventory(progress, disabled, 2);
+    expect(progress).toMatchObject({ consecutive: 0, accepted: false });
+
+    expect(coverageSpec).toContain("waitForStableControlInventory");
+    expect(coverageSpec).toContain("requiredStableSnapshots = 2");
+    expect(coverageSpec).toContain('toHaveCount(1, { timeout: 15_000 })');
+  });
+
+  it("rejects missing or duplicate Floor refresh controls", () => {
+    const refresh = floorButtonCoverageManifest.find((entry) => entry.id === "floor-refresh");
+    expect(refresh).toBeTruthy();
+    if (!refresh) throw new Error("floor-refresh manifest entry is required");
+
+    const missing = evaluateControlInventory([refresh], [], {
+      exactlyOnceManifestIds: ["floor-refresh"],
+    });
+    expect(missing.stateMismatches).toContain("floor-refresh:expected_once_observed_0");
+    expect(advanceStableInventory(undefined, missing, 2).accepted).toBe(false);
+
+    const duplicate = evaluateControlInventory(
+      [refresh],
+      [
+        { label: "Làm mới", enabled: true },
+        { label: "Làm mới", enabled: true },
+      ],
+      { exactlyOnceManifestIds: ["floor-refresh"] },
+    );
+    expect(duplicate.stateMismatches).toContain("floor-refresh:expected_once_observed_2");
+    expect(advanceStableInventory(undefined, duplicate, 2).accepted).toBe(false);
+    expect(coverageSpec).toContain('exactlyOnceManifestIds: manifestRoute === "/floor" ? ["floor-refresh"] : []');
+  });
+
+  it("fails immediately on transient unknown enabled controls or non-allowlisted mismatches", () => {
+    const refresh = floorButtonCoverageManifest.find((entry) => entry.id === "floor-refresh");
+    const disabledEntry = floorButtonCoverageManifest.find((entry) => entry.expectedState === "disabled");
+    expect(refresh).toBeTruthy();
+    expect(disabledEntry).toBeTruthy();
+    if (!refresh || !disabledEntry) throw new Error("required manifest entries are missing");
+
+    const unknownEnabled = evaluateControlInventory(
+      [refresh],
+      [
+        { label: "Làm mới", enabled: true },
+        { label: "Unmanifested destructive control", enabled: true },
+      ],
+      { exactlyOnceManifestIds: ["floor-refresh"] },
+    );
+    expect(() => advanceFailClosedInventory(undefined, unknownEnabled, {
+      retryableStateMismatches: ["floor-refresh:expected_navigation-only_observed_disabled"],
+    })).toThrow("floor_control_inventory_violation");
+
+    const otherMismatch = evaluateControlInventory(
+      [disabledEntry],
+      [{ label: disabledEntry.label, enabled: true }],
+    );
+    expect(() => advanceFailClosedInventory(undefined, otherMismatch, {
+      retryableStateMismatches: ["floor-refresh:expected_navigation-only_observed_disabled"],
+    })).toThrow("floor_control_inventory_violation");
+
+    const retryableRefresh = evaluateControlInventory(
+      [refresh],
+      [{ label: "Làm mới", enabled: false }],
+    );
+    expect(advanceFailClosedInventory(undefined, retryableRefresh, {
+      retryableStateMismatches: ["floor-refresh:expected_navigation-only_observed_disabled"],
+    })).toMatchObject({ consecutive: 0, accepted: false });
+    expect(coverageSpec).toContain("advanceFailClosedInventory(progress, inventory");
+  });
+
+  it("runs button discovery before every browser mutation phase", () => {
+    const phaseBlock = canaryRunner.slice(
+      canaryRunner.indexOf("const phaseFailures = await runSequentialBrowserPhases"),
+    );
+    const buttonManifest = phaseBlock.indexOf('"button_manifest"');
+    expect(buttonManifest).toBeGreaterThanOrEqual(0);
+    for (const phase of [
+      "clock",
+      "table_lifecycle",
+      "table_close",
+      "table_redraw",
+      "bust_restore",
+      "table_retry",
+      "chip_cas",
+      "payout_close",
+    ]) {
+      expect(phaseBlock.indexOf(`"${phase}"`), phase).toBeGreaterThan(buttonManifest);
+    }
+  });
+
   it("waits for route-owned controls and records conditional navigation evidence", () => {
     expect(coverageSpec).toContain("prepareRouteForCoverageDiscovery");
     expect(coverageSpec).toContain("auditConditionalRouteControls");
@@ -129,7 +253,7 @@ describe("Floor button coverage manifest", () => {
     expect(coverageSpec).toContain('case "/ops/tables"');
     expect(coverageSpec).toContain('case "/ops/tournaments/:id"');
     expect(coverageSpec).toContain('case "/floor"');
-    expect(coverageSpec).toContain('await expect(visibleButton(page, "Làm mới")).toBeEnabled({ timeout: 15_000 });');
+    expect(coverageSpec).toContain("waitForStableControlInventory(page, controls, manifest");
     expect(coverageSpec).toContain('"tournament-cancel"');
     expect(coverageSpec).toContain('"tournament-confirm"');
     expect(coverageSpec).toContain('"tables-clock"');
@@ -171,7 +295,7 @@ describe("Floor button coverage manifest", () => {
     const payoutEntries = floorButtonCoverageManifest.filter((entry) => entry.route === "/floor" && entry.role === "owner");
     expect(rankedManifestEntries(payoutEntries, "Lưu mặc định cho giải này")[0]?.id).toBe("payout-save");
     expect(rankedManifestEntries(payoutEntries, "Lưu")[0]?.id).toBe("payout-satellite-save-disabled");
-    expect(coverageSpec).toContain("const known = rankedManifestEntries(manifest, observed)[0]");
+    expect(coverageSpec).toContain("evaluateControlInventory(");
   });
 
   it("pins the browser audit to the locale used by manifest labels", () => {

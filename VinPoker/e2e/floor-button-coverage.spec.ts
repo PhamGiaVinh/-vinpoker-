@@ -2,10 +2,15 @@ import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import {
+  advanceFailClosedInventory,
   baselineEvidence,
   discoveryEvidence,
+  evaluateControlInventory,
   rankedManifestEntries,
   type FloorControlEvidence,
+  type FloorControlInventory,
+  type ObservedFloorControl,
+  type StableInventoryProgress,
 } from "./floor-action-evidence";
 import {
   entriesForViewport,
@@ -159,6 +164,74 @@ function visibleButtonContainingExactText(
     .first();
 }
 
+async function snapshotVisibleControls(
+  controls: import("@playwright/test").Locator,
+): Promise<ObservedFloorControl[]> {
+  return controls.evaluateAll((nodes) => nodes.flatMap((node) => {
+    const element = node as HTMLElement;
+    const style = window.getComputedStyle(element);
+    const bounds = element.getBoundingClientRect();
+    const visible = style.display !== "none"
+      && style.visibility !== "hidden"
+      && style.opacity !== "0"
+      && bounds.width > 0
+      && bounds.height > 0;
+    if (!visible) return [];
+    const nativeDisabled = element instanceof HTMLButtonElement || element instanceof HTMLInputElement
+      ? element.disabled
+      : false;
+    return [{
+      label: element.getAttribute("data-testid")
+        ?? element.getAttribute("aria-label")
+        ?? element.getAttribute("title")
+        ?? element.innerText
+        ?? element.getAttribute("value")
+        ?? "",
+      enabled: !nativeDisabled && element.getAttribute("aria-disabled") !== "true",
+    }];
+  }));
+}
+
+async function waitForStableControlInventory(
+  page: import("@playwright/test").Page,
+  controls: import("@playwright/test").Locator,
+  manifest: ReturnType<typeof entriesForViewport>,
+  options: {
+    exactlyOnceManifestIds?: readonly string[];
+    retryableStateMismatches?: readonly string[];
+    timeoutMs?: number;
+  } = {},
+): Promise<FloorControlInventory> {
+  const timeoutMs = options.timeoutMs ?? 15_000;
+  const requiredStableSnapshots = 2;
+  const deadline = Date.now() + timeoutMs;
+  let progress: StableInventoryProgress | undefined;
+  let lastInventory: FloorControlInventory | undefined;
+
+  while (Date.now() < deadline) {
+    const inventory = evaluateControlInventory(
+      manifest,
+      await snapshotVisibleControls(controls),
+      { exactlyOnceManifestIds: options.exactlyOnceManifestIds },
+    );
+    progress = advanceFailClosedInventory(progress, inventory, {
+      requiredStableSnapshots,
+      retryableStateMismatches: options.retryableStateMismatches,
+    });
+    lastInventory = inventory;
+    if (progress.accepted) return inventory;
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error([
+    "floor_control_inventory_not_stable",
+    `visible=${lastInventory?.visibleCount ?? 0}`,
+    `enabled=${lastInventory?.enabledCount ?? 0}`,
+    `unclassified=${lastInventory?.unclassified.length ?? 0}`,
+    `mismatches=${lastInventory?.stateMismatches.join(",") || "none"}`,
+  ].join(" "));
+}
+
 function ownedTableButtonNamePattern(tableNumber: number) {
   return new RegExp(`^${tableNumber}\\s+\\d+\\/\\d+$`, "u");
 }
@@ -212,7 +285,8 @@ async function prepareRouteForCoverageDiscovery(
         .first()
         .click({ timeout: 15_000 });
       logAuditPhase(manifestRoute, assignment.role, viewport, "tab_selected");
-      await expect(visibleButton(page, "Làm mới")).toBeEnabled({ timeout: 15_000 });
+      const refreshButtons = page.getByRole("button", { name: "Làm mới", exact: true }).filter({ visible: true });
+      await expect(refreshButtons).toHaveCount(1, { timeout: 15_000 });
       await expect(visibleButton(page, "Vận hành CLB")).toBeVisible({ timeout: 15_000 });
       return;
     }
@@ -692,68 +766,34 @@ for (const viewport of floorAuditViewports) {
         await prepareRouteForCoverageDiscovery(page, assignment, manifestRoute, viewport);
         await assertNoRootError(page, manifestRoute, assignment.role, viewport, runtimeErrors);
         const manifest = entriesForViewport(viewport).filter((entry) => entry.route === manifestRoute && entry.role === assignment.role);
-        const unclassified: string[] = [];
-        const stateMismatches: string[] = [];
         const matchedManifestIds = new Set<string>();
-        // Snapshot the realtime page in one browser evaluation. Repeated locator reads
-        // can chase detached controls while clock/realtime updates keep re-rendering.
-        const observedControls = await controls.evaluateAll((nodes) => nodes.flatMap((node) => {
-          const element = node as HTMLElement;
-          const style = window.getComputedStyle(element);
-          const bounds = element.getBoundingClientRect();
-          const visible = style.display !== "none"
-            && style.visibility !== "hidden"
-            && style.opacity !== "0"
-            && bounds.width > 0
-            && bounds.height > 0;
-          if (!visible) return [];
-          const nativeDisabled = element instanceof HTMLButtonElement || element instanceof HTMLInputElement
-            ? element.disabled
-            : false;
-          return [{
-            label: element.getAttribute("data-testid")
-              ?? element.getAttribute("aria-label")
-              ?? element.getAttribute("title")
-              ?? element.innerText
-              ?? element.getAttribute("value")
-              ?? "",
-            enabled: !nativeDisabled && element.getAttribute("aria-disabled") !== "true",
-          }];
-        }));
-        const visibleCount = observedControls.length;
-        const enabledCount = observedControls.filter((control) => control.enabled).length;
+        // A realtime route can re-render between readiness and discovery. Accept one
+        // atomic snapshot only after the complete inventory is identical and valid twice.
+        const inventory = await waitForStableControlInventory(page, controls, manifest, {
+          exactlyOnceManifestIds: manifestRoute === "/floor" ? ["floor-refresh"] : [],
+          retryableStateMismatches: manifestRoute === "/floor"
+            ? ["floor-refresh:expected_navigation-only_observed_disabled"]
+            : [],
+        });
 
-        for (const control of observedControls) {
-          const { enabled } = control;
-          const label = normalise(control.label);
-          const observed = label || "<unlabelled-enabled-control>";
-          const known = rankedManifestEntries(manifest, observed)[0];
-          if (known) {
-            matchedManifestIds.add(known.id);
-            appendControlEvidence(discoveryEvidence(known, viewport, enabled));
-          }
-          if (enabled && !known) unclassified.push(observed);
-          if (known && enabled && ["disabled", "hidden"].includes(known.expectedState)) {
-            stateMismatches.push(`${known.id}:expected_${known.expectedState}_observed_enabled`);
-          }
-          if (known && !enabled && ["enabled", "navigation-only"].includes(known.expectedState)) {
-            stateMismatches.push(`${known.id}:expected_${known.expectedState}_observed_disabled`);
-          }
+        for (const { entry, enabled } of inventory.matches) {
+          matchedManifestIds.add(entry.id);
+          appendControlEvidence(discoveryEvidence(entry, viewport, enabled));
         }
 
         console.log(JSON.stringify({
           route: manifestRoute,
           role: assignment.role,
           viewport,
-          visibleControls: visibleCount,
-          enabledControls: enabledCount,
+          visibleControls: inventory.visibleCount,
+          enabledControls: inventory.enabledCount,
           auditType: "control-state-discovery",
-          status: unclassified.length === 0 && stateMismatches.length === 0 ? "NAVIGATION_ONLY" : "BLOCKED",
+          status: inventory.ready ? "NAVIGATION_ONLY" : "BLOCKED",
         }));
-        expect(enabledCount, `${assignment.role} ${manifestRoute} must expose at least one enabled control`).toBeGreaterThan(0);
+        expect(inventory.enabledCount, `${assignment.role} ${manifestRoute} must expose at least one enabled control`).toBeGreaterThan(0);
         expect(matchedManifestIds.size, `${assignment.role} ${manifestRoute} must match at least one manifest control`).toBeGreaterThan(0);
-        expect(unclassified, `${assignment.role} ${manifestRoute} has enabled controls without a manifest entry`).toEqual([]);
-        expect(stateMismatches, `${assignment.role} ${manifestRoute} has manifest state mismatches`).toEqual([]);
+        expect(inventory.unclassified, `${assignment.role} ${manifestRoute} has enabled controls without a manifest entry`).toEqual([]);
+        expect(inventory.stateMismatches, `${assignment.role} ${manifestRoute} has manifest state mismatches`).toEqual([]);
         for (const manifestId of await auditConditionalRouteControls(page, assignment, manifestRoute, viewport, manifest)) {
           matchedManifestIds.add(manifestId);
         }
