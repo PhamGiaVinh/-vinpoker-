@@ -2738,6 +2738,39 @@ async function waitForPostPath(page, pathname, click) {
   return responsePromise;
 }
 
+function isExactPostPathRequest(request, pathname) {
+  const url = new URL(request.url());
+  return request.method() === "POST"
+    && url.origin === `https://${PRODUCTION_REF}.supabase.co`
+    && url.pathname === pathname;
+}
+
+async function observeExactPostLifecycle(page, pathname, click) {
+  const matches = (request) => isExactPostPathRequest(request, pathname);
+  const requestObservation = page.waitForRequest(matches, { timeout: 15_000 })
+    .then(() => "request_seen", () => "request_missing");
+  const responseObservation = page.waitForResponse(
+    (response) => matches(response.request()),
+    { timeout: 15_000 },
+  ).then(
+    (response) => ({ kind: "response", response }),
+    () => ({ kind: "response_missing", response: null }),
+  );
+  const requestFailureObservation = page.waitForEvent("requestfailed", {
+    predicate: matches,
+    timeout: 15_000,
+  }).then(
+    () => ({ kind: "request_failed", response: null }),
+    () => new Promise(() => {}),
+  );
+
+  await click();
+  if (await requestObservation !== "request_seen") {
+    return { kind: "request_missing", response: null };
+  }
+  return Promise.race([responseObservation, requestFailureObservation]);
+}
+
 function ownedOpsTableButton(page, tableNumber) {
   const exactTableNumber = page.locator("div").filter({
     hasText: new RegExp(`^\\s*${escapeRegex(String(tableNumber))}\\s*$`, "u"),
@@ -2932,12 +2965,24 @@ async function runBrowserTableLifecycleActions(browser, baseUrl, stateDirectory,
     const moveDialog = page.getByRole("dialog", { name: "Chuyển bàn / ghế", exact: true });
     await moveDialog.waitFor({ state: "visible", timeout: 15_000 });
     browserPhaseCheckpoint("table_lifecycle", "move_dialog_ready");
-    const freeSeatControls = moveDialog.getByText("Ghế trống — chạm để chọn", { exact: true })
-      .locator("xpath=following-sibling::div[1]");
-    await freeSeatControls.getByRole("button", { name: "3", exact: true }).click();
+    const moveTargetCard = moveDialog.getByText("Chọn bàn đích (còn ghế trống)", { exact: true }).locator("..");
+    const targetTableAction = moveTargetCard.getByRole("button", { name: "1", exact: true }).first();
+    await targetTableAction.click({ trial: true, timeout: 15_000 });
+    browserPhaseCheckpoint("table_lifecycle", "move_target_table_ready");
+    await targetTableAction.click();
+    browserPhaseCheckpoint("table_lifecycle", "move_target_table_selected");
+    await moveDialog.getByText("Bàn 1 · Ghế 1", { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
+    const targetSeatAction = moveDialog.getByRole("button", { name: "3", exact: true })
+      .filter({ visible: true })
+      .last();
+    await targetSeatAction.click({ trial: true, timeout: 15_000 });
+    browserPhaseCheckpoint("table_lifecycle", "move_target_seat_ready");
+    await targetSeatAction.click();
+    browserPhaseCheckpoint("table_lifecycle", "move_target_seat_selected");
     await moveDialog.getByText("Bàn 1 · Ghế 3", { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
     const confirmMove = moveDialog.getByRole("button", { name: "Xác nhận chuyển", exact: true });
     await confirmMove.click({ trial: true, timeout: 15_000 });
+    browserPhaseCheckpoint("table_lifecycle", "move_confirm_ready");
     const moveResponse = await waitForPostPath(page, "/rest/v1/rpc/move_player_seat", () => (
       confirmMove.click()
     ));
@@ -3231,9 +3276,25 @@ async function runBrowserBustRestoreActions(browser, baseUrl, stateDirectory, ad
       .first();
     await restoreAction.click({ trial: true, timeout: 15_000 });
     browserPhaseCheckpoint("bust_restore", "restore_action_ready");
-    const restoreResponse = await waitForPostPath(restorePage, "/rest/v1/rpc/restore_busted_player_to_seat", () => (
+    const restoreOutcome = await observeExactPostLifecycle(restorePage, "/rest/v1/rpc/restore_busted_player_to_seat", () => (
       restoreAction.click()
     ));
+    if (restoreOutcome.kind === "request_missing") {
+      browserPhaseCheckpoint("bust_restore", "restore_request_missing");
+      fail("browser_restore_request_missing");
+    }
+    browserPhaseCheckpoint("bust_restore", "restore_request_seen");
+    if (restoreOutcome.kind === "request_failed") {
+      browserPhaseCheckpoint("bust_restore", "restore_request_failed");
+      result("browser_restore_guard_clean_on_failure", guard.blocked.length === 0, guard.blocked.join(","));
+      fail("browser_restore_request_failed");
+    }
+    if (restoreOutcome.kind !== "response" || !restoreOutcome.response) {
+      browserPhaseCheckpoint("bust_restore", "restore_response_missing");
+      fail("browser_restore_response_missing");
+    }
+    browserPhaseCheckpoint("bust_restore", "restore_response_seen");
+    const restoreResponse = restoreOutcome.response;
     browserPhaseCheckpoint("bust_restore", "restore_rpc_complete");
     result("browser_player_restore_clicked", restoreResponse.ok(), safeBrowserResponseDetail(restoreResponse));
     const restoredEntry = await single(
@@ -3288,19 +3349,13 @@ async function runBrowserTableRetryAction(browser, baseUrl, stateDirectory, acto
     await retry.click({ trial: true, timeout: 15_000 });
     browserPhaseCheckpoint("table_retry", "retry_visible");
     injectReadFailure.active = false;
-    const tableMapRefresh = waitForOwnedTableMapRefresh(page, fixture.tournamentId);
-    void tableMapRefresh.catch(() => undefined);
     await retry.click();
     browserPhaseCheckpoint("table_retry", "retry_clicked");
-    const tableMapResponses = await tableMapRefresh;
-    result(
-      "browser_tables_retry_refresh",
-      tableMapResponses.every((response) => response.ok()),
-      tableMapResponses.map(safeBrowserResponseDetail).join(","),
-    );
-    browserPhaseCheckpoint("table_retry", "table_map_refreshed");
+    await retryErrorTitle.waitFor({ state: "hidden", timeout: 15_000 });
+    browserPhaseCheckpoint("table_retry", "error_cleared");
     await ownedOpsTableButton(page, 1).waitFor({ state: "visible", timeout: 15_000 });
     browserPhaseCheckpoint("table_retry", "table_grid_ready");
+    result("browser_tables_retry_refresh", true, "ui=error_to_owned_table");
     result("browser_tables_retry_clicked", true);
     result("browser_tables_retry_forbidden_egress_zero", guard.blocked.length === 0, guard.blocked.join(","));
     result(

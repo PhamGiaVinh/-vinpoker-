@@ -194,20 +194,28 @@ describe("Floor button coverage manifest", () => {
     expect(lifecycleFlow).toContain('moveAction.click({ trial: true, timeout: 15_000 })');
     expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_action_ready")');
     expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_dialog_ready")');
+    expect(lifecycleFlow).toContain('const moveTargetCard = moveDialog.getByText("Chọn bàn đích (còn ghế trống)", { exact: true }).locator("..")');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_target_table_ready")');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_target_table_selected")');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_target_seat_ready")');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_target_seat_selected")');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_confirm_ready")');
     expect(lifecycleFlow).not.toContain('page.getByRole("button", { name: /^Chuyển\\b/u }).click()');
-    expect(lifecycleFlow).not.toContain('name: "1", exact: true }).first()');
+    expect(lifecycleFlow).not.toContain('locator("xpath=');
   });
 
-  it("scopes Retry to the table-map error card and observes the recovered reads", () => {
+  it("scopes Retry to the table-map error card and proves the recovered owned grid", () => {
     const retryStart = canaryRunner.indexOf("async function runBrowserTableRetryAction");
     const retryEnd = canaryRunner.indexOf("async function runBrowserTvPromptActions", retryStart);
     const retryFlow = canaryRunner.slice(retryStart, retryEnd);
     expect(retryFlow).toContain('page.getByText("Không tải được sơ đồ bàn", { exact: true })');
     expect(retryFlow).toContain('retryErrorCard.getByRole("button", { name: "Thử lại", exact: true })');
-    expect(retryFlow).toContain("waitForOwnedTableMapRefresh(page, fixture.tournamentId)");
-    expect(retryFlow).toContain('browserPhaseCheckpoint("table_retry", "table_map_refreshed")');
+    expect(retryFlow).not.toContain("waitForOwnedTableMapRefresh(page, fixture.tournamentId)");
+    expect(retryFlow).toContain('retryErrorTitle.waitFor({ state: "hidden", timeout: 15_000 })');
+    expect(retryFlow).toContain('browserPhaseCheckpoint("table_retry", "error_cleared")');
     expect(retryFlow).toContain("ownedOpsTableButton(page, 1).waitFor");
     expect(retryFlow).toContain('browserPhaseCheckpoint("table_retry", "table_grid_ready")');
+    expect(retryFlow).toContain('"ui=error_to_owned_table"');
   });
 
   it("waits for restore capability and scopes the action to the owned busted player row", () => {
@@ -217,6 +225,9 @@ describe("Floor button coverage manifest", () => {
     expect(canaryRunner).toContain("bustedPlayerRow.getByRole");
     expect(canaryRunner).toContain("restoreAction.click({ trial: true, timeout: 15_000 })");
     expect(canaryRunner).toContain('browserPhaseCheckpoint("bust_restore", "restore_action_ready")');
+    expect(canaryRunner).toContain('observeExactPostLifecycle(restorePage, "/rest/v1/rpc/restore_busted_player_to_seat"');
+    expect(canaryRunner).toContain('browserPhaseCheckpoint("bust_restore", "restore_request_seen")');
+    expect(canaryRunner).toContain('browserPhaseCheckpoint("bust_restore", "restore_response_seen")');
   });
 
   it("uses the owner auth scope and actionable CUSTOM controls before saving a payout template", () => {

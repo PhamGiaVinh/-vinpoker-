@@ -1151,6 +1151,32 @@ test("blocked browser evidence contains only reason, method, and pathname", () =
   assert.match(canarySource, /\[\.\.\.new Set\(forbiddenEgress\)\]\.join\(","\)/);
 });
 
+test("exact POST lifecycle diagnostics expose fixed checkpoints only", () => {
+  const matcher = canarySource.slice(
+    canarySource.indexOf("function isExactPostPathRequest"),
+    canarySource.indexOf("async function observeExactPostLifecycle"),
+  );
+  const observer = canarySource.slice(
+    canarySource.indexOf("async function observeExactPostLifecycle"),
+    canarySource.indexOf("function ownedOpsTableButton"),
+  );
+  assert.match(matcher, /url\.origin === `https:\/\/\$\{PRODUCTION_REF\}\.supabase\.co`/);
+  assert.match(matcher, /url\.pathname === pathname/);
+  assert.match(observer, /request_seen/);
+  assert.match(observer, /kind: "response"/);
+  assert.match(observer, /request_failed/);
+  assert.match(observer, /request_missing/);
+  assert.match(observer, /response_missing/);
+  assert.doesNotMatch(observer, /postData|headers|cookies|searchParams|request\.url\(\)|response\.url\(\)/);
+  for (const checkpoint of [
+    "restore_request_seen",
+    "restore_response_seen",
+    "restore_request_failed",
+    "restore_request_missing",
+    "restore_response_missing",
+  ]) assert.match(canarySource, new RegExp(`browserPhaseCheckpoint\\(\"bust_restore\", \"${checkpoint}\"\\)`));
+});
+
 test("browser chip concurrency selects only the exact run-owned table", () => {
   const chipDialog = canarySource.slice(
     canarySource.indexOf("async function openOwnedChipDialog"),
