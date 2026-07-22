@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: "Type DEPLOY_REVIEWED_FLOOR_TABLE_DEEPLINK_FRONTEND"
+        description: "Type DEPLOY_REVIEWED_FLOOR_SCOPE_STABILITY_FRONTEND"
         required: true
         type: string
 
@@ -18,10 +18,12 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PRODUCTION_SOURCE_SHA: ca95d444329b39efb74913d3bfd37150364fcd96
+  PRODUCTION_SOURCE_SHA: ad3e8796240ce5a71f860a8d4272dc525489fc37
   EXPECTED_PRODUCTION_DEPLOYMENT_SHA: cdb67da6e4f77caa9e3277cea0fe6994f9d41cb6
-  TARGET_SHA: ad3e8796240ce5a71f860a8d4272dc525489fc37
-  REVIEWED_MERGE_SHA: b26afe54c720124ef7d85b7e98c5f36e89d1d936
+  TARGET_SHA: be52a1f864b6388d06b563c92159fc022885d542
+  REVIEWED_MERGE_SHA: 2cb8eebcde64551534274787c891c316cf16259d
+  TARGET_CONTRACT_BLOB: 1b5a272f73f2986c6cb586db701d9368d4ba02be
+  REVIEWED_CONTRACT_BLOB: 6ed35a3d6ca0cceb81c1de6ce2333417f4d1e9b8
   EXPECTED_PRODUCTION_DEPLOYMENT_ID: "5526237863"
   PRODUCTION_REF: orlesggcjamwuknxwcpk
   CRITICAL_ENVIRONMENT: dealer-swing-production-critical
@@ -53,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$CONFIRMATION" = "DEPLOY_REVIEWED_FLOOR_TABLE_DEEPLINK_FRONTEND"
+          test "$CONFIRMATION" = "DEPLOY_REVIEWED_FLOOR_SCOPE_STABILITY_FRONTEND"
           cd control-plane
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$TARGET_SHA" origin/main
@@ -63,12 +65,22 @@ jobs:
           test "$(git rev-parse "$TARGET_SHA")" = "$TARGET_SHA"
           test "$(git rev-parse "$REVIEWED_MERGE_SHA")" = "$REVIEWED_MERGE_SHA"
 
-          expected="$(printf '%s\n' \
-            VinPoker/src/pages/ops/OpsTables.tsx \
-            VinPoker/src/pages/ops/opsTablesTournamentSelection.test.ts \
-            VinPoker/src/pages/ops/opsTablesTournamentSelection.ts | sort)"
+          expected_target_delta=(
+            VinPoker/src/hooks/useStableFloorClubIds.test.tsx
+            VinPoker/src/hooks/useStableFloorClubIds.ts
+            VinPoker/src/pages/FloorDashboard.tsx
+            VinPoker/tests/floorProduction/floorDbEdgeContracts.test.ts
+          )
+          reviewed_payload=(
+            VinPoker/src/hooks/useStableFloorClubIds.test.tsx
+            VinPoker/src/hooks/useStableFloorClubIds.ts
+            VinPoker/src/pages/FloorDashboard.tsx
+          )
+          contract_path=VinPoker/tests/floorProduction/floorDbEdgeContracts.test.ts
+          expected="$(printf '%s\n' "${expected_target_delta[@]}" | sort)"
           actual="$(git diff --name-only "$PRODUCTION_SOURCE_SHA" "$TARGET_SHA" -- \
             VinPoker/src \
+            "$contract_path" \
             VinPoker/public \
             VinPoker/index.html \
             VinPoker/package.json \
@@ -76,8 +88,17 @@ jobs:
             VinPoker/vite.config.ts \
             VinPoker/vercel.json | sort)"
           test "$actual" = "$expected"
-          git diff --quiet "$TARGET_SHA" "$REVIEWED_MERGE_SHA" -- $expected
-          git diff --quiet "$TARGET_SHA" origin/main -- $expected
+          git diff --quiet "$TARGET_SHA" "$REVIEWED_MERGE_SHA" -- "${reviewed_payload[@]}"
+          git diff --quiet "$TARGET_SHA" origin/main -- "${reviewed_payload[@]}"
+
+          expected_review_drift="$contract_path"
+          actual_review_drift="$(git diff --name-only "$TARGET_SHA" "$REVIEWED_MERGE_SHA" -- "${expected_target_delta[@]}")"
+          actual_main_drift="$(git diff --name-only "$TARGET_SHA" origin/main -- "${expected_target_delta[@]}")"
+          test "$actual_review_drift" = "$expected_review_drift"
+          test "$actual_main_drift" = "$expected_review_drift"
+          test "$(git rev-parse "$TARGET_SHA:$contract_path")" = "$TARGET_CONTRACT_BLOB"
+          test "$(git rev-parse "$REVIEWED_MERGE_SHA:$contract_path")" = "$REVIEWED_CONTRACT_BLOB"
+          test "$(git rev-parse "origin/main:$contract_path")" = "$REVIEWED_CONTRACT_BLOB"
           node -e 'const c=require("./VinPoker/vercel.json"); if(c.git?.deploymentEnabled!==false) process.exit(1)'
 
       - name: Verify latest successful production deployment is the pinned baseline
@@ -153,12 +174,12 @@ jobs:
         run: |
           set -euo pipefail
           npx vitest run \
-            src/pages/ops/opsTablesTournamentSelection.test.ts \
+            src/hooks/useStableFloorClubIds.test.tsx \
             tests/floorProduction/floorDbEdgeContracts.test.ts
           npx eslint \
-            src/pages/ops/OpsTables.tsx \
-            src/pages/ops/opsTablesTournamentSelection.ts \
-            src/pages/ops/opsTablesTournamentSelection.test.ts \
+            src/hooks/useStableFloorClubIds.ts \
+            src/hooks/useStableFloorClubIds.test.tsx \
+            src/pages/FloorDashboard.tsx \
             tests/floorProduction/floorDbEdgeContracts.test.ts
           npm run build
 
@@ -192,14 +213,25 @@ jobs:
           git merge-base --is-ancestor "$REVIEWED_MERGE_SHA" origin/main
           git merge-base --is-ancestor "$TARGET_SHA" "$REVIEWED_MERGE_SHA"
           test "$(git rev-parse "${TARGET_SHA}^")" = "$PRODUCTION_SOURCE_SHA"
-          git diff --quiet "$TARGET_SHA" "$REVIEWED_MERGE_SHA" -- \
-            VinPoker/src/pages/ops/OpsTables.tsx \
-            VinPoker/src/pages/ops/opsTablesTournamentSelection.ts \
-            VinPoker/src/pages/ops/opsTablesTournamentSelection.test.ts
-          git diff --quiet "$TARGET_SHA" origin/main -- \
-            VinPoker/src/pages/ops/OpsTables.tsx \
-            VinPoker/src/pages/ops/opsTablesTournamentSelection.ts \
-            VinPoker/src/pages/ops/opsTablesTournamentSelection.test.ts
+          reviewed_payload=(
+            VinPoker/src/hooks/useStableFloorClubIds.test.tsx
+            VinPoker/src/hooks/useStableFloorClubIds.ts
+            VinPoker/src/pages/FloorDashboard.tsx
+          )
+          expected_target_delta=(
+            VinPoker/src/hooks/useStableFloorClubIds.test.tsx
+            VinPoker/src/hooks/useStableFloorClubIds.ts
+            VinPoker/src/pages/FloorDashboard.tsx
+            VinPoker/tests/floorProduction/floorDbEdgeContracts.test.ts
+          )
+          contract_path=VinPoker/tests/floorProduction/floorDbEdgeContracts.test.ts
+          git diff --quiet "$TARGET_SHA" "$REVIEWED_MERGE_SHA" -- "${reviewed_payload[@]}"
+          git diff --quiet "$TARGET_SHA" origin/main -- "${reviewed_payload[@]}"
+          test "$(git diff --name-only "$TARGET_SHA" "$REVIEWED_MERGE_SHA" -- "${expected_target_delta[@]}")" = "$contract_path"
+          test "$(git diff --name-only "$TARGET_SHA" origin/main -- "${expected_target_delta[@]}")" = "$contract_path"
+          test "$(git rev-parse "$TARGET_SHA:$contract_path")" = "$TARGET_CONTRACT_BLOB"
+          test "$(git rev-parse "$REVIEWED_MERGE_SHA:$contract_path")" = "$REVIEWED_CONTRACT_BLOB"
+          test "$(git rev-parse "origin/main:$contract_path")" = "$REVIEWED_CONTRACT_BLOB"
 
       - name: Re-verify production has not moved since preflight
         shell: bash
@@ -380,7 +412,7 @@ jobs:
             echo "- Baseline deployment metadata SHA: \`${EXPECTED_PRODUCTION_DEPLOYMENT_SHA}\`"
             echo "- Exact source SHA: \`${TARGET_SHA}\`"
             echo "- Reviewed merge SHA: \`${REVIEWED_MERGE_SHA}\`"
-            echo "- Frontend allowlist: 2 runtime files"
+            echo "- Frontend target delta: 2 runtime files + 1 hook regression + 1 pinned contract test"
             echo "- Edge deploy: false"
             echo "- DB apply: false"
             echo "- Feature flags: unchanged"
