@@ -12,6 +12,7 @@ const clockControlMigration = read("supabase/migrations/20270104000004_floor_clo
 const drawEdge = read("supabase/functions/tournament-live-draw/index.ts");
 const clockEdge = read("supabase/functions/tournament-live-clock/index.ts");
 const operatorClubsHook = read("src/hooks/useOperatorClubs.ts");
+const stableFloorClubIdsHook = read("src/hooks/useStableFloorClubIds.ts");
 const opsShell = read("src/components/ops/OpsShell.tsx");
 const cashierAccess = read("src/components/ops/OpsCashierAccess.tsx");
 const desktopFloor = read("src/pages/FloorDashboard.tsx");
@@ -167,7 +168,9 @@ describe("Floor V2 DB and Edge contracts", () => {
     expect(opsShell).toContain("hasOpsAccess");
     expect(cashierAccess).toContain("hasCashierAccess");
     expect(desktopFloor).toContain("operatorClubIds");
-    expect(desktopFloor).toContain("Array.from(new Set([...operatorClubIds, ...dealerClubIds]))");
+    expect(desktopFloor).toContain("useStableFloorClubIds(operatorClubIds, dealerClubIds)");
+    expect(stableFloorClubIdsHook).toContain("Array.from(new Set(groups.flat())).sort()");
+    expect(stableFloorClubIdsHook).toContain("useMemo(() => JSON.parse(scopeKey) as string[], [scopeKey])");
     expect(desktopFloor).not.toContain("{ clubs, clubIds, dealerClubIds }");
     expect(desktopFloor).not.toContain("clubIds.length === 0");
     expect(desktopFloor).toContain('<TournamentLivePanel mode="floor" clubIds={scopedIds} clubs={clubs} />');
