@@ -13,7 +13,7 @@ const workflow = readFileSync(
 test("one-shot Floor frontend rollout is immutable and protected", () => {
   assert.match(
     workflow,
-    /PRODUCTION_SOURCE_SHA: ca95d444329b39efb74913d3bfd37150364fcd96/u,
+    /PRODUCTION_SOURCE_SHA: ad3e8796240ce5a71f860a8d4272dc525489fc37/u,
   );
   assert.match(
     workflow,
@@ -21,11 +21,19 @@ test("one-shot Floor frontend rollout is immutable and protected", () => {
   );
   assert.match(
     workflow,
-    /TARGET_SHA: ad3e8796240ce5a71f860a8d4272dc525489fc37/u,
+    /TARGET_SHA: be52a1f864b6388d06b563c92159fc022885d542/u,
   );
   assert.match(
     workflow,
-    /REVIEWED_MERGE_SHA: b26afe54c720124ef7d85b7e98c5f36e89d1d936/u,
+    /REVIEWED_MERGE_SHA: 2cb8eebcde64551534274787c891c316cf16259d/u,
+  );
+  assert.match(
+    workflow,
+    /TARGET_CONTRACT_BLOB: 1b5a272f73f2986c6cb586db701d9368d4ba02be/u,
+  );
+  assert.match(
+    workflow,
+    /REVIEWED_CONTRACT_BLOB: 6ed35a3d6ca0cceb81c1de6ce2333417f4d1e9b8/u,
   );
   assert.match(workflow, /environment: dealer-swing-production-critical/u);
   assert.match(workflow, /FRONTEND_RECEIPT_ENVIRONMENT: receipt-vinpoker-frontend/u);
@@ -33,7 +41,7 @@ test("one-shot Floor frontend rollout is immutable and protected", () => {
   assert.match(workflow, /required_reviewers/u);
   assert.match(
     workflow,
-    /DEPLOY_REVIEWED_FLOOR_TABLE_DEEPLINK_FRONTEND/u,
+    /DEPLOY_REVIEWED_FLOOR_SCOPE_STABILITY_FRONTEND/u,
   );
   assert.match(
     workflow,
@@ -88,13 +96,25 @@ test("one-shot Floor frontend rollout cannot mutate DB, Edge, flags or payment p
   assert.match(workflow, /--component frontend/u);
 });
 
-test("frontend source allowlist remains exactly the three reviewed Floor table deep-link files", () => {
-  const allowlist = [
-    "VinPoker/src/pages/ops/OpsTables.tsx",
-    "VinPoker/src/pages/ops/opsTablesTournamentSelection.test.ts",
-    "VinPoker/src/pages/ops/opsTablesTournamentSelection.ts",
+test("frontend target delta and reviewed payload boundary remain explicit", () => {
+  const targetDelta = [
+    "VinPoker/src/hooks/useStableFloorClubIds.test.tsx",
+    "VinPoker/src/hooks/useStableFloorClubIds.ts",
+    "VinPoker/src/pages/FloorDashboard.tsx",
+    "VinPoker/tests/floorProduction/floorDbEdgeContracts.test.ts",
   ];
-  for (const path of allowlist)
+  for (const path of targetDelta)
     assert.match(workflow, new RegExp(path.replaceAll("/", "\\/"), "u"));
+  assert.match(workflow, /expected_target_delta=\(/u);
+  assert.match(workflow, /reviewed_payload=\(/u);
+  assert.match(workflow, /expected_review_drift="\$contract_path"/u);
+  assert.equal(
+    workflow.match(/git rev-parse "\$TARGET_SHA:\$contract_path"/gu)?.length,
+    2,
+  );
+  assert.equal(
+    workflow.match(/git rev-parse "origin\/main:\$contract_path"/gu)?.length,
+    2,
+  );
   assert.doesNotMatch(workflow, /deploy_checkout_dealer|checkout-dealer/u);
 });
