@@ -14,6 +14,32 @@ export type FloorControlEvidence = {
   stateMismatch: boolean;
 };
 
+function normaliseManifestLabel(value: string) {
+  return value.replace(/\s+/g, " ").trim().toLocaleLowerCase("vi-VN");
+}
+
+export function rankedManifestEntries(
+  entries: readonly FloorButtonCoverageEntry[],
+  observedLabel: string,
+): FloorButtonCoverageEntry[] {
+  const observed = normaliseManifestLabel(observedLabel);
+  return entries
+    .map((entry, index) => {
+      const expected = normaliseManifestLabel(entry.testId ?? entry.label);
+      const exact = observed === expected;
+      const pattern = entry.labelPattern ? new RegExp(entry.labelPattern, "iu").test(observed) : false;
+      const prefix = expected.length > 0 && observed.startsWith(`${expected} `);
+      return { entry, index, expectedLength: expected.length, rank: exact ? 3 : pattern ? 2 : prefix ? 1 : 0 };
+    })
+    .filter((candidate) => candidate.rank > 0)
+    .sort((left, right) => (
+      right.rank - left.rank
+      || right.expectedLength - left.expectedLength
+      || left.index - right.index
+    ))
+    .map((candidate) => candidate.entry);
+}
+
 function policyStatus(entry: FloorButtonCoverageEntry): FloorAuditResult | null {
   if (!entry.exclusionReason) return null;
   if (

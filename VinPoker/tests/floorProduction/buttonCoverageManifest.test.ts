@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { floorAuditViewports, floorButtonCoverageManifest } from "../../e2e/floor-button-coverage.manifest";
+import { rankedManifestEntries } from "../../e2e/floor-action-evidence";
 
 const coverageSpec = readFileSync(resolve(process.cwd(), "e2e/floor-button-coverage.spec.ts"), "utf8");
 const canaryRunner = readFileSync(resolve(process.cwd(), "scripts/floor/floor-production-canary.mjs"), "utf8");
@@ -128,6 +129,7 @@ describe("Floor button coverage manifest", () => {
     expect(coverageSpec).toContain('case "/ops/tables"');
     expect(coverageSpec).toContain('case "/ops/tournaments/:id"');
     expect(coverageSpec).toContain('case "/floor"');
+    expect(coverageSpec).toContain('await expect(visibleButton(page, "Làm mới")).toBeEnabled({ timeout: 15_000 });');
     expect(coverageSpec).toContain('"tournament-cancel"');
     expect(coverageSpec).toContain('"tournament-confirm"');
     expect(coverageSpec).toContain('"tables-clock"');
@@ -163,6 +165,13 @@ describe("Floor button coverage manifest", () => {
     expect(pattern.test("3 CODEX_FLOOR_CANARY_20260722204355_1234abcd_TABLE_LIFECYCLE_ADDED 10.000")).toBe(true);
     expect(pattern.test("4 CODEX_FLOOR_CANARY_20260722204355_1234abcd_TABLE_LIFECYCLE_P1 10,000")).toBe(true);
     expect(pattern.test("3 CODEX_FLOOR_CANARY_20260722204355_1234abcd_ACCESS_ADDED 10.000")).toBe(false);
+  });
+
+  it("prefers an exact manifest label over a shorter prefix label", () => {
+    const payoutEntries = floorButtonCoverageManifest.filter((entry) => entry.route === "/floor" && entry.role === "owner");
+    expect(rankedManifestEntries(payoutEntries, "Lưu mặc định cho giải này")[0]?.id).toBe("payout-save");
+    expect(rankedManifestEntries(payoutEntries, "Lưu")[0]?.id).toBe("payout-satellite-save-disabled");
+    expect(coverageSpec).toContain("const known = rankedManifestEntries(manifest, observed)[0]");
   });
 
   it("pins the browser audit to the locale used by manifest labels", () => {

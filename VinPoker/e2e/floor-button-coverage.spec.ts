@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 import {
   baselineEvidence,
   discoveryEvidence,
+  rankedManifestEntries,
   type FloorControlEvidence,
 } from "./floor-action-evidence";
 import {
@@ -211,6 +212,7 @@ async function prepareRouteForCoverageDiscovery(
         .first()
         .click({ timeout: 15_000 });
       logAuditPhase(manifestRoute, assignment.role, viewport, "tab_selected");
+      await expect(visibleButton(page, "Làm mới")).toBeEnabled({ timeout: 15_000 });
       await expect(visibleButton(page, "Vận hành CLB")).toBeVisible({ timeout: 15_000 });
       return;
     }
@@ -271,11 +273,7 @@ async function auditScopedControlInventory(
   const stateMismatches: string[] = [];
   for (const control of observedControls) {
     const observed = normalise(control.label) || "<unlabelled-enabled-control>";
-    const candidates = expectedEntries.filter((entry) => {
-      const expected = normalise(entry.testId ?? entry.label);
-      const patternMatches = entry.labelPattern ? new RegExp(entry.labelPattern, "iu").test(observed) : false;
-      return observed === expected || observed.startsWith(`${expected} `) || patternMatches;
-    });
+    const candidates = rankedManifestEntries(expectedEntries, observed);
     const known = candidates.find((entry) => (
       control.enabled
         ? !["disabled", "hidden"].includes(entry.expectedState)
@@ -729,11 +727,7 @@ for (const viewport of floorAuditViewports) {
           const { enabled } = control;
           const label = normalise(control.label);
           const observed = label || "<unlabelled-enabled-control>";
-          const known = manifest.find((entry) => {
-            const expected = normalise(entry.testId ?? entry.label);
-            const patternMatches = entry.labelPattern ? new RegExp(entry.labelPattern, "iu").test(observed) : false;
-            return observed === expected || observed.startsWith(`${expected} `) || patternMatches;
-          });
+          const known = rankedManifestEntries(manifest, observed)[0];
           if (known) {
             matchedManifestIds.add(known.id);
             appendControlEvidence(discoveryEvidence(known, viewport, enabled));
