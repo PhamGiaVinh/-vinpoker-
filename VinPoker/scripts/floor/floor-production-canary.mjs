@@ -2771,6 +2771,49 @@ async function observeExactPostLifecycle(page, pathname, click) {
   return Promise.race([responseObservation, requestFailureObservation]);
 }
 
+function createExactRequestLifecycleObservation(page, matches) {
+  const requestObservation = page.waitForRequest(matches, { timeout: 15_000 })
+    .then(() => "request_seen", () => "request_missing");
+  const responseObservation = page.waitForResponse(
+    (response) => matches(response.request()),
+    { timeout: 15_000 },
+  ).then(
+    (response) => ({ kind: "response", response }),
+    () => ({ kind: "response_missing", response: null }),
+  );
+  const requestFailureObservation = page.waitForEvent("requestfailed", {
+    predicate: matches,
+    timeout: 15_000,
+  }).then(
+    () => ({ kind: "request_failed", response: null }),
+    () => new Promise(() => {}),
+  );
+
+  return async () => {
+    if (await requestObservation !== "request_seen") {
+      return { kind: "request_missing", response: null };
+    }
+    return Promise.race([responseObservation, requestFailureObservation]);
+  };
+}
+
+function requestLifecycleClass(outcome) {
+  if (outcome.kind !== "response" || !outcome.response) return outcome.kind;
+  const statusClass = Math.floor(outcome.response.status() / 100);
+  return statusClass >= 1 && statusClass <= 5 ? `response_${statusClass}xx` : "response_other";
+}
+
+async function requestLifecycleRowCount(outcome, payloadRows) {
+  if (outcome.kind !== "response" || !outcome.response?.ok()) return null;
+  try {
+    const payload = await outcome.response.json();
+    const rows = payloadRows(payload);
+    return Array.isArray(rows) ? rows.length : null;
+  } catch {
+    return null;
+  }
+}
+
 function ownedOpsTableButton(page, tableNumber) {
   const exactTableNumber = page.locator("div").filter({
     hasText: new RegExp(`^\\s*${escapeRegex(String(tableNumber))}\\s*$`, "u"),
@@ -3348,20 +3391,85 @@ async function runBrowserTableRetryAction(browser, baseUrl, stateDirectory, acto
     await retry.waitFor({ state: "visible", timeout: 15_000 });
     await retry.click({ trial: true, timeout: 15_000 });
     browserPhaseCheckpoint("table_retry", "retry_visible");
+    const tableReadObservation = createExactRequestLifecycleObservation(page, (request) => {
+      const url = new URL(request.url());
+      return request.method() === "GET"
+        && url.origin === `https://${PRODUCTION_REF}.supabase.co`
+        && url.pathname === "/rest/v1/tournament_tables"
+        && JSON.stringify([...url.searchParams.keys()].sort()) === JSON.stringify(["select", "tournament_id"])
+        && url.searchParams.get("select") === "id,table_name,table_number,max_seats,status,table_id"
+        && url.searchParams.get("tournament_id") === `eq.${fixture.tournamentId}`;
+    });
+    const seatReadObservation = createExactRequestLifecycleObservation(page, (request) => {
+      const body = safeRequestJson(request);
+      const url = new URL(request.url());
+      return request.method() === "POST"
+        && url.origin === `https://${PRODUCTION_REF}.supabase.co`
+        && url.pathname === "/functions/v1/tournament-live-draw"
+        && exactObjectKeys(body, ["tournament_id", "action"])
+        && body.tournament_id === fixture.tournamentId
+        && body.action === "get_seats";
+    });
     injectReadFailure.active = false;
     await retry.click();
     browserPhaseCheckpoint("table_retry", "retry_clicked");
     await retryErrorTitle.waitFor({ state: "hidden", timeout: 15_000 });
-    browserPhaseCheckpoint("table_retry", "error_cleared");
-    await ownedOpsTableButton(page, 1).waitFor({ state: "visible", timeout: 15_000 });
-    browserPhaseCheckpoint("table_retry", "table_grid_ready");
-    result("browser_tables_retry_refresh", true, "ui=error_to_owned_table");
-    result("browser_tables_retry_clicked", true);
+    browserPhaseCheckpoint("table_retry", "retry_loading_started");
+    const [tableRead, seatRead] = await Promise.all([
+      tableReadObservation(),
+      seatReadObservation(),
+    ]);
+    const [tableRowCount, seatRowCount] = await Promise.all([
+      requestLifecycleRowCount(tableRead, (payload) => payload),
+      requestLifecycleRowCount(seatRead, (payload) => payload?.data),
+    ]);
+    const tableReadClass = requestLifecycleClass(tableRead);
+    const seatReadClass = requestLifecycleClass(seatRead);
+    const tableCard = ownedOpsTableButton(page, 1);
+    const retryEmptyState = page.getByText("Giải này chưa có bàn/ghế", { exact: true });
+    const uiState = await Promise.race([
+      tableCard.waitFor({ state: "visible", timeout: 15_000 }).then(
+        () => "grid",
+        () => new Promise(() => {}),
+      ),
+      retryErrorTitle.waitFor({ state: "visible", timeout: 15_000 }).then(
+        () => "error",
+        () => new Promise(() => {}),
+      ),
+      retryEmptyState.waitFor({ state: "visible", timeout: 15_000 }).then(
+        () => "empty",
+        () => new Promise(() => {}),
+      ),
+      page.waitForTimeout(15_000).then(() => "loading_timeout"),
+    ]);
+    browserPhaseCheckpoint("table_retry", `ui_${uiState}`);
+    console.log(
+      "FLOOR_CANARY TABLE_RETRY_OBSERVATION"
+      + ` table=${tableReadClass}`
+      + ` seats=${seatReadClass}`
+      + ` table_rows=${tableRowCount ?? "unknown"}`
+      + ` seat_rows=${seatRowCount ?? "unknown"}`
+      + ` ui=${uiState}`
+      + ` blocked_count=${guard.blocked.length}`,
+    );
     result("browser_tables_retry_forbidden_egress_zero", guard.blocked.length === 0, guard.blocked.join(","));
     result(
       "browser_tables_retry_injected_failure_observed",
       guard.expectedBlocked.includes("expected_blocked_injected_table_read_failure"),
     );
+    result(
+      "browser_tables_retry_reads",
+      tableReadClass === "response_2xx" && seatReadClass === "response_2xx",
+      `table=${tableReadClass},seats=${seatReadClass}`,
+    );
+    result("browser_tables_retry_owned_table_rows", tableRowCount === 1, `count=${tableRowCount ?? "unknown"}`);
+    result(
+      "browser_tables_retry_owned_seat_rows",
+      seatRowCount === fixture.initialSnapshot.activeSeatCount,
+      `count=${seatRowCount ?? "unknown"}`,
+    );
+    result("browser_tables_retry_refresh", uiState === "grid", `ui=${uiState}`);
+    result("browser_tables_retry_clicked", true);
   } finally {
     await context.close();
   }

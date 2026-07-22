@@ -210,12 +210,21 @@ describe("Floor button coverage manifest", () => {
     const retryFlow = canaryRunner.slice(retryStart, retryEnd);
     expect(retryFlow).toContain('page.getByText("Không tải được sơ đồ bàn", { exact: true })');
     expect(retryFlow).toContain('retryErrorCard.getByRole("button", { name: "Thử lại", exact: true })');
-    expect(retryFlow).not.toContain("waitForOwnedTableMapRefresh(page, fixture.tournamentId)");
+    expect(retryFlow).toContain("createExactRequestLifecycleObservation(page");
+    expect(retryFlow).toContain('url.pathname === "/rest/v1/tournament_tables"');
+    expect(retryFlow).toContain('JSON.stringify(["select", "tournament_id"])');
+    expect(retryFlow).toContain('url.searchParams.get("select") === "id,table_name,table_number,max_seats,status,table_id"');
+    expect(retryFlow).toContain('url.pathname === "/functions/v1/tournament-live-draw"');
     expect(retryFlow).toContain('retryErrorTitle.waitFor({ state: "hidden", timeout: 15_000 })');
-    expect(retryFlow).toContain('browserPhaseCheckpoint("table_retry", "error_cleared")');
-    expect(retryFlow).toContain("ownedOpsTableButton(page, 1).waitFor");
-    expect(retryFlow).toContain('browserPhaseCheckpoint("table_retry", "table_grid_ready")');
-    expect(retryFlow).toContain('"ui=error_to_owned_table"');
+    expect(retryFlow).toContain('browserPhaseCheckpoint("table_retry", "retry_loading_started")');
+    expect(retryFlow).toContain('"FLOOR_CANARY TABLE_RETRY_OBSERVATION"');
+    expect(retryFlow).toContain('() => "grid"');
+    expect(retryFlow).toContain('() => "error"');
+    expect(retryFlow).toContain('() => "empty"');
+    expect(retryFlow).toContain('page.waitForTimeout(15_000).then(() => "loading_timeout")');
+    expect(retryFlow).toContain('tableRowCount === 1');
+    expect(retryFlow).toContain('seatRowCount === fixture.initialSnapshot.activeSeatCount');
+    expect(retryFlow).toContain('result("browser_tables_retry_refresh", uiState === "grid"');
   });
 
   it("waits for restore capability and scopes the action to the owned busted player row", () => {
