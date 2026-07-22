@@ -185,11 +185,27 @@ describe("Floor button coverage manifest", () => {
     expect(canaryRunner).not.toContain('hasText: new RegExp(`\\\\b${tableNumber}\\\\b`, "u")');
   });
 
-  it("proves Retry through the recovered table grid without requiring a brittle response pair", () => {
+  it("waits for the owned player action sheet before the table-lifecycle move", () => {
+    const lifecycleStart = canaryRunner.indexOf("async function runBrowserTableLifecycleActions");
+    const lifecycleEnd = canaryRunner.indexOf("async function runBrowserCloseTableAction", lifecycleStart);
+    const lifecycleFlow = canaryRunner.slice(lifecycleStart, lifecycleEnd);
+    expect(lifecycleFlow).toContain("const playerActionsDialog = page.getByRole(\"dialog\"");
+    expect(lifecycleFlow).toContain('playerActionsDialog.getByRole("button", { name: "Chuyển bàn / ghế", exact: true })');
+    expect(lifecycleFlow).toContain('moveAction.click({ trial: true, timeout: 15_000 })');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_action_ready")');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_dialog_ready")');
+    expect(lifecycleFlow).not.toContain('page.getByRole("button", { name: /^Chuyển\\b/u }).click()');
+    expect(lifecycleFlow).not.toContain('name: "1", exact: true }).first()');
+  });
+
+  it("scopes Retry to the table-map error card and observes the recovered reads", () => {
     const retryStart = canaryRunner.indexOf("async function runBrowserTableRetryAction");
     const retryEnd = canaryRunner.indexOf("async function runBrowserTvPromptActions", retryStart);
     const retryFlow = canaryRunner.slice(retryStart, retryEnd);
-    expect(retryFlow).not.toContain("waitForOwnedTableMapRefresh");
+    expect(retryFlow).toContain('page.getByText("Không tải được sơ đồ bàn", { exact: true })');
+    expect(retryFlow).toContain('retryErrorCard.getByRole("button", { name: "Thử lại", exact: true })');
+    expect(retryFlow).toContain("waitForOwnedTableMapRefresh(page, fixture.tournamentId)");
+    expect(retryFlow).toContain('browserPhaseCheckpoint("table_retry", "table_map_refreshed")');
     expect(retryFlow).toContain("ownedOpsTableButton(page, 1).waitFor");
     expect(retryFlow).toContain('browserPhaseCheckpoint("table_retry", "table_grid_ready")');
   });
@@ -199,17 +215,23 @@ describe("Floor button coverage manifest", () => {
     expect(canaryRunner).toContain('browserPhaseCheckpoint("bust_restore", "restore_button_enabled")');
     expect(canaryRunner).toContain("restoreButton.click({ trial: true, timeout: 15_000 })");
     expect(canaryRunner).toContain("bustedPlayerRow.getByRole");
+    expect(canaryRunner).toContain("restoreAction.click({ trial: true, timeout: 15_000 })");
+    expect(canaryRunner).toContain('browserPhaseCheckpoint("bust_restore", "restore_action_ready")');
   });
 
-  it("uses the unique pre-CUSTOM payout combobox and records safe checkpoints", () => {
+  it("uses the owner auth scope and actionable CUSTOM controls before saving a payout template", () => {
     expect(canaryRunner).toContain('const styleControl = page.getByText("Kiểu giải", { exact: true })');
     expect(canaryRunner).toContain('.getByRole("combobox")\n      .filter({ visible: true })\n      .first()');
     expect(canaryRunner).not.toContain('const styleControl = page.getByRole("combobox").first()');
+    expect(canaryRunner).toContain("actorIds: [actors.owner.id]");
+    expect(canaryRunner).toContain('const templateNameControl = page.getByPlaceholder("Tên mẫu", { exact: true })');
+    expect(canaryRunner).toContain('templateSaveAction.click({ trial: true, timeout: 15_000 })');
     for (const checkpoint of [
       "preview_rendered",
       "style_control_ready",
       "custom_selected",
       "import_complete",
+      "template_save_ready",
     ]) {
       expect(canaryRunner).toContain(`browserPhaseCheckpoint("payout_close", "${checkpoint}")`);
     }

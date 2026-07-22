@@ -2900,7 +2900,8 @@ async function runBrowserTableLifecycleActions(browser, baseUrl, stateDirectory,
     await ownedOpsPlayerButton(receiptTable, playerName).click();
     browserPhaseCheckpoint("table_lifecycle", "receipt_player_selected");
     await page.getByRole("button", { name: /^Phiếu\b/u }).click();
-    await page.getByText(added.entry_id, { exact: true }).first().waitFor({ state: "visible", timeout: 15_000 });
+    const receiptCode = page.getByText(added.entry_id, { exact: true }).first();
+    await receiptCode.waitFor({ state: "visible", timeout: 15_000 });
     result("browser_player_receipt_clicked", true);
     const afterReceipt = await activeSeatGraph(admin, fixture, "browser_player_receipt_after");
     result(
@@ -2908,6 +2909,8 @@ async function runBrowserTableLifecycleActions(browser, baseUrl, stateDirectory,
       canonicalSeatGraph(beforeReceipt.rows) === canonicalSeatGraph(afterReceipt.rows),
     );
     await page.keyboard.press("Escape");
+    await receiptCode.waitFor({ state: "hidden", timeout: 15_000 });
+    browserPhaseCheckpoint("table_lifecycle", "receipt_closed");
 
     policy.mutation.movePlayer = {
       entryId: added.entry_id,
@@ -2918,12 +2921,25 @@ async function runBrowserTableLifecycleActions(browser, baseUrl, stateDirectory,
     const moveSource = await openOwnedOpsTable(page, tableNumber, "table_lifecycle");
     await ownedOpsPlayerButton(moveSource, playerName).click();
     browserPhaseCheckpoint("table_lifecycle", "move_player_selected");
-    await page.getByRole("button", { name: /^Chuyển\b/u }).click();
-    const moveDialog = page.getByRole("dialog", { name: "Chuyển bàn / ghế" });
-    await moveDialog.getByRole("button", { name: "1", exact: true }).first().click();
-    await moveDialog.getByRole("button", { name: "3", exact: true }).click();
+    const playerActionsDialog = page.getByRole("dialog", {
+      name: new RegExp(`^Ghế ${tableNumber}-${added.seat_number} — ${escapeRegex(playerName)}$`, "u"),
+    });
+    await playerActionsDialog.waitFor({ state: "visible", timeout: 15_000 });
+    const moveAction = playerActionsDialog.getByRole("button", { name: "Chuyển bàn / ghế", exact: true });
+    await moveAction.click({ trial: true, timeout: 15_000 });
+    browserPhaseCheckpoint("table_lifecycle", "move_action_ready");
+    await moveAction.click();
+    const moveDialog = page.getByRole("dialog", { name: "Chuyển bàn / ghế", exact: true });
+    await moveDialog.waitFor({ state: "visible", timeout: 15_000 });
+    browserPhaseCheckpoint("table_lifecycle", "move_dialog_ready");
+    const freeSeatControls = moveDialog.getByText("Ghế trống — chạm để chọn", { exact: true })
+      .locator("xpath=following-sibling::div[1]");
+    await freeSeatControls.getByRole("button", { name: "3", exact: true }).click();
+    await moveDialog.getByText("Bàn 1 · Ghế 3", { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
+    const confirmMove = moveDialog.getByRole("button", { name: "Xác nhận chuyển", exact: true });
+    await confirmMove.click({ trial: true, timeout: 15_000 });
     const moveResponse = await waitForPostPath(page, "/rest/v1/rpc/move_player_seat", () => (
-      moveDialog.getByRole("button", { name: "Xác nhận chuyển", exact: true }).click()
+      confirmMove.click()
     ));
     result("browser_player_move_clicked", moveResponse.ok(), safeBrowserResponseDetail(moveResponse));
     const movedGraph = await activeSeatGraph(admin, fixture, "browser_player_move_after");
@@ -3210,8 +3226,13 @@ async function runBrowserBustRestoreActions(browser, baseUrl, stateDirectory, ad
     browserPhaseCheckpoint("bust_restore", "restore_dialog_ready");
     await restoreDialog.getByRole("checkbox").check();
     browserPhaseCheckpoint("bust_restore", "restore_confirmed");
+    const restoreAction = restoreDialog.getByRole("button", { name: "Cho vào Bàn 1 · ghế 1", exact: true })
+      .filter({ visible: true })
+      .first();
+    await restoreAction.click({ trial: true, timeout: 15_000 });
+    browserPhaseCheckpoint("bust_restore", "restore_action_ready");
     const restoreResponse = await waitForPostPath(restorePage, "/rest/v1/rpc/restore_busted_player_to_seat", () => (
-      restoreDialog.getByRole("button", { name: "Cho vào Bàn 1 · ghế 1", exact: true }).click()
+      restoreAction.click()
     ));
     browserPhaseCheckpoint("bust_restore", "restore_rpc_complete");
     result("browser_player_restore_clicked", restoreResponse.ok(), safeBrowserResponseDetail(restoreResponse));
@@ -3259,15 +3280,27 @@ async function runBrowserTableRetryAction(browser, baseUrl, stateDirectory, acto
   try {
     const page = await context.newPage();
     await page.goto(`${baseUrl}/ops/tables?tour=${fixture.tournamentId}`, { waitUntil: "domcontentloaded" });
-    const retry = page.getByRole("button", { name: "Thử lại", exact: true });
+    const retryErrorTitle = page.getByText("Không tải được sơ đồ bàn", { exact: true });
+    await retryErrorTitle.waitFor({ state: "visible", timeout: 15_000 });
+    const retryErrorCard = retryErrorTitle.locator("..");
+    const retry = retryErrorCard.getByRole("button", { name: "Thử lại", exact: true });
     await retry.waitFor({ state: "visible", timeout: 15_000 });
+    await retry.click({ trial: true, timeout: 15_000 });
     browserPhaseCheckpoint("table_retry", "retry_visible");
     injectReadFailure.active = false;
+    const tableMapRefresh = waitForOwnedTableMapRefresh(page, fixture.tournamentId);
+    void tableMapRefresh.catch(() => undefined);
     await retry.click();
     browserPhaseCheckpoint("table_retry", "retry_clicked");
+    const tableMapResponses = await tableMapRefresh;
+    result(
+      "browser_tables_retry_refresh",
+      tableMapResponses.every((response) => response.ok()),
+      tableMapResponses.map(safeBrowserResponseDetail).join(","),
+    );
+    browserPhaseCheckpoint("table_retry", "table_map_refreshed");
     await ownedOpsTableButton(page, 1).waitFor({ state: "visible", timeout: 15_000 });
     browserPhaseCheckpoint("table_retry", "table_grid_ready");
-    result("browser_tables_retry_refresh", true, "ui=table_grid");
     result("browser_tables_retry_clicked", true);
     result("browser_tables_retry_forbidden_egress_zero", guard.blocked.length === 0, guard.blocked.join(","));
     result(
@@ -3398,7 +3431,15 @@ async function runBrowserChipCasConcurrency(browser, baseUrl, stateDirectory, ad
 async function runPayoutAndCloseBrowserFlow(browser, baseUrl, stateDirectory, actors, fixture) {
   const templateName = `${fixture.runId}_PAYOUT_BROWSER_TEMPLATE`;
   if (!templateName.startsWith(CLEANUP_SCOPE_PREFIX)) fail("browser_payout_template_prefix_invalid");
-  const payoutPolicy = { baseUrl, fixture, templateName, ownerId: actors.owner.id };
+  const payoutPolicy = {
+    baseUrl,
+    fixture,
+    templateName,
+    ownerId: actors.owner.id,
+    actorId: actors.owner.id,
+    actorIds: [actors.owner.id],
+    allowAuthToken: false,
+  };
 
   const tabletContext = await browser.newContext({
     storageState: join(stateDirectory, "owner.json"),
@@ -3468,11 +3509,22 @@ async function runPayoutAndCloseBrowserFlow(browser, baseUrl, stateDirectory, ac
     await page.getByText(/Đã nạp 3 hạng từ file/u).waitFor({ state: "visible", timeout: 15_000 });
     browserPhaseCheckpoint("payout_close", "import_complete");
 
-    await page.getByPlaceholder("Tên mẫu", { exact: true }).fill(templateName);
+    const importedRanks = page.getByRole("spinbutton", { name: /^percent rank \d+$/u });
+    await importedRanks.nth(2).waitFor({ state: "visible", timeout: 15_000 });
+    result("browser_payout_custom_import_rows", await importedRanks.count() === 3);
+    const templateNameControl = page.getByPlaceholder("Tên mẫu", { exact: true })
+      .filter({ visible: true })
+      .first();
+    await templateNameControl.fill(templateName);
+    const templateSaveAction = page.getByRole("button", { name: "Lưu mẫu", exact: true })
+      .filter({ visible: true })
+      .first();
+    await templateSaveAction.click({ trial: true, timeout: 15_000 });
+    browserPhaseCheckpoint("payout_close", "template_save_ready");
     const templateResponsePromise = page.waitForResponse((response) => (
       response.request().method() === "POST" && new URL(response.url()).pathname === "/rest/v1/payout_templates"
     ));
-    await page.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
+    await templateSaveAction.click();
     const templateResponse = await templateResponsePromise;
     result("browser_payout_template_save_clicked", templateResponse.ok(), safeBrowserResponseDetail(templateResponse));
     const templateButton = page.getByRole("button", { name: templateName, exact: true });

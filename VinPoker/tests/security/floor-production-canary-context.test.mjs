@@ -398,8 +398,23 @@ test("browser payout egress policy blocks every external origin and unknown muta
     fixture,
     templateName: "CODEX_FLOOR_CANARY_20990101120000_aaaaaaaa_PAYOUT_BROWSER_TEMPLATE",
     ownerId: "30000000-0000-4000-8000-000000000001",
+    actorId: "30000000-0000-4000-8000-000000000001",
+    actorIds: ["30000000-0000-4000-8000-000000000001"],
+    allowAuthToken: false,
   };
   const request = (url, method, body = null) => ({ url, method, body });
+  assert.equal(payoutBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/auth/v1/user",
+    "GET",
+  ), policy), null);
+  assert.equal(payoutBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/auth/v1/user?unexpected=1",
+    "GET",
+  ), policy), "unexpected_read");
+  assert.equal(payoutBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/auth/v1/user",
+    "GET",
+  ), { ...policy, actorIds: [] }), "unexpected_read");
   assert.equal(payoutBrowserRequestBlockReason(request("https://payments.example.test/collect", "POST", {}), policy), "external_origin");
   assert.equal(payoutBrowserRequestBlockReason(request("https://fonts.example.test/font.woff2", "GET"), policy), "external_origin");
   assert.equal(payoutBrowserRequestBlockReason(request(
@@ -472,6 +487,24 @@ test("browser payout egress policy blocks every external origin and unknown muta
       created_by: policy.ownerId,
     },
   ), policy), null);
+  assert.equal(payoutBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/payout_templates",
+    "POST",
+    {
+      club_id: fixture.clubId,
+      name: policy.templateName,
+      archetype: "CUSTOM",
+      custom_percents: [
+        { position: 1, percent_bp: 5000 },
+        { position: 2, percent_bp: 3000 },
+        { position: 3, percent_bp: 2000 },
+      ],
+      itm_percent: 0,
+      min_cash_x: 1,
+      rounding_unit: 1,
+      created_by: null,
+    },
+  ), policy), "unexpected_mutation");
   assert.equal(payoutBrowserRequestBlockReason(request(
     "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/rpc/close_tournament",
     "POST",
