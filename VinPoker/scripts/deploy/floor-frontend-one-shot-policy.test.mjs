@@ -13,15 +13,19 @@ const workflow = readFileSync(
 test("one-shot Floor frontend rollout is immutable and protected", () => {
   assert.match(
     workflow,
-    /PRODUCTION_BASELINE_SHA: cdb67da6e4f77caa9e3277cea0fe6994f9d41cb6/u,
+    /PRODUCTION_SOURCE_SHA: 3d54c87e7c1fab1209494c94b7b2cca042053e2d/u,
   );
   assert.match(
     workflow,
-    /TARGET_SHA: 3d54c87e7c1fab1209494c94b7b2cca042053e2d/u,
+    /EXPECTED_PRODUCTION_DEPLOYMENT_SHA: cdb67da6e4f77caa9e3277cea0fe6994f9d41cb6/u,
   );
   assert.match(
     workflow,
-    /REVIEWED_MERGE_SHA: ee77f095f27bdbc7c9b9bfbc561969fe2b5559ad/u,
+    /TARGET_SHA: ca95d444329b39efb74913d3bfd37150364fcd96/u,
+  );
+  assert.match(
+    workflow,
+    /REVIEWED_MERGE_SHA: 96d31dbb553b50ecb11c417f3ae748edec497c11/u,
   );
   assert.match(workflow, /environment: dealer-swing-production-critical/u);
   assert.match(workflow, /test "\$GITHUB_REF" = "refs\/heads\/main"/u);
@@ -63,11 +67,9 @@ test("one-shot Floor frontend rollout cannot mutate DB, Edge, flags or payment p
   assert.match(workflow, /--component frontend/u);
 });
 
-test("frontend source allowlist remains exactly the four reviewed Floor clock files", () => {
+test("frontend source allowlist remains exactly the two reviewed Floor RPC binding files", () => {
   const allowlist = [
-    "VinPoker/src/components/cashier/tournament-live/ClockPanel.tsx",
-    "VinPoker/src/lib/tournament/clockControlState.test.ts",
-    "VinPoker/src/lib/tournament/clockControlState.ts",
+    "VinPoker/src/components/ops/shared/FloorPlayerActions.tsx",
     "VinPoker/src/pages/ops/OpsTournamentCockpit.tsx",
   ];
   for (const path of allowlist)
