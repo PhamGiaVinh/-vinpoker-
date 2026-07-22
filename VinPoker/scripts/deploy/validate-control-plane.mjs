@@ -12,8 +12,15 @@ const validationWorkflowPath = resolve(
   "workflows",
   "deployment-control-plane-validation.yml",
 );
+const shortageAlertApplyWorkflowPath = resolve(
+  repositoryRoot,
+  ".github",
+  "workflows",
+  "dealer-shortage-alert-lifecycle-apply.yml",
+);
 const workflow = readFileSync(workflowPath, "utf8");
 const validationWorkflow = readFileSync(validationWorkflowPath, "utf8");
+const shortageAlertApplyWorkflow = readFileSync(shortageAlertApplyWorkflowPath, "utf8");
 const manifest = loadDeploymentManifest();
 validateDeploymentManifest(manifest, repositoryRoot);
 
@@ -93,6 +100,33 @@ for (const snippet of [
   "sha256sum --check --strict",
 ]) {
   if (!validationWorkflow.includes(snippet)) throw new Error(`pinned actionlint validation is missing: ${snippet}`);
+}
+
+for (const [pattern, label] of [
+  [/supabase\s+(?:functions\s+deploy|db\s+(?:push|reset))/i, "direct production mutation"],
+  [/vercel\s+(?:deploy|--prod)/i, "frontend deployment"],
+  [/20270104000005_dealer_shortage_alert_lifecycle\.sql/, "superseded alert migration path"],
+  [/(?:echo|printf)\b[^\n]*(?:SUPABASE|TOKEN)|\bprintenv\b/i, "secret logging"],
+]) {
+  if (pattern.test(shortageAlertApplyWorkflow)) {
+    throw new Error(`shortage alert apply workflow contains forbidden ${label}`);
+  }
+}
+for (const snippet of [
+  "workflow_dispatch:",
+  "dealer-swing-production-critical",
+  "20270104000006",
+  "apply-shortage-alert-lifecycle.mjs",
+  "--preflight",
+  "--apply",
+  "APPLY_DEALER_SHORTAGE_ALERT_20270104000006",
+  "git merge-base --is-ancestor",
+  "secrets.SUPABASE_PROJECT_REF",
+  "secrets.SUPABASEACCESSTOKEN",
+]) {
+  if (!shortageAlertApplyWorkflow.includes(snippet)) {
+    throw new Error(`shortage alert apply workflow is missing required control: ${snippet}`);
+  }
 }
 
 for (const [name] of Object.entries(manifest.functions).filter(([, item]) => item.critical)) {
