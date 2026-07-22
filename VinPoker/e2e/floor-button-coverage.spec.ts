@@ -191,6 +191,22 @@ const inventoryStaticPaths = new Set([
   "/robots.txt",
   "/version.json",
 ]);
+const expectedBlockedInventoryAppPaths = new Set(["/", "/version.json"]);
+const expectedBlockedInventoryRestTables = new Set([
+  "booking_chats",
+  "club_accountants",
+  "club_chip_masters",
+  "club_fnb_staff",
+  "club_marketers",
+  "dealer_assignments",
+  "dealer_attendance",
+  "dealers",
+  "gto_spot_ranges",
+  "notifications",
+  "profiles",
+  "tournament_registrations",
+  "user_roles",
+]);
 
 function isAllowedInventoryAppRead(url: URL, baseURL: string, assignment: RouteAssignment) {
   if (/^\/(?:assets|fonts|sounds)\/[A-Za-z0-9_./-]+$/u.test(url.pathname)) return url.searchParams.size === 0;
@@ -304,16 +320,51 @@ function inventoryRequestBlockReason(
   return "unexpected_mutation";
 }
 
+function expectedBlockedInventoryRead(
+  request: import("@playwright/test").Request,
+  baseURL: string,
+  assignment: RouteAssignment,
+) {
+  const url = new URL(request.url());
+  const method = request.method().toUpperCase();
+  if (!["GET", "HEAD"].includes(method)) return false;
+  const restTable = url.pathname.match(/^\/rest\/v1\/([A-Za-z0-9_]+)$/u)?.[1] ?? null;
+  const knownOptionalRead = (
+    url.origin === new URL(baseURL).origin
+    && expectedBlockedInventoryAppPaths.has(url.pathname)
+  ) || (
+    url.origin === productionSupabaseOrigin
+    && restTable !== null
+    && expectedBlockedInventoryRestTables.has(restTable)
+  );
+  const ownedIds = new Set([
+    ...assignment.allowedRecordIds,
+    ...(assignment.actorId ? [assignment.actorId] : []),
+  ].map((id) => id.toLowerCase()));
+  const referencedIds = [...url.searchParams.values()].flatMap((value) => (
+    value.match(/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}/giu) ?? []
+  ));
+  return knownOptionalRead
+    && referencedIds.every((id) => ownedIds.has(id.toLowerCase()))
+    && inventoryRequestBlockReason(request, baseURL, assignment) === "unexpected_read";
+}
+
 async function installInventoryEgressGuard(
   context: import("@playwright/test").BrowserContext,
   baseURL: string,
   assignment: RouteAssignment,
 ) {
   const blocked: string[] = [];
+  const expectedBlockedEgress: string[] = [];
   await context.route("**/*", async (route) => {
     const request = route.request();
     const reason = inventoryRequestBlockReason(request, baseURL, assignment);
     if (reason === "expected_startup_side_effect") {
+      await route.abort("blockedbyclient");
+      return;
+    }
+    if (reason === "unexpected_read" && expectedBlockedInventoryRead(request, baseURL, assignment)) {
+      expectedBlockedEgress.push(`expected_blocked_optional_bootstrap_read:${request.method().toUpperCase()}:${new URL(request.url()).pathname}`);
       await route.abort("blockedbyclient");
       return;
     }
@@ -334,7 +385,7 @@ async function installInventoryEgressGuard(
     }
     webSocketRoute.connectToServer();
   });
-  return blocked;
+  return { blocked, expectedBlockedEgress };
 }
 
 test.beforeAll(() => {
@@ -480,7 +531,11 @@ for (const viewport of floorAuditViewports) {
         expect(matchedManifestIds.size, `${assignment.role} ${manifestRoute} must match at least one manifest control`).toBeGreaterThan(0);
         expect(unclassified, `${assignment.role} ${manifestRoute} has enabled controls without a manifest entry`).toEqual([]);
         expect(stateMismatches, `${assignment.role} ${manifestRoute} has manifest state mismatches`).toEqual([]);
-        expect(blockedEgress, `${assignment.role} ${manifestRoute} attempted forbidden browser egress`).toEqual([]);
+        expect(
+          blockedEgress.expectedBlockedEgress.every((entry) => entry.startsWith("expected_blocked_optional_bootstrap_read:")),
+          `${assignment.role} ${manifestRoute} classified an unknown expected-blocked read`,
+        ).toBe(true);
+        expect(blockedEgress.blocked, `${assignment.role} ${manifestRoute} attempted forbidden browser egress`).toEqual([]);
       } finally {
         // Preserve the original timeout/assertion instead of replacing it with a
         // secondary "Test ended" error from Playwright's already-closed context.

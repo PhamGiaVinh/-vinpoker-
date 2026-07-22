@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { floorAuditViewports, floorButtonCoverageManifest } from "../../e2e/floor-button-coverage.manifest";
 
 const coverageSpec = readFileSync(resolve(process.cwd(), "e2e/floor-button-coverage.spec.ts"), "utf8");
+const canaryRunner = readFileSync(resolve(process.cwd(), "scripts/floor/floor-production-canary.mjs"), "utf8");
 
 const requiredControls = [
   "Tạo giải", "Sửa giải", "Mở giải", "Đồng hồ", "Mở bàn", "Thêm người", "Sửa chip",
@@ -125,8 +126,57 @@ describe("Floor button coverage manifest", () => {
     expect(coverageSpec).toContain('serviceWorkers: "block"');
     expect(coverageSpec).toContain("context.routeWebSocket");
     expect(coverageSpec).toContain("assignment.allowedTournamentIds.includes");
+    expect(coverageSpec).toContain("expectedBlockedInventoryRead");
+    expect(coverageSpec).toContain("expectedBlockedEgress");
+    expect(coverageSpec).toContain('route.abort("blockedbyclient")');
     expect(coverageSpec).toContain("attempted forbidden browser egress");
     expect(coverageSpec).not.toContain("request.headers()");
+  });
+
+  it("keeps known optional bootstrap reads aborted and separately classified", () => {
+    for (const table of [
+      "booking_chats",
+      "club_accountants",
+      "club_chip_masters",
+      "club_fnb_staff",
+      "club_marketers",
+      "dealer_assignments",
+      "dealer_attendance",
+      "dealers",
+      "gto_spot_ranges",
+      "notifications",
+      "profiles",
+      "tournament_registrations",
+      "user_roles",
+    ]) {
+      expect(coverageSpec).toContain(`"${table}"`);
+      expect(canaryRunner).toContain(`"${table}"`);
+    }
+    expect(coverageSpec).toContain('reason === "unexpected_read"');
+    expect(coverageSpec).toContain("expectedBlockedEgress.push");
+    expect(coverageSpec).toContain("referencedIds.every((id) => ownedIds.has(id.toLowerCase()))");
+  });
+
+  it("waits for the satellite row created by the audited click", () => {
+    const addRowWait = canaryRunner.indexOf('addSatelliteRow.waitFor({ state: "visible"');
+    const initialRowWait = canaryRunner.indexOf('satelliteRows.first().waitFor({ state: "visible"');
+    const initialRowCount = canaryRunner.indexOf("const satelliteRowsBefore = await satelliteRows.count()");
+    expect(addRowWait).toBeGreaterThan(-1);
+    expect(initialRowWait).toBeGreaterThan(-1);
+    expect(initialRowCount).toBeGreaterThan(addRowWait);
+    expect(initialRowCount).toBeGreaterThan(initialRowWait);
+    expect(canaryRunner).toContain('result("browser_payout_satellite_initial_row_visible", satelliteRowsBefore > 0)');
+    expect(canaryRunner).toContain("satelliteRows.nth(satelliteRowsBefore).waitFor");
+  });
+
+  it("uses stable table-card discovery and sanitized phase diagnostics", () => {
+    expect(canaryRunner).toContain("ownedOpsTableButton");
+    expect(canaryRunner).toContain("ownedOpsPlayerButton");
+    expect(canaryRunner).not.toContain('name: playerName, exact: true');
+    expect(canaryRunner).not.toContain('name: seat.player_name, exact: true');
+    expect(canaryRunner).toContain("BROWSER_PHASE_CHECKPOINT");
+    expect(canaryRunner).toContain("browserPhaseErrorClass");
+    expect(canaryRunner).toContain("error_class=${browserPhaseErrorClass(error)}");
   });
 
   it("classifies every enabled desktop shell control discovered on Floor", () => {

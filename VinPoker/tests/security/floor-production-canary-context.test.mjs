@@ -566,21 +566,74 @@ test("browser guards block known startup telemetry and push without allowing arb
     "https://vinpoker.vercel.app/?history=1",
     "https://vinpoker.vercel.app/version.json?cache=1",
     "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/gto_spot_ranges",
-    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/user_roles",
-    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/dealers",
     "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/dealer_assignments",
     "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/dealer_attendance",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/dealers",
     "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/tournament_registrations",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/booking_chats",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/club_accountants",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/club_chip_masters",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/club_fnb_staff",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/club_marketers",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/notifications",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/profiles",
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/user_roles",
   ]) {
-    assert.equal(
-      expectedBlockedBrowserRequestReason(request(url, "GET"), policy),
-      "expected_blocked_optional_bootstrap_read",
-    );
+    for (const method of ["GET", "HEAD"]) {
+      assert.equal(
+        expectedBlockedBrowserRequestReason(request(url, method), policy),
+        "expected_blocked_optional_bootstrap_read",
+      );
+    }
   }
   assert.equal(expectedBlockedBrowserRequestReason(request(
     `https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/tournament_registrations?tournament_id=eq.${tournamentId}`,
     "GET",
   ), policy), null);
+  for (const url of [
+    "https://vinpoker.vercel.app/",
+    "https://vinpoker.vercel.app/version.json",
+  ]) {
+    assert.equal(readOnlyBrowserRequestBlockReason(request(url, "GET"), policy), null);
+    assert.equal(expectedBlockedBrowserRequestReason(request(url, "GET"), policy), null);
+  }
+  for (const table of [
+    "user_roles",
+    "dealers",
+    "club_accountants",
+    "club_chip_masters",
+    "club_marketers",
+    "club_fnb_staff",
+    "notifications",
+  ]) {
+    const method = table === "notifications" ? "HEAD" : "GET";
+    const scopedRequest = request(
+      `https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/${table}?user_id=eq.${actorId}`,
+      method,
+    );
+    assert.equal(readOnlyBrowserRequestBlockReason(scopedRequest, policy), "unexpected_read");
+    assert.equal(
+      expectedBlockedBrowserRequestReason(scopedRequest, policy),
+      "expected_blocked_optional_bootstrap_read",
+    );
+    assert.equal(readOnlyBrowserRequestBlockReason(request(
+      `https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/${table}`,
+      "GET",
+    ), policy), "unexpected_read");
+  }
+  const ownedProfileRead = request(
+    `https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/profiles?user_id=eq.${actorId}`,
+    "GET",
+  );
+  assert.equal(readOnlyBrowserRequestBlockReason(ownedProfileRead, policy), null);
+  assert.equal(expectedBlockedBrowserRequestReason(ownedProfileRead, policy), null);
+  const unownedActorId = "30000000-0000-4000-8000-000000000099";
+  for (const table of ["profiles", "user_roles"]) {
+    assert.equal(expectedBlockedBrowserRequestReason(request(
+      `https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/${table}?user_id=eq.${unownedActorId}`,
+      "GET",
+    ), policy), null);
+  }
   assert.equal(expectedBlockedBrowserRequestReason(request(
     "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/unknown_table",
     "GET",
@@ -877,16 +930,26 @@ test("table browser policy allows only exact run-owned Floor mutations", () => {
 
 test("browser phase aggregation continues after failure and reports exact phase names", async () => {
   const executed = [];
-  const failures = await runSequentialBrowserPhases([
-    ["first", async () => { executed.push("first"); }],
-    ["middle", async () => {
-      executed.push("middle");
-      throw new Error("sensitive detail must not escape");
-    }],
-    ["last", async () => { executed.push("last"); }],
-  ]);
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...values) => logs.push(values.join(" "));
+  let failures;
+  try {
+    failures = await runSequentialBrowserPhases([
+      ["first", async () => { executed.push("first"); }],
+      ["middle", async () => {
+        executed.push("middle");
+        throw new Error("sensitive detail must not escape");
+      }],
+      ["last", async () => { executed.push("last"); }],
+    ]);
+  } finally {
+    console.log = originalLog;
+  }
   assert.deepEqual(executed, ["first", "middle", "last"]);
   assert.deepEqual(failures, ["middle"]);
+  assert.ok(logs.includes("FLOOR_CANARY FAIL browser_phase_middle error_class=other"));
+  assert.ok(logs.every((line) => !line.includes("sensitive detail")));
 });
 
 test("button evidence finalizer requires complete known terminal evidence", async () => {

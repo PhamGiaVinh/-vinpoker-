@@ -1332,15 +1332,31 @@ async function readRecoveryLedger(path) {
   }
 }
 
+function browserPhaseErrorClass(error) {
+  const name = typeof error?.name === "string" ? error.name : "";
+  const message = typeof error?.message === "string" ? error.message : "";
+  if (name === "TimeoutError" || /(?:timed out|timeout|exceeded)/iu.test(message)) return "timeout";
+  if (/strict mode violation/iu.test(message)) return "strict_locator";
+  if (name === "AssertionError" || /expect\s*\(/iu.test(message)) return "assertion";
+  return "other";
+}
+
+function browserPhaseCheckpoint(phase, last) {
+  if (!/^[a-z0-9_]+$/u.test(phase) || !/^[a-z0-9_]+$/u.test(last)) {
+    fail("browser_phase_checkpoint_invalid");
+  }
+  console.log(`FLOOR_CANARY BROWSER_PHASE_CHECKPOINT phase=${phase} last=${last}`);
+}
+
 async function runSequentialBrowserPhases(phases) {
   const failures = [];
   for (const [name, phase] of phases) {
     try {
       await phase();
       console.log(`FLOOR_CANARY PASS browser_phase_${name}`);
-    } catch {
+    } catch (error) {
       failures.push(name);
-      console.log(`FLOOR_CANARY FAIL browser_phase_${name}`);
+      console.log(`FLOOR_CANARY FAIL browser_phase_${name} error_class=${browserPhaseErrorClass(error)}`);
     }
   }
   return failures;
@@ -1547,13 +1563,28 @@ function isExactPayoutPreviewBody(body, tournamentId) {
 
 const EXPECTED_BLOCKED_BOOTSTRAP_APP_PATHS = new Set(["/", "/version.json"]);
 const EXPECTED_BLOCKED_BOOTSTRAP_REST_TABLES = new Set([
+  "booking_chats",
+  "club_accountants",
+  "club_chip_masters",
+  "club_fnb_staff",
+  "club_marketers",
   "dealer_assignments",
   "dealer_attendance",
   "dealers",
   "gto_spot_ranges",
+  "notifications",
+  "profiles",
   "tournament_registrations",
   "user_roles",
 ]);
+
+function optionalBootstrapReadUsesOnlyOwnedIds(url, policy) {
+  const ownedIds = collectExactUuidStrings(policy ?? {});
+  const referencedIds = [...url.searchParams.values()].flatMap((value) => (
+    value.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/giu) ?? []
+  ));
+  return referencedIds.every((id) => ownedIds.has(id.toLowerCase()));
+}
 
 function expectedBlockedBrowserRequestReason(request, policy = null) {
   const url = new URL(request.url);
@@ -1604,6 +1635,7 @@ function expectedBlockedBrowserRequestReason(request, policy = null) {
   );
   if (
     optionalBootstrapRead
+    && optionalBootstrapReadUsesOnlyOwnedIds(url, policy)
     && browserReadDecision(request, policy).reason === "unexpected_read"
   ) return "expected_blocked_optional_bootstrap_read";
   return null;
@@ -2706,14 +2738,52 @@ async function waitForPostPath(page, pathname, click) {
   return responsePromise;
 }
 
-async function openOwnedOpsTable(page, tableNumber) {
-  const table = page.getByRole("button", {
-    name: new RegExp(`^${tableNumber}\\s+\\d+\\/\\d+$`, "u"),
-  }).first();
+function ownedOpsTableButton(page, tableNumber) {
+  const exactTableNumber = page.locator("div").filter({
+    hasText: new RegExp(`^\\s*${escapeRegex(String(tableNumber))}\\s*$`, "u"),
+  });
+  const occupancy = page.locator("div").filter({
+    hasText: /^\s*\d+\s*\/\s*\d+\s*$/u,
+  });
+  return page.getByRole("button")
+    .filter({ has: exactTableNumber })
+    .filter({ has: occupancy })
+    .first();
+}
+
+function ownedOpsPlayerButton(dialog, playerName) {
+  return dialog.getByRole("button")
+    .filter({ hasText: new RegExp(escapeRegex(playerName), "u") })
+    .first();
+}
+
+function waitForOwnedTableMapRefresh(page, tournamentId) {
+  const tableRead = page.waitForResponse((response) => {
+    const request = response.request();
+    const url = new URL(response.url());
+    return request.method() === "GET"
+      && url.pathname === "/rest/v1/tournament_tables"
+      && url.searchParams.get("tournament_id") === `eq.${tournamentId}`;
+  }, { timeout: 15_000 });
+  const seatRead = page.waitForResponse((response) => {
+    const request = response.request();
+    const body = safeRequestJson(request);
+    return request.method() === "POST"
+      && new URL(response.url()).pathname === "/functions/v1/tournament-live-draw"
+      && body?.tournament_id === tournamentId
+      && body?.action === "get_seats";
+  }, { timeout: 15_000 });
+  return Promise.all([tableRead, seatRead]);
+}
+
+async function openOwnedOpsTable(page, tableNumber, phase) {
+  const table = ownedOpsTableButton(page, tableNumber);
   await table.waitFor({ state: "visible", timeout: 15_000 });
+  browserPhaseCheckpoint(phase, "table_card_visible");
   await table.click();
   const dialog = page.getByRole("dialog").filter({ hasText: new RegExp(`\\b${tableNumber}\\b`, "u") }).first();
   await dialog.waitFor({ state: "visible", timeout: 15_000 });
+  browserPhaseCheckpoint(phase, "table_dialog_ready");
   return dialog;
 }
 
@@ -2764,14 +2834,25 @@ async function runBrowserTableLifecycleActions(browser, baseUrl, stateDirectory,
     const page = await context.newPage();
     await page.goto(`${baseUrl}/ops/tables?tour=${fixture.tournamentId}`, { waitUntil: "networkidle" });
     await page.getByText(fixture.tournamentName, { exact: true }).first().waitFor({ state: "visible", timeout: 15_000 });
+    browserPhaseCheckpoint("table_lifecycle", "page_ready");
 
     await page.getByRole("button", { name: "Bàn", exact: true }).last().click();
     const openDialog = page.getByRole("dialog", { name: "Mở bàn mới" });
     await openDialog.getByPlaceholder("Tự động", { exact: true }).fill(String(tableNumber));
+    const tableMapRefresh = waitForOwnedTableMapRefresh(page, fixture.tournamentId);
+    void tableMapRefresh.catch(() => undefined);
     const openResponse = await waitForPostPath(page, "/rest/v1/rpc/open_tournament_table", () => (
       openDialog.getByRole("button", { name: `Mở Bàn ${tableNumber}`, exact: true }).click()
     ));
     result("browser_tables_open_clicked", openResponse.ok(), safeBrowserResponseDetail(openResponse));
+    browserPhaseCheckpoint("table_lifecycle", "open_rpc_complete");
+    const tableMapResponses = await tableMapRefresh;
+    result(
+      "browser_tables_open_refresh",
+      tableMapResponses.every((response) => response.ok()),
+      tableMapResponses.map(safeBrowserResponseDetail).join(","),
+    );
+    browserPhaseCheckpoint("table_lifecycle", "table_map_refreshed");
     const opened = await tournamentTableByNumber(admin, fixture, tableNumber, "browser_tables_open_db");
     result(
       "browser_tables_open_db_invariant",
@@ -2785,7 +2866,8 @@ async function runBrowserTableLifecycleActions(browser, baseUrl, stateDirectory,
       tournamentTableId: opened.id,
       seatNumber: 1,
     };
-    const openedDialog = await openOwnedOpsTable(page, tableNumber);
+    const openedDialog = await openOwnedOpsTable(page, tableNumber, "table_lifecycle");
+    browserPhaseCheckpoint("table_lifecycle", "opened_table_selected");
     await openedDialog.getByRole("button", { name: "Thêm người", exact: true }).click();
     const addDialog = page.getByRole("dialog", { name: new RegExp(`^Thêm người`, "u") });
     await addDialog.getByPlaceholder("VD: Nguyễn Văn A", { exact: true }).fill(playerName);
@@ -2811,8 +2893,9 @@ async function runBrowserTableLifecycleActions(browser, baseUrl, stateDirectory,
     addExactOwnedRecordIds(policy, added);
 
     const beforeReceipt = await activeSeatGraph(admin, fixture, "browser_player_receipt_before");
-    const receiptTable = await openOwnedOpsTable(page, tableNumber);
-    await receiptTable.getByRole("button", { name: playerName, exact: true }).click();
+    const receiptTable = await openOwnedOpsTable(page, tableNumber, "table_lifecycle");
+    await ownedOpsPlayerButton(receiptTable, playerName).click();
+    browserPhaseCheckpoint("table_lifecycle", "receipt_player_selected");
     await page.getByRole("button", { name: /^Phiếu\b/u }).click();
     await page.getByText(added.entry_id, { exact: true }).first().waitFor({ state: "visible", timeout: 15_000 });
     result("browser_player_receipt_clicked", true);
@@ -2829,8 +2912,9 @@ async function runBrowserTableLifecycleActions(browser, baseUrl, stateDirectory,
       toSeatNumber: 3,
       reason: "cân bàn",
     };
-    const moveSource = await openOwnedOpsTable(page, tableNumber);
-    await moveSource.getByRole("button", { name: playerName, exact: true }).click();
+    const moveSource = await openOwnedOpsTable(page, tableNumber, "table_lifecycle");
+    await ownedOpsPlayerButton(moveSource, playerName).click();
+    browserPhaseCheckpoint("table_lifecycle", "move_player_selected");
     await page.getByRole("button", { name: /^Chuyển\b/u }).click();
     const moveDialog = page.getByRole("dialog", { name: "Chuyển bàn / ghế" });
     await moveDialog.getByRole("button", { name: "1", exact: true }).first().click();
@@ -2891,12 +2975,15 @@ async function runBrowserCloseTableAction(browser, baseUrl, stateDirectory, admi
   try {
     const page = await context.newPage();
     await page.goto(`${baseUrl}/ops/tables?tour=${fixture.tournamentId}`, { waitUntil: "networkidle" });
-    const sourceDialog = await openOwnedOpsTable(page, source.table_number);
+    browserPhaseCheckpoint("table_close", "page_ready");
+    const sourceDialog = await openOwnedOpsTable(page, source.table_number, "table_close");
+    browserPhaseCheckpoint("table_close", "source_table_selected");
     await sourceDialog.getByRole("button", { name: "Đóng bàn", exact: true }).click();
     const closeDialog = page.getByRole("dialog", { name: new RegExp(`^Đóng `, "u") });
     const closeResponse = await waitForPostPath(page, "/rest/v1/rpc/close_tournament_table", () => (
       closeDialog.getByRole("button", { name: /^Đóng & chuyển \d+ người$/u }).click()
     ));
+    browserPhaseCheckpoint("table_close", "close_rpc_complete");
     result("browser_tables_close_clicked", closeResponse.ok(), safeBrowserResponseDetail(closeResponse));
     const closed = await tournamentTableByNumber(admin, fixture, source.table_number, "browser_close_source_after");
     const sourceGame = await single(
@@ -3041,12 +3128,16 @@ async function runBrowserBustRestoreActions(browser, baseUrl, stateDirectory, ad
   try {
     const page = await context.newPage();
     await page.goto(`${baseUrl}/ops/tables?tour=${fixture.tournamentId}`, { waitUntil: "networkidle" });
-    const tableDialog = await openOwnedOpsTable(page, table.table_number);
-    await tableDialog.getByRole("button", { name: seat.player_name, exact: true }).click();
+    browserPhaseCheckpoint("bust_restore", "table_page_ready");
+    const tableDialog = await openOwnedOpsTable(page, table.table_number, "bust_restore");
+    browserPhaseCheckpoint("bust_restore", "table_selected");
+    await ownedOpsPlayerButton(tableDialog, seat.player_name).click();
+    browserPhaseCheckpoint("bust_restore", "player_selected");
     const beforeBustOpen = await activeSeatGraph(admin, fixture, "browser_bust_before_open");
     await page.getByRole("button", { name: /^Loại\b/u }).click();
     const bustDialog = page.getByRole("alertdialog", { name: "Xác nhận loại người chơi" });
     await bustDialog.waitFor({ state: "visible", timeout: 15_000 });
+    browserPhaseCheckpoint("bust_restore", "bust_dialog_ready");
     await bustDialog.getByText("Đang đọc lại hạng…", { exact: true }).waitFor({ state: "hidden", timeout: 15_000 });
     const afterBustOpen = await activeSeatGraph(admin, fixture, "browser_bust_after_open");
     result(
@@ -3056,6 +3147,7 @@ async function runBrowserBustRestoreActions(browser, baseUrl, stateDirectory, ad
     const bustResponse = await waitForPostPath(page, "/functions/v1/tournament-live-draw", () => (
       bustDialog.getByRole("button", { name: "Xác nhận loại", exact: true }).click()
     ));
+    browserPhaseCheckpoint("bust_restore", "bust_rpc_complete");
     result("browser_player_bust_confirm_clicked", bustResponse.status() === 200, safeBrowserResponseDetail(bustResponse));
     const bustedEntry = await single(
       admin.from("tournament_entries").select("id,status,current_stack").eq("id", seat.entry_id),
@@ -3090,6 +3182,7 @@ async function runBrowserBustRestoreActions(browser, baseUrl, stateDirectory, ad
       toSeatNumber: 1,
     };
     await page.goto(`${baseUrl}/ops/tournaments/${fixture.tournamentId}?tab=players`, { waitUntil: "networkidle" });
+    browserPhaseCheckpoint("bust_restore", "players_page_ready");
     const restoreButton = page.getByRole("button", { name: "Cho vào lại", exact: true });
     await restoreButton.waitFor({ state: "visible", timeout: 15_000 });
     await restoreButton.click();
@@ -3098,6 +3191,7 @@ async function runBrowserBustRestoreActions(browser, baseUrl, stateDirectory, ad
     const restoreResponse = await waitForPostPath(page, "/rest/v1/rpc/restore_busted_player_to_seat", () => (
       restoreDialog.getByRole("button", { name: "Cho vào Bàn 1 · ghế 1", exact: true }).click()
     ));
+    browserPhaseCheckpoint("bust_restore", "restore_rpc_complete");
     result("browser_player_restore_clicked", restoreResponse.ok(), safeBrowserResponseDetail(restoreResponse));
     const restoredEntry = await single(
       admin.from("tournament_entries").select("id,status,current_stack,table_id,seat_number").eq("id", seat.entry_id),
@@ -3145,9 +3239,21 @@ async function runBrowserTableRetryAction(browser, baseUrl, stateDirectory, acto
     await page.goto(`${baseUrl}/ops/tables?tour=${fixture.tournamentId}`, { waitUntil: "domcontentloaded" });
     const retry = page.getByRole("button", { name: "Thử lại", exact: true });
     await retry.waitFor({ state: "visible", timeout: 15_000 });
+    browserPhaseCheckpoint("table_retry", "retry_visible");
     injectReadFailure.active = false;
+    const tableMapRefresh = waitForOwnedTableMapRefresh(page, fixture.tournamentId);
+    void tableMapRefresh.catch(() => undefined);
     await retry.click();
-    await page.getByRole("button", { name: /^1\s+2\/9$/u }).waitFor({ state: "visible", timeout: 15_000 });
+    browserPhaseCheckpoint("table_retry", "retry_clicked");
+    const tableMapResponses = await tableMapRefresh;
+    result(
+      "browser_tables_retry_refresh",
+      tableMapResponses.every((response) => response.ok()),
+      tableMapResponses.map(safeBrowserResponseDetail).join(","),
+    );
+    browserPhaseCheckpoint("table_retry", "table_map_refreshed");
+    await ownedOpsTableButton(page, 1).waitFor({ state: "visible", timeout: 15_000 });
+    browserPhaseCheckpoint("table_retry", "table_grid_ready");
     result("browser_tables_retry_clicked", true);
     result("browser_tables_retry_forbidden_egress_zero", guard.blocked.length === 0, guard.blocked.join(","));
     result(
@@ -3299,9 +3405,16 @@ async function runPayoutAndCloseBrowserFlow(browser, baseUrl, stateDirectory, ac
     await page.getByRole("tab", { name: "Giải thưởng", exact: true }).click();
     await page.getByRole("button", { name: "Xem trước (Dự kiến)", exact: true }).waitFor({ state: "visible", timeout: 15_000 });
 
-    const satelliteRowsBefore = await page.getByRole("textbox", { name: /^Khoảng hạng dòng \d+$/u }).count();
-    await page.getByRole("button", { name: "Thêm dòng", exact: true }).click();
-    const satelliteRowsAfter = await page.getByRole("textbox", { name: /^Khoảng hạng dòng \d+$/u }).count();
+    const satelliteRows = page.getByRole("textbox", { name: /^Khoảng hạng dòng \d+$/u });
+    const addSatelliteRow = page.getByRole("button", { name: "Thêm dòng", exact: true });
+    await addSatelliteRow.waitFor({ state: "visible", timeout: 15_000 });
+    await satelliteRows.first().waitFor({ state: "visible", timeout: 15_000 });
+    const satelliteRowsBefore = await satelliteRows.count();
+    result("browser_payout_satellite_initial_row_visible", satelliteRowsBefore > 0);
+    await addSatelliteRow.click();
+    await satelliteRows.nth(satelliteRowsBefore).waitFor({ state: "visible", timeout: 15_000 });
+    browserPhaseCheckpoint("payout_close", "satellite_row_visible");
+    const satelliteRowsAfter = await satelliteRows.count();
     result("browser_payout_satellite_add_row_clicked", satelliteRowsAfter === satelliteRowsBefore + 1);
 
     await page.getByRole("spinbutton", { name: "ITM %", exact: true }).fill("50");
