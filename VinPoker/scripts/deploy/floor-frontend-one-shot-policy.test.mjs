@@ -13,7 +13,7 @@ const workflow = readFileSync(
 test("one-shot Floor frontend rollout is immutable and protected", () => {
   assert.match(
     workflow,
-    /PRODUCTION_SOURCE_SHA: 3d54c87e7c1fab1209494c94b7b2cca042053e2d/u,
+    /PRODUCTION_SOURCE_SHA: ca95d444329b39efb74913d3bfd37150364fcd96/u,
   );
   assert.match(
     workflow,
@@ -21,18 +21,39 @@ test("one-shot Floor frontend rollout is immutable and protected", () => {
   );
   assert.match(
     workflow,
-    /TARGET_SHA: ca95d444329b39efb74913d3bfd37150364fcd96/u,
+    /TARGET_SHA: ad3e8796240ce5a71f860a8d4272dc525489fc37/u,
   );
   assert.match(
     workflow,
-    /REVIEWED_MERGE_SHA: 96d31dbb553b50ecb11c417f3ae748edec497c11/u,
+    /REVIEWED_MERGE_SHA: b26afe54c720124ef7d85b7e98c5f36e89d1d936/u,
   );
   assert.match(workflow, /environment: dealer-swing-production-critical/u);
+  assert.match(workflow, /FRONTEND_RECEIPT_ENVIRONMENT: receipt-vinpoker-frontend/u);
   assert.match(workflow, /test "\$GITHUB_REF" = "refs\/heads\/main"/u);
   assert.match(workflow, /required_reviewers/u);
   assert.match(
     workflow,
+    /DEPLOY_REVIEWED_FLOOR_TABLE_DEEPLINK_FRONTEND/u,
+  );
+  assert.match(
+    workflow,
+    /git merge-base --is-ancestor "\$TARGET_SHA" "\$REVIEWED_MERGE_SHA"/u,
+  );
+  assert.match(
+    workflow,
     /git diff --quiet "\$TARGET_SHA" "\$REVIEWED_MERGE_SHA"/u,
+  );
+  assert.equal(
+    workflow.match(/deployment-receipts\.mjs fetch/gu)?.length,
+    2,
+  );
+  assert.equal(
+    workflow.match(/receipt\.frontend\?\.sha !== process\.env\.PRODUCTION_SOURCE_SHA/gu)?.length,
+    2,
+  );
+  assert.equal(
+    workflow.match(/receipt\.frontend\?\.deploymentId/gu)?.length,
+    2,
   );
 });
 
@@ -67,10 +88,11 @@ test("one-shot Floor frontend rollout cannot mutate DB, Edge, flags or payment p
   assert.match(workflow, /--component frontend/u);
 });
 
-test("frontend source allowlist remains exactly the two reviewed Floor RPC binding files", () => {
+test("frontend source allowlist remains exactly the three reviewed Floor table deep-link files", () => {
   const allowlist = [
-    "VinPoker/src/components/ops/shared/FloorPlayerActions.tsx",
-    "VinPoker/src/pages/ops/OpsTournamentCockpit.tsx",
+    "VinPoker/src/pages/ops/OpsTables.tsx",
+    "VinPoker/src/pages/ops/opsTablesTournamentSelection.test.ts",
+    "VinPoker/src/pages/ops/opsTablesTournamentSelection.ts",
   ];
   for (const path of allowlist)
     assert.match(workflow, new RegExp(path.replaceAll("/", "\\/"), "u"));

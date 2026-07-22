@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: "Type DEPLOY_REVIEWED_FLOOR_RPC_BINDING_FRONTEND"
+        description: "Type DEPLOY_REVIEWED_FLOOR_TABLE_DEEPLINK_FRONTEND"
         required: true
         type: string
 
@@ -18,13 +18,14 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PRODUCTION_SOURCE_SHA: 3d54c87e7c1fab1209494c94b7b2cca042053e2d
+  PRODUCTION_SOURCE_SHA: ca95d444329b39efb74913d3bfd37150364fcd96
   EXPECTED_PRODUCTION_DEPLOYMENT_SHA: cdb67da6e4f77caa9e3277cea0fe6994f9d41cb6
-  TARGET_SHA: ca95d444329b39efb74913d3bfd37150364fcd96
-  REVIEWED_MERGE_SHA: 96d31dbb553b50ecb11c417f3ae748edec497c11
+  TARGET_SHA: ad3e8796240ce5a71f860a8d4272dc525489fc37
+  REVIEWED_MERGE_SHA: b26afe54c720124ef7d85b7e98c5f36e89d1d936
   EXPECTED_PRODUCTION_DEPLOYMENT_ID: "5526237863"
   PRODUCTION_REF: orlesggcjamwuknxwcpk
   CRITICAL_ENVIRONMENT: dealer-swing-production-critical
+  FRONTEND_RECEIPT_ENVIRONMENT: receipt-vinpoker-frontend
 
 jobs:
   preflight:
@@ -52,18 +53,20 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$CONFIRMATION" = "DEPLOY_REVIEWED_FLOOR_RPC_BINDING_FRONTEND"
+          test "$CONFIRMATION" = "DEPLOY_REVIEWED_FLOOR_TABLE_DEEPLINK_FRONTEND"
           cd control-plane
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$TARGET_SHA" origin/main
           git merge-base --is-ancestor "$REVIEWED_MERGE_SHA" origin/main
+          git merge-base --is-ancestor "$TARGET_SHA" "$REVIEWED_MERGE_SHA"
           test "$(git rev-parse "${TARGET_SHA}^")" = "$PRODUCTION_SOURCE_SHA"
           test "$(git rev-parse "$TARGET_SHA")" = "$TARGET_SHA"
           test "$(git rev-parse "$REVIEWED_MERGE_SHA")" = "$REVIEWED_MERGE_SHA"
 
           expected="$(printf '%s\n' \
-            VinPoker/src/components/ops/shared/FloorPlayerActions.tsx \
-            VinPoker/src/pages/ops/OpsTournamentCockpit.tsx | sort)"
+            VinPoker/src/pages/ops/OpsTables.tsx \
+            VinPoker/src/pages/ops/opsTablesTournamentSelection.test.ts \
+            VinPoker/src/pages/ops/opsTablesTournamentSelection.ts | sort)"
           actual="$(git diff --name-only "$PRODUCTION_SOURCE_SHA" "$TARGET_SHA" -- \
             VinPoker/src \
             VinPoker/public \
@@ -96,6 +99,25 @@ jobs:
           test "$latest_id" = "$EXPECTED_PRODUCTION_DEPLOYMENT_ID"
           test "$latest_sha" = "$EXPECTED_PRODUCTION_DEPLOYMENT_SHA"
           echo "Pinned production baseline verified: deployment=${latest_id} sha=${latest_sha}"
+
+      - name: Verify latest successful frontend receipt is the pinned live source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node control-plane/VinPoker/scripts/deploy/deployment-receipts.mjs fetch \
+            --repository "${GITHUB_REPOSITORY}" \
+            --output "${RUNNER_TEMP}/floor-frontend-preflight-receipts.json"
+          node -e '
+            const fs = require("node:fs");
+            const manifest = JSON.parse(fs.readFileSync("control-plane/VinPoker/scripts/deploy/deployment-contracts.json", "utf8"));
+            const receipt = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/floor-frontend-preflight-receipts.json", "utf8"));
+            if (manifest.frontend?.receiptEnvironment !== process.env.FRONTEND_RECEIPT_ENVIRONMENT) process.exit(1);
+            if (receipt.frontend?.sha !== process.env.PRODUCTION_SOURCE_SHA) process.exit(1);
+            if (!String(receipt.frontend?.deploymentId ?? "")) process.exit(1);
+          '
+          echo "Pinned frontend source receipt verified."
 
       - name: Verify protected environment still requires a reviewer
         shell: bash
@@ -130,10 +152,13 @@ jobs:
           VITE_SUPABASE_PUBLISHABLE_KEY: static-preflight-placeholder
         run: |
           set -euo pipefail
-          npx vitest run tests/floorProduction/floorDbEdgeContracts.test.ts
+          npx vitest run \
+            src/pages/ops/opsTablesTournamentSelection.test.ts \
+            tests/floorProduction/floorDbEdgeContracts.test.ts
           npx eslint \
-            src/components/ops/shared/FloorPlayerActions.tsx \
-            src/pages/ops/OpsTournamentCockpit.tsx \
+            src/pages/ops/OpsTables.tsx \
+            src/pages/ops/opsTablesTournamentSelection.ts \
+            src/pages/ops/opsTablesTournamentSelection.test.ts \
             tests/floorProduction/floorDbEdgeContracts.test.ts
           npm run build
 
@@ -165,13 +190,16 @@ jobs:
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$TARGET_SHA" origin/main
           git merge-base --is-ancestor "$REVIEWED_MERGE_SHA" origin/main
+          git merge-base --is-ancestor "$TARGET_SHA" "$REVIEWED_MERGE_SHA"
           test "$(git rev-parse "${TARGET_SHA}^")" = "$PRODUCTION_SOURCE_SHA"
           git diff --quiet "$TARGET_SHA" "$REVIEWED_MERGE_SHA" -- \
-            VinPoker/src/components/ops/shared/FloorPlayerActions.tsx \
-            VinPoker/src/pages/ops/OpsTournamentCockpit.tsx
+            VinPoker/src/pages/ops/OpsTables.tsx \
+            VinPoker/src/pages/ops/opsTablesTournamentSelection.ts \
+            VinPoker/src/pages/ops/opsTablesTournamentSelection.test.ts
           git diff --quiet "$TARGET_SHA" origin/main -- \
-            VinPoker/src/components/ops/shared/FloorPlayerActions.tsx \
-            VinPoker/src/pages/ops/OpsTournamentCockpit.tsx
+            VinPoker/src/pages/ops/OpsTables.tsx \
+            VinPoker/src/pages/ops/opsTablesTournamentSelection.ts \
+            VinPoker/src/pages/ops/opsTablesTournamentSelection.test.ts
 
       - name: Re-verify production has not moved since preflight
         shell: bash
@@ -191,6 +219,25 @@ jobs:
           done < <(gh api "repos/${GITHUB_REPOSITORY}/deployments?environment=Production&per_page=30" --jq '.[] | "\(.id) \(.sha)"')
           test "$latest_id" = "$EXPECTED_PRODUCTION_DEPLOYMENT_ID"
           test "$latest_sha" = "$EXPECTED_PRODUCTION_DEPLOYMENT_SHA"
+
+      - name: Re-verify frontend receipt after approval
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node control-plane/VinPoker/scripts/deploy/deployment-receipts.mjs fetch \
+            --repository "${GITHUB_REPOSITORY}" \
+            --output "${RUNNER_TEMP}/floor-frontend-approved-receipts.json"
+          node -e '
+            const fs = require("node:fs");
+            const manifest = JSON.parse(fs.readFileSync("control-plane/VinPoker/scripts/deploy/deployment-contracts.json", "utf8"));
+            const receipt = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/floor-frontend-approved-receipts.json", "utf8"));
+            if (manifest.frontend?.receiptEnvironment !== process.env.FRONTEND_RECEIPT_ENVIRONMENT) process.exit(1);
+            if (receipt.frontend?.sha !== process.env.PRODUCTION_SOURCE_SHA) process.exit(1);
+            if (!String(receipt.frontend?.deploymentId ?? "")) process.exit(1);
+          '
+          echo "Approved frontend source receipt re-verified."
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
