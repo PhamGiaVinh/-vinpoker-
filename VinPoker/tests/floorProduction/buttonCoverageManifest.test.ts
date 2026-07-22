@@ -82,7 +82,7 @@ describe("Floor button coverage manifest", () => {
 
   it("keeps clock and chip action IDs distinct and removes the legacy combined adjustment", () => {
     const ids = floorButtonCoverageManifest.map((entry) => entry.id);
-    expect(ids).toHaveLength(85);
+    expect(ids).toHaveLength(86);
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of [
       "clock-start",
@@ -92,6 +92,7 @@ describe("Floor button coverage manifest", () => {
       "clock-level-previous",
       "clock-adjust-minus",
       "clock-adjust-plus",
+      "payout-satellite-remove-row",
       "player-chip",
       "player-chip-save",
     ]) {
@@ -100,7 +101,7 @@ describe("Floor button coverage manifest", () => {
     expect(ids).not.toContain("clock-adjust");
     expect(
       createHash("sha256").update([...ids].sort().join("\n")).digest("hex"),
-    ).toBe("e6c7b3403b3a6297f625db5954afe0c3626b698fbf6b22eaf7b69b295368f39e");
+    ).toBe("07ce90feddf081fbf66a82ec0d38e08c7f67fa64152e29755cf052c03d0b9482");
   });
 
   it("waits for a visible control instead of the responsive shell's hidden first control", () => {
@@ -135,8 +136,33 @@ describe("Floor button coverage manifest", () => {
     expect(coverageSpec).toContain("has enabled controls without a manifest entry");
     expect(coverageSpec).toContain("visibleButtonContainingExactText(page, assignment.ownedTournamentName)");
     expect(coverageSpec).not.toContain("visibleButton(page, assignment.ownedTournamentName).click");
+    expect(coverageSpec).toContain("await ownedTournament.click({ timeout: 15_000 })");
+    expect(coverageSpec).toContain("ownedTableNumber?: number");
+    expect(coverageSpec).toContain("assignment.ownedTableNumber == null");
+    expect(coverageSpec).toContain("ownedTableButtonNamePattern(assignment.ownedTableNumber)");
+    expect(coverageSpec).not.toContain("await expect(visibleButton(page, /^\\d+\\s+\\d+\\/\\d+$/u)).toBeVisible");
     expect(canaryRunner).toContain("ownedTournamentName: access.tournamentName");
     expect(canaryRunner).toContain("ownedTournamentName: lifecycle.tournamentName");
+    expect(canaryRunner).toContain("ownedTableNumber: SCENARIO_SECOND_TABLE_NUMBER.TABLE_LIFECYCLE");
+    expect(canaryRunner).toContain('"payout-satellite-remove-row"');
+    expect(canaryRunner).toContain("browser_payout_satellite_remove_row_clicked");
+    expect(canaryRunner).toContain('browserPhaseCheckpoint("clock", `${checkpointScenario}_navigate_retry`)');
+  });
+
+  it("classifies responsive payout controls that become visible after data loads", () => {
+    const style = floorButtonCoverageManifest.find((entry) => entry.id === "payout-style");
+    const removeRow = floorButtonCoverageManifest.find((entry) => entry.id === "payout-satellite-remove-row");
+    expect(style?.labelPattern).toContain("daily");
+    expect(removeRow?.labelPattern).toBe("^xoá dòng \\d+$");
+    expect(removeRow?.fixtureScenario).toBe("PAYOUT_CLOSE");
+  });
+
+  it("classifies both seeded and API-added players on the owned lifecycle table", () => {
+    const playerRow = floorButtonCoverageManifest.find((entry) => entry.id === "tables-player-row");
+    const pattern = new RegExp(playerRow?.labelPattern ?? "", "iu");
+    expect(pattern.test("3 CODEX_FLOOR_CANARY_20260722204355_1234abcd_TABLE_LIFECYCLE_ADDED 10.000")).toBe(true);
+    expect(pattern.test("4 CODEX_FLOOR_CANARY_20260722204355_1234abcd_TABLE_LIFECYCLE_P1 10,000")).toBe(true);
+    expect(pattern.test("3 CODEX_FLOOR_CANARY_20260722204355_1234abcd_ACCESS_ADDED 10.000")).toBe(false);
   });
 
   it("pins the browser audit to the locale used by manifest labels", () => {

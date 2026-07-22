@@ -10,8 +10,8 @@ const PRODUCTION_REF = "orlesggcjamwuknxwcpk";
 const REQUIRED_CONFIRMATION = "RUN_FLOOR_PRODUCTION_CANARY";
 const CANARY_BROWSER_LOCALE = "vi-VN";
 const CANARY_SIGN_IN_LABEL = "Đăng nhập";
-const EXPECTED_BUTTON_MANIFEST_COUNT = 85;
-const EXPECTED_BUTTON_MANIFEST_ID_HASH = "e6c7b3403b3a6297f625db5954afe0c3626b698fbf6b22eaf7b69b295368f39e";
+const EXPECTED_BUTTON_MANIFEST_COUNT = 86;
+const EXPECTED_BUTTON_MANIFEST_ID_HASH = "07ce90feddf081fbf66a82ec0d38e08c7f67fa64152e29755cf052c03d0b9482";
 const CANARY_MODES = new Set(["run", "cleanup", "hold"]);
 const SCENARIOS = [
   "ACCESS",
@@ -2401,11 +2401,23 @@ async function runBrowserClockActions(browser, baseUrl, stateDirectory, admin, a
     guards.push(guard);
     try {
       const page = await context.newPage();
-      await page.goto(`${baseUrl}/ops/tournaments/${fixture.tournamentId}?tab=status`, {
-        waitUntil: "domcontentloaded",
-        timeout: 30_000,
-      });
+      const checkpointScenario = fixture.scenario.toLowerCase();
+      browserPhaseCheckpoint("clock", `${checkpointScenario}_navigate_start`);
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+          await page.goto(`${baseUrl}/ops/tournaments/${fixture.tournamentId}?tab=status`, {
+            waitUntil: "domcontentloaded",
+            timeout: 30_000,
+          });
+          break;
+        } catch (error) {
+          if (attempt === 2) throw error;
+          browserPhaseCheckpoint("clock", `${checkpointScenario}_navigate_retry`);
+        }
+      }
+      browserPhaseCheckpoint("clock", `${checkpointScenario}_page_ready`);
       const initialControl = await waitForVisibleClockControl(page, ["Bắt đầu", "Tạm dừng"]);
+      browserPhaseCheckpoint("clock", `${checkpointScenario}_initial_control_checked`);
       let startStatus = null;
       if (initialControl === "Bắt đầu") {
         const startResponse = await clickClockAction(page, "Bắt đầu");
@@ -3634,6 +3646,13 @@ async function runPayoutAndCloseBrowserFlow(browser, baseUrl, stateDirectory, ac
     browserPhaseCheckpoint("payout_close", "satellite_row_visible");
     const satelliteRowsAfter = await satelliteRows.count();
     result("browser_payout_satellite_add_row_clicked", satelliteRowsAfter === satelliteRowsBefore + 1);
+    const removeSatelliteRow = page.getByRole("button", { name: /^Xoá dòng \d+$/u }).last();
+    await removeSatelliteRow.waitFor({ state: "visible", timeout: 15_000 });
+    await removeSatelliteRow.click();
+    await satelliteRows.nth(satelliteRowsAfter - 1).waitFor({ state: "detached", timeout: 15_000 });
+    const satelliteRowsAfterRemove = await satelliteRows.count();
+    result("browser_payout_satellite_remove_row_clicked", satelliteRowsAfterRemove === satelliteRowsBefore);
+    browserPhaseCheckpoint("payout_close", "satellite_row_removed");
 
     await page.getByRole("spinbutton", { name: "ITM %", exact: true }).fill("50");
     await page.getByRole("spinbutton", { name: "Min-cash ×", exact: true }).fill("1");
@@ -3978,7 +3997,7 @@ async function runBrowserManifest(admin, actors, fixtures, additionalOwnedRecord
       { route: "/ops/tournaments", role: "owner", actorId: actors.owner.id, allowedTournamentIds: ownedTournamentIds, allowedRecordIds: ownedRecordIds, ownedTournamentName: access.tournamentName },
       { route: "/ops/cashier", role: "owner", actorId: actors.owner.id, allowedTournamentIds: ownedTournamentIds, allowedRecordIds: ownedRecordIds },
       { route: "/ops/cashier", role: "cashier", actorId: actors.cashier.id, allowedTournamentIds: ownedTournamentIds, allowedRecordIds: ownedRecordIds },
-      { route: `/ops/tables?tour=${lifecycle.tournamentId}`, manifestRoute: "/ops/tables", role: "floor", actorId: actors.floor.id, allowedTournamentIds: ownedTournamentIds, allowedRecordIds: ownedRecordIds, ownedTournamentName: lifecycle.tournamentName },
+      { route: `/ops/tables?tour=${lifecycle.tournamentId}`, manifestRoute: "/ops/tables", role: "floor", actorId: actors.floor.id, allowedTournamentIds: ownedTournamentIds, allowedRecordIds: ownedRecordIds, ownedTournamentName: lifecycle.tournamentName, ownedTableNumber: SCENARIO_SECOND_TABLE_NUMBER.TABLE_LIFECYCLE },
       { route: `/ops/tournaments/${setupClock.tournamentId}`, manifestRoute: "/ops/tournaments/:id", role: "floor", actorId: actors.floor.id, allowedTournamentIds: ownedTournamentIds, allowedRecordIds: ownedRecordIds },
       {
         route: "/floor",
@@ -4076,6 +4095,7 @@ async function runBrowserManifest(admin, actors, fixtures, additionalOwnedRecord
             "floor-refresh",
             "payout-style",
             "payout-satellite-add-row",
+            "payout-satellite-remove-row",
             "payout-preview",
             "payout-save",
             "payout-import",

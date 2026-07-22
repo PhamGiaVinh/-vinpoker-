@@ -27,6 +27,7 @@ type RouteAssignment = {
   allowedRecordIds: string[];
   viewports?: ConcreteFloorAuditViewport[];
   ownedTournamentName?: string;
+  ownedTableNumber?: number;
   tabName?: string;
 };
 
@@ -104,6 +105,10 @@ function configuredAssignments(): RouteAssignment[] {
       assignment.ownedTournamentName != null
       && (typeof assignment.ownedTournamentName !== "string" || !ownedTournamentNamePattern.test(assignment.ownedTournamentName))
     ) throw new Error("ownedTournamentName must identify an exact canary fixture");
+    if (
+      assignment.ownedTableNumber != null
+      && (!Number.isInteger(assignment.ownedTableNumber) || assignment.ownedTableNumber <= 0)
+    ) throw new Error("ownedTableNumber must be a positive integer when provided");
     if (assignment.tabName != null && typeof assignment.tabName !== "string") {
       throw new Error("tabName must be a string when provided");
     }
@@ -153,6 +158,10 @@ function visibleButtonContainingExactText(
     .first();
 }
 
+function ownedTableButtonNamePattern(tableNumber: number) {
+  return new RegExp(`^${tableNumber}\\s+\\d+\\/\\d+$`, "u");
+}
+
 async function prepareRouteForCoverageDiscovery(
   page: import("@playwright/test").Page,
   assignment: RouteAssignment,
@@ -175,8 +184,13 @@ async function prepareRouteForCoverageDiscovery(
       return;
     case "/ops/tables":
       if (!assignment.ownedTournamentName) throw new Error("Table inventory requires an exact-owned fixture name");
-      await expect(visibleButton(page, assignment.ownedTournamentName)).toBeVisible({ timeout: 30_000 });
-      await expect(visibleButton(page, /^\d+\s+\d+\/\d+$/u)).toBeVisible({ timeout: 30_000 });
+      if (assignment.ownedTableNumber == null) throw new Error("Table inventory requires an exact-owned table number");
+      {
+        const ownedTournament = visibleButton(page, assignment.ownedTournamentName);
+        await expect(ownedTournament).toBeVisible({ timeout: 30_000 });
+        await ownedTournament.click({ timeout: 15_000 });
+      }
+      await expect(visibleButton(page, ownedTableButtonNamePattern(assignment.ownedTableNumber))).toBeVisible({ timeout: 30_000 });
       logAuditPhase(manifestRoute, assignment.role, viewport, "owned_table_visible");
       return;
     case "/ops/tournaments/:id":
@@ -338,7 +352,8 @@ async function auditConditionalRouteControls(
       return [...actionSheetIds, ...dialogIds];
     }
     case "/ops/tables": {
-      await visibleButton(page, /^\d+\s+\d+\/\d+$/u).click({ timeout: 15_000 });
+      if (assignment.ownedTableNumber == null) throw new Error("Table controls require an exact-owned table number");
+      await visibleButton(page, ownedTableButtonNamePattern(assignment.ownedTableNumber)).click({ timeout: 15_000 });
       const tableSheet = page.locator('[role="dialog"]').filter({
         has: page.getByRole("button", { name: "Đồng hồ", exact: true }),
         visible: true,
