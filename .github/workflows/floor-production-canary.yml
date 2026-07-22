@@ -40,8 +40,6 @@ jobs:
       FLOOR_CANARY_MODE: "${{ github.event_name == 'workflow_dispatch' && inputs.mode || (github.event.pull_request.title == 'test(floor): controlled production canary runner [cleanup]' && 'cleanup' || 'run') }}"
       FLOOR_CANARY_RUN_BROWSER: "${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'run' || github.event_name == 'pull_request' && github.event.pull_request.title == 'test(floor): controlled production canary runner [run]' }}"
       FLOOR_CANARY_BROWSER_ACTIONS_READY: "true"
-      FLOOR_CANARY_RECOVERY_LEDGER: ${{ runner.temp }}/floor-canary-recovery-${{ github.run_id }}-${{ github.run_attempt }}.json
-      FLOOR_CANARY_STATE_ROOT: ${{ runner.temp }}/floor-canary-state-${{ github.run_id }}-${{ github.run_attempt }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
     steps:
@@ -68,6 +66,8 @@ jobs:
         timeout-minutes: 45
         working-directory: VinPoker
         env:
+          FLOOR_CANARY_RECOVERY_LEDGER: ${{ runner.temp }}/floor-canary-recovery-${{ github.run_id }}-${{ github.run_attempt }}.json
+          FLOOR_CANARY_STATE_ROOT: ${{ runner.temp }}/floor-canary-state-${{ github.run_id }}-${{ github.run_attempt }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/floor/floor-production-canary.mjs
@@ -78,6 +78,8 @@ jobs:
         env:
           FLOOR_CANARY_MODE: cleanup
           FLOOR_CANARY_CLEANUP_ALLOW_EMPTY: "true"
+          FLOOR_CANARY_RECOVERY_LEDGER: ${{ runner.temp }}/floor-canary-recovery-${{ github.run_id }}-${{ github.run_attempt }}.json
+          FLOOR_CANARY_STATE_ROOT: ${{ runner.temp }}/floor-canary-state-${{ github.run_id }}-${{ github.run_attempt }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/floor/floor-production-canary.mjs

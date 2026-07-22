@@ -1086,6 +1086,12 @@ test("cashier browser assertions classify a redacted allowed or denied UI outcom
 
 test("workflow has fail-closed run, cleanup, and hold modes", () => {
   const workflow = readFileSync(new URL("../../../.github/workflows/floor-production-canary.yml", import.meta.url), "utf8");
+  const jobEnvironment = workflow.slice(workflow.indexOf("    env:"), workflow.indexOf("    steps:"));
+  const auditStep = workflow.slice(
+    workflow.indexOf("      - name: Validate canary context and execute isolated API matrix"),
+    workflow.indexOf("      - name: Always verify exact canary cleanup after run"),
+  );
+  const cleanupStep = workflow.slice(workflow.indexOf("      - name: Always verify exact canary cleanup after run"));
   assert.match(workflow, /type: choice/);
   assert.doesNotMatch(workflow, /\[rollout\]|^\s+- rollout$/m);
   assert.match(workflow, /- cleanup/);
@@ -1099,8 +1105,11 @@ test("workflow has fail-closed run, cleanup, and hold modes", () => {
   assert.match(workflow, /Validate canary safety and button evidence contracts/);
   assert.match(workflow, /floorActionEvidenceLedger\.test\.ts/);
   assert.match(workflow, /FLOOR_CANARY_BROWSER_ACTIONS_READY: "true"/);
-  assert.match(workflow, /FLOOR_CANARY_RECOVERY_LEDGER: \$\{\{ runner\.temp \}\}/);
-  assert.match(workflow, /FLOOR_CANARY_STATE_ROOT: \$\{\{ runner\.temp \}\}/);
+  assert.doesNotMatch(jobEnvironment, /runner\.temp/);
+  assert.match(auditStep, /FLOOR_CANARY_RECOVERY_LEDGER: \$\{\{ runner\.temp \}\}\/floor-canary-recovery-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}\.json/);
+  assert.match(auditStep, /FLOOR_CANARY_STATE_ROOT: \$\{\{ runner\.temp \}\}\/floor-canary-state-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
+  assert.match(cleanupStep, /FLOOR_CANARY_RECOVERY_LEDGER: \$\{\{ runner\.temp \}\}\/floor-canary-recovery-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}\.json/);
+  assert.match(cleanupStep, /FLOOR_CANARY_STATE_ROOT: \$\{\{ runner\.temp \}\}\/floor-canary-state-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
   assert.match(workflow, /Always verify exact canary cleanup after run/);
   assert.match(workflow, /if: always\(\) && env\.FLOOR_CANARY_MODE == 'run'/);
   assert.match(workflow, /FLOOR_CANARY_CLEANUP_ALLOW_EMPTY: "true"/);
