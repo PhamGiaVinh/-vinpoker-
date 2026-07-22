@@ -133,6 +133,20 @@ export function assessCandidateSnapshotFailure(
   };
 }
 
+/** The canonical shortage snapshot is advisory, but unknown data must be visible
+ * in dispatch state and must never be converted into a shortage notification. */
+export function assessShortageAlertFailure(
+  stage: string,
+  status: "dependency_unavailable" | "query_failed",
+  errorCode: string,
+): DispatchSafetyOutcome {
+  return {
+    dispatchState: status === "dependency_unavailable" ? "dependency_unavailable" : "partial",
+    dispatchErrorCode: errorCode,
+    diagnostic: { stage, code: errorCode },
+  };
+}
+
 export type DealerInventoryAssessment =
   | { dealerIds: string[]; failure: null }
   | { dealerIds: []; failure: DispatchSafetyOutcome };
@@ -231,8 +245,5 @@ export function assessShortageNotifySetting(
       failure: assessCoreQueryFailure("shortage_notify_setting", error),
     };
   }
-  return {
-    notify: row?.shortage_notify_telegram ?? true,
-    failure: null,
-  };
+  return { notify: row?.shortage_notify_telegram === true, failure: null };
 }

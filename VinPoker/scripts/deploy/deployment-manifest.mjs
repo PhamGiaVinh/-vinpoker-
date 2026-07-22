@@ -33,7 +33,7 @@ export function validateDeploymentManifest(manifest, repositoryRoot) {
   if (!manifest.functions || typeof manifest.functions !== "object") {
     throw new Error("deployment manifest functions must be an object");
   }
-  for (const profileName of ["dealer_swing_legacy", "dealer_mass_open_v1"]) {
+  for (const profileName of ["dealer_swing_legacy", "dealer_mass_open_v1", "dealer_shortage_alert_v1"]) {
     const profile = manifest.contractProfiles?.[profileName];
     if (!profile || profile.deriveImportedGraphDependencies !== true) {
       throw new Error(`target-aware contract profile ${profileName} must derive imported graph dependencies`);
@@ -48,8 +48,9 @@ export function validateDeploymentManifest(manifest, repositoryRoot) {
     }
   }
   if (manifest.contractProfiles.dealer_swing_legacy.extends !== null
-      || manifest.contractProfiles.dealer_mass_open_v1.extends !== "dealer_swing_legacy") {
-    throw new Error("contract profile inheritance must be legacy -> dealer_mass_open_v1");
+      || manifest.contractProfiles.dealer_mass_open_v1.extends !== "dealer_swing_legacy"
+      || manifest.contractProfiles.dealer_shortage_alert_v1.extends !== "dealer_mass_open_v1") {
+    throw new Error("contract profile inheritance must be legacy -> dealer_mass_open_v1 -> dealer_shortage_alert_v1");
   }
 
   for (const [name, expectedVerifyJwt] of REQUIRED_CRITICAL_POSTURE) {
@@ -142,6 +143,7 @@ export function validateDeploymentManifest(manifest, repositoryRoot) {
 
   const legacyProfile = resolveContractProfile(manifest, "dealer_swing_legacy");
   const massOpenProfile = resolveContractProfile(manifest, "dealer_mass_open_v1");
+  const shortageAlertProfile = resolveContractProfile(manifest, "dealer_shortage_alert_v1");
   const durableNames = [
     "dealer_mass_open_rollout",
     "dealer_open_operations",
@@ -205,6 +207,48 @@ export function validateDeploymentManifest(manifest, repositoryRoot) {
         && item.acl?.anon === false
         && Array.isArray(item.argumentTypes),
       `frontend exact signature/ACL for ${functionName}`,
+    );
+  }
+
+  const alertNames = [
+    "dealer_shortage_alert_incidents",
+    "advance_dealer_shortage_alert_incident",
+    "complete_dealer_shortage_alert_notification",
+  ];
+  if ([legacyProfile, massOpenProfile].some((profile) =>
+    alertNames.some((name) => JSON.stringify(profile).includes(name))
+  )) {
+    throw new Error("legacy and mass-open profiles must not require shortage alert objects");
+  }
+  const alertContracts = shortageAlertProfile.functions["process-swing"];
+  requireContract(
+    alertContracts,
+    (item) => item.type === "relation" && item.name === "public.dealer_shortage_alert_incidents",
+    "process-swing shortage alert incident relation",
+  );
+  for (const [name, argumentsList, argumentTypes] of [
+    [
+      "public.advance_dealer_shortage_alert_incident",
+      ["p_club_id", "p_incident_key", "p_classification", "p_severity", "p_snapshot", "p_error_code", "p_notify_enabled", "p_cooldown_seconds", "p_resolution_debounce_seconds"],
+      ["uuid", "text", "text", "smallint", "jsonb", "text", "boolean", "integer", "integer"],
+    ],
+    [
+      "public.complete_dealer_shortage_alert_notification",
+      ["p_incident_id", "p_claim_id", "p_delivered"],
+      ["uuid", "uuid", "boolean"],
+    ],
+  ]) {
+    requireContract(
+      alertContracts,
+      (item) => item.type === "function"
+        && item.name === name
+        && item.allowOtherOverloads === false
+        && JSON.stringify(item.arguments) === JSON.stringify(argumentsList)
+        && JSON.stringify(item.argumentTypes) === JSON.stringify(argumentTypes)
+        && item.acl?.service_role === true
+        && item.acl?.authenticated === false
+        && item.acl?.anon === false,
+      `process-swing exact service-only shortage alert RPC ${name}`,
     );
   }
 

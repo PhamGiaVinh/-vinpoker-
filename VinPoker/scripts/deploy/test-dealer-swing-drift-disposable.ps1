@@ -5,7 +5,8 @@ param(
   [string]$PostgresMajor,
   [Parameter(Mandatory = $true)]
   [string]$SchemaPath,
-  [string]$RollbackTargetRoot = 'D:\wt\dealer-swing-rollback-1fdc210'
+  [string]$RollbackTargetRoot = 'D:\wt\dealer-swing-rollback-1fdc210',
+  [switch]$SkipFrontendContractProbe
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,21 +59,28 @@ try {
   $files = @{
     '/tmp/bootstrap.sql' = Join-Path $scriptRoot 'disposable-public-schema-bootstrap.sql'
     '/tmp/live-public.sql' = (Resolve-Path -LiteralPath $preparedSchemaPath)
+    '/tmp/support.sql' = Join-Path $scriptRoot 'disposable-public-schema-support.sql'
     '/tmp/20270104000002.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270104000002_dealer_swing_contract_drift.sql'
     '/tmp/20270104000003.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270104000003_dealer_shift_metrics_contract.sql'
+    '/tmp/20270104000005.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270104000005_dealer_shortage_alert_lifecycle.sql'
     '/tmp/dealer_swing_contract_drift.sql' = Join-Path $vinPokerRoot 'tests\dealer_swing_contract_drift.sql'
     '/tmp/dealer_shift_metrics_contract.sql' = Join-Path $vinPokerRoot 'tests\dealer_shift_metrics_contract.sql'
+    '/tmp/dealer_shortage_alert_lifecycle.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_shortage_alert_lifecycle.sql'
   }
   foreach ($destination in $files.Keys) { Invoke-Docker cp $files[$destination] "${containerName}:$destination" }
 
   Invoke-ContainerPsql '/tmp/bootstrap.sql'
   Invoke-ContainerPsql '/tmp/live-public.sql'
+  Invoke-ContainerPsql '/tmp/support.sql'
   Invoke-ContainerPsql '/tmp/20270104000002.sql'
   Invoke-ContainerPsql '/tmp/20270104000003.sql'
+  Invoke-ContainerPsql '/tmp/20270104000005.sql'
   Invoke-ContainerPsql '/tmp/20270104000002.sql'
   Invoke-ContainerPsql '/tmp/20270104000003.sql'
+  Invoke-ContainerPsql '/tmp/20270104000005.sql'
   Invoke-ContainerPsql '/tmp/dealer_swing_contract_drift.sql'
   Invoke-ContainerPsql '/tmp/dealer_shift_metrics_contract.sql'
+  Invoke-ContainerPsql '/tmp/dealer_shortage_alert_lifecycle.sql'
 
   Push-Location $vinPokerRoot
   try {
@@ -86,21 +94,27 @@ try {
       --targets process-swing,mass-assign,checkout-dealer `
       --target-root $workspaceRoot
     if ($LASTEXITCODE -ne 0) { throw 'Current Edge catalog probe failed' }
-    node scripts/deploy/probe-live-schema-contracts.mjs `
-      --catalog $catalogPath `
-      --targets frontend `
-      --target-root $workspaceRoot
-    if ($LASTEXITCODE -ne 0) { throw 'Current frontend catalog probe failed' }
+    if (-not $SkipFrontendContractProbe) {
+      node scripts/deploy/probe-live-schema-contracts.mjs `
+        --catalog $catalogPath `
+        --targets frontend `
+        --target-root $workspaceRoot
+      if ($LASTEXITCODE -ne 0) { throw 'Current frontend catalog probe failed' }
+    } else {
+      Write-Host 'Frontend catalog probe skipped for a documented historical schema dump; Edge/DB probes remain required.'
+    }
     node scripts/deploy/probe-live-schema-contracts.mjs `
       --catalog $catalogPath `
       --targets process-swing,mass-assign,checkout-dealer `
       --target-root $RollbackTargetRoot
     if ($LASTEXITCODE -ne 0) { throw 'Legacy Edge catalog probe failed' }
-    node scripts/deploy/probe-live-schema-contracts.mjs `
-      --catalog $catalogPath `
-      --targets frontend `
-      --target-root $RollbackTargetRoot
-    if ($LASTEXITCODE -ne 0) { throw 'Legacy frontend catalog probe failed' }
+    if (-not $SkipFrontendContractProbe) {
+      node scripts/deploy/probe-live-schema-contracts.mjs `
+        --catalog $catalogPath `
+        --targets frontend `
+        --target-root $RollbackTargetRoot
+      if ($LASTEXITCODE -ne 0) { throw 'Legacy frontend catalog probe failed' }
+    }
   } finally {
     Pop-Location
   }

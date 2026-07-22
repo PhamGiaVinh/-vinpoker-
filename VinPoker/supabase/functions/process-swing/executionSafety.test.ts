@@ -186,7 +186,7 @@ Deno.test("a settings query failure never defaults shortage Telegram to enabled"
       },
     },
   );
-  assertEquals(assessShortageNotifySetting(null, null), { notify: true, failure: null });
+  assertEquals(assessShortageNotifySetting(null, null), { notify: false, failure: null });
   assertEquals(
     assessShortageNotifySetting({ shortage_notify_telegram: false }, null),
     { notify: false, failure: null },

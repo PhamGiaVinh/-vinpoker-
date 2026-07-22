@@ -269,7 +269,10 @@ function enrichPlan(plan) {
     held: diff.changed && !plan.criticalFunctions.includes(name),
     verifyJwt: plan.manifest.functions[name].verifyJwt,
     contractCount: resolvedContracts.functions[name].length,
-    denoTests: plan.manifest.functions[name].quality?.denoTests ?? [],
+    denoTests: [
+      ...(plan.manifest.functions[name].quality?.denoTests ?? []),
+      ...(plan.manifest.functions[name].quality?.denoTestsByContractProfile?.[plan.contractSelection.profile] ?? []),
+    ],
   }]));
   return {
     targetSha: plan.targetSha,

@@ -399,13 +399,17 @@ export async function buildDealerCandidates(
   // +300 bonus ensures the priority table gets next available dealer.
   let isPrioritySwing = false;
   if (currentTableId) {
-    const { data: currentAssignment } = (await admin
+    const { data: currentAssignment, error: currentAssignmentError } = (await admin
       .from("dealer_assignments")
       .select("priority_swing_at")
       .eq("table_id", currentTableId)
       .eq("status", "assigned")
       .is("swing_processed_at", null)
-      .maybeSingle()) as unknown as { data: PrioritySwingAssignmentRow | null };
+      .maybeSingle()) as unknown as {
+        data: PrioritySwingAssignmentRow | null;
+        error: CandidateQueryError | null;
+      };
+    if (currentAssignmentError) return candidateQueryFailure(currentAssignmentError, "priority_swing");
     isPrioritySwing = !!(currentAssignment as any)?.priority_swing_at;
   }
 
@@ -427,6 +431,7 @@ export async function buildDealerCandidates(
         )`
     )
     .eq("status", "checked_in")
+    .is("check_out_time", null)
     .in("dealer_id", dealerIds)
     .or(`current_state.eq.available,current_state.eq.on_break`)) as unknown as {
       data: AttendancePoolRow[] | null;
@@ -474,11 +479,15 @@ export async function buildDealerCandidates(
   );
 
   // Step 4: Query last 2 assignments per attendance for back-to-back detection
-  const { data: lastAssignments } = (await admin
+  const { data: lastAssignments, error: lastAssignmentsError } = (await admin
     .from("dealer_assignments")
     .select("attendance_id, table_id, game_tables!inner(tour_tier)")
     .in("attendance_id", attendanceIds)
-    .order("assigned_at", { ascending: false })) as unknown as { data: LastAssignmentRow[] | null };
+    .order("assigned_at", { ascending: false })) as unknown as {
+      data: LastAssignmentRow[] | null;
+      error: CandidateQueryError | null;
+    };
+  if (lastAssignmentsError) return candidateQueryFailure(lastAssignmentsError, "last_assignments");
   const lastTableMap = new Map<string, string>();
   const lastTourTierMap = new Map<string, string>();
   for (const a of lastAssignments ?? []) {
@@ -492,16 +501,24 @@ export async function buildDealerCandidates(
 
   const activeBreakMap = new Map<string, string>();
   if (attendanceIds.length > 0) {
-    const { data: attendanceAssignments } = (await admin
+    const { data: attendanceAssignments, error: attendanceAssignmentsError } = (await admin
       .from("dealer_assignments")
       .select("id, attendance_id")
-      .in("attendance_id", attendanceIds)) as unknown as { data: AttendanceAssignmentRow[] | null };
+      .in("attendance_id", attendanceIds)) as unknown as {
+        data: AttendanceAssignmentRow[] | null;
+        error: CandidateQueryError | null;
+      };
+    if (attendanceAssignmentsError) return candidateQueryFailure(attendanceAssignmentsError, "attendance_assignments");
     const attendanceAssignmentIds = (attendanceAssignments ?? []).map((a) => a.id);
-    const { data: activeAttendanceBreaks } = (await admin
+    const { data: activeAttendanceBreaks, error: activeAttendanceBreaksError } = (await admin
       .from("dealer_breaks")
       .select("attendance_id, break_start")
       .is("break_end", null)
-      .in("attendance_id", attendanceIds)) as unknown as { data: ActiveBreakRow[] | null };
+      .in("attendance_id", attendanceIds)) as unknown as {
+        data: ActiveBreakRow[] | null;
+        error: CandidateQueryError | null;
+      };
+    if (activeAttendanceBreaksError) return candidateQueryFailure(activeAttendanceBreaksError, "attendance_breaks");
 
     for (const row of activeAttendanceBreaks ?? []) {
       if (row.attendance_id && !activeBreakMap.has(row.attendance_id)) {
@@ -510,11 +527,15 @@ export async function buildDealerCandidates(
     }
 
     if (attendanceAssignmentIds.length > 0) {
-      const { data: activeBreakRows } = (await admin
+      const { data: activeBreakRows, error: activeBreakRowsError } = (await admin
         .from("dealer_breaks")
         .select("assignment_id, break_start")
         .is("break_end", null)
-        .in("assignment_id", attendanceAssignmentIds)) as unknown as { data: ActiveBreakRow[] | null };
+        .in("assignment_id", attendanceAssignmentIds)) as unknown as {
+          data: ActiveBreakRow[] | null;
+          error: CandidateQueryError | null;
+        };
+      if (activeBreakRowsError) return candidateQueryFailure(activeBreakRowsError, "assignment_breaks");
       if ((activeBreakRows ?? []).length > 0) {
         for (const row of activeBreakRows ?? []) {
           if (!row.assignment_id) continue;
@@ -539,13 +560,17 @@ export async function buildDealerCandidates(
   // "today" is wrong — 24h rolling window is safe for any shift length.
   const busyDealerIds = new Set<string>();
   const busyWindow = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { data: busyDealers } = (await admin
+  const { data: busyDealers, error: busyDealersError } = (await admin
     .from("dealer_attendance")
     .select("dealer_id")
     .in("dealer_id", dealerIds)
     .in("current_state", ["assigned", "pre_assigned", "in_transition"])
     .is("check_out_time", null)
-    .gte("check_in_time", busyWindow)) as unknown as { data: BusyDealerRow[] | null };
+    .gte("check_in_time", busyWindow)) as unknown as {
+      data: BusyDealerRow[] | null;
+      error: CandidateQueryError | null;
+    };
+  if (busyDealersError) return candidateQueryFailure(busyDealersError, "busy_attendance");
   for (const bd of busyDealers ?? []) {
     busyDealerIds.add(bd.dealer_id);
   }
@@ -563,12 +588,16 @@ export async function buildDealerCandidates(
   const guardMinutes = Math.max(minInterSwingRestMinutes, SWING_POLICY.rest.hardRestFloorMinutes);
   if (!reservationMode && guardMinutes > 0) {
     const restCutoff = new Date(Date.now() - guardMinutes * 60_000).toISOString();
-    const { data: restingDealers } = (await admin
+    const { data: restingDealers, error: restingDealersError } = (await admin
       .from("dealer_attendance")
       .select("id")
       .in("id", attendanceIds)
       .not("last_released_at", "is", null)
-      .gt("last_released_at", restCutoff)) as unknown as { data: RestingDealerRow[] | null };
+      .gt("last_released_at", restCutoff)) as unknown as {
+        data: RestingDealerRow[] | null;
+        error: CandidateQueryError | null;
+      };
+    if (restingDealersError) return candidateQueryFailure(restingDealersError, "rest_guard");
     for (const rd of restingDealers ?? []) {
       restGuardExcludedIds.add(rd.id);
     }
@@ -673,7 +702,11 @@ export async function buildDealerCandidates(
       );
     }
 
-    const { data: busyAssignments } = (await busyAssignmentsQuery) as unknown as { data: BusyAssignmentRow[] | null };
+    const { data: busyAssignments, error: busyAssignmentsError } = (await busyAssignmentsQuery) as unknown as {
+      data: BusyAssignmentRow[] | null;
+      error: CandidateQueryError | null;
+    };
+    if (busyAssignmentsError) return candidateQueryFailure(busyAssignmentsError, "busy_assignments");
 
     // Shared "busy" predicate: an active assignment only marks a dealer BUSY if
     // its linked attendance is still CHECKED IN. An assignment tied to a
@@ -687,11 +720,15 @@ export async function buildDealerCandidates(
     ];
     const checkedOutAttIds = new Set<string>();
     if (busyAttIds.length > 0) {
-      const { data: goneAtt } = (await admin
+      const { data: goneAtt, error: goneAttError } = (await admin
         .from("dealer_attendance")
         .select("id")
         .in("id", busyAttIds)
-        .not("check_out_time", "is", null)) as unknown as { data: { id: string }[] | null };
+        .not("check_out_time", "is", null)) as unknown as {
+          data: { id: string }[] | null;
+          error: CandidateQueryError | null;
+        };
+      if (goneAttError) return candidateQueryFailure(goneAttError, "checked_out_busy_attendance");
       for (const a of goneAtt ?? []) checkedOutAttIds.add(a.id);
     }
 
@@ -719,12 +756,16 @@ export async function buildDealerCandidates(
     // in another active assignment. This catches the gap where pre-assign RPC
     // sets dealer_attendance.state='pre_assigned' but doesn't create an assignment
     // record for the incoming dealer.
-    const { data: preAssignedRefs } = (await admin
+    const { data: preAssignedRefs, error: preAssignedRefsError } = (await admin
       .from("dealer_assignments")
       .select("pre_assigned_attendance_id")
       .in("pre_assigned_attendance_id", attendanceIds)
       .in("status", ["assigned", "on_break"])
-      .is("released_at", null)) as unknown as { data: PreAssignedRefRow[] | null };
+      .is("released_at", null)) as unknown as {
+        data: PreAssignedRefRow[] | null;
+        error: CandidateQueryError | null;
+      };
+    if (preAssignedRefsError) return candidateQueryFailure(preAssignedRefsError, "pre_assigned_references");
 
     const preAssignedRefIds = new Set(
       (preAssignedRefs ?? []).map((r) => r.pre_assigned_attendance_id)
@@ -754,12 +795,16 @@ export async function buildDealerCandidates(
   // ── Step 5c: Safety net — catch pre_assigned dealers without assignment record ──
   // Pre-assign RPC sets dealer_attendance.current_state='pre_assigned' but does NOT
   // create a dealer_assignments record. Step 5b misses them. This catches the gap.
-    const { data: preAssignedDealers } = (await admin
-    .from("dealer_attendance")
+    const { data: preAssignedDealers, error: preAssignedDealersError } = (await admin
+      .from("dealer_attendance")
     .select("dealer_id, id, pre_assigned_table_id")
     .in("dealer_id", dealerIds)
     .eq("current_state", "pre_assigned")
-    .is("check_out_time", null)) as unknown as { data: PreAssignedDealerRow[] | null };
+    .is("check_out_time", null)) as unknown as {
+      data: PreAssignedDealerRow[] | null;
+      error: CandidateQueryError | null;
+    };
+  if (preAssignedDealersError) return candidateQueryFailure(preAssignedDealersError, "pre_assigned_attendance");
 
   for (const pad of preAssignedDealers ?? []) {
     if (!busyDealerIds.has(pad.dealer_id)) {
@@ -804,11 +849,15 @@ export async function buildDealerCandidates(
   // ── Meal break exclusion (defense-in-depth) ──────────────────────────────
   // Dealers currently in an active meal break must NOT be picked, even if
   // state transition hasn't happened yet (cron delay).
-  const { data: activeMealBreaks } = (await admin
+  const { data: activeMealBreaks, error: activeMealBreaksError } = (await admin
     .from("dealer_meal_breaks")
     .select("attendance_id, break_start, total_duration_minutes")
     .in("attendance_id", attendanceIds)
-    .eq("status", "active")) as unknown as { data: ActiveMealBreakRow[] | null };
+    .eq("status", "active")) as unknown as {
+      data: ActiveMealBreakRow[] | null;
+      error: CandidateQueryError | null;
+    };
+  if (activeMealBreaksError) return candidateQueryFailure(activeMealBreaksError, "meal_breaks");
 
   const now = Date.now();
   const mealBreakExcludedIds = new Set<string>();
@@ -1241,6 +1290,8 @@ export type RotationSupplyResult = {
   avgBreakRatio: number | null;
   status: BuildCandidatesResult["status"];
   errorCode?: string;
+  /** Canonical exclusion counters from the candidate snapshot used by the solver. */
+  diag?: PickDiagnostics;
 };
 
 export async function buildRotationSupply(
@@ -1283,12 +1334,13 @@ export async function buildRotationSupply(
       avgBreakRatio: candidateResult.avgBreakRatio,
       status: candidateResult.status,
       ...(candidateResult.errorCode ? { errorCode: candidateResult.errorCode } : {}),
+      ...(candidateResult.diag ? { diag: candidateResult.diag } : {}),
     };
   }
 
-  const { candidates, avgBreakRatio } = candidateResult;
+  const { candidates, avgBreakRatio, diag } = candidateResult;
 
-  if (candidates.length === 0) return { supply: [], avgBreakRatio, status: "ok" };
+  if (candidates.length === 0) return { supply: [], avgBreakRatio, status: "ok", ...(diag ? { diag } : {}) };
 
   const attendanceIds = candidates.map((c) => c.id);
 
@@ -1309,6 +1361,7 @@ export async function buildRotationSupply(
       avgBreakRatio,
       status: failure.status,
       errorCode: `rotation_supply_released_sessions_${failure.status}`,
+      ...(diag ? { diag } : {}),
     };
   }
 
@@ -1332,6 +1385,7 @@ export async function buildRotationSupply(
       avgBreakRatio,
       status: failure.status,
       errorCode: `rotation_supply_pool_timestamps_${failure.status}`,
+      ...(diag ? { diag } : {}),
     };
   }
 
@@ -1354,7 +1408,7 @@ export async function buildRotationSupply(
     };
   });
 
-  return { supply, avgBreakRatio, status: "ok" };
+  return { supply, avgBreakRatio, status: "ok", ...(diag ? { diag } : {}) };
 }
 
 // ─── buildScoreLabel ──────────────────────────────────────────────────────────

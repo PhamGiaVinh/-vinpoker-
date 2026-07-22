@@ -15,6 +15,9 @@ function parseArgs(argv) {
 
 export function normalizeForPostgres16(schemaSql) {
   return schemaSql.split(/(\r?\n)/).map((line) => {
+    if (/^\s*SET\s+transaction_timeout\s*=\s*.+;\s*$/i.test(line)) {
+      return `-- PG16 disposable compatibility: stripped unsupported transaction_timeout setting: ${line.trim()}`;
+    }
     const grant = line.match(/^(\s*(?:GRANT|REVOKE)\s+)([^;]+?)(\s+ON\s+(?:TABLE|SEQUENCE|FUNCTION)\b[\s\S]*)$/i);
     if (!grant) return line;
     const privileges = grant[2].split(",").map((privilege) => privilege.trim()).filter(Boolean);

@@ -152,6 +152,49 @@
         },
         "tournament-live-clock": { "additionalContracts": [] }
       }
+    },
+    "dealer_shortage_alert_v1": {
+      "description": "Dealer Swing source with canonical shortage alert lifecycle.",
+      "deriveImportedGraphDependencies": true,
+      "extends": "dealer_mass_open_v1",
+      "frontend": { "additionalContracts": [] },
+      "functions": {
+        "process-swing": {
+          "additionalContracts": [
+            { "type": "relation", "name": "public.dealer_shortage_alert_incidents", "dependencyKind": "direct_edge" },
+            { "type": "relation", "name": "public.dealer_shifts", "dependencyKind": "transitive_server" },
+            { "type": "relation", "name": "public.tournaments", "dependencyKind": "transitive_server" },
+            { "type": "relation", "name": "public.dealer_rotation_schedule", "dependencyKind": "transitive_server" },
+            { "type": "relation", "name": "public.dealer_breaks", "dependencyKind": "transitive_server" },
+            { "type": "relation", "name": "public.dealer_meal_breaks", "dependencyKind": "transitive_server" },
+            { "type": "relation", "name": "public.dealer_shift_metrics", "dependencyKind": "transitive_server" },
+            { "type": "relation", "name": "public.app_settings", "dependencyKind": "transitive_server" },
+            { "type": "relation", "name": "public.dealer_table_profiles", "dependencyKind": "transitive_server" },
+            { "type": "relation", "name": "public.dealer_table_pool_members", "dependencyKind": "transitive_server" },
+            {
+              "type": "function",
+              "name": "public.advance_dealer_shortage_alert_incident",
+              "arguments": ["p_club_id", "p_incident_key", "p_classification", "p_severity", "p_snapshot", "p_error_code", "p_notify_enabled", "p_cooldown_seconds", "p_resolution_debounce_seconds"],
+              "argumentTypes": ["uuid", "text", "text", "smallint", "jsonb", "text", "boolean", "integer", "integer"],
+              "allowOtherOverloads": false,
+              "acl": { "authenticated": false, "anon": false, "service_role": true },
+              "dependencyKind": "direct_edge"
+            },
+            {
+              "type": "function",
+              "name": "public.complete_dealer_shortage_alert_notification",
+              "arguments": ["p_incident_id", "p_claim_id", "p_delivered"],
+              "argumentTypes": ["uuid", "uuid", "boolean"],
+              "allowOtherOverloads": false,
+              "acl": { "authenticated": false, "anon": false, "service_role": true },
+              "dependencyKind": "direct_edge"
+            }
+          ]
+        },
+        "mass-assign": { "additionalContracts": [] },
+        "checkout-dealer": { "additionalContracts": [] },
+        "tournament-live-clock": { "additionalContracts": [] }
+      }
     }
   },
   "functions": {
@@ -170,6 +213,10 @@
         "denoTestsByContractProfile": {
           "dealer_mass_open_v1": [
             "VinPoker/supabase/functions/process-swing/executionSafety.test.ts"
+          ],
+          "dealer_shortage_alert_v1": [
+            "VinPoker/supabase/functions/process-swing/executionSafety.test.ts",
+            "VinPoker/supabase/functions/process-swing/shortageAlert.test.ts"
           ]
         }
       },

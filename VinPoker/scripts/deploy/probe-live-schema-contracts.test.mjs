@@ -293,9 +293,9 @@ test("Floor clock requires the exact revision-token RPC signature and runtime AC
   );
 });
 
-test("current target fails without operation objects and passes with the full mass-open-v1 contract", () => {
+test("current target fails without alert objects and passes with the full alert contract", () => {
   const current = allContracts(repositoryRoot);
-  assert.equal(current.selection.profile, "dealer_mass_open_v1");
+  assert.equal(current.selection.profile, "dealer_shortage_alert_v1");
   assert.equal(current.selection.requirements.floorClockRevisionV1, true);
   assert.equal(
     current.contracts.some((contract) =>
@@ -306,6 +306,9 @@ test("current target fails without operation objects and passes with the full ma
     true,
   );
   const omitted = new Set([
+    "public.dealer_shortage_alert_incidents",
+    "public.advance_dealer_shortage_alert_incident",
+    "public.complete_dealer_shortage_alert_notification",
     "public.dealer_mass_open_rollout",
     "public.dealer_open_operations",
     "public.dealer_open_operation_targets",
@@ -321,6 +324,8 @@ test("current target fails without operation objects and passes with the full ma
   assert.equal(missing.includes("relation:public.dealer_open_operation_targets"), true);
   assert.equal(missing.includes("column:public.game_tables.dealer_open_operation_id"), true);
   assert.equal(missing.some((item) => item.startsWith("function:public.operator_open_dealer_tables")), true);
+  assert.equal(missing.includes("relation:public.dealer_shortage_alert_incidents"), true);
+  assert.equal(missing.some((item) => item.startsWith("function:public.advance_dealer_shortage_alert_incident")), true);
   assert.deepEqual(findMissingContracts(schemaForContracts(current.contracts), current.contracts), []);
 });
 

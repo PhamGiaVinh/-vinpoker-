@@ -59,19 +59,19 @@ import {
 } from "./dispatchContext.ts";
 import { assessPreAssignPreflight } from "./preAssignPreflight.ts";
 import {
-  assessAllTablesOtAlert,
   assessAvailableDealerCount,
   assessCandidateSnapshotFailure,
   assessCoreQueryFailure,
   assessDealerInventory,
   assessLockOwnershipLoss,
-  assessShortageNotifySetting,
+  assessShortageAlertFailure,
   ensureLockOwnership,
   LockOwnershipLost,
   mergeDispatchOutcome,
   type DispatchSafetyOutcome,
   type ProcessSwingDispatchState,
 } from "./executionSafety.ts";
+import { runDealerShortageAlert } from "./shortageAlert.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -890,7 +890,7 @@ Deno.serve(async (req: Request) => {
         // \U0001F4CC IMPORTANT: Use cached `clubTableIds` for ALL table queries
         //   \u2713 Pass 1b queries
         //   \u2713 Pass 3 queries
-        //   \u2713 All-tables-OT alert
+        //   \u2713 Canonical shortage-alert snapshot
         //   DO NOT call getTableIdsForClub(admin, cid) again in this club loop
         // ═════════════════════════════════════════════════════════════════
 
@@ -4325,96 +4325,34 @@ if (tier2Count > 0) {
           }
         }
 
-        let shortageNotifyDecision: ReturnType<typeof assessShortageNotifySetting> | null = null;
-        const resolveShortageNotifyDecision = async () => {
-          if (shortageNotifyDecision) return shortageNotifyDecision;
-          try {
-            const { data: settingsRow, error: settingsError } = await admin
-              .from("club_settings")
-              .select("shortage_notify_telegram")
-              .eq("club_id", cid)
-              .maybeSingle();
-            shortageNotifyDecision = assessShortageNotifySetting(settingsRow as any, settingsError);
-          } catch (error) {
-            shortageNotifyDecision = assessShortageNotifySetting(null, error);
-          }
-          if (shortageNotifyDecision.failure) {
-            recordDispatchSafetyOutcome(cid, shortageNotifyDecision.failure);
-          }
-          return shortageNotifyDecision;
-        };
-
-        // ── SHORTAGE ESCALATION ──────────────────────────────────────────
-        if (!dryRun && fillAssessment.shortageAlertsAllowed && metrics.total > 0 && metrics.failed === 0) {
-          const noDealerRatio = metrics.no_dealer / metrics.total;
-          if (noDealerRatio > 0.5 && metrics.no_dealer >= 3) {
-            console.warn(
-              `[Shortage] ⚠️ Club ${cid}: no_dealer=${metrics.no_dealer}/${metrics.total} ` +
-              `(${(noDealerRatio * 100).toFixed(1)}%)`
+        // Canonical alert lifecycle. This is deliberately independent from
+        // per-pass metrics: alert eligibility is derived from the same rotation
+        // supply and solver constraints that govern real assignments.
+        if (!dryRun) {
+          const shortageAlert = await runDealerShortageAlert(admin, {
+            clubId: cid,
+            botToken: botToken ?? null,
+            minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
+            clubBreakDurationMinutes: clubCfg.break_duration_minutes,
+            preAnnounceMinutes: clubCfg.pre_announce_minutes,
+          });
+          if (shortageAlert.failure) {
+            recordDispatchSafetyOutcome(
+              cid,
+              assessShortageAlertFailure(
+                shortageAlert.failure.stage,
+                shortageAlert.failure.status,
+                shortageAlert.failure.errorCode,
+              ),
             );
-
-            const { notify: notifyTelegram } = await resolveShortageNotifyDecision();
-
-            if (notifyTelegram) {
-              const chatId = await getClubTelegramChatId(admin, cid);
-              if (botToken && chatId) {
-                const msg = `🚨 *THIẾU DEALER* — ${metrics.no_dealer}/${metrics.total} bàn không có người thay.\n\n` +
-                  `💡 *Khuyến nghị:*\n  • Check-in thêm dealers\n  • Hoặc đóng bàn thủ công bởi Dealer control\n\n` +
-                  `🔄 Cron sẽ thử lại ở lần chạy tiếp theo.`;
-                await sendTelegramNotification(botToken, chatId, msg, { parse_mode: "Markdown" });
-              }
-            }
           }
-        }
-
-        // ── All-tables-OT alert ────────────────────────────────────────────
-        // Query total active assignments for this club (not just Pass 3 window).
-        // If NO active assignment is free of OT, the entire pool is stuck.
-        // Note: clubTableIds is cached at the start of club processing
-        let allTablesOtAssessment: ReturnType<typeof assessAllTablesOtAlert>;
-        try {
-          const [totalActiveResult, nonOvertimeResult] = await Promise.all([
-            admin
-              .from("dealer_assignments")
-              .select("id", { count: "exact", head: true })
-              .eq("status", "assigned")
-              .in("table_id", clubTableIds),
-            admin
-              .from("dealer_assignments")
-              .select("id", { count: "exact", head: true })
-              .is("overtime_started_at", null)
-              .eq("status", "assigned")
-              .in("table_id", clubTableIds),
-          ]);
-          allTablesOtAssessment = assessAllTablesOtAlert(
-            fillAssessment.shortageAlertsAllowed,
-            { count: totalActiveResult.count, error: totalActiveResult.error },
-            { count: nonOvertimeResult.count, error: nonOvertimeResult.error },
-          );
-        } catch (error) {
-          allTablesOtAssessment = {
-            shouldSend: false,
-            failure: assessCoreQueryFailure("all_tables_ot_snapshot", error),
-          };
-        }
-
-        if (!allTablesOtAssessment.shouldSend && allTablesOtAssessment.failure) {
-          recordDispatchSafetyOutcome(cid, allTablesOtAssessment.failure);
-        }
-        if (allTablesOtAssessment.shouldSend) {
-          const { notify: notifyTelegram } = await resolveShortageNotifyDecision();
-          if (!notifyTelegram) {
-            console.warn(`[process-swing] all-tables-OT alert suppressed by shortage notification setting for ${cid}`);
-          } else {
-            const chatId = await getClubTelegramChatId(admin, cid);
-            if (botToken && chatId) {
-              await sendTelegramNotification(
-                botToken, chatId,
-                `🚨 *TOÀN BỘ ${allTablesOtAssessment.totalActiveCount} BÀN ĐANG OT* — Pool dealer rỗng hoàn toàn.\nCần check-in thêm dealer hoặc đóng bớt bàn ngay!`,
-                {}
-              );
-            }
-          }
+          console.log("[shortage-alert] evaluated", {
+            club_id: cid,
+            classification: shortageAlert.classification,
+            notification: shortageAlert.notification,
+            snapshot_status: shortageAlert.snapshot.status,
+            error_code: shortageAlert.snapshot.error_code,
+          });
         }
 
         // Flush TelegramNotifier
