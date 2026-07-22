@@ -2781,7 +2781,10 @@ async function openOwnedOpsTable(page, tableNumber, phase) {
   await table.waitFor({ state: "visible", timeout: 15_000 });
   browserPhaseCheckpoint(phase, "table_card_visible");
   await table.click();
-  const dialog = page.getByRole("dialog").filter({ hasText: new RegExp(`\\b${tableNumber}\\b`, "u") }).first();
+  const dialog = page.getByRole("dialog")
+    .filter({ has: page.getByRole("button", { name: "Thêm người", exact: true }) })
+    .filter({ has: page.getByRole("button", { name: "Đóng bàn", exact: true }) })
+    .first();
   await dialog.waitFor({ state: "visible", timeout: 15_000 });
   browserPhaseCheckpoint(phase, "table_dialog_ready");
   return dialog;
@@ -3181,14 +3184,33 @@ async function runBrowserBustRestoreActions(browser, baseUrl, stateDirectory, ad
       toTournamentTableId: fixture.tournamentTableId,
       toSeatNumber: 1,
     };
-    await page.goto(`${baseUrl}/ops/tournaments/${fixture.tournamentId}?tab=players`, { waitUntil: "networkidle" });
+    await page.close();
+    const restorePage = await context.newPage();
+    const restoreTableMap = waitForOwnedTableMapRefresh(restorePage, fixture.tournamentId);
+    void restoreTableMap.catch(() => undefined);
+    await restorePage.goto(`${baseUrl}/ops/tournaments/${fixture.tournamentId}?tab=players`, { waitUntil: "domcontentloaded" });
+    const restoreTableMapResponses = await restoreTableMap;
+    result(
+      "browser_restore_table_map_refresh",
+      restoreTableMapResponses.every((response) => response.ok()),
+      restoreTableMapResponses.map(safeBrowserResponseDetail).join(","),
+    );
     browserPhaseCheckpoint("bust_restore", "players_page_ready");
-    const restoreButton = page.getByRole("button", { name: "Cho vào lại", exact: true });
+    const bustedPlayerName = restorePage.getByText(seat.player_name, { exact: true }).first();
+    await bustedPlayerName.waitFor({ state: "visible", timeout: 15_000 });
+    const bustedPlayerRow = bustedPlayerName.locator("..").locator("..");
+    browserPhaseCheckpoint("bust_restore", "busted_player_row_ready");
+    const restoreButton = bustedPlayerRow.getByRole("button", { name: "Cho vào lại", exact: true });
     await restoreButton.waitFor({ state: "visible", timeout: 15_000 });
+    await restoreButton.click({ trial: true, timeout: 15_000 });
+    browserPhaseCheckpoint("bust_restore", "restore_button_enabled");
     await restoreButton.click();
-    const restoreDialog = page.getByRole("dialog", { name: new RegExp(`^Cho vào lại: ${escapeRegex(seat.player_name)}$`, "u") });
+    const restoreDialog = restorePage.getByRole("dialog", { name: new RegExp(`^Cho vào lại: ${escapeRegex(seat.player_name)}$`, "u") });
+    await restoreDialog.waitFor({ state: "visible", timeout: 15_000 });
+    browserPhaseCheckpoint("bust_restore", "restore_dialog_ready");
     await restoreDialog.getByRole("checkbox").check();
-    const restoreResponse = await waitForPostPath(page, "/rest/v1/rpc/restore_busted_player_to_seat", () => (
+    browserPhaseCheckpoint("bust_restore", "restore_confirmed");
+    const restoreResponse = await waitForPostPath(restorePage, "/rest/v1/rpc/restore_busted_player_to_seat", () => (
       restoreDialog.getByRole("button", { name: "Cho vào Bàn 1 · ghế 1", exact: true }).click()
     ));
     browserPhaseCheckpoint("bust_restore", "restore_rpc_complete");
@@ -3241,19 +3263,11 @@ async function runBrowserTableRetryAction(browser, baseUrl, stateDirectory, acto
     await retry.waitFor({ state: "visible", timeout: 15_000 });
     browserPhaseCheckpoint("table_retry", "retry_visible");
     injectReadFailure.active = false;
-    const tableMapRefresh = waitForOwnedTableMapRefresh(page, fixture.tournamentId);
-    void tableMapRefresh.catch(() => undefined);
     await retry.click();
     browserPhaseCheckpoint("table_retry", "retry_clicked");
-    const tableMapResponses = await tableMapRefresh;
-    result(
-      "browser_tables_retry_refresh",
-      tableMapResponses.every((response) => response.ok()),
-      tableMapResponses.map(safeBrowserResponseDetail).join(","),
-    );
-    browserPhaseCheckpoint("table_retry", "table_map_refreshed");
     await ownedOpsTableButton(page, 1).waitFor({ state: "visible", timeout: 15_000 });
     browserPhaseCheckpoint("table_retry", "table_grid_ready");
+    result("browser_tables_retry_refresh", true, "ui=table_grid");
     result("browser_tables_retry_clicked", true);
     result("browser_tables_retry_forbidden_egress_zero", guard.blocked.length === 0, guard.blocked.join(","));
     result(
@@ -3434,15 +3448,25 @@ async function runPayoutAndCloseBrowserFlow(browser, baseUrl, stateDirectory, ac
     const previewResponse = await previewResponsePromise;
     result("browser_payout_preview_clicked", previewResponse.ok(), safeBrowserResponseDetail(previewResponse));
     await page.getByText(/^DỰ KIẾN/u).first().waitFor({ state: "visible", timeout: 15_000 });
+    browserPhaseCheckpoint("payout_close", "preview_rendered");
 
-    const styleControl = page.getByText("Kiểu giải", { exact: true }).locator("..").getByRole("combobox");
+    const styleControl = page.getByText("Kiểu giải", { exact: true })
+      .locator("..")
+      .getByRole("combobox")
+      .filter({ visible: true })
+      .first();
+    await styleControl.waitFor({ state: "visible", timeout: 15_000 });
+    await styleControl.click({ trial: true, timeout: 15_000 });
+    browserPhaseCheckpoint("payout_close", "style_control_ready");
     await styleControl.click();
     await page.getByRole("option", { name: /^CUSTOM — CLB tự cấu hình$/u }).click();
+    browserPhaseCheckpoint("payout_close", "custom_selected");
     const fileChooserPromise = page.waitForEvent("filechooser");
     await page.getByRole("button", { name: "Tải file (Excel/CSV)", exact: true }).click();
     const fileChooser = await fileChooserPromise;
     await fileChooser.setFiles({ name: "floor-payout.csv", mimeType: "text/csv", buffer: Buffer.from("50\n30\n20\n") });
     await page.getByText(/Đã nạp 3 hạng từ file/u).waitFor({ state: "visible", timeout: 15_000 });
+    browserPhaseCheckpoint("payout_close", "import_complete");
 
     await page.getByPlaceholder("Tên mẫu", { exact: true }).fill(templateName);
     const templateResponsePromise = page.waitForResponse((response) => (

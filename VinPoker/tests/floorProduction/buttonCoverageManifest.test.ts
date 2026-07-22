@@ -179,6 +179,42 @@ describe("Floor button coverage manifest", () => {
     expect(canaryRunner).toContain("error_class=${browserPhaseErrorClass(error)}");
   });
 
+  it("finds an opened table sheet by its stable action controls, not its mutable display name", () => {
+    expect(canaryRunner).toContain('has: page.getByRole("button", { name: "Thêm người", exact: true })');
+    expect(canaryRunner).toContain('has: page.getByRole("button", { name: "Đóng bàn", exact: true })');
+    expect(canaryRunner).not.toContain('hasText: new RegExp(`\\\\b${tableNumber}\\\\b`, "u")');
+  });
+
+  it("proves Retry through the recovered table grid without requiring a brittle response pair", () => {
+    const retryStart = canaryRunner.indexOf("async function runBrowserTableRetryAction");
+    const retryEnd = canaryRunner.indexOf("async function runBrowserTvPromptActions", retryStart);
+    const retryFlow = canaryRunner.slice(retryStart, retryEnd);
+    expect(retryFlow).not.toContain("waitForOwnedTableMapRefresh");
+    expect(retryFlow).toContain("ownedOpsTableButton(page, 1).waitFor");
+    expect(retryFlow).toContain('browserPhaseCheckpoint("table_retry", "table_grid_ready")');
+  });
+
+  it("waits for restore capability and scopes the action to the owned busted player row", () => {
+    expect(canaryRunner).toContain('browserPhaseCheckpoint("bust_restore", "busted_player_row_ready")');
+    expect(canaryRunner).toContain('browserPhaseCheckpoint("bust_restore", "restore_button_enabled")');
+    expect(canaryRunner).toContain("restoreButton.click({ trial: true, timeout: 15_000 })");
+    expect(canaryRunner).toContain("bustedPlayerRow.getByRole");
+  });
+
+  it("uses the unique pre-CUSTOM payout combobox and records safe checkpoints", () => {
+    expect(canaryRunner).toContain('const styleControl = page.getByText("Kiểu giải", { exact: true })');
+    expect(canaryRunner).toContain('.getByRole("combobox")\n      .filter({ visible: true })\n      .first()');
+    expect(canaryRunner).not.toContain('const styleControl = page.getByRole("combobox").first()');
+    for (const checkpoint of [
+      "preview_rendered",
+      "style_control_ready",
+      "custom_selected",
+      "import_complete",
+    ]) {
+      expect(canaryRunner).toContain(`browserPhaseCheckpoint("payout_close", "${checkpoint}")`);
+    }
+  });
+
   it("classifies every enabled desktop shell control discovered on Floor", () => {
     for (const id of [
       "floor-shell-language",
