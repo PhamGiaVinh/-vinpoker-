@@ -10,7 +10,7 @@ import type { UseFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { floorOpsErrorMessage, floorOpsResponseErrorCode } from "@/lib/floorOpsErrors";
 
 type UnappliedFloorRpcResult = { data: unknown; error: { message?: string; code?: string } | null };
-const untypedFloorRpc = supabase.rpc as unknown as (
+const untypedFloorRpc = supabase.rpc.bind(supabase) as unknown as (
   name: string,
   args: Record<string, unknown>,
 ) => Promise<UnappliedFloorRpcResult>;
