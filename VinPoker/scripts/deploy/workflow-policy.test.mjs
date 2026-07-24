@@ -77,6 +77,17 @@ test("target preflight invokes catalog tooling from the control-plane checkout",
   assert.doesNotMatch(targetPreflight, /node control-plane\/VinPoker\/scripts\/deploy\/capture-live-schema-contract-catalog\.mjs/);
 });
 
+test("frontend-only target preflight skips the unused full schema dump but keeps the catalog gate", () => {
+  const targetPreflight = workflow.slice(workflow.indexOf("target-preflight:"), workflow.indexOf("validate-critical-environment:"));
+  assert.match(targetPreflight, /CRITICAL_TARGETS: \$\{\{ needs\.plan\.outputs\.critical_functions \}\}/);
+  assert.match(
+    targetPreflight,
+    /if \[\[ "\$\{CRITICAL_TARGETS\}" != "\[\]" \]\]; then\s+# Critical Edge deployments retain the full schema dump as offline evidence\.\s+supabase db dump --linked --schema public --file "\$\{RUNNER_TEMP\}\/live-schema\.sql"\s+fi/,
+  );
+  assert.match(targetPreflight, /capture-live-schema-contract-catalog\.mjs/);
+  assert.match(targetPreflight, /Probe frontend live contracts/);
+});
+
 test("profile-specific Deno tests run only for the exact derived target contract", () => {
   const stepStart = workflow.indexOf("- name: Run current policy and target Deno tests");
   const stepEnd = workflow.indexOf("\n      - name:", stepStart + 1);
