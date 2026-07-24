@@ -45,7 +45,7 @@ function runId() {
 function requireContext(environment = process.env) {
   for (const name of [
     "FLOOR_UAT_ENV", "FLOOR_UAT_CONFIRM", "FLOOR_UAT_OPERATION", "FLOOR_UAT_RUN_ID",
-    "SUPABASE_PROJECT_REF", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "GITHUB_REF",
+    "SUPABASE_PROJECT_REF", "SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "GITHUB_REF",
   ]) if (!environment[name] && name !== "FLOOR_UAT_RUN_ID") fail(`missing_${name.toLowerCase()}`);
   if (environment.FLOOR_UAT_ENV !== "production-test") fail("floor_uat_env_invalid");
   if (environment.FLOOR_UAT_CONFIRM !== CONFIRMATION) fail("floor_uat_confirmation_missing");
@@ -57,6 +57,7 @@ function requireContext(environment = process.env) {
   return {
     operation: environment.FLOOR_UAT_OPERATION,
     url: environment.SUPABASE_URL,
+    anonKey: environment.SUPABASE_ANON_KEY,
     serviceKey: environment.SUPABASE_SERVICE_ROLE_KEY,
     cleanupRunId: environment.FLOOR_UAT_RUN_ID ?? null,
   };
@@ -75,7 +76,7 @@ async function removeUsers(admin, ids) {
   }
 }
 
-async function createTestUser(admin, id, label, ownedUsers) {
+async function createTestUser(admin, anonKey, url, id, label, ownedUsers) {
   // Mirror the exact Auth TEST identity convention exercised by the production
   // canary. The UAT marker remains in the registration reference, never email.
   const authRunId = id.replace("CODEX_FLOOR_UAT_", "CODEX_FLOOR_CANARY_");
@@ -93,7 +94,16 @@ async function createTestUser(admin, id, label, ownedUsers) {
     .eq("user_id", userId)
     .select("user_id");
   if (profile.error || profile.data?.length !== 1) fail(`floor_uat_profile_${label}_failed`);
-  return userId;
+  const client = createClient(url, anonKey, {
+    ...NODE_REALTIME_OPTIONS,
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const signedIn = await client.auth.signInWithPassword({ email, password });
+  if (signedIn.error || !signedIn.data.session) {
+    console.log(`FLOOR_UAT AUTH_SIGNIN_FAIL label=${label} ${safeAuthError(signedIn.error)}`);
+    fail(`floor_uat_sign_in_${label}_failed`);
+  }
+  return { id: userId, client };
 }
 
 async function targetTournament(admin) {
@@ -109,24 +119,29 @@ async function targetTournament(admin) {
   return tournament;
 }
 
-async function provision(admin) {
+async function provision(admin, context) {
   const id = runId();
-  const owned = { users: [], registrations: [], entries: [], seats: [] };
+  const owned = { users: [], registrations: [], entries: [], seats: [], cashierMemberships: [] };
   try {
     const tournament = await targetTournament(admin);
-    const provisioner = await createTestUser(admin, id, "owner", owned.users);
+    const provisioner = await createTestUser(admin, context.anonKey, context.url, id, "owner", owned.users);
+    const membership = await admin.from("club_cashiers").insert({
+      club_id: tournament.club_id, user_id: provisioner.id, granted_by: null,
+    }).select("club_id,user_id").single();
+    if (membership.error || !membership.data) fail("floor_uat_provisioner_membership_failed");
+    owned.cashierMemberships.push(membership.data);
     const players = [];
-    for (const label of ["cashier", "floor"]) players.push(await createTestUser(admin, id, label, owned.users));
+    for (const label of ["cashier", "floor"]) players.push(await createTestUser(admin, context.anonKey, context.url, id, label, owned.users));
     const registrationIds = [];
-    for (const [index, playerId] of players.entries()) {
+    for (const [index, player] of players.entries()) {
       const registration = await one(admin.from("tournament_registrations").insert({
-        tournament_id: tournament.id, club_id: tournament.club_id, player_id: playerId,
+        tournament_id: tournament.id, club_id: tournament.club_id, player_id: player.id,
         reference_code: `${id}_P${index + 1}`, buy_in: TARGET.buyIn, total_pay: 0,
         status: "pending", transfer_proof_submitted: false, used_free_rake: false,
       }).select("id").single(), `floor_uat_registration_${index + 1}_failed`);
       owned.registrations.push(registration.id);
-      const confirmed = await admin.rpc("confirm_registration_and_assign_seat", {
-        p_registration_id: registration.id, p_actor_user_id: provisioner, p_draw_mode: "fill_lowest_table",
+      const confirmed = await provisioner.client.rpc("confirm_registration_and_assign_seat", {
+        p_registration_id: registration.id, p_actor_user_id: provisioner.id, p_draw_mode: "fill_lowest_table",
       });
       if (confirmed.error || confirmed.data?.ok !== true || typeof confirmed.data.entry_id !== "string") {
         const rpcCode = typeof confirmed.error?.code === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(confirmed.error.code) ? confirmed.error.code : "unknown";
@@ -137,14 +152,19 @@ async function provision(admin) {
         .select("id,registration_id,player_id,status,seat_id").eq("id", confirmed.data.entry_id).single(), `floor_uat_entry_${index + 1}_failed`);
       const seat = await one(admin.from("tournament_seats")
         .select("id,entry_id,player_id,is_active").eq("id", entry.seat_id).single(), `floor_uat_seat_${index + 1}_failed`);
-      if (entry.registration_id !== registration.id || entry.player_id !== playerId || entry.status !== "seated" || seat.entry_id !== entry.id || seat.player_id !== playerId || seat.is_active !== true) fail(`floor_uat_entry_link_${index + 1}_invalid`);
+      if (entry.registration_id !== registration.id || entry.player_id !== player.id || entry.status !== "seated" || seat.entry_id !== entry.id || seat.player_id !== player.id || seat.is_active !== true) fail(`floor_uat_entry_link_${index + 1}_invalid`);
       owned.entries.push(entry.id);
       owned.seats.push(seat.id);
       registrationIds.push(registration.id);
     }
     console.log(`FLOOR_UAT PROVISION_PASS run_hash=${awaitableHash(id)} registrations=${registrationIds.length} players=${players.length} payment_actions=0`);
-    console.log("FLOOR_UAT CLEANUP_REQUIRED operation=cleanup exact_run_id_recorded=true");
+    console.log(`FLOOR_UAT CLEANUP_HANDLE run_id=${id}`);
   } catch (error) {
+    for (const membership of owned.cashierMemberships) {
+      const deleted = await admin.from("club_cashiers").delete()
+        .eq("club_id", membership.club_id).eq("user_id", membership.user_id);
+      if (deleted.error) fail("floor_uat_recovery_cashier_membership_failed");
+    }
     for (const [table, column, ids] of [["seat_assignment_history", "entry_id", owned.entries], ["seat_draw_receipts", "entry_id", owned.entries], ["tournament_seats", "id", owned.seats], ["tournament_entries", "id", owned.entries], ["tournament_registrations", "id", owned.registrations]]) {
       if (ids.length) {
         const deleted = await admin.from(table).delete().in(column, ids);
@@ -152,18 +172,20 @@ async function provision(admin) {
       }
     }
     if (owned.users.length) await removeUsers(admin, owned.users);
-    console.log(`FLOOR_UAT RECOVERY_CLEANUP_PASS users=${owned.users.length} registrations=${owned.registrations.length} entries=${owned.entries.length} seats=${owned.seats.length}`);
+    console.log(`FLOOR_UAT RECOVERY_CLEANUP_PASS users=${owned.users.length} cashier_memberships=${owned.cashierMemberships.length} registrations=${owned.registrations.length} entries=${owned.entries.length} seats=${owned.seats.length}`);
     throw error;
   }
 }
 
 async function cleanup(admin, id) {
   const registrations = await admin.from("tournament_registrations")
-    .select("id,player_id,confirmed_by").like("reference_code", `${id}_P%`);
+    .select("id,player_id,confirmed_by,club_id").like("reference_code", `${id}_P%`);
   if (registrations.error || !registrations.data || registrations.data.length !== 2) fail("floor_uat_cleanup_registration_scope_invalid");
   const playerIds = registrations.data.map((row) => row.player_id);
   const provisioners = [...new Set(registrations.data.map((row) => row.confirmed_by).filter(Boolean))];
   if (provisioners.length !== 1) fail("floor_uat_cleanup_provisioner_scope_invalid");
+  const clubIds = [...new Set(registrations.data.map((row) => row.club_id).filter(Boolean))];
+  if (clubIds.length !== 1) fail("floor_uat_cleanup_club_scope_invalid");
   const registrationIds = registrations.data.map((row) => row.id);
   const entries = await admin.from("tournament_entries").select("id,seat_id").in("registration_id", registrationIds);
   if (entries.error || !entries.data || entries.data.length !== 2) fail("floor_uat_cleanup_entry_scope_invalid");
@@ -173,8 +195,11 @@ async function cleanup(admin, id) {
     const deleted = await admin.from(table).delete().in(column, ids);
     if (deleted.error) fail(`floor_uat_cleanup_${table}_failed`);
   }
+  const membership = await admin.from("club_cashiers").delete()
+    .eq("club_id", clubIds[0]).eq("user_id", provisioners[0]);
+  if (membership.error) fail("floor_uat_cleanup_cashier_membership_failed");
   await removeUsers(admin, [...playerIds, provisioners[0]]);
-  console.log(`FLOOR_UAT CLEANUP_PASS run_hash=${awaitableHash(id)} users=3 registrations=2 entries=2 seats=${seatIds.length} payment_actions=0`);
+  console.log(`FLOOR_UAT CLEANUP_PASS run_hash=${awaitableHash(id)} users=3 cashier_memberships=1 registrations=2 entries=2 seats=${seatIds.length} payment_actions=0`);
 }
 
 export { CONFIRMATION, RUN_ID_RE, requireContext };
@@ -185,7 +210,7 @@ async function main() {
     ...NODE_REALTIME_OPTIONS,
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  if (context.operation === "provision") await provision(admin);
+  if (context.operation === "provision") await provision(admin, context);
   else await cleanup(admin, context.cleanupRunId);
 }
 

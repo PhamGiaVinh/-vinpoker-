@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { requireContext } from "../../scripts/floor/floor-uat-test-provision.mjs";
@@ -9,6 +10,7 @@ const valid = {
   FLOOR_UAT_OPERATION: "provision",
   SUPABASE_PROJECT_REF: "orlesggcjamwuknxwcpk",
   SUPABASE_URL: "https://orlesggcjamwuknxwcpk.supabase.co",
+  SUPABASE_ANON_KEY: "test-anon",
   SUPABASE_SERVICE_ROLE_KEY: "test-service",
   GITHUB_REF: "refs/heads/codex/floor-production-canary",
 };
@@ -35,4 +37,13 @@ test("cleanup requires one exact UAT run identifier", () => {
     FLOOR_UAT_OPERATION: "cleanup",
     FLOOR_UAT_RUN_ID: "CODEX_FLOOR_UAT_20990101120000_aaaaaaaa",
   }).operation, "cleanup");
+});
+
+test("uses a TEST cashier membership and authenticated actor JWT for confirmation", async () => {
+  const source = await readFile(new URL("../../scripts/floor/floor-uat-test-provision.mjs", import.meta.url), "utf8");
+  assert.match(source, /from\("club_cashiers"\)\.insert/);
+  assert.match(source, /from\("club_cashiers"\)\.delete/);
+  assert.match(source, /client\.auth\.signInWithPassword/);
+  assert.match(source, /provisioner\.client\.rpc\("confirm_registration_and_assign_seat"/);
+  assert.doesNotMatch(source, /user_roles/);
 });
