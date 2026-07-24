@@ -19,6 +19,8 @@
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { loadCandidateActiveBreaks } from "./candidateBreaks.ts";
+import { candidateSnapshotFailureDiagnostic } from "./candidateSnapshotTelemetry.ts";
 import { getFeatureTablePoolIds, getReservedDealerIds } from "./featureTableGate.ts"; // Patch 5b/5d: feature/final pool gate + reserved exclusivity
 import { classifyPostgrestError } from "./postgrestError.ts";
 import { SWING_POLICY } from "./swingPolicy.ts";
@@ -168,10 +170,30 @@ interface CandidateQueryError {
   message?: string | null;
 }
 
-function candidateQueryFailure(error: unknown, stage: string): BuildCandidatesResult {
+function candidateQueryFailure(
+  error: unknown,
+  stage: string,
+  context?: {
+    inputCount: number;
+    durationMs: number;
+    responseStatus?: number | null;
+    stableErrorCode?: string;
+  },
+): BuildCandidatesResult {
   const { status } = classifyPostgrestError(error);
-  const errorCode = `candidate_${stage}_${status}`;
-  console.error(`[pickNextDealer] ${errorCode}`);
+  const errorCode = context?.stableErrorCode ?? `candidate_${stage}_${status}`;
+  if (context) {
+    // Deliberately structured and sanitized: no provider message, IDs, URL, or headers.
+    console.error(JSON.stringify(candidateSnapshotFailureDiagnostic(
+      stage,
+      error,
+      context.responseStatus,
+      context.inputCount,
+      context.durationMs,
+    )));
+  } else {
+    console.error(`[pickNextDealer] ${errorCode}`);
+  }
   return { candidates: [], avgBreakRatio: null, status, errorCode };
 }
 
@@ -195,12 +217,6 @@ interface AttendancePoolRow {
   };
 }
 
-interface ActiveBreakRow {
-  assignment_id: string | null;
-  attendance_id: string | null;
-  break_start: string;
-}
-
 interface DealerIdRow {
   id: string;
 }
@@ -221,11 +237,6 @@ interface LastAssignmentRow {
   attendance_id: string;
   table_id: string | null;
   game_tables: { tour_tier: string | null } | null;
-}
-
-interface AttendanceAssignmentRow {
-  id: string;
-  attendance_id: string;
 }
 
 interface BusyDealerRow {
@@ -499,53 +510,53 @@ export async function buildDealerCandidates(
     }
   }
 
-  const activeBreakMap = new Map<string, string>();
+  let activeBreakMap = new Map<string, string>();
   if (attendanceIds.length > 0) {
-    const { data: attendanceAssignments, error: attendanceAssignmentsError } = (await admin
-      .from("dealer_assignments")
-      .select("id, attendance_id")
-      .in("attendance_id", attendanceIds)) as unknown as {
-        data: AttendanceAssignmentRow[] | null;
-        error: CandidateQueryError | null;
-      };
-    if (attendanceAssignmentsError) return candidateQueryFailure(attendanceAssignmentsError, "attendance_assignments");
-    const attendanceAssignmentIds = (attendanceAssignments ?? []).map((a) => a.id);
-    const { data: activeAttendanceBreaks, error: activeAttendanceBreaksError } = (await admin
-      .from("dealer_breaks")
-      .select("attendance_id, break_start")
-      .is("break_end", null)
-      .in("attendance_id", attendanceIds)) as unknown as {
-        data: ActiveBreakRow[] | null;
-        error: CandidateQueryError | null;
-      };
-    if (activeAttendanceBreaksError) return candidateQueryFailure(activeAttendanceBreaksError, "attendance_breaks");
-
-    for (const row of activeAttendanceBreaks ?? []) {
-      if (row.attendance_id && !activeBreakMap.has(row.attendance_id)) {
-        activeBreakMap.set(row.attendance_id, row.break_start);
-      }
+    const activeBreakResult = await loadCandidateActiveBreaks(attendanceIds, {
+      loadAttendanceLinked: async (attendanceIdChunk) => {
+        const response = await admin
+          .from("dealer_breaks")
+          .select("attendance_id, break_start")
+          .is("break_end", null)
+          .in("attendance_id", attendanceIdChunk) as {
+            data: { attendance_id: string | null; break_start: string }[] | null;
+            error: CandidateQueryError | null;
+            status?: number | null;
+          };
+        return { data: response.data, error: response.error, status: response.status };
+      },
+      // Legacy break rows predate attendance_id. Filtering through the FK keeps
+      // the lookup exact without expanding a current attendance into all history.
+      loadLegacyAssignmentLinked: async (attendanceIdChunk) => {
+        const response = await admin
+          .from("dealer_breaks")
+          .select("assignment_id, break_start, dealer_assignments!inner(attendance_id)")
+          .is("break_end", null)
+          .is("attendance_id", null)
+          .in("dealer_assignments.attendance_id", attendanceIdChunk) as {
+            data: {
+              assignment_id: string | null;
+              break_start: string;
+              dealer_assignments: { attendance_id: string | null } | null;
+            }[] | null;
+            error: CandidateQueryError | null;
+            status?: number | null;
+          };
+        return { data: response.data, error: response.error, status: response.status };
+      },
+    });
+    if (!activeBreakResult.ok) {
+      const { failure } = activeBreakResult;
+      return candidateQueryFailure(failure.error, failure.stage, {
+        inputCount: failure.inputCount,
+        durationMs: failure.durationMs,
+        responseStatus: failure.responseStatus,
+        stableErrorCode: failure.stage === "assignment_breaks"
+          ? "candidate_assignment_breaks_query_failed"
+          : undefined,
+      });
     }
-
-    if (attendanceAssignmentIds.length > 0) {
-      const { data: activeBreakRows, error: activeBreakRowsError } = (await admin
-        .from("dealer_breaks")
-        .select("assignment_id, break_start")
-        .is("break_end", null)
-        .in("assignment_id", attendanceAssignmentIds)) as unknown as {
-          data: ActiveBreakRow[] | null;
-          error: CandidateQueryError | null;
-        };
-      if (activeBreakRowsError) return candidateQueryFailure(activeBreakRowsError, "assignment_breaks");
-      if ((activeBreakRows ?? []).length > 0) {
-        for (const row of activeBreakRows ?? []) {
-          if (!row.assignment_id) continue;
-          const assignment = (attendanceAssignments ?? []).find((a) => a.id === row.assignment_id);
-          if (assignment && !activeBreakMap.has(assignment.attendance_id)) {
-            activeBreakMap.set(assignment.attendance_id, row.break_start);
-          }
-        }
-      }
-    }
+    activeBreakMap = activeBreakResult.activeBreakByAttendanceId;
   }
 
   // Step 5: Exclude dealers who are ALREADY BUSY at any table.

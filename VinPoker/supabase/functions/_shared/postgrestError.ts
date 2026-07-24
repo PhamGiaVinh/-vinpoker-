@@ -17,16 +17,45 @@ const DEPENDENCY_ERROR_CODES = new Set([
 const DEPENDENCY_ERROR_MESSAGE =
   /schema cache|does not exist|could not find the (table|column|function|relationship)/i;
 
-function errorFields(error: unknown): { code: string; message: string } {
+export function normalizeHttpStatus(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 400 && value <= 599
+    ? value
+    : null;
+}
+
+function errorFields(error: unknown): { code: string; message: string; httpStatus: number | null } {
   if (!error || typeof error !== "object") {
-    return { code: "", message: String(error ?? "") };
+    return { code: "", message: String(error ?? ""), httpStatus: null };
   }
 
-  const value = error as { code?: unknown; message?: unknown };
+  const value = error as { code?: unknown; message?: unknown; status?: unknown; statusCode?: unknown };
+  const rawStatus = value.status ?? value.statusCode;
+  const httpStatus = normalizeHttpStatus(rawStatus);
   return {
     code: String(value.code ?? "").toUpperCase(),
     message: String(value.message ?? ""),
+    httpStatus,
   };
+}
+
+/** Returns only a validated HTTP status; provider messages and headers are never retained. */
+export function postgrestHttpStatus(error: unknown): number | null {
+  return errorFields(error).httpStatus;
+}
+
+/**
+ * Supabase returns HTTP status beside `error`, not inside it. A top-level
+ * response status therefore wins whenever it exists; embedded fields remain a
+ * compatibility fallback for custom clients that omit the response status.
+ */
+export function resolvePostgrestHttpStatus(
+  responseStatus: unknown,
+  error: unknown,
+): number | null {
+  if (responseStatus !== undefined && responseStatus !== null) {
+    return normalizeHttpStatus(responseStatus);
+  }
+  return postgrestHttpStatus(error);
 }
 
 export function classifyPostgrestError(error: unknown): PostgrestFailureClassification {
