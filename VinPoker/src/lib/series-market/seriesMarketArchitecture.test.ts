@@ -102,10 +102,19 @@ describe("series-market public/private architecture boundary", () => {
       "privateregistrationpace",
       "clubfinance",
     ];
-    const keys = contractPropertyNames(`${MARKET}/contracts.ts`).map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, ""));
+    const keys = [
+      ...contractPropertyNames(`${MARKET}/contracts.ts`),
+      ...contractPropertyNames(`${MARKET}/researchRun.ts`),
+    ].map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, ""));
     for (const key of keys) {
       for (const blocked of forbidden) expect(key).not.toContain(blocked);
     }
+  });
+
+  it("keeps the R1 research contract layer pure and free of later-wave artifacts", () => {
+    const source = readFileSync(join(ROOT, `${MARKET}/researchRun.ts`), "utf8");
+    expect(source).not.toMatch(/(?:Date\.now|Math\.random|randomUUID|fetch\s*\(|supabase|react|@\/components|@\/pages)/i);
+    expect(source).not.toMatch(/\b(?:ResearchArtifact|FoldPrediction|EvaluationReport|ModelCard|GtdStress)\b/);
   });
 
   it("allows only the named PR4 one-way runtime callers", () => {
