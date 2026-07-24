@@ -7,6 +7,7 @@ on:
       - ".github/workflows/floor-clock-control-apply.yml"
       - ".github/workflows/floor-operator-scope-acl-apply.yml"
       - ".github/workflows/dealer-shortage-alert-lifecycle-apply.yml"
+      - ".github/workflows/dealer-swing-dark-monitor.yml"
       - ".github/workflows/deployment-control-plane-validation.yml"
       - "VinPoker/scripts/floor/apply-floor-clock-control.mjs"
       - "VinPoker/scripts/floor/apply-floor-clock-control.test.mjs"
@@ -15,6 +16,8 @@ on:
       - "VinPoker/scripts/dealer-swing/shortage-alert-migration-policy.mjs"
       - "VinPoker/scripts/dealer-swing/apply-shortage-alert-lifecycle.mjs"
       - "VinPoker/scripts/dealer-swing/apply-shortage-alert-lifecycle.test.mjs"
+      - "VinPoker/scripts/dealer-swing/monitor-process-swing-dark.mjs"
+      - "VinPoker/scripts/dealer-swing/monitor-process-swing-dark.test.mjs"
       - "VinPoker/supabase/migrations/20270104000004_floor_clock_control_atomic.sql"
       - "VinPoker/supabase/migrations/20270104000005_floor_operator_scope_acl.sql"
       - "VinPoker/supabase/migrations/20270104000006_dealer_shortage_alert_lifecycle.sql"
@@ -57,6 +60,7 @@ jobs:
             .github/workflows/floor-clock-control-apply.yml \
             .github/workflows/floor-operator-scope-acl-apply.yml \
             .github/workflows/dealer-shortage-alert-lifecycle-apply.yml \
+            .github/workflows/dealer-swing-dark-monitor.yml \
             .github/workflows/deployment-control-plane-validation.yml
 
       - name: Setup Node.js 20 for Floor runner tests
