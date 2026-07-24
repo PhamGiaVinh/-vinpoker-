@@ -71,9 +71,10 @@ async function removeUsers(admin, ids) {
 }
 
 async function createTestUser(admin, id, label, ownedUsers) {
-  // The production canary has already proved this isolated TEST domain against
-  // the current Auth configuration; do not introduce a second unverified domain.
-  const email = `${id.toLowerCase()}-${label}@floor-canary.invalid`;
+  // Mirror the exact Auth TEST identity convention exercised by the production
+  // canary. The UAT marker remains in the registration reference, never email.
+  const authRunId = id.replace("CODEX_FLOOR_UAT_", "CODEX_FLOOR_CANARY_");
+  const email = `${authRunId.toLowerCase()}-${label}@floor-canary.invalid`;
   const password = `FloorUat-${randomBytes(24).toString("base64url")}`;
   const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
   if (created.error || !created.data.user) {
@@ -108,9 +109,9 @@ async function provision(admin) {
   const owned = { users: [], registrations: [], entries: [], seats: [] };
   try {
     const tournament = await targetTournament(admin);
-    const provisioner = await createTestUser(admin, id, "provisioner", owned.users);
+    const provisioner = await createTestUser(admin, id, "owner", owned.users);
     const players = [];
-    for (const label of ["player1", "player2"]) players.push(await createTestUser(admin, id, label, owned.users));
+    for (const label of ["cashier", "floor"]) players.push(await createTestUser(admin, id, label, owned.users));
     const registrationIds = [];
     for (const [index, playerId] of players.entries()) {
       const registration = await one(admin.from("tournament_registrations").insert({
