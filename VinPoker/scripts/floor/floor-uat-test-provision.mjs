@@ -71,7 +71,9 @@ async function removeUsers(admin, ids) {
 }
 
 async function createTestUser(admin, id, label, ownedUsers) {
-  const email = `${id.toLowerCase()}-${label}@floor-uat.invalid`;
+  // The production canary has already proved this isolated TEST domain against
+  // the current Auth configuration; do not introduce a second unverified domain.
+  const email = `${id.toLowerCase()}-${label}@floor-canary.invalid`;
   const password = `FloorUat-${randomBytes(24).toString("base64url")}`;
   const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
   if (created.error || !created.data.user) {
