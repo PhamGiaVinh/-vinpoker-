@@ -14,6 +14,12 @@ const NODE_REALTIME_OPTIONS = { realtime: { transport: WebSocket } };
 
 function fail(code) { throw new Error(code); }
 
+function safeAuthError(error) {
+  const status = Number.isInteger(error?.status) ? String(error.status) : "unknown";
+  const code = typeof error?.code === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(error.code) ? error.code : "unknown";
+  return `status=${status} code=${code}`;
+}
+
 // Node's crypto hash is deliberately kept out of operational logging: these labels
 // identify the run, never a user, session, or credential.
 function awaitableHash(value) {
@@ -68,7 +74,10 @@ async function createTestUser(admin, id, label, ownedUsers) {
   const email = `${id.toLowerCase()}-${label}@floor-uat.invalid`;
   const password = `FloorUat-${randomBytes(24).toString("base64url")}`;
   const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
-  if (created.error || !created.data.user) fail(`floor_uat_create_${label}_failed`);
+  if (created.error || !created.data.user) {
+    console.log(`FLOOR_UAT AUTH_CREATE_FAIL label=${label} ${safeAuthError(created.error)}`);
+    fail(`floor_uat_create_${label}_failed`);
+  }
   const userId = created.data.user.id;
   ownedUsers.push(userId);
   const profile = await admin.from("profiles")
