@@ -24,7 +24,7 @@ test("Edge-only deployment keeps Vercel out of scope", () => {
   }), []);
 });
 
-test("frontend deployment fails closed when the Vercel credential is absent", () => {
+test("frontend deployment fails closed when the Vercel target binding is absent", () => {
   const scope = credentialScope({ selectedFunctions: [], deployFrontend: true });
   assert.equal(scope.Vercel, "IN_SCOPE");
   assert.deepEqual(missingScopedCredentials(scope, {
@@ -33,7 +33,19 @@ test("frontend deployment fails closed when the Vercel credential is absent", ()
     SUPABASE_DB_PASSWORD: "set",
     SUPABASE_PROJECT_REF: "set",
     VITE_SUPABASE_PUBLISHABLE_KEY: "set",
-  }), ["VERCEL_TOKEN"]);
+    VERCEL_TOKEN: "set",
+  }), ["VERCEL_ORG_ID", "VERCEL_PROJECT_ID"]);
+
+  assert.deepEqual(missingScopedCredentials(scope, {
+    GITHUB_TOKEN: "set",
+    SUPABASE_ACCESS_TOKEN: "set",
+    SUPABASE_DB_PASSWORD: "set",
+    SUPABASE_PROJECT_REF: "set",
+    VITE_SUPABASE_PUBLISHABLE_KEY: "set",
+    VERCEL_TOKEN: "set",
+    VERCEL_ORG_ID: "set",
+    VERCEL_PROJECT_ID: "set",
+  }), []);
 });
 
 test("an empty plan has no credential scope and never returns values", () => {

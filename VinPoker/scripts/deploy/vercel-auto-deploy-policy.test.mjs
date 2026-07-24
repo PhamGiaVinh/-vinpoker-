@@ -50,5 +50,8 @@ test("Vercel CLI remains limited to the explicit frontend deployment path", () =
   assert.match(workflow, /--deploy-frontend "\$DEPLOY_FRONTEND"/);
   assert.doesNotMatch(edgeJob, /\bvercel\b/i);
   assert.match(frontendJob, /needs\.plan\.outputs\.frontend == 'true'/);
+  assert.match(frontendJob, /environment:\s*\n\s*name: dealer-swing-production-critical/);
+  assert.match(frontendJob, /VERCEL_ORG_ID: \$\{\{ secrets\.USERIDVERRCEL \}\}/);
+  assert.match(frontendJob, /VERCEL_PROJECT_ID: \$\{\{ secrets\.VERCELPROJECTID \}\}/);
   assert.match(frontendJob, /vercel deploy --prebuilt --prod/);
 });
