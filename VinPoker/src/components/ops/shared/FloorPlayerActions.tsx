@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PlayerActionSheets } from "@/components/ops/shared/PlayerActionSheets";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
-import type { MapSeat } from "@/components/ops/shared/floorAdapter";
+import { buildEligibleFloorMoveTargets, type MapSeat } from "@/components/ops/shared/floorAdapter";
 import type { MockSeat } from "@/components/ops/mock/opsData";
 import type { UseFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { floorOpsErrorMessage, floorOpsResponseErrorCode } from "@/lib/floorOpsErrors";
@@ -112,11 +112,10 @@ export function FloorPlayerActions({
 
   // Chuyển ghế (move_player_seat). Ghế trống mỗi bàn từ get_seats hiện tại; entry_id KHÔNG có trong
   // get_seats → tra tournament_seats theo seat_id (đúng cách desktop MovePlayerDialog).
-  const moveTargets = useMemo(() => floor.tables.map((tb) => {
-    const occ = new Set((floor.seatsByTable[tb.table_id] ?? []).filter((x) => x.is_active).map((x) => x.seat_number));
-    const freeSeats = Array.from({ length: tb.max_seats }, (_, i) => i + 1).filter((n) => !occ.has(n));
-    return { tt_id: tb.tt_id, table_number: tb.table_number, freeSeats };
-  }).filter((tb) => tb.freeSeats.length > 0), [floor.tables, floor.seatsByTable]);
+  const moveTargets = useMemo(
+    () => buildEligibleFloorMoveTargets(floor.tables, floor.seatsByTable),
+    [floor.tables, floor.seatsByTable],
+  );
   const movePlayer = useCallback(async (toTtId: string, toSeat: number, reason: string): Promise<boolean> => {
     if (!real || !tournamentId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
     try {

@@ -53,6 +53,32 @@ export function buildSeatsByTable(
   return grouped;
 }
 
+/**
+ * Destination candidates must match the server contract in move_player_seat and
+ * restore_busted_player_to_seat: a table belongs to this tournament, is active,
+ * has a linked game table, and has an actually free seat. Keeping closed or
+ * unlinked tables out of the UI prevents a guaranteed invalid_destination_table.
+ */
+export function buildEligibleFloorMoveTargets(
+  tables: MapTable[],
+  seatsByTable: Record<string, MapSeat[]>,
+): { tt_id: string; table_number: number | null; freeSeats: number[] }[] {
+  return tables
+    .filter((table) => table.status === "active" && Boolean(table.table_id))
+    .map((table) => {
+      const occupied = new Set(
+        (seatsByTable[table.table_id] ?? [])
+          .filter((seat) => seat.is_active)
+          .map((seat) => seat.seat_number),
+      );
+      const maxSeats = table.max_seats ?? 9;
+      const freeSeats = Array.from({ length: maxSeats }, (_, index) => index + 1)
+        .filter((seatNumber) => !occupied.has(seatNumber));
+      return { tt_id: table.tt_id, table_number: table.table_number, freeSeats };
+    })
+    .filter((table) => table.freeSeats.length > 0);
+}
+
 // ── Chip display (P1-3): phân biệt null/undefined ("—") với 0 ("0") ────────────
 // CẤM dùng `chip_count || "—"` — 0 chip là dữ liệu thật, phải hiện "0".
 export function chipDisplay(n: number | null | undefined): string {
