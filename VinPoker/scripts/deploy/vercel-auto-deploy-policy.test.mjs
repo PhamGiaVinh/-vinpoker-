@@ -48,6 +48,9 @@ test("Vercel CLI remains limited to the explicit frontend deployment path", () =
 
   assert.match(workflow, /DEPLOY_FRONTEND: \$\{\{ inputs\.deploy_frontend \|\| false \}\}/);
   assert.match(workflow, /--deploy-frontend "\$DEPLOY_FRONTEND"/);
+  assert.match(workflow, /force_frontend_redeploy:\s*\n\s*description: "Recovery only:/);
+  assert.match(workflow, /FORCE_FRONTEND_REDEPLOY: \$\{\{ inputs\.force_frontend_redeploy \|\| false \}\}/);
+  assert.match(workflow, /--force-frontend-redeploy "\$FORCE_FRONTEND_REDEPLOY"/);
   assert.doesNotMatch(edgeJob, /\bvercel\b/i);
   assert.match(frontendJob, /needs\.plan\.outputs\.frontend == 'true'/);
   assert.match(frontendJob, /environment:\s*\n\s*name: dealer-swing-production-critical/);
