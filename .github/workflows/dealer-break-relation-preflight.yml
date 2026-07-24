@@ -59,10 +59,10 @@ jobs:
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$TARGET_SHA" origin/main
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: VinPoker/package-lock.json
 
