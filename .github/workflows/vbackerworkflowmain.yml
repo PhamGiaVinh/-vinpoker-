@@ -463,6 +463,8 @@ jobs:
       - target-preflight
       - deploy-critical-edge
     runs-on: ubuntu-latest
+    environment:
+      name: dealer-swing-production-critical
     steps:
       - name: Checkout reviewed control-plane tooling
         uses: actions/checkout@v4
@@ -522,7 +524,7 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-          VERCEL_TOKEN: ${{ secrets.VERCELTOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
       - name: Build exact frontend source
         run: npm run build
@@ -535,7 +537,7 @@ jobs:
         shell: bash
         working-directory: target-source
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCELTOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
           vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
