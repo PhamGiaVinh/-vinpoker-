@@ -14,6 +14,14 @@ describe("close-table client containment", () => {
     expect(parseCloseTableResult({ ok: true, closed: true, moved_count: 1, moved: [move] }, 1)).toMatchObject({ kind: "success" });
   });
 
+  it("accepts the legacy empty-table success shape only for an empty source table", () => {
+    expect(parseCloseTableResult({ ok: true, closed: true, moved: [] }, 0)).toMatchObject({ kind: "success" });
+    expect(parseCloseTableResult({ ok: true, closed: true, moved: [] }, 1)).toMatchObject({
+      kind: "error",
+      code: "invalid_response",
+    });
+  });
+
   it("never renders a zero-move response as success for a populated source table", () => {
     expect(parseCloseTableResult({ ok: true, closed: true, moved_count: 0, moved: [] }, 1)).toMatchObject({
       kind: "error",

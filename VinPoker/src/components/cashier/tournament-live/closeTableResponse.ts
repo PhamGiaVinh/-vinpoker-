@@ -59,20 +59,39 @@ export function parseCloseTableResult(value: unknown, sourceActiveSeats: number)
   if (!response.ok || response.closed !== true) {
     return { kind: "error", response, code: response.error ?? "close_failed" };
   }
-  if (!Array.isArray(response.moved) || !Number.isInteger(response.moved_count) || response.moved_count < 0) {
+  if (!Array.isArray(response.moved)) {
     return { kind: "error", response, code: "invalid_response" };
   }
-  if (response.moved.length !== response.moved_count) {
+
+  // The legacy empty-table branch confirms `closed: true` with `moved: []`,
+  // but omits `moved_count`. Normalize that one unambiguous shape only: a
+  // populated source still needs a complete, server-issued move receipt.
+  const movedCount = response.moved_count === undefined
+    && sourceActiveSeats === 0
+    && response.moved.length === 0
+    ? 0
+    : response.moved_count;
+  if (typeof movedCount !== "number" || !Number.isInteger(movedCount) || movedCount < 0) {
     return { kind: "error", response, code: "invalid_response" };
   }
-  if (sourceActiveSeats > 0 && response.moved_count === 0) {
+  if (response.moved.length !== movedCount) {
+    return { kind: "error", response, code: "invalid_response" };
+  }
+  if (sourceActiveSeats > 0 && movedCount === 0) {
     return { kind: "error", response, code: "unexpected_zero_moves" };
   }
-  if (sourceActiveSeats > 0 && response.moved_count !== sourceActiveSeats) {
+  if (sourceActiveSeats > 0 && movedCount !== sourceActiveSeats) {
     return { kind: "error", response, code: "move_count_mismatch" };
   }
 
-  return { kind: "success", response: response as Required<Pick<CloseTableResponse, "moved_count" | "moved">> & CloseTableResponse };
+  return {
+    kind: "success",
+    response: {
+      ...response,
+      moved_count: movedCount,
+      moved: response.moved,
+    } as Required<Pick<CloseTableResponse, "moved_count" | "moved">> & CloseTableResponse,
+  };
 }
 
 /**
