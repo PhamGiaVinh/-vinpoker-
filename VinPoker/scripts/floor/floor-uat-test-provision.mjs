@@ -20,6 +20,11 @@ function safeAuthError(error) {
   return `status=${status} code=${code}`;
 }
 
+function safeResultCode(payload) {
+  const value = payload && typeof payload === "object" && typeof payload.error === "string" ? payload.error : "unknown";
+  return /^[a-z0-9_]{1,64}$/i.test(value) ? value : "unknown";
+}
+
 // Node's crypto hash is deliberately kept out of operational logging: these labels
 // identify the run, never a user, session, or credential.
 function awaitableHash(value) {
@@ -123,7 +128,11 @@ async function provision(admin) {
       const confirmed = await admin.rpc("confirm_registration_and_assign_seat", {
         p_registration_id: registration.id, p_actor_user_id: provisioner, p_draw_mode: "fill_lowest_table",
       });
-      if (confirmed.error || confirmed.data?.ok !== true || typeof confirmed.data.entry_id !== "string") fail(`floor_uat_confirm_${index + 1}_failed`);
+      if (confirmed.error || confirmed.data?.ok !== true || typeof confirmed.data.entry_id !== "string") {
+        const rpcCode = typeof confirmed.error?.code === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(confirmed.error.code) ? confirmed.error.code : "unknown";
+        console.log(`FLOOR_UAT CONFIRM_FAIL player=${index + 1} rpc_code=${rpcCode} result=${safeResultCode(confirmed.data)}`);
+        fail(`floor_uat_confirm_${index + 1}_failed`);
+      }
       const entry = await one(admin.from("tournament_entries")
         .select("id,registration_id,player_id,status,seat_id").eq("id", confirmed.data.entry_id).single(), `floor_uat_entry_${index + 1}_failed`);
       const seat = await one(admin.from("tournament_seats")
@@ -143,6 +152,7 @@ async function provision(admin) {
       }
     }
     if (owned.users.length) await removeUsers(admin, owned.users);
+    console.log(`FLOOR_UAT RECOVERY_CLEANUP_PASS users=${owned.users.length} registrations=${owned.registrations.length} entries=${owned.entries.length} seats=${owned.seats.length}`);
     throw error;
   }
 }
