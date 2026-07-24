@@ -105,6 +105,8 @@ describe("series-market public/private architecture boundary", () => {
     const keys = [
       ...contractPropertyNames(`${MARKET}/contracts.ts`),
       ...contractPropertyNames(`${MARKET}/researchRun.ts`),
+      ...contractPropertyNames(`${MARKET}/researchArtifact.ts`),
+      ...contractPropertyNames(`${MARKET}/comparableResearchArtifact.ts`),
     ].map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, ""));
     for (const key of keys) {
       for (const blocked of forbidden) expect(key).not.toContain(blocked);
@@ -197,5 +199,29 @@ describe("series-market public/private architecture boundary", () => {
     }
     expect(evaluator).toContain("buildJejuComparableCorpus");
     expect(evaluator).toContain("evaluateComparableV0");
+  });
+
+  it("keeps the R2 emitter source-only, explicit-time, and downstream of frozen Comparable V0 selection", () => {
+    const artifact = readFileSync(join(ROOT, `${MARKET}/researchArtifact.ts`), "utf8");
+    const adapter = readFileSync(join(ROOT, `${MARKET}/comparableResearchArtifact.ts`), "utf8");
+    const emitter = readFileSync(
+      join(ROOT, "scripts/series-market/emitComparableV0ResearchArtifact.ts"),
+      "utf8",
+    );
+    for (const source of [artifact, adapter, emitter]) {
+      expect(source).not.toMatch(/(?:Date\.now|Math\.random|randomUUID|fetch\s*\(|supabase|react|@\/components|@\/pages)/i);
+      expect(source).not.toMatch(/(?:integrations\/supabase|series-registration|cashier|payment|playeridentifier)/i);
+    }
+    expect(adapter).toContain("evaluateComparableV0(corpus, parameters)");
+    expect(adapter).toContain("freezeComparableSelection");
+    expect(adapter).toContain("selection.selectedComparableIds");
+    expect(adapter).toContain("targetOutcomeClaimIds");
+    expect(adapter).toContain('status: "exploratory"');
+    expect(adapter).toContain("postHocBiasCorrectionApplied: false");
+    expect(adapter).not.toMatch(/post.?hoc.+(?:offset|correction).*(?:apply|add)/i);
+    expect(emitter).toContain("canonicalize(bundle)");
+    expect(emitter).toContain("created-at");
+    expect(emitter).toContain("executed-at");
+    expect(emitter).not.toContain("jeju_events_seed_v0.csv");
   });
 });
