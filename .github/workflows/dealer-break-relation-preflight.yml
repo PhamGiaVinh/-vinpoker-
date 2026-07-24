@@ -1,0 +1,79 @@
+name: Dealer Swing candidate-break relation preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact merged main SHA to verify before an Edge deployment"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  deployments: write
+
+concurrency:
+  group: dealer-swing-candidate-break-relation-preflight
+  cancel-in-progress: false
+
+env:
+  CRITICAL_ENVIRONMENT: dealer-swing-production-critical
+
+jobs:
+  validate-critical-environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require protected critical environment reviewers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          environment_json="$(gh api "repos/${GITHUB_REPOSITORY}/environments/${CRITICAL_ENVIRONMENT}")"
+          jq -e '
+            .protection_rules
+            | any(.type == "required_reviewers" and ((.reviewers // []) | length > 0))
+          ' <<<"$environment_json" >/dev/null
+
+  probe:
+    needs: validate-critical-environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: dealer-swing-production-critical
+    steps:
+      - name: Checkout reviewed probe runner
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact merged target remains current main
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin main
+          test "$TARGET_SHA" = "$(git rev-parse origin/main)"
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - name: Install probe dependency graph without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+
+      - name: Run zero-row PostgREST relation preflight
+        working-directory: VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/dealer-swing/probe_candidate_break_relation.mjs
