@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { classifyPostgrestError } from "./postgrestError.ts";
+import { classifyPostgrestError, postgrestHttpStatus } from "./postgrestError.ts";
 
 Deno.test("classifies missing schema dependencies without retaining raw messages", () => {
   assertEquals(
@@ -20,4 +20,10 @@ Deno.test("classifies unrecognised query errors with a stable sanitized code", (
     classifyPostgrestError(new Error("unstructured failure with private details")),
     { status: "query_failed", sanitizedCode: "QUERY_FAILED" },
   );
+});
+
+Deno.test("retains only a valid HTTP status for structured diagnostics", () => {
+  assertEquals(postgrestHttpStatus({ status: 414, message: "private request URL" }), 414);
+  assertEquals(postgrestHttpStatus({ status: 200, message: "not an error" }), null);
+  assertEquals(postgrestHttpStatus({ status: "414", message: "untrusted string" }), null);
 });

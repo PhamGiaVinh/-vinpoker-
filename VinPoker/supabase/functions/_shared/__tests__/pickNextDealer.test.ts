@@ -9,7 +9,7 @@
 //   • diag + ScoreBreakdown shape  → preserved for C1
 //
 // Run: deno test supabase/functions/_shared/__tests__/pickNextDealer.test.ts
-import { assertEquals, assertExists } from "jsr:@std/assert@1";
+import { assertEquals, assertExists, assertMatch, assertNotMatch } from "jsr:@std/assert@1";
 import { buildDealerCandidates } from "../pickNextDealer.ts";
 
 type Row = Record<string, unknown>;
@@ -41,6 +41,9 @@ function makeAdmin(fix: {
   // so every pre-existing test is byte-identical.
   poolCooldownError?: boolean;         // inject an error into the pool-cooldown query
   reservedPoolMembersError?: boolean;  // inject an error into getReservedDealerIds's own pool_members query
+  attendanceBreakRows?: Row[];
+  legacyAssignmentBreakRows?: Row[];
+  assignmentBreaksError?: { code?: string; message: string; status?: number };
 }) {
   const CHAIN_METHODS = [
     "select", "eq", "in", "is", "or", "not", "gt", "gte", "lt", "lte", "neq", "order", "limit",
@@ -93,6 +96,15 @@ function makeAdmin(fix: {
           return { data: fix.busyAssignments ?? [], error: null };
         }
         return { data: [], error: null };
+      }
+      if (table === "dealer_breaks") {
+        const s = sel();
+        if (s.includes("dealer_assignments!inner")) {
+          return fix.assignmentBreaksError
+            ? { data: null, error: fix.assignmentBreaksError }
+            : { data: fix.legacyAssignmentBreakRows ?? [], error: null };
+        }
+        return { data: fix.attendanceBreakRows ?? [], error: null };
       }
       if (table === "dealer_table_profiles") {
         // getReservedDealerIds: `.select("table_id").or("table_mode.eq.feature,is_final.eq.true")`
@@ -173,6 +185,10 @@ function metric(attendanceId: string, minutesSinceRest: number): Row {
     total_break_minutes: 0,
     total_worked_minutes: 0, // keeps avgBreakRatio null → no break-equity noise
   };
+}
+
+function onBreakPoolRow(id: string, dealerId: string): Row {
+  return { ...poolRow(id, dealerId), current_state: "on_break" };
 }
 
 // restThreshold default = defaultClubBreakDurationMinutes(20) + buffer(5) = 25.
@@ -460,4 +476,61 @@ Deno.test("club break-equity metrics failure fails closed when score breakdown i
   assertEquals(result.candidates, []);
   assertEquals(result.status, "query_failed");
   assertEquals(result.errorCode, "candidate_club_shift_metrics_query_failed");
+});
+
+Deno.test("attendance-linked active break keeps an on-break dealer out of the candidate pool", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["d1"],
+    poolRows: [onBreakPoolRow("a1", "d1")],
+    metricsRows: [metric("a1", 30)],
+    attendanceBreakRows: [{ attendance_id: "a1", break_start: "2026-07-24T10:00:00.000Z" }],
+  });
+  const result = await buildDealerCandidates(admin, "club", {});
+  assertEquals(result.status, "ok");
+  assertEquals(result.candidates.length, 0);
+  assertEquals(result.diag?.on_break_excluded, 1);
+});
+
+Deno.test("legacy assignment-linked active break keeps an on-break dealer out of the candidate pool", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["d1"],
+    poolRows: [onBreakPoolRow("a1", "d1")],
+    metricsRows: [metric("a1", 30)],
+    legacyAssignmentBreakRows: [{
+      assignment_id: "legacy-assignment",
+      break_start: "2026-07-24T10:00:00.000Z",
+      dealer_assignments: { attendance_id: "a1" },
+    }],
+  });
+  const result = await buildDealerCandidates(admin, "club", {});
+  assertEquals(result.status, "ok");
+  assertEquals(result.candidates.length, 0);
+  assertEquals(result.diag?.on_break_excluded, 1);
+});
+
+Deno.test("assignment-break query failure is fail-closed with sanitized structured telemetry", async () => {
+  const rawUuid = "11111111-2222-3333-4444-555555555555";
+  const admin = makeAdmin({
+    dealerIds: ["d1"],
+    poolRows: [poolRow("a1", "d1")],
+    metricsRows: [metric("a1", 30)],
+    assignmentBreaksError: { code: "XX000", status: 414, message: `private URI for ${rawUuid}` },
+  });
+  const originalError = console.error;
+  const logs: string[] = [];
+  console.error = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+  try {
+    const result = await buildDealerCandidates(admin, "club", {});
+    assertEquals(result.status, "query_failed");
+    assertEquals(result.errorCode, "candidate_assignment_breaks_query_failed");
+  } finally {
+    console.error = originalError;
+  }
+
+  const output = logs.join("\n");
+  assertMatch(output, /"provider_code":"XX000"/);
+  assertMatch(output, /"http_status":414/);
+  assertMatch(output, /"input_count_bucket":"one"/);
+  assertNotMatch(output, new RegExp(rawUuid));
+  assertNotMatch(output, /private URI/);
 });

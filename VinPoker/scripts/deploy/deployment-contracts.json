@@ -206,9 +206,11 @@
       "receiptEnvironment": "receipt-vinpoker-edge-process-swing",
       "quality": {
         "denoTests": [
-          "VinPoker/supabase/functions/process-swing/requestScope.test.ts",
-          "VinPoker/supabase/functions/_shared/__tests__/rotationSolver.test.ts",
-          "VinPoker/supabase/functions/_shared/__tests__/pickNextDealer.test.ts"
+        "VinPoker/supabase/functions/process-swing/requestScope.test.ts",
+        "VinPoker/supabase/functions/_shared/__tests__/rotationSolver.test.ts",
+        "VinPoker/supabase/functions/_shared/__tests__/pickNextDealer.test.ts",
+        "VinPoker/supabase/functions/_shared/__tests__/candidateBreaks.test.ts",
+        "VinPoker/supabase/functions/_shared/candidateSnapshotTelemetry.test.ts"
         ],
         "denoTestsByContractProfile": {
           "dealer_mass_open_v1": [
@@ -262,9 +264,11 @@
       "receiptEnvironment": "receipt-vinpoker-edge-mass-assign",
       "quality": {
         "denoTests": [
-          "VinPoker/supabase/functions/_shared/__tests__/bulkOpenStagger.test.ts",
-          "VinPoker/supabase/functions/_shared/__tests__/lockTimeout.test.ts",
-          "VinPoker/supabase/functions/_shared/__tests__/pickNextDealer.test.ts"
+        "VinPoker/supabase/functions/_shared/__tests__/bulkOpenStagger.test.ts",
+        "VinPoker/supabase/functions/_shared/__tests__/lockTimeout.test.ts",
+        "VinPoker/supabase/functions/_shared/__tests__/pickNextDealer.test.ts",
+        "VinPoker/supabase/functions/_shared/__tests__/candidateBreaks.test.ts",
+        "VinPoker/supabase/functions/_shared/candidateSnapshotTelemetry.test.ts"
         ]
       },
       "contracts": [

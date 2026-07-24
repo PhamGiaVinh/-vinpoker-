@@ -17,16 +17,26 @@ const DEPENDENCY_ERROR_CODES = new Set([
 const DEPENDENCY_ERROR_MESSAGE =
   /schema cache|does not exist|could not find the (table|column|function|relationship)/i;
 
-function errorFields(error: unknown): { code: string; message: string } {
+function errorFields(error: unknown): { code: string; message: string; httpStatus: number | null } {
   if (!error || typeof error !== "object") {
-    return { code: "", message: String(error ?? "") };
+    return { code: "", message: String(error ?? ""), httpStatus: null };
   }
 
-  const value = error as { code?: unknown; message?: unknown };
+  const value = error as { code?: unknown; message?: unknown; status?: unknown; statusCode?: unknown };
+  const rawStatus = value.status ?? value.statusCode;
+  const httpStatus = typeof rawStatus === "number" && Number.isInteger(rawStatus) && rawStatus >= 400 && rawStatus <= 599
+    ? rawStatus
+    : null;
   return {
     code: String(value.code ?? "").toUpperCase(),
     message: String(value.message ?? ""),
+    httpStatus,
   };
+}
+
+/** Returns only a validated HTTP status; provider messages and headers are never retained. */
+export function postgrestHttpStatus(error: unknown): number | null {
+  return errorFields(error).httpStatus;
 }
 
 export function classifyPostgrestError(error: unknown): PostgrestFailureClassification {
