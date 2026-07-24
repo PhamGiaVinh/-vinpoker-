@@ -1,0 +1,80 @@
+name: Dealer Swing dark monitor
+
+on:
+  workflow_dispatch:
+    inputs:
+      process_swing_sha:
+        description: "Exact successful process-swing deployment receipt SHA"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  deployments: read
+
+concurrency:
+  group: dealer-swing-dark-monitor
+  cancel-in-progress: false
+
+env:
+  CRITICAL_ENVIRONMENT: dealer-swing-production-critical
+
+jobs:
+  validate-critical-environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require protected critical environment reviewers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          environment_json="$(gh api "repos/${GITHUB_REPOSITORY}/environments/${CRITICAL_ENVIRONMENT}")"
+          jq -e '
+            .protection_rules
+            | any(.type == "required_reviewers" and ((.reviewers // []) | length > 0))
+          ' <<<"$environment_json" >/dev/null
+
+  monitor:
+    needs: validate-critical-environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: dealer-swing-production-critical
+    steps:
+      - name: Checkout reviewed read-only monitor
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify monitored receipt target belongs to main
+        shell: bash
+        env:
+          EXPECTED_PROCESS_SWING_SHA: ${{ inputs.process_swing_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_PROCESS_SWING_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$EXPECTED_PROCESS_SWING_SHA" origin/main
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - name: Install monitor dependency graph without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+
+      - name: Run fifteen-minute sanitized dark monitor
+        working-directory: VinPoker
+        env:
+          EXPECTED_PROCESS_SWING_SHA: ${{ inputs.process_swing_sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/dealer-swing/monitor-process-swing-dark.mjs
