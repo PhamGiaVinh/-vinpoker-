@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 
 const PRODUCTION_PROJECT_REF = "orlesggcjamwuknxwcpk";
 const CONFIRMATION = "PROVISION_FLOOR_UAT_TEST_USERS";
@@ -9,6 +10,7 @@ const TARGET = Object.freeze({
   buyIn: 1_000_000,
 });
 const RUN_ID_RE = /^CODEX_FLOOR_UAT_[0-9]{14}_[a-f0-9]{8}$/;
+const NODE_REALTIME_OPTIONS = { realtime: { transport: WebSocket } };
 
 function fail(code) { throw new Error(code); }
 
@@ -157,7 +159,10 @@ export { CONFIRMATION, RUN_ID_RE, requireContext };
 
 async function main() {
   const context = requireContext();
-  const admin = createClient(context.url, context.serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const admin = createClient(context.url, context.serviceKey, {
+    ...NODE_REALTIME_OPTIONS,
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   if (context.operation === "provision") await provision(admin);
   else await cleanup(admin, context.cleanupRunId);
 }
