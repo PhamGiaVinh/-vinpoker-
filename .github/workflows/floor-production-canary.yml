@@ -4,16 +4,22 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Select run, cleanup, or hold"
+        description: "Select run, cleanup, provision, provision_cleanup, or hold"
         required: true
         type: choice
         options:
           - run
           - cleanup
+          - provision
+          - provision_cleanup
           - hold
       confirmation:
         description: "Type RUN_FLOOR_PRODUCTION_CANARY to run isolated production Floor TEST fixtures"
         required: true
+        type: string
+      uat_run_id:
+        description: "Required only for provision_cleanup; exact Floor UAT run identifier"
+        required: false
         type: string
   pull_request:
     types: [opened, synchronize, reopened]
@@ -56,7 +62,9 @@ jobs:
         working-directory: VinPoker
         run: |
           node --check scripts/floor/floor-production-canary.mjs
+          node --check scripts/floor/floor-uat-test-provision.mjs
           node --test tests/security/floor-production-canary-context.test.mjs
+          node --test tests/security/floor-uat-test-provision-context.test.mjs
           npx vitest run tests/floorProduction/buttonCoverageManifest.test.ts tests/floorProduction/floorActionEvidenceLedger.test.ts
       - name: Install Chromium for temporary authenticated browser contexts
         if: env.FLOOR_CANARY_MODE == 'run'
@@ -68,9 +76,18 @@ jobs:
         env:
           FLOOR_CANARY_RECOVERY_LEDGER: ${{ runner.temp }}/floor-canary-recovery-${{ github.run_id }}-${{ github.run_attempt }}.json
           FLOOR_CANARY_STATE_ROOT: ${{ runner.temp }}/floor-canary-state-${{ github.run_id }}-${{ github.run_attempt }}
+          FLOOR_UAT_ENV: production-test
+          FLOOR_UAT_CONFIRM: PROVISION_FLOOR_UAT_TEST_USERS
+          FLOOR_UAT_OPERATION: "${{ github.event_name == 'workflow_dispatch' && (inputs.mode == 'provision_cleanup' && 'cleanup' || inputs.mode == 'provision' && 'provision' || 'invalid') || 'invalid' }}"
+          FLOOR_UAT_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.uat_run_id || '' }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node scripts/floor/floor-production-canary.mjs
+        run: |
+          if [ "$FLOOR_CANARY_MODE" = "provision" ] || [ "$FLOOR_CANARY_MODE" = "provision_cleanup" ]; then
+            node scripts/floor/floor-uat-test-provision.mjs
+          else
+            node scripts/floor/floor-production-canary.mjs
+          fi
       - name: Always verify exact canary cleanup after run
         if: "${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.mode == 'run') || (github.event_name == 'pull_request' && github.event.pull_request.title == 'test(floor): controlled production canary runner [run]')) }}"
         timeout-minutes: 15
