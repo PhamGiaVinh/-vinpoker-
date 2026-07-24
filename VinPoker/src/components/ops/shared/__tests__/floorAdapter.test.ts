@@ -2,7 +2,7 @@
 // Nếu FloorTableMapPanel đổi tableStatus/normalization, test này phải được cập nhật CÙNG LÚC.
 import { describe, expect, it } from "vitest";
 import {
-  tableStatus, buildSeatsByTable, chipDisplay, toMockTable, toMockSeat,
+  tableStatus, buildSeatsByTable, buildEligibleFloorMoveTargets, chipDisplay, toMockTable, toMockSeat,
   type MapSeat, type MapTable,
 } from "../floorAdapter";
 
@@ -43,6 +43,21 @@ describe("buildSeatsByTable — canonical id + is_active + sort (verbatim deskto
   it("ghế của bàn lạ giữ nguyên key (không nuốt mất)", () => {
     const grouped = buildSeatsByTable([table({})], [seat({ table_id: "gt-unknown" })]);
     expect(grouped["gt-unknown"]).toHaveLength(1);
+  });
+});
+
+describe("buildEligibleFloorMoveTargets — same destination contract as the move RPC", () => {
+  it("only exposes active, linked tables with a free seat", () => {
+    const targets = buildEligibleFloorMoveTargets([
+      table({ tt_id: "tt-open", table_id: "gt-open", max_seats: 3 }),
+      table({ tt_id: "tt-closed", table_id: "gt-closed", status: "closed" }),
+      table({ tt_id: "tt-unlinked", table_id: "" }),
+    ], {
+      "gt-open": [seat({ table_id: "gt-open", seat_number: 1 }), seat({ seat_id: "s2", table_id: "gt-open", seat_number: 3 })],
+      "gt-closed": [],
+    });
+
+    expect(targets).toEqual([{ tt_id: "tt-open", table_number: 1, freeSeats: [2] }]);
   });
 });
 

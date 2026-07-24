@@ -18,7 +18,7 @@ import {
 import { RoomGrid } from "@/components/ops/shared/RoomGrid";
 import { useFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { FloorPlayerActions, type FloorSeatTarget } from "@/components/ops/shared/FloorPlayerActions";
-import { toMockTable, toMockSeat, type MapSeat, type MapTable } from "@/components/ops/shared/floorAdapter";
+import { buildEligibleFloorMoveTargets, toMockTable, toMockSeat, type MapSeat, type MapTable } from "@/components/ops/shared/floorAdapter";
 import type { MockTable } from "@/components/ops/mock/opsData";
 import type { TournamentLeaderboardPlayer } from "@/types/tournament";
 
@@ -226,11 +226,10 @@ export default function OpsTournamentCockpit() {
   const [restoreSeat, setRestoreSeat] = useState<number | null>(null);
   const [restoreConfirmed, setRestoreConfirmed] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
-  const restoreTargets = useMemo(() => floor.tables.map((tb) => {
-    const occ = new Set((floor.seatsByTable[tb.table_id] ?? []).filter((x) => x.is_active).map((x) => x.seat_number));
-    const freeSeats = Array.from({ length: tb.max_seats }, (_, i) => i + 1).filter((n) => !occ.has(n));
-    return { tt_id: tb.tt_id, table_number: tb.table_number, freeSeats };
-  }).filter((tb) => tb.freeSeats.length > 0), [floor.tables, floor.seatsByTable]);
+  const restoreTargets = useMemo(
+    () => buildEligibleFloorMoveTargets(floor.tables, floor.seatsByTable),
+    [floor.tables, floor.seatsByTable],
+  );
   const openRestore = (b: BustedRow) => {
     const first = restoreTargets[0] ?? null;
     setRestoreTtId(first?.tt_id ?? null);
