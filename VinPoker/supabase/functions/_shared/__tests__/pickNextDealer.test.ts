@@ -43,7 +43,10 @@ function makeAdmin(fix: {
   reservedPoolMembersError?: boolean;  // inject an error into getReservedDealerIds's own pool_members query
   attendanceBreakRows?: Row[];
   legacyAssignmentBreakRows?: Row[];
+  attendanceBreaksError?: { code?: string; message: string; status?: number };
+  attendanceBreaksStatus?: number | null;
   assignmentBreaksError?: { code?: string; message: string; status?: number };
+  assignmentBreaksStatus?: number | null;
 }) {
   const CHAIN_METHODS = [
     "select", "eq", "in", "is", "or", "not", "gt", "gte", "lt", "lte", "neq", "order", "limit",
@@ -53,7 +56,7 @@ function makeAdmin(fix: {
     const sel = () => (ops.find((o) => o.method === "select")?.args[0] as string | undefined) ?? "";
     const eqArg = (col: string) => ops.find((o) => o.method === "eq" && o.args[0] === col)?.args[1] as string | undefined;
     const inArg = (col: string) => ops.find((o) => o.method === "in" && o.args[0] === col)?.args[1] as string[] | undefined;
-    const resolve = (): { data: unknown; error: { message: string } | null } => {
+    const resolve = (): { data: unknown; error: { message: string } | null; status?: number | null } => {
       if (table === "dealers") {
         return { data: fix.dealerIds.map((id) => ({ id })), error: null };
       }
@@ -101,10 +104,12 @@ function makeAdmin(fix: {
         const s = sel();
         if (s.includes("dealer_assignments!inner")) {
           return fix.assignmentBreaksError
-            ? { data: null, error: fix.assignmentBreaksError }
+            ? { data: null, error: fix.assignmentBreaksError, status: fix.assignmentBreaksStatus }
             : { data: fix.legacyAssignmentBreakRows ?? [], error: null };
         }
-        return { data: fix.attendanceBreakRows ?? [], error: null };
+        return fix.attendanceBreaksError
+          ? { data: null, error: fix.attendanceBreaksError, status: fix.attendanceBreaksStatus }
+          : { data: fix.attendanceBreakRows ?? [], error: null };
       }
       if (table === "dealer_table_profiles") {
         // getReservedDealerIds: `.select("table_id").or("table_mode.eq.feature,is_final.eq.true")`
@@ -514,7 +519,8 @@ Deno.test("assignment-break query failure is fail-closed with sanitized structur
     dealerIds: ["d1"],
     poolRows: [poolRow("a1", "d1")],
     metricsRows: [metric("a1", 30)],
-    assignmentBreaksError: { code: "XX000", status: 414, message: `private URI for ${rawUuid}` },
+    assignmentBreaksError: { code: "XX000", message: `private URI for ${rawUuid}` },
+    assignmentBreaksStatus: 414,
   });
   const originalError = console.error;
   const logs: string[] = [];
@@ -533,4 +539,31 @@ Deno.test("assignment-break query failure is fail-closed with sanitized structur
   assertMatch(output, /"input_count_bucket":"one"/);
   assertNotMatch(output, new RegExp(rawUuid));
   assertNotMatch(output, /private URI/);
+});
+
+Deno.test("attendance-break query failure retains top-level status and does not build candidates", async () => {
+  const rawUuid = "11111111-2222-3333-4444-555555555555";
+  const admin = makeAdmin({
+    dealerIds: ["d1"],
+    poolRows: [poolRow("a1", "d1")],
+    metricsRows: [metric("a1", 30)],
+    attendanceBreaksError: { code: "XX000", message: `private URL/${rawUuid}` },
+    attendanceBreaksStatus: 502,
+  });
+  const originalError = console.error;
+  const logs: string[] = [];
+  console.error = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+  try {
+    const result = await buildDealerCandidates(admin, "club", {});
+    assertEquals(result.status, "query_failed");
+    assertEquals(result.errorCode, "candidate_attendance_breaks_query_failed");
+    assertEquals(result.candidates, []);
+  } finally {
+    console.error = originalError;
+  }
+
+  const output = logs.join("\n");
+  assertMatch(output, /"http_status":502/);
+  assertNotMatch(output, new RegExp(rawUuid));
+  assertNotMatch(output, /private URL/);
 });

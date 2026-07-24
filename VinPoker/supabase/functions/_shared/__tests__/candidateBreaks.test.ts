@@ -66,7 +66,11 @@ Deno.test("a failed legacy chunk fails the whole candidate snapshot without retu
     loadLegacyAssignmentLinked: async (chunk) => {
       calls.push(`legacy:${chunk.length}`);
       return chunk[0] === "attendance-050"
-        ? { data: null, error: { code: "XX000", message: "private failure" } }
+        ? {
+          data: null,
+          error: { code: "XX000", message: "private failure" },
+          status: 414,
+        }
         : { data: [], error: null };
     },
   }, (() => 100) as () => number);
@@ -74,6 +78,23 @@ Deno.test("a failed legacy chunk fails the whole candidate snapshot without retu
   assertEquals(result.ok, false);
   if (result.ok) return;
   assertEquals(result.failure.stage, "assignment_breaks");
+  assertEquals(result.failure.httpStatus, 414);
   assertEquals(result.failure.inputCount, 50);
   assertEquals(calls, ["attendance:50", "legacy:50", "attendance:50", "legacy:50"]);
+});
+
+Deno.test("an attendance-break query failure retains its top-level HTTP status", async () => {
+  const result = await loadCandidateActiveBreaks(["attendance-001"], {
+    loadAttendanceLinked: async () => ({
+      data: null,
+      error: { code: "XX000", message: "private failure" },
+      status: 502,
+    }),
+    loadLegacyAssignmentLinked: async () => ({ data: [], error: null }),
+  });
+
+  assertEquals(result.ok, false);
+  if (result.ok) return;
+  assertEquals(result.failure.stage, "attendance_breaks");
+  assertEquals(result.failure.httpStatus, 502);
 });

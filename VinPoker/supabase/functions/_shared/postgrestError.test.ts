@@ -1,5 +1,9 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { classifyPostgrestError, postgrestHttpStatus } from "./postgrestError.ts";
+import {
+  classifyPostgrestError,
+  postgrestHttpStatus,
+  resolvePostgrestHttpStatus,
+} from "./postgrestError.ts";
 
 Deno.test("classifies missing schema dependencies without retaining raw messages", () => {
   assertEquals(
@@ -26,4 +30,10 @@ Deno.test("retains only a valid HTTP status for structured diagnostics", () => {
   assertEquals(postgrestHttpStatus({ status: 414, message: "private request URL" }), 414);
   assertEquals(postgrestHttpStatus({ status: 200, message: "not an error" }), null);
   assertEquals(postgrestHttpStatus({ status: "414", message: "untrusted string" }), null);
+});
+
+Deno.test("top-level response statuses win and custom-client fallback stays compatible", () => {
+  assertEquals(resolvePostgrestHttpStatus(414, { status: 500 }), 414);
+  assertEquals(resolvePostgrestHttpStatus(undefined, { statusCode: 502 }), 502);
+  assertEquals(resolvePostgrestHttpStatus(200, { status: 500 }), null);
 });

@@ -173,7 +173,12 @@ interface CandidateQueryError {
 function candidateQueryFailure(
   error: unknown,
   stage: string,
-  context?: { inputCount: number; durationMs: number; stableErrorCode?: string },
+  context?: {
+    inputCount: number;
+    durationMs: number;
+    responseStatus?: number | null;
+    stableErrorCode?: string;
+  },
 ): BuildCandidatesResult {
   const { status } = classifyPostgrestError(error);
   const errorCode = context?.stableErrorCode ?? `candidate_${stage}_${status}`;
@@ -182,6 +187,7 @@ function candidateQueryFailure(
     console.error(JSON.stringify(candidateSnapshotFailureDiagnostic(
       stage,
       error,
+      context.responseStatus,
       context.inputCount,
       context.durationMs,
     )));
@@ -507,35 +513,44 @@ export async function buildDealerCandidates(
   let activeBreakMap = new Map<string, string>();
   if (attendanceIds.length > 0) {
     const activeBreakResult = await loadCandidateActiveBreaks(attendanceIds, {
-      loadAttendanceLinked: async (attendanceIdChunk) => (await admin
-        .from("dealer_breaks")
-        .select("attendance_id, break_start")
-        .is("break_end", null)
-        .in("attendance_id", attendanceIdChunk)) as {
-          data: { attendance_id: string | null; break_start: string }[] | null;
-          error: CandidateQueryError | null;
-        },
+      loadAttendanceLinked: async (attendanceIdChunk) => {
+        const response = await admin
+          .from("dealer_breaks")
+          .select("attendance_id, break_start")
+          .is("break_end", null)
+          .in("attendance_id", attendanceIdChunk) as {
+            data: { attendance_id: string | null; break_start: string }[] | null;
+            error: CandidateQueryError | null;
+            status?: number | null;
+          };
+        return { data: response.data, error: response.error, status: response.status };
+      },
       // Legacy break rows predate attendance_id. Filtering through the FK keeps
       // the lookup exact without expanding a current attendance into all history.
-      loadLegacyAssignmentLinked: async (attendanceIdChunk) => (await admin
-        .from("dealer_breaks")
-        .select("assignment_id, break_start, dealer_assignments!inner(attendance_id)")
-        .is("break_end", null)
-        .is("attendance_id", null)
-        .in("dealer_assignments.attendance_id", attendanceIdChunk)) as {
-          data: {
-            assignment_id: string | null;
-            break_start: string;
-            dealer_assignments: { attendance_id: string | null } | null;
-          }[] | null;
-          error: CandidateQueryError | null;
-        },
+      loadLegacyAssignmentLinked: async (attendanceIdChunk) => {
+        const response = await admin
+          .from("dealer_breaks")
+          .select("assignment_id, break_start, dealer_assignments!inner(attendance_id)")
+          .is("break_end", null)
+          .is("attendance_id", null)
+          .in("dealer_assignments.attendance_id", attendanceIdChunk) as {
+            data: {
+              assignment_id: string | null;
+              break_start: string;
+              dealer_assignments: { attendance_id: string | null } | null;
+            }[] | null;
+            error: CandidateQueryError | null;
+            status?: number | null;
+          };
+        return { data: response.data, error: response.error, status: response.status };
+      },
     });
     if (!activeBreakResult.ok) {
       const { failure } = activeBreakResult;
       return candidateQueryFailure(failure.error, failure.stage, {
         inputCount: failure.inputCount,
         durationMs: failure.durationMs,
+        responseStatus: failure.responseStatus,
         stableErrorCode: failure.stage === "assignment_breaks"
           ? "candidate_assignment_breaks_query_failed"
           : undefined,

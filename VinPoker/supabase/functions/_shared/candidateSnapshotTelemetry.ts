@@ -1,6 +1,6 @@
 import {
   classifyPostgrestError,
-  postgrestHttpStatus,
+  resolvePostgrestHttpStatus,
 } from "./postgrestError.ts";
 
 export interface CandidateSnapshotFailureDiagnostic {
@@ -36,11 +36,12 @@ export function durationBucket(durationMs: number): string {
 export function candidateSnapshotFailureDiagnostic(
   stage: string,
   error: unknown,
+  responseStatus: unknown,
   inputCount: number,
   durationMs: number,
 ): CandidateSnapshotFailureDiagnostic {
   const { status, sanitizedCode } = classifyPostgrestError(error);
-  const httpStatus = postgrestHttpStatus(error);
+  const httpStatus = resolvePostgrestHttpStatus(responseStatus, error);
   const inputBucket = inputCountBucket(inputCount);
 
   return {

@@ -7,9 +7,14 @@ import {
 
 Deno.test("candidate snapshot telemetry sanitizes provider failures and uses only stable fingerprint fields", () => {
   const rawUuid = "11111111-2222-3333-4444-555555555555";
+  const rawUrl = `https://private.example.test/rest/v1/dealer_breaks?id=${rawUuid}`;
   const diagnostic = candidateSnapshotFailureDiagnostic(
     "assignment_breaks",
-    { code: "XX000", status: 414, message: `URI too long for ${rawUuid}` },
+    {
+      code: "XX000",
+      message: `URI too long for ${rawUuid}; url=${rawUrl}; headers=Authorization private`,
+    },
+    414,
     200,
     550,
   );
@@ -26,6 +31,33 @@ Deno.test("candidate snapshot telemetry sanitizes provider failures and uses onl
   });
   assertNotMatch(JSON.stringify(diagnostic), new RegExp(rawUuid));
   assertNotMatch(JSON.stringify(diagnostic), /URI too long/);
+  assertNotMatch(JSON.stringify(diagnostic), /private\.example\.test/);
+  assertNotMatch(JSON.stringify(diagnostic), /Authorization/);
+});
+
+Deno.test("candidate snapshot telemetry prefers a Supabase top-level HTTP status", () => {
+  const diagnostic = candidateSnapshotFailureDiagnostic(
+    "assignment_breaks",
+    { code: "XX000", status: 500, message: "custom client fallback" },
+    414,
+    50,
+    10,
+  );
+
+  assertEquals(diagnostic.http_status, 414);
+  assertEquals(diagnostic.fingerprint, "assignment_breaks|XX000|414|twenty_six_to_fifty");
+});
+
+Deno.test("candidate snapshot telemetry rejects invalid response statuses without falling back", () => {
+  const diagnostic = candidateSnapshotFailureDiagnostic(
+    "attendance_breaks",
+    { code: "XX000", status: 500, message: "custom client fallback" },
+    200,
+    1,
+    10,
+  );
+
+  assertEquals(diagnostic.http_status, null);
 });
 
 Deno.test("candidate snapshot telemetry has deterministic cardinality and duration buckets", () => {

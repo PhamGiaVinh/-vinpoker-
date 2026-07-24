@@ -1,3 +1,5 @@
+import { resolvePostgrestHttpStatus } from "./postgrestError.ts";
+
 export const CANDIDATE_BREAK_QUERY_CHUNK_SIZE = 50;
 
 export interface ActiveAttendanceBreakRow {
@@ -14,6 +16,7 @@ export interface ActiveLegacyAssignmentBreakRow {
 export interface CandidateBreakQueryResult<Row> {
   data: Row[] | null;
   error: unknown | null;
+  status?: number | null;
 }
 
 export interface CandidateBreakQueries {
@@ -28,8 +31,11 @@ export interface CandidateBreakQueries {
 export interface CandidateBreakQueryFailure {
   stage: "attendance_breaks" | "assignment_breaks";
   error: unknown;
+  httpStatus: number | null;
   inputCount: number;
   durationMs: number;
+  /** The raw response-level status is numeric/null only, never a provider payload. */
+  responseStatus?: number | null;
 }
 
 export type CandidateBreakLoadResult =
@@ -94,8 +100,10 @@ export async function loadCandidateActiveBreaks(
         failure: {
           stage: "attendance_breaks",
           error: attendanceResult.error,
+          httpStatus: resolvePostgrestHttpStatus(attendanceResult.status, attendanceResult.error),
           inputCount: chunk.length,
           durationMs: Math.max(0, now() - attendanceStartedAt),
+          responseStatus: attendanceResult.status,
         },
       };
     }
@@ -111,8 +119,10 @@ export async function loadCandidateActiveBreaks(
         failure: {
           stage: "assignment_breaks",
           error: legacyResult.error,
+          httpStatus: resolvePostgrestHttpStatus(legacyResult.status, legacyResult.error),
           inputCount: chunk.length,
           durationMs: Math.max(0, now() - legacyStartedAt),
+          responseStatus: legacyResult.status,
         },
       };
     }
