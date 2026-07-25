@@ -485,7 +485,7 @@ begin
 
   if found
      and v_existing.standby_accrual_enabled = p_standby_accrual_enabled
-     and v_existing.effective_from is not distinct from case when p_standby_accrual_enabled then p_effective_from else null end then
+     and v_existing.effective_from is not distinct from (case when p_standby_accrual_enabled then p_effective_from else null end) then
     return jsonb_build_object(
       'policy_id', v_existing.id,
       'idempotent', true,

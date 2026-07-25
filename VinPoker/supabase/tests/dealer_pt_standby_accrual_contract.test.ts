@@ -1,11 +1,11 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 
-const migration = await Deno.readTextFile(
+const migration = (await Deno.readTextFile(
   new URL(
     "../migrations/20270105000001_dealer_pt_standby_accrual_policy.sql",
     import.meta.url,
   ),
-);
+)).replaceAll("\r\n", "\n");
 
 Deno.test("PT standby accrual is default-off and only changes a server policy", () => {
   assertStringIncludes(
@@ -22,6 +22,10 @@ Deno.test("PT standby accrual is default-off and only changes a server policy", 
     "a reason of at most 500 characters is required",
   );
   assertStringIncludes(migration, "effective from cannot be in the future");
+  assertStringIncludes(
+    migration,
+    "is not distinct from (case when p_standby_accrual_enabled then",
+  );
   assert(
     !/grant\s+(?:all|insert|update|delete)\s+on table public\.dealer_pt_wage_accrual_policies\s+to authenticated/i
       .test(migration),

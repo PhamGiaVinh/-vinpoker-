@@ -28,6 +28,17 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION pg_temp.club_wage_row(p_payload jsonb, p_dealer_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT wage_row
+  FROM jsonb_array_elements(coalesce(p_payload->'dealers', '[]'::jsonb)) AS wage_row
+  WHERE wage_row->>'dealer_id' = p_dealer_id::text
+  LIMIT 1
+$$;
+
 SELECT pg_temp.assert_true(
   NOT has_function_privilege(
     'anon',
@@ -89,9 +100,9 @@ SET LOCAL ROLE authenticated;
 DO $$
 DECLARE v_closed jsonb; v_open jsonb; v_club jsonb;
 BEGIN
-  v_closed := public._pt_wage_balance('ec000000-0000-4000-8000-000000000001');
-  v_open := public._pt_wage_balance('ec000000-0000-4000-8000-000000000002');
   v_club := public.get_club_pt_wages('eb000000-0000-4000-8000-000000000001');
+  v_closed := pg_temp.club_wage_row(v_club, 'ec000000-0000-4000-8000-000000000001');
+  v_open := pg_temp.club_wage_row(v_club, 'ec000000-0000-4000-8000-000000000002');
 
   PERFORM pg_temp.assert_eq(v_closed->>'accrual_mode', 'capped_24h', 'default policy remains capped');
   PERFORM pg_temp.assert_eq(v_closed->>'accrued_minutes', '1440', 'legacy cap preserves 24 hours on a 30-hour closed attendance');
@@ -116,8 +127,14 @@ BEGIN
     null,
     'same request is state-idempotent'
   );
-  v_closed := public._pt_wage_balance('ec000000-0000-4000-8000-000000000001');
-  v_open := public._pt_wage_balance('ec000000-0000-4000-8000-000000000002');
+  v_closed := pg_temp.club_wage_row(
+    public.get_club_pt_wages('eb000000-0000-4000-8000-000000000001'),
+    'ec000000-0000-4000-8000-000000000001'
+  );
+  v_open := pg_temp.club_wage_row(
+    public.get_club_pt_wages('eb000000-0000-4000-8000-000000000001'),
+    'ec000000-0000-4000-8000-000000000002'
+  );
 
   PERFORM pg_temp.assert_eq(v_first->>'idempotent', 'false', 'first policy write is recorded');
   PERFORM pg_temp.assert_eq(v_replay->>'idempotent', 'true', 'same policy state does not duplicate audit');
@@ -142,7 +159,10 @@ BEGIN
     'effective boundary test'
   );
   PERFORM pg_temp.assert_eq(v->>'idempotent', 'false', 'changed boundary updates policy');
-  v := public._pt_wage_balance('ec000000-0000-4000-8000-000000000003');
+  v := pg_temp.club_wage_row(
+    public.get_club_pt_wages('eb000000-0000-4000-8000-000000000001'),
+    'ec000000-0000-4000-8000-000000000003'
+  );
   PERFORM pg_temp.assert_true(
     (v->>'accrued_minutes')::int between 120 and 121,
     'effective boundary includes only the two recent unpaid hours'
@@ -176,7 +196,10 @@ BEGIN
     'pt-standby-test-replay',
     'disposable test payout'
   );
-  v_post := public._pt_wage_balance('ec000000-0000-4000-8000-000000000001');
+  v_post := pg_temp.club_wage_row(
+    public.get_club_pt_wages('eb000000-0000-4000-8000-000000000001'),
+    'ec000000-0000-4000-8000-000000000001'
+  );
 
   PERFORM pg_temp.assert_eq(v_first->>'idempotent', 'false', 'first payout writes once');
   PERFORM pg_temp.assert_eq(v_replay->>'idempotent', 'true', 'payout replay returns existing immutable receipt');
