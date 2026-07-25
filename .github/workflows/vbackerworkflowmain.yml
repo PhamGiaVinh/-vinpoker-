@@ -35,6 +35,11 @@ on:
         required: true
         default: false
         type: boolean
+      force_frontend_redeploy:
+        description: "Recovery only: redeploy an unchanged frontend after correcting a receipt target"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   actions: read
@@ -63,6 +68,7 @@ jobs:
       frontend: ${{ steps.plan.outputs.frontend }}
       frontend_held: ${{ steps.plan.outputs.frontend_held }}
       frontend_reason: ${{ steps.plan.outputs.frontend_reason }}
+      force_frontend_redeploy: ${{ steps.plan.outputs.force_frontend_redeploy }}
       shared_changed: ${{ steps.plan.outputs.shared_changed }}
       contract_profile: ${{ steps.plan.outputs.contract_profile }}
       contract_source_fingerprint: ${{ steps.plan.outputs.contract_source_fingerprint }}
@@ -117,6 +123,7 @@ jobs:
           DEPLOY_CHECKOUT_DEALER: ${{ inputs.deploy_checkout_dealer || false }}
           DEPLOY_TOURNAMENT_LIVE_CLOCK: ${{ inputs.deploy_tournament_live_clock || false }}
           DEPLOY_FRONTEND: ${{ inputs.deploy_frontend || false }}
+          FORCE_FRONTEND_REDEPLOY: ${{ inputs.force_frontend_redeploy || false }}
         run: |
           set -euo pipefail
           selected=()
@@ -132,6 +139,7 @@ jobs:
             --baselines "${RUNNER_TEMP}/deployment-baselines.json" \
             --selected "$selected_csv" \
             --deploy-frontend "$DEPLOY_FRONTEND" \
+            --force-frontend-redeploy "$FORCE_FRONTEND_REDEPLOY" \
             --github-output "$GITHUB_OUTPUT" \
             --plan-json "${RUNNER_TEMP}/deployment-plan.json" \
             --summary "$GITHUB_STEP_SUMMARY"

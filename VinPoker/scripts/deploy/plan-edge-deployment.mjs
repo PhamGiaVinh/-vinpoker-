@@ -144,11 +144,21 @@ export function buildDeploymentPlan({
   componentDiffs,
   selected = [],
   deployFrontend = false,
+  forceFrontendRedeploy = false,
   manifest,
   targetSha,
   contractSelection,
 }) {
   if (!new Set(["push", "workflow_dispatch"]).has(event)) throw new Error(`unsupported event: ${event}`);
+  if (forceFrontendRedeploy && event !== "workflow_dispatch") {
+    throw new Error("forced frontend recovery is only allowed for workflow_dispatch");
+  }
+  if (forceFrontendRedeploy && !deployFrontend) {
+    throw new Error("forced frontend recovery requires frontend deployment selection");
+  }
+  if (forceFrontendRedeploy && componentDiffs.frontend.changed) {
+    throw new Error("forced frontend recovery is only allowed when the frontend is unchanged from its receipt");
+  }
   if (!contractSelection?.profile
       || !/^sha256:[0-9a-f]{64}$/.test(contractSelection.sourceFingerprint ?? "")
       || !contractSelection.evidence
@@ -225,7 +235,7 @@ export function buildDeploymentPlan({
     );
   }
 
-  if (deployFrontend && !componentDiffs.frontend.changed) {
+  if (deployFrontend && !componentDiffs.frontend.changed && !forceFrontendRedeploy) {
     throw new Error("frontend deployment was selected but frontend is unchanged from its last successful deployment receipt");
   }
   if (deployFrontend) {
@@ -255,7 +265,10 @@ export function buildDeploymentPlan({
     missingRetainedForFrontend,
     frontend: deployFrontend,
     frontendHeld: false,
-    frontendReason: deployFrontend ? "critical_dependencies_selected" : "not_selected",
+    frontendReason: deployFrontend
+      ? forceFrontendRedeploy ? "explicit_receipt_target_recovery" : "critical_dependencies_selected"
+      : "not_selected",
+    forceFrontendRedeploy,
     sharedChanged,
     contractSelection,
   });
@@ -286,6 +299,7 @@ function enrichPlan(plan) {
     frontend: plan.frontend,
     frontendHeld: plan.frontendHeld,
     frontendReason: plan.frontendReason,
+    forceFrontendRedeploy: plan.forceFrontendRedeploy === true,
     sharedChanged: plan.sharedChanged,
     contractProfile: plan.contractSelection.profile,
     contractSourceFingerprint: plan.contractSelection.sourceFingerprint,
@@ -341,6 +355,7 @@ export function renderPlanSummary(plan) {
     `- Frontend baseline: \`${plan.components.frontend.baselineSha ?? "MISSING"}\``,
     `- Frontend diff files: \`${plan.components.frontend.files.length}\``,
     `- Frontend decision: \`${plan.frontend ? "selected" : plan.frontendHeld ? "held" : "not selected"}\` (\`${plan.frontendReason}\`)`,
+    `- Explicit frontend receipt recovery: \`${plan.forceFrontendRedeploy}\``,
     `- Required critical Edge before frontend: \`${plan.requiredForFrontend.join(",") || "none"}\``,
     `- Required retained Edge compatibility: \`${plan.retainedForFrontend.join(",") || "none"}\``,
     `- Missing retained compatibility evidence: \`${plan.missingRetainedForFrontend.join(",") || "none"}\``,
@@ -375,6 +390,7 @@ function writeOutputs(path, plan) {
     `frontend=${String(plan.frontend)}`,
     `frontend_held=${String(plan.frontendHeld)}`,
     `frontend_reason=${plan.frontendReason}`,
+    `force_frontend_redeploy=${String(plan.forceFrontendRedeploy)}`,
     `shared_changed=${String(plan.sharedChanged)}`,
     `contract_profile=${plan.contractProfile}`,
     `contract_source_fingerprint=${plan.contractSourceFingerprint}`,
@@ -395,6 +411,7 @@ function run() {
   const summaryPath = args.get("summary");
   const selected = (args.get("selected") ?? "").split(",").filter(Boolean);
   const deployFrontend = args.get("deploy-frontend") === "true";
+  const forceFrontendRedeploy = args.get("force-frontend-redeploy") === "true";
   if (!event || !repositoryRoot || !sha || !baselinesPath || !outputPath || !planPath) {
     throw new Error("event, repository, sha, baselines, github-output and plan-json are required");
   }
@@ -408,6 +425,7 @@ function run() {
     componentDiffs,
     selected,
     deployFrontend,
+    forceFrontendRedeploy,
     manifest,
     targetSha: sha,
     contractSelection,

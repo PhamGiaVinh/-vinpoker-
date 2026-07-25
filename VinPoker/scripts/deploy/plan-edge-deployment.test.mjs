@@ -217,6 +217,43 @@ test("manual dispatch rejects unchanged and noncritical functions", () => {
   }), /not allowed/);
 });
 
+test("unchanged frontend needs the narrow manual receipt-recovery confirmation", () => {
+  assert.throws(() => plan({
+    componentDiffs: diff(),
+    deployFrontend: true,
+  }), /frontend is unchanged/);
+
+  const result = plan({
+    componentDiffs: diff(),
+    deployFrontend: true,
+    forceFrontendRedeploy: true,
+  });
+  assert.equal(result.frontend, true);
+  assert.equal(result.frontendReason, "explicit_receipt_target_recovery");
+  assert.equal(result.forceFrontendRedeploy, true);
+});
+
+test("frontend receipt recovery cannot broaden a deployment", () => {
+  assert.throws(() => plan({
+    componentDiffs: diff(),
+    forceFrontendRedeploy: true,
+  }), /requires frontend deployment selection/);
+  assert.throws(() => plan({
+    componentDiffs: diff({ frontend: true }),
+    deployFrontend: true,
+    forceFrontendRedeploy: true,
+  }), /only allowed when the frontend is unchanged/);
+  assert.throws(() => buildDeploymentPlan({
+    event: "push",
+    componentDiffs: diff(),
+    deployFrontend: true,
+    forceFrontendRedeploy: true,
+    manifest,
+    targetSha: TARGET,
+    contractSelection: MASS_OPEN_SELECTION,
+  }), /only allowed for workflow_dispatch/);
+});
+
 test("frontend matcher excludes deployment tooling", () => {
   assert.equal(isFrontendPath("VinPoker/src/App.tsx"), true);
   assert.equal(isFrontendPath("VinPoker/package-lock.json"), true);
