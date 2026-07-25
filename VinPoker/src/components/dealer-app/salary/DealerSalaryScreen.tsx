@@ -4,6 +4,7 @@ import { Clock, Lock, Info, History, Wallet } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useDealerLink } from "@/hooks/dealer/useDealerLink";
 import { formatVND } from "@/lib/format";
+import { getPtWageAccrualPresentation } from "@/lib/dealerPtWagePresentation";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
@@ -14,10 +15,10 @@ import { Skeleton } from "@/components/ui/skeleton";
  * immutable payslip). Dealers never pay themselves — there is no pay control by design;
  * the club pays + resets (operator side).
  *
- * The Salary-B1 / Salary-D RPCs are merged as source but not applied live + types are not
- * regenerated yet, so they are called via the UNTYPED client (same pattern as useDealerLink /
- * useDealerPayroll's save_payroll_period). The whole screen is reached only when the route gate
- * (FEATURES.dealerSelfSalary, default OFF) is on, so while the RPCs are absent it is never hit.
+ * The generated client types can lag the controlled database contract, so these RPCs are called
+ * via the untyped client (same pattern as useDealerLink / useDealerPayroll's
+ * save_payroll_period). The whole screen is reached only when the route gate
+ * (FEATURES.dealerSelfSalary, default OFF) is on.
  */
 
 const GOLD = "#E6B84C";
@@ -37,6 +38,10 @@ interface PtWage {
   balance_vnd?: number;
   current_shift_open?: boolean;
   current_shift_start?: string | null;
+  accrual_mode?: string | null;
+  standby_accrual_enabled?: boolean;
+  current_shift_cap_reached?: boolean;
+  live_accrual_active?: boolean;
   recent_payments?: Array<{ amount_vnd: number; paid_at: string; payment_method?: string | null }>;
 }
 interface FtPayslip {
@@ -136,9 +141,11 @@ export function DealerSalaryScreen() {
   if (empType === "part_time" && pt) {
     const rate = pt.hourly_rate_vnd ?? 0;
     const open = !!pt.current_shift_open;
-    const liveBalance = (pt.balance_vnd ?? 0) + (open ? Math.floor(((nowMs - ptFetchedAt.current) / 3_600_000) * rate) : 0);
+    const accrual = getPtWageAccrualPresentation(pt);
+    const liveDeltaMs = accrual.isLiveAccruing ? nowMs - ptFetchedAt.current : 0;
+    const liveBalance = (pt.balance_vnd ?? 0) + Math.floor((liveDeltaMs / 3_600_000) * rate);
     const shiftMs = open && pt.current_shift_start ? nowMs - new Date(pt.current_shift_start).getTime() : 0;
-    const accruedH = (((pt.accrued_minutes ?? 0) * 60_000) + (open ? nowMs - ptFetchedAt.current : 0)) / 3_600_000;
+    const accruedH = (((pt.accrued_minutes ?? 0) * 60_000) + liveDeltaMs) / 3_600_000;
     const history = pt.recent_payments ?? [];
     return (
       <div>{Header}
@@ -165,7 +172,11 @@ export function DealerSalaryScreen() {
             <span>{t("dealer.salary.accrued", "tích luỹ")}{" "}<span className="font-mono text-foreground">{accruedH.toFixed(2)}h</span></span>
           </div>
           <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground mt-3">
-            <Info className="w-3.5 h-3.5" />{t("dealer.salary.accrueNote", "Tính từ kỳ trả gần nhất · cập nhật trực tiếp")}
+            <Info className="w-3.5 h-3.5 shrink-0" />
+            <span>{accrual.note}</span>
+          </div>
+          <div className="text-center text-[11px] font-medium text-muted-foreground mt-1">
+            {accrual.label}
           </div>
         </div>
 
