@@ -36,6 +36,11 @@ test("shared workflow has no automatic Edge deployment path", () => {
   assert.doesNotMatch(workflow, /supabase\s+functions\s+deploy/);
 });
 
+test("frontend deployment is manual-only", () => {
+  const frontendDeploy = workflow.slice(workflow.indexOf("deploy-frontend:"));
+  assert.match(frontendDeploy, /github\.event_name == 'workflow_dispatch'/);
+});
+
 test("Floor clock deploy remains an explicit protected critical selection", () => {
   const criticalJob = workflow.slice(
     workflow.indexOf("deploy-critical-edge:"),

@@ -467,6 +467,7 @@ jobs:
     name: Deploy exact reviewed frontend
     if: >-
       always() &&
+      github.event_name == 'workflow_dispatch' &&
       needs.plan.outputs.frontend == 'true' &&
       needs.control-plane-quality.result == 'success' &&
       needs.target-preflight.result == 'success' &&
