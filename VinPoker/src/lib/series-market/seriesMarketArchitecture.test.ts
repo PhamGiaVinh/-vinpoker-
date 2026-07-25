@@ -107,6 +107,7 @@ describe("series-market public/private architecture boundary", () => {
       ...contractPropertyNames(`${MARKET}/researchRun.ts`),
       ...contractPropertyNames(`${MARKET}/researchArtifact.ts`),
       ...contractPropertyNames(`${MARKET}/comparableResearchArtifact.ts`),
+      ...contractPropertyNames(`${MARKET}/gtdStress.ts`),
     ].map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, ""));
     for (const key of keys) {
       for (const blocked of forbidden) expect(key).not.toContain(blocked);
@@ -224,5 +225,17 @@ describe("series-market public/private architecture boundary", () => {
     expect(emitter).toContain("created-at");
     expect(emitter).toContain("executed-at");
     expect(emitter).not.toContain("jeju_events_seed_v0.csv");
+  });
+
+  it("keeps GTD Stress V0 pure, exact, historical-only, and downstream of Comparable evidence", () => {
+    const source = readFileSync(join(ROOT, `${MARKET}/gtdStress.ts`), "utf8");
+    expect(source).toContain('type: "money"');
+    expect(source).toContain("BigInt");
+    expect(source).toContain("historical comparable field quantiles");
+    expect(source).toContain("sourceArtifactId");
+    expect(source).toContain("selectionProtocolId");
+    expect(source).not.toMatch(/(?:Date\.now|Math\.random|randomUUID|fetch\s*\(|supabase|react|@\/components|@\/pages)/i);
+    expect(source).not.toMatch(/(?:integrations\/supabase|series-registration|cashier|payment|playeridentifier)/i);
+    expect(source).not.toMatch(/\bNumber\s*\(\s*(?:gtd|contribution|money|minorUnits|historical)/i);
   });
 });
