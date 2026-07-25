@@ -108,6 +108,7 @@ describe("series-market public/private architecture boundary", () => {
       ...contractPropertyNames(`${MARKET}/researchArtifact.ts`),
       ...contractPropertyNames(`${MARKET}/comparableResearchArtifact.ts`),
       ...contractPropertyNames(`${MARKET}/gtdStress.ts`),
+      ...contractPropertyNames(`${MARKET}/gtdStressComparableAdapter.ts`),
     ].map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, ""));
     for (const key of keys) {
       for (const blocked of forbidden) expect(key).not.toContain(blocked);
@@ -238,4 +239,17 @@ describe("series-market public/private architecture boundary", () => {
     expect(source).not.toMatch(/(?:integrations\/supabase|series-registration|cashier|payment|playeridentifier)/i);
     expect(source).not.toMatch(/\bNumber\s*\(\s*(?:gtd|contribution|money|minorUnits|historical)/i);
   });
+
+  it("allows only the trusted Comparable adapter to call the low-level GTD Stress calculator", () => {
+    const directCallers = sourceFiles("src")
+      .filter((file) => !file.includes(".test.") && file !== `${MARKET}/gtdStress.ts`)
+      .filter((file) => importSpecifiers(file).some((specifier) => /(?:^|\/)gtdStress$/.test(specifier)));
+    expect(directCallers).toEqual([`${MARKET}/gtdStressComparableAdapter.ts`]);
+
+    const adapter = readFileSync(join(ROOT, `${MARKET}/gtdStressComparableAdapter.ts`), "utf8");
+    expect(adapter).toContain("validateResearchArtifactGraph");
+    expect(adapter).toContain("createGtdStressScenario");
+    expect(adapter).toContain("VERIFIED_JEJU_RELEASE_ID");
+    expect(adapter).not.toMatch(/(?:Date\.now|Math\.random|randomUUID|fetch\s*\(|supabase|react|@\/components|@\/pages)/i);
+  }, 15_000);
 });
