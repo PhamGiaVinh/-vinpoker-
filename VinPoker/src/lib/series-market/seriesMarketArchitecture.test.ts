@@ -216,6 +216,7 @@ describe("series-market public/private architecture boundary", () => {
     expect(adapter).toContain("freezeComparableSelection");
     expect(adapter).toContain("selection.selectedComparableIds");
     expect(adapter).toContain("targetOutcomeClaimIds");
+    expect(adapter).toContain("validateResearchArtifactGraph({ artifact, researchGraph })");
     expect(adapter).toContain('status: "exploratory"');
     expect(adapter).toContain("postHocBiasCorrectionApplied: false");
     expect(adapter).not.toMatch(/post.?hoc.+(?:offset|correction).*(?:apply|add)/i);

@@ -9,6 +9,8 @@ import {
   SERIES_MARKET_RESEARCH_CONTRACT_VERSION,
   SERIES_MARKET_RESEARCH_NAMESPACE,
   type DeterminismLevel,
+  type ResearchRecordGraph,
+  validateResearchRecordGraph,
 } from "./researchRun";
 
 export const RESEARCH_ARTIFACT_SCHEMA_VERSION = "v1" as const;
@@ -42,6 +44,11 @@ export interface ResearchArtifact<TPayload = unknown> {
   readonly limitations: readonly string[];
   readonly allowedClaims: readonly string[];
   readonly forbiddenClaims: readonly string[];
+}
+
+export interface ResearchArtifactGraphValidationInput {
+  readonly artifact: ResearchArtifact;
+  readonly researchGraph: ResearchRecordGraph;
 }
 
 function fail(message: string, code: string): never {
@@ -102,6 +109,40 @@ function normalizePayload<TPayload>(payload: TPayload): TPayload {
   }
 }
 
+function assertCanonicalStoredValue(value: unknown, path: string): void {
+  if (typeof value === "string") {
+    if (value !== value.normalize("NFC")) {
+      fail(`${path} must use NFC-normalized text`, "NON_CANONICAL_RESEARCH_ARTIFACT");
+    }
+    return;
+  }
+  if (value === null || typeof value === "boolean") return;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || Object.is(value, -0)) {
+      fail(`${path} must use a canonical finite number`, "NON_CANONICAL_RESEARCH_ARTIFACT");
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((nested, index) => assertCanonicalStoredValue(nested, `${path}[${index}]`));
+    return;
+  }
+  if (typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      fail(`${path} must be a plain JSON object`, "NON_CANONICAL_RESEARCH_ARTIFACT");
+    }
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      if (key !== key.normalize("NFC")) {
+        fail(`${path} contains a non-NFC key`, "NON_CANONICAL_RESEARCH_ARTIFACT");
+      }
+      assertCanonicalStoredValue(nested, `${path}.${key}`);
+    }
+    return;
+  }
+  fail(`${path} must be canonical JSON`, "NON_CANONICAL_RESEARCH_ARTIFACT");
+}
+
 export async function createResearchArtifact<TPayload>(
   input: ResearchArtifactInput<TPayload>,
 ): Promise<ResearchArtifact<TPayload>> {
@@ -145,6 +186,7 @@ export async function createResearchArtifact<TPayload>(
 export async function validateResearchArtifact(
   artifact: ResearchArtifact,
 ): Promise<void> {
+  assertCanonicalStoredValue(artifact, "artifact");
   const rebuilt = await createResearchArtifact({
     executionId: artifact.executionId,
     researchDefinitionId: artifact.researchDefinitionId,
@@ -161,7 +203,41 @@ export async function validateResearchArtifact(
     artifact.contractVersion !== SERIES_MARKET_RESEARCH_CONTRACT_VERSION
     || artifact.artifactId !== rebuilt.artifactId
     || artifact.contentHash !== rebuilt.contentHash
+    || canonicalize(artifact) !== canonicalize(rebuilt)
   ) {
     fail("research artifact identity does not match its content", "RESEARCH_ARTIFACT_INTEGRITY_MISMATCH");
+  }
+}
+
+export async function validateResearchArtifactGraph(
+  input: ResearchArtifactGraphValidationInput,
+): Promise<void> {
+  await validateResearchArtifact(input.artifact);
+  await validateResearchRecordGraph(input.researchGraph);
+
+  const execution = input.researchGraph.executions.find(
+    (candidate) => candidate.executionId === input.artifact.executionId,
+  );
+  if (!execution) {
+    fail("artifact references an unknown research execution", "UNKNOWN_RESEARCH_ARTIFACT_EXECUTION");
+  }
+  const definition = input.researchGraph.definitions.find(
+    (candidate) => candidate.researchDefinitionId === input.artifact.researchDefinitionId,
+  );
+  if (!definition) {
+    fail("artifact references an unknown research definition", "UNKNOWN_RESEARCH_ARTIFACT_DEFINITION");
+  }
+  if (
+    input.artifact.executionId !== execution.executionId
+    || input.artifact.researchDefinitionId !== execution.researchDefinitionId
+    || execution.researchDefinitionId !== definition.researchDefinitionId
+  ) {
+    fail("artifact execution and definition do not form one R1 graph path", "RESEARCH_ARTIFACT_GRAPH_MISMATCH");
+  }
+  if (input.artifact.determinismLevel !== execution.determinismLevel) {
+    fail("artifact determinism differs from its execution", "RESEARCH_ARTIFACT_DETERMINISM_MISMATCH");
+  }
+  if (input.artifact.createdAt < execution.executedAt) {
+    fail("artifact cannot predate its execution", "RESEARCH_ARTIFACT_PRECEDES_EXECUTION");
   }
 }

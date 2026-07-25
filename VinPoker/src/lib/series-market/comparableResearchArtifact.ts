@@ -26,17 +26,18 @@ import {
   createOutcomeExclusionManifest,
   createResearchDefinition,
   createResearchExecution,
-  validateResearchRecordGraph,
   type ForecastOriginInformationSet,
   type InputSliceManifest,
   type OutcomeExclusionManifest,
   type ResearchDefinition,
   type ResearchEnvironmentFingerprintInput,
   type ResearchExecution,
+  type ResearchRecordGraph,
 } from "./researchRun";
 import {
   createResearchArtifact,
   type ResearchArtifact,
+  validateResearchArtifactGraph,
 } from "./researchArtifact";
 import type { VerifiedMarketReadModel } from "./verifiedMarketReadModel";
 
@@ -773,7 +774,7 @@ export async function emitComparableV0ResearchBundle(
     determinismLevel: "exact",
     executedAt: input.executedAt,
   });
-  await validateResearchRecordGraph({
+  const researchGraph: ResearchRecordGraph = {
     inputSliceManifests: [inputSliceManifest],
     outcomeExclusionManifests: [outcomeExclusionManifest],
     informationSets: [informationSet],
@@ -781,7 +782,7 @@ export async function emitComparableV0ResearchBundle(
     executions: [researchExecution],
     challenges: [],
     supersessions: [],
-  });
+  };
 
   const createdFolds = await createComparableV0FoldPredictions(corpus, evaluatorOutput, parameters);
   const evaluationReports = [
@@ -831,6 +832,7 @@ export async function emitComparableV0ResearchBundle(
       "The artifact provides an overlay probability, optimal GTD, or recommended GTD.",
     ],
   });
+  await validateResearchArtifactGraph({ artifact, researchGraph });
 
   return deepFreeze({
     inputSliceManifest,

@@ -190,6 +190,16 @@ describe("Comparable V0 Research OS vertical slice", () => {
     expect(card.intendedUse.join(" ")).not.toMatch(/overlay probability|optimal GTD|recommended GTD/i);
   }, 120_000);
 
+  it("validates the artifact against its R1 graph before returning the bundle", async () => {
+    await expect(emitComparableV0ResearchBundle({
+      model: await model(),
+      ...EXECUTION,
+      createdAt: "2026-07-24T23:59:59.999Z",
+    })).rejects.toMatchObject({
+      code: "RESEARCH_ARTIFACT_PRECEDES_EXECUTION",
+    });
+  }, 120_000);
+
   it("rejects unknown, nested, outcome, future, and mutable Comparable parameters", () => {
     expect(validateComparableV0Parameters(undefined)).toEqual({
       requestedComparables: 12,
