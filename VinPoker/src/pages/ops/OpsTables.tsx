@@ -14,6 +14,7 @@ import { useTournaments } from "@/hooks/useTournaments";
 import { RoomGrid } from "@/components/ops/shared/RoomGrid";
 import { useFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { FloorPlayerActions, type FloorSeatTarget } from "@/components/ops/shared/FloorPlayerActions";
+import { preflightFloorTableEntries } from "@/components/ops/shared/floorSeatEntryPreflight";
 import {
   toMockTable, toMockSeat,
   type MapTable,
@@ -248,10 +249,29 @@ export default function OpsTables() {
   const [closeBusy, setCloseBusy] = useState(false);
   const closeBusyRef = useRef(false);
   const submitCloseTable = useCallback(async () => {
-    if (!closeTable) return;
+    if (!closeTable || !tourId) return;
     if (closeBusyRef.current) return;
     closeBusyRef.current = true; setCloseBusy(true);
     try {
+      const activeSeats = floor.seatsByTable[closeTable.raw.table_id] ?? [];
+      if (activeSeats.length > 0) {
+        const { data: entryRows, error: entryError } = await supabase
+          .from("tournament_seats")
+          .select("id, entry_id, is_active")
+          .eq("tournament_id", tourId)
+          .in("id", activeSeats.map((seat) => seat.seat_id));
+        if (entryError) {
+          toast.error("Không kiểm tra được lượt đăng ký của các ghế. Hãy tải lại trước khi đóng bàn.");
+          return;
+        }
+        const preflight = preflightFloorTableEntries(activeSeats.map((seat) => seat.seat_id), entryRows ?? []);
+        if (!preflight.ok) {
+          toast.error(
+            `Không thể đóng bàn: ${preflight.blockedSeatCount} ghế đang chơi thiếu hoặc không xác minh được lượt đăng ký. Hãy sửa dữ liệu ghế trước.`,
+          );
+          return;
+        }
+      }
       const { data, error } = await supabase.rpc("close_tournament_table", {
         p_tournament_table_id: closeTable.raw.tt_id,
         p_draw_mode: closeMode,
@@ -273,7 +293,7 @@ export default function OpsTables() {
     } finally {
       closeBusyRef.current = false; setCloseBusy(false);
     }
-  }, [closeTable, closeMode, floor]);
+  }, [closeTable, closeMode, floor, tourId]);
 
   // ── Floor-A4: Bốc lại → redraw_tournament, 2 bước preview→confirm (gate floorTableOps) ──
   const [redrawOpen, setRedrawOpen] = useState(false);

@@ -7,7 +7,8 @@ import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 import { buildEligibleFloorMoveTargets, type MapSeat } from "@/components/ops/shared/floorAdapter";
 import type { MockSeat } from "@/components/ops/mock/opsData";
 import type { UseFloorSeats } from "@/components/ops/shared/useFloorSeats";
-import { floorOpsErrorMessage, floorOpsResponseErrorCode } from "@/lib/floorOpsErrors";
+import { preflightFloorSeatEntry } from "@/components/ops/shared/floorSeatEntryPreflight";
+import { floorOpsErrorMessage, floorOpsFunctionErrorCode } from "@/lib/floorOpsErrors";
 
 type UnappliedFloorRpcResult = { data: unknown; error: { message?: string; code?: string } | null };
 const untypedFloorRpc = supabase.rpc.bind(supabase) as unknown as (
@@ -44,6 +45,33 @@ export function FloorPlayerActions({
   const [bustInfo, setBustInfo] = useState<{ loading: boolean; place: number | null; prize: number | null } | null>(null);
   const [receiptData, setReceiptData] = useState<SeatReceiptData | null>(null);
 
+  const verifyActiveEntry = useCallback(async (): Promise<boolean> => {
+    if (!real || !tournamentId) {
+      toast.error("Thiếu dữ liệu ghế — mở lại người chơi.");
+      return false;
+    }
+    try {
+      const { data, error } = await supabase.from("tournament_seats")
+        .select("id, entry_id, is_active")
+        .eq("id", real.seat_id)
+        .eq("tournament_id", tournamentId)
+        .maybeSingle();
+      if (error) {
+        toast.error("Không kiểm tra được lượt đăng ký của ghế. Hãy tải lại trước khi thao tác.");
+        return false;
+      }
+      const result = preflightFloorSeatEntry(data);
+      if (!result.ok) {
+        toast.error(floorOpsErrorMessage(result.error, "Không thể xác minh lượt đăng ký của ghế."));
+        return false;
+      }
+      return true;
+    } catch {
+      toast.error("Không kiểm tra được lượt đăng ký của ghế. Hãy tải lại trước khi thao tác.");
+      return false;
+    }
+  }, [real, tournamentId]);
+
   // Sửa chip qua Edge với compare-and-set theo chip hiện tại; không cập nhật lạc hậu ở client.
   const saveChip = useCallback(async (newChip: number): Promise<boolean> => {
     if (!real || !tournamentId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
@@ -60,7 +88,7 @@ export function FloorPlayerActions({
           }],
         },
       });
-      const code = floorOpsResponseErrorCode(data) ?? error?.message;
+      const code = await floorOpsFunctionErrorCode(data, error);
       if (code) { toast.error(floorOpsErrorMessage(code, "Sửa chip thất bại")); return false; }
       toast.success(`Đã cập nhật chip ${real.player_name || "người chơi"}`);
       floor.reload();
@@ -72,8 +100,8 @@ export function FloorPlayerActions({
   }, [real, tournamentId, floor]);
 
   // Loại qua Edge/RPC nguyên tử. floorAtomicPayout vẫn OFF nên hạng/thưởng chỉ là tạm tính.
-  const openBust = useCallback(async () => {
-    if (!tournamentId) return;
+  const openBust = useCallback(async (): Promise<boolean> => {
+    if (!tournamentId || !await verifyActiveEntry()) return false;
     setBustInfo({ loading: true, place: null, prize: null });
     try {
       const [seatsRes, prizeRes] = await Promise.all([
@@ -84,13 +112,16 @@ export function FloorPlayerActions({
       const place = active > 0 ? active : null;
       const prize = place != null ? (((prizeRes.data ?? []) as { position: number; amount: number }[]).find((p) => p.position === place)?.amount ?? null) : null;
       setBustInfo({ loading: false, place, prize });
+      return true;
     } catch {
       setBustInfo({ loading: false, place: null, prize: null });
+      return true;
     }
-  }, [tournamentId]);
+  }, [tournamentId, verifyActiveEntry]);
   const bustPlayer = useCallback(async (): Promise<boolean> => {
     if (!real || !tournamentId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
     try {
+      if (!await verifyActiveEntry()) return false;
       const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
         body: {
           tournament_id: tournamentId, action: "update_seats",
@@ -102,13 +133,13 @@ export function FloorPlayerActions({
           }],
         },
       });
-      const code = floorOpsResponseErrorCode(data) ?? error?.message;
+      const code = await floorOpsFunctionErrorCode(data, error);
       if (code) { toast.error(floorOpsErrorMessage(code, "Loại thất bại")); return false; }
       toast.success(`Đã loại ${real.player_name || "người chơi"}`);
       floor.reload();
       return true;
     } catch (e) { toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Loại thất bại"); return false; }
-  }, [real, tournamentId, floor]);
+  }, [real, tournamentId, floor, verifyActiveEntry]);
 
   // Chuyển ghế (move_player_seat). Ghế trống mỗi bàn từ get_seats hiện tại; entry_id KHÔNG có trong
   // get_seats → tra tournament_seats theo seat_id (đúng cách desktop MovePlayerDialog).
