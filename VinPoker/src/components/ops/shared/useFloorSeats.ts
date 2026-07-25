@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { buildSeatsByTable, type MapSeat, type MapTable } from "@/components/ops/shared/floorAdapter";
+import {
+  buildOperationalFloorTables,
+  buildSeatsByTable,
+  type MapSeat,
+  type MapTable,
+} from "@/components/ops/shared/floorAdapter";
 
 export interface FloorState {
   loading: boolean;
@@ -41,7 +46,7 @@ export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: bo
       if (seq !== seqRef.current) return;
       if (ttRes.error) throw new Error(ttRes.error.message);
       if (seatsRes.error) throw new Error(typeof seatsRes.error === "string" ? seatsRes.error : (seatsRes.error as Error).message ?? "get_seats lỗi");
-      const tables: MapTable[] = ((ttRes.data ?? []) as Record<string, unknown>[])
+      const allTables: MapTable[] = ((ttRes.data ?? []) as Record<string, unknown>[])
         .map((t) => ({
           tt_id: t.id as string,
           table_id: t.table_id as string,
@@ -51,8 +56,19 @@ export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: bo
           status: (t.status as string) ?? "active",
         }))
         .sort((a, b) => (a.table_number ?? 1e9) - (b.table_number ?? 1e9));
+      const operationalTables = buildOperationalFloorTables(allTables);
+      if (operationalTables.duplicateActiveTableNumbers.length > 0) {
+        throw new Error(
+          `Dữ liệu bàn không nhất quán: trùng số Bàn ${operationalTables.duplicateActiveTableNumbers.join(", ")}. Không cho thao tác cho tới khi dữ liệu được xử lý.`,
+        );
+      }
       const seats = ((seatsRes.data as { data?: MapSeat[] } | null)?.data ?? []) as MapSeat[];
-      setState({ loading: false, error: null, tables, seatsByTable: buildSeatsByTable(tables, seats) });
+      setState({
+        loading: false,
+        error: null,
+        tables: operationalTables.tables,
+        seatsByTable: buildSeatsByTable(operationalTables.tables, seats),
+      });
     } catch (e) {
       if (seq !== seqRef.current) return;
       // P0-1: lỗi là lỗi — hiện error state, KHÔNG fallback mock.

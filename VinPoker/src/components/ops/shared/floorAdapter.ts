@@ -54,6 +54,32 @@ export function buildSeatsByTable(
 }
 
 /**
+ * The mobile operational map is not an audit-history view. Closed/broken
+ * tournament-table rows must stay in the database for receipts and history,
+ * but they cannot be shown as selectable room tables after a successful close.
+ *
+ * A duplicate active number is a server-data invariant breach. Report it to
+ * the caller instead of letting a number-keyed UI select an arbitrary table.
+ */
+export function buildOperationalFloorTables(tables: MapTable[]): {
+  tables: MapTable[];
+  duplicateActiveTableNumbers: number[];
+} {
+  const activeTables = tables.filter((table) => table.status === "active");
+  const counts = new Map<number, number>();
+  for (const table of activeTables) {
+    if (table.table_number == null) continue;
+    counts.set(table.table_number, (counts.get(table.table_number) ?? 0) + 1);
+  }
+  const duplicateActiveTableNumbers = Array.from(counts.entries())
+    .filter(([, count]) => count > 1)
+    .map(([tableNumber]) => tableNumber)
+    .sort((a, b) => a - b);
+
+  return { tables: activeTables, duplicateActiveTableNumbers };
+}
+
+/**
  * Destination candidates must match the server contract in move_player_seat and
  * restore_busted_player_to_seat: a table belongs to this tournament, is active,
  * has a linked game table, and has an actually free seat. Keeping closed or
