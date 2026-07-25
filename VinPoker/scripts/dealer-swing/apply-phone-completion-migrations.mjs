@@ -78,6 +78,7 @@ SELECT
   COALESCE((SELECT prosecdef FROM pg_proc WHERE oid = r.checkin_oid), false) AS checkin_security_definer,
   COALESCE((SELECT prosecdef FROM pg_proc WHERE oid = r.guarded_close_oid), false) AS guarded_close_security_definer,
   COALESCE((SELECT prosecdef FROM pg_proc WHERE oid = r.phone_reconcile_oid), false) AS phone_reconcile_security_definer,
+  COALESCE((SELECT scheduled_pool_enabled FROM public.dealer_selfcheckin_config WHERE id), false) AS pool_config_enabled,
   EXISTS (
     SELECT 1
     FROM cron.job
@@ -115,7 +116,7 @@ export function safeState(state) {
     "rollout_rls_enabled", "checkin_requests_rls_enabled", "close_requests_rls_enabled",
     "get_rollout_exists", "checkin_exists", "close_state_exists", "legacy_close_exists",
     "guarded_close_exists", "canonical_reconcile_exists", "phone_reconcile_exists",
-    "record_checkin_exists", "pool_enabled_exists", "pool_bridge_exists", "pool_bridge_job_exists",
+    "record_checkin_exists", "pool_enabled_exists", "pool_bridge_exists", "pool_config_enabled", "pool_bridge_job_exists",
     "get_rollout_authenticated_execute", "get_rollout_anon_execute",
     "checkin_authenticated_execute", "checkin_anon_execute",
     "guarded_close_authenticated_execute", "guarded_close_anon_execute",
@@ -136,14 +137,14 @@ export function dependencyProblems(state) {
   const problems = [];
   for (const key of [
     "legacy_close_exists", "canonical_reconcile_exists", "record_checkin_exists",
-    "pool_enabled_exists", "pool_bridge_exists", "pool_bridge_job_exists",
+    "pool_enabled_exists", "pool_bridge_exists", "pool_config_enabled", "pool_bridge_job_exists",
   ]) {
     if (state[key] !== true) problems.push(`${key} is not true`);
   }
   return problems;
 }
 
-function bootstrapPostProblems(state) {
+function bootstrapPostProblems(state, requireDarkRuntimeDefaults = true) {
   const problems = [];
   for (const key of [
     "rollout_table_exists", "checkin_requests_table_exists", "rollout_rls_enabled",
@@ -158,7 +159,9 @@ function bootstrapPostProblems(state) {
   }
   if (number(state.get_rollout_overloads) !== 1) problems.push("get_rollout_overloads is not 1");
   if (number(state.checkin_overloads) !== 1) problems.push("checkin_overloads is not 1");
-  if (!rolloutDefaults(state)) problems.push("runtime rollout defaults are not OFF with an empty allowlist");
+  if (requireDarkRuntimeDefaults && !rolloutDefaults(state)) {
+    problems.push("runtime rollout defaults are not OFF with an empty allowlist");
+  }
   return problems;
 }
 
@@ -226,6 +229,24 @@ export function preApplyDecision(state, history) {
   }
 
   return { action: "block", reason: "invalid_ledger_order", problems: ["close migration is registered before bootstrap migration"] };
+}
+
+export function runtimeSchemaDecision(state, history) {
+  const problems = [];
+  for (const migration of MIGRATIONS) {
+    const namedEntries = history.filter((entry) => entry?.name === migration.name);
+    if (namedEntries.length !== 1 || !historyEntryMatches(namedEntries[0], migration)) {
+      problems.push(`${migration.name} is not exactly registered`);
+    }
+  }
+  problems.push(
+    ...dependencyProblems(state),
+    ...bootstrapPostProblems(state, false),
+    ...closePostProblems(state),
+  );
+  return problems.length === 0
+    ? { action: "ready", reason: "exact_schema_registered", problems: [] }
+    : { action: "block", reason: "schema_contract_drift", problems };
 }
 
 async function request({ projectRef, token, path, method, body, fetchImpl = fetch }) {

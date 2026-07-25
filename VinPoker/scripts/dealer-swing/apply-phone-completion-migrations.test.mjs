@@ -39,6 +39,7 @@ function exactState(phase = "none") {
     record_checkin_exists: true,
     pool_enabled_exists: true,
     pool_bridge_exists: true,
+    pool_config_enabled: true,
     pool_bridge_job_exists: true,
     get_rollout_overloads: bootstrap ? 1 : 0,
     checkin_overloads: bootstrap ? 1 : 0,
