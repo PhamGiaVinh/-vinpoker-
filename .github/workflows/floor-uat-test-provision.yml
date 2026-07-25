@@ -1,0 +1,63 @@
+name: Floor UAT Test Provisioning
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Create or exact-clean the two approved Felt UAT TEST registrations"
+        required: true
+        type: choice
+        options: [provision, cleanup]
+      confirmation:
+        description: "Type PROVISION_FLOOR_UAT_TEST_USERS"
+        required: true
+        type: string
+      run_id:
+        description: "Required only for cleanup; exact run identifier from the provision run"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: floor-uat-test-provision
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    if: >-
+      github.ref == 'refs/heads/codex/floor-production-canary' &&
+      inputs.confirmation == 'PROVISION_FLOOR_UAT_TEST_USERS' &&
+      (inputs.operation == 'provision' || inputs.operation == 'cleanup')
+    environment: floor-production-canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FLOOR_UAT_ENV: production-test
+      FLOOR_UAT_OPERATION: ${{ inputs.operation }}
+      FLOOR_UAT_CONFIRM: ${{ inputs.confirmation }}
+      FLOOR_UAT_RUN_ID: ${{ inputs.run_id }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+      - name: Install locked dependencies without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+      - name: Validate provisioning context
+        working-directory: VinPoker
+        run: |
+          node scripts/security/check-sensitive-credential-context.mjs
+          node --test tests/security/check-sensitive-credential-context.test.mjs
+          node --check scripts/floor/floor-uat-test-provision.mjs
+      - name: Provision or exact-clean approved Floor UAT TEST records
+        working-directory: VinPoker
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/floor/floor-uat-test-provision.mjs

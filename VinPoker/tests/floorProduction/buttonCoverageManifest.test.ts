@@ -1,10 +1,23 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { floorAuditViewports, floorButtonCoverageManifest } from "../../e2e/floor-button-coverage.manifest";
+import {
+  advanceFailClosedInventory,
+  advanceStableInventory,
+  discoveryEvidence,
+  evaluateControlInventory,
+  rankedManifestEntries,
+} from "../../e2e/floor-action-evidence";
+
+const coverageSpec = readFileSync(resolve(process.cwd(), "e2e/floor-button-coverage.spec.ts"), "utf8");
+const canaryRunner = readFileSync(resolve(process.cwd(), "scripts/floor/floor-production-canary.mjs"), "utf8");
 
 const requiredControls = [
   "Tạo giải", "Sửa giải", "Mở giải", "Đồng hồ", "Mở bàn", "Thêm người", "Sửa chip",
-  "Chuyển ghế", "Đóng bàn", "Bốc lại", "Phiếu", "Loại", "Khôi phục", "Xem trước trả thưởng",
-  "Lưu cơ cấu", "Tải mẫu", "Close Report", "Đóng giải", "Huỷ", "Thử lại", "Làm mới", "Xác nhận",
+  "Chuyển", "Đóng bàn", "Bốc lại", "Phiếu", "Loại", "Cho vào lại", "Xem trước (Dự kiến)",
+  "Lưu mặc định cho giải này", "Tải file (Excel/CSV)", "Chốt giải", "Huỷ", "Thử lại", "Làm mới", "Xác nhận",
 ];
 
 describe("Floor button coverage manifest", () => {
@@ -18,18 +31,426 @@ describe("Floor button coverage manifest", () => {
   });
 
   it("requires owned scenarios and backend/DB evidence before destructive controls may run", () => {
-    for (const entry of floorButtonCoverageManifest.filter((candidate) => candidate.destructive && candidate.expectedState === "enabled")) {
+    for (const entry of floorButtonCoverageManifest.filter((candidate) => (
+      candidate.destructive && candidate.expectedState === "enabled" && !candidate.exclusionReason
+    ))) {
       expect(entry.fixtureScenario, entry.id).toBeTruthy();
       expect(entry.expectedBackendCall, entry.id).toBeTruthy();
       expect(entry.expectedDbInvariant, entry.id).toBeTruthy();
     }
   });
 
-  it("records payout as disabled while floorAtomicPayout is off", () => {
+  it("records payout as hidden while floorAtomicPayout is off", () => {
     expect(floorButtonCoverageManifest).toContainEqual(expect.objectContaining({
       id: "atomic-payout-off",
-      expectedState: "disabled",
+      expectedState: "hidden",
       exclusionReason: expect.any(String),
     }));
+  });
+
+  it("keeps official payout visible but explicitly excluded from canary clicks", () => {
+    expect(floorButtonCoverageManifest).toContainEqual(expect.objectContaining({
+      id: "payout-official-excluded",
+      expectedState: "enabled",
+      destructive: true,
+      expectedBackendCall: null,
+      exclusionReason: expect.stringContaining("EXCLUDED_WITH_REASON"),
+    }));
+  });
+
+  it("uses real routes and real backend contracts", () => {
+    expect(floorButtonCoverageManifest.some((entry) => entry.route === "/ops/tournament/:id")).toBe(false);
+    expect(floorButtonCoverageManifest).toContainEqual(expect.objectContaining({
+      id: "clock-start",
+      route: "/ops/tournaments/:id",
+      expectedBackendCall: "tournament-live-clock(start)",
+    }));
+    expect(floorButtonCoverageManifest).toContainEqual(expect.objectContaining({
+      id: "payout-preview",
+      route: "/floor",
+      expectedBackendCall: "compute-payouts(mode=preview)",
+    }));
+    expect(floorButtonCoverageManifest.some((entry) => [
+      "get_tournament_close_report",
+      "payout_preview",
+      "save_payout_structure",
+      "load_payout_template",
+    ].includes(entry.expectedBackendCall ?? ""))).toBe(false);
+  });
+
+  it("requires a reason for every hidden or source-excluded control", () => {
+    for (const entry of floorButtonCoverageManifest.filter((candidate) => candidate.expectedState === "hidden")) {
+      expect(entry.exclusionReason, entry.id).toBeTruthy();
+    }
+    for (const entry of floorButtonCoverageManifest.filter((candidate) => candidate.labelPattern)) {
+      expect(() => new RegExp(entry.labelPattern, "iu"), entry.id).not.toThrow();
+    }
+  });
+
+  it("keeps clock and chip action IDs distinct and removes the legacy combined adjustment", () => {
+    const ids = floorButtonCoverageManifest.map((entry) => entry.id);
+    expect(ids).toHaveLength(86);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of [
+      "clock-start",
+      "clock-pause",
+      "clock-resume",
+      "clock-level-next",
+      "clock-level-previous",
+      "clock-adjust-minus",
+      "clock-adjust-plus",
+      "payout-satellite-remove-row",
+      "player-chip",
+      "player-chip-save",
+    ]) {
+      expect(ids).toContain(id);
+    }
+    expect(ids).not.toContain("clock-adjust");
+    expect(
+      createHash("sha256").update([...ids].sort().join("\n")).digest("hex"),
+    ).toBe("07ce90feddf081fbf66a82ec0d38e08c7f67fa64152e29755cf052c03d0b9482");
+  });
+
+  it("waits for a visible control instead of the responsive shell's hidden first control", () => {
+    expect(coverageSpec).toContain("controls.filter({ visible: true })");
+    expect(coverageSpec).toContain("visibleControls.first()");
+    expect(coverageSpec).not.toContain("controls.first(),");
+  });
+
+  it("snapshots realtime controls atomically and preserves the original assertion", () => {
+    expect(coverageSpec).toContain("controls.evaluateAll");
+    expect(coverageSpec).not.toContain("index < await controls.count()");
+    expect(coverageSpec).toContain("context.close().catch(() => undefined)");
+    expect(coverageSpec).toContain('"owned_tournament_selected"');
+    expect(coverageSpec).toContain('"tab_selected"');
+  });
+
+  it("keeps a transiently disabled navigation-only refresh fail-closed", () => {
+    const refresh = floorButtonCoverageManifest.find((entry) => entry.id === "floor-refresh");
+    expect(refresh).toBeTruthy();
+    if (!refresh) throw new Error("floor-refresh manifest entry is required");
+
+    const inventory = evaluateControlInventory([refresh], [{ label: "Làm mới", enabled: false }]);
+    expect(inventory.stateMismatches).toEqual([
+      "floor-refresh:expected_navigation-only_observed_disabled",
+    ]);
+    expect(inventory.ready).toBe(false);
+    expect(discoveryEvidence(refresh, "tablet-portrait", false)).toMatchObject({
+      status: "BLOCKED",
+      stateMismatch: true,
+    });
+  });
+
+  it("accepts Floor inventory only after two identical steady-state snapshots", () => {
+    const refresh = floorButtonCoverageManifest.find((entry) => entry.id === "floor-refresh");
+    expect(refresh).toBeTruthy();
+    if (!refresh) throw new Error("floor-refresh manifest entry is required");
+
+    const disabled = evaluateControlInventory([refresh], [{ label: "Làm mới", enabled: false }]);
+    const enabled = evaluateControlInventory([refresh], [{ label: "Làm mới", enabled: true }]);
+    let progress = advanceStableInventory(undefined, disabled, 2);
+    expect(progress).toMatchObject({ consecutive: 0, accepted: false });
+    progress = advanceStableInventory(progress, enabled, 2);
+    expect(progress).toMatchObject({ consecutive: 1, accepted: false });
+    progress = advanceStableInventory(progress, enabled, 2);
+    expect(progress).toMatchObject({ consecutive: 2, accepted: true });
+    progress = advanceStableInventory(progress, disabled, 2);
+    expect(progress).toMatchObject({ consecutive: 0, accepted: false });
+
+    expect(coverageSpec).toContain("waitForStableControlInventory");
+    expect(coverageSpec).toContain("requiredStableSnapshots = 2");
+    expect(coverageSpec).toContain('toHaveCount(1, { timeout: 15_000 })');
+  });
+
+  it("rejects missing or duplicate Floor refresh controls", () => {
+    const refresh = floorButtonCoverageManifest.find((entry) => entry.id === "floor-refresh");
+    expect(refresh).toBeTruthy();
+    if (!refresh) throw new Error("floor-refresh manifest entry is required");
+
+    const missing = evaluateControlInventory([refresh], [], {
+      exactlyOnceManifestIds: ["floor-refresh"],
+    });
+    expect(missing.stateMismatches).toContain("floor-refresh:expected_once_observed_0");
+    expect(advanceStableInventory(undefined, missing, 2).accepted).toBe(false);
+
+    const duplicate = evaluateControlInventory(
+      [refresh],
+      [
+        { label: "Làm mới", enabled: true },
+        { label: "Làm mới", enabled: true },
+      ],
+      { exactlyOnceManifestIds: ["floor-refresh"] },
+    );
+    expect(duplicate.stateMismatches).toContain("floor-refresh:expected_once_observed_2");
+    expect(advanceStableInventory(undefined, duplicate, 2).accepted).toBe(false);
+    expect(coverageSpec).toContain('exactlyOnceManifestIds: manifestRoute === "/floor" ? ["floor-refresh"] : []');
+  });
+
+  it("fails immediately on transient unknown enabled controls or non-allowlisted mismatches", () => {
+    const refresh = floorButtonCoverageManifest.find((entry) => entry.id === "floor-refresh");
+    const disabledEntry = floorButtonCoverageManifest.find((entry) => entry.expectedState === "disabled");
+    expect(refresh).toBeTruthy();
+    expect(disabledEntry).toBeTruthy();
+    if (!refresh || !disabledEntry) throw new Error("required manifest entries are missing");
+
+    const unknownEnabled = evaluateControlInventory(
+      [refresh],
+      [
+        { label: "Làm mới", enabled: true },
+        { label: "Unmanifested destructive control", enabled: true },
+      ],
+      { exactlyOnceManifestIds: ["floor-refresh"] },
+    );
+    expect(() => advanceFailClosedInventory(undefined, unknownEnabled, {
+      retryableStateMismatches: ["floor-refresh:expected_navigation-only_observed_disabled"],
+    })).toThrow("floor_control_inventory_violation");
+
+    const otherMismatch = evaluateControlInventory(
+      [disabledEntry],
+      [{ label: disabledEntry.label, enabled: true }],
+    );
+    expect(() => advanceFailClosedInventory(undefined, otherMismatch, {
+      retryableStateMismatches: ["floor-refresh:expected_navigation-only_observed_disabled"],
+    })).toThrow("floor_control_inventory_violation");
+
+    const retryableRefresh = evaluateControlInventory(
+      [refresh],
+      [{ label: "Làm mới", enabled: false }],
+    );
+    expect(advanceFailClosedInventory(undefined, retryableRefresh, {
+      retryableStateMismatches: ["floor-refresh:expected_navigation-only_observed_disabled"],
+    })).toMatchObject({ consecutive: 0, accepted: false });
+    expect(coverageSpec).toContain("advanceFailClosedInventory(progress, inventory");
+  });
+
+  it("runs button discovery before every browser mutation phase", () => {
+    const phaseBlock = canaryRunner.slice(
+      canaryRunner.indexOf("const phaseFailures = await runSequentialBrowserPhases"),
+    );
+    const buttonManifest = phaseBlock.indexOf('"button_manifest"');
+    expect(buttonManifest).toBeGreaterThanOrEqual(0);
+    for (const phase of [
+      "clock",
+      "table_lifecycle",
+      "table_close",
+      "table_redraw",
+      "bust_restore",
+      "table_retry",
+      "chip_cas",
+      "payout_close",
+    ]) {
+      expect(phaseBlock.indexOf(`"${phase}"`), phase).toBeGreaterThan(buttonManifest);
+    }
+  });
+
+  it("waits for route-owned controls and records conditional navigation evidence", () => {
+    expect(coverageSpec).toContain("prepareRouteForCoverageDiscovery");
+    expect(coverageSpec).toContain("auditConditionalRouteControls");
+    expect(coverageSpec).toContain("appendVerifiedControlEvidence");
+    expect(coverageSpec).toContain("auditScopedControlInventory");
+    expect(coverageSpec).toContain('case "/ops/tournaments"');
+    expect(coverageSpec).toContain('case "/ops/cashier"');
+    expect(coverageSpec).toContain('case "/ops/tables"');
+    expect(coverageSpec).toContain('case "/ops/tournaments/:id"');
+    expect(coverageSpec).toContain('case "/floor"');
+    expect(coverageSpec).toContain("waitForStableControlInventory(page, controls, manifest");
+    expect(coverageSpec).toContain('"tournament-cancel"');
+    expect(coverageSpec).toContain('"tournament-confirm"');
+    expect(coverageSpec).toContain('"tables-clock"');
+    expect(coverageSpec).toContain('"tournament-actions-close"');
+    expect(coverageSpec).toContain('"tables-seat-empty"');
+    expect(coverageSpec).toContain("has enabled controls without a manifest entry");
+    expect(coverageSpec).toContain("visibleButtonContainingExactText(page, assignment.ownedTournamentName)");
+    expect(coverageSpec).not.toContain("visibleButton(page, assignment.ownedTournamentName).click");
+    expect(coverageSpec).toContain("await ownedTournament.click({ timeout: 15_000 })");
+    expect(coverageSpec).toContain("ownedTableNumber?: number");
+    expect(coverageSpec).toContain("assignment.ownedTableNumber == null");
+    expect(coverageSpec).toContain("ownedTableButtonNamePattern(assignment.ownedTableNumber)");
+    expect(coverageSpec).not.toContain("await expect(visibleButton(page, /^\\d+\\s+\\d+\\/\\d+$/u)).toBeVisible");
+    expect(canaryRunner).toContain("ownedTournamentName: access.tournamentName");
+    expect(canaryRunner).toContain("ownedTournamentName: lifecycle.tournamentName");
+    expect(canaryRunner).toContain("ownedTableNumber: SCENARIO_SECOND_TABLE_NUMBER.TABLE_LIFECYCLE");
+    expect(canaryRunner).toContain('"payout-satellite-remove-row"');
+    expect(canaryRunner).toContain("browser_payout_satellite_remove_row_clicked");
+    expect(canaryRunner).toContain('browserPhaseCheckpoint("clock", `${checkpointScenario}_navigate_retry`)');
+  });
+
+  it("classifies responsive payout controls that become visible after data loads", () => {
+    const style = floorButtonCoverageManifest.find((entry) => entry.id === "payout-style");
+    const removeRow = floorButtonCoverageManifest.find((entry) => entry.id === "payout-satellite-remove-row");
+    expect(style?.labelPattern).toContain("daily");
+    expect(removeRow?.labelPattern).toBe("^xoá dòng \\d+$");
+    expect(removeRow?.fixtureScenario).toBe("PAYOUT_CLOSE");
+  });
+
+  it("classifies both seeded and API-added players on the owned lifecycle table", () => {
+    const playerRow = floorButtonCoverageManifest.find((entry) => entry.id === "tables-player-row");
+    const pattern = new RegExp(playerRow?.labelPattern ?? "", "iu");
+    expect(pattern.test("3 CODEX_FLOOR_CANARY_20260722204355_1234abcd_TABLE_LIFECYCLE_ADDED 10.000")).toBe(true);
+    expect(pattern.test("4 CODEX_FLOOR_CANARY_20260722204355_1234abcd_TABLE_LIFECYCLE_P1 10,000")).toBe(true);
+    expect(pattern.test("3 CODEX_FLOOR_CANARY_20260722204355_1234abcd_ACCESS_ADDED 10.000")).toBe(false);
+  });
+
+  it("prefers an exact manifest label over a shorter prefix label", () => {
+    const payoutEntries = floorButtonCoverageManifest.filter((entry) => entry.route === "/floor" && entry.role === "owner");
+    expect(rankedManifestEntries(payoutEntries, "Lưu mặc định cho giải này")[0]?.id).toBe("payout-save");
+    expect(rankedManifestEntries(payoutEntries, "Lưu")[0]?.id).toBe("payout-satellite-save-disabled");
+    expect(coverageSpec).toContain("evaluateControlInventory(");
+  });
+
+  it("pins the browser audit to the locale used by manifest labels", () => {
+    expect(coverageSpec).toContain('locale: "vi-VN"');
+  });
+
+  it("installs a fail-closed read-only egress guard for every inventory context", () => {
+    expect(coverageSpec).toContain("installInventoryEgressGuard(context, baseURL, assignment)");
+    expect(coverageSpec).toContain('serviceWorkers: "block"');
+    expect(coverageSpec).toContain("context.routeWebSocket");
+    expect(coverageSpec).toContain("assignment.allowedTournamentIds.includes");
+    expect(coverageSpec).toContain("expectedBlockedInventoryRead");
+    expect(coverageSpec).toContain("expectedBlockedEgress");
+    expect(coverageSpec).toContain('route.abort("blockedbyclient")');
+    expect(coverageSpec).toContain("attempted forbidden browser egress");
+    expect(coverageSpec).not.toContain("request.headers()");
+  });
+
+  it("keeps known optional bootstrap reads aborted and separately classified", () => {
+    for (const table of [
+      "booking_chats",
+      "club_accountants",
+      "club_chip_masters",
+      "club_fnb_staff",
+      "club_marketers",
+      "dealer_assignments",
+      "dealer_attendance",
+      "dealers",
+      "gto_spot_ranges",
+      "notifications",
+      "profiles",
+      "tournament_registrations",
+      "user_roles",
+    ]) {
+      expect(coverageSpec).toContain(`"${table}"`);
+      expect(canaryRunner).toContain(`"${table}"`);
+    }
+    expect(coverageSpec).toContain('reason === "unexpected_read"');
+    expect(coverageSpec).toContain("expectedBlockedEgress.push");
+    expect(coverageSpec).toContain("referencedIds.every((id) => ownedIds.has(id.toLowerCase()))");
+  });
+
+  it("waits for the satellite row created by the audited click", () => {
+    const addRowWait = canaryRunner.indexOf('addSatelliteRow.waitFor({ state: "visible"');
+    const initialRowWait = canaryRunner.indexOf('satelliteRows.first().waitFor({ state: "visible"');
+    const initialRowCount = canaryRunner.indexOf("const satelliteRowsBefore = await satelliteRows.count()");
+    expect(addRowWait).toBeGreaterThan(-1);
+    expect(initialRowWait).toBeGreaterThan(-1);
+    expect(initialRowCount).toBeGreaterThan(addRowWait);
+    expect(initialRowCount).toBeGreaterThan(initialRowWait);
+    expect(canaryRunner).toContain('result("browser_payout_satellite_initial_row_visible", satelliteRowsBefore > 0)');
+    expect(canaryRunner).toContain("satelliteRows.nth(satelliteRowsBefore).waitFor");
+  });
+
+  it("uses stable table-card discovery and sanitized phase diagnostics", () => {
+    expect(canaryRunner).toContain("ownedOpsTableButton");
+    expect(canaryRunner).toContain("ownedOpsPlayerButton");
+    expect(canaryRunner).not.toContain('name: playerName, exact: true');
+    expect(canaryRunner).not.toContain('name: seat.player_name, exact: true');
+    expect(canaryRunner).toContain("BROWSER_PHASE_CHECKPOINT");
+    expect(canaryRunner).toContain("browserPhaseErrorClass");
+    expect(canaryRunner).toContain("error_class=${browserPhaseErrorClass(error)}");
+  });
+
+  it("finds an opened table sheet by its stable action controls, not its mutable display name", () => {
+    expect(canaryRunner).toContain('has: page.getByRole("button", { name: "Thêm người", exact: true })');
+    expect(canaryRunner).toContain('has: page.getByRole("button", { name: "Đóng bàn", exact: true })');
+    expect(canaryRunner).not.toContain('hasText: new RegExp(`\\\\b${tableNumber}\\\\b`, "u")');
+  });
+
+  it("waits for the owned player action sheet before the table-lifecycle move", () => {
+    const lifecycleStart = canaryRunner.indexOf("async function runBrowserTableLifecycleActions");
+    const lifecycleEnd = canaryRunner.indexOf("async function runBrowserCloseTableAction", lifecycleStart);
+    const lifecycleFlow = canaryRunner.slice(lifecycleStart, lifecycleEnd);
+    expect(lifecycleFlow).toContain("const playerActionsDialog = page.getByRole(\"dialog\"");
+    expect(lifecycleFlow).toContain('playerActionsDialog.getByRole("button", { name: "Chuyển bàn / ghế", exact: true })');
+    expect(lifecycleFlow).toContain('moveAction.click({ trial: true, timeout: 15_000 })');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_action_ready")');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_dialog_ready")');
+    expect(lifecycleFlow).toContain('const moveTargetCard = moveDialog.getByText("Chọn bàn đích (còn ghế trống)", { exact: true }).locator("..")');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_target_table_ready")');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_target_table_selected")');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_target_seat_ready")');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_target_seat_selected")');
+    expect(lifecycleFlow).toContain('browserPhaseCheckpoint("table_lifecycle", "move_confirm_ready")');
+    expect(lifecycleFlow).not.toContain('page.getByRole("button", { name: /^Chuyển\\b/u }).click()');
+    expect(lifecycleFlow).not.toContain('locator("xpath=');
+  });
+
+  it("scopes Retry to the table-map error card and proves the recovered owned grid", () => {
+    const retryStart = canaryRunner.indexOf("async function runBrowserTableRetryAction");
+    const retryEnd = canaryRunner.indexOf("async function runBrowserTvPromptActions", retryStart);
+    const retryFlow = canaryRunner.slice(retryStart, retryEnd);
+    expect(retryFlow).toContain('page.getByText("Không tải được sơ đồ bàn", { exact: true })');
+    expect(retryFlow).toContain('retryErrorCard.getByRole("button", { name: "Thử lại", exact: true })');
+    expect(retryFlow).toContain("createExactRequestLifecycleObservation(page");
+    expect(retryFlow).toContain('url.pathname === "/rest/v1/tournament_tables"');
+    expect(retryFlow).toContain('JSON.stringify(["select", "tournament_id"])');
+    expect(retryFlow).toContain('url.searchParams.get("select") === "id,table_name,table_number,max_seats,status,table_id"');
+    expect(retryFlow).toContain('url.pathname === "/functions/v1/tournament-live-draw"');
+    expect(retryFlow).toContain('retryErrorTitle.waitFor({ state: "hidden", timeout: 15_000 })');
+    expect(retryFlow).toContain('browserPhaseCheckpoint("table_retry", "retry_loading_started")');
+    expect(retryFlow).toContain('"FLOOR_CANARY TABLE_RETRY_OBSERVATION"');
+    expect(retryFlow).toContain('() => "grid"');
+    expect(retryFlow).toContain('() => "error"');
+    expect(retryFlow).toContain('() => "empty"');
+    expect(retryFlow).toContain('page.waitForTimeout(15_000).then(() => "loading_timeout")');
+    expect(retryFlow).toContain('tableRowCount === 1');
+    expect(retryFlow).toContain('seatRowCount === fixture.initialSnapshot.activeSeatCount');
+    expect(retryFlow).toContain('result("browser_tables_retry_refresh", uiState === "grid"');
+  });
+
+  it("waits for restore capability and scopes the action to the owned busted player row", () => {
+    expect(canaryRunner).toContain('browserPhaseCheckpoint("bust_restore", "busted_player_row_ready")');
+    expect(canaryRunner).toContain('browserPhaseCheckpoint("bust_restore", "restore_button_enabled")');
+    expect(canaryRunner).toContain("restoreButton.click({ trial: true, timeout: 15_000 })");
+    expect(canaryRunner).toContain("bustedPlayerRow.getByRole");
+    expect(canaryRunner).toContain("restoreAction.click({ trial: true, timeout: 15_000 })");
+    expect(canaryRunner).toContain('browserPhaseCheckpoint("bust_restore", "restore_action_ready")');
+    expect(canaryRunner).toContain('observeExactPostLifecycle(restorePage, "/rest/v1/rpc/restore_busted_player_to_seat"');
+    expect(canaryRunner).toContain('browserPhaseCheckpoint("bust_restore", "restore_request_seen")');
+    expect(canaryRunner).toContain('browserPhaseCheckpoint("bust_restore", "restore_response_seen")');
+  });
+
+  it("uses the owner auth scope and actionable CUSTOM controls before saving a payout template", () => {
+    expect(canaryRunner).toContain('const styleControl = page.getByText("Kiểu giải", { exact: true })');
+    expect(canaryRunner).toContain('.getByRole("combobox")\n      .filter({ visible: true })\n      .first()');
+    expect(canaryRunner).not.toContain('const styleControl = page.getByRole("combobox").first()');
+    expect(canaryRunner).toContain("actorIds: [actors.owner.id]");
+    expect(canaryRunner).toContain('const templateNameControl = page.getByPlaceholder("Tên mẫu", { exact: true })');
+    expect(canaryRunner).toContain('templateSaveAction.click({ trial: true, timeout: 15_000 })');
+    for (const checkpoint of [
+      "preview_rendered",
+      "style_control_ready",
+      "custom_selected",
+      "import_complete",
+      "template_save_ready",
+    ]) {
+      expect(canaryRunner).toContain(`browserPhaseCheckpoint("payout_close", "${checkpoint}")`);
+    }
+  });
+
+  it("classifies every enabled desktop shell control discovered on Floor", () => {
+    for (const id of [
+      "floor-shell-language",
+      "floor-shell-notifications",
+      "floor-shell-support",
+      "floor-shell-operations",
+      "floor-shell-qr",
+      "floor-shell-sign-out",
+      "floor-shell-theme",
+      "floor-owned-tournament",
+      "floor-shell-install-app",
+    ]) {
+      expect(floorButtonCoverageManifest).toContainEqual(expect.objectContaining({ id, route: "/floor", role: "owner" }));
+    }
   });
 });
