@@ -5,6 +5,8 @@ const FLOOR_ERROR_MESSAGES: Record<string, string> = {
   tournament_not_open: "Giải đã đóng hoặc đã huỷ.",
   tournament_completed: "Giải đã kết thúc. Không thể tiếp tục thao tác Floor.",
   tournament_already_closed: "Giải đã chốt. Không thể tự sửa lại kết quả.",
+  seat_not_found: "Không tìm thấy ghế đang thao tác. Hãy tải lại sơ đồ bàn.",
+  seat_not_active: "Ghế này không còn đang hoạt động. Hãy tải lại sơ đồ bàn.",
   active_players_remaining: "Vẫn còn người đang ngồi. Hãy loại/chuyển hết người chơi trước khi chốt giải.",
   orphan_active_seat: "Có ghế đang hoạt động nhưng thiếu lượt vào. Hệ thống đã dừng để tránh mất dữ liệu.",
   seat_entry_mismatch: "Ghế và lượt vào không khớp. Hệ thống đã dừng để tránh chuyển nhầm người.",
@@ -31,6 +33,34 @@ export function floorOpsResponseErrorCode(data: unknown): string | null {
   if (!data || typeof data !== "object" || Array.isArray(data)) return null;
   const error = (data as Record<string, unknown>).error;
   return typeof error === "string" ? error : null;
+}
+
+/**
+ * Edge Functions return their own sanitized Floor code in the JSON body for a
+ * non-2xx response. Supabase exposes that body through `error.context`; reading
+ * it lets the operator see the actionable code instead of a generic SDK error.
+ */
+export async function floorOpsFunctionErrorCode(data: unknown, error: unknown): Promise<string | null> {
+  const responseCode = floorOpsResponseErrorCode(data);
+  if (responseCode) return responseCode;
+
+  if (error && typeof error === "object") {
+    const candidate = error as {
+      message?: unknown;
+      context?: { json?: () => Promise<unknown> };
+    };
+    if (typeof candidate.context?.json === "function") {
+      try {
+        const contextCode = floorOpsResponseErrorCode(await candidate.context.json());
+        if (contextCode) return contextCode;
+      } catch {
+        // The response body is optional diagnostic data; keep the SDK fallback below.
+      }
+    }
+    if (typeof candidate.message === "string") return candidate.message;
+  }
+
+  return null;
 }
 
 export function floorOpsErrorMessage(code: string | null | undefined, fallback = "Thao tác thất bại"): string {

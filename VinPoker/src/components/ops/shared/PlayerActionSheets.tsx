@@ -57,7 +57,7 @@ export function PlayerActionSheets({
    *  tính ngay lúc mở (P0-5, không dùng cache). bustInfo: kết quả đọc lại. onBustPlayer: ghi
    *  update_seats is_active:false, trả true nếu thành công. */
   onBustPlayer: () => Promise<boolean>;
-  onOpenBust: () => void;
+  onOpenBust: () => Promise<boolean>;
   bustInfo: { loading: boolean; place: number | null; prize: number | null } | null;
   /** Nếu có → nút "Chuyển" mở chọn bàn/ghế THẬT: bàn đích + ghế trống lấy từ moveTargets; xác nhận
    *  gọi onMovePlayer(tt_id, seat, lý do) (màn chủ tra entry_id + gọi move_player_seat). */
@@ -76,6 +76,7 @@ export function PlayerActionSheets({
   const [chipValue, setChipValue] = useState("62500");
   const [chipBusy, setChipBusy] = useState(false);
   const [bustBusy, setBustBusy] = useState(false);
+  const [bustPreparing, setBustPreparing] = useState(false);
   const [moveTableId, setMoveTableId] = useState<string | null>(null);
   const [moveBusy, setMoveBusy] = useState(false);
 
@@ -107,8 +108,13 @@ export function PlayerActionSheets({
       return;
     }
     if (next === "bust" && onBustPlayer) {
-      onOpenBust?.();          // P0-5: đọc lại hạng + thưởng tạm tính NGAY khi mở
-      go("bust");
+      setBustPreparing(true);
+      void onOpenBust()
+        .then((ready) => {
+          if (ready) go("bust"); // P0-5: only open after the seat-entry preflight + fresh preview
+        })
+        .catch(() => toast.error("Không kiểm tra được dữ liệu người chơi. Hãy tải lại trước khi loại."))
+        .finally(() => setBustPreparing(false));
       return;
     }
     if (next === "move" && onMovePlayer) {
@@ -174,7 +180,7 @@ export function PlayerActionSheets({
                 <Receipt className="h-5 w-5 shrink-0 text-sky-300" />
                 <span><span className="block text-[15px] font-semibold text-[#f2ece6]">Phiếu</span><span className="block text-[11px] text-[#9b8e97]">xem / in lại</span></span>
               </button>
-              <button onClick={() => act("bust")} className="ios-press flex items-center gap-3 rounded-2xl bg-rose-500/12 p-3.5 text-left text-rose-300">
+              <button disabled={bustPreparing} onClick={() => act("bust")} className="ios-press flex items-center gap-3 rounded-2xl bg-rose-500/12 p-3.5 text-left text-rose-300 disabled:opacity-40">
                 <UserMinus className="h-5 w-5 shrink-0" />
                 <span><span className="block text-[15px] font-semibold">Loại</span><span className="block text-[11px] opacity-80">bust out</span></span>
               </button>
@@ -405,18 +411,18 @@ export function PlayerActionSheets({
 
       {/* S10 — xác nhận Loại (restate hạng + tiền tạm tính). onBustPlayer → THẬT (💰). */}
       <AlertDialog open={sheetOpen("bust")} onOpenChange={(v) => { if (!v && !bustBusy) close(); }}>
-        <AlertDialogContent className="max-w-[340px] rounded-[24px] border-none bg-[#0d0913]">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-[#f2ece6]">
+        <AlertDialogContent className="w-[calc(100vw-2rem)] max-w-[340px] overflow-x-hidden rounded-[24px] border-none bg-[#0d0913]">
+          <AlertDialogHeader className="min-w-0">
+            <AlertDialogTitle className="flex min-w-0 flex-wrap items-center gap-2 text-[#f2ece6]">
               <span className="grid h-9 w-9 place-items-center rounded-full bg-rose-500/14 text-rose-300">
                 <UserMinus className="h-[18px] w-[18px]" />
               </span>
               Xác nhận loại người chơi
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-[#9b8e97]">Kiểm tra hạng và tiền thưởng trước khi xác nhận.</AlertDialogDescription>
+            <AlertDialogDescription className="min-w-0 break-words text-[#9b8e97]">Kiểm tra hạng và tiền thưởng trước khi xác nhận.</AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="ios-card p-5 text-center">
-            <div className="text-[17px] font-semibold text-[#f2ece6]">{s?.name}</div>
+          <div className="ios-card min-w-0 p-5 text-center">
+            <div className="min-w-0 break-all text-[17px] font-semibold text-[#f2ece6]">{s?.name}</div>
             {onBustPlayer ? (
               !bustInfo || bustInfo.loading ? (
                 <div className="flex flex-col items-center gap-2 py-4"><Loader2 className="h-6 w-6 animate-spin text-[#c9a86a]" /><span className="text-[13px] text-[#9b8e97]">Đang đọc lại hạng…</span></div>
@@ -441,8 +447,8 @@ export function PlayerActionSheets({
               </>
             )}
           </div>
-          <AlertDialogFooter className="gap-2 sm:gap-2">
-            <button onClick={close} disabled={bustBusy} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6] disabled:opacity-40">Huỷ</button>
+          <AlertDialogFooter className="min-w-0 gap-2 sm:gap-2">
+            <button onClick={close} disabled={bustBusy} className="ios-press ios-fill w-full min-w-0 flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6] disabled:opacity-40">Huỷ</button>
             <button
               disabled={bustBusy || (!!onBustPlayer && (!bustInfo || bustInfo.loading))}
               onClick={async () => {
@@ -455,7 +461,7 @@ export function PlayerActionSheets({
                   done("Đã loại");
                 }
               }}
-              className="ios-press flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-rose-500/90 py-3 text-[15px] font-bold text-white disabled:opacity-40">
+              className="ios-press flex w-full min-w-0 flex-1 items-center justify-center gap-1.5 rounded-2xl bg-rose-500/90 py-3 text-[15px] font-bold text-white disabled:opacity-40">
               {bustBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4" />} {bustBusy ? "Đang loại…" : "Xác nhận loại"}
             </button>
           </AlertDialogFooter>

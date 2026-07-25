@@ -11,6 +11,11 @@ on:
       - "VinPoker/supabase/migrations/20270104000001_floor_chip_cas_rpc.sql"
       - "VinPoker/supabase/migrations/20270104000004_floor_clock_control_atomic.sql"
       - "VinPoker/supabase/migrations/20270104000005_floor_operator_scope_acl.sql"
+      - "VinPoker/src/components/ops/shared/FloorPlayerActions.tsx"
+      - "VinPoker/src/components/ops/shared/PlayerActionSheets.tsx"
+      - "VinPoker/src/components/ops/shared/floorSeatEntryPreflight.ts"
+      - "VinPoker/src/lib/floorOpsErrors.ts"
+      - "VinPoker/src/pages/ops/OpsTables.tsx"
       - "VinPoker/tests/floorProduction/**"
   workflow_dispatch:
 
@@ -34,6 +39,38 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up pinned Node runtime for Floor source checks
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - name: Install locked Floor source dependencies without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+
+      - name: Run targeted Floor mobile regressions
+        working-directory: VinPoker
+        run: >-
+          npx vitest run
+          tests/floorProduction/floorSeatEntryPreflight.test.ts
+          tests/floorProduction/floorOpsErrors.test.ts
+          tests/floorProduction/playerActionSheets.render.test.tsx
+
+      - name: Lint targeted Floor mobile source
+        working-directory: VinPoker
+        run: >-
+          npx eslint
+          src/components/ops/shared/FloorPlayerActions.tsx
+          src/components/ops/shared/PlayerActionSheets.tsx
+          src/components/ops/shared/floorSeatEntryPreflight.ts
+          src/lib/floorOpsErrors.ts
+          src/pages/ops/OpsTables.tsx
+          tests/floorProduction/floorSeatEntryPreflight.test.ts
+          tests/floorProduction/floorOpsErrors.test.ts
+          tests/floorProduction/playerActionSheets.render.test.tsx
 
       - name: Apply Floor V2 migrations to disposable PostgreSQL and run integration assertions
         working-directory: VinPoker
