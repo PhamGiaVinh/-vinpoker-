@@ -12,16 +12,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { formatVND } from "@/lib/format";
-import { RefreshCw, Loader2, Clock, Coins, Wallet } from "lucide-react";
+import { getPtWageAccrualPresentation } from "@/lib/dealerPtWagePresentation";
+import { RefreshCw, Loader2, Clock, Coins, Wallet, Info } from "lucide-react";
 
 /**
  * Salary-C — Operator "Theo giờ · Part-time" sub-tab. Live accruing balances per PT dealer
  * + full-payment-then-reset via the Salary-B1 RPCs (get_club_pt_wages / pay_part_time_balance).
  *
- * The B1 migrations are merged as SOURCE but not yet applied live + types are not regenerated,
- * so the RPCs are called through the untyped client (same pattern as useDealerLink /
- * useDealerPayroll's save_payroll_period). This whole tab only mounts when FEATURES.salaryTabV2
- * is ON (default OFF) — so while the RPCs are absent it is never reached. Read + pay only;
+ * Generated client types can lag the controlled database contract, so the RPCs are called
+ * through the untyped client (same pattern as useDealerLink / useDealerPayroll's
+ * save_payroll_period). This whole tab only mounts when FEATURES.salaryTabV2
+ * is ON (default OFF). Read + pay only;
  * the server recomputes + resets (the client never sets the amount).
  */
 
@@ -36,7 +37,18 @@ interface PtDealer {
   last_reset_at: string | null;
   current_shift_open: boolean;
   current_shift_start: string | null;
+  accrual_mode?: string | null;
+  standby_accrual_enabled?: boolean;
+  current_shift_cap_reached?: boolean;
+  live_accrual_active?: boolean;
   last_payment: { amount_vnd: number; paid_at: string } | null;
+}
+
+interface PtWageResponse {
+  dealers?: PtDealer[];
+  accrual_mode?: string | null;
+  standby_accrual_enabled?: boolean;
+  policy_effective_from?: string | null;
 }
 
 interface Props {
@@ -60,6 +72,7 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
   const [dealers, setDealers] = useState<PtDealer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clubAccrualMode, setClubAccrualMode] = useState<string | null>(null);
   const fetchedAtRef = useRef<number>(Date.now());
   const [nowMs, setNowMs] = useState<number>(Date.now());
   const [paidSession, setPaidSession] = useState(0);
@@ -78,11 +91,14 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
     try {
       const { data, error: rpcError } = await db.rpc("get_club_pt_wages", { p_club_id: activeClubId });
       if (rpcError) throw rpcError;
-      setDealers(((data?.dealers ?? []) as PtDealer[]));
+      const response = (data ?? {}) as PtWageResponse;
+      setDealers(response.dealers ?? []);
+      setClubAccrualMode(response.accrual_mode ?? null);
       fetchedAtRef.current = Date.now();
     } catch (e: any) {
       setError(e?.message ?? "Lỗi tải lương part-time");
       setDealers([]);
+      setClubAccrualMode(null);
     } finally {
       setLoading(false);
     }
@@ -96,11 +112,13 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
     return () => { clearInterval(tick); clearInterval(resync); };
   }, [fetchData]);
 
-  // Live balance: server value at fetch + client-delta accrual for on-shift dealers.
-  const liveBalance = (d: PtDealer): number =>
-    d.current_shift_open
-      ? d.balance_vnd + Math.floor(((nowMs - fetchedAtRef.current) / 3_600_000) * d.hourly_rate_vnd)
-      : d.balance_vnd;
+  // The server owns the balance. This only presents a bounded estimate until the next refresh.
+  const liveBalance = (d: PtDealer): number => {
+    const accrual = getPtWageAccrualPresentation(d);
+    return d.balance_vnd + (accrual.isLiveAccruing
+      ? Math.floor(((nowMs - fetchedAtRef.current) / 3_600_000) * d.hourly_rate_vnd)
+      : 0);
+  };
 
   const totalUnpaid = dealers.reduce((s, d) => s + liveBalance(d), 0);
   const workingCount = dealers.filter((d) => d.current_shift_open).length;
@@ -156,7 +174,11 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
           <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? "animate-spin" : ""}`} /> Làm mới
         </Button>
         <div className="flex-1" />
-        <div className="text-[11px] text-zinc-500">Lương theo giờ · cập nhật trực tiếp · trả đủ thì reset</div>
+        <div className="text-[11px] text-zinc-500">
+          {clubAccrualMode === "continuous_standby"
+            ? "Tính cả thời gian chờ trong pool · trả đủ thì reset"
+            : "Lương theo giờ · cập nhật trực tiếp · trả đủ thì reset"}
+        </div>
       </div>
 
       {/* Summary */}
@@ -193,6 +215,7 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {dealers.map((d) => {
             const bal = liveBalance(d);
+            const accrual = getPtWageAccrualPresentation(d);
             return (
               <div key={d.dealer_id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-3.5">
                 <div className="flex items-center justify-between">
@@ -222,10 +245,16 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
                 </div>
 
                 <div className="flex items-center justify-between gap-2 mt-3">
-                  <div className="text-[11px] text-zinc-500">
-                    {d.last_payment
-                      ? <>Lần trả gần nhất: {new Date(d.last_payment.paid_at).toLocaleDateString("vi-VN")} · <span className="font-mono">{formatVND(d.last_payment.amount_vnd)}</span></>
-                      : "Chưa có lịch sử thanh toán"}
+                  <div className="text-[11px] text-zinc-500 min-w-0">
+                    <div className="flex items-center gap-1">
+                      <Info className="w-3 h-3 shrink-0" />
+                      <span>{accrual.label}</span>
+                    </div>
+                    <div className="mt-1">
+                      {d.last_payment
+                        ? <>Lần trả gần nhất: {new Date(d.last_payment.paid_at).toLocaleDateString("vi-VN")} · <span className="font-mono">{formatVND(d.last_payment.amount_vnd)}</span></>
+                        : "Chưa có lịch sử thanh toán"}
+                    </div>
                   </div>
                   <Button
                     size="sm"
