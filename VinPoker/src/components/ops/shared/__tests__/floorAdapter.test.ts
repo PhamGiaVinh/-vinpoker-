@@ -2,7 +2,7 @@
 // Nếu FloorTableMapPanel đổi tableStatus/normalization, test này phải được cập nhật CÙNG LÚC.
 import { describe, expect, it } from "vitest";
 import {
-  tableStatus, buildSeatsByTable, buildEligibleFloorMoveTargets, chipDisplay, toMockTable, toMockSeat,
+  tableStatus, buildSeatsByTable, buildEligibleFloorMoveTargets, buildOperationalFloorTables, chipDisplay, toMockTable, toMockSeat,
   type MapSeat, type MapTable,
 } from "../floorAdapter";
 
@@ -58,6 +58,20 @@ describe("buildEligibleFloorMoveTargets — same destination contract as the mov
     });
 
     expect(targets).toEqual([{ tt_id: "tt-open", table_number: 1, freeSeats: [2] }]);
+  });
+});
+
+describe("buildOperationalFloorTables — mobile Floor map only renders operational tables", () => {
+  it("excludes closed history and reports duplicate active table numbers fail-closed", () => {
+    const result = buildOperationalFloorTables([
+      table({ tt_id: "tt-closed-1", table_number: 1, status: "closed" }),
+      table({ tt_id: "tt-active-1", table_number: 1, status: "active" }),
+      table({ tt_id: "tt-active-2a", table_number: 2, status: "active" }),
+      table({ tt_id: "tt-active-2b", table_number: 2, status: "active" }),
+    ]);
+
+    expect(result.tables.map((item) => item.tt_id)).toEqual(["tt-active-1", "tt-active-2a", "tt-active-2b"]);
+    expect(result.duplicateActiveTableNumbers).toEqual([2]);
   });
 });
 
