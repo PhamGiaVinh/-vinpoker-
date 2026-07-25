@@ -32,7 +32,7 @@ export interface ActionSeat {
  * only shown when its handler is provided.
  */
 export function PlayerActionSheet({
-  open, onOpenChange, seat, entryId, canMove, busting, onMove, onBust, onEditChips, onReceipt, onInfo,
+  open, onOpenChange, seat, entryId, canMove, busting, onMove, onBust, onEditChips, editDisabledReason, onReceipt, onInfo,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -43,6 +43,8 @@ export function PlayerActionSheet({
   onMove: () => void;
   onBust: () => void;
   onEditChips?: () => void;
+  /** Present when Live Tracker, not Floor, owns this table's stack projection. */
+  editDisabledReason?: string;
   onReceipt?: () => void;
   onInfo?: () => void;
 }) {
@@ -54,7 +56,11 @@ export function PlayerActionSheet({
     : !canMove
       ? "Cần quyền chủ CLB / thu ngân để chuyển ghế"
       : "";
-  const editAllowed = !!onEditChips && canMove;
+  const editAllowed = !!onEditChips && canMove && !editDisabledReason;
+  const editReason = editDisabledReason
+    ?? (!onEditChips
+      ? "Không khả dụng ở màn này"
+      : "Cần quyền chủ CLB / thu ngân");
 
   const close = (v: boolean) => { if (!v) setShowInfo(false); onOpenChange(v); };
   // Close THIS sheet first, then open the next dialog on the NEXT frame. Opening it
@@ -110,7 +116,7 @@ export function PlayerActionSheet({
                   </button>
                 </span>
               </TooltipTrigger>
-              {!editAllowed && <TooltipContent>{!onEditChips ? "Không khả dụng ở màn này" : "Cần quyền chủ CLB / thu ngân"}</TooltipContent>}
+              {!editAllowed && <TooltipContent>{editReason}</TooltipContent>}
             </Tooltip>
 
             {/* Phiếu */}

@@ -11,6 +11,7 @@ import {
   AlertDialogDescription,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import type { FloorTableControlMode } from "@/lib/floorTableControlMode";
 
 /**
  * PlayerActionSheets — luồng người chơi đầy đủ theo bản vẽ đã duyệt:
@@ -43,6 +44,8 @@ export function PlayerActionSheets({
   onMovePlayer,
   onOpenReceipt,
   infoLive,
+  bustControlMode,
+  chipEditDisabledReason,
 }: {
   target: PlayerTarget | null;
   onClose: () => void;
@@ -69,6 +72,9 @@ export function PlayerActionSheets({
   /** true → nút "Thông tin" mở thẻ S8 với DỮ LIỆU THẬT (tên/bàn·ghế/chip/lượt vào từ target),
    *  không còn chặn bởi pendingNotice. Mặc định (false) → theo pendingNotice (chưa nối). */
   infoLive: true;
+  bustControlMode: FloorTableControlMode | null;
+  /** A Tracker table has an authoritative stack source outside Floor. */
+  chipEditDisabledReason?: string | null;
 }) {
   const [step, setStep] = useState<Step>("actions");
   const [moveSeat, setMoveSeat] = useState<number | null>(4);
@@ -84,6 +90,7 @@ export function PlayerActionSheets({
   const s = target?.seat;
   const t = target?.tableNo ?? 0;
   const title = s ? `Ghế ${t}-${s.seat} — ${s.name}` : "";
+  const chipEditDisabled = Boolean(chipEditDisabledReason);
 
   const go = (next: Step) => {
     setStep(null);
@@ -172,9 +179,14 @@ export function PlayerActionSheets({
                 <ArrowRightLeft className="h-5 w-5 shrink-0 text-[#d8bc85]" />
                 <span><span className="block text-[15px] font-semibold text-[#f2ece6]">Chuyển</span><span className="block text-[11px] text-[#9b8e97]">bàn / ghế</span></span>
               </button>
-              <button onClick={() => act("chip")} className="ios-press ios-fill flex items-center gap-3 rounded-2xl p-3.5 text-left">
+              <button
+                disabled={chipEditDisabled}
+                title={chipEditDisabledReason ?? undefined}
+                onClick={() => { if (!chipEditDisabled) act("chip"); }}
+                className="ios-press ios-fill flex items-center gap-3 rounded-2xl p-3.5 text-left disabled:cursor-not-allowed disabled:opacity-40"
+              >
                 <Coins className="h-5 w-5 shrink-0 text-amber-300" />
-                <span><span className="block text-[15px] font-semibold text-[#f2ece6]">Sửa chip</span><span className="block text-[11px] text-[#9b8e97]">điều chỉnh</span></span>
+                <span><span className="block text-[15px] font-semibold text-[#f2ece6]">Sửa chip</span><span className="block text-[11px] text-[#9b8e97]">{chipEditDisabled ? "Tracker quản lý chip" : "điều chỉnh"}</span></span>
               </button>
               <button onClick={() => act("receipt")} className="ios-press ios-fill flex items-center gap-3 rounded-2xl p-3.5 text-left">
                 <Receipt className="h-5 w-5 shrink-0 text-sky-300" />
@@ -447,6 +459,12 @@ export function PlayerActionSheets({
               </>
             )}
           </div>
+          {bustControlMode === "manual" && (target?.chipCount ?? 0) > 0 && (
+            <div className="min-w-0 rounded-xl border border-amber-400/35 bg-amber-400/10 px-3 py-2.5 text-left text-[13px] leading-5 text-amber-100">
+              <div className="font-semibold text-amber-200">Bàn Manual Floor: người chơi còn {target?.chipCount.toLocaleString("vi-VN")} chip.</div>
+              <div>Server sẽ ghi chip hiện tại vào audit và không tạo payout. Ván đang chạy vẫn bị chặn.</div>
+            </div>
+          )}
           <AlertDialogFooter className="min-w-0 gap-2 sm:gap-2">
             <button onClick={close} disabled={bustBusy} className="ios-press ios-fill w-full min-w-0 flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6] disabled:opacity-40">Huỷ</button>
             <button

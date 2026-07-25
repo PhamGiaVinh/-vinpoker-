@@ -221,6 +221,8 @@ Deno.serve(async (req) => {
             "already_busted",
             "player_has_chips",
             "player_in_active_hand",
+            "seat_table_mismatch",
+            "tracker_chip_state_mismatch",
           ]);
           return response(
             { error: bustCode },
@@ -280,6 +282,8 @@ Deno.serve(async (req) => {
           "seat_not_active",
           "seat_not_found",
           "seat_entry_mismatch",
+          "seat_table_mismatch",
+          "tracker_table_chip_authority",
         ]);
         if (chipCode === "actor_not_allowed" || chipCode === "unauthorized") {
           return response({ error: chipCode }, 403);

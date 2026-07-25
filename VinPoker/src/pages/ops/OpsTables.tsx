@@ -14,6 +14,7 @@ import { useTournaments } from "@/hooks/useTournaments";
 import { RoomGrid } from "@/components/ops/shared/RoomGrid";
 import { useFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { FloorPlayerActions, type FloorSeatTarget } from "@/components/ops/shared/FloorPlayerActions";
+import { FloorTableControlModeControl } from "@/components/ops/shared/FloorTableControlMode";
 import { preflightFloorTableEntries } from "@/components/ops/shared/floorSeatEntryPreflight";
 import {
   toMockTable, toMockSeat,
@@ -480,6 +481,14 @@ export default function OpsTables() {
           )}
           {openVM && openVM.seats.length === 0 && (
             <div className="mt-3 py-4 text-center text-[13px] text-[#9b8e97]">Bàn trống — chưa có người ngồi.</div>
+          )}
+
+          {openVM && tourId && (
+            <FloorTableControlModeControl
+              tournamentId={tourId}
+              table={openVM.raw}
+              onChanged={floor.reload}
+            />
           )}
 
           <div className="mt-3 grid grid-cols-3 gap-2">

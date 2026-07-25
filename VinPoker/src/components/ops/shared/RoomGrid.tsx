@@ -31,6 +31,9 @@ export function RoomGrid({ tables, onTap }: { tables: MockTable[]; onTap?: (t: M
           <button
             key={t.tableNo}
             onClick={() => onTap?.(t)}
+            data-testid="floor-table-open"
+            data-floor-table-number={t.tableNo}
+            aria-label={`Mở Bàn ${t.tableNo}`}
             className={cn(
               "ios-press ios-card px-1 py-2.5 text-center",
               t.needsFloor && "ring-1 ring-amber-400/40",

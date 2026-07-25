@@ -17,6 +17,9 @@ import { PlayerInfoSheet } from "./PlayerInfoSheet";
 import { BustConfirmDialog } from "./BustConfirmDialog";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
+import { findFloorTableControlRow, parseFloorTableControlMode, parseFloorTableControlRevision } from "@/lib/floorTableControlMode";
+import { floorOpsErrorMessage } from "@/lib/floorOpsErrors";
+import { ManualFloorBustConfirmDialog } from "./ManualFloorBustConfirmDialog";
 
 type StatusKey = "open" | "running" | "paused" | "closed";
 
@@ -27,26 +30,9 @@ type TournamentTableRow = {
   table_name: string | null;
   max_seats: number | null;
   status: string | null;
+  floor_control_mode: unknown;
+  floor_control_revision: unknown;
 };
-
-type AtomicBustResult = {
-  place?: number;
-  player_name?: string;
-};
-
-type AtomicBustPreview = {
-  can_confirm?: boolean;
-  place?: number;
-  prize?: number;
-  active_count_revision?: number;
-};
-
-type UntypedRpc = (
-  functionName: string,
-  args: Record<string, unknown>,
-) => Promise<{ data: unknown; error: { message: string } | null }>;
-
-const callUntypedRpc = supabase.rpc.bind(supabase) as unknown as UntypedRpc;
 
 function responseError(data: unknown): string | null {
   return data && typeof data === "object" && "error" in data && typeof data.error === "string"
@@ -109,7 +95,10 @@ export function FloorTableMapPanel({
   const [query, setQuery] = useState("");
   const [compact, setCompact] = useState(false);
 
-  const [detailTable, setDetailTable] = useState<MapTable | null>(null);
+  // Store the canonical id, not a rendered snapshot. A mode save reloads
+  // `tables`; deriving from the current array prevents the next save from
+  // submitting a stale revision.
+  const [detailTableId, setDetailTableId] = useState<string | null>(null);
   const [selected, setSelected] = useState<MapSeat | null>(null);
   const [moveTarget, setMoveTarget] = useState<MapSeat | null>(null);
   const [editTarget, setEditTarget] = useState<MapSeat | null>(null);
@@ -123,9 +112,26 @@ export function FloorTableMapPanel({
   // count tournament-wide (= the player's finishing place, since it includes the one busting);
   // prizeMap = position → amount from the already-live tournament_prizes.
   const [bustTarget, setBustTarget] = useState<MapSeat | null>(null);
+  const [manualBustTarget, setManualBustTarget] = useState<MapSeat | null>(null);
   const [activeCount, setActiveCount] = useState(0);
   const [prizeMap, setPrizeMap] = useState<Map<number, number> | null>(null);
   const [prizeLoading, setPrizeLoading] = useState(false);
+
+  const detailTable = useMemo(
+    () => tables?.find((table) => table.tt_id === detailTableId) ?? null,
+    [detailTableId, tables],
+  );
+  const selectedTable = useMemo(
+    () => selected ? findFloorTableControlRow(tables ?? [], selected.table_id) : null,
+    [selected, tables],
+  );
+  const selectedChipEditDisabledReason = selected
+    ? !selectedTable
+      ? "Không xác minh được chế độ bàn. Hãy tải lại trước khi sửa chip."
+      : selectedTable.floor_control_mode === "tracker"
+        ? "Bàn Live Tracker do Tracker quản lý chip."
+        : undefined
+    : undefined;
 
   useEffect(() => {
     let alive = true;
@@ -146,20 +152,38 @@ export function FloorTableMapPanel({
     try {
       const [ttRes, seatsRes, linksRes] = await Promise.all([
         supabase.from("tournament_tables")
-          .select("id, table_name, table_number, max_seats, status, table_id")
+          .select("id, table_name, table_number, max_seats, status, table_id, floor_control_mode, floor_control_revision")
           .eq("tournament_id", tid),
         supabase.functions.invoke("tournament-live-draw", { body: { tournament_id: tid, action: "get_seats" } }),
         supabase.from("tournament_seats").select("id, entry_id").eq("tournament_id", tid),
       ]);
+      if (ttRes.error) throw new Error(ttRes.error.message);
+      if (seatsRes.error) {
+        throw new Error(
+          typeof seatsRes.error === "string"
+            ? seatsRes.error
+            : (seatsRes.error as Error).message ?? "Không tải được ghế của bàn.",
+        );
+      }
+      if (linksRes.error) throw new Error(linksRes.error.message);
       const built: MapTable[] = ((ttRes.data ?? []) as TournamentTableRow[])
-        .map((t) => ({
-          tt_id: t.id,
-          table_id: t.table_id,
-          table_number: t.table_number,
-          table_name: t.table_name ?? (t.table_number != null ? `Bàn ${t.table_number}` : "Bàn ?"),
-          max_seats: t.max_seats ?? 9,
-          status: t.status ?? "active",
-        }))
+        .map((t) => {
+          const floorControlMode = parseFloorTableControlMode(t.floor_control_mode);
+          const floorControlRevision = parseFloorTableControlRevision(t.floor_control_revision);
+          if (!floorControlMode || floorControlRevision == null) {
+            throw new Error("Không xác minh được chế độ kiểm soát chip của bàn. Hãy hoàn tất migration được kiểm soát rồi tải lại.");
+          }
+          return {
+            tt_id: t.id,
+            table_id: t.table_id,
+            table_number: t.table_number,
+            table_name: t.table_name ?? (t.table_number != null ? `Bàn ${t.table_number}` : "Bàn ?"),
+            max_seats: t.max_seats ?? 9,
+            status: t.status ?? "active",
+            floor_control_mode: floorControlMode,
+            floor_control_revision: floorControlRevision,
+          };
+        })
         .sort((a, b) => (a.table_number ?? 1e9) - (b.table_number ?? 1e9));
       setTables(built);
 
@@ -192,6 +216,13 @@ export function FloorTableMapPanel({
       const m: Record<string, string> = {};
       for (const r of (linksRes.data ?? []) as { id: string; entry_id: string | null }[]) if (r.entry_id) m[r.id] = r.entry_id;
       setEntryBySeat(m);
+    } catch (error) {
+      // Do not leave a stale, previously loaded map actionable when the table
+      // policy cannot be verified (including before the controlled migration).
+      setTables([]);
+      setSeatsByTable({});
+      setEntryBySeat({});
+      toast.error(error instanceof Error ? error.message : "Không tải được sơ đồ bàn.");
     } finally {
       setLoading(false);
     }
@@ -264,37 +295,23 @@ export function FloorTableMapPanel({
   }, [visible]);
 
   const bustSeat = async (target: MapSeat | null) => {
-    if (!target) return;
-    setBusting(true);
-    try {
-      if (FEATURES.floorAtomicPayout) {
-        const { data, error } = await callUntypedRpc("bust_tournament_player_with_payout", {
-          p_tournament_id: tid,
-          p_seat_id: target.seat_id,
-          p_expected_active_count: activeCount,
-          p_idempotency_key: crypto.randomUUID(),
-        });
-        if (error) { toast.error(error.message); return; }
-        const result = data as AtomicBustResult;
-        toast.success(`Đã chốt hạng ${result?.place ?? ""} cho ${result?.player_name || target.player_name || "người chơi"}`);
-        setSelected(null);
-        setInfoTarget(null);
-        await load();
-        return;
-      }
+  if (!target) return;
+  setBusting(true);
+  try {
       const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
         body: {
           tournament_id: tid,
           action: "update_seats",
           seats: [{
             seat_id: target.seat_id, player_id: target.player_id, entry_number: target.entry_number,
-            table_id: target.table_id, seat_number: target.seat_number, chip_count: target.chip_count,
+            table_id: target.table_id, seat_number: target.seat_number,
+            expected_chip_count: target.chip_count, chip_count: target.chip_count,
             is_active: false, player_name: target.player_name,
           }],
         },
       });
       const edgeError = responseError(data);
-      if (error || edgeError) { toast.error(edgeError || error?.message); return; }
+      if (error || edgeError) { toast.error(floorOpsErrorMessage(edgeError || error?.message, "Loại thất bại")); return; }
       toast.success(`Đã loại ${target.player_name || "người chơi"}`);
       setSelected(null);
       setInfoTarget(null);
@@ -306,29 +323,27 @@ export function FloorTableMapPanel({
     }
   };
 
-  // Entry point for the "Loại" action from either sheet. With the confirm flag OFF this is
-  // byte-identical to the old behavior (bust immediately). With it ON, close the current sheet
-  // and open the out-confirm dialog on the next frame (mirrors the sheet's own close→open race
-  // guard) so the operator can review place + prize first.
-  const requestBust = async (target: MapSeat | null) => {
+  // Entry point for the "Loại" action from either sheet. Table policy is
+  // resolved from the authoritative loaded table; a Manual non-zero stack gets
+  // its own warning before the existing optional out-confirm flow.
+  const requestBust = async (target: MapSeat | null, manualConfirmed = false) => {
     if (!target) return;
-    if (!FEATURES.floorOutConfirm) { bustSeat(target); return; }
-    if (FEATURES.floorAtomicPayout) {
-      const { data, error } = await callUntypedRpc("preview_tournament_bust", {
-        p_tournament_id: tid,
-        p_seat_id: target.seat_id,
-      });
-      if (error) { toast.error(error.message); return; }
-      const preview = data as AtomicBustPreview;
-      if (!preview?.can_confirm) {
-        toast.error("Đăng ký vẫn mở: chưa thể chốt payout ITM.");
-        return;
-      }
-      const nextPrize = new Map(prizeMap ?? []);
-      nextPrize.set(Number(preview.place), Number(preview.prize ?? 0));
-      setPrizeMap(nextPrize);
-      setActiveCount(Number(preview.active_count_revision));
+    const table = findFloorTableControlRow(tables ?? [], target.table_id);
+    if (!table) {
+      toast.error("Không xác minh được chế độ bàn. Hãy tải lại trước khi loại.");
+      return;
     }
+    if (table.floor_control_mode === "tracker" && target.chip_count > 0) {
+      toast.error("Bàn Live Tracker chỉ cho phép loại khi chip đã về 0.");
+      return;
+    }
+    if (table.floor_control_mode === "manual" && target.chip_count > 0 && !manualConfirmed) {
+      setSelected(null);
+      setInfoTarget(null);
+      requestAnimationFrame(() => setManualBustTarget(target));
+      return;
+    }
+    if (!FEATURES.floorOutConfirm) { bustSeat(target); return; }
     setSelected(null);
     setInfoTarget(null);
     requestAnimationFrame(() => setBustTarget(target));
@@ -437,7 +452,9 @@ export function FloorTableMapPanel({
                   return (
                     <button
                       key={e.table.tt_id}
-                      onClick={() => setDetailTable(e.table)}
+                      onClick={() => setDetailTableId(e.table.tt_id)}
+                      data-testid="floor-table-open"
+                      data-floor-table-number={e.table.table_number ?? undefined}
                       className="rounded-lg border border-border bg-card p-1.5 transition-colors hover:border-primary/50"
                       title={`${e.table.table_name} · ${meta.label} · ${e.occ}/${e.table.max_seats}`}
                     >
@@ -463,7 +480,7 @@ export function FloorTableMapPanel({
 
       <FloorTableDetailSheet
         open={detailTable !== null}
-        onOpenChange={(v) => { if (!v) setDetailTable(null); }}
+        onOpenChange={(v) => { if (!v) setDetailTableId(null); }}
         table={detailTable}
         seats={detailTable ? (seatsByTable[detailTable.table_id] ?? []) : []}
         onSeatTap={(s) => setSelected(s)}
@@ -473,6 +490,7 @@ export function FloorTableMapPanel({
         unlinkedActiveSeatCount={detailTable
           ? (seatsByTable[detailTable.table_id] ?? []).filter((seat) => !entryBySeat[seat.seat_id]).length
           : 0}
+        canManageTableControl={canMove}
         onChanged={load}
       />
 
@@ -504,6 +522,7 @@ export function FloorTableMapPanel({
         busting={busting}
         onMove={() => { if (selected) setMoveTarget(selected); }}
         onEditChips={() => { if (selected) setEditTarget(selected); }}
+        editDisabledReason={selectedChipEditDisabledReason}
         onReceipt={() => openReceipt(selected)}
         onBust={() => requestBust(selected)}
         onInfo={() => { if (selected) setInfoTarget(selected); }}
@@ -555,6 +574,20 @@ export function FloorTableMapPanel({
           onConfirm={confirmBust}
         />
       )}
+
+      <ManualFloorBustConfirmDialog
+        open={manualBustTarget !== null}
+        onOpenChange={(open) => { if (!open) setManualBustTarget(null); }}
+        playerName={manualBustTarget?.player_name || manualBustTarget?.player_id.slice(0, 8) || "Người chơi"}
+        chipCount={manualBustTarget?.chip_count ?? 0}
+        busy={busting}
+        onConfirm={() => {
+          const target = manualBustTarget;
+          if (!target) return;
+          setManualBustTarget(null);
+          void requestBust(target, true);
+        }}
+      />
 
       <SeatReceiptDialog open={receipt !== null} onOpenChange={(v) => { if (!v) setReceipt(null); }} receipt={receipt} />
     </Card>

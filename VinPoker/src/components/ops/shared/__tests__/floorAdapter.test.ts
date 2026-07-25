@@ -5,6 +5,7 @@ import {
   tableStatus, buildSeatsByTable, buildEligibleFloorMoveTargets, buildOperationalFloorTables, chipDisplay, toMockTable, toMockSeat,
   type MapSeat, type MapTable,
 } from "../floorAdapter";
+import { findFloorTableControlRow, parseFloorTableControlMode, parseFloorTableControlRevision } from "@/lib/floorTableControlMode";
 
 const seat = (over: Partial<MapSeat>): MapSeat => ({
   seat_id: "s1", player_id: "p1", player_name: "A", entry_number: 1,
@@ -12,7 +13,7 @@ const seat = (over: Partial<MapSeat>): MapSeat => ({
   ...over,
 });
 const table = (over: Partial<MapTable>): MapTable => ({
-  tt_id: "tt-1", table_id: "gt-1", table_number: 1, table_name: "Bàn 1", max_seats: 9, status: "active",
+  tt_id: "tt-1", table_id: "gt-1", table_number: 1, table_name: "Bàn 1", max_seats: 9, status: "active", floor_control_mode: "manual", floor_control_revision: 0,
   ...over,
 });
 
@@ -43,6 +44,31 @@ describe("buildSeatsByTable — canonical id + is_active + sort (verbatim deskto
   it("ghế của bàn lạ giữ nguyên key (không nuốt mất)", () => {
     const grouped = buildSeatsByTable([table({})], [seat({ table_id: "gt-unknown" })]);
     expect(grouped["gt-unknown"]).toHaveLength(1);
+  });
+});
+
+describe("floor table control mode — canonical table identity", () => {
+  it("accepts only the two durable server policy values", () => {
+    expect(parseFloorTableControlMode("manual")).toBe("manual");
+    expect(parseFloorTableControlMode("tracker")).toBe("tracker");
+    expect(parseFloorTableControlMode("floor")).toBeNull();
+    expect(parseFloorTableControlRevision(0)).toBe(0);
+    expect(parseFloorTableControlRevision("4")).toBe(4);
+    expect(parseFloorTableControlRevision(-1)).toBeNull();
+    expect(parseFloorTableControlRevision("04")).toBeNull();
+  });
+
+  it("finds the same policy whether a legacy seat uses tt.id or game_tables.id", () => {
+    const tracker = table({ tt_id: "tt-tracker", table_id: "gt-tracker", floor_control_mode: "tracker", floor_control_revision: 4 });
+    expect(findFloorTableControlRow([tracker], "tt-tracker")).toBe(tracker);
+    expect(findFloorTableControlRow([tracker], "gt-tracker")).toBe(tracker);
+    expect(findFloorTableControlRow([tracker], "missing")).toBeNull();
+  });
+
+  it("fails closed instead of choosing a policy from an ambiguous legacy mapping", () => {
+    const tracker = table({ tt_id: "tt-tracker", table_id: "gt-shared", floor_control_mode: "tracker" });
+    const manual = table({ tt_id: "tt-manual", table_id: "gt-shared", floor_control_mode: "manual" });
+    expect(findFloorTableControlRow([tracker, manual], "gt-shared")).toBeNull();
   });
 });
 

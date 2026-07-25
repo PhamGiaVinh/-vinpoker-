@@ -1203,8 +1203,14 @@ export function useStandaloneHandInput(tournamentId: string) {
           buttonSeat,
         }),
       });
-      if (error || data?.error) throw new Error(await readEdgeError(error, data));
       const handData = data?.data || data;
+      // Defense in depth: even if a future Edge wrapper mistakenly returns a
+      // JSONB policy refusal with HTTP 200, never enter local hand state unless
+      // the server returned the canonical successful start envelope.
+      if (error || data?.error || handData?.error || handData?.status !== "success" || !handData?.hand_id) {
+        const nestedError = typeof handData?.error === "string" ? handData.error : null;
+        throw new Error(nestedError ?? await readEdgeError(error, data));
+      }
       setHandId(handData?.hand_id);
       setHandStarted(true);
       setNextActionOrder(1);

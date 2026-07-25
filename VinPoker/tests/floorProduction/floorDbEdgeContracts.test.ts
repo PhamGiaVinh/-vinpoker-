@@ -10,7 +10,9 @@ const cleanupIndexMigration = read("supabase/migrations/20270104000000_floor_cle
 const chipCasMigration = read("supabase/migrations/20270104000001_floor_chip_cas_rpc.sql");
 const clockControlMigration = read("supabase/migrations/20270104000004_floor_clock_control_atomic.sql");
 const operatorScopeAclMigration = read("supabase/migrations/20270104000005_floor_operator_scope_acl.sql");
+const tableControlModeMigration = read("supabase/migrations/20270105000001_floor_table_control_mode.sql");
 const drawEdge = read("supabase/functions/tournament-live-draw/index.ts");
+const liveUpdateEdge = read("supabase/functions/tournament-live-update/index.ts");
 const clockEdge = read("supabase/functions/tournament-live-clock/index.ts");
 const operatorClubsHook = read("src/hooks/useOperatorClubs.ts");
 const stableFloorClubIdsHook = read("src/hooks/useStableFloorClubIds.ts");
@@ -23,6 +25,12 @@ const editChipsDialog = read("src/components/cashier/tournament-live/EditChipsDi
 const clockPanel = read("src/components/cashier/tournament-live/ClockPanel.tsx");
 const opsCockpit = read("src/pages/ops/OpsTournamentCockpit.tsx");
 const floorPlayerActions = read("src/components/ops/shared/FloorPlayerActions.tsx");
+const tableControlModeUi = read("src/components/ops/shared/FloorTableControlMode.tsx");
+const playerActionSheets = read("src/components/ops/shared/PlayerActionSheets.tsx");
+const manualFloorBustDialog = read("src/components/cashier/tournament-live/ManualFloorBustConfirmDialog.tsx");
+const standaloneHandInput = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
+const tableControlResolver = read("src/lib/floorTableControlMode.ts");
+const desktopPlayerActionSheet = read("src/components/cashier/tournament-live/PlayerActionSheet.tsx");
 
 function body(name: string, next?: string) {
   const start = migration.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
@@ -30,6 +38,14 @@ function body(name: string, next?: string) {
   expect(start).toBeGreaterThanOrEqual(0);
   expect(end).toBeGreaterThan(start);
   return migration.slice(start, end);
+}
+
+function tableControlBody(name: string, next?: string) {
+  const start = tableControlModeMigration.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
+  const end = next ? tableControlModeMigration.indexOf(`CREATE OR REPLACE FUNCTION public.${next}`, start + 1) : tableControlModeMigration.length;
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  return tableControlModeMigration.slice(start, end);
 }
 
 describe("Floor V2 DB and Edge contracts", () => {
@@ -96,6 +112,86 @@ describe("Floor V2 DB and Edge contracts", () => {
     expect(restore).toContain("FROM public.tournament_prize_payments");
     expect(restore).toContain("'prize_already_paid'");
     expect(restore).toContain("AND status = 'busted'");
+  });
+
+  it("keeps Manual Floor and Live Tracker policy in a forward server-side migration", () => {
+    const setMode = tableControlBody("floor_set_table_control_mode", "floor_bust_player");
+    const bust = tableControlBody("floor_bust_player", "floor_update_tournament_seat_chip");
+    const chipCas = tableControlBody("floor_update_tournament_seat_chip", "start_hand");
+    const startHand = tableControlBody("start_hand");
+
+    expect(tableControlModeMigration).toContain("ADD COLUMN IF NOT EXISTS floor_control_mode TEXT NOT NULL DEFAULT 'manual'");
+    expect(tableControlModeMigration).toContain("floor_control_revision BIGINT NOT NULL DEFAULT 0");
+    expect(tableControlModeMigration).toContain("CHECK (floor_control_mode IN ('manual', 'tracker'))");
+    expect(setMode).toContain("v_actor UUID := auth.uid()");
+    expect(setMode).toContain("SECURITY DEFINER");
+    expect(setMode).toContain("SET search_path = public");
+    expect(setMode).toContain("p_expected_control_revision BIGINT");
+    expect(setMode).toContain("floor_control_revision = p_expected_control_revision");
+    expect(setMode).toContain("'stale_table_control_mode'");
+    expect(setMode).toContain("'table_has_active_hand'");
+    expect(setMode).toContain("floor_table_control_mode_changed");
+    expect(setMode).toContain("'payout_applied', false");
+    expect(setMode).toMatch(/REVOKE ALL ON FUNCTION public\.floor_set_table_control_mode[\s\S]*FROM PUBLIC, anon, service_role;/);
+    expect(setMode).toMatch(/GRANT EXECUTE ON FUNCTION public\.floor_set_table_control_mode[\s\S]*TO authenticated;/);
+
+    for (const source of [setMode, bust, startHand]) {
+      expect(source).toContain("pg_advisory_xact_lock(");
+      expect(source).toContain("hashtext(p_tournament_id::text)");
+      expect(source).toContain("hashtext(v_tt.id::text)");
+    }
+    expect(bust).toContain("v_seat.table_id IN (tt.id, tt.table_id)");
+    expect(bust).toContain("h.table_id IN (v_tt.id, v_tt.table_id)");
+    expect(bust.indexOf("'player_in_active_hand'")).toBeLessThan(bust.indexOf("'player_has_chips'"));
+    expect(bust).toContain("v_tt.floor_control_mode = 'tracker'");
+    expect(bust).toContain("'tracker_chip_state_mismatch'");
+    expect(bust).toContain("v_tracker_chip_count IS DISTINCT FROM v_seat.chip_count");
+    expect(bust).toContain("manual_nonzero_chip_override");
+    expect(bust).toContain("chip_count_before");
+    expect(bust).toContain("'payout_applied', false");
+    expect(bust).not.toContain("tournament_prize_payments");
+
+    expect(chipCas).toContain("'tracker_table_chip_authority'");
+    expect(chipCas).toContain("v_table_match_count <> 1");
+    expect(chipCas).toMatch(/REVOKE ALL ON FUNCTION public\.floor_update_tournament_seat_chip[\s\S]*FROM PUBLIC, anon, service_role;/);
+
+    expect(startHand).toContain("h.status = 'in_progress'");
+    expect(startHand).toContain("h.table_id IN (v_tt.id, v_tt.table_id)");
+    expect(startHand).toContain("'error_code', 'table_has_active_hand'");
+    expect(startHand).toContain("'error_code', 'tracker_table_required'");
+    expect(startHand.indexOf("'tracker_table_required'")).toBeLessThan(startHand.indexOf("SELECT h.id, h.locked_at"));
+    expect(startHand).toContain("tt.floor_control_mode");
+
+    expect(liveUpdateEdge).toContain('action === "start_hand"');
+    expect(liveUpdateEdge).toContain('status: 409');
+    expect(liveUpdateEdge).toContain('tracker_table_required');
+    expect(standaloneHandInput).toContain("handData?.error || handData?.status !== \"success\" || !handData?.hand_id");
+    expect(standaloneHandInput).toContain("const nestedError = typeof handData?.error === \"string\"");
+  });
+
+  it("renders a deliberate table selector and manual non-zero warning before Floor bust", () => {
+    expect(tableControlModeUi).toContain('data-testid="floor-table-control-mode"');
+    expect(tableControlModeUi).toContain('data-testid="floor-table-control-mode-manual"');
+    expect(tableControlModeUi).toContain('data-testid="floor-table-control-mode-tracker"');
+    expect(tableControlModeUi).toContain('data-testid="floor-table-control-mode-save"');
+    expect(tableControlModeUi).toContain('data-testid="floor-table-control-mode-confirm"');
+    expect(tableControlModeUi).toContain("floor_set_table_control_mode");
+    expect(tableControlModeUi).toContain("p_expected_control_revision");
+    expect(floorPlayerActions).toContain("Bàn Live Tracker chỉ cho phép loại khi chip đã về 0.");
+    expect(playerActionSheets).toContain("Bàn Manual Floor: người chơi còn");
+    expect(playerActionSheets).toContain("không tạo payout");
+    expect(manualFloorBustDialog).toContain("Server sẽ ghi số chip hiện tại vào audit và không tạo payout.");
+    expect(manualFloorBustDialog).toContain('data-testid="floor-manual-bust-confirm"');
+    expect(floorTableMap).toContain("ManualFloorBustConfirmDialog");
+    expect(playersGrouped).toContain("ManualFloorBustConfirmDialog");
+    expect(floorTableMap).toContain("setDetailTableId");
+    expect(floorTableMap).toContain("findFloorTableControlRow");
+    expect(tableControlResolver).toContain("matches.length === 1");
+    expect(desktopPlayerActionSheet).toContain("editDisabledReason");
+    expect(playerActionSheets).toContain("chipEditDisabledReason");
+    expect(playerActionSheets).toContain("Tracker quản lý chip");
+    expect(floorTableMap).not.toContain("bust_tournament_player_with_payout");
+    expect(floorTableMap).not.toContain("preview_tournament_bust");
   });
 
   it("starts the tournament clock under one tournament lock and audited transition", () => {

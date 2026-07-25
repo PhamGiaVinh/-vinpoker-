@@ -6,6 +6,7 @@ import {
   type MapSeat,
   type MapTable,
 } from "@/components/ops/shared/floorAdapter";
+import { parseFloorTableControlMode, parseFloorTableControlRevision } from "@/lib/floorTableControlMode";
 
 export interface FloorState {
   loading: boolean;
@@ -39,7 +40,7 @@ export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: bo
     try {
       const [ttRes, seatsRes] = await Promise.all([
         supabase.from("tournament_tables")
-          .select("id, table_name, table_number, max_seats, status, table_id")
+          .select("id, table_name, table_number, max_seats, status, table_id, floor_control_mode, floor_control_revision")
           .eq("tournament_id", tournamentId),
         supabase.functions.invoke("tournament-live-draw", { body: { tournament_id: tournamentId, action: "get_seats" } }),
       ]);
@@ -47,14 +48,23 @@ export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: bo
       if (ttRes.error) throw new Error(ttRes.error.message);
       if (seatsRes.error) throw new Error(typeof seatsRes.error === "string" ? seatsRes.error : (seatsRes.error as Error).message ?? "get_seats lỗi");
       const allTables: MapTable[] = ((ttRes.data ?? []) as Record<string, unknown>[])
-        .map((t) => ({
-          tt_id: t.id as string,
-          table_id: t.table_id as string,
-          table_number: (t.table_number as number | null) ?? null,
-          table_name: (t.table_name as string) ?? (t.table_number != null ? `Bàn ${t.table_number}` : "Bàn ?"),
-          max_seats: (t.max_seats as number) ?? 9,
-          status: (t.status as string) ?? "active",
-        }))
+        .map((t) => {
+          const floorControlMode = parseFloorTableControlMode(t.floor_control_mode);
+          const floorControlRevision = parseFloorTableControlRevision(t.floor_control_revision);
+          if (!floorControlMode || floorControlRevision == null) {
+            throw new Error("Không xác minh được chế độ kiểm soát chip của bàn. Hãy hoàn tất migration được kiểm soát rồi tải lại.");
+          }
+          return {
+            tt_id: t.id as string,
+            table_id: t.table_id as string,
+            table_number: (t.table_number as number | null) ?? null,
+            table_name: (t.table_name as string) ?? (t.table_number != null ? `Bàn ${t.table_number}` : "Bàn ?"),
+            max_seats: (t.max_seats as number) ?? 9,
+            status: (t.status as string) ?? "active",
+            floor_control_mode: floorControlMode,
+            floor_control_revision: floorControlRevision,
+          };
+        })
         .sort((a, b) => (a.table_number ?? 1e9) - (b.table_number ?? 1e9));
       const operationalTables = buildOperationalFloorTables(allTables);
       if (operationalTables.duplicateActiveTableNumbers.length > 0) {
@@ -87,6 +97,7 @@ export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: bo
       .channel(`ops-floor:${tournamentId}:${nonce}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "tournament_seats", filter: `tournament_id=eq.${tournamentId}` }, bump)
       .on("postgres_changes", { event: "*", schema: "public", table: "tournament_chip_counts", filter: `tournament_id=eq.${tournamentId}` }, bump)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournament_tables", filter: `tournament_id=eq.${tournamentId}` }, bump)
       .subscribe();
     return () => { if (timer) clearTimeout(timer); supabase.removeChannel(ch); };
   }, [tournamentId, enabled, nonce, load]);

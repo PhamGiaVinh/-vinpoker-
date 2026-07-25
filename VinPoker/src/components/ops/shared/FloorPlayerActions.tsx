@@ -9,6 +9,7 @@ import type { MockSeat } from "@/components/ops/mock/opsData";
 import type { UseFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { preflightFloorSeatEntry } from "@/components/ops/shared/floorSeatEntryPreflight";
 import { floorOpsErrorMessage, floorOpsFunctionErrorCode } from "@/lib/floorOpsErrors";
+import { findFloorTableControlRow } from "@/lib/floorTableControlMode";
 
 type UnappliedFloorRpcResult = { data: unknown; error: { message?: string; code?: string } | null };
 const untypedFloorRpc = supabase.rpc.bind(supabase) as unknown as (
@@ -42,6 +43,17 @@ export function FloorPlayerActions({
   onClose: () => void;
 }) {
   const real = target?.real ?? null;
+  const bustTable = useMemo(
+    () => findFloorTableControlRow(floor.tables, real?.table_id),
+    [floor.tables, real?.table_id],
+  );
+  const chipEditDisabledReason = !real
+    ? null
+    : !bustTable
+      ? "Không xác minh được chế độ bàn. Hãy tải lại trước khi sửa chip."
+      : bustTable.floor_control_mode === "tracker"
+        ? "Bàn Live Tracker do Tracker quản lý chip."
+        : null;
   const [bustInfo, setBustInfo] = useState<{ loading: boolean; place: number | null; prize: number | null } | null>(null);
   const [receiptData, setReceiptData] = useState<SeatReceiptData | null>(null);
 
@@ -75,6 +87,14 @@ export function FloorPlayerActions({
   // Sửa chip qua Edge với compare-and-set theo chip hiện tại; không cập nhật lạc hậu ở client.
   const saveChip = useCallback(async (newChip: number): Promise<boolean> => {
     if (!real || !tournamentId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
+    if (!bustTable) {
+      toast.error("Không xác minh được chế độ bàn. Hãy tải lại trước khi sửa chip.");
+      return false;
+    }
+    if (bustTable.floor_control_mode === "tracker") {
+      toast.error("Bàn Live Tracker do Tracker quản lý chip.");
+      return false;
+    }
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
         body: {
@@ -97,11 +117,21 @@ export function FloorPlayerActions({
       toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Sửa chip thất bại");
       return false;
     }
-  }, [real, tournamentId, floor]);
+  }, [real, tournamentId, floor, bustTable]);
 
-  // Loại qua Edge/RPC nguyên tử. floorAtomicPayout vẫn OFF nên hạng/thưởng chỉ là tạm tính.
+  // Loại qua Edge/RPC nguyên tử, audit-only: luồng này không gọi payout dù một
+  // feature flag khác có thay đổi trong tương lai.
   const openBust = useCallback(async (): Promise<boolean> => {
-    if (!tournamentId || !await verifyActiveEntry()) return false;
+    if (!real || !tournamentId) return false;
+    if (!bustTable) {
+      toast.error("Không xác minh được chế độ bàn. Hãy tải lại trước khi loại.");
+      return false;
+    }
+    if (bustTable.floor_control_mode === "tracker" && real.chip_count > 0) {
+      toast.error("Bàn Live Tracker chỉ cho phép loại khi chip đã về 0.");
+      return false;
+    }
+    if (!await verifyActiveEntry()) return false;
     setBustInfo({ loading: true, place: null, prize: null });
     try {
       const [seatsRes, prizeRes] = await Promise.all([
@@ -117,7 +147,7 @@ export function FloorPlayerActions({
       setBustInfo({ loading: false, place: null, prize: null });
       return true;
     }
-  }, [tournamentId, verifyActiveEntry]);
+  }, [real, tournamentId, bustTable, verifyActiveEntry]);
   const bustPlayer = useCallback(async (): Promise<boolean> => {
     if (!real || !tournamentId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
     try {
@@ -203,6 +233,8 @@ export function FloorPlayerActions({
         onMovePlayer={movePlayer}
         onOpenReceipt={openReceipt}
         infoLive
+        bustControlMode={bustTable?.floor_control_mode ?? null}
+        chipEditDisabledReason={chipEditDisabledReason}
       />
       <SeatReceiptDialog open={receiptData !== null} onOpenChange={(v) => { if (!v) setReceiptData(null); }} receipt={receiptData} />
     </>

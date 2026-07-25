@@ -8,6 +8,8 @@ import { FEATURES } from "@/lib/featureFlags";
 import { OpenTableDialog } from "./OpenTableDialog";
 import { AddPlayerDialog } from "./AddPlayerDialog";
 import { CloseTableDialog } from "./CloseTableDialog";
+import { FloorTableControlModeControl } from "@/components/ops/shared/FloorTableControlMode";
+import type { FloorTableControlMode } from "@/lib/floorTableControlMode";
 
 export interface MapSeat {
   seat_id: string;
@@ -28,6 +30,8 @@ export interface MapTable {
   table_name: string;
   max_seats: number;
   status: string;
+  floor_control_mode: FloorTableControlMode;
+  floor_control_revision: number;
 }
 
 // Floor table-ops (open / add player / close+redraw) ship behind this flag. While
@@ -42,7 +46,7 @@ const TABLE_OPS_LIVE = FEATURES.floorTableOps;
  */
 export function FloorTableDetailSheet({
   open, onOpenChange, table, seats, onSeatTap,
-  tournamentId, tournamentName, tournamentDate, unlinkedActiveSeatCount = 0, onChanged,
+  tournamentId, tournamentName, tournamentDate, unlinkedActiveSeatCount = 0, canManageTableControl = false, onChanged,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -53,6 +57,8 @@ export function FloorTableDetailSheet({
   tournamentName: string;
   tournamentDate: string | null;
   unlinkedActiveSeatCount?: number;
+  /** Viewers must not see a control the server will refuse. */
+  canManageTableControl?: boolean;
   onChanged: () => void;
 }) {
   const [dialog, setDialog] = useState<null | "open" | "add" | "close">(null);
@@ -103,6 +109,18 @@ export function FloorTableDetailSheet({
               );
             })}
           </div>
+
+          {canManageTableControl ? (
+            <FloorTableControlModeControl
+              tournamentId={tournamentId}
+              table={table}
+              onChanged={onChanged}
+            />
+          ) : (
+            <p className="mt-4 text-xs text-muted-foreground">
+              Chế độ kiểm soát chip: {table.floor_control_mode === "tracker" ? "Live Tracker" : "Manual Floor"}
+            </p>
+          )}
 
           <div className="mt-5 space-y-2">
             <div className="text-xs text-muted-foreground">Thao tác bàn</div>
