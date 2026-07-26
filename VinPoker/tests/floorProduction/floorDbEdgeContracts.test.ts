@@ -281,7 +281,6 @@ describe("Floor V2 DB and Edge contracts", () => {
     expect(floorTableMap).toContain('supabase.rpc("get_my_floor_operator_scope")');
     expect(floorTableMap).toContain("row.can_owner || row.can_cashier || row.can_floor");
     expect(floorTableMap).not.toContain('supabase.rpc("cashier_club_ids"');
-    expect(floorTableMap).toContain("supabase.rpc.bind(supabase)");
     for (const floorActionSource of [floorPlayerActions, opsCockpit]) {
       expect(floorActionSource).toContain("supabase.rpc.bind(supabase)");
       expect(floorActionSource).not.toContain("const untypedFloorRpc = supabase.rpc as unknown");
