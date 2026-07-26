@@ -320,6 +320,7 @@ function unavailableReason(
   return null;
 }
 
+/** Low-level exact calculator. Runtime/UI callers must use a trusted evidence adapter. */
 export async function createGtdStressScenario(input: GtdStressInput): Promise<GtdStressResult> {
   const targetEventId = normalizeReference(input.targetEventId, "targetEventId");
   const sourceArtifactId = normalizeReference(input.sourceArtifactId, "sourceArtifactId");
