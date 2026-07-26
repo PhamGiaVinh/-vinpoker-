@@ -130,6 +130,7 @@ CREATE TABLE public.tournament_seats (
   chip_count integer NOT NULL,
   is_active boolean NOT NULL,
   player_name text,
+  avatar_url text,
   entry_id uuid,
   status text NOT NULL,
   assigned_by uuid,
@@ -179,12 +180,48 @@ CREATE TABLE public.seat_assignment_history (
 CREATE TABLE public.tournament_hands (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id uuid NOT NULL,
-  status text NOT NULL
+  table_id uuid NOT NULL,
+  hand_number integer NOT NULL,
+  hand_time timestamptz NOT NULL DEFAULT now(),
+  community_cards jsonb NOT NULL DEFAULT '[]'::jsonb,
+  pot_size integer NOT NULL DEFAULT 0,
+  side_pots jsonb NOT NULL DEFAULT '[]'::jsonb,
+  status text NOT NULL,
+  created_by uuid,
+  locked_by_user_id uuid,
+  locked_at timestamptz,
+  button_seat integer,
+  is_voided boolean NOT NULL DEFAULT false,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tournament_id, table_id, hand_number)
 );
 
 CREATE TABLE public.hand_players (
   hand_id uuid NOT NULL,
-  player_id uuid NOT NULL
+  tournament_id uuid,
+  player_id uuid NOT NULL,
+  entry_number integer,
+  seat_number integer,
+  starting_stack integer,
+  ending_stack integer,
+  is_eliminated boolean NOT NULL DEFAULT false,
+  side_pots jsonb NOT NULL DEFAULT '[]'::jsonb,
+  hole_cards jsonb NOT NULL DEFAULT '[]'::jsonb,
+  player_name text,
+  avatar_url text
+);
+
+CREATE TABLE public.tournament_chip_counts (
+  tournament_id uuid NOT NULL,
+  player_id uuid NOT NULL,
+  entry_number integer NOT NULL,
+  chip_count integer NOT NULL,
+  PRIMARY KEY (tournament_id, player_id, entry_number)
+);
+
+CREATE TABLE public.hand_actions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  hand_id uuid NOT NULL
 );
 
 CREATE TABLE public.tournament_close_report (
@@ -220,6 +257,7 @@ CREATE TABLE public.tournament_registrations (
 CREATE TABLE public.tournament_eliminations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id uuid NOT NULL,
+  hand_id uuid,
   prize bigint DEFAULT 0
 );
 
@@ -288,6 +326,7 @@ $$;
 -- only because the disposable database started stricter than production.
 GRANT EXECUTE ON FUNCTION public.get_my_floor_operator_scope() TO service_role;
 \ir ../../supabase/migrations/20270104000005_floor_operator_scope_acl.sql
+\ir ../../supabase/migrations/20270105000001_floor_table_control_mode.sql
 
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
 
@@ -352,6 +391,39 @@ VALUES
   ('00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000201', 1, 9, 'active', 'Bàn 1'),
   ('00000000-0000-0000-0000-000000000302', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000202', 2, 9, 'active', 'Bàn 2');
 
+SELECT public.floor_test_assert(
+  (SELECT count(*) = 2
+   FROM public.tournament_tables
+   WHERE tournament_id = '00000000-0000-0000-0000-000000000100'
+     AND floor_control_mode = 'manual'
+     AND floor_control_revision = 0),
+  'all existing tables default to explicit manual Floor control'
+);
+SELECT public.floor_test_assert(
+  (public.floor_set_table_control_mode(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000301',
+    'tracker',
+    0
+  )->>'ok')::boolean,
+  'owner can explicitly mark a table as Live Tracker'
+);
+SELECT public.floor_test_assert(
+  (SELECT floor_control_mode = 'tracker' AND floor_control_revision = 1
+   FROM public.tournament_tables
+   WHERE id = '00000000-0000-0000-0000-000000000301'),
+  'tracker selection is durable and advances its revision'
+);
+SELECT public.floor_test_assert(
+  (public.floor_set_table_control_mode(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000301',
+    'manual',
+    0
+  )->>'error') = 'stale_table_control_mode',
+  'an old table-mode snapshot cannot overwrite the newer selection'
+);
+
 INSERT INTO public.tournament_entries (id, tournament_id, player_id, entry_no, status, current_stack, table_id, seat_id, seat_number)
 VALUES
   ('00000000-0000-0000-0000-000000000401', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000501', 1, 'seated', 100, '00000000-0000-0000-0000-000000000201', '00000000-0000-0000-0000-000000000601', 1),
@@ -381,6 +453,8 @@ SELECT public.floor_test_assert(
   'move preserves chip count with exactly one active seat and one historical seat'
 );
 
+-- Cross-club authorization must be observed while the fixture entry remains
+-- movable. The Manual Floor bust below intentionally terminalizes this entry.
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000099', false);
 SELECT public.floor_test_assert(
   (public.move_player_seat(
@@ -392,7 +466,47 @@ SELECT public.floor_test_assert(
   )->>'error') = 'actor_not_allowed',
   'cross-club move is denied'
 );
+SELECT public.floor_test_assert(
+  (public.floor_set_table_control_mode(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000301',
+    'manual',
+    1
+  )->>'error') = 'actor_not_allowed',
+  'cross-club actor cannot change table control mode'
+);
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
+
+SELECT public.floor_test_assert(
+  (public.floor_bust_player(
+    '00000000-0000-0000-0000-000000000100',
+    (SELECT id FROM public.tournament_seats
+     WHERE entry_id = '00000000-0000-0000-0000-000000000401' AND is_active),
+    100,
+    'manual_nonzero_fixture'
+  )->>'ok')::boolean,
+  'Manual Floor permits a non-zero-chip bust'
+);
+SELECT public.floor_test_assert(
+  (SELECT status = 'busted' AND current_stack = 0
+   FROM public.tournament_entries
+   WHERE id = '00000000-0000-0000-0000-000000000401')
+  AND (SELECT chip_count = 100
+       FROM public.tournament_seats
+       WHERE entry_id = '00000000-0000-0000-0000-000000000401'
+         AND status = 'busted'
+       ORDER BY created_at DESC
+       LIMIT 1),
+  'manual bust keeps the historical seat chip while terminalizing the entry'
+);
+SELECT public.floor_test_assert(
+  EXISTS (
+    SELECT 1 FROM public.audit_logs
+    WHERE action = 'floor_player_busted'
+      AND payload @> '{"floor_control_mode":"manual","chip_count_before":100,"manual_nonzero_chip_override":true,"payout_applied":false}'::jsonb
+  ),
+  'manual non-zero bust is audited and explicitly records no payout'
+);
 
 SELECT public.floor_test_assert(
   (public.floor_bust_player(
@@ -426,6 +540,30 @@ SELECT public.floor_test_assert(
 SELECT public.floor_test_assert(
   (SELECT status = 'seated' AND current_stack = 0 FROM public.tournament_entries WHERE id = '00000000-0000-0000-0000-000000000402'),
   'restore retains the zero chip value and does not create a new entry'
+);
+
+SELECT public.floor_test_assert(
+  (public.restore_busted_player_to_seat(
+    '00000000-0000-0000-0000-000000000401',
+    '00000000-0000-0000-0000-000000000302',
+    5,
+    NULL,
+    'manual_override_restore'
+  )->>'ok')::boolean,
+  'restore is an explicit undo of a Manual non-zero-chip bust'
+);
+SELECT public.floor_test_assert(
+  (SELECT status = 'seated' AND current_stack = 100
+   FROM public.tournament_entries
+   WHERE id = '00000000-0000-0000-0000-000000000401')
+  AND EXISTS (
+    SELECT 1
+    FROM public.tournament_seats
+    WHERE entry_id = '00000000-0000-0000-0000-000000000401'
+      AND is_active
+      AND chip_count = 100
+  ),
+  'manual restore returns the historical audited chip count as a reversible undo'
 );
 
 INSERT INTO public.tournaments (id, club_id, status, current_level)
@@ -919,7 +1057,7 @@ INSERT INTO public.tournament_entries (
   1,
   'seated',
   100,
-  '00000000-0000-0000-0000-000000000201',
+  '00000000-0000-0000-0000-000000000202',
   '00000000-0000-0000-0000-000000000603',
   4
 );
@@ -931,7 +1069,7 @@ INSERT INTO public.tournament_seats (
   '00000000-0000-0000-0000-000000000100',
   '00000000-0000-0000-0000-000000000503',
   1,
-  '00000000-0000-0000-0000-000000000301',
+  '00000000-0000-0000-0000-000000000302',
   4,
   100,
   true,
@@ -994,6 +1132,223 @@ SELECT public.floor_test_assert(
   NOT has_function_privilege('anon', 'public.floor_update_tournament_seat_chip(uuid,uuid,integer,integer)'::regprocedure, 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.floor_update_tournament_seat_chip(uuid,uuid,integer,integer)'::regprocedure, 'EXECUTE'),
   'chip CAS RPC denies anon and grants authenticated'
+);
+
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
+
+INSERT INTO public.game_tables (id, club_id, table_name, table_type, status, current_blind_level)
+VALUES
+  ('00000000-0000-0000-0000-000000000204', '00000000-0000-0000-0000-000000000010', 'Hand Guard 1', 'tournament', 'active', 1),
+  ('00000000-0000-0000-0000-000000000205', '00000000-0000-0000-0000-000000000010', 'Hand Guard 2', 'tournament', 'active', 1);
+INSERT INTO public.tournament_tables (id, tournament_id, table_id, table_number, max_seats, status, table_name)
+VALUES
+  ('00000000-0000-0000-0000-000000000304', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000204', 4, 9, 'active', 'Hand Guard 1'),
+  ('00000000-0000-0000-0000-000000000305', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000205', 5, 9, 'active', 'Hand Guard 2');
+INSERT INTO public.tournament_entries (id, tournament_id, player_id, entry_no, status, current_stack, table_id, seat_id, seat_number)
+VALUES
+  ('00000000-0000-0000-0000-000000000404', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000504', 1, 'seated', 100, '00000000-0000-0000-0000-000000000304', '00000000-0000-0000-0000-000000000604', 1),
+  ('00000000-0000-0000-0000-000000000405', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000505', 1, 'seated', 100, '00000000-0000-0000-0000-000000000305', '00000000-0000-0000-0000-000000000605', 1);
+INSERT INTO public.tournament_seats (id, tournament_id, player_id, entry_number, table_id, seat_number, chip_count, is_active, player_name, entry_id, status)
+VALUES
+  ('00000000-0000-0000-0000-000000000604', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000504', 1, '00000000-0000-0000-0000-000000000304', 1, 100, true, 'Active Hand Guard', '00000000-0000-0000-0000-000000000404', 'active'),
+  ('00000000-0000-0000-0000-000000000605', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000505', 1, '00000000-0000-0000-0000-000000000305', 1, 100, true, 'Concurrent Hand Guard', '00000000-0000-0000-0000-000000000405', 'active');
+INSERT INTO public.tournament_chip_counts (tournament_id, player_id, entry_number, chip_count)
+VALUES
+  ('00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000504', 1, 100),
+  ('00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000505', 1, 100);
+
+SELECT public.floor_test_assert(
+  (public.start_hand(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000304',
+    1,
+    now(),
+    NULL,
+    1
+  )->>'error_code') = 'tracker_table_required',
+  'Manual Floor table cannot start a Live Tracker hand before explicit classification'
+);
+SELECT public.floor_test_assert(
+  (public.floor_set_table_control_mode(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000304',
+    'tracker',
+    0
+  )->>'ok')::boolean
+  AND (public.floor_set_table_control_mode(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000305',
+    'tracker',
+    0
+  )->>'ok')::boolean,
+  'hand fixtures explicitly classify their tables as Live Tracker before start'
+);
+
+SELECT public.floor_test_assert(
+  (public.start_hand(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000304',
+    1,
+    now(),
+    NULL,
+    1
+  )->>'status') = 'success',
+  'start_hand creates the isolated active-hand fixture'
+);
+SELECT public.floor_test_assert(
+  (public.floor_bust_player(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000604',
+    100,
+    'active_hand_fixture'
+  )->>'error') = 'player_in_active_hand',
+  'an active hand blocks bust before the manual non-zero policy can apply'
+);
+SELECT public.floor_test_assert(
+  (public.floor_set_table_control_mode(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000304',
+    'tracker',
+    0
+  )->>'error') = 'table_has_active_hand',
+  'an active hand blocks a table mode change'
+);
+
+CREATE OR REPLACE FUNCTION public.floor_test_start_hand_and_hold(
+  p_tournament_id uuid,
+  p_table_id uuid
+)
+RETURNS text
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_result jsonb;
+BEGIN
+  v_result := public.start_hand(p_tournament_id, p_table_id, 1, now(), NULL, 1);
+  IF v_result->>'status' <> 'success' THEN
+    RAISE EXCEPTION 'fixture start_hand failed: %', v_result;
+  END IF;
+  PERFORM pg_sleep(0.35);
+  RETURN 'ok';
+END;
+$$;
+
+SELECT dblink_connect('floor_hand_lock', 'dbname=' || current_database());
+SELECT dblink_send_query(
+  'floor_hand_lock',
+  $$SELECT public.floor_test_start_hand_and_hold(
+    '00000000-0000-0000-0000-000000000100'::uuid,
+    '00000000-0000-0000-0000-000000000305'::uuid
+  )$$
+);
+SELECT pg_sleep(0.05);
+SELECT public.floor_test_assert(
+  (public.floor_bust_player(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000605',
+    100,
+    'concurrent_active_hand_fixture'
+  )->>'error') = 'player_in_active_hand',
+  'start_hand and bust share a lock so the bust observes the new active hand'
+);
+SELECT public.floor_test_assert(
+  (SELECT result = 'ok' FROM dblink_get_result('floor_hand_lock') AS t(result text)),
+  'concurrent start_hand completed after holding the shared table lock'
+);
+SELECT dblink_disconnect('floor_hand_lock');
+
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
+INSERT INTO public.tournament_entries (
+  id, tournament_id, player_id, entry_no, status, current_stack, table_id, seat_id, seat_number
+) VALUES
+  ('00000000-0000-0000-0000-000000000406', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000506', 1, 'seated', 100, '00000000-0000-0000-0000-000000000201', '00000000-0000-0000-0000-000000000606', 2),
+  ('00000000-0000-0000-0000-000000000407', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000507', 1, 'seated', 0, '00000000-0000-0000-0000-000000000201', '00000000-0000-0000-0000-000000000607', 3),
+  ('00000000-0000-0000-0000-000000000408', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000508', 1, 'seated', 0, '00000000-0000-0000-0000-000000000201', '00000000-0000-0000-0000-000000000608', 4);
+INSERT INTO public.tournament_seats (
+  id, tournament_id, player_id, entry_number, table_id, seat_number, chip_count, is_active, player_name, entry_id, status
+) VALUES
+  ('00000000-0000-0000-0000-000000000606', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000506', 1, '00000000-0000-0000-0000-000000000301', 2, 100, true, 'Tracker nonzero', '00000000-0000-0000-0000-000000000406', 'active'),
+  ('00000000-0000-0000-0000-000000000607', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000507', 1, '00000000-0000-0000-0000-000000000301', 3, 0, true, 'Tracker zero', '00000000-0000-0000-0000-000000000407', 'active'),
+  ('00000000-0000-0000-0000-000000000608', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000508', 1, '00000000-0000-0000-0000-000000000301', 4, 0, true, 'Tracker missing projection', '00000000-0000-0000-0000-000000000408', 'active');
+INSERT INTO public.tournament_chip_counts (tournament_id, player_id, entry_number, chip_count)
+VALUES
+  ('00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000506', 1, 100),
+  ('00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000507', 1, 0);
+
+SELECT public.floor_test_assert(
+  (public.floor_update_tournament_seat_chip(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000606',
+    100,
+    125
+  )->>'error') = 'tracker_table_chip_authority',
+  'Live Tracker rejects a Floor chip CAS write'
+);
+SELECT public.floor_test_assert(
+  (public.floor_bust_player(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000606',
+    100,
+    'tracker_nonzero_fixture'
+  )->>'error') = 'player_has_chips',
+  'Live Tracker rejects a non-zero-chip bust'
+);
+SELECT public.floor_test_assert(
+  (public.floor_bust_player(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000608',
+    0,
+    'tracker_missing_projection_fixture'
+  )->>'error') = 'tracker_chip_state_mismatch',
+  'Live Tracker rejects a bust when its tracker chip projection is missing'
+);
+UPDATE public.tournament_chip_counts
+SET chip_count = 0
+WHERE tournament_id = '00000000-0000-0000-0000-000000000100'
+  AND player_id = '00000000-0000-0000-0000-000000000506'
+  AND entry_number = 1;
+SELECT public.floor_test_assert(
+  (public.floor_bust_player(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000606',
+    100,
+    'tracker_mismatched_projection_fixture'
+  )->>'error') = 'tracker_chip_state_mismatch',
+  'Live Tracker rejects a bust when seat and tracker chips differ'
+);
+SELECT public.floor_test_assert(
+  (public.floor_bust_player(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000607',
+    0,
+    'tracker_zero_fixture'
+  )->>'ok')::boolean,
+  'Live Tracker permits a zero-chip bust only when both chip projections match'
+);
+
+INSERT INTO public.tournament_tables (id, tournament_id, table_id, table_number, max_seats, status, table_name)
+VALUES ('00000000-0000-0000-0000-000000000306', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000201', 6, 9, 'active', 'Corrupt duplicate mapping');
+INSERT INTO public.tournament_entries (
+  id, tournament_id, player_id, entry_no, status, current_stack, table_id, seat_id, seat_number
+) VALUES ('00000000-0000-0000-0000-000000000409', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000509', 1, 'seated', 0, '00000000-0000-0000-0000-000000000201', '00000000-0000-0000-0000-000000000609', 5);
+INSERT INTO public.tournament_seats (
+  id, tournament_id, player_id, entry_number, table_id, seat_number, chip_count, is_active, player_name, entry_id, status
+) VALUES ('00000000-0000-0000-0000-000000000609', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000509', 1, '00000000-0000-0000-0000-000000000201', 5, 0, true, 'Ambiguous mapping', '00000000-0000-0000-0000-000000000409', 'active');
+SELECT public.floor_test_assert(
+  (public.floor_bust_player(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000609',
+    0,
+    'ambiguous_table_mapping_fixture'
+  )->>'error') = 'seat_table_mismatch',
+  'ambiguous legacy seat mapping never selects an arbitrary Manual or Tracker policy'
+);
+
+SELECT public.floor_test_assert(
+  NOT has_function_privilege('anon', 'public.floor_set_table_control_mode(uuid,uuid,text,bigint)'::regprocedure, 'EXECUTE')
+  AND has_function_privilege('authenticated', 'public.floor_set_table_control_mode(uuid,uuid,text,bigint)'::regprocedure, 'EXECUTE')
+  AND NOT has_function_privilege('service_role', 'public.floor_set_table_control_mode(uuid,uuid,text,bigint)'::regprocedure, 'EXECUTE'),
+  'table control RPC grants only authenticated among runtime roles'
 );
 
 SELECT 'floor disposable DB integration passed' AS result;

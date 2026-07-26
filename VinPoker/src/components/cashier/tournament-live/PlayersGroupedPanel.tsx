@@ -13,6 +13,9 @@ import { EditChipsDialog } from "./EditChipsDialog";
 import { PlayerInfoSheet } from "./PlayerInfoSheet";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
+import { ManualFloorBustConfirmDialog } from "./ManualFloorBustConfirmDialog";
+import { parseFloorTableControlMode } from "@/lib/floorTableControlMode";
+import { floorOpsErrorMessage } from "@/lib/floorOpsErrors";
 
 interface SeatRow {
   seat_id: string;
@@ -46,6 +49,12 @@ interface TournamentEntryResult {
   status: string;
 }
 
+interface TableControlRow {
+  id: string;
+  table_id: string;
+  floor_control_mode: unknown;
+}
+
 function responseError(data: unknown): string | null {
   return data && typeof data === "object" && "error" in data && typeof data.error === "string"
     ? data.error
@@ -72,6 +81,7 @@ export function PlayersGroupedPanel({
   const [seats, setSeats] = useState<SeatRow[] | null>(null);
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [entryBySeat, setEntryBySeat] = useState<Record<string, string>>({});
+  const [tableControls, setTableControls] = useState<TableControlRow[] | null>(null);
   const [canMove, setCanMove] = useState(false);
   const [loading, setLoading] = useState(false);
   const [group, setGroup] = useState<GroupKey>("playing");
@@ -83,6 +93,7 @@ export function PlayersGroupedPanel({
   const [infoTarget, setInfoTarget] = useState<SeatRow | null>(null);
   const [receipt, setReceipt] = useState<SeatReceiptData | null>(null);
   const [busting, setBusting] = useState(false);
+  const [manualBustTarget, setManualBustTarget] = useState<SeatRow | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -101,14 +112,22 @@ export function PlayersGroupedPanel({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [seatsRes, linksRes, entriesRes] = await Promise.all([
+      const [seatsRes, linksRes, entriesRes, tablesRes] = await Promise.all([
         supabase.functions.invoke("tournament-live-draw", { body: { tournament_id: tid, action: "get_seats" } }),
         supabase.from("tournament_seats").select("id, entry_id").eq("tournament_id", tid),
         supabase
           .from("tournament_entries")
           .select("id, player_id, current_stack, seat_number, finished_place, status")
           .eq("tournament_id", tid),
+        supabase
+          .from("tournament_tables")
+          .select("id, table_id, floor_control_mode")
+          .eq("tournament_id", tid),
       ]);
+      if (seatsRes.error) throw seatsRes.error;
+      if (linksRes.error) throw linksRes.error;
+      if (entriesRes.error) throw entriesRes.error;
+      if (tablesRes.error) throw tablesRes.error;
       const loaded: SeatRow[] = (seatsRes.data?.data ?? []) as SeatRow[];
       setSeats(loaded.filter((s) => s.is_active).sort((a, b) => b.chip_count - a.chip_count));
       const m: Record<string, string> = {};
@@ -124,6 +143,12 @@ export function PlayersGroupedPanel({
         finished_place: e.finished_place ?? null,
         status: e.status,
       })));
+      setTableControls((tablesRes.data ?? []) as TableControlRow[]);
+    } catch (error) {
+      // A player action must not infer Manual mode when the table policy is
+      // unavailable or legacy identifiers map to multiple tables.
+      setTableControls(null);
+      toast.error(error instanceof Error ? error.message : "Không tải được chế độ kiểm soát chip của bàn.");
     } finally {
       setLoading(false);
     }
@@ -154,6 +179,21 @@ export function PlayersGroupedPanel({
     [seats, filterText],
   );
 
+  const selectedControlMode = useMemo(() => {
+    if (!selected || !tableControls) return null;
+    const matches = tableControls.filter(
+      (table) => table.id === selected.table_id || table.table_id === selected.table_id,
+    );
+    return matches.length === 1 ? parseFloorTableControlMode(matches[0].floor_control_mode) : null;
+  }, [selected, tableControls]);
+  const selectedChipEditDisabledReason = selected
+    ? !selectedControlMode
+      ? "Không xác minh được chế độ bàn. Hãy tải lại trước khi sửa chip."
+      : selectedControlMode === "tracker"
+        ? "Bàn Live Tracker do Tracker quản lý chip."
+        : undefined
+    : undefined;
+
   const bustSeat = async (target: SeatRow | null) => {
     if (!target) return;
     setBusting(true);
@@ -168,6 +208,7 @@ export function PlayersGroupedPanel({
             entry_number: target.entry_number,
             table_id: target.table_id,
             seat_number: target.seat_number,
+            expected_chip_count: target.chip_count,
             chip_count: target.chip_count,
             is_active: false,
             player_name: target.player_name,
@@ -175,7 +216,7 @@ export function PlayersGroupedPanel({
         },
       });
       const edgeError = responseError(data);
-      if (error || edgeError) { toast.error(edgeError || error?.message); return; }
+      if (error || edgeError) { toast.error(floorOpsErrorMessage(edgeError || error?.message, "Loại thất bại")); return; }
       toast.success(`Đã loại ${target.player_name || "người chơi"}`);
       setSelected(null);
       setInfoTarget(null);
@@ -185,6 +226,37 @@ export function PlayersGroupedPanel({
     } finally {
       setBusting(false);
     }
+  };
+
+  const requestBust = async (target: SeatRow | null, manualConfirmed = false) => {
+    if (!target) return;
+    const { data, error } = await supabase
+      .from("tournament_tables")
+      .select("id, table_id, floor_control_mode")
+      .eq("tournament_id", tid);
+    if (error) {
+      toast.error("Không xác minh được chế độ bàn. Hãy tải lại trước khi loại.");
+      return;
+    }
+    const tableMatches = ((data ?? []) as { id: string; table_id: string; floor_control_mode: unknown }[])
+      .filter((candidate) => candidate.id === target.table_id || candidate.table_id === target.table_id);
+    const table = tableMatches.length === 1 ? tableMatches[0] : null;
+    const mode = parseFloorTableControlMode(table?.floor_control_mode);
+    if (!table || !mode) {
+      toast.error("Không xác minh được chế độ bàn. Hãy tải lại trước khi loại.");
+      return;
+    }
+    if (mode === "tracker" && target.chip_count > 0) {
+      toast.error("Bàn Live Tracker chỉ cho phép loại khi chip đã về 0.");
+      return;
+    }
+    if (mode === "manual" && target.chip_count > 0 && !manualConfirmed) {
+      setSelected(null);
+      setInfoTarget(null);
+      setManualBustTarget(target);
+      return;
+    }
+    await bustSeat(target);
   };
 
   const openReceipt = (target: SeatRow | null) => {
@@ -308,8 +380,9 @@ export function PlayersGroupedPanel({
         busting={busting}
         onMove={() => { if (selected) setMoveTarget(selected); }}
         onEditChips={() => { if (selected) setEditTarget(selected); }}
+        editDisabledReason={selectedChipEditDisabledReason}
         onReceipt={() => openReceipt(selected)}
-        onBust={() => bustSeat(selected)}
+        onBust={() => { void requestBust(selected); }}
         onInfo={() => { if (selected) setInfoTarget(selected); }}
       />
 
@@ -322,7 +395,7 @@ export function PlayersGroupedPanel({
         busting={busting}
         onMove={() => { if (infoTarget) setMoveTarget(infoTarget); }}
         onReceipt={() => openReceipt(infoTarget)}
-        onBust={() => bustSeat(infoTarget)}
+        onBust={() => { void requestBust(infoTarget); }}
       />
 
       {moveTarget && entryBySeat[moveTarget.seat_id] && (
@@ -344,6 +417,20 @@ export function PlayersGroupedPanel({
         tournamentId={tid}
         seat={editTarget as ActionSeat | null}
         onSaved={load}
+      />
+
+      <ManualFloorBustConfirmDialog
+        open={manualBustTarget !== null}
+        onOpenChange={(open) => { if (!open) setManualBustTarget(null); }}
+        playerName={manualBustTarget?.player_name || manualBustTarget?.player_id.slice(0, 8) || "Người chơi"}
+        chipCount={manualBustTarget?.chip_count ?? 0}
+        busy={busting}
+        onConfirm={() => {
+          const target = manualBustTarget;
+          if (!target) return;
+          setManualBustTarget(null);
+          void requestBust(target, true);
+        }}
       />
 
       <SeatReceiptDialog open={receipt !== null} onOpenChange={(v) => { if (!v) setReceipt(null); }} receipt={receipt} />

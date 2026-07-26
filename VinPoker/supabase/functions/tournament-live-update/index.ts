@@ -271,6 +271,22 @@ Deno.serve(async (req) => {
     }
 
     if (result.error) throw result.error;
+    // `start_hand` returns a JSONB policy denial for an unclassified Manual
+    // table. Do not wrap that as a successful Edge response: older callers
+    // otherwise set local `handStarted=true` even though no hand was inserted.
+    if (action === "start_hand" && result.data && typeof result.data === "object") {
+      const verdict = result.data as { error?: unknown; error_code?: unknown };
+      if (typeof verdict.error === "string") {
+        const code = typeof verdict.error_code === "string" ? verdict.error_code : undefined;
+        const message = code === "tracker_table_required"
+          ? "Bàn này đang ở chế độ Manual Floor. Hãy chọn Live Tracker trước khi bắt đầu hand."
+          : verdict.error;
+        return new Response(JSON.stringify({ error: message, ...(code ? { code } : {}) }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
     // Echo the caller's trace_id (when present) for end-to-end correlation. The RPC
     // JSONB (in `data`) carries the authoritative verdict incl. duplicate/conflict/lock.
     return new Response(JSON.stringify({ status: "success", data: result.data, ...(body.trace_id ? { trace_id: body.trace_id } : {}), ...(validationNote ? { validation: validationNote } : {}) }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });

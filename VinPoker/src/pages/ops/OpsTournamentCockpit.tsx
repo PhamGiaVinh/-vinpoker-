@@ -18,6 +18,7 @@ import {
 import { RoomGrid } from "@/components/ops/shared/RoomGrid";
 import { useFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { FloorPlayerActions, type FloorSeatTarget } from "@/components/ops/shared/FloorPlayerActions";
+import { FloorTableControlModeControl } from "@/components/ops/shared/FloorTableControlMode";
 import { buildEligibleFloorMoveTargets, toMockTable, toMockSeat, type MapSeat, type MapTable } from "@/components/ops/shared/floorAdapter";
 import type { MockTable } from "@/components/ops/mock/opsData";
 import type { TournamentLeaderboardPlayer } from "@/types/tournament";
@@ -168,6 +169,10 @@ export default function OpsTournamentCockpit() {
     const seats = floor.seatsByTable[t.table_id] ?? [];
     return { mock: toMockTable(t, seats.length, !!d?.isBreak, 1000 + i), name: t.table_name, seats, raw: t };
   }), [floor.tables, floor.seatsByTable, d?.isBreak]);
+  const tableSheetVm = useMemo(
+    () => cockVms.find((vm) => vm.raw.table_id === tableSheet) ?? null,
+    [cockVms, tableSheet],
+  );
   const tableNoById = useMemo(() => { const m = new Map<string, number | null>(); for (const t of floor.tables) m.set(t.table_id, t.table_number); return m; }, [floor.tables]);
   const playing = useMemo(() => {
     const all: MapSeat[] = [];
@@ -591,8 +596,15 @@ export default function OpsTournamentCockpit() {
         <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="text-center">
-            <SheetTitle className="text-[#f2ece6]">{cockVms.find((v) => v.raw.table_id === tableSheet)?.name ?? "Bàn"}</SheetTitle>
+            <SheetTitle className="text-[#f2ece6]">{tableSheetVm?.name ?? "Bàn"}</SheetTitle>
           </SheetHeader>
+          {tableSheetVm && id && (
+            <FloorTableControlModeControl
+              tournamentId={id}
+              table={tableSheetVm.raw}
+              onChanged={floor.reload}
+            />
+          )}
           {(() => {
             const seats = tableSheet ? (floor.seatsByTable[tableSheet] ?? []) : [];
             return seats.length === 0 ? (
