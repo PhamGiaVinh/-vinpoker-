@@ -10,6 +10,7 @@ on:
       - ".github/workflows/dealer-swing-phone-completion-apply.yml"
       - ".github/workflows/dealer-swing-phone-hsop-uat.yml"
       - ".github/workflows/dealer-swing-dark-monitor.yml"
+      - ".github/workflows/dealer-pt-wage-disposable-validation.yml"
       - ".github/workflows/deployment-control-plane-validation.yml"
       - "VinPoker/scripts/floor/apply-floor-clock-control.mjs"
       - "VinPoker/scripts/floor/apply-floor-clock-control.test.mjs"
@@ -70,6 +71,7 @@ jobs:
             .github/workflows/dealer-swing-phone-completion-apply.yml \
             .github/workflows/dealer-swing-phone-hsop-uat.yml \
             .github/workflows/dealer-swing-dark-monitor.yml \
+            .github/workflows/dealer-pt-wage-disposable-validation.yml \
             .github/workflows/deployment-control-plane-validation.yml
 
       - name: Setup Node.js 20 for Floor runner tests

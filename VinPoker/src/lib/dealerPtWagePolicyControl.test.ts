@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDealerPtWageGlobalPolicyRequest,
   buildDealerPtWagePolicyRequest,
   PT_WAGE_POLICY_REASON_LIMIT,
 } from "./dealerPtWagePolicyControl";
 
 describe("buildDealerPtWagePolicyRequest", () => {
-  it("requests continuous accrual for every unpaid minute without a client amount", () => {
+  it("requests server-timed continuous accrual without a client amount", () => {
     expect(buildDealerPtWagePolicyRequest("club-1", true, "  Owner UAT  "))
       .toEqual({
         p_club_id: "club-1",
@@ -42,5 +43,21 @@ describe("buildDealerPtWagePolicyRequest", () => {
         "x".repeat(PT_WAGE_POLICY_REASON_LIMIT + 1),
       )
     ).toThrow("tối đa");
+  });
+});
+
+describe("buildDealerPtWageGlobalPolicyRequest", () => {
+  it("sends only the intended policy state and an audit reason", () => {
+    expect(buildDealerPtWageGlobalPolicyRequest(true, "  Roll out from now  "))
+      .toEqual({
+        p_standby_accrual_enabled: true,
+        p_reason: "Roll out from now",
+      });
+  });
+
+  it("does not accept a missing or oversized audit reason", () => {
+    expect(() => buildDealerPtWageGlobalPolicyRequest(true, " ")).toThrow("lý do");
+    expect(() => buildDealerPtWageGlobalPolicyRequest(false, "x".repeat(PT_WAGE_POLICY_REASON_LIMIT + 1)))
+      .toThrow("tối đa");
   });
 });

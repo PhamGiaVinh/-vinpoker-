@@ -10,6 +10,10 @@ const validationWorkflow = readFileSync(
   resolve(root, ".github/workflows/deployment-control-plane-validation.yml"),
   "utf8",
 );
+const dealerPtWageDisposableWorkflow = readFileSync(
+  resolve(root, ".github/workflows/dealer-pt-wage-disposable-validation.yml"),
+  "utf8",
+);
 
 test("frontend cannot run after a required critical deployment failure", () => {
   assert.match(workflow, /needs\.plan\.outputs\.critical_functions == '\[\]' \|\| needs\.deploy-critical-edge\.result == 'success'/);
@@ -117,8 +121,21 @@ test("pinned actionlint validation is read-only and uses no production secret", 
   assert.match(validationWorkflow, /sha256sum --check --strict/);
   assert.match(validationWorkflow, /\.github\/workflows\/vbackerworkflowmain\.yml/);
   assert.match(validationWorkflow, /\.github\/workflows\/deployment-control-plane-validation\.yml/);
+  assert.match(validationWorkflow, /\.github\/workflows\/dealer-pt-wage-disposable-validation\.yml/);
   assert.doesNotMatch(validationWorkflow, /find \.github\/workflows/);
   assert.doesNotMatch(validationWorkflow, /\bsecrets\./);
   assert.doesNotMatch(validationWorkflow, /supabase\s+(?:functions\s+deploy|db\s+(?:push|reset))/i);
   assert.doesNotMatch(validationWorkflow, /vercel\s+(?:deploy|--prod)/i);
+});
+
+test("PT wage disposable CI restores a checksummed artifact without production access", () => {
+  assert.match(dealerPtWageDisposableWorkflow, /workflow_dispatch:/);
+  assert.match(dealerPtWageDisposableWorkflow, /environment:\s*\n\s*name: dealer-swing-production-critical/);
+  assert.match(dealerPtWageDisposableWorkflow, /postgres: \["16", "17"\]/);
+  assert.match(dealerPtWageDisposableWorkflow, /actions\/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093/);
+  assert.match(dealerPtWageDisposableWorkflow, /sha256sum --check --status/);
+  assert.match(dealerPtWageDisposableWorkflow, /test-dealer-pt-wage-disposable\.ps1/);
+  assert.doesNotMatch(dealerPtWageDisposableWorkflow, /\bsecrets\./);
+  assert.doesNotMatch(dealerPtWageDisposableWorkflow, /supabase\s+(?:functions\s+deploy|db\s+(?:push|reset)|link)/i);
+  assert.doesNotMatch(dealerPtWageDisposableWorkflow, /vercel\s+(?:deploy|--prod)/i);
 });

@@ -1,0 +1,87 @@
+name: Validate Dealer PT wage disposable schema
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact 40-character source commit to validate"
+        required: true
+        type: string
+      schema_artifact_run_id:
+        description: "Run ID that published the protected read-only public-schema artifact"
+        required: true
+        type: string
+      schema_artifact_name:
+        description: "Artifact containing live-public-schema.sql and live-public-schema.sha256"
+        required: true
+        default: "live-public-schema"
+        type: string
+      schema_sha256:
+        description: "Expected SHA-256 of live-public-schema.sql from the protected capture receipt"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: dealer-pt-wage-disposable-${{ inputs.target_sha }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: PG${{ matrix.postgres }} current-schema payroll proof
+    runs-on: ubuntu-latest
+    environment:
+      name: dealer-swing-production-critical
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["16", "17"]
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+
+      - name: Verify exact source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="${{ inputs.target_sha }}"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$sha"
+
+      - name: Download protected read-only schema artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.schema_artifact_run_id }}
+          name: ${{ inputs.schema_artifact_name }}
+          path: ${{ runner.temp }}/current-schema
+
+      - name: Verify schema artifact identity before restore
+        shell: bash
+        env:
+          EXPECTED_SCHEMA_SHA256: ${{ inputs.schema_sha256 }}
+        run: |
+          set -euo pipefail
+          artifact_dir="${RUNNER_TEMP}/current-schema"
+          schema_path="${artifact_dir}/live-public-schema.sql"
+          checksum_path="${artifact_dir}/live-public-schema.sha256"
+          test -f "$schema_path"
+          test -f "$checksum_path"
+          [[ "$EXPECTED_SCHEMA_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          actual="$(sha256sum "$schema_path" | awk '{print $1}')"
+          test "$actual" = "$EXPECTED_SCHEMA_SHA256"
+          (cd "$artifact_dir" && sha256sum --check --status "$(basename "$checksum_path")")
+          test "$(find "$artifact_dir" -maxdepth 1 -type f | wc -l | tr -d ' ')" = "2"
+
+      - name: Restore disposable PostgreSQL and run payroll lifecycle suite
+        shell: pwsh
+        run: >-
+          ./VinPoker/scripts/deploy/test-dealer-pt-wage-disposable.ps1
+          -PostgresMajor "${{ matrix.postgres }}"
+          -SchemaPath "${{ runner.temp }}/current-schema/live-public-schema.sql"

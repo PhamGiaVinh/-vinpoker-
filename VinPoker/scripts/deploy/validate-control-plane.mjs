@@ -18,9 +18,16 @@ const shortageAlertApplyWorkflowPath = resolve(
   "workflows",
   "dealer-shortage-alert-lifecycle-apply.yml",
 );
+const dealerPtWageDisposableWorkflowPath = resolve(
+  repositoryRoot,
+  ".github",
+  "workflows",
+  "dealer-pt-wage-disposable-validation.yml",
+);
 const workflow = readFileSync(workflowPath, "utf8");
 const validationWorkflow = readFileSync(validationWorkflowPath, "utf8");
 const shortageAlertApplyWorkflow = readFileSync(shortageAlertApplyWorkflowPath, "utf8");
+const dealerPtWageDisposableWorkflow = readFileSync(dealerPtWageDisposableWorkflowPath, "utf8");
 const manifest = loadDeploymentManifest();
 validateDeploymentManifest(manifest, repositoryRoot);
 
@@ -100,6 +107,31 @@ for (const snippet of [
   "sha256sum --check --strict",
 ]) {
   if (!validationWorkflow.includes(snippet)) throw new Error(`pinned actionlint validation is missing: ${snippet}`);
+}
+
+for (const [pattern, label] of [
+  [/\bsecrets\./, "production secret reference"],
+  [/supabase\s+(?:functions\s+deploy|db\s+(?:push|reset)|link)/i, "production database or Edge access"],
+  [/vercel\s+(?:deploy|--prod)/i, "frontend deployment"],
+  [/printenv|env\s*\|\s*sort/i, "environment logging"],
+]) {
+  if (pattern.test(dealerPtWageDisposableWorkflow)) {
+    throw new Error(`PT wage disposable workflow contains forbidden ${label}`);
+  }
+}
+for (const snippet of [
+  "workflow_dispatch:",
+  "schema_artifact_run_id:",
+  "schema_sha256:",
+  "dealer-swing-production-critical",
+  "postgres: [\"16\", \"17\"]",
+  "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+  "sha256sum --check --status",
+  "test-dealer-pt-wage-disposable.ps1",
+]) {
+  if (!dealerPtWageDisposableWorkflow.includes(snippet)) {
+    throw new Error(`PT wage disposable workflow is missing required control: ${snippet}`);
+  }
 }
 
 for (const [pattern, label] of [
