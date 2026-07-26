@@ -11,9 +11,19 @@ on:
       - "VinPoker/supabase/migrations/20270104000001_floor_chip_cas_rpc.sql"
       - "VinPoker/supabase/migrations/20270104000004_floor_clock_control_atomic.sql"
       - "VinPoker/supabase/migrations/20270104000005_floor_operator_scope_acl.sql"
+      - "VinPoker/supabase/migrations/20270105000001_floor_table_control_mode.sql"
+      - "VinPoker/supabase/migrations/20270106000000_floor_open_table_picker_mode_v2.sql"
+      - "VinPoker/src/components/cashier/tournament-live/AddPlayerDialog.tsx"
+      - "VinPoker/src/components/cashier/tournament-live/FloorTableDetailSheet.tsx"
+      - "VinPoker/src/components/cashier/tournament-live/FloorTableMapPanel.tsx"
+      - "VinPoker/src/components/cashier/tournament-live/OpenTableDialog.tsx"
       - "VinPoker/src/components/ops/shared/FloorPlayerActions.tsx"
+      - "VinPoker/src/components/ops/shared/FloorSeatRoster.tsx"
+      - "VinPoker/src/components/ops/shared/FloorTableNumberPicker.tsx"
       - "VinPoker/src/components/ops/shared/PlayerActionSheets.tsx"
+      - "VinPoker/src/components/ops/shared/floorTablePresentation.ts"
       - "VinPoker/src/components/ops/shared/floorSeatEntryPreflight.ts"
+      - "VinPoker/e2e/floor-button-coverage.manifest.ts"
       - "VinPoker/src/lib/floorOpsErrors.ts"
       - "VinPoker/src/pages/ops/OpsTables.tsx"
       - "VinPoker/tests/floorProduction/**"
@@ -58,19 +68,34 @@ jobs:
           tests/floorProduction/floorSeatEntryPreflight.test.ts
           tests/floorProduction/floorOpsErrors.test.ts
           tests/floorProduction/playerActionSheets.render.test.tsx
+          tests/floorProduction/floorTablePresentation.test.ts
+          tests/floorProduction/floorSeatRoster.render.test.tsx
+          tests/floorProduction/floorDbEdgeContracts.test.ts
+          tests/floorProduction/buttonCoverageManifest.test.ts
 
       - name: Lint targeted Floor mobile source
         working-directory: VinPoker
         run: >-
           npx eslint
           src/components/ops/shared/FloorPlayerActions.tsx
+          src/components/ops/shared/FloorSeatRoster.tsx
+          src/components/ops/shared/FloorTableNumberPicker.tsx
           src/components/ops/shared/PlayerActionSheets.tsx
+          src/components/ops/shared/floorTablePresentation.ts
           src/components/ops/shared/floorSeatEntryPreflight.ts
+          src/components/cashier/tournament-live/AddPlayerDialog.tsx
+          src/components/cashier/tournament-live/FloorTableDetailSheet.tsx
+          src/components/cashier/tournament-live/FloorTableMapPanel.tsx
+          src/components/cashier/tournament-live/OpenTableDialog.tsx
+          e2e/floor-button-coverage.manifest.ts
           src/lib/floorOpsErrors.ts
           src/pages/ops/OpsTables.tsx
           tests/floorProduction/floorSeatEntryPreflight.test.ts
           tests/floorProduction/floorOpsErrors.test.ts
           tests/floorProduction/playerActionSheets.render.test.tsx
+          tests/floorProduction/floorTablePresentation.test.ts
+          tests/floorProduction/floorSeatRoster.render.test.tsx
+          tests/floorProduction/floorDbEdgeContracts.test.ts
 
       - name: Apply Floor V2 migrations to disposable PostgreSQL and run integration assertions
         working-directory: VinPoker

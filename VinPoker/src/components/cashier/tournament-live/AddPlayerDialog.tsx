@@ -33,7 +33,7 @@ function mapError(code?: string): string {
  */
 export function AddPlayerDialog({
   open, onOpenChange, tournamentId, tournamentName, tournamentDate,
-  tableTtId, maxSeats, occupiedSeats, onDone,
+  tableTtId, maxSeats, occupiedSeats, defaultSeatNumber, onDone,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -43,6 +43,7 @@ export function AddPlayerDialog({
   tableTtId: string;
   maxSeats: number;
   occupiedSeats: number[];
+  defaultSeatNumber?: number | null;
   onDone: () => void;
 }) {
   const [name, setName] = useState("");
@@ -58,11 +59,17 @@ export function AddPlayerDialog({
     return out;
   }, [occupiedSeats, maxSeats]);
 
-  // Reset + default to the first free seat each time the dialog opens.
+  // Reset + prefer the Empty row that launched the dialog; fall back to the
+  // first currently free seat after server-backed occupancy refresh.
   useEffect(() => {
-    if (open) { setName(""); setSeat(freeSeats[0] ?? null); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+    if (!open) return;
+    setName("");
+    setSeat(
+      defaultSeatNumber != null && freeSeats.includes(defaultSeatNumber)
+        ? defaultSeatNumber
+        : (freeSeats[0] ?? null),
+    );
+  }, [defaultSeatNumber, freeSeats, open]);
 
   const formValid = name.trim().length >= 2 && seat != null;
 

@@ -1,95 +1,307 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { ExternalLink, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  ExternalLink,
+  Loader2,
+  Radio,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { FloorTableNumberPicker } from "@/components/ops/shared/FloorTableNumberPicker";
+import {
+  FIXED_FLOOR_TABLE_SEATS,
+  type FloorTableCatalogRow,
+} from "@/components/ops/shared/floorTablePresentation";
+import type { FloorTableControlMode } from "@/lib/floorTableControlMode";
 
 function mapError(code?: string): string {
   switch (code) {
     case "unauthorized": return "Bạn cần đăng nhập lại.";
     case "actor_not_allowed": return "Không có quyền mở bàn cho CLB này.";
-    case "tournament_not_open": return "Giải đã kết thúc/huỷ.";
-    case "table_number_taken": return "Số bàn này đã tồn tại — chọn số khác.";
-    case "invalid_max_seats": return "Số ghế không hợp lệ (2–10).";
-    case "invalid_table_number": return "Số bàn không hợp lệ.";
-    default: return code ? `Mở bàn thất bại (${code})` : "Mở bàn thất bại";
+    case "tournament_not_open": return "Giải đã kết thúc hoặc đã huỷ.";
+    case "table_number_taken": return "Số bàn này đang mở. Hãy tải lại danh sách và chọn số khác.";
+    case "invalid_table_number": return "Chỉ được chọn số bàn từ 1 đến 100.";
+    case "invalid_floor_control_mode": return "Chế độ kiểm soát bàn không hợp lệ.";
+    case "table_has_active_seats": return "Bàn đã đóng vẫn còn ghế hoạt động nên chưa thể mở lại.";
+    case "game_table_in_use": return "Bàn vật lý này đang được một giải khác sử dụng.";
+    case "table_mode_apply_failed": return "Không thể xác nhận chế độ của bàn. Không có bàn mới nào được mở.";
+    default: return "Mở bàn thất bại. Hãy tải lại và thử lại.";
   }
 }
 
+interface OpenTableResult {
+  ok?: boolean;
+  error?: string;
+  table_number?: number;
+  reopened?: boolean;
+  floor_control_mode?: FloorTableControlMode;
+}
+
 /**
- * "Mở bàn" — open a new tournament table (or reopen a closed one if its number is
- * typed) via the live `open_tournament_table` RPC. Gated behind FEATURES.floorTableOps
- * by the caller. Seat move only — no money.
+ * Responsive Floor table opener. The picker is a read-only preflight over the
+ * 1–100 catalog; floor_open_tournament_table_v2 revalidates the number, fixed
+ * nine-seat layout, authorization and control mode in one database transaction.
  */
 export function OpenTableDialog({
-  open, onOpenChange, tournamentId, defaultMaxSeats, onDone,
+  open,
+  onOpenChange,
+  tournamentId,
+  onDone,
 }: {
   open: boolean;
-  onOpenChange: (v: boolean) => void;
+  onOpenChange: (value: boolean) => void;
   tournamentId: string;
-  defaultMaxSeats: number;
   onDone: () => void;
 }) {
-  const [maxSeats, setMaxSeats] = useState<number>(defaultMaxSeats || 9);
-  const [tableNumber, setTableNumber] = useState<string>("");
+  const [catalog, setCatalog] = useState<FloorTableCatalogRow[]>([]);
+  const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
+  const [controlMode, setControlMode] = useState<FloorTableControlMode>("manual");
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const submitLock = useRef(false);
+  const requestSequence = useRef(0);
+
+  const loadCatalog = useCallback(async () => {
+    const sequence = ++requestSequence.current;
+    setLoadingCatalog(true);
+    setCatalogError(null);
+    try {
+      const { data, error } = await supabase
+        .from("tournament_tables")
+        .select("table_number, status")
+        .eq("tournament_id", tournamentId);
+      if (sequence !== requestSequence.current) return;
+      if (error) {
+        setCatalog([]);
+        setCatalogError("Không tải được danh sách số bàn. Không thể mở bàn cho tới khi tải lại thành công.");
+        return;
+      }
+      setCatalog((data ?? []) as FloorTableCatalogRow[]);
+    } catch {
+      if (sequence !== requestSequence.current) return;
+      setCatalog([]);
+      setCatalogError("Mất kết nối khi tải số bàn. Hãy kiểm tra mạng và thử lại.");
+    } finally {
+      if (sequence === requestSequence.current) setLoadingCatalog(false);
+    }
+  }, [tournamentId]);
+
+  useEffect(() => {
+    if (!open) {
+      requestSequence.current += 1;
+      return;
+    }
+    setSelectedNumber(null);
+    setControlMode("manual");
+    void loadCatalog();
+  }, [loadCatalog, open]);
 
   const submit = async () => {
+    if (selectedNumber == null || loadingCatalog || catalogError || submitLock.current) return;
+    submitLock.current = true;
     setBusy(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC source 20260912000000; not in generated types yet
-      const { data, error } = await (supabase.rpc as any)("open_tournament_table", {
+      // New RPC is intentionally untyped until the source-only migration is
+      // applied and generated types are refreshed under the controlled DB gate.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.rpc as any)("floor_open_tournament_table_v2", {
         p_tournament_id: tournamentId,
-        p_table_number: tableNumber.trim() ? Number(tableNumber) : null,
-        p_max_seats: Number(maxSeats) || null,
+        p_table_number: selectedNumber,
+        p_control_mode: controlMode,
       });
-      const res = (data ?? null) as { ok?: boolean; error?: string; table_number?: number; reopened?: boolean } | null;
-      if (error || !res?.ok) { toast.error(mapError(error ? error.message : res?.error)); return; }
-      toast.success(res.reopened ? `Đã mở lại Bàn ${res.table_number}` : `Đã mở Bàn ${res.table_number}`);
+      const result = (data ?? null) as OpenTableResult | null;
+      if (error || !result?.ok) {
+        toast.error(mapError(result?.error));
+        await loadCatalog();
+        return;
+      }
+
+      const modeLabel = result.floor_control_mode === "tracker" ? "Live Tracker" : "Manual Floor";
+      toast.success(
+        result.reopened
+          ? `Đã mở lại Bàn ${result.table_number} · ${modeLabel} · 9 ghế`
+          : `Đã mở Bàn ${result.table_number} · ${modeLabel} · 9 ghế`,
+      );
       onDone();
       onOpenChange(false);
+    } catch {
+      toast.error("Không thể xác nhận kết quả mở bàn. Hãy tải lại sơ đồ trước khi thử tiếp.");
+      await loadCatalog();
     } finally {
+      submitLock.current = false;
       setBusy(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!busy) onOpenChange(v); }}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ExternalLink className="w-4 h-4 text-primary" /> Mở bàn
+    <Dialog open={open} onOpenChange={(value) => { if (!busy) onOpenChange(value); }}>
+      <DialogContent className="h-[100dvh] w-screen max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden border-0 bg-[#0d0913] p-0 sm:h-[90vh] sm:w-[calc(100vw-2rem)] sm:max-w-5xl sm:rounded-3xl sm:border sm:border-white/10">
+        <DialogHeader className="border-b border-white/8 px-4 pb-4 pt-5 text-left sm:px-6">
+          <DialogTitle className="flex items-center gap-2 text-xl text-[#f2ece6]">
+            <ExternalLink className="h-5 w-5 text-[#c9a86a]" />
+            Mở bàn
           </DialogTitle>
-          <DialogDescription>
-            Tạo bàn mới. Nhập đúng số của một bàn đã đóng để <b>mở lại</b> bàn đó.
+          <DialogDescription className="max-w-2xl text-sm leading-5 text-[#9b8e97]">
+            Chọn số bàn và nguồn kiểm soát chip. Tất cả bàn mới dùng cố định 9 ghế; server sẽ kiểm tra lại trước khi mở.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div>
-            <Label className="text-xs">Số bàn (để trống = tự đánh số tiếp theo)</Label>
-            <Input type="number" min={1} value={tableNumber}
-              onChange={(e) => setTableNumber(e.target.value)} placeholder="Tự động" className="h-9" />
-          </div>
-          <div>
-            <Label className="text-xs">Số ghế</Label>
-            <Input type="number" min={2} max={10} value={maxSeats}
-              onChange={(e) => setMaxSeats(Number(e.target.value))} className="h-9" />
-          </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          {catalogError ? (
+            <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-rose-400/30 bg-rose-400/8 px-4 text-center">
+              <AlertTriangle className="h-7 w-7 text-rose-300" />
+              <p className="mt-2 max-w-md text-sm leading-6 text-rose-100">{catalogError}</p>
+              <Button type="button" variant="outline" className="mt-4" onClick={() => void loadCatalog()}>
+                <RefreshCw className="mr-2 h-4 w-4" /> Tải lại
+              </Button>
+            </div>
+          ) : loadingCatalog ? (
+            <div className="flex min-h-48 flex-col items-center justify-center text-sm text-[#9b8e97]">
+              <Loader2 className="mb-3 h-7 w-7 animate-spin text-[#c9a86a]" />
+              Đang tải trạng thái 100 số bàn…
+            </div>
+          ) : (
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]">
+              <FloorTableNumberPicker
+                rows={catalog}
+                value={selectedNumber}
+                onChange={setSelectedNumber}
+                disabled={busy}
+              />
+
+              <section className="lg:sticky lg:top-0 lg:self-start" aria-labelledby="floor-open-mode-heading">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                  <div className="flex items-start gap-2">
+                    <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#c9a86a]" />
+                    <div>
+                      <h3 id="floor-open-mode-heading" className="text-sm font-semibold text-[#f2ece6]">
+                        Loại bàn
+                      </h3>
+                      <p className="mt-0.5 text-xs leading-5 text-[#9b8e97]">
+                        Chọn nguồn có quyền cập nhật chip trước khi bàn được mở.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-2">
+                    <ModeButton
+                      mode="manual"
+                      selected={controlMode === "manual"}
+                      title="Manual Floor"
+                      description="Floor được sửa chip; loại còn chip cần cảnh báo và audit."
+                      onSelect={setControlMode}
+                    />
+                    <ModeButton
+                      mode="tracker"
+                      selected={controlMode === "tracker"}
+                      title="Live Tracker"
+                      description="Tracker quản lý chip; chỉ loại khi stack đã về 0."
+                      onSelect={setControlMode}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-2xl border border-primary/20 bg-primary/7 p-4">
+                  <div className="text-xs font-medium uppercase tracking-[0.16em] text-primary/80">
+                    Xác nhận
+                  </div>
+                  <div className="mt-2 flex items-baseline justify-between gap-3">
+                    <span className="text-sm text-muted-foreground">Số bàn</span>
+                    <span className="font-mono text-2xl font-bold text-foreground">
+                      {selectedNumber ?? "—"}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">Số ghế</span>
+                    <span className="font-mono text-foreground">{FIXED_FLOOR_TABLE_SEATS}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">Kiểm soát chip</span>
+                    <span className="font-medium text-foreground">
+                      {controlMode === "tracker" ? "Live Tracker" : "Manual Floor"}
+                    </span>
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Huỷ</Button>
-          <Button onClick={submit} disabled={busy || Number(maxSeats) < 2 || Number(maxSeats) > 10}>
-            {busy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-1" />} Mở bàn
-          </Button>
-        </DialogFooter>
+        <div className="border-t border-white/8 bg-[#0d0913]/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:px-6 sm:pb-4">
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+              Huỷ
+            </Button>
+            <Button
+              data-testid="floor-open-table-confirm"
+              type="button"
+              onClick={() => void submit()}
+              disabled={busy || loadingCatalog || Boolean(catalogError) || selectedNumber == null}
+              className="min-h-11 sm:min-w-48"
+            >
+              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+              {busy
+                ? "Đang mở…"
+                : selectedNumber == null
+                  ? "Chọn số bàn"
+                  : `Mở Bàn ${selectedNumber}`}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ModeButton({
+  mode,
+  selected,
+  title,
+  description,
+  onSelect,
+}: {
+  mode: FloorTableControlMode;
+  selected: boolean;
+  title: string;
+  description: string;
+  onSelect: (mode: FloorTableControlMode) => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={`floor-open-mode-${mode}`}
+      aria-pressed={selected}
+      onClick={() => onSelect(mode)}
+      className={cn(
+        "flex min-h-20 items-start gap-3 rounded-xl border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a86a]/45",
+        selected
+          ? "border-[#c9a86a]/65 bg-[#c9a86a]/12"
+          : "border-white/10 bg-black/15 hover:border-white/20",
+      )}
+    >
+      <span className={cn(
+        "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border",
+        selected ? "border-[#c9a86a] bg-[#c9a86a] text-[#241A08]" : "border-white/25 text-transparent",
+      )}>
+        {selected ? <Check className="h-3.5 w-3.5" /> : <Radio className="h-3 w-3" />}
+      </span>
+      <span>
+        <span className="block text-sm font-semibold text-[#f2ece6]">{title}</span>
+        <span className="mt-0.5 block text-xs leading-5 text-[#9b8e97]">{description}</span>
+      </span>
+    </button>
   );
 }

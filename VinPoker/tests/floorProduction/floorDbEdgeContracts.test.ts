@@ -11,6 +11,7 @@ const chipCasMigration = read("supabase/migrations/20270104000001_floor_chip_cas
 const clockControlMigration = read("supabase/migrations/20270104000004_floor_clock_control_atomic.sql");
 const operatorScopeAclMigration = read("supabase/migrations/20270104000005_floor_operator_scope_acl.sql");
 const tableControlModeMigration = read("supabase/migrations/20270105000001_floor_table_control_mode.sql");
+const openTablePickerMigration = read("supabase/migrations/20270106000000_floor_open_table_picker_mode_v2.sql");
 const drawEdge = read("supabase/functions/tournament-live-draw/index.ts");
 const liveUpdateEdge = read("supabase/functions/tournament-live-update/index.ts");
 const clockEdge = read("supabase/functions/tournament-live-clock/index.ts");
@@ -31,6 +32,12 @@ const manualFloorBustDialog = read("src/components/cashier/tournament-live/Manua
 const standaloneHandInput = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
 const tableControlResolver = read("src/lib/floorTableControlMode.ts");
 const desktopPlayerActionSheet = read("src/components/cashier/tournament-live/PlayerActionSheet.tsx");
+const openTableDialog = read("src/components/cashier/tournament-live/OpenTableDialog.tsx");
+const floorTableNumberPicker = read("src/components/ops/shared/FloorTableNumberPicker.tsx");
+const floorSeatRoster = read("src/components/ops/shared/FloorSeatRoster.tsx");
+const floorTablePresentation = read("src/components/ops/shared/floorTablePresentation.ts");
+const opsTables = read("src/pages/ops/OpsTables.tsx");
+const floorTableDetailSheet = read("src/components/cashier/tournament-live/FloorTableDetailSheet.tsx");
 
 function body(name: string, next?: string) {
   const start = migration.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
@@ -192,6 +199,61 @@ describe("Floor V2 DB and Edge contracts", () => {
     expect(playerActionSheets).toContain("Tracker quản lý chip");
     expect(floorTableMap).not.toContain("bust_tournament_player_with_payout");
     expect(floorTableMap).not.toContain("preview_tournament_bust");
+  });
+
+  it("opens a selected 1-100 nine-seat table and its chip authority atomically", () => {
+    expect(openTablePickerMigration).toContain(
+      "CREATE OR REPLACE FUNCTION public.floor_open_tournament_table_v2",
+    );
+    expect(openTablePickerMigration).toContain("v_actor UUID := auth.uid()");
+    expect(openTablePickerMigration).toContain("SECURITY DEFINER");
+    expect(openTablePickerMigration).toContain("SET search_path = public");
+    expect(openTablePickerMigration).toContain(
+      "p_table_number IS NULL OR p_table_number < 1 OR p_table_number > 100",
+    );
+    expect(openTablePickerMigration).toContain(
+      "p_control_mode NOT IN ('manual', 'tracker')",
+    );
+    expect(openTablePickerMigration).toContain(
+      "v_open_result := public.open_tournament_table(",
+    );
+    expect(openTablePickerMigration).toMatch(
+      /public\.open_tournament_table\(\s*p_tournament_id,\s*p_table_number,\s*9\s*\)/,
+    );
+    expect(openTablePickerMigration).toContain("SET max_seats = 9");
+    expect(openTablePickerMigration).toContain("floor_control_mode = p_control_mode");
+    expect(openTablePickerMigration).toContain(
+      "floor_control_revision = floor_control_revision + 1",
+    );
+    expect(openTablePickerMigration).toContain("floor_table_opened_v2");
+    expect(openTablePickerMigration).toContain("floor_table_reopened_v2");
+    expect(openTablePickerMigration).toContain("'payout_applied', false");
+    expect(openTablePickerMigration).toContain("MESSAGE = 'table_mode_apply_failed'");
+    expect(openTablePickerMigration).toMatch(
+      /REVOKE ALL ON FUNCTION public\.floor_open_tournament_table_v2\(UUID, INTEGER, TEXT\)\s+FROM PUBLIC, anon, service_role;/,
+    );
+    expect(openTablePickerMigration).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.floor_open_tournament_table_v2\(UUID, INTEGER, TEXT\)\s+TO authenticated;/,
+    );
+    expect(openTablePickerMigration).not.toContain("tournament_prize_payments");
+    expect(openTablePickerMigration).not.toContain("payout_applied', true");
+  });
+
+  it("uses one responsive picker and a visible nine-row roster across Floor surfaces", () => {
+    expect(openTableDialog).toContain('"floor_open_tournament_table_v2"');
+    expect(openTableDialog).toContain("<FloorTableNumberPicker");
+    expect(openTableDialog).toContain("Manual Floor");
+    expect(openTableDialog).toContain("Live Tracker");
+    expect(openTableDialog).toContain("FIXED_FLOOR_TABLE_SEATS");
+    expect(floorTableNumberPicker).toContain("Tìm số 1–100");
+    expect(floorTablePresentation).toContain("FLOOR_TABLE_NUMBER_MAX = 100");
+    expect(floorTablePresentation).toContain("FIXED_FLOOR_TABLE_SEATS = 9");
+    expect(floorSeatRoster).toContain("Danh sách 9 ghế");
+    expect(floorSeatRoster).toContain("Empty");
+    expect(floorTableDetailSheet).toContain("<FloorSeatRoster");
+    expect(opsTables).toContain("<FloorSeatRoster");
+    expect(opsTables).toContain("<OpenTableDialog");
+    expect(opsTables).not.toContain('supabase.rpc("open_tournament_table"');
   });
 
   it("starts the tournament clock under one tournament lock and audited transition", () => {

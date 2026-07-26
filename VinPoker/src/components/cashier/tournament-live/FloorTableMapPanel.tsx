@@ -382,7 +382,7 @@ export function FloorTableMapPanel({
           <div className="font-semibold flex items-center gap-2"><LayoutGrid className="h-4 w-4" /> Sơ đồ bàn</div>
           <div className="flex items-center gap-1.5">
             {FEATURES.floorTableOps && canMove && (
-              <Button size="sm" className="h-9" onClick={() => setOpenTableOpen(true)} title="Tạo thêm bàn mới">
+              <Button data-testid="floor-open-table-dialog" size="sm" className="h-9" onClick={() => setOpenTableOpen(true)} title="Tạo thêm bàn mới">
                 <Plus className="h-4 w-4 mr-1" /> Tạo thêm bàn
               </Button>
             )}
@@ -499,7 +499,6 @@ export function FloorTableMapPanel({
           open={openTableOpen}
           onOpenChange={setOpenTableOpen}
           tournamentId={tid}
-          defaultMaxSeats={tables?.[0]?.max_seats ?? 9}
           onDone={load}
         />
       )}
