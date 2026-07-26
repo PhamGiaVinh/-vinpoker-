@@ -453,6 +453,30 @@ SELECT public.floor_test_assert(
   'move preserves chip count with exactly one active seat and one historical seat'
 );
 
+-- Cross-club authorization must be observed while the fixture entry remains
+-- movable. The Manual Floor bust below intentionally terminalizes this entry.
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000099', false);
+SELECT public.floor_test_assert(
+  (public.move_player_seat(
+    '00000000-0000-0000-0000-000000000401',
+    '00000000-0000-0000-0000-000000000301',
+    2,
+    NULL,
+    'cross_club'
+  )->>'error') = 'actor_not_allowed',
+  'cross-club move is denied'
+);
+SELECT public.floor_test_assert(
+  (public.floor_set_table_control_mode(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000301',
+    'manual',
+    1
+  )->>'error') = 'actor_not_allowed',
+  'cross-club actor cannot change table control mode'
+);
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
+
 SELECT public.floor_test_assert(
   (public.floor_bust_player(
     '00000000-0000-0000-0000-000000000100',
@@ -483,28 +507,6 @@ SELECT public.floor_test_assert(
   ),
   'manual non-zero bust is audited and explicitly records no payout'
 );
-
-SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000099', false);
-SELECT public.floor_test_assert(
-  (public.move_player_seat(
-    '00000000-0000-0000-0000-000000000401',
-    '00000000-0000-0000-0000-000000000301',
-    2,
-    NULL,
-    'cross_club'
-  )->>'error') = 'actor_not_allowed',
-  'cross-club move is denied'
-);
-SELECT public.floor_test_assert(
-  (public.floor_set_table_control_mode(
-    '00000000-0000-0000-0000-000000000100',
-    '00000000-0000-0000-0000-000000000301',
-    'manual',
-    1
-  )->>'error') = 'actor_not_allowed',
-  'cross-club actor cannot change table control mode'
-);
-SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
 
 SELECT public.floor_test_assert(
   (public.floor_bust_player(
