@@ -255,7 +255,7 @@ describe("series-market public/private architecture boundary", () => {
     expect(adapter).not.toMatch(/(?:Date\.now|Math\.random|randomUUID|fetch\s*\(|supabase|react|@\/components|@\/pages)/i);
   }, 15_000);
 
-  it("keeps the P2 GTD Stress surface flag-off, read-only, and bound to committed evidence", () => {
+  it("keeps the P2 GTD Stress surface flag-on, read-only, and bound to committed evidence", () => {
     const flags = readFileSync(join(ROOT, "src/lib/featureFlags.ts"), "utf8");
     const content = readFileSync(
       join(ROOT, "src/components/series-market/VerifiedMarketJejuContent.tsx"),
@@ -271,7 +271,7 @@ describe("series-market public/private architecture boundary", () => {
       "utf8",
     );
 
-    expect(flags).toContain("seriesMarketGtdStress: false");
+    expect(flags).toContain("seriesMarketGtdStress: true");
     expect(content).toContain("FEATURES.seriesMarketGtdStress");
     expect(content).toContain("comparable-v0-exact-v1.json?raw");
     expect(content).toContain("createGtdStressEventReadModel");

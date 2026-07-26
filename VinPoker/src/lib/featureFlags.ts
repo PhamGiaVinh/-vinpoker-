@@ -877,7 +877,7 @@ export const FEATURES = {
    * pending authenticated Preview UAT. No DB, forecast, probability,
    * recommendation, optimization, or money-path action.
    */
-  seriesMarketGtdStress: false,
+  seriesMarketGtdStress: true,
   /**
    * Club Admin → Series Intelligence demo entry at /club/admin/series-intelligence.
    * Frontend-only owner-facing SHELL that explains the Club Intelligence flow
