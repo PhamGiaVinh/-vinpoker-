@@ -4,6 +4,13 @@ import canonicalImport from "@/lib/series-market/datasets/jeju/v1/canonical/jeju
 import dataQuality from "@/lib/series-market/datasets/jeju/v1/data-quality.json";
 import release from "@/lib/series-market/datasets/jeju/v1/release.json";
 import sourceManifest from "@/lib/series-market/datasets/jeju/v1/source-manifest.json";
+import { FEATURES } from "@/lib/featureFlags";
+import {
+  countGtdStressReadyEvents,
+  createGtdStressEventReadModel,
+  createJejuGtdStressResearchContext,
+  type JejuGtdStressResearchContext,
+} from "@/lib/series-market/gtdStressUiReadModel";
 import {
   createVerifiedJejuReadModel,
   VerifiedMarketIntegrityError,
@@ -12,13 +19,34 @@ import {
 import { VerifiedMarketDashboard } from "./VerifiedMarketDashboard";
 
 let cachedModel: Promise<VerifiedMarketReadModel> | null = null;
+let cachedGtdStressContext: Promise<JejuGtdStressResearchContext> | null = null;
 
 function loadModel(): Promise<VerifiedMarketReadModel> {
   cachedModel ??= createVerifiedJejuReadModel({ canonicalImport, dataQuality, release, sourceManifest });
   return cachedModel;
 }
 
-export function VerifiedMarketJejuContent({ forceIntegrityError = false }: { forceIntegrityError?: boolean }) {
+function loadGtdStressContext(model: VerifiedMarketReadModel): Promise<JejuGtdStressResearchContext> {
+  cachedGtdStressContext ??= import(
+    "@/lib/series-market/datasets/jeju/v1/research/comparable-v0-exact-v1.json?raw"
+  ).then(({ default: rawBundle }) =>
+    createJejuGtdStressResearchContext({
+      model,
+      rawBundle,
+      canonicalImport,
+      datasetRelease: release,
+    })
+  );
+  return cachedGtdStressContext;
+}
+
+export function VerifiedMarketJejuContent({
+  forceIntegrityError = false,
+  forceGtdStress = false,
+}: {
+  forceIntegrityError?: boolean;
+  forceGtdStress?: boolean;
+}) {
   const [model, setModel] = useState<VerifiedMarketReadModel | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
@@ -55,5 +83,19 @@ export function VerifiedMarketJejuContent({ forceIntegrityError = false }: { for
     );
   }
 
-  return <VerifiedMarketDashboard model={model} />;
+  const gtdStressEnabled =
+    FEATURES.seriesMarketGtdStress || (import.meta.env.DEV && forceGtdStress);
+
+  return (
+    <VerifiedMarketDashboard
+      model={model}
+      gtdStress={gtdStressEnabled
+        ? {
+          readyEventCount: countGtdStressReadyEvents(model.events),
+          loadEvent: async (eventId) =>
+            createGtdStressEventReadModel(await loadGtdStressContext(model), eventId),
+        }
+        : undefined}
+    />
+  );
 }

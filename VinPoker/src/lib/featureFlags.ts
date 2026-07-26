@@ -871,6 +871,14 @@ export const FEATURES = {
    */
   seriesMarketVerifiedJeju: true,
   /**
+   * Read-only Historical GTD Stress inside Verified Market Jeju.
+   * Uses the committed exact Comparable V0 bundle and the trusted P1b adapter;
+   * never assembles quantiles or evidence quality in the UI. Default **OFF**
+   * pending authenticated Preview UAT. No DB, forecast, probability,
+   * recommendation, optimization, or money-path action.
+   */
+  seriesMarketGtdStress: false,
+  /**
    * Club Admin → Series Intelligence demo entry at /club/admin/series-intelligence.
    * Frontend-only owner-facing SHELL that explains the Club Intelligence flow
    * (CSV → Data Readiness → Tournament Economics Mini Audit → Series Workflow),
