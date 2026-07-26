@@ -63,6 +63,9 @@ export default function DealerSwingDashboard() {
   // Auto-fill ("⚡ Tự động xếp") preview gate — same pattern: owner/admin UAT it
   // while FEATURES.shiftPlannerAutofill is OFF; flip ON for all staff after UAT.
   const showAutofill = FEATURES.shiftPlannerAutofill || isAdmin || isClubAdmin || isClubOwner;
+  // The PT policy mutation is server-authorized and audit logged. Keep the V2
+  // tab dark for routine operators while owner/admin users can UAT it first.
+  const showSalaryV2 = FEATURES.salaryTabV2 || isAdmin || isClubAdmin || isClubOwner;
 
   return (
     <div className="container mx-auto p-3 md:p-6">
@@ -88,7 +91,7 @@ export default function DealerSwingDashboard() {
           <SwingPanel clubIds={scopedIds} clubs={clubs} onOpenPayroll={() => setTab("payroll")} />
         </TabsContent>
         <TabsContent value="payroll" className="mt-4">
-          {FEATURES.salaryTabV2
+          {showSalaryV2
             ? <DealerPayrollTabV2 clubIds={scopedIds} clubs={clubs} />
             : <DealerPayrollTab clubIds={scopedIds} clubs={clubs} />}
         </TabsContent>

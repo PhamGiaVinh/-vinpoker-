@@ -10,10 +10,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { formatVND } from "@/lib/format";
 import { getPtWageAccrualPresentation } from "@/lib/dealerPtWagePresentation";
-import { RefreshCw, Loader2, Clock, Coins, Wallet, Info } from "lucide-react";
+import { buildDealerPtWagePolicyRequest, PT_WAGE_POLICY_REASON_LIMIT } from "@/lib/dealerPtWagePolicyControl";
+import { useAuth } from "@/hooks/useAuth";
+import { RefreshCw, Loader2, Clock, Coins, Wallet, Info, ShieldCheck, ShieldOff } from "lucide-react";
 
 /**
  * Salary-C — Operator "Theo giờ · Part-time" sub-tab. Live accruing balances per PT dealer
@@ -21,9 +25,10 @@ import { RefreshCw, Loader2, Clock, Coins, Wallet, Info } from "lucide-react";
  *
  * Generated client types can lag the controlled database contract, so the RPCs are called
  * through the untyped client (same pattern as useDealerLink / useDealerPayroll's
- * save_payroll_period). This whole tab only mounts when FEATURES.salaryTabV2
- * is ON (default OFF). Read + pay only;
- * the server recomputes + resets (the client never sets the amount).
+ * save_payroll_period). This tab is dark for routine operators until
+ * FEATURES.salaryTabV2 is ON; owners/admins can access it first for controlled
+ * UAT. The server recomputes + resets payments. Policy changes are an
+ * owner/admin intent only; the RPC rechecks authorization and writes audit.
  */
 
 type ClubRow = { id: string; name: string };
@@ -56,7 +61,20 @@ interface Props {
   clubs: ClubRow[];
 }
 
-const db = supabase as unknown as { rpc: (fn: string, args?: Record<string, unknown>) => Promise<{ data: any; error: any }> };
+type RpcError = { message?: string } | null;
+type RpcResponse = { data: unknown; error: RpcError };
+
+const db = supabase as unknown as {
+  rpc: (fn: string, args?: Record<string, unknown>) => Promise<RpcResponse>;
+};
+
+function rpcErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+  return fallback;
+}
 
 function fmtHMS(ms: number): string {
   let s = Math.max(0, Math.floor(ms / 1000));
@@ -66,6 +84,7 @@ function fmtHMS(ms: number): string {
 }
 
 export default function DealerPtWageTab({ clubIds, clubs }: Props) {
+  const { isAdmin, isClubAdmin, isClubOwner } = useAuth();
   const [clubFilter, setClubFilter] = useState<string>(clubIds[0] ?? "");
   const activeClubId = clubFilter || clubIds[0] || "";
 
@@ -73,7 +92,10 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clubAccrualMode, setClubAccrualMode] = useState<string | null>(null);
+  const [standbyAccrualEnabled, setStandbyAccrualEnabled] = useState(false);
   const fetchedAtRef = useRef<number>(Date.now());
+  const fetchSequenceRef = useRef(0);
+  const activeClubIdRef = useRef(activeClubId);
   const [nowMs, setNowMs] = useState<number>(Date.now());
   const [paidSession, setPaidSession] = useState(0);
 
@@ -84,23 +106,40 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
   const [payRef, setPayRef] = useState("");
   const [paying, setPaying] = useState(false);
 
+  // Policy changes are never bulk-applied from the client. Each selected club
+  // gets a separately authorized RPC call and audit reason.
+  const [policyOpen, setPolicyOpen] = useState(false);
+  const [policyReason, setPolicyReason] = useState("");
+  const [policyAcknowledged, setPolicyAcknowledged] = useState(false);
+  const [savingPolicy, setSavingPolicy] = useState(false);
+  const policySubmitRef = useRef(false);
+  const canManagePolicy = isAdmin || isClubAdmin || isClubOwner;
+  const activeClub = clubs.find((club) => club.id === activeClubId) ?? null;
+
+  useEffect(() => { activeClubIdRef.current = activeClubId; }, [activeClubId]);
+
   const fetchData = useCallback(async () => {
     if (!activeClubId) return;
+    const sequence = ++fetchSequenceRef.current;
     setLoading(true);
     setError(null);
     try {
       const { data, error: rpcError } = await db.rpc("get_club_pt_wages", { p_club_id: activeClubId });
       if (rpcError) throw rpcError;
       const response = (data ?? {}) as PtWageResponse;
+      if (sequence !== fetchSequenceRef.current) return;
       setDealers(response.dealers ?? []);
       setClubAccrualMode(response.accrual_mode ?? null);
+      setStandbyAccrualEnabled(response.standby_accrual_enabled === true);
       fetchedAtRef.current = Date.now();
-    } catch (e: any) {
-      setError(e?.message ?? "Lỗi tải lương part-time");
+    } catch (e: unknown) {
+      if (sequence !== fetchSequenceRef.current) return;
+      setError(rpcErrorMessage(e, "Lỗi tải lương part-time"));
       setDealers([]);
       setClubAccrualMode(null);
+      setStandbyAccrualEnabled(false);
     } finally {
-      setLoading(false);
+      if (sequence === fetchSequenceRef.current) setLoading(false);
     }
   }, [activeClubId]);
 
@@ -130,6 +169,50 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
     setPayOpen(true);
   };
 
+  const handleClubChange = (clubId: string) => {
+    fetchSequenceRef.current += 1;
+    setClubFilter(clubId);
+    setPolicyOpen(false);
+    setPolicyReason("");
+    setPolicyAcknowledged(false);
+  };
+
+  const openPolicyDialog = () => {
+    setPolicyReason("");
+    setPolicyAcknowledged(false);
+    setPolicyOpen(true);
+  };
+
+  const handlePolicySave = useCallback(async () => {
+    const targetClubId = activeClubId;
+    const nextEnabled = !standbyAccrualEnabled;
+
+    if (policySubmitRef.current) return;
+    if (!policyAcknowledged) {
+      toast.error("Cần xác nhận đã hiểu tác động trước khi đổi chính sách.");
+      return;
+    }
+
+    policySubmitRef.current = true;
+    setSavingPolicy(true);
+    try {
+      const request = buildDealerPtWagePolicyRequest(targetClubId, nextEnabled, policyReason);
+      const { error: rpcError } = await db.rpc("set_dealer_pt_wage_accrual_policy", request);
+      if (rpcError) throw rpcError;
+
+      setPolicyOpen(false);
+      setPolicyReason("");
+      setPolicyAcknowledged(false);
+      toast.success(nextEnabled ? "Đã bật tích lũy liên tục cho CLB đã chọn." : "Đã trở về giới hạn 24 giờ cho CLB đã chọn.");
+      if (targetClubId === activeClubIdRef.current) await fetchData();
+    } catch (e: unknown) {
+      toast.error(rpcErrorMessage(e, "Không thể cập nhật chính sách lương."));
+    } finally {
+      policySubmitRef.current = false;
+      setSavingPolicy(false);
+    }
+  }, [activeClubId, fetchData, policyAcknowledged, policyReason, standbyAccrualEnabled]);
+
   const handlePay = useCallback(async () => {
     if (!payDealer) return;
     setPaying(true);
@@ -146,13 +229,14 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
         p_note: null,
       });
       if (rpcError) throw rpcError;
-      const amt = Number(data?.amount_vnd ?? 0);
-      if (!data?.idempotent) setPaidSession((p) => p + amt);
+      const result = (data ?? {}) as { amount_vnd?: number; idempotent?: boolean };
+      const amt = Number(result.amount_vnd ?? 0);
+      if (!result.idempotent) setPaidSession((p) => p + amt);
       toast.success(`Đã thanh toán ${formatVND(amt)} cho ${payDealer.full_name}`);
       setPayOpen(false);
       await fetchData();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Lỗi thanh toán");
+    } catch (e: unknown) {
+      toast.error(rpcErrorMessage(e, "Lỗi thanh toán"));
     } finally {
       setPaying(false);
     }
@@ -163,7 +247,7 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         {clubs.length > 1 && (
-          <Select value={clubFilter} onValueChange={setClubFilter}>
+          <Select value={clubFilter} onValueChange={handleClubChange}>
             <SelectTrigger className="w-48 h-8 text-xs"><SelectValue placeholder="Chọn CLB" /></SelectTrigger>
             <SelectContent>
               {clubs.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -174,6 +258,20 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
           <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? "animate-spin" : ""}`} /> Làm mới
         </Button>
         <div className="flex-1" />
+        {canManagePolicy && activeClubId && (
+          <Button
+            size="sm"
+            variant={standbyAccrualEnabled ? "outline" : "default"}
+            className="h-8 text-xs"
+            onClick={openPolicyDialog}
+            disabled={loading || savingPolicy}
+          >
+            {standbyAccrualEnabled
+              ? <ShieldOff className="w-3.5 h-3.5 mr-1" />
+              : <ShieldCheck className="w-3.5 h-3.5 mr-1" />}
+            {standbyAccrualEnabled ? "Dừng tích lũy liên tục" : "Bật tích lũy liên tục"}
+          </Button>
+        )}
         <div className="text-[11px] text-zinc-500">
           {clubAccrualMode === "continuous_standby"
             ? "Tính cả thời gian chờ trong pool · trả đủ thì reset"
@@ -308,6 +406,56 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
             <Button className="bg-emerald-600 hover:bg-emerald-500 text-white" onClick={handlePay} disabled={paying}>
               {paying ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Wallet className="w-4 h-4 mr-1" />}
               Xác nhận &amp; reset
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={policyOpen} onOpenChange={setPolicyOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{standbyAccrualEnabled ? "Dừng tích lũy lương liên tục" : "Bật tích lũy lương liên tục"}</DialogTitle>
+            <DialogDescription>
+              {standbyAccrualEnabled
+                ? `CLB ${activeClub?.name ?? "đã chọn"} sẽ quay về giới hạn 24 giờ cho các lần đọc lương sau này. Phiếu lương đã trả không thay đổi.`
+                : `CLB ${activeClub?.name ?? "đã chọn"} sẽ tính mọi phút chưa thanh toán từ kỳ trả gần nhất, gồm thời gian chờ pool. Thao tác này không chi tiền hoặc reset số dư.`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="pt-wage-policy-reason" className="text-xs text-zinc-400">Lý do thay đổi</Label>
+              <Textarea
+                id="pt-wage-policy-reason"
+                value={policyReason}
+                onChange={(event) => setPolicyReason(event.target.value)}
+                maxLength={PT_WAGE_POLICY_REASON_LIMIT}
+                placeholder="Ghi lý do để lưu audit"
+                className="mt-1 bg-zinc-900 border-zinc-700 text-white"
+              />
+              <div className="mt-1 text-right text-[11px] text-zinc-500">{policyReason.length}/{PT_WAGE_POLICY_REASON_LIMIT}</div>
+            </div>
+            <label className="flex items-start gap-2 text-sm text-zinc-300 cursor-pointer">
+              <Checkbox
+                checked={policyAcknowledged}
+                onCheckedChange={(checked) => setPolicyAcknowledged(checked === true)}
+                className="mt-0.5"
+              />
+              <span>
+                {standbyAccrualEnabled
+                  ? "Tôi hiểu thay đổi này không sửa phiếu lương đã trả."
+                  : "Tôi hiểu tất cả phút chưa trả sẽ được tính lại khi tải số dư từ máy chủ."}
+              </span>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPolicyOpen(false)} disabled={savingPolicy}>Huỷ</Button>
+            <Button
+              className={standbyAccrualEnabled ? "bg-amber-600 hover:bg-amber-500 text-white" : "bg-emerald-600 hover:bg-emerald-500 text-white"}
+              onClick={handlePolicySave}
+              disabled={savingPolicy || !policyAcknowledged || !policyReason.trim()}
+            >
+              {savingPolicy && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+              {standbyAccrualEnabled ? "Xác nhận dừng" : "Xác nhận bật"}
             </Button>
           </DialogFooter>
         </DialogContent>
