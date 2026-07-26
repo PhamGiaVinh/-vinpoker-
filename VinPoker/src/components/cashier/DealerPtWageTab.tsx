@@ -15,7 +15,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { formatVND } from "@/lib/format";
 import { getPtWageAccrualPresentation } from "@/lib/dealerPtWagePresentation";
-import { buildDealerPtWagePolicyRequest, PT_WAGE_POLICY_REASON_LIMIT } from "@/lib/dealerPtWagePolicyControl";
+import {
+  buildDealerPtWageGlobalPolicyRequest,
+  buildDealerPtWagePolicyRequest,
+  PT_WAGE_POLICY_REASON_LIMIT,
+} from "@/lib/dealerPtWagePolicyControl";
+import DealerPtWageGlobalPolicyControl from "@/components/cashier/DealerPtWageGlobalPolicyControl";
 import { useAuth } from "@/hooks/useAuth";
 import { RefreshCw, Loader2, Clock, Coins, Wallet, Info, ShieldCheck, ShieldOff } from "lucide-react";
 
@@ -56,6 +61,10 @@ interface PtWageResponse {
   policy_effective_from?: string | null;
 }
 
+interface PtWageGlobalPolicyResponse {
+  future_club_enabled?: boolean;
+}
+
 interface Props {
   clubIds: string[];
   clubs: ClubRow[];
@@ -93,8 +102,12 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [clubAccrualMode, setClubAccrualMode] = useState<string | null>(null);
   const [standbyAccrualEnabled, setStandbyAccrualEnabled] = useState(false);
+  const [globalPolicyReady, setGlobalPolicyReady] = useState(false);
+  const [globalFutureClubEnabled, setGlobalFutureClubEnabled] = useState(false);
+  const [globalPolicyLoading, setGlobalPolicyLoading] = useState(false);
   const fetchedAtRef = useRef<number>(Date.now());
   const fetchSequenceRef = useRef(0);
+  const globalPolicySequenceRef = useRef(0);
   const activeClubIdRef = useRef(activeClubId);
   const [nowMs, setNowMs] = useState<number>(Date.now());
   const [paidSession, setPaidSession] = useState(0);
@@ -143,7 +156,37 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
     }
   }, [activeClubId]);
 
+  const fetchGlobalPolicy = useCallback(async () => {
+    const sequence = ++globalPolicySequenceRef.current;
+    if (!isAdmin) {
+      setGlobalPolicyReady(false);
+      setGlobalFutureClubEnabled(false);
+      setGlobalPolicyLoading(false);
+      return;
+    }
+
+    setGlobalPolicyLoading(true);
+    try {
+      const { data, error: rpcError } = await db.rpc("get_dealer_pt_wage_global_accrual_policy");
+      if (rpcError) throw rpcError;
+      const response = (data ?? {}) as PtWageGlobalPolicyResponse;
+      if (sequence !== globalPolicySequenceRef.current) return;
+      if (typeof response.future_club_enabled !== "boolean") throw new Error("Global policy response is incomplete");
+      setGlobalFutureClubEnabled(response.future_club_enabled);
+      setGlobalPolicyReady(true);
+    } catch {
+      if (sequence !== globalPolicySequenceRef.current) return;
+      // Fail closed: a missing migration or privileged-read failure never
+      // exposes a global money-policy action to the browser.
+      setGlobalPolicyReady(false);
+      setGlobalFutureClubEnabled(false);
+    } finally {
+      if (sequence === globalPolicySequenceRef.current) setGlobalPolicyLoading(false);
+    }
+  }, [isAdmin]);
+
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchGlobalPolicy(); }, [fetchGlobalPolicy]);
   // resync from the server every 60s; tick the display every 1s
   useEffect(() => {
     const tick = setInterval(() => setNowMs(Date.now()), 1000);
@@ -213,6 +256,22 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
     }
   }, [activeClubId, fetchData, policyAcknowledged, policyReason, standbyAccrualEnabled]);
 
+  const handleGlobalPolicySave = useCallback(async (nextEnabled: boolean, reason: string) => {
+    try {
+      const request = buildDealerPtWageGlobalPolicyRequest(nextEnabled, reason);
+      const { error: rpcError } = await db.rpc("set_all_approved_dealer_pt_wage_accrual", request);
+      if (rpcError) throw rpcError;
+
+      toast.success(nextEnabled
+        ? "Đã gửi chính sách tích luỹ mới cho toàn bộ CLB đã duyệt."
+        : "Đã dừng chính sách tích luỹ liên tục cho toàn bộ CLB đã duyệt.");
+      await Promise.all([fetchData(), fetchGlobalPolicy()]);
+    } catch (e: unknown) {
+      toast.error(rpcErrorMessage(e, "Không thể cập nhật chính sách lương toàn hệ thống."));
+      throw e;
+    }
+  }, [fetchData, fetchGlobalPolicy]);
+
   const handlePay = useCallback(async () => {
     if (!payDealer) return;
     setPaying(true);
@@ -271,6 +330,13 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
               : <ShieldCheck className="w-3.5 h-3.5 mr-1" />}
             {standbyAccrualEnabled ? "Dừng tích lũy liên tục" : "Bật tích lũy liên tục"}
           </Button>
+        )}
+        {isAdmin && globalPolicyReady && (
+          <DealerPtWageGlobalPolicyControl
+            futureClubEnabled={globalFutureClubEnabled}
+            loading={loading || globalPolicyLoading || savingPolicy}
+            onApply={handleGlobalPolicySave}
+          />
         )}
         <div className="text-[11px] text-zinc-500">
           {clubAccrualMode === "continuous_standby"
@@ -418,7 +484,7 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
             <DialogDescription>
               {standbyAccrualEnabled
                 ? `CLB ${activeClub?.name ?? "đã chọn"} sẽ quay về giới hạn 24 giờ cho các lần đọc lương sau này. Phiếu lương đã trả không thay đổi.`
-                : `CLB ${activeClub?.name ?? "đã chọn"} sẽ tính mọi phút chưa thanh toán từ kỳ trả gần nhất, gồm thời gian chờ pool. Thao tác này không chi tiền hoặc reset số dư.`}
+                : `CLB ${activeClub?.name ?? "đã chọn"} sẽ tính thời gian từ mốc máy chủ xác nhận trở đi, gồm thời gian chờ pool. Phiếu lương đã trả và thời gian chưa trả trước mốc đó không bị viết lại.`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -443,7 +509,7 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
               <span>
                 {standbyAccrualEnabled
                   ? "Tôi hiểu thay đổi này không sửa phiếu lương đã trả."
-                  : "Tôi hiểu tất cả phút chưa trả sẽ được tính lại khi tải số dư từ máy chủ."}
+                  : "Tôi hiểu máy chủ chỉ tính giờ từ mốc kích hoạt mới, không tính ngược giờ cũ."}
               </span>
             </label>
           </div>

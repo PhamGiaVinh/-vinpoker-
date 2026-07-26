@@ -29,7 +29,13 @@ describe("DealerPtWageTab policy control", () => {
           error: null,
         });
       }
+      if (fn === "get_dealer_pt_wage_global_accrual_policy") {
+        return Promise.resolve({ data: { future_club_enabled: false }, error: null });
+      }
       if (fn === "set_dealer_pt_wage_accrual_policy") {
+        return Promise.resolve({ data: {}, error: null });
+      }
+      if (fn === "set_all_approved_dealer_pt_wage_accrual") {
         return Promise.resolve({ data: {}, error: null });
       }
       return Promise.resolve({ data: {}, error: null });
@@ -68,6 +74,46 @@ describe("DealerPtWageTab policy control", () => {
           p_reason: "Owner UAT for open PT attendance",
         },
       );
+    });
+  });
+
+  it("shows the all-club control only after the super-admin global read succeeds", async () => {
+    render(<DealerPtWageTab clubIds={["club-1"]} clubs={clubs} />);
+
+    await screen.findByRole("button", { name: "Bật toàn bộ CLB" });
+    fireEvent.click(screen.getByRole("button", { name: "Bật toàn bộ CLB" }));
+    fireEvent.change(screen.getByLabelText("Lý do thay đổi"), {
+      target: { value: "Activate forward-only PT accrual" },
+    });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận bật toàn bộ" }));
+
+    await waitFor(() => {
+      expect(testState.rpc).toHaveBeenCalledWith(
+        "set_all_approved_dealer_pt_wage_accrual",
+        {
+          p_standby_accrual_enabled: true,
+          p_reason: "Activate forward-only PT accrual",
+        },
+      );
+    });
+  });
+
+  it("fails closed by hiding the all-club control when the privileged read fails", async () => {
+    testState.rpc.mockImplementation((fn: string) => {
+      if (fn === "get_club_pt_wages") {
+        return Promise.resolve({ data: { dealers: [] }, error: null });
+      }
+      if (fn === "get_dealer_pt_wage_global_accrual_policy") {
+        return Promise.resolve({ data: null, error: { message: "missing migration" } });
+      }
+      return Promise.resolve({ data: {}, error: null });
+    });
+
+    render(<DealerPtWageTab clubIds={["club-1"]} clubs={clubs} />);
+    await screen.findByText("Chưa có dealer part-time đang hoạt động");
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Bật toàn bộ CLB" })).not.toBeInTheDocument();
     });
   });
 });
