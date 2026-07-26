@@ -109,6 +109,7 @@ describe("series-market public/private architecture boundary", () => {
       ...contractPropertyNames(`${MARKET}/comparableResearchArtifact.ts`),
       ...contractPropertyNames(`${MARKET}/gtdStress.ts`),
       ...contractPropertyNames(`${MARKET}/gtdStressComparableAdapter.ts`),
+      ...contractPropertyNames(`${MARKET}/gtdStressUiReadModel.ts`),
     ].map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, ""));
     for (const key of keys) {
       for (const blocked of forbidden) expect(key).not.toContain(blocked);
@@ -126,6 +127,7 @@ describe("series-market public/private architecture boundary", () => {
       "src/App.tsx",
       "src/pages/VerifiedMarketJeju.tsx",
       "src/components/series-market/EvidenceStateBadge.tsx",
+      "src/components/series-market/GtdStressSheet.tsx",
       "src/components/series-market/VerifiedMarketDashboard.tsx",
       "src/components/series-market/VerifiedMarketDevPreview.tsx",
       "src/components/series-market/VerifiedMarketEvidenceSheet.tsx",
@@ -252,4 +254,34 @@ describe("series-market public/private architecture boundary", () => {
     expect(adapter).toContain("VERIFIED_JEJU_RELEASE_ID");
     expect(adapter).not.toMatch(/(?:Date\.now|Math\.random|randomUUID|fetch\s*\(|supabase|react|@\/components|@\/pages)/i);
   }, 15_000);
+
+  it("keeps the P2 GTD Stress surface flag-off, read-only, and bound to committed evidence", () => {
+    const flags = readFileSync(join(ROOT, "src/lib/featureFlags.ts"), "utf8");
+    const content = readFileSync(
+      join(ROOT, "src/components/series-market/VerifiedMarketJejuContent.tsx"),
+      "utf8",
+    );
+    const sheet = readFileSync(
+      join(ROOT, "src/components/series-market/GtdStressSheet.tsx"),
+      "utf8",
+    );
+    const readModel = readFileSync(join(ROOT, `${MARKET}/gtdStressUiReadModel.ts`), "utf8");
+    const researchAttributes = readFileSync(
+      join(ROOT, `${MARKET}/datasets/jeju/v1/research/.gitattributes`),
+      "utf8",
+    );
+
+    expect(flags).toContain("seriesMarketGtdStress: false");
+    expect(content).toContain("FEATURES.seriesMarketGtdStress");
+    expect(content).toContain("comparable-v0-exact-v1.json?raw");
+    expect(content).toContain("createGtdStressEventReadModel");
+    expect(readModel).toContain("GTD_STRESS_UI_BUNDLE_FILE_SHA256");
+    expect(readModel).toContain("createGtdStressScenarioFromComparableArtifact");
+    expect(readModel).toContain('GTD_STRESS_UI_EVALUATION_PROTOCOL_ID = "chronological-v1"');
+    expect(researchAttributes).toContain("comparable-v0-exact-v1.json text eol=lf");
+    expect(readModel).not.toMatch(/(?:Date\.now|Math\.random|randomUUID|fetch\s*\(|supabase|react|@\/components|@\/pages)/i);
+    expect(sheet).not.toMatch(
+      /(?:overlay probability|probability of overlay|chance of overlay|probability of reaching GTD|optimal GTD|recommended GTD|safe GTD|expected entries|forecast interval)/i,
+    );
+  });
 });

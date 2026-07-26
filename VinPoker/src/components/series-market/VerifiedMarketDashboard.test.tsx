@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import {
   createVerifiedJejuReadModel,
@@ -48,7 +48,33 @@ describe("VerifiedMarketDashboard", () => {
     expect(screen.getAllByText("Flagship").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Unverified").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Derived UI Count").length).toBeGreaterThan(0);
-  });
+    expect(screen.queryByText("research-ready")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Open Historical GTD Stress/ })).not.toBeInTheDocument();
+  }, 20_000);
+
+  it("shows the P2 control only when configured and keeps missing evidence fail-closed", () => {
+    const loadEvent = vi.fn();
+    const missingEvent = model.events.find(
+      (event) =>
+        event.fields.gtd.state !== "resolved"
+        || event.fields.buy_in_prize.state !== "resolved",
+    )!;
+    render(
+      <VerifiedMarketDashboard
+        model={model}
+        gtdStress={{ readyEventCount: 7, loadEvent }}
+      />,
+    );
+    expect(screen.getByText("7 research-ready")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getAllByRole("button", {
+        name: `Open Historical GTD Stress for ${missingEvent.eventName}`,
+      })[0]!,
+    );
+    expect(screen.getByTestId("gtd-stress-sheet")).toBeInTheDocument();
+    expect(screen.getByText("Research inputs are incomplete")).toBeInTheDocument();
+    expect(loadEvent).not.toHaveBeenCalled();
+  }, 20_000);
 
   it("filters by text and renders an honest no-results state", () => {
     render(<VerifiedMarketDashboard model={model} />);

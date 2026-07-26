@@ -6,7 +6,10 @@ export default function VerifiedMarketDevPreview() {
   return (
     <div className="min-h-screen bg-background px-3 py-5 text-foreground sm:px-6 lg:px-8" data-dev-series-market>
       <div className="mx-auto max-w-[1500px]">
-        <VerifiedMarketJejuContent forceIntegrityError={params.get("integrity") === "invalid"} />
+        <VerifiedMarketJejuContent
+          forceIntegrityError={params.get("integrity") === "invalid"}
+          forceGtdStress={params.get("gtdStress") === "on"}
+        />
       </div>
     </div>
   );

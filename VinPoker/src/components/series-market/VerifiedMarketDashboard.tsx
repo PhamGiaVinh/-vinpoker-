@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, Database, FilterX, Search, ShieldCheck } from "lucide-react";
+import { AlertTriangle, BarChart3, Database, FilterX, Search, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,12 +12,19 @@ import {
   type VerifiedField,
   type VerifiedMarketReadModel,
 } from "@/lib/series-market/verifiedMarketReadModel";
+import type { GtdStressEventReadModel } from "@/lib/series-market/gtdStressUiReadModel";
 import { EvidenceStateBadge } from "./EvidenceStateBadge";
+import { GtdStressSheet } from "./GtdStressSheet";
 import { VerifiedMarketEvidenceSheet } from "./VerifiedMarketEvidenceSheet";
 
 interface SelectedEvidence {
   readonly field: VerifiedField;
   readonly eventTitle: string;
+}
+
+export interface GtdStressDashboardConfig {
+  readonly readyEventCount: number;
+  readonly loadEvent: (eventId: string) => Promise<GtdStressEventReadModel>;
 }
 
 function SummaryMetric({ value, label, kind }: { value: string; label: string; kind: string }) {
@@ -95,7 +102,15 @@ function FilterSelect({
   );
 }
 
-function EventMobileCard({ event, onSelect }: { event: VerifiedEventRow; onSelect: (field: VerifiedField) => void }) {
+function EventMobileCard({
+  event,
+  onSelect,
+  onOpenGtdStress,
+}: {
+  event: VerifiedEventRow;
+  onSelect: (field: VerifiedField) => void;
+  onOpenGtdStress?: () => void;
+}) {
   const fields = event.fields;
   const title = `${event.eventDate} · #${event.eventNumber} · ${event.eventName}`;
   const evidenceState = event.conflictFieldCount > 0 ? "conflict" : event.missingFieldCount > 0 ? "missing" : "resolved";
@@ -125,14 +140,34 @@ function EventMobileCard({ event, onSelect }: { event: VerifiedEventRow; onSelec
           {event.missingFieldCount} missing · {event.conflictFieldCount} conflicts
         </p>
       )}
+      {onOpenGtdStress && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onOpenGtdStress}
+          className="mt-3 min-h-11 w-full justify-start gap-2"
+          aria-label={`Open Historical GTD Stress for ${event.eventName}`}
+        >
+          <BarChart3 className="h-4 w-4 text-cyan-300" aria-hidden="true" />
+          Historical GTD Stress
+        </Button>
+      )}
       <span className="sr-only">{title}</span>
     </article>
   );
 }
 
-export function VerifiedMarketDashboard({ model }: { model: VerifiedMarketReadModel }) {
+export function VerifiedMarketDashboard({
+  model,
+  gtdStress,
+}: {
+  model: VerifiedMarketReadModel;
+  gtdStress?: GtdStressDashboardConfig;
+}) {
   const [filters, setFilters] = useState<MarketFilterState>(EMPTY_MARKET_FILTERS);
   const [selected, setSelected] = useState<SelectedEvidence | null>(null);
+  const [selectedStressEvent, setSelectedStressEvent] = useState<VerifiedEventRow | null>(null);
   const events = useMemo(() => filterVerifiedEvents(model.events, filters), [model.events, filters]);
   const update = <K extends keyof MarketFilterState>(key: K, value: MarketFilterState[K]) => {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -238,7 +273,14 @@ export function VerifiedMarketDashboard({ model }: { model: VerifiedMarketReadMo
             <h2 id="event-explorer" className="text-sm font-semibold">Event explorer</h2>
             <p className="text-xs text-muted-foreground">{events.length} of {model.events.length} events · Derived UI Count</p>
           </div>
-          <Badge variant="outline" className="border-cyan-500/30 text-cyan-300"><Database className="mr-1 h-3 w-3" /> Public Evidence</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            {gtdStress && (
+              <Badge variant="outline" className="border-amber-500/35 text-amber-200">
+                {gtdStress.readyEventCount} research-ready
+              </Badge>
+            )}
+            <Badge variant="outline" className="border-cyan-500/30 text-cyan-300"><Database className="mr-1 h-3 w-3" /> Public Evidence</Badge>
+          </div>
         </div>
 
         {events.length === 0 ? (
@@ -253,12 +295,12 @@ export function VerifiedMarketDashboard({ model }: { model: VerifiedMarketReadMo
               <table className="w-full table-fixed text-left text-xs" data-testid="market-event-table">
                 <thead className="bg-muted/35 text-[10px] uppercase text-muted-foreground">
                   <tr>
-                    <th className="w-[30%] px-3 py-2.5 font-medium">Event</th>
-                    <th className="w-[14%] px-3 py-2.5 font-medium">Type / game</th>
-                    <th className="w-[21%] px-3 py-2.5 font-medium">Buy-in detail</th>
+                    <th className={`${gtdStress ? "w-[28%]" : "w-[30%]"} px-3 py-2.5 font-medium`}>Event</th>
+                    <th className={`${gtdStress ? "w-[13%]" : "w-[14%]"} px-3 py-2.5 font-medium`}>Type / game</th>
+                    <th className={`${gtdStress ? "w-[20%]" : "w-[21%]"} px-3 py-2.5 font-medium`}>Buy-in detail</th>
                     <th className="w-[15%] px-3 py-2.5 font-medium">GTD</th>
                     <th className="w-[9%] px-3 py-2.5 font-medium">Entries</th>
-                    <th className="w-[11%] px-3 py-2.5 font-medium">Evidence</th>
+                    <th className={`${gtdStress ? "w-[15%]" : "w-[11%]"} px-3 py-2.5 font-medium`}>Evidence</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -290,6 +332,19 @@ export function VerifiedMarketDashboard({ model }: { model: VerifiedMarketReadMo
                           <div className="flex flex-col items-start gap-1.5">
                             <EvidenceStateBadge state={state} compact />
                             <Badge variant="outline" className="border-amber-500/35 text-[10px] text-amber-200">Unverified</Badge>
+                            {gtdStress && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setSelectedStressEvent(event)}
+                                className="min-h-10 w-full justify-start gap-1.5 px-0 text-[11px] text-cyan-300"
+                                aria-label={`Open Historical GTD Stress for ${event.eventName}`}
+                              >
+                                <BarChart3 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                <span className="min-w-0 whitespace-normal text-left">GTD Stress</span>
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -299,7 +354,14 @@ export function VerifiedMarketDashboard({ model }: { model: VerifiedMarketReadMo
               </table>
             </div>
             <div className="md:hidden">
-              {events.map((event) => <EventMobileCard key={event.id} event={event} onSelect={(field) => openField(event, field)} />)}
+              {events.map((event) => (
+                <EventMobileCard
+                  key={event.id}
+                  event={event}
+                  onSelect={(field) => openField(event, field)}
+                  onOpenGtdStress={gtdStress ? () => setSelectedStressEvent(event) : undefined}
+                />
+              ))}
             </div>
           </>
         )}
@@ -348,6 +410,13 @@ export function VerifiedMarketDashboard({ model }: { model: VerifiedMarketReadMo
         model={model}
         onOpenChange={(open) => { if (!open) setSelected(null); }}
       />
+      {gtdStress && (
+        <GtdStressSheet
+          event={selectedStressEvent}
+          loadResearch={gtdStress.loadEvent}
+          onOpenChange={(open) => { if (!open) setSelectedStressEvent(null); }}
+        />
+      )}
     </main>
   );
 }
