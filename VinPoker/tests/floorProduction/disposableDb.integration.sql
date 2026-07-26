@@ -83,16 +83,17 @@ CREATE TABLE public.tournaments (
 );
 
 CREATE TABLE public.game_tables (
-  id uuid PRIMARY KEY,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   club_id uuid NOT NULL,
   table_name text NOT NULL,
   table_type text,
   status text,
-  current_blind_level integer
+  current_blind_level integer,
+  shift_id uuid
 );
 
 CREATE TABLE public.tournament_tables (
-  id uuid PRIMARY KEY,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id uuid NOT NULL,
   table_id uuid,
   table_number integer,
@@ -327,6 +328,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_my_floor_operator_scope() TO service_role;
 \ir ../../supabase/migrations/20270104000005_floor_operator_scope_acl.sql
 \ir ../../supabase/migrations/20270105000001_floor_table_control_mode.sql
+\ir ../../supabase/migrations/20270106000000_floor_open_table_picker_mode_v2.sql
 
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
 
@@ -380,6 +382,165 @@ SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001
 
 INSERT INTO public.tournaments (id, club_id, status, starting_stack, current_level, players_remaining, current_players)
 VALUES ('00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000010', 'registration', 100, 1, 4, 4);
+
+-- Isolated TABLE_LIFECYCLE fixture for the responsive 1–100 picker. The v2
+-- opener must persist number, fixed seat count and control mode atomically.
+INSERT INTO public.tournaments (id, club_id, status, starting_stack, current_level, players_remaining, current_players)
+VALUES
+  ('00000000-0000-0000-0000-000000000120', '00000000-0000-0000-0000-000000000010', 'registration', 100, 1, 0, 0),
+  ('00000000-0000-0000-0000-000000000121', '00000000-0000-0000-0000-000000000010', 'registration', 100, 1, 0, 0);
+
+SELECT public.floor_test_assert(
+  (public.floor_open_tournament_table_v2(
+    '00000000-0000-0000-0000-000000000120', 0, 'manual'
+  )->>'error') = 'invalid_table_number'
+  AND (public.floor_open_tournament_table_v2(
+    '00000000-0000-0000-0000-000000000120', 101, 'manual'
+  )->>'error') = 'invalid_table_number'
+  AND (public.floor_open_tournament_table_v2(
+    '00000000-0000-0000-0000-000000000120', 30, 'automatic'
+  )->>'error') = 'invalid_floor_control_mode',
+  'v2 table opener rejects numbers outside 1-100 and inferred control modes'
+);
+SELECT public.floor_test_assert(
+  (SELECT count(*) = 0 FROM public.tournament_tables
+   WHERE tournament_id = '00000000-0000-0000-0000-000000000120'),
+  'invalid picker input creates no table'
+);
+
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000099', false);
+SELECT public.floor_test_assert(
+  (public.floor_open_tournament_table_v2(
+    '00000000-0000-0000-0000-000000000120', 30, 'manual'
+  )->>'error') = 'actor_not_allowed',
+  'cross-club actor cannot open a table through the picker'
+);
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
+
+SELECT public.floor_test_assert(
+  (public.floor_open_tournament_table_v2(
+    '00000000-0000-0000-0000-000000000120', 30, 'tracker'
+  )->>'ok')::boolean,
+  'owner opens a selected Live Tracker table'
+);
+SELECT public.floor_test_assert(
+  (SELECT table_number = 30
+      AND max_seats = 9
+      AND status = 'active'
+      AND floor_control_mode = 'tracker'
+      AND floor_control_revision = 1
+   FROM public.tournament_tables
+   WHERE tournament_id = '00000000-0000-0000-0000-000000000120'),
+  'number, nine seats and Tracker authority commit together'
+);
+SELECT public.floor_test_assert(
+  (public.floor_open_tournament_table_v2(
+    '00000000-0000-0000-0000-000000000120', 30, 'manual'
+  )->>'error') = 'table_number_taken'
+  AND (SELECT count(*) = 1 FROM public.tournament_tables
+       WHERE tournament_id = '00000000-0000-0000-0000-000000000120'
+         AND table_number = 30),
+  'active duplicate table number is rejected without another row'
+);
+
+UPDATE public.game_tables
+SET status = 'inactive'
+WHERE id = (
+  SELECT table_id FROM public.tournament_tables
+  WHERE tournament_id = '00000000-0000-0000-0000-000000000120'
+    AND table_number = 30
+);
+UPDATE public.tournament_tables
+SET status = 'closed'
+WHERE tournament_id = '00000000-0000-0000-0000-000000000120'
+  AND table_number = 30;
+
+SELECT public.floor_test_assert(
+  (public.floor_open_tournament_table_v2(
+    '00000000-0000-0000-0000-000000000120', 30, 'manual'
+  )->>'reopened')::boolean,
+  'closed table number is reopened instead of duplicated'
+);
+SELECT public.floor_test_assert(
+  (SELECT count(*) = 1
+      AND bool_and(status = 'active')
+      AND bool_and(max_seats = 9)
+      AND bool_and(floor_control_mode = 'manual')
+      AND bool_and(floor_control_revision = 2)
+   FROM public.tournament_tables
+   WHERE tournament_id = '00000000-0000-0000-0000-000000000120'
+     AND table_number = 30),
+  'reopen keeps one row and atomically changes the selected mode'
+);
+SELECT public.floor_test_assert(
+  (SELECT count(*) = 2
+   FROM public.audit_logs
+   WHERE entity_id = (
+     SELECT id FROM public.tournament_tables
+     WHERE tournament_id = '00000000-0000-0000-0000-000000000120'
+       AND table_number = 30
+   )
+     AND action IN ('floor_table_opened_v2', 'floor_table_reopened_v2')
+     AND payload @> '{"max_seats":9,"payout_applied":false}'::jsonb),
+  'open and reopen are audited without payout'
+);
+
+-- Two Floor sessions choosing the same available number must serialize on the
+-- tournament lock. Exactly one creates the row; the other sees it as taken.
+CREATE OR REPLACE FUNCTION public.floor_test_concurrent_open(
+  p_tournament_id uuid,
+  p_table_number integer
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM set_config(
+    'request.jwt.claim.sub',
+    '00000000-0000-0000-0000-000000000003',
+    true
+  );
+  RETURN public.floor_open_tournament_table_v2(
+    p_tournament_id,
+    p_table_number,
+    'manual'
+  );
+END;
+$$;
+
+SELECT dblink_connect('open_a', 'dbname=' || current_database());
+SELECT dblink_connect('open_b', 'dbname=' || current_database());
+SELECT dblink_send_query(
+  'open_a',
+  $$SELECT public.floor_test_concurrent_open(
+    '00000000-0000-0000-0000-000000000121'::uuid, 88
+  )$$
+);
+SELECT dblink_send_query(
+  'open_b',
+  $$SELECT public.floor_test_concurrent_open(
+    '00000000-0000-0000-0000-000000000121'::uuid, 88
+  )$$
+);
+
+CREATE TEMP TABLE floor_open_concurrency_results (result jsonb NOT NULL);
+INSERT INTO floor_open_concurrency_results (result)
+SELECT result FROM dblink_get_result('open_a') AS t(result jsonb);
+INSERT INTO floor_open_concurrency_results (result)
+SELECT result FROM dblink_get_result('open_b') AS t(result jsonb);
+SELECT public.floor_test_assert(
+  (SELECT count(*) FROM floor_open_concurrency_results
+   WHERE (result->>'ok')::boolean IS TRUE) = 1
+  AND (SELECT count(*) FROM floor_open_concurrency_results
+       WHERE result->>'error' = 'table_number_taken') = 1
+  AND (SELECT count(*) = 1 FROM public.tournament_tables
+       WHERE tournament_id = '00000000-0000-0000-0000-000000000121'
+         AND table_number = 88
+         AND status = 'active'),
+  'concurrent opens of one number produce one table and one rejection'
+);
+SELECT dblink_disconnect('open_a');
+SELECT dblink_disconnect('open_b');
 
 INSERT INTO public.game_tables (id, club_id, table_name, table_type, status, current_blind_level)
 VALUES
@@ -1349,6 +1510,12 @@ SELECT public.floor_test_assert(
   AND has_function_privilege('authenticated', 'public.floor_set_table_control_mode(uuid,uuid,text,bigint)'::regprocedure, 'EXECUTE')
   AND NOT has_function_privilege('service_role', 'public.floor_set_table_control_mode(uuid,uuid,text,bigint)'::regprocedure, 'EXECUTE'),
   'table control RPC grants only authenticated among runtime roles'
+);
+SELECT public.floor_test_assert(
+  NOT has_function_privilege('anon', 'public.floor_open_tournament_table_v2(uuid,integer,text)'::regprocedure, 'EXECUTE')
+  AND has_function_privilege('authenticated', 'public.floor_open_tournament_table_v2(uuid,integer,text)'::regprocedure, 'EXECUTE')
+  AND NOT has_function_privilege('service_role', 'public.floor_open_tournament_table_v2(uuid,integer,text)'::regprocedure, 'EXECUTE'),
+  'v2 table opener grants only authenticated among runtime roles'
 );
 
 SELECT 'floor disposable DB integration passed' AS result;
