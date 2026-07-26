@@ -33,7 +33,7 @@ export function getPtWageAccrualPresentation(
       mode: "continuous_standby",
       isLiveAccruing,
       label: "Tích lũy ca + thời gian chờ pool",
-      note: "Tính từ kỳ chi trả gần nhất, gồm thời gian chờ trong pool.",
+      note: "Tính từ mốc chính sách do máy chủ xác nhận và sau kỳ chi trả gần nhất, gồm thời gian chờ trong pool.",
     };
   }
 
