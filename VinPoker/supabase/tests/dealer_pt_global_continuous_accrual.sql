@@ -56,7 +56,8 @@ select pg_temp.assert_true(
 insert into auth.users (id, aud, role, email, created_at, updated_at)
 values
   ('fa000000-0000-4000-8000-000000000001', 'authenticated', 'authenticated', 'pt-global-super@test.invalid', now(), now()),
-  ('fa000000-0000-4000-8000-000000000002', 'authenticated', 'authenticated', 'pt-global-owner@test.invalid', now(), now());
+  ('fa000000-0000-4000-8000-000000000002', 'authenticated', 'authenticated', 'pt-global-owner@test.invalid', now(), now()),
+  ('fa000000-0000-4000-8000-000000000003', 'authenticated', 'authenticated', 'pt-global-capped-owner@test.invalid', now(), now());
 
 insert into public.user_roles (user_id, role)
 values ('fa000000-0000-4000-8000-000000000001', 'super_admin');
@@ -64,7 +65,7 @@ values ('fa000000-0000-4000-8000-000000000001', 'super_admin');
 insert into public.clubs (id, owner_id, name, region, status)
 values
   ('fb000000-0000-4000-8000-000000000001', 'fa000000-0000-4000-8000-000000000002', 'PT CONTINUOUS', 'HCM', 'approved'),
-  ('fb000000-0000-4000-8000-000000000002', 'fa000000-0000-4000-8000-000000000002', 'PT CAPPED', 'HCM', 'approved');
+  ('fb000000-0000-4000-8000-000000000002', 'fa000000-0000-4000-8000-000000000003', 'PT CAPPED', 'HCM', 'approved');
 
 insert into public.dealers (id, club_id, full_name, status, employment_type, hourly_rate_vnd)
 values

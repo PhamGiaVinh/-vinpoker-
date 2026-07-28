@@ -18,13 +18,16 @@ end;
 $$;
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)
-values ('fa200000-0000-4000-8000-000000000001', 'authenticated', 'authenticated', 'pt-concurrency-super@test.invalid', now(), now());
+values
+  ('fa200000-0000-4000-8000-000000000001', 'authenticated', 'authenticated', 'pt-concurrency-super@test.invalid', now(), now()),
+  ('fa200000-0000-4000-8000-000000000002', 'authenticated', 'authenticated', 'pt-concurrency-owner-b@test.invalid', now(), now()),
+  ('fa200000-0000-4000-8000-000000000003', 'authenticated', 'authenticated', 'pt-concurrency-owner-c@test.invalid', now(), now());
 insert into public.user_roles (user_id, role)
 values ('fa200000-0000-4000-8000-000000000001', 'super_admin');
 insert into public.clubs (id, owner_id, name, region, status)
 values
   ('fb200000-0000-4000-8000-000000000001', 'fa200000-0000-4000-8000-000000000001', 'PT CONCURRENCY A', 'HCM', 'approved'),
-  ('fb200000-0000-4000-8000-000000000002', 'fa200000-0000-4000-8000-000000000001', 'PT CONCURRENCY B', 'HCM', 'approved');
+  ('fb200000-0000-4000-8000-000000000002', 'fa200000-0000-4000-8000-000000000002', 'PT CONCURRENCY B', 'HCM', 'approved');
 
 select dblink_connect('pt_global_enable', 'dbname=' || current_database());
 select dblink_connect('pt_club_change', 'dbname=' || current_database());
@@ -77,7 +80,7 @@ select dblink_send_query('pt_club_approval', $query$
   insert into public.clubs (id, owner_id, name, region, status)
   values (
     'fb200000-0000-4000-8000-000000000003',
-    'fa200000-0000-4000-000000000001',
+    'fa200000-0000-4000-8000-000000000003',
     'PT CONCURRENCY APPROVAL', 'HCM', 'approved'
   )
   returning id::text
@@ -115,7 +118,12 @@ where id in (
   'fb200000-0000-4000-8000-000000000003'
 );
 delete from public.user_roles where user_id = 'fa200000-0000-4000-8000-000000000001';
-delete from auth.users where id = 'fa200000-0000-4000-8000-000000000001';
+delete from auth.users
+where id in (
+  'fa200000-0000-4000-8000-000000000001',
+  'fa200000-0000-4000-8000-000000000002',
+  'fa200000-0000-4000-8000-000000000003'
+);
 
 do $$
 begin
