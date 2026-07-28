@@ -43,7 +43,7 @@ function exactPreState() {
     rate_history_authenticated_access: false,
     rate_history_anon_access: false,
     rate_history_service_role_select: false,
-    payment_snapshot_column_exists: false,
+    payment_snapshot_column_exists: true,
     rate_history_trigger_enabled: false,
     rate_history_index_exists: false,
     get_global_exists: false,
@@ -143,7 +143,7 @@ function jsonResponse(value, status = 200) {
 }
 
 function baselineHistory() {
-  return [{ version: "20270105000001", name: "20270105000001_dealer_pt_standby_accrual_policy" }];
+  return [{ version: "20270105000001", name: "platform-managed-baseline-name" }];
 }
 
 test("source policy locks the unique superseding migration and immutable historical source", () => {
@@ -163,7 +163,7 @@ test("preflight accepts only the dark baseline and post-state accepts only the r
   assert.equal(
     preApplyDecision(exactPreState(), [
       ...baselineHistory(),
-      { version: "20270105000002", name: "20270105000002_dealer_pt_wage_global_continuous_accrual" },
+      { version: "20270105000002", name: "platform-managed-legacy-name" },
     ]).action,
     "block",
   );

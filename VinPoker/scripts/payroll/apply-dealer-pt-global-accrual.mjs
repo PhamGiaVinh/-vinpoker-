@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  BASELINE_MIGRATION_NAME,
+  BASELINE_MIGRATION_VERSION,
   createMigrationRequest,
   historyEntryMatchesCandidate,
   MIGRATION_NAME,
@@ -150,6 +150,7 @@ const BASELINE_REQUIRED_TRUE = [
   "payments_table_exists",
   "payroll_audit_table_exists",
   "club_policy_writer_exists",
+  "payment_snapshot_column_exists",
   "balance_exists",
   "payment_exists",
 ];
@@ -203,7 +204,6 @@ export function preStateProblems(state) {
   for (const key of [
     "global_policy_table_exists",
     "rate_history_table_exists",
-    "payment_snapshot_column_exists",
     "rate_history_trigger_enabled",
     "get_global_exists",
     "set_global_exists",
@@ -255,12 +255,13 @@ function historyProblems(history) {
   const candidateNames = history.filter((entry) => entry?.name === MIGRATION_NAME);
   if (matching.length > 1) problems.push("candidate migration is duplicated in ledger history");
   if (candidateNames.length !== matching.length) problems.push("candidate migration has an invalid ledger version");
-  if (!history.some((entry) => entry?.name === BASELINE_MIGRATION_NAME)) {
+  if (!history.some((entry) => entry?.version === BASELINE_MIGRATION_VERSION)) {
     problems.push("required 20270105000001 baseline is absent from migration history");
   }
   for (const path of NEVER_APPLY) {
+    const forbiddenVersion = path.split("/").pop().slice(0, 14);
     const forbiddenName = path.split("/").pop().replace(/\.sql$/u, "");
-    if (history.some((entry) => entry?.name === forbiddenName)) {
+    if (history.some((entry) => entry?.version === forbiddenVersion || entry?.name === forbiddenName)) {
       problems.push(`superseded migration is registered: ${forbiddenName}`);
     }
   }
