@@ -19,6 +19,10 @@ const payrollApplyWorkflow = readFileSync(
   resolve(root, ".github/workflows/dealer-pt-wage-global-continuous-accrual-apply.yml"),
   "utf8",
 );
+const payrollReadinessAclApplyWorkflow = readFileSync(
+  resolve(root, ".github/workflows/dealer-pt-wage-readiness-acl-apply.yml"),
+  "utf8",
+);
 
 test("frontend cannot run after a required critical deployment failure", () => {
   assert.match(workflow, /needs\.plan\.outputs\.critical_functions == '\[\]' \|\| needs\.deploy-critical-edge\.result == 'success'/);
@@ -187,6 +191,27 @@ test("global PT wage apply is manual, protected, source-pinned, and dark by defa
   assert.doesNotMatch(payrollApplyWorkflow, /vercel\s+(?:deploy|--prod)/i);
   assert.equal(
     payrollApplyWorkflow.split("\n").some((line) => /\b(?:echo|printf)\b/i.test(line) && /(?:SUPABASE|TOKEN|PASSWORD)/i.test(line)),
+    false,
+  );
+});
+
+test("readiness ACL repair apply is manual, protected, source-pinned, and cannot widen rollout", () => {
+  assert.match(payrollReadinessAclApplyWorkflow, /workflow_dispatch:/);
+  assert.doesNotMatch(payrollReadinessAclApplyWorkflow, /pull_request:/);
+  assert.match(payrollReadinessAclApplyWorkflow, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(payrollReadinessAclApplyWorkflow, /dealer-swing-production-critical/);
+  assert.match(payrollReadinessAclApplyWorkflow, /required_reviewers/);
+  assert.match(payrollReadinessAclApplyWorkflow, /6939b6d72c9533ce68101624b22e7a5be73d3b83/);
+  assert.match(payrollReadinessAclApplyWorkflow, /--preflight/);
+  assert.match(payrollReadinessAclApplyWorkflow, /--apply/);
+  assert.match(payrollReadinessAclApplyWorkflow, /APPLY_DEALER_PT_WAGE_READINESS_ACL_20270106000002/);
+  assert.match(payrollReadinessAclApplyWorkflow, /--source-root/);
+  assert.match(payrollReadinessAclApplyWorkflow, /git -C control-plane merge-base --is-ancestor/);
+  assert.match(payrollReadinessAclApplyWorkflow, /actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/);
+  assert.doesNotMatch(payrollReadinessAclApplyWorkflow, /supabase\s+(?:db\s+(?:push|reset)|functions\s+deploy)/i);
+  assert.doesNotMatch(payrollReadinessAclApplyWorkflow, /vercel\s+(?:deploy|--prod)/i);
+  assert.equal(
+    payrollReadinessAclApplyWorkflow.split("\n").some((line) => /\b(?:echo|printf)\b/i.test(line) && /(?:SUPABASE|TOKEN|PASSWORD)/i.test(line)),
     false,
   );
 });
