@@ -71,3 +71,12 @@ Call `set_all_approved_dealer_pt_wage_accrual(false, <audit reason>)` through
 the authenticated super-admin path. It restores the 24-hour cap for current
 approved clubs and disables automatic enablement for clubs approved later. It
 does not alter an already written payout; any correction remains append-only.
+
+## Forward ACL Repair
+
+If the protected post-apply probe detects direct `service_role` execute on the
+internal readiness helper, apply the separately reviewed forward migration
+`20270106000002_dealer_pt_wage_readiness_acl.sql` through a new exact runner.
+Do not edit or replay v2, and do not deploy the frontend until that post-state
+probe is clean. The repair only revokes direct helper access; it does not
+enable policy, alter wages, or write payroll data.
