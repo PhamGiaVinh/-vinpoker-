@@ -404,7 +404,7 @@ export default function OpsTables() {
       )}
 
       {/* hàng nút đáy — thumb zone (hành động: đang nối) */}
-      <div className="flex items-center gap-2">
+      <div className="grid grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)] gap-2">
         <button onClick={() => { setSearchOn((v) => !v); if (searchOn) setQuery(""); }} className="ios-press ios-fill grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-[#f2ece6]">
           <Search className="h-5 w-5" />
         </button>
@@ -416,9 +416,18 @@ export default function OpsTables() {
           className={cn("ios-press ios-fill flex h-12 flex-1 items-center justify-center gap-1.5 rounded-2xl text-[15px] font-medium text-[#f2ece6]", !ADD_LIVE && "opacity-50")}>
           <Plus className="h-[18px] w-[18px]" /> Bàn
         </button>
+        <button
+          type="button"
+          data-testid="floor-open-players"
+          disabled={!tourId}
+          onClick={() => { if (tourId) navigate(`/ops/tournaments/${tourId}?tab=players`); }}
+          className="ios-press ios-fill flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-2xl px-2 text-[14px] font-medium text-[#f2ece6] disabled:opacity-50"
+        >
+          <Users className="h-[18px] w-[18px] shrink-0" /> <span className="truncate">Người chơi</span>
+        </button>
         <button onClick={() => (ADD_LIVE ? openRedraw() : pending())} disabled={!ADD_LIVE}
           aria-disabled={!ADD_LIVE} title={ADD_LIVE ? undefined : "Cần bật cờ floorTableOps"}
-          className={cn("ios-press ios-fill flex h-12 flex-1 items-center justify-center gap-1.5 rounded-2xl text-[15px] font-medium text-[#f2ece6]", !ADD_LIVE && "opacity-50")}>
+          className={cn("ios-press ios-fill col-span-3 flex h-11 items-center justify-center gap-1.5 rounded-2xl text-[14px] font-medium text-[#f2ece6]", !ADD_LIVE && "opacity-50")}>
           <Shuffle className="h-[18px] w-[18px]" /> Bốc lại
         </button>
       </div>
@@ -487,6 +496,19 @@ export default function OpsTables() {
               <XCircle className="h-4 w-4" /> Đóng bàn
             </button>
           </div>
+          <button
+            type="button"
+            data-testid="floor-table-open-players"
+            disabled={!tourId}
+            onClick={() => {
+              if (!tourId) return;
+              setOpenNo(null);
+              navigate(`/ops/tournaments/${tourId}?tab=players`);
+            }}
+            className="ios-press ios-fill mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[14px] font-semibold text-[#f2ece6] disabled:opacity-50"
+          >
+            <Users className="h-4 w-4" /> Người chơi — đang chơi / đã loại
+          </button>
           {!ADD_LIVE && <p className="mt-2 text-center text-[11px] text-[#7c7079]">Các thao tác bàn đang tạm khóa. Cần bật floorTableOps.</p>}
         </SheetContent>
       </Sheet>

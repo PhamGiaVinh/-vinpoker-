@@ -3,10 +3,10 @@ import { Loader2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { supabase } from "@/integrations/supabase/client";
 import { floorOpsErrorMessage } from "@/lib/floorOpsErrors";
 import type { FloorTableControlMode } from "@/lib/floorTableControlMode";
+import { FloorTableModePicker } from "@/components/ops/shared/FloorTableModePicker";
 
 type UntypedFloorRpcResult = {
   data: unknown;
@@ -88,27 +88,14 @@ export function FloorTableControlModeControl({
         </div>
       </div>
 
-      <RadioGroup
-        value={selected}
-        onValueChange={(value) => setSelected(value as FloorTableControlMode)}
-        className="mt-3 gap-2"
-        aria-label="Kiểm soát chip khi loại"
-      >
-        <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-border/80 bg-background/50 px-3 py-2.5">
-          <RadioGroupItem data-testid="floor-table-control-mode-manual" value="manual" className="mt-0.5" />
-          <span className="min-w-0 text-sm">
-            <span className="block font-medium">Manual Floor</span>
-            <span className="block text-xs leading-5 text-muted-foreground">Cho phép loại dù còn chip; server ghi audit, không payout.</span>
-          </span>
-        </label>
-        <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-border/80 bg-background/50 px-3 py-2.5">
-          <RadioGroupItem data-testid="floor-table-control-mode-tracker" value="tracker" className="mt-0.5" />
-          <span className="min-w-0 text-sm">
-            <span className="block font-medium">Live Tracker</span>
-            <span className="block text-xs leading-5 text-muted-foreground">Chỉ cho phép loại khi chip đã về 0; bắt buộc trước khi bắt đầu hand Live Tracker.</span>
-          </span>
-        </label>
-      </RadioGroup>
+      <div className="mt-3">
+        <FloorTableModePicker
+          value={selected}
+          onChange={setSelected}
+          disabled={busy}
+          testIdPrefix="floor-table-control-mode"
+        />
+      </div>
 
       <Button
         data-testid="floor-table-control-mode-save"
