@@ -1,5 +1,5 @@
 {
-  "artifactId": "series-market:v1:vietnam-schedule-supply:v1:artifact:62a3ec31affac9cf655242f364107b1fbc34b56bf346696d168e39fac0c23c72",
+  "artifactId": "series-market:v1:vietnam-schedule-supply:v1:artifact:30fecbeb69d184a614febbcff87ef925fe6fb1d2f4d1a1822c2a8d9403f5e995",
   "artifactType": "vietnam_schedule_supply",
   "claimCount": "1288",
   "claims": [
@@ -14871,6 +14871,26 @@
       "visualRegion": "day-2-row-8"
     },
     {
+      "claimId": "series-market:v1:vietnam-schedule-supply:v1:claim:a29b5d906834f4c6870f6c418aff6b4ca38847409076e8a2bccc89e7f42deff2",
+      "contractVersion": "v1",
+      "eventKey": "center-p-after-dark",
+      "evidenceQuality": "owner_provided_public_image_unverified",
+      "extractionStatus": "manual_verified",
+      "field": "prize_contribution",
+      "posterIdentity": "center_p",
+      "scheduleDate": "2026-07-17",
+      "sourceId": "center-p-jul-17-2026",
+      "sourcePath": "docs/series/evidence/vietnam/inbox/center_p_schedule_jul_17_2026.png",
+      "sourceSha256": "ae86830b97335debcf88e480bc0cf20572426af76ae8456aa2108e88da602cca",
+      "value": {
+        "currency": "VND",
+        "minorUnits": "2000000",
+        "scale": 0,
+        "type": "money"
+      },
+      "visualRegion": "day-2-row-21-00"
+    },
+    {
       "claimId": "series-market:v1:vietnam-schedule-supply:v1:claim:a2b1ba57db85a129618db53a8b7bd3a6243a2a1549df0f175c468c511ebd265f",
       "contractVersion": "v1",
       "eventKey": "rpt-d2-no-limit-holdem-8-max",
@@ -19056,26 +19076,6 @@
         "value": "vietnam"
       },
       "visualRegion": "owner-supplied-vietnam-release-scope"
-    },
-    {
-      "claimId": "series-market:v1:vietnam-schedule-supply:v1:claim:d52765f3d54f786cac6eeddb33e727a9dd57ee592b014b2ff3ec9624ae03a4c9",
-      "contractVersion": "v1",
-      "eventKey": "center-p-after-dark",
-      "evidenceQuality": "owner_provided_public_image_unverified",
-      "extractionStatus": "manual_verified",
-      "field": "prize_contribution",
-      "posterIdentity": "center_p",
-      "scheduleDate": "2026-07-17",
-      "sourceId": "center-p-jul-17-2026",
-      "sourcePath": "docs/series/evidence/vietnam/inbox/center_p_schedule_jul_17_2026.png",
-      "sourceSha256": "ae86830b97335debcf88e480bc0cf20572426af76ae8456aa2108e88da602cca",
-      "value": {
-        "currency": "VND",
-        "minorUnits": "3000000",
-        "scale": 0,
-        "type": "money"
-      },
-      "visualRegion": "day-2-row-21-00"
     },
     {
       "claimId": "series-market:v1:vietnam-schedule-supply:v1:claim:d52b8a22024cef8f729ab540f537738f111450ace0e82a3ec490a6807769191a",
@@ -23506,8 +23506,8 @@
   "collisionReports": [
     {
       "calculableRequiredEntryEvents": "10",
-      "collisionId": "series-market:v1:vietnam-schedule-supply:v1:collision:19bd76a82539e02b1adf039c74cdd6144c4c6b21627f301e255939c5af75d641",
-      "combinedRequiredEntries": "2266",
+      "collisionId": "series-market:v1:vietnam-schedule-supply:v1:collision:5f6f459d49a646bfb5e9965f4b4edc17cb45ad298746002a62ec845dc9563618",
+      "combinedRequiredEntries": "2271",
       "dates": [
         "2026-07-17",
         "2026-07-29"
@@ -23550,8 +23550,8 @@
     },
     {
       "calculableRequiredEntryEvents": "10",
-      "collisionId": "series-market:v1:vietnam-schedule-supply:v1:collision:71f5c5256ec5e131185ceb3c2b78b374663293df34db41b16b1bdad0e3078ae5",
-      "combinedRequiredEntries": "2266",
+      "collisionId": "series-market:v1:vietnam-schedule-supply:v1:collision:48539cb6b7604717c3d30f1eb3da9951953bc050a6f190026c22b13d43e0ae26",
+      "combinedRequiredEntries": "2271",
       "dates": [
         "2026-07-17",
         "2026-07-29"
@@ -23597,7 +23597,7 @@
     {
       "calculableEventCount": "5",
       "date": "2026-07-17",
-      "totalRequiredEntries": "1114"
+      "totalRequiredEntries": "1119"
     },
     {
       "calculableEventCount": "5",
@@ -23605,7 +23605,7 @@
       "totalRequiredEntries": "1152"
     }
   ],
-  "contentHash": "62a3ec31affac9cf655242f364107b1fbc34b56bf346696d168e39fac0c23c72",
+  "contentHash": "30fecbeb69d184a614febbcff87ef925fe6fb1d2f4d1a1822c2a8d9403f5e995",
   "contractVersion": "v1",
   "eventCount": "46",
   "eventCountsByBuyInBand": [
@@ -23615,7 +23615,7 @@
     },
     {
       "band": "vnd_1m_to_lt_3m",
-      "count": "12"
+      "count": "13"
     },
     {
       "band": "vnd_30m_plus",
@@ -23623,7 +23623,7 @@
     },
     {
       "band": "vnd_3m_to_lt_10m",
-      "count": "13"
+      "count": "12"
     },
     {
       "band": "vnd_lt_1m",
@@ -25053,6 +25053,81 @@
       "staffFeeBasis": "not_stated",
       "staffFeeBps": "300",
       "startingStack": "40000",
+      "totalBuyInMinorUnits": null,
+      "venue": "Center-P"
+    },
+    {
+      "city": null,
+      "competitionKey": "center-p-event-9-after-dark",
+      "country": "Vietnam",
+      "currency": "VND",
+      "dayFlightIdentity": null,
+      "derivedAllInBuyInMinorUnits": "2300000",
+      "eventFamily": "after-dark",
+      "eventId": "series-market:v1:vietnam-schedule-supply:v1:event:57abc8fabb79cab1da994a1cbdf37a478b219ac921f79a7fd6776d819c912e07",
+      "eventKey": "center-p-after-dark",
+      "eventName": "CPM After Dark",
+      "eventNumber": "9",
+      "floor": null,
+      "game": "NLH",
+      "gtd": {
+        "currency": "VND",
+        "minorUnits": "30000000",
+        "scale": 0,
+        "type": "monetary"
+      },
+      "itmStatement": "25% ITM",
+      "levelDurationMinutes": [
+        "20",
+        "15"
+      ],
+      "localStartTime": "21:00",
+      "market": "vietnam",
+      "organizer": "Center-P Poker Masters",
+      "organizerFeeMinorUnits": "300000",
+      "playToStatement": null,
+      "posterIdentity": "center_p",
+      "prizeContributionMinorUnits": "2000000",
+      "promotionNote": null,
+      "registrationCloseLevel": "10",
+      "registrationCloseTime": "23:15",
+      "satelliteLinkage": null,
+      "scheduleDate": "2026-07-17",
+      "seriesName": "Center-P Poker Master Season 2",
+      "sourceClaimIds": [
+        "series-market:v1:vietnam-schedule-supply:v1:claim:02901c777c85b16b61692573ffbcbba89d284d54b51a0c9b6ded4f885afb2546",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:106edaf4ecbe83a7040aa1b382d79760dff1fc55181b9e38aa64e803f3169096",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:123cfdc66caf9c822ec7b52f7adbc911395d8528262729bb69c7e6b8a18c3aa4",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:128624bb973668f995c8f0130b50180712d64c293302797023ffc6af03b4edee",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:16c76d5615a578b223cca7f53912c8ab4af66626fd1468d7814daa14d1bf5010",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:384b1a82bcdc71bbe61bc28fee1121509e923f6f7a0c5f7cb8d12e0e4a194c8b",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:3a7f671435680a7db4e4e3d17d82eaec86689656888f61c70870e6cf2abd2fc5",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:3a8ac0448fe1d0b012fc5d185a4771f8503c3ac13e62d74012a9f01e92e50c0e",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:449b43b2431310ed3087b64bfe2595b273d27288afe40f1881b38f20cd0d1826",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:4cb26e6a996928b339c6ab02aac8c0a6773ebda05aa849308ab52b1707d4a4f6",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:5187217b1c4fd2aa1b1eb58347a5baa84de11bab2b9d2347e794f047b375d04c",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:5899f18dbb84803f479baa3e20a76c5a0253dc1ab603666ae13ccac63349832d",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:65669a148e8c5f1f7b9a1a4dfa27094d8df5b7fc77aacbc51ba3990012bb4575",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:6b2c29c19ac9701a9004bcd36912a0e12d6a017f280169d3f8fece3820621198",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:72ac739cfd5aa06ac105bf2ff2afc3f9f3d2d3f6a3fe4f16ef7f097fb4e6f025",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:89398ca8dc4e5d8f57146925e18625978db3aa24c88c288843dff88ca86f156b",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:897441311c62edc548e37d1c3ee2325a6c02ec31a647ab044a19e3a6dae566b5",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:8a93949c36903a06425713f13a4e2048139d2f969886124bd2ffd26b4aec0afc",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:8db37d5c76fc6f7317c6f1876cb93c4fabe459346db740402ba13d4435b9d5bb",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:8eca40e20dab5d804f3f0be10e7fed6a621e79e55739688a544fbd8767756df1",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:9dac52a9855b9ce99d439a1d9cfa284ccf80a49b7c35446318347e2d00442b11",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:a29b5d906834f4c6870f6c418aff6b4ca38847409076e8a2bccc89e7f42deff2",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:ac7e05c32ce29baef91cb78edd0014c34c9776fa12e5a0d311715b33d8c5c9ef",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:d5740d3b2dff1d3878fd154b5aeeceef9cbef8608ceed29d010344f21f9a3608",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:d8ba3d1d49686798763cf593814001e91d8668ca7b05baadb54eb63bb0187e4c",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:e91e4598856b8f4818eba388f30364ad14a431d1756bc069c8b5554be9c38d4e",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:efa9c5d315784305554e68b2f97c026e6a8feccfa19407527df90ffe52b2f38c",
+        "series-market:v1:vietnam-schedule-supply:v1:claim:f5bc524f3b6ecbe0a25aa6057f20d2d3c1f0ee77965b104f277d7993bbcf1bdb"
+      ],
+      "sourceId": "center-p-jul-17-2026",
+      "staffFeeBasis": "not_stated",
+      "staffFeeBps": "300",
+      "startingStack": "30000",
       "totalBuyInMinorUnits": null,
       "venue": "Center-P"
     },
@@ -26761,81 +26836,6 @@
     },
     {
       "city": null,
-      "competitionKey": "center-p-event-9-after-dark",
-      "country": "Vietnam",
-      "currency": "VND",
-      "dayFlightIdentity": null,
-      "derivedAllInBuyInMinorUnits": "3300000",
-      "eventFamily": "after-dark",
-      "eventId": "series-market:v1:vietnam-schedule-supply:v1:event:d978a4dcbbdd9362b89e7719e10d0de96dbf9921639ba89d9ddf189512bc4883",
-      "eventKey": "center-p-after-dark",
-      "eventName": "CPM After Dark",
-      "eventNumber": "9",
-      "floor": null,
-      "game": "NLH",
-      "gtd": {
-        "currency": "VND",
-        "minorUnits": "30000000",
-        "scale": 0,
-        "type": "monetary"
-      },
-      "itmStatement": "25% ITM",
-      "levelDurationMinutes": [
-        "20",
-        "15"
-      ],
-      "localStartTime": "21:00",
-      "market": "vietnam",
-      "organizer": "Center-P Poker Masters",
-      "organizerFeeMinorUnits": "300000",
-      "playToStatement": null,
-      "posterIdentity": "center_p",
-      "prizeContributionMinorUnits": "3000000",
-      "promotionNote": null,
-      "registrationCloseLevel": "10",
-      "registrationCloseTime": "23:15",
-      "satelliteLinkage": null,
-      "scheduleDate": "2026-07-17",
-      "seriesName": "Center-P Poker Master Season 2",
-      "sourceClaimIds": [
-        "series-market:v1:vietnam-schedule-supply:v1:claim:02901c777c85b16b61692573ffbcbba89d284d54b51a0c9b6ded4f885afb2546",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:106edaf4ecbe83a7040aa1b382d79760dff1fc55181b9e38aa64e803f3169096",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:123cfdc66caf9c822ec7b52f7adbc911395d8528262729bb69c7e6b8a18c3aa4",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:128624bb973668f995c8f0130b50180712d64c293302797023ffc6af03b4edee",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:16c76d5615a578b223cca7f53912c8ab4af66626fd1468d7814daa14d1bf5010",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:384b1a82bcdc71bbe61bc28fee1121509e923f6f7a0c5f7cb8d12e0e4a194c8b",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:3a7f671435680a7db4e4e3d17d82eaec86689656888f61c70870e6cf2abd2fc5",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:3a8ac0448fe1d0b012fc5d185a4771f8503c3ac13e62d74012a9f01e92e50c0e",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:449b43b2431310ed3087b64bfe2595b273d27288afe40f1881b38f20cd0d1826",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:4cb26e6a996928b339c6ab02aac8c0a6773ebda05aa849308ab52b1707d4a4f6",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:5187217b1c4fd2aa1b1eb58347a5baa84de11bab2b9d2347e794f047b375d04c",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:5899f18dbb84803f479baa3e20a76c5a0253dc1ab603666ae13ccac63349832d",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:65669a148e8c5f1f7b9a1a4dfa27094d8df5b7fc77aacbc51ba3990012bb4575",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:6b2c29c19ac9701a9004bcd36912a0e12d6a017f280169d3f8fece3820621198",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:72ac739cfd5aa06ac105bf2ff2afc3f9f3d2d3f6a3fe4f16ef7f097fb4e6f025",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:89398ca8dc4e5d8f57146925e18625978db3aa24c88c288843dff88ca86f156b",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:897441311c62edc548e37d1c3ee2325a6c02ec31a647ab044a19e3a6dae566b5",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:8a93949c36903a06425713f13a4e2048139d2f969886124bd2ffd26b4aec0afc",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:8db37d5c76fc6f7317c6f1876cb93c4fabe459346db740402ba13d4435b9d5bb",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:8eca40e20dab5d804f3f0be10e7fed6a621e79e55739688a544fbd8767756df1",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:9dac52a9855b9ce99d439a1d9cfa284ccf80a49b7c35446318347e2d00442b11",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:ac7e05c32ce29baef91cb78edd0014c34c9776fa12e5a0d311715b33d8c5c9ef",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:d52765f3d54f786cac6eeddb33e727a9dd57ee592b014b2ff3ec9624ae03a4c9",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:d5740d3b2dff1d3878fd154b5aeeceef9cbef8608ceed29d010344f21f9a3608",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:d8ba3d1d49686798763cf593814001e91d8668ca7b05baadb54eb63bb0187e4c",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:e91e4598856b8f4818eba388f30364ad14a431d1756bc069c8b5554be9c38d4e",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:efa9c5d315784305554e68b2f97c026e6a8feccfa19407527df90ffe52b2f38c",
-        "series-market:v1:vietnam-schedule-supply:v1:claim:f5bc524f3b6ecbe0a25aa6057f20d2d3c1f0ee77965b104f277d7993bbcf1bdb"
-      ],
-      "sourceId": "center-p-jul-17-2026",
-      "staffFeeBasis": "not_stated",
-      "staffFeeBps": "300",
-      "startingStack": "30000",
-      "totalBuyInMinorUnits": null,
-      "venue": "Center-P"
-    },
-    {
-      "city": null,
       "competitionKey": "center-p-event-8-mini-high-roller",
       "country": "Vietnam",
       "currency": "VND",
@@ -27309,7 +27309,7 @@
       "window": "within_30_days"
     }
   ],
-  "releaseId": "series-market:v1:vietnam-schedule-supply:v1:release:dbd23425e5318a23e07779e2a448120a6c361b16149c90c0ef9481ca816ac150",
+  "releaseId": "series-market:v1:vietnam-schedule-supply:v1:release:c0f5e97aeb8b58bca4f52325cca2e17b4c27bbdb2bdca3e5f908f6ae946a5651",
   "repeatedTemplateGroups": [
     {
       "distinctSeriesCount": "1",
@@ -27453,10 +27453,10 @@
       "competitionKey": "center-p-event-9-after-dark",
       "currency": "VND",
       "gtdMinorUnits": "30000000",
-      "prizeContributionMinorUnits": "3000000",
-      "requiredEntries": "10",
+      "prizeContributionMinorUnits": "2000000",
+      "requiredEntries": "15",
       "sourceEventIds": [
-        "series-market:v1:vietnam-schedule-supply:v1:event:d978a4dcbbdd9362b89e7719e10d0de96dbf9921639ba89d9ddf189512bc4883"
+        "series-market:v1:vietnam-schedule-supply:v1:event:57abc8fabb79cab1da994a1cbdf37a478b219ac921f79a7fd6776d819c912e07"
       ],
       "sourceId": "center-p-jul-17-2026"
     },
@@ -28056,6 +28056,30 @@
       }
     },
     {
+      "competitionKey": "center-p-event-9-after-dark",
+      "eventId": "series-market:v1:vietnam-schedule-supply:v1:event:57abc8fabb79cab1da994a1cbdf37a478b219ac921f79a7fd6776d819c912e07",
+      "eventKey": "center-p-after-dark",
+      "fingerprintId": "series-market:v1:vietnam-schedule-supply:v1:template:0cf561af11012723dff7bdf29dc7e965e36d93fd2eea4ca1c6e0347ef9ca9ca0",
+      "sourceId": "center-p-jul-17-2026",
+      "structuralFeatures": {
+        "eventFamily": "after-dark",
+        "itmStatement": "25%-itm",
+        "levelDurationMinutes": [
+          "20",
+          "15"
+        ],
+        "monetaryGtdMinorUnits": "30000000",
+        "multiFlight": false,
+        "organizerFeeMinorUnits": "300000",
+        "playToStatement": null,
+        "prizeContributionMinorUnits": "2000000",
+        "requiredEntries": "15",
+        "satellitePattern": null,
+        "startingStack": "30000",
+        "totalBuyInMinorUnits": "2300000"
+      }
+    },
+    {
       "competitionKey": "center-p-kick-off",
       "eventId": "series-market:v1:vietnam-schedule-supply:v1:event:6d96e756ce6c992a0eacad426aed3ecb8636304e9358ab769b503c96c91704bc",
       "eventKey": "center-p-kick-off-day-1e-turbo",
@@ -28597,30 +28621,6 @@
         "satellitePattern": null,
         "startingStack": "40000",
         "totalBuyInMinorUnits": "1800000"
-      }
-    },
-    {
-      "competitionKey": "center-p-event-9-after-dark",
-      "eventId": "series-market:v1:vietnam-schedule-supply:v1:event:d978a4dcbbdd9362b89e7719e10d0de96dbf9921639ba89d9ddf189512bc4883",
-      "eventKey": "center-p-after-dark",
-      "fingerprintId": "series-market:v1:vietnam-schedule-supply:v1:template:e7abccdd44ee6b7b8c772824df7fec1044461599e1c49b4065224efb98644f24",
-      "sourceId": "center-p-jul-17-2026",
-      "structuralFeatures": {
-        "eventFamily": "after-dark",
-        "itmStatement": "25%-itm",
-        "levelDurationMinutes": [
-          "20",
-          "15"
-        ],
-        "monetaryGtdMinorUnits": "30000000",
-        "multiFlight": false,
-        "organizerFeeMinorUnits": "300000",
-        "playToStatement": null,
-        "prizeContributionMinorUnits": "3000000",
-        "requiredEntries": "10",
-        "satellitePattern": null,
-        "startingStack": "30000",
-        "totalBuyInMinorUnits": "3300000"
       }
     },
     {

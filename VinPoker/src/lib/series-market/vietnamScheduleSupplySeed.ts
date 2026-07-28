@@ -844,7 +844,7 @@ export const VIETNAM_SCHEDULE_SUPPLY_V1_EVENTS: readonly ScheduleSeedEvent[] = [
     eventNumber: "9",
     eventName: "CPM After Dark",
     eventFamily: "after_dark",
-    prizeContributionMinorUnits: "3000000",
+    prizeContributionMinorUnits: "2000000",
     organizerFeeMinorUnits: "300000",
     staffFeeBps: "300",
     gtd: monetaryGtd("30000000"),

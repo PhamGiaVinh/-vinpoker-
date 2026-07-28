@@ -1,11 +1,11 @@
 {
-  "artifactContentHash": "62a3ec31affac9cf655242f364107b1fbc34b56bf346696d168e39fac0c23c72",
-  "artifactFileSha256": "dc656a5bca1cde8a657ad79e5cf1631c422ec496f9a055caff3be7157a4c8ca8",
-  "artifactId": "series-market:v1:vietnam-schedule-supply:v1:artifact:62a3ec31affac9cf655242f364107b1fbc34b56bf346696d168e39fac0c23c72",
+  "artifactContentHash": "30fecbeb69d184a614febbcff87ef925fe6fb1d2f4d1a1822c2a8d9403f5e995",
+  "artifactFileSha256": "6517f858e80cb439d3b15375859df2b5b51d3e7c8a2bc7f96ffef4b3fe2f1706",
+  "artifactId": "series-market:v1:vietnam-schedule-supply:v1:artifact:30fecbeb69d184a614febbcff87ef925fe6fb1d2f4d1a1822c2a8d9403f5e995",
   "artifactPath": "src/lib/series-market/datasets/vietnam/schedule-supply/v1/research/schedule-supply-v1.json",
   "contractVersion": "v1",
-  "receiptId": "series-market:v1:vietnam-schedule-supply:v1:receipt:240651066c3352afdc16803733cb7bbefbeace72ca495eaedaac075b38a55cc5",
-  "releaseId": "series-market:v1:vietnam-schedule-supply:v1:release:dbd23425e5318a23e07779e2a448120a6c361b16149c90c0ef9481ca816ac150",
+  "receiptId": "series-market:v1:vietnam-schedule-supply:v1:receipt:1a513eca0724db4ea8cff0ddcef74dcf056045ce5af1a167c2668b327a879b5c",
+  "releaseId": "series-market:v1:vietnam-schedule-supply:v1:release:c0f5e97aeb8b58bca4f52325cca2e17b4c27bbdb2bdca3e5f908f6ae946a5651",
   "sourceImageReceipts": [
     {
       "sourceByteLength": "869499",

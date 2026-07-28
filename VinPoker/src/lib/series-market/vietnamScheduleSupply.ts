@@ -350,13 +350,76 @@ export interface ScheduleSupplyReceipt {
   }[];
 }
 
+export type D1ACorrectionStatus = "superseded_by_corrected_release";
+export type D1ASecondPassAuditStatus = "manual_verified_against_preserved_poster";
+
+export interface D1ASecondPassRowAudit {
+  readonly eventKey: string;
+  readonly sourceId: string;
+  readonly sourceSha256: string;
+  readonly visualRegion: string;
+  readonly auditedFields: readonly ScheduleFieldKey[];
+  readonly unresolvedFields: readonly ScheduleFieldKey[];
+  readonly status: D1ASecondPassAuditStatus;
+}
+
+export interface D1ACorrectionRecord {
+  readonly correctionId: string;
+  readonly contractVersion: typeof VIETNAM_SCHEDULE_SUPPLY_CONTRACT_VERSION;
+  readonly correctionKey: "d1a-correction-001-center-p-after-dark";
+  readonly correctedAt: string;
+  readonly originalMergeCommit: string;
+  readonly superseded: {
+    readonly releaseId: string;
+    readonly artifactId: string;
+    readonly artifactFileSha256: string;
+    readonly receiptId: string;
+  };
+  readonly corrected: {
+    readonly releaseId: string;
+    readonly artifactId: string;
+    readonly artifactFileSha256: string;
+    readonly receiptId: string;
+  };
+  readonly affectedSourceId: string;
+  readonly affectedEventKey: string;
+  readonly affectedClaims: readonly {
+    readonly field: "prize_contribution";
+    readonly supersededClaimId: string;
+    readonly correctedClaimId: string;
+  }[];
+  readonly oldValue: {
+    readonly minorUnits: string;
+    readonly currency: string;
+    readonly scale: number;
+  };
+  readonly newValue: {
+    readonly minorUnits: string;
+    readonly currency: string;
+    readonly scale: number;
+  };
+  readonly reason: "confirmed visual transcription correction";
+  readonly preservedSourceImageSha256: string;
+  readonly downstreamMetricDeltas: readonly {
+    readonly metric:
+      | "event_required_entries"
+      | "series_date_required_entries"
+      | "within_14_day_collision_required_entries";
+    readonly previousValue: string;
+    readonly correctedValue: string;
+    readonly delta: string;
+  }[];
+  readonly rowAudits: readonly D1ASecondPassRowAudit[];
+  readonly status: D1ACorrectionStatus;
+}
+
 export interface VietnamScheduleSupplyBundle {
   readonly inclusionManifest: ScheduleInclusionManifest;
   readonly release: VietnamScheduleSupplyRelease;
   readonly artifact: ScheduleSupplyArtifact;
 }
 
-const FIELD_ORDER: readonly ScheduleFieldKey[] = [
+export const SCHEDULE_FIELD_ORDER: readonly ScheduleFieldKey[] = [
   "market",
   "country",
   "city",
@@ -438,6 +501,14 @@ function normalizeCurrency(raw: string): string {
 function normalizeSha256(raw: string, label: string): string {
   const value = raw.trim().toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(value)) fail(`${label} must be a SHA-256 digest`, "INVALID_SCHEDULE_SHA256");
+  return value;
+}
+
+function normalizeGitObjectId(raw: string, label: string): string {
+  const value = raw.trim().toLowerCase();
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value)) {
+    fail(`${label} must be a Git object ID`, "INVALID_SCHEDULE_GIT_OBJECT_ID");
+  }
   return value;
 }
 
@@ -688,9 +759,9 @@ async function normalizeEvent(
     seed.conflictingFields ?? [],
   ].flat();
   for (const field of fieldSets) {
-    if (!FIELD_ORDER.includes(field)) fail("event field override is unsupported", "INVALID_SCHEDULE_FIELD_OVERRIDE");
+    if (!SCHEDULE_FIELD_ORDER.includes(field)) fail("event field override is unsupported", "INVALID_SCHEDULE_FIELD_OVERRIDE");
   }
-  const claims = await Promise.all(FIELD_ORDER.map(async (field) => {
+  const claims = await Promise.all(SCHEDULE_FIELD_ORDER.map(async (field) => {
     const value = fieldValue(source, seed, field, normalizedBase);
     return createScheduleEvidenceClaim({
       eventKey: normalizedBase.eventKey,
@@ -1090,7 +1161,7 @@ export async function createVietnamScheduleSupplyBundle(input: {
   const gtdValues = [...competitionRows.values()]
     .map((rows) => monetaryCompetition(rows)?.gtd.minorUnits ?? null)
     .filter((value): value is string => value !== null);
-  const missingFieldCoverage = FIELD_ORDER.map((field) => ({
+  const missingFieldCoverage = SCHEDULE_FIELD_ORDER.map((field) => ({
     field,
     missingCount: claims.filter((claim) => claim.field === field && claim.extractionStatus === "missing").length.toString(),
     uncertainCount: claims.filter((claim) => claim.field === field && claim.extractionStatus === "uncertain").length.toString(),
@@ -1191,6 +1262,250 @@ export async function createScheduleSupplyReceipt(input: {
   return deepFreeze({
     receiptId: `${VIETNAM_SCHEDULE_SUPPLY_NAMESPACE}:receipt:${receiptHash}`,
     contractVersion: VIETNAM_SCHEDULE_SUPPLY_CONTRACT_VERSION,
+    ...content,
+  });
+}
+
+export async function createD1ACorrectionRecord(input: {
+  readonly correctedAt: string;
+  readonly originalMergeCommit: string;
+  readonly superseded: {
+    readonly releaseId: string;
+    readonly artifactId: string;
+    readonly artifactFileSha256: string;
+    readonly receiptId: string;
+  };
+  readonly corrected: {
+    readonly release: VietnamScheduleSupplyRelease;
+    readonly artifact: ScheduleSupplyArtifact;
+    readonly receipt: ScheduleSupplyReceipt;
+  };
+  readonly sources: readonly ScheduleEvidenceSource[];
+  readonly events: readonly ScheduleSeedEvent[];
+  readonly affected: {
+    readonly sourceId: string;
+    readonly eventKey: string;
+    readonly field: "prize_contribution";
+    readonly supersededClaimId: string;
+    readonly oldMinorUnits: string;
+    readonly newMinorUnits: string;
+    readonly currency: string;
+    readonly scale: number;
+    readonly reason: "confirmed visual transcription correction";
+    readonly preservedSourceImageSha256: string;
+  };
+  readonly previousMetrics: {
+    readonly eventRequiredEntries: string;
+    readonly seriesDateRequiredEntries: string;
+    readonly within14DayCollisionRequiredEntries: string;
+  };
+}): Promise<D1ACorrectionRecord> {
+  const correctedAt = normalizeInstant(input.correctedAt);
+  const originalMergeCommit = normalizeGitObjectId(
+    input.originalMergeCommit,
+    "originalMergeCommit",
+  );
+  const superseded = {
+    releaseId: normalizeText(input.superseded.releaseId, "superseded.releaseId"),
+    artifactId: normalizeText(input.superseded.artifactId, "superseded.artifactId"),
+    artifactFileSha256: normalizeSha256(
+      input.superseded.artifactFileSha256,
+      "superseded.artifactFileSha256",
+    ),
+    receiptId: normalizeText(input.superseded.receiptId, "superseded.receiptId"),
+  };
+  const corrected = {
+    releaseId: normalizeText(input.corrected.release.releaseId, "corrected.releaseId"),
+    artifactId: normalizeText(input.corrected.artifact.artifactId, "corrected.artifactId"),
+    artifactFileSha256: normalizeSha256(
+      input.corrected.receipt.artifactFileSha256,
+      "corrected.artifactFileSha256",
+    ),
+    receiptId: normalizeText(input.corrected.receipt.receiptId, "corrected.receiptId"),
+  };
+  if (
+    input.corrected.artifact.releaseId !== corrected.releaseId
+    || input.corrected.receipt.releaseId !== corrected.releaseId
+    || input.corrected.receipt.artifactId !== corrected.artifactId
+  ) {
+    fail("corrected release, artifact, and receipt identities do not agree", "D1A_CORRECTION_IDENTITY_MISMATCH");
+  }
+  const affectedSourceId = normalizeKey(input.affected.sourceId, "affected.sourceId");
+  const affectedEventKey = normalizeKey(input.affected.eventKey, "affected.eventKey");
+  const normalizedSources = input.sources.map(normalizeSource);
+  const source = normalizedSources.find((candidate) => candidate.sourceId === affectedSourceId);
+  if (!source) fail("correction references an unknown source", "D1A_CORRECTION_UNKNOWN_SOURCE");
+  const preservedSourceImageSha256 = normalizeSha256(
+    input.affected.preservedSourceImageSha256,
+    "preservedSourceImageSha256",
+  );
+  if (source.sourceSha256 !== preservedSourceImageSha256) {
+    fail("correction source image hash changed", "D1A_CORRECTION_SOURCE_HASH_MISMATCH");
+  }
+
+  if (input.events.length !== 46) {
+    fail("D1A second-pass audit requires exactly 46 event rows", "D1A_CORRECTION_AUDIT_ROW_COUNT");
+  }
+  const normalizedEventKeys = input.events.map((event) => normalizeKey(event.eventKey, "eventKey"));
+  if (new Set(normalizedEventKeys).size !== normalizedEventKeys.length) {
+    fail("D1A second-pass audit contains duplicate event rows", "D1A_CORRECTION_DUPLICATE_AUDIT_ROW");
+  }
+  const affectedSeed = input.events.find(
+    (event) => normalizeKey(event.eventKey, "eventKey") === affectedEventKey,
+  );
+  if (!affectedSeed || normalizeKey(affectedSeed.sourceId, "sourceId") !== affectedSourceId) {
+    fail("correction references an unknown event row", "D1A_CORRECTION_UNKNOWN_EVENT");
+  }
+
+  const oldMinorUnits = normalizeInteger(input.affected.oldMinorUnits, "affected.oldMinorUnits");
+  const newMinorUnits = normalizeInteger(input.affected.newMinorUnits, "affected.newMinorUnits");
+  const currency = normalizeCurrency(input.affected.currency);
+  if (!Number.isInteger(input.affected.scale) || input.affected.scale < 0 || input.affected.scale > 18) {
+    fail("correction money scale is invalid", "D1A_CORRECTION_INVALID_MONEY_SCALE");
+  }
+  if (oldMinorUnits === newMinorUnits) {
+    fail("correction old and new values must differ", "D1A_CORRECTION_VALUE_UNCHANGED");
+  }
+  if (affectedSeed.prizeContributionMinorUnits !== newMinorUnits) {
+    fail("corrected seed does not contain the declared new value", "D1A_CORRECTION_SEED_MISMATCH");
+  }
+  if (
+    superseded.releaseId === corrected.releaseId
+    || superseded.artifactId === corrected.artifactId
+    || superseded.artifactFileSha256 === corrected.artifactFileSha256
+    || superseded.receiptId === corrected.receiptId
+  ) {
+    fail(
+      "corrected identities must supersede distinct prior identities",
+      "D1A_CORRECTION_NOT_CONTENT_ADDRESSED",
+    );
+  }
+
+  const correctedClaim = input.corrected.artifact.claims.find(
+    (claim) => claim.eventKey === affectedEventKey && claim.field === input.affected.field,
+  );
+  if (
+    !correctedClaim
+    || correctedClaim.value.type !== "money"
+    || correctedClaim.value.minorUnits !== newMinorUnits
+    || correctedClaim.value.currency !== currency
+    || correctedClaim.value.scale !== input.affected.scale
+  ) {
+    fail("corrected artifact does not contain the declared claim", "D1A_CORRECTION_CLAIM_MISMATCH");
+  }
+  const supersededClaimId = normalizeText(
+    input.affected.supersededClaimId,
+    "affected.supersededClaimId",
+  );
+  if (supersededClaimId === correctedClaim.claimId) {
+    fail("corrected claim must have a new content identity", "D1A_CORRECTION_CLAIM_ID_UNCHANGED");
+  }
+
+  const affectedMetric = input.corrected.artifact.requiredEntriesByEvent.find(
+    (metric) => metric.competitionKey === affectedSeed.competitionKey,
+  );
+  const seriesDateMetric = input.corrected.artifact.combinedRequiredEntriesByDate.find(
+    (metric) => metric.date === affectedSeed.scheduleDate,
+  );
+  const collisionMetric = input.corrected.artifact.collisionReports.find(
+    (report) =>
+      report.window === "within_14_days"
+      && report.sourceIds.includes(affectedSourceId)
+      && report.sourceIds.includes("grand-loyal-jul-29-2026"),
+  );
+  if (!affectedMetric || !seriesDateMetric || !collisionMetric) {
+    fail("corrected downstream metrics are incomplete", "D1A_CORRECTION_METRIC_MISSING");
+  }
+
+  const metricDelta = (
+    metric: D1ACorrectionRecord["downstreamMetricDeltas"][number]["metric"],
+    previousRaw: string,
+    correctedRaw: string,
+  ): D1ACorrectionRecord["downstreamMetricDeltas"][number] => {
+    const previousValue = normalizeInteger(previousRaw, `${metric}.previousValue`);
+    const correctedValue = normalizeInteger(correctedRaw, `${metric}.correctedValue`);
+    return {
+      metric,
+      previousValue,
+      correctedValue,
+      delta: (BigInt(correctedValue) - BigInt(previousValue)).toString(),
+    };
+  };
+
+  const sourceById = new Map(normalizedSources.map((candidate) => [candidate.sourceId, candidate] as const));
+  const rowAudits = input.events.map((event): D1ASecondPassRowAudit => {
+    const eventKey = normalizeKey(event.eventKey, "audit.eventKey");
+    const sourceId = normalizeKey(event.sourceId, "audit.sourceId");
+    const auditSource = sourceById.get(sourceId);
+    if (!auditSource) fail("audit row references an unknown source", "D1A_CORRECTION_AUDIT_UNKNOWN_SOURCE");
+    const unresolvedFields = [
+      ...(event.uncertainFields ?? []),
+      ...(event.conflictingFields ?? []),
+    ].filter((field, index, fields) => fields.indexOf(field) === index)
+      .sort(compareCanonicalStrings);
+    if (unresolvedFields.length > 0) {
+      fail("second-pass audit contains unresolved fields", "D1A_CORRECTION_AUDIT_UNRESOLVED");
+    }
+    return {
+      eventKey,
+      sourceId,
+      sourceSha256: auditSource.sourceSha256,
+      visualRegion: normalizeText(event.visualRegion, "audit.visualRegion", 512),
+      auditedFields: [...SCHEDULE_FIELD_ORDER],
+      unresolvedFields,
+      status: "manual_verified_against_preserved_poster",
+    };
+  }).sort((left, right) => compareCanonicalStrings(left.eventKey, right.eventKey));
+
+  const content = {
+    contractVersion: VIETNAM_SCHEDULE_SUPPLY_CONTRACT_VERSION,
+    correctionKey: "d1a-correction-001-center-p-after-dark" as const,
+    correctedAt,
+    originalMergeCommit,
+    superseded,
+    corrected,
+    affectedSourceId,
+    affectedEventKey,
+    affectedClaims: [{
+      field: input.affected.field,
+      supersededClaimId,
+      correctedClaimId: correctedClaim.claimId,
+    }] as const,
+    oldValue: {
+      minorUnits: oldMinorUnits,
+      currency,
+      scale: input.affected.scale,
+    },
+    newValue: {
+      minorUnits: newMinorUnits,
+      currency,
+      scale: input.affected.scale,
+    },
+    reason: input.affected.reason,
+    preservedSourceImageSha256,
+    downstreamMetricDeltas: [
+      metricDelta(
+        "event_required_entries",
+        input.previousMetrics.eventRequiredEntries,
+        affectedMetric.requiredEntries,
+      ),
+      metricDelta(
+        "series_date_required_entries",
+        input.previousMetrics.seriesDateRequiredEntries,
+        seriesDateMetric.totalRequiredEntries,
+      ),
+      metricDelta(
+        "within_14_day_collision_required_entries",
+        input.previousMetrics.within14DayCollisionRequiredEntries,
+        collisionMetric.combinedRequiredEntries,
+      ),
+    ],
+    rowAudits,
+    status: "superseded_by_corrected_release" as const,
+  };
+  const correctionHash = await canonicalHash(content);
+  return deepFreeze({
+    correctionId: `${VIETNAM_SCHEDULE_SUPPLY_NAMESPACE}:correction:${correctionHash}`,
     ...content,
   });
 }
