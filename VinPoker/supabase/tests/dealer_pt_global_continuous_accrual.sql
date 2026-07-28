@@ -174,7 +174,7 @@ declare
   v_ft_transition jsonb;
 begin
   v_continuous := public._pt_wage_balance('fc000000-0000-4000-8000-000000000002');
-  v_capped := public._pt_wage_balance('fc000000-0000-4000-000000000003');
+  v_capped := public._pt_wage_balance('fc000000-0000-4000-8000-000000000003');
   v_ft_transition := public._pt_wage_balance('fc000000-0000-4000-8000-000000000005');
 
   perform pg_temp.assert_eq(v_continuous->>'balance_vnd', '60000', 'continuous 30m at 50K plus 30m at 70K is 60K');
