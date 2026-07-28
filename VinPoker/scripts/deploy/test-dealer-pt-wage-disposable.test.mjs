@@ -39,3 +39,17 @@ test("PT wage disposable SQL fixtures use canonical UUID literals", () => {
     }
   }
 });
+
+test("PT wage concurrency fixture consumes typed dblink results", () => {
+  const fixture = readFileSync(
+    resolve(root, "supabase/tests/dealer_pt_global_continuous_accrual_concurrency.sql"),
+    "utf8",
+  );
+
+  assert.doesNotMatch(fixture, /select\s+dblink_get_result\s*\(/i);
+  assert.equal(
+    [...fixture.matchAll(/dblink_get_result\('[^']+'\)\s+as\s+t\(response text\)/g)].length,
+    4,
+    "every dblink result is consumed with an explicit record shape",
+  );
+});

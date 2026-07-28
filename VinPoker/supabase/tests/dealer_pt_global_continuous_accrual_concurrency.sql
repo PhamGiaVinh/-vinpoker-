@@ -86,8 +86,10 @@ select dblink_send_query('pt_club_approval', $query$
   returning id::text
 $query$);
 
-select dblink_get_result('pt_global_disable');
-select dblink_get_result('pt_club_approval');
+select response
+from dblink_get_result('pt_global_disable') as t(response text);
+select response
+from dblink_get_result('pt_club_approval') as t(response text);
 
 select pg_temp.assert_true(
   not (select future_club_enabled from public.dealer_pt_wage_accrual_global_policy where singleton)
