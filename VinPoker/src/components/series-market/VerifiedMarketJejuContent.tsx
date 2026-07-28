@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { AlertTriangle, Database, Loader2, MapPinned } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import canonicalImport from "@/lib/series-market/datasets/jeju/v1/canonical/jeju_import_v1.json";
 import dataQuality from "@/lib/series-market/datasets/jeju/v1/data-quality.json";
 import release from "@/lib/series-market/datasets/jeju/v1/release.json";
@@ -17,6 +18,8 @@ import {
   type VerifiedMarketReadModel,
 } from "@/lib/series-market/verifiedMarketReadModel";
 import { VerifiedMarketDashboard } from "./VerifiedMarketDashboard";
+
+const VietnamSupplyContent = lazy(() => import("./VietnamSupplyContent"));
 
 let cachedModel: Promise<VerifiedMarketReadModel> | null = null;
 let cachedGtdStressContext: Promise<JejuGtdStressResearchContext> | null = null;
@@ -43,9 +46,11 @@ function loadGtdStressContext(model: VerifiedMarketReadModel): Promise<JejuGtdSt
 export function VerifiedMarketJejuContent({
   forceIntegrityError = false,
   forceGtdStress = false,
+  forceVietnamSupply = false,
 }: {
   forceIntegrityError?: boolean;
   forceGtdStress?: boolean;
+  forceVietnamSupply?: boolean;
 }) {
   const [model, setModel] = useState<VerifiedMarketReadModel | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -85,8 +90,10 @@ export function VerifiedMarketJejuContent({
 
   const gtdStressEnabled =
     FEATURES.seriesMarketGtdStress || (import.meta.env.DEV && forceGtdStress);
+  const vietnamSupplyEnabled =
+    FEATURES.seriesMarketVietnamSupply || (import.meta.env.DEV && forceVietnamSupply);
 
-  return (
+  const jejuDashboard = (
     <VerifiedMarketDashboard
       model={model}
       gtdStress={gtdStressEnabled
@@ -97,5 +104,35 @@ export function VerifiedMarketJejuContent({
         }
         : undefined}
     />
+  );
+
+  if (!vietnamSupplyEnabled) return jejuDashboard;
+
+  return (
+    <Tabs defaultValue="jeju" className="min-w-0" data-testid="market-intelligence-surfaces">
+      <div className="mb-5 overflow-x-auto border-b border-border/70 pb-3">
+        <TabsList className="h-auto min-w-max bg-muted/25 p-1">
+          <TabsTrigger value="jeju" className="min-h-10 gap-2 px-4">
+            <Database className="h-4 w-4" aria-hidden="true" />
+            Jeju Explorer
+          </TabsTrigger>
+          <TabsTrigger value="vietnam" className="min-h-10 gap-2 px-4">
+            <MapPinned className="h-4 w-4" aria-hidden="true" />
+            Vietnam Supply
+          </TabsTrigger>
+        </TabsList>
+      </div>
+      <TabsContent value="jeju" className="mt-0">{jejuDashboard}</TabsContent>
+      <TabsContent value="vietnam" className="mt-0">
+        <Suspense fallback={(
+          <div className="flex min-h-[320px] items-center justify-center gap-3 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />
+            Loading Vietnam supply evidence...
+          </div>
+        )}>
+          <VietnamSupplyContent />
+        </Suspense>
+      </TabsContent>
+    </Tabs>
   );
 }

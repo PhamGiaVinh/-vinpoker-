@@ -879,6 +879,14 @@ export const FEATURES = {
    */
   seriesMarketGtdStress: true,
   /**
+   * Read-only Vietnam Schedule Supply intelligence inside the existing
+   * /club/admin/market-intelligence route. Consumes only the corrected D1A
+   * release/artifact/receipt/correction graph through a fail-closed adapter.
+   * No Supabase, private club data, turnout, recommendation, money action, or
+   * poster rendering. Default OFF until authenticated owner Preview UAT.
+   */
+  seriesMarketVietnamSupply: false,
+  /**
    * Club Admin → Series Intelligence demo entry at /club/admin/series-intelligence.
    * Frontend-only owner-facing SHELL that explains the Club Intelligence flow
    * (CSV → Data Readiness → Tournament Economics Mini Audit → Series Workflow),

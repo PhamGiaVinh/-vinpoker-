@@ -9,6 +9,7 @@ export default function VerifiedMarketDevPreview() {
         <VerifiedMarketJejuContent
           forceIntegrityError={params.get("integrity") === "invalid"}
           forceGtdStress={params.get("gtdStress") === "on"}
+          forceVietnamSupply={params.get("vietnamSupply") === "on"}
         />
       </div>
     </div>

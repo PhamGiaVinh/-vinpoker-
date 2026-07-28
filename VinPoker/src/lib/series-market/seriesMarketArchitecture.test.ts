@@ -112,6 +112,7 @@ describe("series-market public/private architecture boundary", () => {
       ...contractPropertyNames(`${MARKET}/gtdStressUiReadModel.ts`),
       ...contractPropertyNames(`${MARKET}/publicSourceCoverage.ts`),
       ...contractPropertyNames(`${MARKET}/vietnamScheduleSupply.ts`),
+      ...contractPropertyNames(`${MARKET}/vietnamSupplyReadModel.ts`),
     ].map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, ""));
     for (const key of keys) {
       for (const blocked of forbidden) expect(key).not.toContain(blocked);
@@ -134,6 +135,10 @@ describe("series-market public/private architecture boundary", () => {
       "src/components/series-market/VerifiedMarketDevPreview.tsx",
       "src/components/series-market/VerifiedMarketEvidenceSheet.tsx",
       "src/components/series-market/VerifiedMarketJejuContent.tsx",
+      "src/components/series-market/VietnamMarketPulse.tsx",
+      "src/components/series-market/VietnamSupplyContent.tsx",
+      "src/components/series-market/VietnamSupplyDashboard.tsx",
+      "src/components/series-market/VietnamSupplyEventExplorer.tsx",
     ]);
     const candidates = sourceFiles("src").filter(
       (file) => !file.includes(".test.") && !file.startsWith(`${MARKET}/`),
@@ -330,4 +335,46 @@ describe("series-market public/private architecture boundary", () => {
     expect(emitter).toContain("createVietnamScheduleSupplyBundle");
     expect(emitter).toContain("createScheduleSupplyReceipt");
   });
+
+  it("keeps the Vietnam supply UI flag-off, read-only, corrected-release-only, and lazy", () => {
+    const flags = readFileSync(join(ROOT, "src/lib/featureFlags.ts"), "utf8");
+    const content = readFileSync(
+      join(ROOT, "src/components/series-market/VietnamSupplyContent.tsx"),
+      "utf8",
+    );
+    const shell = readFileSync(
+      join(ROOT, "src/components/series-market/VerifiedMarketJejuContent.tsx"),
+      "utf8",
+    );
+    const dashboard = readFileSync(
+      join(ROOT, "src/components/series-market/VietnamSupplyDashboard.tsx"),
+      "utf8",
+    );
+    const readModel = readFileSync(join(ROOT, `${MARKET}/vietnamSupplyReadModel.ts`), "utf8");
+
+    expect(flags).toContain("seriesMarketVietnamSupply: false");
+    expect(shell).toContain('lazy(() => import("./VietnamSupplyContent"))');
+    expect(shell).toContain("FEATURES.seriesMarketVietnamSupply");
+    expect(content).toContain("schedule-supply-v1.json?raw");
+    expect(content).toContain("d1a-correction-001-center-p-after-dark.json");
+    expect(content).not.toContain("vietnamScheduleSupplySeed");
+    expect(readModel).toContain("VIETNAM_SUPPLY_CURRENT_RELEASE_ID");
+    expect(readModel).toContain("VIETNAM_SUPPLY_SUPERSEDED_RELEASE_ID");
+    expect(readModel).toContain("VIETNAM_SUPPLY_ARTIFACT_FILE_SHA256");
+    expect(readModel).not.toMatch(/(?:fetch\s*\(|supabase|@\/hooks|@\/pages|@\/components)/i);
+    expect(readModel).not.toMatch(/(?:actualEntries|observedTurnout|playerDemand)\s*:/i);
+    expect(dashboard).not.toMatch(
+      /(?:overlay probability|chance of overlay|optimal GTD|recommended GTD|expected entries|forecast interval)/i,
+    );
+
+    const candidates = sourceFiles("src").filter((file) => !file.includes(".test."));
+    const vietnamArtifactImporters = candidates.filter((file) =>
+      importSpecifiers(file).some((specifier) =>
+        specifier.includes("series-market/datasets/vietnam/schedule-supply/v1")
+      ),
+    );
+    expect(vietnamArtifactImporters).toEqual([
+      "src/components/series-market/VietnamSupplyContent.tsx",
+    ]);
+  }, 20_000);
 });
