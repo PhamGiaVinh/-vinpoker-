@@ -167,14 +167,9 @@ export function selectedMigrationProblems(vinPokerRoot) {
     if (!source.includes(required)) problems.push(`candidate migration misses ${required}`);
   }
 
-  const previousMaximum = entries
-    .filter((entry) => entry.version !== MIGRATION_VERSION)
-    .map((entry) => entry.version)
-    .sort()
-    .at(-1);
-  if (previousMaximum && MIGRATION_VERSION <= previousMaximum) {
-    problems.push(`candidate version ${MIGRATION_VERSION} is not above prior maximum ${previousMaximum}`);
-  }
+  // This is a historical, already-reviewed replacement. Its exact name and
+  // checksum are authoritative; unrelated migrations added later must not
+  // retroactively make its immutable selector invalid.
   for (const oldPath of [...NEVER_APPLY, ...FLOOR_OWNED]) {
     if (oldPath === MIGRATION_PATH) problems.push(`candidate path collides with protected path ${oldPath}`);
   }

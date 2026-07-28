@@ -10,6 +10,8 @@ on:
       - ".github/workflows/dealer-swing-phone-completion-apply.yml"
       - ".github/workflows/dealer-swing-phone-hsop-uat.yml"
       - ".github/workflows/dealer-swing-dark-monitor.yml"
+      - ".github/workflows/capture-live-public-schema.yml"
+      - ".github/workflows/dealer-pt-wage-disposable-validation.yml"
       - ".github/workflows/deployment-control-plane-validation.yml"
       - "VinPoker/scripts/floor/apply-floor-clock-control.mjs"
       - "VinPoker/scripts/floor/apply-floor-clock-control.test.mjs"
@@ -70,6 +72,8 @@ jobs:
             .github/workflows/dealer-swing-phone-completion-apply.yml \
             .github/workflows/dealer-swing-phone-hsop-uat.yml \
             .github/workflows/dealer-swing-dark-monitor.yml \
+            .github/workflows/capture-live-public-schema.yml \
+            .github/workflows/dealer-pt-wage-disposable-validation.yml \
             .github/workflows/deployment-control-plane-validation.yml
 
       - name: Setup Node.js 20 for Floor runner tests
@@ -78,4 +82,4 @@ jobs:
           node-version: "20"
 
       - name: Test exact production apply runners
-        run: node --test VinPoker/scripts/floor/apply-floor-clock-control.test.mjs VinPoker/scripts/floor/apply-floor-operator-scope-acl.test.mjs VinPoker/scripts/dealer-swing/apply-shortage-alert-lifecycle.test.mjs VinPoker/scripts/dealer-swing/apply-phone-completion-migrations.test.mjs VinPoker/scripts/dealer-swing/set-phone-completion-hsop-uat.test.mjs
+        run: node --test VinPoker/scripts/floor/apply-floor-clock-control.test.mjs VinPoker/scripts/floor/apply-floor-operator-scope-acl.test.mjs VinPoker/scripts/dealer-swing/apply-shortage-alert-lifecycle.test.mjs VinPoker/scripts/dealer-swing/apply-phone-completion-migrations.test.mjs VinPoker/scripts/dealer-swing/set-phone-completion-hsop-uat.test.mjs VinPoker/scripts/deploy/validate-live-public-schema-artifact.test.mjs VinPoker/scripts/deploy/workflow-policy.test.mjs
