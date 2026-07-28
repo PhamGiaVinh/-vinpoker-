@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { RefreshCw, Search, LayoutGrid, LayoutList, Shuffle, Plus } from "lucide-react";
+import { RefreshCw, Search, LayoutGrid, Shuffle, Plus } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import type { Tournament } from "@/types/tournament";
 import { FloorTableDetailSheet, type MapSeat, type MapTable } from "./FloorTableDetailSheet";
@@ -20,6 +20,7 @@ import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 import { findFloorTableControlRow, parseFloorTableControlMode, parseFloorTableControlRevision } from "@/lib/floorTableControlMode";
 import { floorOpsErrorMessage } from "@/lib/floorOpsErrors";
 import { ManualFloorBustConfirmDialog } from "./ManualFloorBustConfirmDialog";
+import { FloorTableRosterIndex } from "@/components/ops/shared/FloorTableRosterIndex";
 
 type StatusKey = "open" | "running" | "paused" | "closed";
 
@@ -93,7 +94,6 @@ export function FloorTableMapPanel({
 
   const [filter, setFilter] = useState<StatusKey | "all">("all");
   const [query, setQuery] = useState("");
-  const [compact, setCompact] = useState(false);
 
   // Store the canonical id, not a rendered snapshot. A mode save reloads
   // `tables`; deriving from the current array prevents the next save from
@@ -370,16 +370,12 @@ export function FloorTableMapPanel({
     });
   };
 
-  const cellCols = compact
-    ? "grid-cols-5 sm:grid-cols-8 lg:grid-cols-12"
-    : "grid-cols-3 sm:grid-cols-6 lg:grid-cols-10";
-
   return (
     <Card className="p-3 sm:p-4 space-y-3">
       {/* Sticky summary */}
       <div className="sticky top-0 z-10 -mx-3 sm:-mx-4 px-3 sm:px-4 pb-2 bg-card/95 backdrop-blur space-y-2">
         <div className="flex items-center justify-between">
-          <div className="font-semibold flex items-center gap-2"><LayoutGrid className="h-4 w-4" /> Sơ đồ bàn</div>
+          <div className="font-semibold flex items-center gap-2"><LayoutGrid className="h-4 w-4" /> Danh sách bàn</div>
           <div className="flex items-center gap-1.5">
             {FEATURES.floorTableOps && canMove && (
               <Button data-testid="floor-open-table-dialog" size="sm" className="h-9" onClick={() => setOpenTableOpen(true)} title="Tạo thêm bàn mới">
@@ -391,9 +387,6 @@ export function FloorTableMapPanel({
                 <Shuffle className="h-4 w-4 mr-1" /> Bốc lại
               </Button>
             )}
-            <Button size="sm" variant="outline" className="h-9 px-2" onClick={() => setCompact((v) => !v)} title="Mật độ hiển thị">
-              {compact ? <LayoutList className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
-            </Button>
             <Button size="sm" variant="outline" className="h-9" onClick={load} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Làm mới
             </Button>
@@ -446,24 +439,18 @@ export function FloorTableMapPanel({
                 <span className="text-sm font-medium">Zone {zoneName}</span>
                 <span className="text-[11px] text-muted-foreground">{items.length} bàn</span>
               </div>
-              <div className={`grid ${cellCols} gap-2`}>
-                {items.map((e) => {
-                  const meta = STATUS_META[e.status];
-                  return (
-                    <button
-                      key={e.table.tt_id}
-                      onClick={() => setDetailTableId(e.table.tt_id)}
-                      data-testid="floor-table-open"
-                      data-floor-table-number={e.table.table_number ?? undefined}
-                      className="rounded-lg border border-border bg-card p-1.5 transition-colors hover:border-primary/50"
-                      title={`${e.table.table_name} · ${meta.label} · ${e.occ}/${e.table.max_seats}`}
-                    >
-                      <TableIcon number={e.table.table_number} colorClass={meta.text} />
-                      <div className="mt-0.5 text-center font-mono text-[9px] text-muted-foreground">{e.occ}/{e.table.max_seats}</div>
-                    </button>
-                  );
-                })}
-              </div>
+              <FloorTableRosterIndex
+                tables={items.map((entry) => ({
+                  id: entry.table.tt_id,
+                  tableNumber: entry.table.table_number,
+                  tableName: entry.table.table_name,
+                  occupiedSeatNumbers: entry.seats.map((seat) => seat.seat_number),
+                  maxSeats: entry.table.max_seats,
+                  status: entry.status,
+                  controlMode: entry.table.floor_control_mode,
+                }))}
+                onOpen={setDetailTableId}
+              />
             </div>
           ))}
         </div>
@@ -590,30 +577,5 @@ export function FloorTableMapPanel({
 
       <SeatReceiptDialog open={receipt !== null} onOpenChange={(v) => { if (!v) setReceipt(null); }} receipt={receipt} />
     </Card>
-  );
-}
-
-/**
- * Poker-table top-view icon (felt + seat marks + center number). Felt + seats use
- * currentColor from `colorClass` (status tone, theme-token based); the number sits
- * on top in the normal foreground color so it stays readable in any status/theme.
- * Scales to the grid cell (w-full) so the density toggle resizes it for free.
- */
-function TableIcon({ number, colorClass }: { number: number | null; colorClass: string }) {
-  return (
-    <div className="relative">
-      <span className={colorClass}>
-        <svg viewBox="0 0 46 30" className="block w-full" aria-hidden="true">
-          <rect x="3" y="7" width="40" height="16" rx="8" fill="currentColor" fillOpacity={0.16} stroke="currentColor" strokeWidth={1.4} />
-          <g fill="currentColor">
-            <circle cx="13" cy="5.5" r="1.4" /><circle cx="23" cy="5.5" r="1.4" /><circle cx="33" cy="5.5" r="1.4" />
-            <circle cx="13" cy="24.5" r="1.4" /><circle cx="23" cy="24.5" r="1.4" /><circle cx="33" cy="24.5" r="1.4" />
-          </g>
-        </svg>
-      </span>
-      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold leading-none">
-        {number ?? "?"}
-      </span>
-    </div>
   );
 }
