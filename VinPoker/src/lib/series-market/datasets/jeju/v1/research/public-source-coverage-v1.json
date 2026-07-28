@@ -1,0 +1,432 @@
+{
+  "artifactId": "series-market:v1:public-source-coverage:v1:artifact:cfca7622b756391d526fee5941b7b38faac6e9bc938ed99bfc0e388e5db24d4c",
+  "artifactSchemaVersion": "v1",
+  "artifactType": "public-source-coverage",
+  "capabilityReadiness": [
+    {
+      "capabilityKey": "verified_market_explorer",
+      "reasonCodes": [
+        "all_public_evidence_unverified",
+        "field_and_evidence_coverage_derived",
+        "immutable_release_present"
+      ],
+      "state": "supported_for_current_exploratory_use"
+    },
+    {
+      "capabilityKey": "comparable_event_engine_v0",
+      "reasonCodes": [
+        "all_public_evidence_unverified",
+        "exploratory_only",
+        "required_comparable_fields_available"
+      ],
+      "state": "supported_for_current_exploratory_use"
+    },
+    {
+      "capabilityKey": "historical_gtd_stress",
+      "reasonCodes": [
+        "all_public_evidence_unverified",
+        "constant_contribution_inputs_available_for_some_events",
+        "historical_scenario_only",
+        "missing_gtd_coverage",
+        "missing_prize_contribution_coverage"
+      ],
+      "state": "partially_supported"
+    },
+    {
+      "capabilityKey": "ridge_challenger",
+      "reasonCodes": [
+        "all_public_evidence_unverified",
+        "event_entries_outcomes_available",
+        "missing_gtd_coverage",
+        "missing_organizer_fee_coverage",
+        "missing_prize_contribution_coverage",
+        "not_production_eligible",
+        "single_market_scope_only"
+      ],
+      "state": "partially_supported"
+    },
+    {
+      "capabilityKey": "negative_binomial_challenger",
+      "reasonCodes": [
+        "all_public_evidence_unverified",
+        "event_entries_outcomes_available",
+        "missing_gtd_coverage",
+        "missing_organizer_fee_coverage",
+        "missing_prize_contribution_coverage",
+        "not_production_eligible",
+        "single_market_scope_only"
+      ],
+      "state": "partially_supported"
+    },
+    {
+      "capabilityKey": "tabpfn_challenger",
+      "reasonCodes": [
+        "all_public_evidence_unverified",
+        "checkpoint_and_license_gate_required",
+        "event_entries_outcomes_available",
+        "missing_gtd_coverage",
+        "missing_organizer_fee_coverage",
+        "missing_prize_contribution_coverage",
+        "not_production_eligible",
+        "single_market_scope_only"
+      ],
+      "state": "partially_supported"
+    },
+    {
+      "capabilityKey": "registration_curve_nowcasting",
+      "reasonCodes": [
+        "no_completed_registration_curves",
+        "registration_timestamp_curves_are_private_and_absent"
+      ],
+      "state": "blocked_missing_time_series"
+    },
+    {
+      "capabilityKey": "causal_intervention_analysis",
+      "reasonCodes": [
+        "no_intervention_design",
+        "no_private_decision_or_action_log",
+        "no_treatment_timing"
+      ],
+      "state": "blocked_missing_required_fields"
+    },
+    {
+      "capabilityKey": "cross_market_evaluation",
+      "reasonCodes": [
+        "fx_conversion_forbidden",
+        "no_compatible_cross_market_corpus",
+        "single_market_release_only"
+      ],
+      "state": "blocked_insufficient_market_diversity"
+    },
+    {
+      "capabilityKey": "production_forecast_eligibility",
+      "reasonCodes": [
+        "all_public_evidence_unverified",
+        "no_calibration_evidence",
+        "no_cross_market_validation",
+        "no_private_prospective_shadow"
+      ],
+      "state": "not_production_eligible"
+    }
+  ],
+  "contentHash": "cfca7622b756391d526fee5941b7b38faac6e9bc938ed99bfc0e388e5db24d4c",
+  "contractVersion": "v1",
+  "counts": {
+    "conflictGroups": 0,
+    "conflictingClaims": 0,
+    "entities": 92,
+    "entriesOutcomeAvailableEvents": 87,
+    "events": 87,
+    "festivals": 5,
+    "gtdStressEligibleEvents": 7,
+    "missingClaims": 178,
+    "presentClaims": 794,
+    "totalClaims": 972
+  },
+  "evidenceStateCoverage": [
+    {
+      "claimCount": 972,
+      "status": "unverified"
+    }
+  ],
+  "fieldCoverage": [
+    {
+      "conflictGroups": 0,
+      "entityType": "event",
+      "evidenceStatusCounts": {
+        "unverified": 87
+      },
+      "field": "buy_in",
+      "missingClaims": 0,
+      "presentClaims": 87,
+      "totalClaims": 87
+    },
+    {
+      "conflictGroups": 0,
+      "entityType": "event",
+      "evidenceStatusCounts": {
+        "unverified": 87
+      },
+      "field": "buy_in_prize",
+      "missingClaims": 49,
+      "presentClaims": 38,
+      "totalClaims": 87
+    },
+    {
+      "conflictGroups": 0,
+      "entityType": "event",
+      "evidenceStatusCounts": {
+        "unverified": 87
+      },
+      "field": "entries",
+      "missingClaims": 0,
+      "presentClaims": 87,
+      "totalClaims": 87
+    },
+    {
+      "conflictGroups": 0,
+      "entityType": "event",
+      "evidenceStatusCounts": {
+        "unverified": 87
+      },
+      "field": "event_date",
+      "missingClaims": 0,
+      "presentClaims": 87,
+      "totalClaims": 87
+    },
+    {
+      "conflictGroups": 0,
+      "entityType": "event",
+      "evidenceStatusCounts": {
+        "unverified": 87
+      },
+      "field": "event_name",
+      "missingClaims": 0,
+      "presentClaims": 87,
+      "totalClaims": 87
+    },
+    {
+      "conflictGroups": 0,
+      "entityType": "event",
+      "evidenceStatusCounts": {
+        "unverified": 87
+      },
+      "field": "event_no",
+      "missingClaims": 0,
+      "presentClaims": 87,
+      "totalClaims": 87
+    },
+    {
+      "conflictGroups": 0,
+      "entityType": "event",
+      "evidenceStatusCounts": {
+        "unverified": 87
+      },
+      "field": "event_type",
+      "missingClaims": 0,
+      "presentClaims": 87,
+      "totalClaims": 87
+    },
+    {
+      "conflictGroups": 0,
+      "entityType": "event",
+      "evidenceStatusCounts": {
+        "unverified": 87
+      },
+      "field": "game",
+      "missingClaims": 0,
+      "presentClaims": 87,
+      "totalClaims": 87
+    },
+    {
+      "conflictGroups": 0,
+      "entityType": "event",
+      "evidenceStatusCounts": {
+        "unverified": 87
+      },
+      "field": "gtd",
+      "missingClaims": 80,
+      "presentClaims": 7,
+      "totalClaims": 87
+    },
+    {
+      "conflictGroups": 0,
+      "entityType": "event",
+      "evidenceStatusCounts": {
+        "unverified": 87
+      },
+      "field": "is_flagship",
+      "missingClaims": 0,
+      "presentClaims": 87,
+      "totalClaims": 87
+    },
+    {
+      "conflictGroups": 0,
+      "entityType": "event",
+      "evidenceStatusCounts": {
+        "unverified": 87
+      },
+      "field": "organizer_fee",
+      "missingClaims": 49,
+      "presentClaims": 38,
+      "totalClaims": 87
+    },
+    {
+      "conflictGroups": 0,
+      "entityType": "festival",
+      "evidenceStatusCounts": {
+        "unverified": 5
+      },
+      "field": "festival_name",
+      "missingClaims": 0,
+      "presentClaims": 5,
+      "totalClaims": 5
+    },
+    {
+      "conflictGroups": 0,
+      "entityType": "festival",
+      "evidenceStatusCounts": {
+        "unverified": 5
+      },
+      "field": "tour",
+      "missingClaims": 0,
+      "presentClaims": 5,
+      "totalClaims": 5
+    },
+    {
+      "conflictGroups": 0,
+      "entityType": "festival",
+      "evidenceStatusCounts": {
+        "unverified": 5
+      },
+      "field": "venue",
+      "missingClaims": 0,
+      "presentClaims": 5,
+      "totalClaims": 5
+    }
+  ],
+  "limitations": [
+    "Public evidence remains descriptive and unverified unless a later release carries stronger evidence status.",
+    "This audit does not ingest data, generate a forecast, estimate a probability, optimize a decision, or recommend an action.",
+    "Explicit zero remains present evidence and is never treated as missing evidence.",
+    "Cross-market analysis remains unavailable until separately scoped immutable releases and compatibility rules exist."
+  ],
+  "marketKey": "jeju",
+  "marketReleasePlan": {
+    "crossMarketCorpus": {
+      "compatibilityRules": [
+        "reference_immutable_market_release_ids_only",
+        "preserve_market_identity_and_scope_kind",
+        "no_fx_conversion",
+        "cross_market_evaluation_requires_leave_one_market_out"
+      ],
+      "immutableConstituentReleaseIds": [
+        "series-market:v1:release:jeju:20ba969d8df146c54a47354700a36d94f81ddb51f0eca4824dafda07c907e203"
+      ],
+      "reasonCodes": [
+        "vietnam_v1_not_created",
+        "sea_v1_not_created",
+        "cross_market_compatibility_not_yet_established"
+      ],
+      "releaseKey": "cross-market-corpus-v1",
+      "releasePlanId": "series-market:v1:public-source-coverage:v1:cross-market-corpus-plan:94bc76288222abf613624411808d4672c9f8dbd820448695c175e2633c8eecb6",
+      "requiredConstituentReleaseKeys": [
+        "jeju-v2",
+        "vietnam-v1",
+        "sea-v1"
+      ],
+      "state": "not_created"
+    },
+    "plannedReleases": [
+      {
+        "allowedMarketKeys": [
+          "jeju"
+        ],
+        "compatibilityRules": [
+          "each_market_dataset_release_contains_one_market_scope",
+          "preserve_explicit_currency_values",
+          "no_fx_conversion",
+          "append_only_corrections_use_superseding_claims_or_a_new_release"
+        ],
+        "marketKey": "jeju",
+        "releaseKey": "jeju-v2",
+        "releasePlanId": "series-market:v1:public-source-coverage:v1:market-release-plan:7524d9794f7ed75bd8952476ee269720652cab10f24afca08cfc09c2943ebe6d",
+        "scopeDefinition": "Jeju-only public live-poker event corpus.",
+        "scopeKind": "defined_market"
+      },
+      {
+        "allowedMarketKeys": [
+          "sea"
+        ],
+        "compatibilityRules": [
+          "each_market_dataset_release_contains_one_market_scope",
+          "preserve_explicit_currency_values",
+          "no_fx_conversion",
+          "append_only_corrections_use_superseding_claims_or_a_new_release"
+        ],
+        "marketKey": "sea",
+        "releaseKey": "sea-v1",
+        "releasePlanId": "series-market:v1:public-source-coverage:v1:market-release-plan:225f8819a2cb7e23f4df07c0579eed59e4f81226470105d13a5a6525cf9a0c24",
+        "scopeDefinition": "Defined Southeast Asia public market corpus; no implied country relabeling.",
+        "scopeKind": "defined_market"
+      },
+      {
+        "allowedMarketKeys": [
+          "vietnam"
+        ],
+        "compatibilityRules": [
+          "each_market_dataset_release_contains_one_market_scope",
+          "preserve_explicit_currency_values",
+          "no_fx_conversion",
+          "append_only_corrections_use_superseding_claims_or_a_new_release"
+        ],
+        "marketKey": "vietnam",
+        "releaseKey": "vietnam-v1",
+        "releasePlanId": "series-market:v1:public-source-coverage:v1:market-release-plan:e0f8919e39ce3599ab5eb133822ce604814373ec7b8db389445bd49230090cf9",
+        "scopeDefinition": "Vietnam public live-poker event corpus.",
+        "scopeKind": "country"
+      }
+    ]
+  },
+  "priorityGaps": [
+    {
+      "categoryKey": "evidence_verification",
+      "fieldKeys": [
+        "all_current_public_claims"
+      ],
+      "priority": "P0",
+      "reasonCodes": [
+        "all_public_evidence_unverified"
+      ]
+    },
+    {
+      "categoryKey": "historical_gtd_stress_inputs",
+      "fieldKeys": [
+        "buy_in_prize",
+        "gtd"
+      ],
+      "priority": "P0",
+      "reasonCodes": [
+        "missing_gtd_coverage",
+        "missing_prize_contribution_coverage"
+      ]
+    },
+    {
+      "categoryKey": "event_economics_coverage",
+      "fieldKeys": [
+        "organizer_fee"
+      ],
+      "priority": "P1",
+      "reasonCodes": [
+        "missing_organizer_fee_coverage"
+      ]
+    },
+    {
+      "categoryKey": "market_diversity",
+      "fieldKeys": [],
+      "priority": "P2",
+      "reasonCodes": [
+        "separate_market_releases_required_before_cross_market_evaluation"
+      ]
+    }
+  ],
+  "privateFieldsExcluded": [
+    "registration_timestamps",
+    "hashed_player_or_cohort_identities",
+    "re_entry_and_bullet_linkage",
+    "private_satellite_linkage",
+    "capacity",
+    "cashier_queue",
+    "staffing",
+    "marketing_spend",
+    "decision_log",
+    "operating_economics"
+  ],
+  "releaseId": "series-market:v1:release:jeju:20ba969d8df146c54a47354700a36d94f81ddb51f0eca4824dafda07c907e203",
+  "scope": {
+    "marketKey": "jeju",
+    "scopeDefinition": "Jeju-only public live-poker event corpus.",
+    "scopeKind": "defined_market"
+  },
+  "sourceCutoff": "2026-07-14T19:36:11.341Z"
+}

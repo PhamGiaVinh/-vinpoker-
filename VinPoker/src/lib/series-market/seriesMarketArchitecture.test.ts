@@ -110,6 +110,7 @@ describe("series-market public/private architecture boundary", () => {
       ...contractPropertyNames(`${MARKET}/gtdStress.ts`),
       ...contractPropertyNames(`${MARKET}/gtdStressComparableAdapter.ts`),
       ...contractPropertyNames(`${MARKET}/gtdStressUiReadModel.ts`),
+      ...contractPropertyNames(`${MARKET}/publicSourceCoverage.ts`),
     ].map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, ""));
     for (const key of keys) {
       for (const blocked of forbidden) expect(key).not.toContain(blocked);
@@ -283,5 +284,18 @@ describe("series-market public/private architecture boundary", () => {
     expect(sheet).not.toMatch(
       /(?:overlay probability|probability of overlay|chance of overlay|probability of reaching GTD|optimal GTD|recommended GTD|safe GTD|expected entries|forecast interval)/i,
     );
+  });
+
+  it("keeps D0 public source coverage pure, public-only, and release-scoped", () => {
+    const source = readFileSync(join(ROOT, `${MARKET}/publicSourceCoverage.ts`), "utf8");
+    const emitter = readFileSync(join(ROOT, "scripts/series-market/emitPublicSourceCoverageAudit.ts"), "utf8");
+    expect(source).not.toMatch(/(?:Date\.now|Math\.random|randomUUID|fetch\s*\(|supabase|react|@\/components|@\/pages)/i);
+    expect(source).not.toMatch(/(?:fx_conversion\s*\(|convertCurrency|exchangeRate|production_action)/i);
+    expect(source).toContain("PUBLIC_SOURCE_COVERAGE_PRIVATE_FIELD_KEYS");
+    expect(source).toContain("single_market_scope_only");
+    expect(source).toContain("no_fx_conversion");
+    expect(emitter).not.toMatch(/(?:fetch\s*\(|supabase|react|@\/components|@\/pages|Date\.now)/i);
+    expect(emitter).toContain("createPublicSourceCoverageArtifact");
+    expect(emitter).toContain("createPublicSourceCoverageReceipt");
   });
 });

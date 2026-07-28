@@ -1,0 +1,8 @@
+{
+  "artifactContentHash": "cfca7622b756391d526fee5941b7b38faac6e9bc938ed99bfc0e388e5db24d4c",
+  "artifactFileSha256": "214dad9703264296f369e12dad068112a2d8785c8a79c3112971f743b9897889",
+  "artifactId": "series-market:v1:public-source-coverage:v1:artifact:cfca7622b756391d526fee5941b7b38faac6e9bc938ed99bfc0e388e5db24d4c",
+  "artifactPath": "src/lib/series-market/datasets/jeju/v1/research/public-source-coverage-v1.json",
+  "contractVersion": "v1",
+  "receiptId": "series-market:v1:public-source-coverage:v1:receipt:ac2af183fc1005924ddb66fdc0017f3807175428b81a357bfac4f1ceaf226271"
+}
