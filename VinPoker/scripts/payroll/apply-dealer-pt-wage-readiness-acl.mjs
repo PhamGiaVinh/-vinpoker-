@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   createMigrationRequest,
   historyEntryMatchesCandidate,
+  historyEvidence,
   historyProblems,
   MIGRATION_NAME,
   MIGRATION_PATH,
@@ -156,8 +157,14 @@ export function preApplyDecision(state, history) {
   if (historyIssues.length) return { action: "block", reason: "history_conflict", problems: historyIssues };
   const registered = history.some(historyEntryMatchesCandidate);
   const postProblems = postStateProblems(state);
-  if (registered && postProblems.length === 0) return { action: "skip", reason: "exact_post_registered", problems: [] };
-  if (registered || postProblems.length === 0) {
+  if (postProblems.length === 0) {
+    return {
+      action: "skip",
+      reason: registered ? "exact_post_registered" : "exact_post_verified_ledger_absent",
+      problems: [],
+    };
+  }
+  if (registered) {
     return { action: "block", reason: "registered_or_unregistered_post_drift", problems: postProblems };
   }
   const preProblems = preStateProblems(state);
@@ -248,6 +255,7 @@ export async function run(argv = process.argv.slice(2), env = process.env, fetch
   const credentials = { projectRef: env.SUPABASE_PROJECT_REF, token: env.SUPABASE_ACCESS_TOKEN };
   const [before, history] = await Promise.all([readState(credentials, fetchImpl), listMigrationHistory(credentials, fetchImpl)]);
   log("PRE", JSON.stringify(safeState(before)));
+  log("LEDGER", JSON.stringify(historyEvidence(history)));
   const decision = preApplyDecision(before, history);
   log(`DECISION_${decision.action.toUpperCase()}`, decision.reason);
   if (decision.action === "block") throw new Error(`Live payroll state is not allowlisted: ${decision.problems.join("; ")}`);
@@ -265,6 +273,7 @@ export async function run(argv = process.argv.slice(2), env = process.env, fetch
     throw new Error("APPLIED_VERIFY_INCOMPLETE: migration request succeeded but post-commit verification failed; do not infer rollback");
   }
   log("POST", JSON.stringify(safeState(after)));
+  log("POST_LEDGER", JSON.stringify(historyEvidence(postHistory)));
   const postDecision = preApplyDecision(after, postHistory);
   const drift = postApplyProblems(before, after);
   if (postDecision.action !== "skip" || drift.length) {
