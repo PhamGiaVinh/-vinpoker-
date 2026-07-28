@@ -63,8 +63,11 @@ try {
     '/tmp/live-public.sql' = (Resolve-Path -LiteralPath $preparedSchemaPath)
     '/tmp/support.sql' = Join-Path $scriptRoot 'disposable-public-schema-support.sql'
     '/tmp/v2.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270106000001_dealer_pt_wage_global_continuous_accrual_v2.sql'
+    '/tmp/readiness-acl-repair.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270106000002_dealer_pt_wage_readiness_acl.sql'
     '/tmp/activation-gap.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual_activation_gap.sql'
     '/tmp/activation-ready.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual_activation_ready.sql'
+    '/tmp/readiness-acl-setup.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual_readiness_acl_setup.sql'
+    '/tmp/readiness-acl.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual_readiness_acl.sql'
     '/tmp/lifecycle.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual.sql'
     '/tmp/concurrency.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual_concurrency.sql'
   }
@@ -81,6 +84,10 @@ try {
   Invoke-ContainerPsql '/tmp/v2.sql'
   Invoke-ContainerPsql '/tmp/activation-ready.sql'
   Invoke-ContainerPsql '/tmp/v2.sql'
+  Invoke-ContainerPsql '/tmp/readiness-acl-setup.sql'
+  Invoke-ContainerPsql '/tmp/readiness-acl-repair.sql'
+  Invoke-ContainerPsql '/tmp/readiness-acl-repair.sql'
+  Invoke-ContainerPsql '/tmp/readiness-acl.sql'
   Invoke-ContainerPsql '/tmp/lifecycle.sql'
   Invoke-ContainerPsql '/tmp/concurrency.sql'
 

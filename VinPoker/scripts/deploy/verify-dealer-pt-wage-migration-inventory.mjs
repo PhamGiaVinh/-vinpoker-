@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "..", "..");
 const migrationsDirectory = resolve(repositoryRoot, "supabase/migrations");
-const targetVersions = ["20270106000001"];
+const targetVersions = ["20270106000001", "20270106000002"];
 const immutableHistoricalMigrations = new Map([
   [
     "20270105000002_dealer_pt_wage_global_continuous_accrual.sql",

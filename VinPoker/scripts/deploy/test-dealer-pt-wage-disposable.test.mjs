@@ -5,20 +5,43 @@ import test from "node:test";
 
 const root = resolve(import.meta.dirname, "..", "..");
 const runner = readFileSync(resolve(root, "scripts/deploy/test-dealer-pt-wage-disposable.ps1"), "utf8");
+const readinessAclMigration = readFileSync(
+  resolve(root, "supabase/migrations/20270106000002_dealer_pt_wage_readiness_acl.sql"),
+  "utf8",
+);
 const payrollFixtures = [
   "dealer_pt_global_continuous_accrual.sql",
   "dealer_pt_global_continuous_accrual_activation_gap.sql",
   "dealer_pt_global_continuous_accrual_activation_ready.sql",
+  "dealer_pt_global_continuous_accrual_readiness_acl_setup.sql",
+  "dealer_pt_global_continuous_accrual_readiness_acl.sql",
   "dealer_pt_global_continuous_accrual_concurrency.sql",
 ];
 
-test("PT wage disposable runner applies only the superseding Draft migration", () => {
+test("PT wage disposable runner applies the exact payroll migration chain", () => {
   assert.match(runner, /\[ValidateSet\('16', '17'\)\]/);
   assert.match(runner, /dealer_pt_wage_global_continuous_accrual_v2\.sql/);
   assert.doesNotMatch(runner, /2027010500000[23]_dealer_pt_wage/);
   assert.match(runner, /Invoke-ContainerPsql '\/tmp\/activation-gap\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/v2\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/activation-ready\.sql'/);
   assert.match(runner, /Invoke-ContainerPsql '\/tmp\/v2\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/lifecycle\.sql'/);
+  assert.match(runner, /Invoke-ContainerPsql '\/tmp\/readiness-acl-setup\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/readiness-acl-repair\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/readiness-acl\.sql'/);
+  assert.equal(
+    [...runner.matchAll(/Invoke-ContainerPsql '\/tmp\/readiness-acl-repair\.sql'/g)].length,
+    2,
+    "readiness ACL repair is applied twice in the disposable proof",
+  );
   assert.match(runner, /verify-dealer-pt-wage-migration-inventory\.mjs/);
+});
+
+test("readiness helper ACL repair is transaction-wrapped and cannot write payroll data", () => {
+  assert.match(readinessAclMigration, /^\s*--[\s\S]*\bbegin\s*;/i);
+  assert.match(readinessAclMigration, /commit\s*;\s*$/i);
+  assert.match(
+    readinessAclMigration,
+    /revoke\s+all\s+on\s+function\s+public\.assert_dealer_pt_wage_global_activation_ready\(timestamptz\)\s+from\s+public,\s+anon,\s+authenticated,\s+service_role/i,
+  );
+  assert.match(readinessAclMigration, /has_function_privilege\([\s\S]*'service_role'/i);
+  assert.doesNotMatch(readinessAclMigration, /\b(?:insert|update|delete|truncate|grant)\b/i);
 });
 
 test("PT wage disposable runner never links to or mutates a production project", () => {
