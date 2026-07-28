@@ -5,7 +5,6 @@ import { resolve } from "node:path";
 export const PROJECT_REF = "orlesggcjamwuknxwcpk";
 export const BASELINE_MIGRATION_VERSION = "20270105000001";
 export const V2_MIGRATION_VERSION = "20270106000001";
-export const V2_MIGRATION_NAME = "20270106000001_dealer_pt_wage_global_continuous_accrual_v2";
 export const MIGRATION_VERSION = "20270106000002";
 export const MIGRATION_BASENAME = `${MIGRATION_VERSION}_dealer_pt_wage_readiness_acl.sql`;
 export const MIGRATION_PATH = `supabase/migrations/${MIGRATION_BASENAME}`;
@@ -79,11 +78,20 @@ export function historyProblems(history) {
   if (!history.some((entry) => entry?.version === BASELINE_MIGRATION_VERSION)) {
     problems.push("required payroll baseline migration is absent from migration history");
   }
-  if (!history.some((entry) => entry?.version === V2_MIGRATION_VERSION && entry?.name === V2_MIGRATION_NAME)) {
-    problems.push("required consolidated payroll v2 migration is absent from migration history");
-  }
   for (const entry of history) {
     if (SUPERSEDED_VERSIONS.has(entry?.version)) problems.push(`superseded migration is registered: ${entry.version}`);
   }
   return problems;
+}
+
+// The management migration endpoint historically executed the reviewed v2 SQL
+// without adding its version to schema_migrations. The live v2 catalog contract
+// is therefore the authoritative dependency proof for this ACL-only repair;
+// history remains diagnostic evidence and never gets repaired or backfilled here.
+export function historyEvidence(history) {
+  return {
+    baseline_ledger_present: history.some((entry) => entry?.version === BASELINE_MIGRATION_VERSION),
+    v2_ledger_present: history.some((entry) => entry?.version === V2_MIGRATION_VERSION),
+    repair_ledger_present: history.some(historyEntryMatchesCandidate),
+  };
 }

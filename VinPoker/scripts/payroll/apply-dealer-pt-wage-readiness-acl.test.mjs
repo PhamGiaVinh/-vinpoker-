@@ -70,10 +70,10 @@ function exactPostState() {
   };
 }
 
-function history({ repair = false } = {}) {
+function history({ v2Ledger = false, repair = false } = {}) {
   return [
     { version: "20270105000001", name: "platform-managed-baseline-name" },
-    { version: "20270106000001", name: "20270106000001_dealer_pt_wage_global_continuous_accrual_v2" },
+    ...(v2Ledger ? [{ version: "20270106000001", name: "20270106000001_dealer_pt_wage_global_continuous_accrual_v2" }] : []),
     ...(repair ? [{ version: MIGRATION_VERSION, name: MIGRATION_NAME }] : []),
   ];
 }
@@ -90,9 +90,13 @@ test("source policy pins one narrow, transaction-wrapped readiness ACL repair", 
   assert.equal(MIGRATION_PATH.endsWith("20270106000002_dealer_pt_wage_readiness_acl.sql"), true);
 });
 
-test("preflight accepts only v2 dark state with an explicit service role grant", () => {
+test("preflight accepts v2 catalog proof when the management ledger is missing v2", () => {
   assert.equal(preApplyDecision(exactV2DarkState(), history()).action, "apply");
   assert.equal(preApplyDecision(exactPostState(), history({ repair: true })).action, "skip");
+  assert.equal(
+    preApplyDecision(exactPostState(), history()).reason,
+    "exact_post_verified_ledger_absent",
+  );
   assert.equal(
     preApplyDecision({ ...exactV2DarkState(), readiness_service_role_explicit_execute: false }, history()).reason,
     "unknown_pre_state",
@@ -103,6 +107,10 @@ test("preflight accepts only v2 dark state with an explicit service role grant",
   );
   assert.equal(
     preApplyDecision(exactV2DarkState(), [...history(), { version: "20270105000002", name: "legacy" }]).reason,
+    "history_conflict",
+  );
+  assert.equal(
+    preApplyDecision(exactV2DarkState(), [...history(), { version: MIGRATION_VERSION, name: "unexpected" }]).reason,
     "history_conflict",
   );
 });
@@ -120,13 +128,13 @@ test("read-only preflight never sends a migration write", async () => {
   assert.equal(calls.some((call) => call.options.method === "POST" && call.url.endsWith("/database/migrations")), false);
 });
 
-test("apply writes exactly the ACL migration and verifies no payroll data drift", async () => {
+test("apply writes exactly the ACL migration and verifies no payroll data drift without ledger backfill", async () => {
   const calls = [];
   let applied = false;
   const fetchImpl = async (url, options) => {
     calls.push({ url, options });
     if (url.endsWith("/database/query/read-only")) return jsonResponse([applied ? exactPostState() : exactV2DarkState()]);
-    if (url.endsWith("/database/migrations") && options.method === "GET") return jsonResponse(history({ repair: applied }));
+    if (url.endsWith("/database/migrations") && options.method === "GET") return jsonResponse(history());
     if (url.endsWith("/database/migrations") && options.method === "POST") {
       applied = true;
       return jsonResponse({});
