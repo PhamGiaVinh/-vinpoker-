@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { dirname, resolve } from "node:path";
-import { readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +14,7 @@ import {
 } from "./apply-shortage-alert-lifecycle.mjs";
 import {
   MIGRATION_NAME,
+  MIGRATION_BASENAME,
   MIGRATION_PATH,
   MIGRATION_VERSION,
   migrationEquivalenceProblems,
@@ -100,6 +102,19 @@ test("superseding migration is unique and executable SQL remains exactly equival
   assert.deepEqual(selectedMigrationProblems(vinPokerRoot), []);
   assert.deepEqual(migrationEquivalenceProblems(vinPokerRoot), []);
   assert.deepEqual(sourcePolicyProblems(), []);
+});
+
+test("historical alert selector stays valid when unrelated migrations are added later", () => {
+  const fixtureRoot = mkdtempSync(resolve(tmpdir(), "vinpoker-alert-migration-fixture-"));
+  const fixtureMigrations = resolve(fixtureRoot, "supabase", "migrations");
+  try {
+    mkdirSync(fixtureMigrations, { recursive: true });
+    copyFileSync(resolve(vinPokerRoot, MIGRATION_PATH), resolve(fixtureMigrations, MIGRATION_BASENAME));
+    writeFileSync(resolve(fixtureMigrations, "20270106000000_unrelated_floor_change.sql"), "create table public.fixture_only (id integer);\n");
+    assert.deepEqual(selectedMigrationProblems(fixtureRoot), []);
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  }
 });
 
 test("all executable rollout paths select only the unique superseding alert migration", () => {

@@ -1,0 +1,124 @@
+name: Capture live public schema
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact 40-character main SHA recorded with this protected schema capture"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: capture-live-public-schema
+  cancel-in-progress: false
+
+env:
+  CRITICAL_ENVIRONMENT: dealer-swing-production-critical
+
+jobs:
+  validate-critical-environment:
+    name: Require protected critical environment
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail closed unless required reviewers are configured
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          environment_json="$(gh api "repos/${GITHUB_REPOSITORY}/environments/${CRITICAL_ENVIRONMENT}")"
+          jq -e '
+            .protection_rules
+            | any(.type == "required_reviewers" and ((.reviewers // []) | length > 0))
+          ' <<<"$environment_json" >/dev/null
+
+  capture:
+    name: Capture schema-only public catalog
+    needs: validate-critical-environment
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: dealer-swing-production-critical
+    steps:
+      - name: Checkout current main for capture controls
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify capture SHA belongs to current main
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "20"
+
+      - name: Install pinned Supabase CLI
+        shell: bash
+        run: npm install --global supabase@2.101.0
+
+      - name: Capture and validate schema-only public dump
+        working-directory: VinPoker
+        shell: bash
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          artifact_dir="${RUNNER_TEMP}/live-public-schema"
+          mkdir -p "$artifact_dir"
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          supabase db dump --linked --schema public --file "$artifact_dir/live-public-schema.sql"
+          (cd "$artifact_dir" && sha256sum live-public-schema.sql) > "$artifact_dir/live-public-schema.sha256"
+          node scripts/deploy/validate-live-public-schema-artifact.mjs --artifact-directory "$artifact_dir"
+
+      - name: Upload protected schema-only artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: live-public-schema
+          path: ${{ runner.temp }}/live-public-schema
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Record sanitized capture receipt
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          artifact_dir="${RUNNER_TEMP}/live-public-schema"
+          schema_sha="$(awk '{print $1}' "$artifact_dir/live-public-schema.sha256")"
+          project_fingerprint="$(printf '%s' "$SUPABASE_PROJECT_REF" | sha256sum | awk '{print $1}')"
+          {
+            echo "## Protected schema capture"
+            echo
+            echo "- Capture source SHA: \`$TARGET_SHA\`"
+            echo "- Artifact name: \`live-public-schema\`"
+            echo "- Workflow run ID: \`${GITHUB_RUN_ID}\`"
+            echo "- Schema SHA-256: \`$schema_sha\`"
+            echo "- Project fingerprint: \`$project_fingerprint\`"
+            echo "- schema_only=true"
+            echo "- data_rows_captured=false"
+            echo "- secrets_detected=false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove runner-local schema dump
+        if: always()
+        shell: bash
+        run: rm -rf "${RUNNER_TEMP}/live-public-schema"

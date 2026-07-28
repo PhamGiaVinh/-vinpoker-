@@ -10,6 +10,11 @@ const validationWorkflow = readFileSync(
   resolve(root, ".github/workflows/deployment-control-plane-validation.yml"),
   "utf8",
 );
+const schemaCaptureWorkflow = readFileSync(resolve(root, ".github/workflows/capture-live-public-schema.yml"), "utf8");
+const payrollDisposableWorkflow = readFileSync(
+  resolve(root, ".github/workflows/dealer-pt-wage-disposable-validation.yml"),
+  "utf8",
+);
 
 test("frontend cannot run after a required critical deployment failure", () => {
   assert.match(workflow, /needs\.plan\.outputs\.critical_functions == '\[\]' \|\| needs\.deploy-critical-edge\.result == 'success'/);
@@ -121,4 +126,38 @@ test("pinned actionlint validation is read-only and uses no production secret", 
   assert.doesNotMatch(validationWorkflow, /\bsecrets\./);
   assert.doesNotMatch(validationWorkflow, /supabase\s+(?:functions\s+deploy|db\s+(?:push|reset))/i);
   assert.doesNotMatch(validationWorkflow, /vercel\s+(?:deploy|--prod)/i);
+});
+
+test("schema capture is manual, protected, schema-only, and retains no raw output in summaries", () => {
+  assert.match(schemaCaptureWorkflow, /workflow_dispatch:/);
+  assert.doesNotMatch(schemaCaptureWorkflow, /pull_request:/);
+  assert.match(schemaCaptureWorkflow, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(schemaCaptureWorkflow, /dealer-swing-production-critical/);
+  assert.match(schemaCaptureWorkflow, /required_reviewers/);
+  assert.match(schemaCaptureWorkflow, /supabase db dump --linked --schema public/);
+  assert.match(schemaCaptureWorkflow, /validate-live-public-schema-artifact\.mjs/);
+  assert.match(schemaCaptureWorkflow, /actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
+  assert.match(schemaCaptureWorkflow, /retention-days: 3/);
+  assert.doesNotMatch(schemaCaptureWorkflow, /supabase\s+(?:db\s+(?:push|reset)|functions\s+deploy)/i);
+  assert.doesNotMatch(schemaCaptureWorkflow, /vercel\s+(?:deploy|--prod)/i);
+  assert.equal(
+    schemaCaptureWorkflow
+      .split("\n")
+      .some((line) => /\b(?:echo|printf)\b/i.test(line) && /(?:SUPABASE|TOKEN|PASSWORD)/i.test(line) && !/sha256sum/i.test(line)),
+    false,
+  );
+});
+
+test("payroll disposable validation requires a checksummed artifact without production access", () => {
+  assert.match(payrollDisposableWorkflow, /workflow_dispatch:/);
+  assert.doesNotMatch(payrollDisposableWorkflow, /pull_request:/);
+  assert.match(payrollDisposableWorkflow, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(payrollDisposableWorkflow, /schema_artifact_run_id:/);
+  assert.match(payrollDisposableWorkflow, /schema_sha256:/);
+  assert.match(payrollDisposableWorkflow, /postgres: \["16", "17"\]/);
+  assert.match(payrollDisposableWorkflow, /actions\/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093/);
+  assert.match(payrollDisposableWorkflow, /sha256sum --check --status/);
+  assert.doesNotMatch(payrollDisposableWorkflow, /\bsecrets\./);
+  assert.doesNotMatch(payrollDisposableWorkflow, /supabase\s+(?:link|db\s+(?:dump|push|reset)|functions\s+deploy)/i);
+  assert.doesNotMatch(payrollDisposableWorkflow, /vercel\s+(?:deploy|--prod)/i);
 });
