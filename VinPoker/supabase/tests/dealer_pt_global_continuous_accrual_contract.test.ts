@@ -1,29 +1,27 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 
-const migration00002 = (await Deno.readTextFile(
-  new URL("../migrations/20270105000002_dealer_pt_wage_global_continuous_accrual.sql", import.meta.url),
-)).replaceAll("\r\n", "\n");
-const migration00003 = (await Deno.readTextFile(
-  new URL("../migrations/20270105000003_dealer_pt_wage_rate_history.sql", import.meta.url),
+const migrationV2 = (await Deno.readTextFile(
+  new URL("../migrations/20270106000001_dealer_pt_wage_global_continuous_accrual_v2.sql", import.meta.url),
 )).replaceAll("\r\n", "\n");
 
-Deno.test("00002 leaves the global mutation RPC ungranted until 00003", () => {
-  assertStringIncludes(
-    migration00002,
-    "revoke all on function public.set_all_approved_dealer_pt_wage_accrual(boolean,text) from authenticated;",
-  );
-  assertEquals(
-    /grant execute on function public\.set_all_approved_dealer_pt_wage_accrual\(boolean,text\) to authenticated/i
-      .test(migration00002),
-    false,
-  );
-  assertStringIncludes(
-    migration00003,
+Deno.test("v2 keeps global mutation ungranted until readiness exists in the same transaction", () => {
+  const readinessCall = migrationV2.indexOf("perform public.assert_dealer_pt_wage_global_activation_ready(v_effective_from);");
+  const authenticatedGrant = migrationV2.lastIndexOf(
     "grant execute on function public.set_all_approved_dealer_pt_wage_accrual(boolean,text) to authenticated;",
   );
+
+  assertStringIncludes(migrationV2, "SUPERSEDES WITHOUT REPLAY:");
+  assertStringIncludes(
+    migrationV2,
+    "revoke all on function public.set_all_approved_dealer_pt_wage_accrual(boolean,text) from authenticated;",
+  );
+  assert(readinessCall >= 0);
+  assert(authenticatedGrant > readinessCall);
+  assertEquals((migrationV2.match(/^begin;$/gmu) ?? []).length, 1);
+  assertEquals((migrationV2.match(/^commit;$/gmu) ?? []).length, 1);
 });
 
-Deno.test("00003 fails global enable closed until the complete payroll contract is ready", () => {
+Deno.test("v2 fails global enable closed until the complete payroll contract is ready", () => {
   for (const required of [
     "create or replace function public.assert_dealer_pt_wage_global_activation_ready",
     "public.dealer_pt_wage_rate_history",
@@ -31,8 +29,8 @@ Deno.test("00003 fails global enable closed until the complete payroll contract 
     "trg_capture_dealer_pt_wage_rate_history",
     "PT_WAGE_ACTIVATION_NOT_READY",
     "perform public.assert_dealer_pt_wage_global_activation_ready(v_effective_from);",
-  ]) assertStringIncludes(migration00003, required);
-  assert(/if p_standby_accrual_enabled then[\s\S]*assert_dealer_pt_wage_global_activation_ready/u.test(migration00003));
+  ]) assertStringIncludes(migrationV2, required);
+  assert(/if p_standby_accrual_enabled then[\s\S]*assert_dealer_pt_wage_global_activation_ready/u.test(migrationV2));
 });
 
 Deno.test("effective-dated rate and employment segments drive both wage modes", () => {
@@ -46,14 +44,14 @@ Deno.test("effective-dated rate and employment segments drive both wage modes", 
     "'segment_end', v_segment_end",
     "'elapsed_seconds', v_segment_seconds",
     "'amount_vnd', v_segment_amount_vnd",
-  ]) assertStringIncludes(migration00003, required);
-  assertEquals(/v_amount_vnd := v_amount_vnd \+ v_segment_amount_vnd/u.test(migration00003), true);
-  assertEquals(/v_amount_vnd := v_minutes \/ 60\.0 \* v_rate/u.test(migration00003), false);
+  ]) assertStringIncludes(migrationV2, required);
+  assertEquals(/v_amount_vnd := v_amount_vnd \+ v_segment_amount_vnd/u.test(migrationV2), true);
+  assertEquals(/v_amount_vnd := v_minutes \/ 60\.0 \* v_rate/u.test(migrationV2), false);
 });
 
 Deno.test("rate baseline seed is replay-safe and never rewrites paid history", () => {
-  assertStringIncludes(migration00003, "and not exists (");
-  assertStringIncludes(migration00003, "and h.pt_eligible");
-  assertEquals(/update\s+public\.dealer_pt_wage_payments\b/i.test(migration00003), false);
-  assertStringIncludes(migration00003, "'rate_segments', coalesce(v_bal->'rate_segments', '[]'::jsonb)");
+  assertStringIncludes(migrationV2, "and not exists (");
+  assertStringIncludes(migrationV2, "and h.pt_eligible");
+  assertEquals(/update\s+public\.dealer_pt_wage_payments\b/i.test(migrationV2), false);
+  assertStringIncludes(migrationV2, "'rate_segments', coalesce(v_bal->'rate_segments', '[]'::jsonb)");
 });

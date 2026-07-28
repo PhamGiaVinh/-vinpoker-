@@ -6,12 +6,12 @@ import test from "node:test";
 const root = resolve(import.meta.dirname, "..", "..");
 const runner = readFileSync(resolve(root, "scripts/deploy/test-dealer-pt-wage-disposable.ps1"), "utf8");
 
-test("PT wage disposable runner applies only the ordered Draft migrations", () => {
+test("PT wage disposable runner applies only the superseding Draft migration", () => {
   assert.match(runner, /\[ValidateSet\('16', '17'\)\]/);
-  assert.match(runner, /dealer_pt_wage_global_continuous_accrual\.sql/);
-  assert.match(runner, /dealer_pt_wage_rate_history\.sql/);
-  assert.match(runner, /Invoke-ContainerPsql '\/tmp\/00002\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/activation-gap\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/00003\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/activation-ready\.sql'/);
-  assert.match(runner, /Invoke-ContainerPsql '\/tmp\/00002\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/00003\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/lifecycle\.sql'/);
+  assert.match(runner, /dealer_pt_wage_global_continuous_accrual_v2\.sql/);
+  assert.doesNotMatch(runner, /2027010500000[23]_dealer_pt_wage/);
+  assert.match(runner, /Invoke-ContainerPsql '\/tmp\/activation-gap\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/v2\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/activation-ready\.sql'/);
+  assert.match(runner, /Invoke-ContainerPsql '\/tmp\/v2\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/lifecycle\.sql'/);
   assert.match(runner, /verify-dealer-pt-wage-migration-inventory\.mjs/);
 });
 

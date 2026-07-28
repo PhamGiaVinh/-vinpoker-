@@ -62,8 +62,7 @@ try {
     '/tmp/bootstrap.sql' = Join-Path $scriptRoot 'disposable-public-schema-bootstrap.sql'
     '/tmp/live-public.sql' = (Resolve-Path -LiteralPath $preparedSchemaPath)
     '/tmp/support.sql' = Join-Path $scriptRoot 'disposable-public-schema-support.sql'
-    '/tmp/00002.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270105000002_dealer_pt_wage_global_continuous_accrual.sql'
-    '/tmp/00003.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270105000003_dealer_pt_wage_rate_history.sql'
+    '/tmp/v2.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270106000001_dealer_pt_wage_global_continuous_accrual_v2.sql'
     '/tmp/activation-gap.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual_activation_gap.sql'
     '/tmp/activation-ready.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual_activation_ready.sql'
     '/tmp/lifecycle.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual.sql'
@@ -75,15 +74,13 @@ try {
   Invoke-ContainerPsql '/tmp/live-public.sql'
   Invoke-ContainerPsql '/tmp/support.sql'
 
-  # Prove the forbidden activation gap first, then install the complete rate
-  # contract and prove the exact request succeeds. Reapplying the ordered pair
-  # verifies idempotent DDL/function replacement without broad migration replay.
-  Invoke-ContainerPsql '/tmp/00002.sql'
+  # Prove the pre-v2 baseline has no global writer, then install the complete
+  # v2 contract and prove the exact request succeeds. Reapplying v2 verifies
+  # idempotent DDL/function replacement without broad migration replay.
   Invoke-ContainerPsql '/tmp/activation-gap.sql'
-  Invoke-ContainerPsql '/tmp/00003.sql'
+  Invoke-ContainerPsql '/tmp/v2.sql'
   Invoke-ContainerPsql '/tmp/activation-ready.sql'
-  Invoke-ContainerPsql '/tmp/00002.sql'
-  Invoke-ContainerPsql '/tmp/00003.sql'
+  Invoke-ContainerPsql '/tmp/v2.sql'
   Invoke-ContainerPsql '/tmp/lifecycle.sql'
   Invoke-ContainerPsql '/tmp/concurrency.sql'
 

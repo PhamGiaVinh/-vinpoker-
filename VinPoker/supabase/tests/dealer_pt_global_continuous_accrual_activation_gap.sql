@@ -1,7 +1,6 @@
--- Activation-gap regression: run after 00002 only, before 00003.
--- The authenticated super-admin has no EXECUTE grant, so the global writer
--- cannot touch a policy, the singleton row, or payroll audit before the
--- rate-history/payout contract is ready.
+-- Pre-v2 activation regression. Run against the current 00001 baseline before
+-- the superseding v2 migration. The global writer must not exist, so an
+-- authenticated super-admin cannot mutate club policy or payroll audit state.
 
 \set ON_ERROR_STOP on
 
@@ -26,8 +25,8 @@ insert into public.clubs (id, owner_id, name, region, status)
 values ('fb100000-0000-4000-8000-000000000001', 'fa100000-0000-4000-8000-000000000001', 'PT GAP CLUB', 'HCM', 'approved');
 
 select pg_temp.assert_true(
-  not has_function_privilege('authenticated', 'public.set_all_approved_dealer_pt_wage_accrual(boolean,text)', 'EXECUTE'),
-  '00002 does not grant the global mutation RPC'
+  to_regprocedure('public.set_all_approved_dealer_pt_wage_accrual(boolean,text)') is null,
+  'the 00001 baseline exposes no global PT wage mutation RPC'
 );
 
 select set_config('request.jwt.claim.sub', 'fa100000-0000-4000-8000-000000000001', true);
@@ -37,17 +36,16 @@ set local role authenticated;
 do $$
 begin
   perform public.set_all_approved_dealer_pt_wage_accrual(true, 'activation-gap-contract');
-  raise exception '00002-only global enable unexpectedly succeeded';
+  raise exception 'pre-v2 global enable unexpectedly succeeded';
 exception
-  when insufficient_privilege then null;
+  when undefined_function then null;
 end;
 $$;
 
 reset role;
 
 select pg_temp.assert_true(
-  not (select future_club_enabled from public.dealer_pt_wage_accrual_global_policy where singleton)
-  and not exists (
+  not exists (
     select 1 from public.dealer_pt_wage_accrual_policies
     where club_id = 'fb100000-0000-4000-8000-000000000001'
   )
@@ -55,7 +53,7 @@ select pg_temp.assert_true(
     select 1 from public.payroll_audit_log
     where reason = 'activation-gap-contract'
   ),
-  '00002-only denied call leaves global policy, club policy and audit untouched'
+  'pre-v2 denied call leaves club policy and audit untouched'
 );
 
 rollback;

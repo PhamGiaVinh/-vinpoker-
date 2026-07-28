@@ -1,4 +1,4 @@
--- Global PT wage lifecycle after 20270105000002 + 20270105000003.
+-- Global PT wage lifecycle after 20270106000001 v2.
 -- Run only against a disposable current schema. All fixtures and payout rows
 -- are rolled back; separate dblink tests cover cross-transaction interleaving.
 

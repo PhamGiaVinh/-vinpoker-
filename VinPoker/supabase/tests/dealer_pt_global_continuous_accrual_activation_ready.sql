@@ -1,6 +1,6 @@
--- Same activation request as activation_gap.sql, now after 00003.
--- This proves the grant becomes available only once the rate-history baseline,
--- trigger, payment snapshot and replacement RPC contract are present.
+-- Same activation request as activation_gap.sql, now after the atomic v2
+-- migration. This proves the grant becomes available only once the rate-history
+-- baseline, trigger, payment snapshot and replacement RPC contract are present.
 
 \set ON_ERROR_STOP on
 
@@ -28,7 +28,7 @@ values ('fc100000-0000-4000-8000-000000000001', 'fb100000-0000-4000-8000-0000000
 
 select pg_temp.assert_true(
   has_function_privilege('authenticated', 'public.set_all_approved_dealer_pt_wage_accrual(boolean,text)', 'EXECUTE'),
-  '00003 grants the global mutation RPC after readiness dependencies exist'
+  'v2 grants the global mutation RPC after readiness dependencies exist'
 );
 
 select set_config('request.jwt.claim.sub', 'fa100000-0000-4000-8000-000000000001', true);
@@ -42,7 +42,7 @@ begin
   perform pg_temp.assert_true(
     v_result->>'standby_accrual_enabled' = 'true'
     and v_result->>'future_club_enabled' = 'true',
-    'the exact activation request succeeds only after 00003'
+    'the exact activation request succeeds only after v2'
   );
 end;
 $$;
@@ -61,7 +61,7 @@ select pg_temp.assert_true(
     select 1 from public.payroll_audit_log
     where reason = 'activation-gap-contract'
   ),
-  '00003 readiness grant writes the audited global and club policy atomically'
+  'v2 readiness grant writes the audited global and club policy atomically'
 );
 
 rollback;
