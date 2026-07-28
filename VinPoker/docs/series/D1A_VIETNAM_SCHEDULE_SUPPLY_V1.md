@@ -30,6 +30,11 @@ Every extracted claim remains:
 OCR is not treated as authoritative. Rows were manually checked against the
 preserved poster images. Unreadable or absent values remain missing or uncertain.
 
+Correction `D1A-001` supersedes the release identities merged in PR #994 after
+a Center-P prize-contribution transcription error was confirmed. See
+`D1A_CORRECTION_001_CENTER_P_AFTER_DARK.md` and the immutable correction record
+under `datasets/vietnam/schedule-supply/v1/corrections/`.
+
 ## Money Semantics
 
 - Money uses integer minor units with explicit currency and scale.

@@ -816,6 +816,7 @@
     "series-market:v1:vietnam-schedule-supply:v1:claim:a24c8f570532b87d9809ed1ff8e829fa78080404cd6555d071e8ef56f8430686",
     "series-market:v1:vietnam-schedule-supply:v1:claim:a25010e1a39a45424eb8a448136162726a1bfdfb723779dc6879f5c766f1b80c",
     "series-market:v1:vietnam-schedule-supply:v1:claim:a28c2eec47dd207e224be911fc3c48bcaa50facd8370328102ca49e8798ff1f9",
+    "series-market:v1:vietnam-schedule-supply:v1:claim:a29b5d906834f4c6870f6c418aff6b4ca38847409076e8a2bccc89e7f42deff2",
     "series-market:v1:vietnam-schedule-supply:v1:claim:a2b1ba57db85a129618db53a8b7bd3a6243a2a1549df0f175c468c511ebd265f",
     "series-market:v1:vietnam-schedule-supply:v1:claim:a2f759f7c2a46b07c38a7a53954819f28e75871dd5b5cb1f0daf610f5b8a95c2",
     "series-market:v1:vietnam-schedule-supply:v1:claim:a3179161c7fd9fc1119e9800773f7e8b592c66a495c548ed27d3f1aed9c18522",
@@ -1045,7 +1046,6 @@
     "series-market:v1:vietnam-schedule-supply:v1:claim:d41c7058fd0a044799aa7f43c3b41ef945e1815d8b2cdcb12818f213f1a8a87f",
     "series-market:v1:vietnam-schedule-supply:v1:claim:d4c64426218d09ffbdd05ae9a55e80bc5b9f5319c3ec49f683bc441b05ac0be3",
     "series-market:v1:vietnam-schedule-supply:v1:claim:d51a475e5c67dd184c25f12cd8f8f282582648f08bcf73f276ac84b94527ba6b",
-    "series-market:v1:vietnam-schedule-supply:v1:claim:d52765f3d54f786cac6eeddb33e727a9dd57ee592b014b2ff3ec9624ae03a4c9",
     "series-market:v1:vietnam-schedule-supply:v1:claim:d52b8a22024cef8f729ab540f537738f111450ace0e82a3ec490a6807769191a",
     "series-market:v1:vietnam-schedule-supply:v1:claim:d52cf47c446217a2a2a3cc019d63dcc6b38dce63756ccccf62857a656a6e6788",
     "series-market:v1:vietnam-schedule-supply:v1:claim:d53937bffe198752e65869122798cca15f6d80e81fdd293a36a73c62e246dcab",
@@ -1310,6 +1310,7 @@
     "series-market:v1:vietnam-schedule-supply:v1:event:50dbe0a9c1334b6a52f324e4aa4a46409d7dfc8be430e6857328c1897c0e328c",
     "series-market:v1:vietnam-schedule-supply:v1:event:52feb74bbd1926d009812eb40fe1bbdaafe09adf7fda29e3ba0d01d7ebc99571",
     "series-market:v1:vietnam-schedule-supply:v1:event:573d57d798f2d449f559994acb47e2f1f0b88ce9f22efe9b5180a0035f40aeb9",
+    "series-market:v1:vietnam-schedule-supply:v1:event:57abc8fabb79cab1da994a1cbdf37a478b219ac921f79a7fd6776d819c912e07",
     "series-market:v1:vietnam-schedule-supply:v1:event:6d96e756ce6c992a0eacad426aed3ecb8636304e9358ab769b503c96c91704bc",
     "series-market:v1:vietnam-schedule-supply:v1:event:7722553318857835cb11e84b578a1cc845afd9d0db9834bbd7fc0b7ccf06c15d",
     "series-market:v1:vietnam-schedule-supply:v1:event:7ba5b95a1ca057e014ac8aaeda0a7ed00e407f89b8a1197ac43acde742cfc1f9",
@@ -1333,12 +1334,11 @@
     "series-market:v1:vietnam-schedule-supply:v1:event:d59a4c25cd8a311dbd352eec3bc32b633cd771bea9b00b716d857c3f0d4bee69",
     "series-market:v1:vietnam-schedule-supply:v1:event:d6c9e2dda9eac291bdb264427b40cf6a01cb9ad93fa0e9750c54c094f2d0b186",
     "series-market:v1:vietnam-schedule-supply:v1:event:d71d8220348f820c7182ba5cd3cc132eff2f3446fca6a690719caadb0ccfd908",
-    "series-market:v1:vietnam-schedule-supply:v1:event:d978a4dcbbdd9362b89e7719e10d0de96dbf9921639ba89d9ddf189512bc4883",
     "series-market:v1:vietnam-schedule-supply:v1:event:db9df040289d90d68478c3b594436e03e6a37fb82fd7dda17bca884f9e363fc8",
     "series-market:v1:vietnam-schedule-supply:v1:event:ddc03523cf95f6f0d6cc0221b0eca100b595321b0f7f2276ffcfb2d5e4852647",
     "series-market:v1:vietnam-schedule-supply:v1:event:ef13dc1257134254924142795531015c1111840c0f829e6243cfe80322415821"
   ],
-  "inclusionManifestId": "series-market:v1:vietnam-schedule-supply:v1:inclusion:f0d6cc5ad32aeb4b0e71fe09981cd0c2543217ae2b3a153a6f189585f2b0571e",
+  "inclusionManifestId": "series-market:v1:vietnam-schedule-supply:v1:inclusion:3eb904f88ef5cbbe805902411e7f1ac290e4aa2dc5abcfb359d6d3ae639562cf",
   "sourceCutoff": "2026-07-28T14:05:00.000Z",
   "sources": [
     {

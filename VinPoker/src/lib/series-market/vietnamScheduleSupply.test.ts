@@ -150,6 +150,7 @@ describe("Vietnam Schedule Supply V1 evidence", () => {
       baseline.artifact.requiredEntriesByEvent.map((metric) => [metric.competitionKey, metric] as const),
     );
     expect(byCompetition.get("center-p-event-7-mini-deepstack")?.requiredEntries).toBe("34");
+    expect(byCompetition.get("center-p-event-9-after-dark")?.requiredEntries).toBe("15");
     expect(byCompetition.get("grand-loyal-event-2-high-roller-warm-up")?.requiredEntries).toBe("67");
 
     const events = cloneEvents();
@@ -203,14 +204,14 @@ describe("Vietnam Schedule Supply V1 evidence", () => {
       ["grand-loyal-jul-29-2026", "8415000000"],
       ["rpt-sep-11-12-2026", "10314000000"],
     ]));
-    expect(requiredByDate.get("2026-07-17")).toBe("1114");
+    expect(requiredByDate.get("2026-07-17")).toBe("1119");
     expect(requiredByDate.get("2026-07-29")).toBe("1152");
     expect(artifact.collisionReports.map((report) => report.window)).toEqual([
       "within_14_days",
       "within_30_days",
     ]);
     expect(artifact.collisionReports.every((report) => report.distanceDays === "12")).toBe(true);
-    expect(artifact.collisionReports.every((report) => report.combinedRequiredEntries === "2266")).toBe(true);
+    expect(artifact.collisionReports.every((report) => report.combinedRequiredEntries === "2271")).toBe(true);
   });
 
   it("excludes branding from template identity and includes structural changes", async () => {
