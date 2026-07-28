@@ -8,11 +8,11 @@ const targetVersions = ["20270106000001"];
 const immutableHistoricalMigrations = new Map([
   [
     "20270105000002_dealer_pt_wage_global_continuous_accrual.sql",
-    "ed13fffb7adacd6a7298faafa1cf764c999617c67a5a75d6cc2b242580e5ebe1",
+    "0f8362ec045d9d1881f408f8eaee999099a5f80f00fcfd9be40207a0d6cf2dff",
   ],
   [
     "20270105000003_dealer_pt_wage_rate_history.sql",
-    "f8fc8a0476000f8817bfc2616885974034cfeb70ef9530336b419c4267eb74b2",
+    "d7a0055a126fc5091574c092733602e291c805262be78a65718f1ead5b76c2ea",
   ],
 ]);
 
@@ -33,7 +33,8 @@ for (const version of targetVersions) {
 }
 
 for (const [name, expectedChecksum] of immutableHistoricalMigrations) {
-  const actualChecksum = createHash("sha256").update(readFileSync(resolve(migrationsDirectory, name))).digest("hex");
+  const normalizedSource = readFileSync(resolve(migrationsDirectory, name), "utf8").replaceAll("\r\n", "\n");
+  const actualChecksum = createHash("sha256").update(normalizedSource).digest("hex");
   if (actualChecksum !== expectedChecksum) {
     throw new Error(`PAYROLL_HISTORICAL_MIGRATION_MUTATED:${name}`);
   }
