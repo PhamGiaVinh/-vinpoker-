@@ -14,12 +14,11 @@ import {
   Check,
   ExternalLink,
   Loader2,
-  Radio,
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { FloorTableNumberPicker } from "@/components/ops/shared/FloorTableNumberPicker";
+import { FloorTableModePicker } from "@/components/ops/shared/FloorTableModePicker";
 import {
   FIXED_FLOOR_TABLE_SEATS,
   type FloorTableCatalogRow,
@@ -175,14 +174,16 @@ export function OpenTableDialog({
             </div>
           ) : (
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]">
-              <FloorTableNumberPicker
-                rows={catalog}
-                value={selectedNumber}
-                onChange={setSelectedNumber}
-                disabled={busy}
-              />
+              <div className="order-2 lg:order-1">
+                <FloorTableNumberPicker
+                  rows={catalog}
+                  value={selectedNumber}
+                  onChange={setSelectedNumber}
+                  disabled={busy}
+                />
+              </div>
 
-              <section className="lg:sticky lg:top-0 lg:self-start" aria-labelledby="floor-open-mode-heading">
+              <section className="order-1 lg:order-2 lg:sticky lg:top-0 lg:self-start" aria-labelledby="floor-open-mode-heading">
                 <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
                   <div className="flex items-start gap-2">
                     <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#c9a86a]" />
@@ -196,20 +197,11 @@ export function OpenTableDialog({
                     </div>
                   </div>
 
-                  <div className="mt-3 grid gap-2">
-                    <ModeButton
-                      mode="manual"
-                      selected={controlMode === "manual"}
-                      title="Manual Floor"
-                      description="Floor được sửa chip; loại còn chip cần cảnh báo và audit."
-                      onSelect={setControlMode}
-                    />
-                    <ModeButton
-                      mode="tracker"
-                      selected={controlMode === "tracker"}
-                      title="Live Tracker"
-                      description="Tracker quản lý chip; chỉ loại khi stack đã về 0."
-                      onSelect={setControlMode}
+                  <div className="mt-3">
+                    <FloorTableModePicker
+                      value={controlMode}
+                      onChange={setControlMode}
+                      disabled={busy}
                     />
                   </div>
                 </div>
@@ -263,45 +255,5 @@ export function OpenTableDialog({
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function ModeButton({
-  mode,
-  selected,
-  title,
-  description,
-  onSelect,
-}: {
-  mode: FloorTableControlMode;
-  selected: boolean;
-  title: string;
-  description: string;
-  onSelect: (mode: FloorTableControlMode) => void;
-}) {
-  return (
-    <button
-      type="button"
-      data-testid={`floor-open-mode-${mode}`}
-      aria-pressed={selected}
-      onClick={() => onSelect(mode)}
-      className={cn(
-        "flex min-h-20 items-start gap-3 rounded-xl border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a86a]/45",
-        selected
-          ? "border-[#c9a86a]/65 bg-[#c9a86a]/12"
-          : "border-white/10 bg-black/15 hover:border-white/20",
-      )}
-    >
-      <span className={cn(
-        "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border",
-        selected ? "border-[#c9a86a] bg-[#c9a86a] text-[#241A08]" : "border-white/25 text-transparent",
-      )}>
-        {selected ? <Check className="h-3.5 w-3.5" /> : <Radio className="h-3 w-3" />}
-      </span>
-      <span>
-        <span className="block text-sm font-semibold text-[#f2ece6]">{title}</span>
-        <span className="mt-0.5 block text-xs leading-5 text-[#9b8e97]">{description}</span>
-      </span>
-    </button>
   );
 }
