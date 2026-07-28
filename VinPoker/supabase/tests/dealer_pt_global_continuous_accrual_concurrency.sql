@@ -119,6 +119,14 @@ where id in (
   'fb200000-0000-4000-8000-000000000002',
   'fb200000-0000-4000-8000-000000000003'
 );
+update public.dealer_pt_wage_accrual_global_policy
+set updated_by = null
+where singleton
+  and updated_by in (
+    'fa200000-0000-4000-8000-000000000001',
+    'fa200000-0000-4000-8000-000000000002',
+    'fa200000-0000-4000-8000-000000000003'
+  );
 delete from public.user_roles where user_id = 'fa200000-0000-4000-8000-000000000001';
 delete from auth.users
 where id in (
