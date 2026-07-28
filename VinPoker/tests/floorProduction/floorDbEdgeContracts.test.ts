@@ -27,6 +27,7 @@ const clockPanel = read("src/components/cashier/tournament-live/ClockPanel.tsx")
 const opsCockpit = read("src/pages/ops/OpsTournamentCockpit.tsx");
 const floorPlayerActions = read("src/components/ops/shared/FloorPlayerActions.tsx");
 const tableControlModeUi = read("src/components/ops/shared/FloorTableControlMode.tsx");
+const tableModePickerUi = read("src/components/ops/shared/FloorTableModePicker.tsx");
 const playerActionSheets = read("src/components/ops/shared/PlayerActionSheets.tsx");
 const manualFloorBustDialog = read("src/components/cashier/tournament-live/ManualFloorBustConfirmDialog.tsx");
 const standaloneHandInput = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
@@ -178,8 +179,10 @@ describe("Floor V2 DB and Edge contracts", () => {
 
   it("renders a deliberate table selector and manual non-zero warning before Floor bust", () => {
     expect(tableControlModeUi).toContain('data-testid="floor-table-control-mode"');
-    expect(tableControlModeUi).toContain('data-testid="floor-table-control-mode-manual"');
-    expect(tableControlModeUi).toContain('data-testid="floor-table-control-mode-tracker"');
+    expect(tableControlModeUi).toContain("FloorTableModePicker");
+    expect(tableControlModeUi).toContain('testIdPrefix="floor-table-control-mode"');
+    expect(tableModePickerUi).toContain('data-testid={`${testIdPrefix}-${item.mode}`}');
+    expect(tableModePickerUi).toContain('role="radio"');
     expect(tableControlModeUi).toContain('data-testid="floor-table-control-mode-save"');
     expect(tableControlModeUi).toContain('data-testid="floor-table-control-mode-confirm"');
     expect(tableControlModeUi).toContain("floor_set_table_control_mode");
