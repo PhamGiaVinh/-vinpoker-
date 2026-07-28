@@ -111,6 +111,7 @@ describe("series-market public/private architecture boundary", () => {
       ...contractPropertyNames(`${MARKET}/gtdStressComparableAdapter.ts`),
       ...contractPropertyNames(`${MARKET}/gtdStressUiReadModel.ts`),
       ...contractPropertyNames(`${MARKET}/publicSourceCoverage.ts`),
+      ...contractPropertyNames(`${MARKET}/vietnamScheduleSupply.ts`),
     ].map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, ""));
     for (const key of keys) {
       for (const blocked of forbidden) expect(key).not.toContain(blocked);
@@ -297,5 +298,36 @@ describe("series-market public/private architecture boundary", () => {
     expect(emitter).not.toMatch(/(?:fetch\s*\(|supabase|react|@\/components|@\/pages|Date\.now)/i);
     expect(emitter).toContain("createPublicSourceCoverageArtifact");
     expect(emitter).toContain("createPublicSourceCoverageReceipt");
+  });
+
+  it("keeps D1A Vietnam schedule supply source-only, exact, and outcome-free", () => {
+    const source = readFileSync(join(ROOT, `${MARKET}/vietnamScheduleSupply.ts`), "utf8");
+    const seed = readFileSync(join(ROOT, `${MARKET}/vietnamScheduleSupplySeed.ts`), "utf8");
+    const emitter = readFileSync(
+      join(ROOT, "scripts/series-market/emitVietnamScheduleSupplyV1.ts"),
+      "utf8",
+    );
+    for (const contents of [source, seed, emitter]) {
+      expect(contents).not.toMatch(
+        /(?:Date\.now|Math\.random|randomUUID|fetch\s*\(|supabase|react|@\/components|@\/pages)/i,
+      );
+      expect(contents).not.toMatch(
+        /(?:integrations\/supabase|series-registration|cashier|payment|playeridentifier|privateOperatorData)/i,
+      );
+      expect(contents).not.toMatch(
+        /(?:exchangeRate|convertCurrency|fx_conversion\s*\(|actualEntries|observedTurnout|playerDemand)/i,
+      );
+    }
+    expect(source).toContain("BigInt");
+    expect(source).toContain("owner_provided_public_image_unverified");
+    expect(source).toContain("sourceSha256");
+    expect(source).toContain("visualRegion");
+    expect(source).toContain("dash_displayed");
+    expect(seed).toContain("rpt_schedule_sep_11_12_2026.png");
+    expect(seed).toContain("center_p_schedule_jul_17_2026.png");
+    expect(seed).toContain("grand_loyal_schedule_jul_29_2026.png");
+    expect(emitter).toContain("verifySourceImages");
+    expect(emitter).toContain("createVietnamScheduleSupplyBundle");
+    expect(emitter).toContain("createScheduleSupplyReceipt");
   });
 });
