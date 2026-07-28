@@ -1,0 +1,66 @@
+{
+  "contractVersion": "v1",
+  "evidenceQuality": "owner_provided_public_image_unverified",
+  "releaseId": "series-market:v1:vietnam-schedule-supply:v1:release:dbd23425e5318a23e07779e2a448120a6c361b16149c90c0ef9481ca816ac150",
+  "sourceCutoff": "2026-07-28T14:05:00.000Z",
+  "sources": [
+    {
+      "city": null,
+      "country": "Vietnam",
+      "displayedScheduleDates": [
+        "2026-07-17"
+      ],
+      "evidenceQuality": "owner_provided_public_image_unverified",
+      "heightPixels": "730",
+      "market": "vietnam",
+      "organizer": "Center-P Poker Masters",
+      "posterIdentity": "center_p",
+      "seriesName": "Center-P Poker Master Season 2",
+      "sourceByteLength": "869499",
+      "sourceId": "center-p-jul-17-2026",
+      "sourcePath": "docs/series/evidence/vietnam/inbox/center_p_schedule_jul_17_2026.png",
+      "sourceSha256": "ae86830b97335debcf88e480bc0cf20572426af76ae8456aa2108e88da602cca",
+      "venue": "Center-P",
+      "widthPixels": "729"
+    },
+    {
+      "city": "Hanoi",
+      "country": "Vietnam",
+      "displayedScheduleDates": [
+        "2026-07-29"
+      ],
+      "evidenceQuality": "owner_provided_public_image_unverified",
+      "heightPixels": "686",
+      "market": "vietnam",
+      "organizer": "Grand Loyal Poker Club",
+      "posterIdentity": "grand_loyal",
+      "seriesName": "Grand Loyal Poker Championship V",
+      "sourceByteLength": "501566",
+      "sourceId": "grand-loyal-jul-29-2026",
+      "sourcePath": "docs/series/evidence/vietnam/inbox/grand_loyal_schedule_jul_29_2026.png",
+      "sourceSha256": "999c86b0f2496166683240dfccf774d574d675073580e022e9c465a513fa7bb4",
+      "venue": "Grand Loyal Poker Club",
+      "widthPixels": "738"
+    },
+    {
+      "city": null,
+      "country": "Vietnam",
+      "displayedScheduleDates": [
+        "2026-09-11",
+        "2026-09-12"
+      ],
+      "evidenceQuality": "owner_provided_public_image_unverified",
+      "heightPixels": "734",
+      "market": "vietnam",
+      "organizer": "RPT",
+      "posterIdentity": "rpt",
+      "seriesName": "RPT September Schedule",
+      "sourceByteLength": "719976",
+      "sourceId": "rpt-sep-11-12-2026",
+      "sourcePath": "docs/series/evidence/vietnam/inbox/rpt_schedule_sep_11_12_2026.png",
+      "sourceSha256": "2d70ed4cb17e6915753e60908b0c18a9f8aeb57362335b7f40b35a5c07cd4e11",
+      "venue": null,
+      "widthPixels": "730"
+    }
+  ]
+}
