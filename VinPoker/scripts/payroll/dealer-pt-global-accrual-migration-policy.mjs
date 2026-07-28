@@ -13,6 +13,7 @@ export const MIGRATION_NAME = `${MIGRATION_VERSION}_dealer_pt_wage_global_contin
 export const MIGRATION_SHA256 = "e1625874e61d943715ae62ebe4ab24ee647dfd95ad9f4f2872be2cd5948e261b";
 
 export const BASELINE_MIGRATION_NAME = "20270105000001_dealer_pt_standby_accrual_policy";
+export const BASELINE_MIGRATION_VERSION = "20270105000001";
 export const NEVER_APPLY = Object.freeze([
   "supabase/migrations/20270105000002_dealer_pt_wage_global_continuous_accrual.sql",
   "supabase/migrations/20270105000003_dealer_pt_wage_rate_history.sql",
