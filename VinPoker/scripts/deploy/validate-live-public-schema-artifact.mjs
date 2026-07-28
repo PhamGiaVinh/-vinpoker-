@@ -5,6 +5,20 @@ import { basename, resolve } from "node:path";
 const EXPECTED_SCHEMA_FILE = "live-public-schema.sql";
 const EXPECTED_CHECKSUM_FILE = "live-public-schema.sha256";
 
+// The raw protected dump can contain historical literals inside function bodies or
+// comments. Keep those values off the artifact while preserving valid SQL around
+// them for the disposable migration gate.
+const SENSITIVE_LITERAL_PATTERNS = [
+  ["jwt_like", /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, "redacted_jwt"],
+  ["database_url", /\bpostgres(?:ql)?:\/\/[^\s'"`]+/gi, "redacted_database_url"],
+  ["supabase_pat", /\bsbp_[A-Za-z0-9_-]{16,}\b/g, "redacted_supabase_pat"],
+  ["supabase_key", /\bsb_(?:secret|publishable)_[A-Za-z0-9_-]{16,}\b/gi, "redacted_supabase_key"],
+  ["telegram_token", /\b\d{8,12}:[A-Za-z0-9_-]{20,}\b/g, "redacted_telegram_token"],
+  ["vercel_token", /\b(?:vcp|vercel)_[A-Za-z0-9_-]{16,}\b/gi, "redacted_vercel_token"],
+  ["email", /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "redacted_email"],
+  ["phone", /(?<![\dA-Za-z])(?:\+?84|0)\d{9,10}(?!\d)/g, "redacted_phone"],
+];
+
 function codeOnlySql(sql) {
   let output = "";
   let index = 0;
@@ -134,17 +148,27 @@ function codeOnlySql(sql) {
 }
 
 function secretKinds(sql) {
-  const patterns = [
-    ["jwt_like", /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g],
-    ["database_url", /\bpostgres(?:ql)?:\/\/[^\s'"`]+/gi],
-    ["supabase_pat", /\bsbp_[A-Za-z0-9_-]{16,}\b/g],
-    ["supabase_key", /\bsb_(?:secret|publishable)_[A-Za-z0-9_-]{16,}\b/gi],
-    ["telegram_token", /\b\d{8,12}:[A-Za-z0-9_-]{20,}\b/g],
-    ["vercel_token", /\b(?:vcp|vercel)_[A-Za-z0-9_-]{16,}\b/gi],
-    ["email", /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi],
-    ["phone", /(?<![\dA-Za-z])(?:\+?84|0)\d{9,10}(?!\d)/g],
-  ];
-  return patterns.filter(([, pattern]) => pattern.test(sql)).map(([kind]) => kind);
+  return SENSITIVE_LITERAL_PATTERNS
+    .filter(([, pattern]) => {
+      pattern.lastIndex = 0;
+      return pattern.test(sql);
+    })
+    .map(([kind]) => kind);
+}
+
+export function sanitizeSchemaArtifactSql(sql) {
+  let sanitizedSql = sql;
+  let redactionCount = 0;
+
+  for (const [, pattern, replacement] of SENSITIVE_LITERAL_PATTERNS) {
+    pattern.lastIndex = 0;
+    sanitizedSql = sanitizedSql.replace(pattern, () => {
+      redactionCount += 1;
+      return replacement;
+    });
+  }
+
+  return { sanitizedSql, redactionCount };
 }
 
 export function schemaArtifactProblems(sql) {
