@@ -248,10 +248,12 @@ describe("Floor V2 DB and Edge contracts", () => {
     expect(floorTableNumberPicker).toContain("Tìm số 1–100");
     expect(floorTablePresentation).toContain("FLOOR_TABLE_NUMBER_MAX = 100");
     expect(floorTablePresentation).toContain("FIXED_FLOOR_TABLE_SEATS = 9");
-    expect(floorSeatRoster).toContain("Danh sách 9 ghế");
+    expect(floorSeatRoster).toContain("Danh sách người chơi");
     expect(floorSeatRoster).toContain("Empty");
     expect(floorTableDetailSheet).toContain("<FloorSeatRoster");
+    expect(floorTableMap).toContain("<FloorTableRosterIndex");
     expect(opsTables).toContain("<FloorSeatRoster");
+    expect(opsTables).toContain("<FloorTableRosterIndex");
     expect(opsTables).toContain("<OpenTableDialog");
     expect(opsTables).not.toContain('supabase.rpc("open_tournament_table"');
   });

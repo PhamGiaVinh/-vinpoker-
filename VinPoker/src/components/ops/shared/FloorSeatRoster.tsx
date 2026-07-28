@@ -1,4 +1,4 @@
-import { AlertTriangle, Plus, UserRound } from "lucide-react";
+import { AlertTriangle, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   buildFloorSeatRoster,
@@ -28,10 +28,10 @@ export function FloorSeatRoster({
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 id="floor-seat-roster-heading" className="text-sm font-semibold text-foreground">
-            Danh sách 9 ghế
+            Danh sách người chơi
           </h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {occupiedCount}/9 ghế đang có người
+            {occupiedCount}/9 ghế · chạm một ghế để thao tác
           </p>
         </div>
         <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 font-mono text-xs text-primary">
@@ -80,8 +80,8 @@ export function FloorSeatRoster({
 
               {seat ? (
                 <>
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-                    <UserRound className="h-4 w-4" />
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary" aria-hidden="true">
+                    {playerInitials(seat.playerName)}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-foreground">
@@ -92,7 +92,7 @@ export function FloorSeatRoster({
                       {seat.entryNumber != null ? ` · Entry ${seat.entryNumber}` : ""}
                     </span>
                   </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">Thao tác</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">Đang ngồi</span>
                 </>
               ) : (
                 <>
@@ -113,4 +113,10 @@ export function FloorSeatRoster({
       </div>
     </section>
   );
+}
+
+function playerInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return parts.slice(-2).map((part) => part.charAt(0).toUpperCase()).join("");
 }

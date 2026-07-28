@@ -11,11 +11,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useOperatorClubs } from "@/hooks/useOperatorClubs";
 import { useTournaments } from "@/hooks/useTournaments";
-import { RoomGrid } from "@/components/ops/shared/RoomGrid";
 import { useFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { FloorPlayerActions, type FloorSeatTarget } from "@/components/ops/shared/FloorPlayerActions";
 import { FloorTableControlModeControl } from "@/components/ops/shared/FloorTableControlMode";
 import { FloorSeatRoster } from "@/components/ops/shared/FloorSeatRoster";
+import { FloorTableRosterIndex } from "@/components/ops/shared/FloorTableRosterIndex";
 import { FIXED_FLOOR_TABLE_SEATS } from "@/components/ops/shared/floorTablePresentation";
 import { preflightFloorTableEntries } from "@/components/ops/shared/floorSeatEntryPreflight";
 import { OpenTableDialog } from "@/components/cashier/tournament-live/OpenTableDialog";
@@ -386,7 +386,21 @@ export default function OpsTables() {
           <div className="max-w-[260px] text-[12px] text-[#9b8e97]">Bàn sẽ hiện khi giải được gắn bàn và bốc chỗ.</div>
         </div>
       ) : (
-        <RoomGrid tables={visible.map((v) => v.mock)} onTap={(m) => setOpenNo(m.tableNo)} />
+        <FloorTableRosterIndex
+          tables={visible.map((table) => ({
+            id: table.raw.tt_id,
+            tableNumber: table.raw.table_number,
+            tableName: table.name,
+            occupiedSeatNumbers: table.seats.map((seat) => seat.seat),
+            maxSeats: table.mock.max,
+            status: table.mock.status,
+            controlMode: table.raw.floor_control_mode,
+          }))}
+          onOpen={(tableId) => {
+            const table = vms.find((candidate) => candidate.raw.tt_id === tableId);
+            if (table) setOpenNo(table.mock.tableNo);
+          }}
+        />
       )}
 
       {/* hàng nút đáy — thumb zone (hành động: đang nối) */}
@@ -412,7 +426,7 @@ export default function OpsTables() {
 
       {/* B2 — sheet bàn: ghế + người thật */}
       <Sheet open={openVM !== null} onOpenChange={(v) => { if (!v) setOpenNo(null); }}>
-        <SheetContent side="bottom" className="max-h-[88vh] overflow-y-auto rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+        <SheetContent side="bottom" className="h-[100dvh] max-h-none overflow-y-auto rounded-none border-none bg-[#0d0913] pb-[max(2rem,env(safe-area-inset-bottom))] sm:h-auto sm:max-h-[88vh] sm:rounded-t-[22px]">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="text-center">
             <SheetTitle className="text-[#f2ece6]">{openVM?.name}</SheetTitle>

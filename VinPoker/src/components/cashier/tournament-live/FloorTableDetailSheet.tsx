@@ -89,7 +89,7 @@ export function FloorTableDetailSheet({
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="right"
-          className="w-full overflow-y-auto border-white/10 bg-[#0d0913] sm:max-w-3xl lg:max-w-5xl"
+          className="h-[100dvh] w-full overflow-y-auto border-white/10 bg-[#0d0913] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:h-auto sm:max-w-3xl lg:max-w-4xl"
         >
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2 text-[#f2ece6]">
