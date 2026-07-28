@@ -15,6 +15,10 @@ const payrollDisposableWorkflow = readFileSync(
   resolve(root, ".github/workflows/dealer-pt-wage-disposable-validation.yml"),
   "utf8",
 );
+const payrollApplyWorkflow = readFileSync(
+  resolve(root, ".github/workflows/dealer-pt-wage-global-continuous-accrual-apply.yml"),
+  "utf8",
+);
 
 test("frontend cannot run after a required critical deployment failure", () => {
   assert.match(workflow, /needs\.plan\.outputs\.critical_functions == '\[\]' \|\| needs\.deploy-critical-edge\.result == 'success'/);
@@ -164,4 +168,25 @@ test("payroll disposable validation requires a checksummed artifact without prod
   assert.doesNotMatch(payrollDisposableWorkflow, /\bsecrets\./);
   assert.doesNotMatch(payrollDisposableWorkflow, /supabase\s+(?:link|db\s+(?:dump|push|reset)|functions\s+deploy)/i);
   assert.doesNotMatch(payrollDisposableWorkflow, /vercel\s+(?:deploy|--prod)/i);
+});
+
+test("global PT wage apply is manual, protected, source-pinned, and dark by default", () => {
+  assert.match(payrollApplyWorkflow, /workflow_dispatch:/);
+  assert.doesNotMatch(payrollApplyWorkflow, /pull_request:/);
+  assert.match(payrollApplyWorkflow, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(payrollApplyWorkflow, /dealer-swing-production-critical/);
+  assert.match(payrollApplyWorkflow, /required_reviewers/);
+  assert.match(payrollApplyWorkflow, /c3457d4cbd1c0b7f54917f629d15efef3637f5b9/);
+  assert.match(payrollApplyWorkflow, /--preflight/);
+  assert.match(payrollApplyWorkflow, /--apply/);
+  assert.match(payrollApplyWorkflow, /APPLY_DEALER_PT_WAGE_GLOBAL_CONTINUOUS_ACCRUAL_V2_20270106000001/);
+  assert.match(payrollApplyWorkflow, /--source-root/);
+  assert.match(payrollApplyWorkflow, /git -C control-plane merge-base --is-ancestor/);
+  assert.match(payrollApplyWorkflow, /actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/);
+  assert.doesNotMatch(payrollApplyWorkflow, /supabase\s+(?:db\s+(?:push|reset)|functions\s+deploy)/i);
+  assert.doesNotMatch(payrollApplyWorkflow, /vercel\s+(?:deploy|--prod)/i);
+  assert.equal(
+    payrollApplyWorkflow.split("\n").some((line) => /\b(?:echo|printf)\b/i.test(line) && /(?:SUPABASE|TOKEN|PASSWORD)/i.test(line)),
+    false,
+  );
 });
