@@ -288,9 +288,15 @@ declare
   v_disabled jsonb;
   v_after_disable jsonb;
 begin
-  v_before_disable := public._pt_wage_balance('fc000000-0000-4000-8000-000000000004');
+  v_before_disable := pg_temp.club_wage_row(
+    public.get_club_pt_wages('fb000000-0000-4000-8000-000000000001'),
+    'fc000000-0000-4000-8000-000000000004'
+  );
   v_disabled := public.set_all_approved_dealer_pt_wage_accrual(false, 'emergency containment must remain available');
-  v_after_disable := public._pt_wage_balance('fc000000-0000-4000-8000-000000000004');
+  v_after_disable := pg_temp.club_wage_row(
+    public.get_club_pt_wages('fb000000-0000-4000-8000-000000000001'),
+    'fc000000-0000-4000-8000-000000000004'
+  );
   perform pg_temp.assert_eq(v_before_disable->>'balance_vnd', '60000', 'pre-disable unpaid split balance is 60K');
   perform pg_temp.assert_eq(v_after_disable->>'balance_vnd', '60000', 'disable does not reprice unpaid mixed-rate history');
   perform pg_temp.assert_eq(v_disabled->>'future_club_enabled', 'false', 'disable turns off future-club inheritance');
