@@ -1,0 +1,124 @@
+name: Dealer PT wage global accrual v2 - exact migration apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Read-only preflight or exact apply"
+        required: true
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - apply
+      confirmation:
+        description: "For apply: APPLY_DEALER_PT_WAGE_GLOBAL_CONTINUOUS_ACCRUAL_V2_20270106000001"
+        required: true
+        default: HOLD
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  deployments: write
+
+concurrency:
+  group: dealer-pt-wage-global-accrual-v2-exact-apply
+  cancel-in-progress: false
+
+env:
+  CRITICAL_ENVIRONMENT: dealer-swing-production-critical
+  PAYROLL_SOURCE_SHA: c3457d4cbd1c0b7f54917f629d15efef3637f5b9
+
+jobs:
+  validate-critical-environment:
+    name: Require protected critical environment
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail closed unless required reviewers are configured
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          environment_json="$(gh api "repos/${GITHUB_REPOSITORY}/environments/${CRITICAL_ENVIRONMENT}")"
+          jq -e '
+            .protection_rules
+            | any(.type == "required_reviewers" and ((.reviewers // []) | length > 0))
+          ' <<<"$environment_json" >/dev/null
+
+  exact-apply:
+    needs: validate-critical-environment
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: dealer-swing-production-critical
+    steps:
+      - name: Checkout control-plane runner from this reviewed main revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          path: control-plane
+          fetch-depth: 0
+
+      - name: Verify immutable payroll source target is contained in current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PAYROLL_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git -C control-plane fetch origin main --no-tags
+          git -C control-plane merge-base --is-ancestor "$PAYROLL_SOURCE_SHA" origin/main
+
+      - name: Checkout exact payroll source merge
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.PAYROLL_SOURCE_SHA }}
+          path: payroll-source
+          fetch-depth: 1
+
+      - name: Verify exact payroll source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C payroll-source rev-parse HEAD)" = "$PAYROLL_SOURCE_SHA"
+
+          if [[ "${{ inputs.mode }}" == "apply" ]]; then
+            test "${{ inputs.confirmation }}" = "APPLY_DEALER_PT_WAGE_GLOBAL_CONTINUOUS_ACCRUAL_V2_20270106000001"
+          else
+            test "${{ inputs.mode }}" = "preflight"
+          fi
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "20"
+
+      - name: Validate exact runner and immutable payroll source
+        working-directory: control-plane/VinPoker
+        run: >-
+          node --test
+          scripts/payroll/apply-dealer-pt-global-accrual.test.mjs
+
+      - name: Read-only live preflight
+        working-directory: control-plane/VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: >-
+          node scripts/payroll/apply-dealer-pt-global-accrual.mjs
+          --preflight
+          --source-root "${GITHUB_WORKSPACE}/payroll-source/VinPoker"
+
+      - name: Apply only the approved global PT wage migration and verify dark post-state
+        if: inputs.mode == 'apply'
+        working-directory: control-plane/VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          CONFIRM_APPLY_DEALER_PT_GLOBAL_ACCRUAL: APPLY_DEALER_PT_WAGE_GLOBAL_CONTINUOUS_ACCRUAL_V2_20270106000001
+        run: >-
+          node scripts/payroll/apply-dealer-pt-global-accrual.mjs
+          --apply
+          --source-root "${GITHUB_WORKSPACE}/payroll-source/VinPoker"
