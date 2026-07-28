@@ -160,9 +160,11 @@ for (const snippet of [
   "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
   "supabase@2.101.0",
   "supabase db dump --linked --schema public",
+  "sanitize-live-public-schema-artifact.mjs",
   "validate-live-public-schema-artifact.mjs",
   "retention-days: 3",
   "schema_only=true",
+  "schema_artifact_sanitized=true",
   "data_rows_captured=false",
   "secrets_detected=false",
 ]) {

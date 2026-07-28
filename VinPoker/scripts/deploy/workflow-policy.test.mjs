@@ -135,7 +135,11 @@ test("schema capture is manual, protected, schema-only, and retains no raw outpu
   assert.match(schemaCaptureWorkflow, /dealer-swing-production-critical/);
   assert.match(schemaCaptureWorkflow, /required_reviewers/);
   assert.match(schemaCaptureWorkflow, /supabase db dump --linked --schema public/);
+  assert.match(schemaCaptureWorkflow, /sanitize-live-public-schema-artifact\.mjs/);
   assert.match(schemaCaptureWorkflow, /validate-live-public-schema-artifact\.mjs/);
+  assert.match(schemaCaptureWorkflow, /raw_schema_path="\$\{RUNNER_TEMP\}\/live-public-schema\.raw\.sql"/);
+  assert.match(schemaCaptureWorkflow, /rm -f "\$\{RUNNER_TEMP\}\/live-public-schema\.raw\.sql"/);
+  assert.match(schemaCaptureWorkflow, /schema_artifact_sanitized=true/);
   assert.match(schemaCaptureWorkflow, /actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
   assert.match(schemaCaptureWorkflow, /retention-days: 3/);
   assert.doesNotMatch(schemaCaptureWorkflow, /supabase\s+(?:db\s+(?:push|reset)|functions\s+deploy)/i);

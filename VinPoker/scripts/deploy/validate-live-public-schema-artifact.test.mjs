@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { schemaArtifactProblems, validateArtifactDirectory } from "./validate-live-public-schema-artifact.mjs";
+import {
+  sanitizeSchemaArtifactSql,
+  schemaArtifactProblems,
+  validateArtifactDirectory,
+} from "./validate-live-public-schema-artifact.mjs";
 
 const safeSchema = `
 -- INSERT INTO comments must not be interpreted as data.
@@ -42,6 +46,24 @@ test("schema artifact scanner rejects secret and fixture data indicators without
   const fakeSupabaseKey = `sb_secret_${"d".repeat(16)}`;
   const problems = schemaArtifactProblems(`${safeSchema}\n-- ${fakeEmail}\n-- ${fakePhone}\n-- ${fakeJwt}\n-- ${fakeSupabaseKey}`);
   assert.deepEqual(problems, ["sensitive_jwt_like", "sensitive_supabase_key", "sensitive_email", "sensitive_phone"]);
+});
+
+test("schema artifact sanitizer removes sensitive literals before the private artifact is checksummed", () => {
+  const fakeEmail = ["operator", "example.invalid"].join("@");
+  const fakeJwt = `eyJ${"a".repeat(11)}.${"b".repeat(11)}.${"c".repeat(11)}`;
+  const rawSchema = [
+    safeSchema,
+    "create function public.literal_fixture() returns text language sql as $$",
+    `select '${fakeEmail}:${fakeJwt}'`,
+    "$$;",
+  ].join("\n");
+
+  const { sanitizedSql, redactionCount } = sanitizeSchemaArtifactSql(rawSchema);
+  assert.equal(redactionCount, 2);
+  assert.deepEqual(schemaArtifactProblems(sanitizedSql), []);
+  assert.match(sanitizedSql, /redacted_email:redacted_jwt/);
+  assert.doesNotMatch(sanitizedSql, /operator@example\.invalid/);
+  assert.doesNotMatch(sanitizedSql, /eyJ[a-zA-Z0-9_.-]{20,}/);
 });
 
 test("schema artifact validator requires the exact two-file checksummed artifact", () => {
