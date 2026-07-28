@@ -8,18 +8,28 @@
 -- inert stubs exist only inside the disposable PostgreSQL container.
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE TABLE IF NOT EXISTS auth.users (
-  id uuid PRIMARY KEY
+  id uuid PRIMARY KEY,
+  aud text,
+  role text,
+  email text,
+  created_at timestamptz,
+  updated_at timestamptz
 );
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS aud text;
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS role text;
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email text;
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE OR REPLACE FUNCTION auth.uid()
 RETURNS uuid
 LANGUAGE sql
 STABLE
-AS $$ SELECT NULL::uuid $$;
+AS $$ SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 CREATE OR REPLACE FUNCTION auth.role()
 RETURNS text
 LANGUAGE sql
 STABLE
-AS $$ SELECT NULL::text $$;
+AS $$ SELECT NULLIF(current_setting('request.jwt.claim.role', true), '') $$;
 
 -- The public-only dump references the standard trigram operator class, while
 -- the extension definition is owned outside that dump.

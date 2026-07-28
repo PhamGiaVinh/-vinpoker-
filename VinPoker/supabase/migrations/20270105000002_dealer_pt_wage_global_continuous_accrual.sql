@@ -4,8 +4,10 @@
 -- migration adds one server-authoritative action that can apply that existing
 -- contract to every approved club from one server-captured activation instant.
 -- It also stores the default used when a club later becomes approved. The
--- migration itself is deliberately dark: only the authenticated super-admin
--- RPC below can enable either scope.
+-- migration itself is deliberately dark. It deliberately does NOT grant the
+-- global mutation RPC yet: 20270105000003 first installs rate-history
+-- baselines, the activation-readiness guard, and the replacement balance and
+-- payment contract. This prevents an activation gap between the two files.
 --
 -- Financial invariants:
 --   * saved payout rows remain immutable and are never updated here;
@@ -305,6 +307,9 @@ end;
 $$;
 
 revoke all on function public.set_all_approved_dealer_pt_wage_accrual(boolean,text) from public, anon;
-grant execute on function public.set_all_approved_dealer_pt_wage_accrual(boolean,text) to authenticated;
+revoke all on function public.set_all_approved_dealer_pt_wage_accrual(boolean,text) from authenticated;
+-- Execute is granted only by 20270105000003 after its rate-history readiness
+-- check is installed. Keeping this function uncallable is the fail-closed
+-- state when this migration is applied on its own.
 
 commit;
