@@ -885,7 +885,7 @@ export const FEATURES = {
    * No Supabase, private club data, turnout, recommendation, money action, or
    * poster rendering. Default OFF until authenticated owner Preview UAT.
    */
-  seriesMarketVietnamSupply: false,
+  seriesMarketVietnamSupply: true,
   /**
    * Club Admin → Series Intelligence demo entry at /club/admin/series-intelligence.
    * Frontend-only owner-facing SHELL that explains the Club Intelligence flow

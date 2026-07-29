@@ -336,7 +336,7 @@ describe("series-market public/private architecture boundary", () => {
     expect(emitter).toContain("createScheduleSupplyReceipt");
   });
 
-  it("keeps the Vietnam supply UI flag-off, read-only, corrected-release-only, and lazy", () => {
+  it("keeps the Vietnam supply UI enabled for owner UAT, read-only, corrected-release-only, and lazy", () => {
     const flags = readFileSync(join(ROOT, "src/lib/featureFlags.ts"), "utf8");
     const content = readFileSync(
       join(ROOT, "src/components/series-market/VietnamSupplyContent.tsx"),
@@ -352,7 +352,7 @@ describe("series-market public/private architecture boundary", () => {
     );
     const readModel = readFileSync(join(ROOT, `${MARKET}/vietnamSupplyReadModel.ts`), "utf8");
 
-    expect(flags).toContain("seriesMarketVietnamSupply: false");
+    expect(flags).toContain("seriesMarketVietnamSupply: true");
     expect(shell).toContain('lazy(() => import("./VietnamSupplyContent"))');
     expect(shell).toContain("FEATURES.seriesMarketVietnamSupply");
     expect(content).toContain("schedule-supply-v1.json?raw");
