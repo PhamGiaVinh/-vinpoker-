@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { FEATURES } from "@/lib/featureFlags";
+import { SeriesIntelligenceWorkspaceNav } from "@/components/series-intelligence/SeriesIntelligenceWorkspaceNav";
 
 const VerifiedMarketJejuContent = lazy(() =>
   import("@/components/series-market/VerifiedMarketJejuContent")
@@ -22,8 +23,11 @@ export default function VerifiedMarketJeju() {
   if (!(isAdmin || isClubAdmin || isClubOwner)) return <Navigate to="/" replace />;
   if (!FEATURES.seriesMarketVerifiedJeju && !isAdmin) return <Navigate to="/club/admin" replace />;
   return (
-    <Suspense fallback={<div className="py-16 text-center text-sm text-muted-foreground">Loading Public Evidence...</div>}>
-      <VerifiedMarketJejuContent />
-    </Suspense>
+    <div className="min-w-0 space-y-5">
+      <SeriesIntelligenceWorkspaceNav active="market" />
+      <Suspense fallback={<div className="py-16 text-center text-sm text-muted-foreground">Loading Public Evidence...</div>}>
+        <VerifiedMarketJejuContent />
+      </Suspense>
+    </div>
   );
 }

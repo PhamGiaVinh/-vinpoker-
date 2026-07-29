@@ -24,6 +24,7 @@ import { SeriesIntelEmptyState } from "@/components/series-intelligence/SeriesIn
 import { SeriesCaptureConsole } from "@/components/series-intelligence/SeriesCaptureConsole";
 import { SeriesAssistant } from "@/components/series-intelligence/SeriesAssistant";
 import { RegistrationPacePanel } from "@/components/series-intelligence/RegistrationPacePanel";
+import { SeriesIntelligenceWorkspaceNav } from "@/components/series-intelligence/SeriesIntelligenceWorkspaceNav";
 import { parseSeriesCsv, SAMPLE_CSV_TEXT } from "@/lib/series-intelligence/csvImport";
 import type { ScheduleEvent } from "@/lib/series-intelligence/scheduleGenerator";
 import { useSeriesLibrary } from "@/lib/series-intelligence/useSeriesLibrary";
@@ -118,6 +119,8 @@ export default function SeriesIntelligence() {
           <p className="text-xs text-muted-foreground">{SERIES_INTEL.commandCenterSubtitle}</p>
         </div>
       </div>
+
+      <SeriesIntelligenceWorkspaceNav active="operations" />
 
       {/* transparency badge + report entry */}
       <div className="flex flex-wrap items-center justify-between gap-2">
