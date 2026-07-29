@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { LiquidButton, LiquidGlassCard } from "@/components/kokonutui/liquid-glass-card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -222,7 +223,11 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
             )}
 
             {/* Breakdown */}
-            <div className="rounded-xl border border-border bg-card/40 p-3 space-y-1.5 text-sm">
+            <LiquidGlassCard
+              glassSize="sm"
+              className="rounded-xl"
+              contentClassName="space-y-1.5 text-sm"
+            >
               <div className="flex justify-between"><span className="text-muted-foreground">{t("tournamentRegister.feeLabel")}</span><span className="font-mono">{formatVND(info.breakdown.buy_in)}</span></div>
               {/* Player-facing: rake + staff fee are shown together as a single "Phí dịch vụ" line. */}
               {((info.breakdown.club_fee ?? 0) + (info.breakdown.service_fee ?? 0)) > 0 && (
@@ -238,7 +243,7 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
                 <span className="font-semibold">{t("tournamentRegister.totalPay")}</span>
                 <span className="font-mono font-bold text-primary text-base">{formatVND(info.total_pay)}</span>
               </div>
-            </div>
+            </LiquidGlassCard>
 
 
             {/* Bank info */}
@@ -297,10 +302,10 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
                 hidden
                 onChange={handleFile}
               />
-              <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => inputRef.current?.click()} disabled={uploading}>
+              <LiquidButton type="button" variant="outline" size="sm" className="w-full" onClick={() => inputRef.current?.click()} disabled={uploading}>
                 {uploading ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1" />}
                 {proofUrl ? t("tournamentRegister.reupload") : t("tournamentRegister.uploadProof")}
-              </Button>
+              </LiquidButton>
               {proofUrl && (
                 <a href={proofUrl} target="_blank" rel="noreferrer" className="block">
                   <img src={proofUrl} alt="Tx" className="w-full max-h-40 object-contain rounded-md border" />

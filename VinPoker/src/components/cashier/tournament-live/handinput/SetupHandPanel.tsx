@@ -7,7 +7,7 @@
 import type { ReactNode } from "react";
 import { Play, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card as UiCard } from "@/components/ui/card";
+import { LiquidButton, LiquidGlassCard } from "@/components/kokonutui/liquid-glass-card";
 import { Input } from "@/components/ui/input";
 import { SeatRail, type RailSeat } from "./SeatRail";
 
@@ -54,7 +54,10 @@ export function SetupHandPanel({
   chipEditor,
 }: SetupHandPanelProps) {
   return (
-    <UiCard className="p-6 text-center space-y-4 border-dashed">
+    <LiquidGlassCard
+      className="border-dashed"
+      contentClassName="space-y-4 text-center"
+    >
       <div className="flex items-center gap-3 justify-center">
         <label className="text-xs font-medium text-muted-foreground">Hand Number</label>
         <Input
@@ -82,7 +85,7 @@ export function SetupHandPanel({
           )}
         </div>
       )}
-      <Button
+      <LiquidButton
         onClick={onStartHand}
         disabled={submitting || !handNumber || !buttonConfirmed}
         className={
@@ -92,7 +95,7 @@ export function SetupHandPanel({
         }
       >
         <Play className="w-4 h-4 mr-2" /> {expressLabel || "Bắt đầu Hand"}
-      </Button>
+      </LiquidButton>
       {lastHandId && (
         <div className="pt-2">
           <Button size="sm" variant="destructive" onClick={onVoid} disabled={submitting}>
@@ -101,6 +104,6 @@ export function SetupHandPanel({
         </div>
       )}
       {chipEditor && <div className="pt-1 text-left">{chipEditor}</div>}
-    </UiCard>
+    </LiquidGlassCard>
   );
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
+import { LiquidButton } from "@/components/kokonutui/liquid-glass-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExternalLink, Lock, UserPlus } from "lucide-react";
 import { formatVND } from "@/lib/format";
@@ -216,7 +216,7 @@ function ActionButton({
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="block">
-              <Button
+              <LiquidButton
                 variant="outline"
                 disabled
                 className={`h-11 w-full justify-start ${danger ? "text-destructive" : ""}`}
@@ -225,7 +225,7 @@ function ActionButton({
                 <span className="ml-auto rounded-full border border-warning/40 px-1.5 py-0.5 text-[10px] text-warning">
                   Cần bật RPC
                 </span>
-              </Button>
+              </LiquidButton>
             </span>
           </TooltipTrigger>
           <TooltipContent>Bật cờ floorTableOps để dùng sau UAT</TooltipContent>
@@ -240,13 +240,13 @@ function ActionButton({
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="block">
-              <Button
+              <LiquidButton
                 variant="outline"
                 disabled
                 className={`h-11 w-full justify-start ${danger ? "text-destructive" : ""}`}
               >
                 <Icon className="mr-1.5 h-4 w-4" /> {label}
-              </Button>
+              </LiquidButton>
             </span>
           </TooltipTrigger>
           <TooltipContent>{disabledReason}</TooltipContent>
@@ -256,12 +256,12 @@ function ActionButton({
   }
 
   return (
-    <Button
+    <LiquidButton
       variant="outline"
       onClick={onClick}
       className={`h-11 w-full justify-start ${danger ? "text-destructive" : ""}`}
     >
       <Icon className="mr-1.5 h-4 w-4" /> {label}
-    </Button>
+    </LiquidButton>
   );
 }

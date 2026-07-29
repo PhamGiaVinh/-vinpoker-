@@ -4,6 +4,7 @@ import { useTranslation, Trans } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+import { LiquidButton, LiquidGlassCard } from "@/components/kokonutui/liquid-glass-card";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -267,13 +268,13 @@ const Marketplace = () => {
 
           {/* Buttons */}
           <div className="flex flex-wrap gap-3 shrink-0">
-            <Button
+            <LiquidButton
               variant="outline"
               onClick={() => nav(user ? "/staking/my-deals" : "/auth")}
               className="rounded-full border-border/60 hover:border-primary/60 hover:text-primary font-sans h-11 px-6"
             >
               {t("marketplace.myDealsBtn")}
-            </Button>
+            </LiquidButton>
             <Button
               onClick={() => nav(user ? "/staking/new" : "/auth")}
               className="rounded-full gradient-neon text-primary-foreground border-0 font-bold shadow-neon hover:opacity-95 h-11 px-6"
@@ -486,9 +487,11 @@ const DealCard = ({
   const secs = totalSec % 60;
 
   return (
-    <div
+    <LiquidGlassCard
       onClick={sold ? undefined : onClick}
-      className={`bg-card border ${sold ? "border-border opacity-50" : "border-border hover:border-foreground/30 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] cursor-pointer"} transition-all p-5 flex flex-col gap-3`}
+      glassSize="sm"
+      contentClassName="flex flex-col gap-3"
+      className={`${sold ? "border-border opacity-50" : "border-border hover:border-primary/35 cursor-pointer"} transition-all`}
     >
       {/* Player row */}
       <div className="flex items-center gap-3">
@@ -576,7 +579,7 @@ const DealCard = ({
           {t("marketplace.buyActionShort")} <ChevronRight className="w-4 h-4 inline -mt-0.5" />
         </button>
       )}
-    </div>
+    </LiquidGlassCard>
   );
 };
 
@@ -805,9 +808,9 @@ const DealDetailDialog = ({
                         </span>
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="outline" className="flex-1 border-border rounded-none font-sans" onClick={() => setConfirming(false)} disabled={submitting}>
+                        <LiquidButton variant="outline" className="flex-1 border-border rounded-none font-sans" onClick={() => setConfirming(false)} disabled={submitting}>
                           {t("marketplace.cancel")}
-                        </Button>
+                        </LiquidButton>
                         <Button
                           className="flex-1 bg-success hover:bg-success/90 text-success-foreground font-bold font-jetbrains tracking-wider rounded-none"
                           onClick={handleBuy}
