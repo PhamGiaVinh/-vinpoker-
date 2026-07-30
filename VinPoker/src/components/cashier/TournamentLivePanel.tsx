@@ -371,7 +371,6 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
             { value: "hand_input", icon: Hand, label: t("tournamentLive.tabs.input"), render: () => (
               <TrackerHandInputBoundary
                 tournamentId={selectedTournament.id}
-                role={mode === "tracker" ? "tracker" : "owner"}
               />
             ) },
             { value: "hand_history", icon: History, label: t("tournamentLive.handHistory.title"), render: () => <HandHistoryPanel tournamentId={selectedTournament.id} /> },

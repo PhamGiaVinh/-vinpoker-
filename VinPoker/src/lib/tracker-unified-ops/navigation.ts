@@ -56,21 +56,35 @@ export function resolveTrackerHandInputRouteV2(
   const legacyTableId =
     params.get("table")?.trim() || params.get("tableId")?.trim() || "";
 
-  if (
-    canonicalTableId &&
-    legacyTableId &&
-    canonicalTableId !== legacyTableId
-  ) {
-    return { kind: "error", error: "ambiguous_table_identity" };
-  }
-
   if (canonicalTableId) {
-    const match = tournamentTables.find(
+    const canonicalMatches = tournamentTables.filter(
       (table) => table.tournament_table_id === canonicalTableId,
     );
-    if (!match) {
+    if (canonicalMatches.length === 0) {
       return { kind: "error", error: "table_not_found" };
     }
+    if (canonicalMatches.length > 1) {
+      return { kind: "error", error: "ambiguous_table_identity" };
+    }
+
+    const match = canonicalMatches[0];
+    if (legacyTableId) {
+      const legacyMatches = tournamentTables.filter(
+        (table) =>
+          table.tournament_table_id === legacyTableId ||
+          table.physical_table_id === legacyTableId,
+      );
+      const legacyCanonicalIds = new Set(
+        legacyMatches.map((table) => table.tournament_table_id),
+      );
+      if (
+        legacyCanonicalIds.size !== 1 ||
+        !legacyCanonicalIds.has(match.tournament_table_id)
+      ) {
+        return { kind: "error", error: "ambiguous_table_identity" };
+      }
+    }
+
     const canonicalHref = buildTrackerHandInputHrefV2(
       tournamentId,
       match.tournament_table_id,

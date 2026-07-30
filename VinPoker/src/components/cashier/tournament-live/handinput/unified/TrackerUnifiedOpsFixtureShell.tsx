@@ -71,21 +71,25 @@ function getTrackerFixtureContext(
   };
 }
 
+type TrackerFixturePresentation = "fixture_role" | "embedded_handoff";
+
 export function TrackerUnifiedOpsFixtureShell({
   tournamentId,
   tournamentTableId,
   role,
   embedded = false,
+  presentation = "fixture_role",
   routeError = null,
 }: {
   tournamentId: string;
   tournamentTableId?: string | null;
-  role: TrackerOpsRole;
+  role?: TrackerOpsRole | null;
   embedded?: boolean;
+  presentation?: TrackerFixturePresentation;
   routeError?: TrackerOpsFailureCodeV2 | "missing_tournament" | null;
 }) {
   const tables = getTrackerFixtureTables(tournamentId);
-  const context = tournamentTableId
+  const context = tournamentTableId && role
     ? getTrackerFixtureContext(tournamentId, tournamentTableId, role)
     : null;
 
@@ -130,10 +134,18 @@ export function TrackerUnifiedOpsFixtureShell({
           </div>
         </header>
 
-        {routeError ? (
+        {role === "chipmaster" ? (
+          <ChipMasterHandoffCard />
+        ) : presentation === "embedded_handoff" ? (
+          <div data-testid="tracker-embedded-handoff">
+            <Launcher tournamentId={tournamentId} tables={tables} />
+          </div>
+        ) : routeError ? (
           <RouteError error={routeError} />
         ) : context ? (
           <ExactTableView context={context} role={role} />
+        ) : tournamentTableId && !role ? (
+          <SourceOnlyCard />
         ) : tournamentTableId ? (
           <RouteError error="table_not_found" />
         ) : (
@@ -141,6 +153,68 @@ export function TrackerUnifiedOpsFixtureShell({
         )}
       </div>
     </main>
+  );
+}
+
+export function TrackerUnifiedOpsSourceOnlyBoundary() {
+  return (
+    <main className="min-h-[100dvh] bg-[#0a080b] px-4 py-10 text-[#f4eee5]">
+      <SourceOnlyCard />
+    </main>
+  );
+}
+
+export function TrackerChipMasterHandoffBoundary() {
+  return (
+    <main className="min-h-[100dvh] bg-[#0a080b] px-4 py-10 text-[#f4eee5]">
+      <ChipMasterHandoffCard />
+    </main>
+  );
+}
+
+function SourceOnlyCard() {
+  return (
+    <section
+      data-testid="tracker-source-only-boundary"
+      className="mx-auto max-w-xl rounded-[26px] border border-amber-300/30 bg-[#120e12] p-6 text-center"
+    >
+      <LockKeyhole className="mx-auto h-9 w-9 text-amber-300" />
+      <h2 className="mt-3 text-lg font-black">Unified Ops chưa nối backend</h2>
+      <p className="mt-2 text-sm leading-6 text-[#b5a9b0]">
+        PR này chỉ chuẩn bị giao diện và điều hướng. Quyền vận hành không được
+        suy ra từ cờ role toàn cục, nên roster và writer V2 vẫn khóa an toàn.
+      </p>
+      <Link
+        to="/tracker"
+        className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 text-sm font-bold text-[#eee5e9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b66f]"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Quay lại Tracker
+      </Link>
+    </section>
+  );
+}
+
+function ChipMasterHandoffCard() {
+  return (
+    <section
+      data-testid="tracker-chipmaster-handoff"
+      className="mx-auto max-w-xl rounded-[26px] border border-[#d7b66f]/30 bg-[#120e12] p-6 text-center"
+    >
+      <LockKeyhole className="mx-auto h-9 w-9 text-[#d7b66f]" />
+      <h2 className="mt-3 text-lg font-black">ChipMaster dùng Chip Ops</h2>
+      <p className="mt-2 text-sm leading-6 text-[#b5a9b0]">
+        Khu vực Tracker chứa roster và stack vận hành. ChipMaster chỉ nhận
+        projection hẹp và acknowledgement sau khi backend V2 được duyệt.
+      </p>
+      <Link
+        to="/ops/chip-ops"
+        className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#d7b66f]/30 bg-[#d7b66f]/10 px-4 text-sm font-bold text-[#ecd69d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b66f]"
+      >
+        Mở Chip Ops
+        <ArrowRight className="h-4 w-4" />
+      </Link>
+    </section>
   );
 }
 

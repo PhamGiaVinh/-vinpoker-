@@ -57,6 +57,38 @@ describe("Tracker Unified Ops V2 navigation", () => {
     });
   });
 
+  it("accepts canonical and legacy ids when both resolve to the same table", () => {
+    expect(
+      resolveTrackerHandInputRouteV2(
+        `?t=${tournamentId}&tt=${tables[0].tournament_table_id}&table=${tables[0].physical_table_id}`,
+        tables,
+      ),
+    ).toEqual({
+      kind: "table",
+      tournament_id: tournamentId,
+      tournament_table_id: tables[0].tournament_table_id,
+      canonical_href: `/tracker/hand-input?t=${tournamentId}&tt=${tables[0].tournament_table_id}`,
+      needs_replace: true,
+    });
+  });
+
+  it("fails closed when the same raw id identifies two canonical tables", () => {
+    const collidingIdentity = [
+      tables[0],
+      {
+        ...tables[1],
+        physical_table_id: tables[0].tournament_table_id,
+      },
+    ];
+
+    expect(
+      resolveTrackerHandInputRouteV2(
+        `?t=${tournamentId}&tt=${tables[0].tournament_table_id}&table=${tables[0].tournament_table_id}`,
+        collidingIdentity,
+      ),
+    ).toEqual({ kind: "error", error: "ambiguous_table_identity" });
+  });
+
   it("fails closed for zero or conflicting matches", () => {
     expect(
       resolveTrackerHandInputRouteV2(

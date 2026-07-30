@@ -1,8 +1,19 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
 const flagState = vi.hoisted(() => ({ unified: false }));
+const authState = vi.hoisted(() => ({
+  user: { id: "fixture-user" } as { id: string } | null,
+  loading: false,
+  isAdmin: false,
+  isClubOwner: false,
+  isTracker: true,
+  isFloor: false,
+  isChipMaster: false,
+}));
 
 vi.mock("@/lib/featureFlags", async (importOriginal) => {
   const actual = await importOriginal<{
@@ -29,15 +40,7 @@ vi.mock(
 );
 
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({
-    user: { id: "fixture-user" },
-    loading: false,
-    isAdmin: false,
-    isClubOwner: false,
-    isTracker: true,
-    isFloor: false,
-    isChipMaster: false,
-  }),
+  useAuth: () => authState,
 }));
 
 import { TrackerHandInputBoundary } from "@/components/cashier/tournament-live/handinput/unified/TrackerHandInputBoundary";
@@ -47,6 +50,15 @@ import TrackerHandInputConsole from "@/pages/TrackerHandInputConsole";
 
 beforeEach(() => {
   flagState.unified = false;
+  Object.assign(authState, {
+    user: { id: "fixture-user" },
+    loading: false,
+    isAdmin: false,
+    isClubOwner: false,
+    isTracker: true,
+    isFloor: false,
+    isChipMaster: false,
+  });
 });
 
 afterEach(() => {
@@ -78,6 +90,36 @@ describe("Tracker Unified Ops V2 UI boundary", () => {
     );
     expect(screen.getByTestId("tracker-unified-ops-shell")).toBeInTheDocument();
     expect(screen.queryByTestId("legacy-hand-writer")).not.toBeInTheDocument();
+  });
+
+  it("keeps the embedded handoff neutral without fabricated owner capabilities", () => {
+    flagState.unified = true;
+    render(
+      <MemoryRouter>
+        <TrackerHandInputBoundary tournamentId="fixture-tournament" />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByTestId("tracker-embedded-handoff"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Vai trò xem: owner/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Bắt đầu Hand/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not derive an owner role from the TournamentLivePanel information architecture mode", () => {
+    const source = readFileSync(
+      join(
+        process.cwd(),
+        "src/components/cashier/TournamentLivePanel.tsx",
+      ),
+      "utf8",
+    );
+    expect(source).not.toContain(
+      'role={mode === "tracker" ? "tracker" : "owner"}',
+    );
+    expect(source).not.toMatch(/<TrackerHandInputBoundary[^>]*\srole=/);
   });
 
   it("renders the exact tracker view with read-only roster and a disabled writer", () => {
@@ -135,18 +177,49 @@ describe("Tracker Unified Ops V2 UI boundary", () => {
     );
   });
 
-  it("uses the new shell and never mounts the standalone writer while ON", () => {
+  it("keeps the production V2 route source-only even when global owner flags are true", () => {
     flagState.unified = true;
+    authState.isAdmin = true;
+    authState.isClubOwner = true;
     render(
       <MemoryRouter
         initialEntries={[
-          `/tracker/hand-input?t=${TRACKER_UNIFIED_FIXTURE_IDS.tournament}`,
+          `/tracker/hand-input?t=${TRACKER_UNIFIED_FIXTURE_IDS.tournament}&tt=${TRACKER_UNIFIED_FIXTURE_IDS.readyTournamentTable}`,
         ]}
       >
         <TrackerHandInputConsole />
       </MemoryRouter>,
     );
-    expect(screen.getByTestId("tracker-table-launcher")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("tracker-source-only-boundary"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("tracker-readonly-roster")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Bắt đầu Hand/ }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByTestId("legacy-hand-writer")).not.toBeInTheDocument();
+  });
+
+  it("sends a ChipMaster-only direct visit to the narrow Chip Ops handoff", () => {
+    flagState.unified = true;
+    authState.isTracker = false;
+    authState.isChipMaster = true;
+    render(
+      <MemoryRouter
+        initialEntries={[
+          `/tracker/hand-input?t=${TRACKER_UNIFIED_FIXTURE_IDS.tournament}&tt=${TRACKER_UNIFIED_FIXTURE_IDS.readyTournamentTable}`,
+        ]}
+      >
+        <TrackerHandInputConsole />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByTestId("tracker-chipmaster-handoff"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("tracker-readonly-roster")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Mở Chip Ops/ })).toHaveAttribute(
+      "href",
+      "/ops/chip-ops",
+    );
   });
 });
