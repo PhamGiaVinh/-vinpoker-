@@ -670,6 +670,16 @@ export const FEATURES = {
    */
   trackerEngineMode: false,
   /**
+   * Tracker Unified Ops V2 master gate. Source-only PRs keep this OFF.
+   *
+   * OFF preserves the current standalone and embedded Hand Input paths and does
+   * not load/query any V2 backend contract. ON replaces both writer mounts with
+   * the exact-table Unified Ops boundary; the legacy Seat Setup / Chip Quick Edit
+   * controller must not remain mounted behind CSS. Preview enablement is a
+   * separate owner-gated commit and must never be merged into main before UAT.
+   */
+  trackerUnifiedOpsFlow: false,
+  /**
    * Standalone operator Hand Input console (`/tracker/hand-input`) — the full-screen
    * floor-control surface (2-col desktop / 3-tab mobile) per the approved mockup.
    * Decoupled from `trackerEngineMode`: this flag ONLY enables the standalone console
