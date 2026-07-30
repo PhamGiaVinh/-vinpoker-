@@ -1,19 +1,24 @@
 {
   "templateOnly": true,
   "warning": "FICTIONAL EXAMPLE ONLY. Do not place this file in a dataset or release.",
-  "intakeKey": "fictional-outcome-intake",
+  "intakeKey": "fixture.fictional-outcome-intake",
+  "fixtureOnly": true,
   "source": {
-    "sourceId": "fictional-public-result",
+    "sourceKey": "fixture.fictional-public-result",
     "sourceCategory": "public_outcome_post",
     "sourceIdentity": {
       "kind": "public_url",
       "url": "https://example.test/final-result",
-      "sha256": null
+      "sha256": null,
+      "byteLength": null,
+      "mediaType": null
     },
     "organizer": "Fictional Organizer",
     "seriesName": "Fictional Series",
     "eventName": "Fictional Event",
-    "publicationAt": "2026-08-02T00:00:00Z",
+    "publication": {
+      "kind": "not_reported"
+    },
     "capturedAt": "2026-08-02T00:01:00Z",
     "expectedCompetitionKey": null,
     "reviewerStatus": "intake",
@@ -22,11 +27,48 @@
       "Fictional template. It is not public outcome evidence."
     ]
   },
-  "claimedFields": [
-    "entries",
-    "actual_prize_pool"
+  "outcome": {
+    "outcomeEventKey": "fixture.fictional-main-event",
+    "organizer": "Fictional Organizer",
+    "seriesName": "Fictional Series",
+    "eventName": "Fictional Event",
+    "eventDate": "2026-08-01",
+    "flightIdentity": null,
+    "currency": "VND"
+  },
+  "claims": [
+    {
+      "field": "entries",
+      "state": "uncertain",
+      "value": {
+        "type": "integer",
+        "value": "59"
+      },
+      "scope": {
+        "basis": "partial_result",
+        "scopeIdentity": "fixture.reported-partial-field"
+      },
+      "visualOrTextRegion": "fictional result summary",
+      "extractionMethod": "manual_text",
+      "extractionStatus": "uncertain"
+    },
+    {
+      "field": "actual_prize_pool",
+      "state": "missing",
+      "value": null,
+      "scope": {
+        "basis": "event_total",
+        "scopeIdentity": "fixture.fictional-main-event"
+      },
+      "visualOrTextRegion": "fictional payout section",
+      "extractionMethod": "manual_text",
+      "extractionStatus": "missing"
+    }
   ],
-  "expectedCompetitionKey": null,
+  "linkage": {
+    "expectedCompetitionKey": null,
+    "sourceDeclaredCompetitionKey": null
+  },
   "reviewerStatus": "intake",
   "limitationNotes": [
     "Fictional template. Never include in a release."
