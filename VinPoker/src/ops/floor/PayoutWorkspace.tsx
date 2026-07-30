@@ -1,6 +1,8 @@
 import { CircleCheck, Clock3, ShieldCheck, Trophy } from "lucide-react";
 import { useMemo } from "react";
+import { FEATURES } from "@/lib/featureFlags";
 import { useTournamentOps } from "@/ops/floor/TournamentOpsProvider";
+import FloorPayoutRequestPanel from "@/ops/payout/FloorPayoutRequestPanel";
 
 const money = (value: number | null | undefined) =>
   value == null
@@ -8,7 +10,7 @@ const money = (value: number | null | undefined) =>
     : new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(value);
 
 export default function PayoutWorkspace() {
-  const { entries, prizes, errors } = useTournamentOps();
+  const { tournamentId, entries, prizes, errors } = useTournamentOps();
   const entryByPlace = useMemo(
     () => new Map(
       entries
@@ -24,19 +26,25 @@ export default function PayoutWorkspace() {
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-300">Không gian giải</p>
         <h2 className="mt-1 text-2xl font-semibold text-white">Trả thưởng</h2>
         <p className="mt-1 text-sm text-[#91a49b]">
-          Floor chỉ xem cơ cấu và kết quả hiện có. Không có nút ghi nhận trả tiền trong workspace này.
+          {FEATURES.floorPayoutRequestFlow
+            ? "Floor đề nghị ghi nhận việc trao thưởng bên ngoài; Owner/Cashier khác phải duyệt."
+            : "Floor chỉ xem cơ cấu và kết quả hiện có. Không có nút ghi nhận trả tiền trong workspace này."}
         </p>
       </header>
 
-      <div className="flex items-start gap-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/5 p-4 text-sm text-emerald-50">
-        <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
-        <div>
-          <p className="font-semibold">Chế độ chỉ đọc</p>
-          <p className="mt-1 text-emerald-100/70">
-            Mọi money-path vẫn thuộc Owner/Cashier và các flag hiện hữu. PR này không tạo request và không gọi direct payment RPC.
-          </p>
+      {FEATURES.floorPayoutRequestFlow ? (
+        <FloorPayoutRequestPanel tournamentId={tournamentId} />
+      ) : (
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/5 p-4 text-sm text-emerald-50">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
+          <div>
+            <p className="font-semibold">Chế độ chỉ đọc</p>
+            <p className="mt-1 text-emerald-100/70">
+              Luồng đề nghị hai người đang tắt. Floor chỉ xem cơ cấu và không gọi direct payment RPC.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {errors.payout ? (
         <div className="rounded-2xl border border-rose-300/20 bg-rose-300/5 p-4 text-sm text-rose-200">

@@ -1,11 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- legacy read-only query rows are outside the auth-boundary scope */
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
   ClipboardList, Banknote, ArrowLeftRight, HandCoins, ShieldCheck,
   Monitor, IdCard, Loader2, LogIn, Users, AlertTriangle, RefreshCw,
+  CheckCircle2, KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FEATURES } from "@/lib/featureFlags";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
@@ -130,6 +133,7 @@ export default function OpsCashier() {
     loading: clubsLoading,
     clubs,
     cashierClubIds,
+    hasOwnerAccess,
     scopeError,
     metadataError,
   } = useOpsCapabilities();
@@ -178,7 +182,40 @@ export default function OpsCashier() {
       </header>
 
       {metadataError && <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">{metadataError}</div>}
-      <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">Dữ liệu thật · nút hành động chưa nối</div>
+      {FEATURES.floorPayoutRequestFlow && (
+        <div className="space-y-2">
+          <div role="alert" className="rounded-xl border border-rose-300/20 bg-rose-300/8 px-3 py-2 text-[12px] leading-5 text-rose-100">
+            Duyệt trả thưởng bên dưới sẽ ghi ledger thật sau khi server đối chiếu. Hệ thống không chuyển tiền.
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Link
+              to="/ops/cashier/payout-requests"
+              className="ios-press-sm ios-card flex min-h-14 items-center gap-3 p-3.5 text-left"
+            >
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-300" />
+              <span className="min-w-0">
+                <span className="block text-[15px] font-semibold text-[#f2ece6]">Duyệt trả thưởng</span>
+                <span className="block text-[12px] text-[#9b8e97]">Đề nghị từ Floor · dual control</span>
+              </span>
+            </Link>
+            {hasOwnerAccess && (
+              <Link
+                to="/ops/cashier/payout-permissions"
+                className="ios-press-sm ios-card flex min-h-14 items-center gap-3 p-3.5 text-left"
+              >
+                <KeyRound className="h-5 w-5 shrink-0 text-amber-300" />
+                <span className="min-w-0">
+                  <span className="block text-[15px] font-semibold text-[#f2ece6]">Quyền Floor</span>
+                  <span className="block text-[12px] text-[#9b8e97]">Owner cấp/thu hồi riêng từng người</span>
+                </span>
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+      <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">
+        Các thẻ nghiệp vụ bên dưới dùng dữ liệu thật · nút hành động chưa nối
+      </div>
 
       <div className="flex gap-1.5 overflow-x-auto px-1 pb-0.5">
         {PILLS.map((p) => (

@@ -633,6 +633,18 @@ export const FEATURES = {
    */
   floorAtomicPayout: false,
   /**
+   * Dual-control Floor payout requests. Floor can only propose that an
+   * externally completed prize hand-off be recorded; a different Owner/Cashier
+   * must approve before the existing append-only ledger changes. This master
+   * flag controls both the Floor composer and the Owner/Cashier queue.
+   *
+   * KEEP OFF until migration 20270107000000 passes disposable PostgreSQL,
+   * Preview UAT, controlled production apply, and a one-club grant canary.
+   * The RPC permission model remains server-authoritative regardless of this
+   * frontend flag. No SePay, bank, staking, or payment provider is called.
+   */
+  floorPayoutRequestFlow: false,
+  /**
    * Atomic completed-hand edit and forward resettle through the dedicated Edge path.
    * OFF preserves the existing operator edit flow; Hand #8 must not use this before UAT.
    */

@@ -1,0 +1,78 @@
+name: Floor payout requests disposable PostgreSQL
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/floor-payout-requests-disposable-db.yml"
+      - "VinPoker/supabase/migrations/20270107000000_floor_payout_requests.sql"
+      - "VinPoker/tests/floorPayout/**"
+      - "VinPoker/src/lib/featureFlags.ts"
+      - "VinPoker/src/ops/payout/**"
+      - "VinPoker/src/ops/floor/PayoutWorkspace.tsx"
+      - "VinPoker/src/pages/ops/OpsCashier.tsx"
+      - "VinPoker/src/OpsApp.tsx"
+      - "VinPoker/tsconfig.floor-payout.json"
+      - "VinPoker/package.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  floor-payout-disposable-db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply payout request migration to disposable PostgreSQL and run attack assertions
+        working-directory: VinPoker
+        run: >-
+          psql -X -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f tests/floorPayout/disposableDb.integration.sql
+
+      - name: Set up pinned Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - name: Install locked dependencies without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+
+      - name: Verify payout request source contract
+        working-directory: VinPoker
+        run: npm run test:floor-payout
+
+      - name: Type-check payout request UI boundary
+        working-directory: VinPoker
+        run: npm run typecheck:floor-payout
+
+      - name: Lint payout request source
+        working-directory: VinPoker
+        run: >-
+          npx eslint
+          src/ops/payout
+          src/ops/floor/PayoutWorkspace.tsx
+          src/pages/ops/OpsCashier.tsx
+          tests/floorPayout
+
+      - name: Check patch whitespace
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: git diff --check "origin/${BASE_REF}...HEAD"
