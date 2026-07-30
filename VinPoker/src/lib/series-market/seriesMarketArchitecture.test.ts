@@ -113,6 +113,7 @@ describe("series-market public/private architecture boundary", () => {
       ...contractPropertyNames(`${MARKET}/publicSourceCoverage.ts`),
       ...contractPropertyNames(`${MARKET}/vietnamScheduleSupply.ts`),
       ...contractPropertyNames(`${MARKET}/vietnamSupplyReadModel.ts`),
+      ...contractPropertyNames(`${MARKET}/vietnamOutcomeEvidence.ts`),
     ].map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, ""));
     for (const key of keys) {
       for (const blocked of forbidden) expect(key).not.toContain(blocked);
@@ -376,5 +377,44 @@ describe("series-market public/private architecture boundary", () => {
     expect(vietnamArtifactImporters).toEqual([
       "src/components/series-market/VietnamSupplyContent.tsx",
     ]);
+  }, 20_000);
+
+  it("keeps D1B Vietnam outcome evidence source-only, provenance-first, and outside the live UI", () => {
+    const source = readFileSync(join(ROOT, `${MARKET}/vietnamOutcomeEvidence.ts`), "utf8");
+    const tests = readFileSync(join(ROOT, `${MARKET}/vietnamOutcomeEvidence.test.ts`), "utf8");
+    const template = readFileSync(
+      join(ROOT, `${MARKET}/fixtures/templates/vietnam-outcome-intake.template.json`),
+      "utf8",
+    );
+    const validator = readFileSync(
+      join(ROOT, "scripts/series-market/validateVietnamOutcomeIntake.ts"),
+      "utf8",
+    );
+    for (const contents of [source, validator]) {
+      expect(contents).not.toMatch(
+        /(?:Date\.now|Math\.random|randomUUID|fetch\s*\(|supabase|react|@\/components|@\/pages)/i,
+      );
+      expect(contents).not.toMatch(
+        /(?:integrations\/supabase|series-registration|cashier|payment|playeridentifier|privateOperatorData)/i,
+      );
+      expect(contents).not.toMatch(/(?:exchangeRate|convertCurrency|fx_conversion\s*\()/i);
+    }
+    expect(source).toContain("observed_public_outcome_evidence");
+    expect(source).toContain("OUTCOME_RELEASE_EMPTY");
+    expect(source).toContain("owner_provided_public_image_unverified");
+    expect(source).toContain("explicit-compatible-money-v1");
+    expect(source).toContain("structural_candidate_requires_review");
+    expect(source).not.toContain("createVietnamScheduleSupplyBundle");
+    expect(validator).toContain("fixtureOnly");
+    expect(validator).not.toContain("createVietnamOutcomeEvidenceBundle");
+    expect(template).toContain('"templateOnly": true');
+    expect(template).toContain("FICTIONAL EXAMPLE ONLY");
+    expect(tests).toContain("flight or series counts");
+
+    const candidates = sourceFiles("src").filter((file) => !file.includes(".test."));
+    const outcomeImporters = candidates.filter((file) =>
+      importSpecifiers(file).some((specifier) => specifier.includes("vietnamOutcomeEvidence")),
+    );
+    expect(outcomeImporters).toEqual([]);
   }, 20_000);
 });

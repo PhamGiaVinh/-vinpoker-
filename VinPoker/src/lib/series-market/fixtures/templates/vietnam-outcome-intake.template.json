@@ -1,0 +1,34 @@
+{
+  "templateOnly": true,
+  "warning": "FICTIONAL EXAMPLE ONLY. Do not place this file in a dataset or release.",
+  "intakeKey": "fictional-outcome-intake",
+  "source": {
+    "sourceId": "fictional-public-result",
+    "sourceCategory": "public_outcome_post",
+    "sourceIdentity": {
+      "kind": "public_url",
+      "url": "https://example.test/final-result",
+      "sha256": null
+    },
+    "organizer": "Fictional Organizer",
+    "seriesName": "Fictional Series",
+    "eventName": "Fictional Event",
+    "publicationAt": "2026-08-02T00:00:00Z",
+    "capturedAt": "2026-08-02T00:01:00Z",
+    "expectedCompetitionKey": null,
+    "reviewerStatus": "intake",
+    "evidenceQuality": "secondary_public_announcement_unverified",
+    "limitationNotes": [
+      "Fictional template. It is not public outcome evidence."
+    ]
+  },
+  "claimedFields": [
+    "entries",
+    "actual_prize_pool"
+  ],
+  "expectedCompetitionKey": null,
+  "reviewerStatus": "intake",
+  "limitationNotes": [
+    "Fictional template. Never include in a release."
+  ]
+}
