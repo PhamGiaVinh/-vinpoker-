@@ -4,6 +4,7 @@ import {
   type ListTrackerTablesResponseV2,
   type TrackerOpsFailureV2,
   type TrackerOpsRole,
+  type TrackerReadinessBlockedFailureV2,
   type TrackerTableContextV2,
 } from "./contracts";
 
@@ -118,6 +119,7 @@ export const TRACKER_ACTIVE_HAND_CONTEXT_FIXTURE = {
     started_at: "2026-07-30T12:00:00.000Z",
     locked_by_user_id: TRACKER_UNIFIED_FIXTURE_IDS.trackerUser,
     locked_at: "2026-07-30T12:00:03.000Z",
+    lock_version: 7,
     lock_state: "mine",
     allowed_action: "resume",
   },
@@ -281,3 +283,36 @@ export const TRACKER_IDENTITY_ERROR_FIXTURES = {
     message_key: "tracker.errors.ambiguousTableIdentity",
   },
 } as const satisfies Record<string, TrackerOpsFailureV2>;
+
+export const TRACKER_READINESS_BLOCKED_FAILURE_FIXTURES = {
+  manualMode: {
+    ok: false,
+    error: "readiness_blocked",
+    message_key: "tracker.errors.readinessBlocked",
+    context_version: TRACKER_NEEDS_FLOOR_CONTEXT_FIXTURE.context_version,
+    readiness: TRACKER_NEEDS_FLOOR_CONTEXT_FIXTURE.readiness,
+  },
+  breakActive: {
+    ok: false,
+    error: "readiness_blocked",
+    message_key: "tracker.errors.readinessBlocked",
+    context_version: "ctx_v1_fixture_break_56c112",
+    readiness: {
+      state: "blocked",
+      blockers: [
+        {
+          code: "tournament_break_active",
+          severity: "blocker",
+          owner: "floor",
+          message_key: "tracker.readiness.tournamentBreakActive",
+          target: {
+            tournament_table_id:
+              TRACKER_UNIFIED_FIXTURE_IDS.readyTournamentTable,
+          },
+          remediation: "open_floor_level",
+        },
+      ],
+      warnings: [],
+    },
+  },
+} as const satisfies Record<string, TrackerReadinessBlockedFailureV2>;

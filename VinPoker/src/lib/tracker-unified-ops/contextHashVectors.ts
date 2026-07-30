@@ -38,7 +38,13 @@ export const TRACKER_CONTEXT_HASH_VECTOR_V1_INPUT = {
       entry_stack: 96_500,
     },
   ],
-  active_hand: null,
+  active_hand: {
+    hand_id: "50000000-0000-4000-8000-000000000018",
+    hand_number: 18,
+    status: "in_progress",
+    locked_by_user_id: "60000000-0000-4000-8000-000000000001",
+    lock_version: 7,
+  },
   next_hand_number: 18,
   level: {
     id: "40000000-0000-4000-8000-000000000001",
@@ -54,7 +60,7 @@ export const TRACKER_CONTEXT_HASH_VECTOR_V1_INPUT = {
 // Keys are recursively lexicographic. Roster rows are sorted by seat_number,
 // then seat_id. The browser treats the resulting SHA-256 token as opaque.
 export const TRACKER_CONTEXT_HASH_VECTOR_V1_CANONICAL_JSON =
-  "{\"active_hand\":null,\"context_hash_version\":\"tracker-context-v1\",\"level\":{\"ante\":2000,\"big_blind\":2000,\"clock_paused\":false,\"id\":\"40000000-0000-4000-8000-000000000001\",\"is_break\":false,\"number\":12,\"small_blind\":1000},\"next_hand_number\":18,\"roster\":[{\"entry_id\":\"71000000-0000-4000-8000-000000000001\",\"entry_number\":1,\"entry_stack\":125000,\"player_id\":\"72000000-0000-4000-8000-000000000001\",\"seat_id\":\"70000000-0000-4000-8000-000000000001\",\"seat_number\":1,\"seat_stack\":125000,\"tracker_stack\":125000},{\"entry_id\":\"71000000-0000-4000-8000-000000000002\",\"entry_number\":2,\"entry_stack\":96500,\"player_id\":\"72000000-0000-4000-8000-000000000002\",\"seat_id\":\"70000000-0000-4000-8000-000000000002\",\"seat_number\":4,\"seat_stack\":96500,\"tracker_stack\":96500}],\"table\":{\"control_mode\":\"tracker\",\"control_revision\":3,\"physical_table_id\":\"30000000-0000-4000-8000-000000000001\",\"status\":\"active\",\"tournament_table_id\":\"20000000-0000-4000-8000-000000000001\"},\"tournament\":{\"id\":\"10000000-0000-4000-8000-000000000001\",\"status\":\"running\"}}";
+  "{\"active_hand\":{\"hand_id\":\"50000000-0000-4000-8000-000000000018\",\"hand_number\":18,\"lock_version\":7,\"locked_by_user_id\":\"60000000-0000-4000-8000-000000000001\",\"status\":\"in_progress\"},\"context_hash_version\":\"tracker-context-v1\",\"level\":{\"ante\":2000,\"big_blind\":2000,\"clock_paused\":false,\"id\":\"40000000-0000-4000-8000-000000000001\",\"is_break\":false,\"number\":12,\"small_blind\":1000},\"next_hand_number\":18,\"roster\":[{\"entry_id\":\"71000000-0000-4000-8000-000000000001\",\"entry_number\":1,\"entry_stack\":125000,\"player_id\":\"72000000-0000-4000-8000-000000000001\",\"seat_id\":\"70000000-0000-4000-8000-000000000001\",\"seat_number\":1,\"seat_stack\":125000,\"tracker_stack\":125000},{\"entry_id\":\"71000000-0000-4000-8000-000000000002\",\"entry_number\":2,\"entry_stack\":96500,\"player_id\":\"72000000-0000-4000-8000-000000000002\",\"seat_id\":\"70000000-0000-4000-8000-000000000002\",\"seat_number\":4,\"seat_stack\":96500,\"tracker_stack\":96500}],\"table\":{\"control_mode\":\"tracker\",\"control_revision\":3,\"physical_table_id\":\"30000000-0000-4000-8000-000000000001\",\"status\":\"active\",\"tournament_table_id\":\"20000000-0000-4000-8000-000000000001\"},\"tournament\":{\"id\":\"10000000-0000-4000-8000-000000000001\",\"status\":\"running\"}}";
 
 export const TRACKER_CONTEXT_HASH_VECTOR_V1_SHA256 =
-  "5799f0b77f65b7e1652b636e9b04dcd4309c0c01c5ac0e8ae03212c4a5232b27";
+  "140bd6b013d0417a9d0f2d3f7093b8a3b2033c5b6d1b7a1f0d7dd440b9287e75";

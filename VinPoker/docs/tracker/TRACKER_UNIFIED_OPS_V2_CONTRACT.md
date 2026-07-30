@@ -96,7 +96,7 @@ Included:
 - control mode and revision;
 - active entry-backed roster, sorted by seat then stable ID;
 - seat, tracker, and entry stack projections;
-- active hand and lock;
+- active hand identity, owner, and stable `lock_version`;
 - next hand number preview;
 - level ID/number, SB, BB, BBA (`ante`), break, and clock pause state.
 
@@ -105,11 +105,46 @@ Excluded:
 - display name and avatar;
 - localized messages;
 - ChipMaster warning presentation;
+- lock lease timestamps such as `locked_at`;
 - UI layout state.
 
 Objects use recursively sorted keys. Arrays are explicitly sorted before JSONB
 serialization. `contextHashVectors.ts` is the cross-language fixture for the
 future PostgreSQL implementation.
+
+`TrackerActiveHandV2` still returns `locked_at` and `lock_state` for display.
+The hash does not contain `locked_at`: a heartbeat that only renews the lease
+timestamp must not change `context_version`. Takeover, release, or lock-owner
+change increments the server-owned `lock_version`. Lock freshness is computed
+from server time during each read or mutation, never from a client clock.
+
+## Idempotency
+
+The server owns idempotency scope and canonical request hashing:
+
+```text
+(operation, actor_user_id, tournament_id, idempotency_key)
+```
+
+Supported operation names are `start_hand`, `correct_stack`,
+`ack_stack_correction`, and `void_hand`.
+
+Every mutation transaction follows this order:
+
+1. Acquire the operation/tournament lock.
+2. Look up the idempotency record.
+3. Same scope and canonical request hash returns the persisted receipt/result
+   with `replayed=true`.
+4. Reuse with a different request hash, actor, or operation returns
+   `idempotency_mismatch`.
+5. Only a new key proceeds to context-version and business validation.
+6. Receipt and business mutation commit or roll back together.
+
+Therefore a retry after a successful start returns the original hand receipt;
+it must not fail `stale_table_context` merely because the first request changed
+the table context. The canonical request hash excludes localized labels and
+client timestamps. The browser creates an opaque key, but cannot choose scope
+or request hash.
 
 ## Locking and Start
 
@@ -160,6 +195,24 @@ warnings in V2.
 
 The server recomputes blockers. It never trusts readiness sent by a client.
 
+A valid current context that still has business blockers returns the dedicated
+mutation envelope:
+
+```ts
+{
+  ok: false;
+  error: "readiness_blocked";
+  message_key: string;
+  context_version: string;
+  readiness: TrackerReadinessV2;
+}
+```
+
+Start, stack correction, and explicit void use this envelope in addition to
+their generic mutation failures. Authentication, not-found, stale context, and
+idempotency mismatch remain explicit generic failures; readiness codes are not
+copied into the generic error union.
+
 ## Roles
 
 | Action | Server role |
@@ -168,12 +221,16 @@ The server recomputes blockers. It never trusts readiness sent by a client.
 | Start, record, or void hand | `is_club_tracker`, including authorized owner/super-admin |
 | Mode, roster, move, correction | Floor or authorized owner/super-admin |
 | Edit display name/avatar | Tracker, Floor, or owner |
-| View/ack correction | ChipMaster or owner |
+| View narrow correction projection / ack worklist | ChipMaster or owner |
 | Public replay | Separate public contract |
 
 Capabilities returned to the UI control presentation only. Every
 `SECURITY DEFINER` function derives the actor from `auth.uid()`, enforces club
 scope, and revokes `PUBLIC`, `anon`, and `service_role` execution.
+
+ChipMaster does not have `read_context` and cannot open the full exact-table
+Hand Input roster. Its surface is limited to the physical-chip projection and
+correction acknowledgement worklist.
 
 ## Stack Correction
 

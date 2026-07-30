@@ -7,6 +7,13 @@ export const TRACKER_STACK_CORRECTION_REASON_CODES = [
   "post_table_move_reconciliation",
 ] as const;
 
+export const TRACKER_IDEMPOTENT_MUTATION_OPERATIONS = [
+  "start_hand",
+  "correct_stack",
+  "ack_stack_correction",
+  "void_hand",
+] as const;
+
 export const TRACKER_READINESS_BLOCKER_CODES = [
   "table_not_found",
   "table_not_active",
@@ -39,6 +46,8 @@ export const TRACKER_READINESS_WARNING_CODES = [
 
 export type TrackerStackCorrectionReasonCode =
   (typeof TRACKER_STACK_CORRECTION_REASON_CODES)[number];
+export type TrackerIdempotentMutationOperation =
+  (typeof TRACKER_IDEMPOTENT_MUTATION_OPERATIONS)[number];
 export type TrackerReadinessBlockerCode =
   (typeof TRACKER_READINESS_BLOCKER_CODES)[number];
 export type TrackerReadinessWarningCode =
@@ -181,6 +190,7 @@ export type TrackerActiveHandV2 = {
   started_at: string;
   locked_by_user_id: string | null;
   locked_at: string | null;
+  lock_version: number | string;
   lock_state: TrackerHandLockStateV2;
   allowed_action: TrackerActiveHandActionV2;
 };
@@ -251,27 +261,31 @@ export type ListTrackerTablesResponseV2 =
     }
   | TrackerOpsFailureV2;
 
+export const TRACKER_OPS_FAILURE_CODES = [
+  "unauthorized",
+  "actor_not_allowed",
+  "tournament_not_found",
+  "table_not_found",
+  "table_tournament_mismatch",
+  "ambiguous_table_identity",
+  "stale_table_context",
+  "active_hand_exists",
+  "idempotency_mismatch",
+  "invalid_button_seat",
+  "invalid_stack",
+  "invalid_reason_code",
+  "seat_not_found",
+  "seat_not_active",
+  "entry_not_seated",
+  "stack_projection_mismatch",
+  "stack_changed",
+  "hand_not_found",
+  "hand_not_in_progress",
+  "lock_owned_by_other",
+] as const;
+
 export type TrackerOpsFailureCodeV2 =
-  | "unauthorized"
-  | "actor_not_allowed"
-  | "tournament_not_found"
-  | "table_not_found"
-  | "table_tournament_mismatch"
-  | "ambiguous_table_identity"
-  | "stale_table_context"
-  | "active_hand_exists"
-  | "idempotency_mismatch"
-  | "invalid_button_seat"
-  | "invalid_stack"
-  | "invalid_reason_code"
-  | "seat_not_found"
-  | "seat_not_active"
-  | "entry_not_seated"
-  | "stack_projection_mismatch"
-  | "stack_changed"
-  | "hand_not_found"
-  | "hand_not_in_progress"
-  | "lock_owned_by_other";
+  (typeof TRACKER_OPS_FAILURE_CODES)[number];
 
 export type TrackerOpsFailureV2 = {
   ok: false;
@@ -283,8 +297,30 @@ export type TrackerOpsFailureV2 = {
   allowed_action?: TrackerActiveHandActionV2;
 };
 
+export type TrackerReadinessBlockedFailureV2 = {
+  ok: false;
+  error: "readiness_blocked";
+  message_key: string;
+  context_version: string;
+  readiness: TrackerReadinessV2;
+};
+
+export type TrackerMutationFailureV2 =
+  | TrackerOpsFailureV2
+  | TrackerReadinessBlockedFailureV2;
+
+export type TrackerIdempotencyScopeV2 = {
+  operation: TrackerIdempotentMutationOperation;
+  actor_user_id: string;
+  tournament_id: string;
+  idempotency_key: string;
+};
+
 export type TrackerOpsReceiptV2 = {
   receipt_id: string;
+  operation: TrackerIdempotentMutationOperation;
+  actor_user_id: string;
+  tournament_id: string;
   idempotency_key: string;
   request_hash: string;
   replayed: boolean;
@@ -312,7 +348,7 @@ export type StartTrackerHandResponseV2 =
       level: TrackerLevelV2;
       receipt: TrackerOpsReceiptV2;
     }
-  | TrackerOpsFailureV2;
+  | TrackerMutationFailureV2;
 
 export type CorrectTrackerStackIntentV2 = {
   tournament_id: string;
@@ -338,7 +374,7 @@ export type CorrectTrackerStackResponseV2 =
       next_context_version: string;
       receipt: TrackerOpsReceiptV2;
     }
-  | TrackerOpsFailureV2;
+  | TrackerMutationFailureV2;
 
 export type AckTrackerStackCorrectionIntentV2 = {
   correction_id: string;
@@ -372,7 +408,7 @@ export type VoidTrackerHandResponseV2 =
       next_context_version: string;
       receipt: TrackerOpsReceiptV2;
     }
-  | TrackerOpsFailureV2;
+  | TrackerMutationFailureV2;
 
 export type TrackerContextHashRosterSeatV1 = {
   seat_id: string;
@@ -404,7 +440,7 @@ export type TrackerContextHashInputV1 = {
     hand_number: number;
     status: "in_progress";
     locked_by_user_id: string | null;
-    locked_at: string | null;
+    lock_version: number | string;
   } | null;
   next_hand_number: number;
   level: TrackerLevelV2 | null;
