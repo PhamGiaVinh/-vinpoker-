@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import {
   buildOperationalFloorTables,
   buildSeatsByTable,
@@ -25,6 +25,7 @@ export type UseFloorSeats = FloorState & { reload: () => void };
  * chỉ ở tab đồng hồ. Channel có nonce (useId) → 2 instance không bao giờ đụng channel.
  */
 export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: boolean }): UseFloorSeats {
+  const supabase = useSupabaseClient();
   const enabled = opts?.enabled ?? true;
   const [state, setState] = useState<FloorState>({ loading: false, error: null, tables: [], seatsByTable: {} });
   const seqRef = useRef(0);
@@ -84,7 +85,7 @@ export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: bo
       // P0-1: lỗi là lỗi — hiện error state, KHÔNG fallback mock.
       setState((s) => ({ ...s, loading: false, error: e instanceof Error ? e.message : "Không tải được sơ đồ bàn" }));
     }
-  }, [tournamentId, enabled]);
+  }, [tournamentId, enabled, supabase]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -100,7 +101,7 @@ export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: bo
       .on("postgres_changes", { event: "*", schema: "public", table: "tournament_tables", filter: `tournament_id=eq.${tournamentId}` }, bump)
       .subscribe();
     return () => { if (timer) clearTimeout(timer); supabase.removeChannel(ch); };
-  }, [tournamentId, enabled, nonce, load]);
+  }, [tournamentId, enabled, nonce, load, supabase]);
 
   return { ...state, reload: load };
 }

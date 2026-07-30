@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { floorOpsErrorMessage } from "@/lib/floorOpsErrors";
 import type { FloorTableControlMode } from "@/lib/floorTableControlMode";
 import { FloorTableModePicker } from "@/components/ops/shared/FloorTableModePicker";
@@ -12,11 +12,6 @@ type UntypedFloorRpcResult = {
   data: unknown;
   error: { message?: string; code?: string } | null;
 };
-
-const callUntypedFloorRpc = supabase.rpc.bind(supabase) as unknown as (
-  name: string,
-  args: Record<string, unknown>,
-) => Promise<UntypedFloorRpcResult>;
 
 type ControlTable = {
   tt_id: string;
@@ -34,6 +29,14 @@ export function FloorTableControlModeControl({
   table: ControlTable;
   onChanged: () => void;
 }) {
+  const supabase = useSupabaseClient();
+  const callUntypedFloorRpc = useMemo(
+    () => supabase.rpc.bind(supabase) as unknown as (
+      name: string,
+      args: Record<string, unknown>,
+    ) => Promise<UntypedFloorRpcResult>,
+    [supabase],
+  );
   const [selected, setSelected] = useState<FloorTableControlMode>(table.floor_control_mode);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);

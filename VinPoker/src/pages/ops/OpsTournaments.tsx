@@ -3,15 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   ChevronRight, Plus, Play, Activity, Edit, Trophy, History, FlagTriangleRight, Trash2, Image, Minus,
-  Loader2, LogIn, ChevronLeft,
+  Loader2, LogIn, AlertTriangle,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import { useOperatorClubs } from "@/hooks/useOperatorClubs";
 import { useTournaments } from "@/hooks/useTournaments";
+import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
+import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import type { Tournament } from "@/types/tournament";
 
 /**
@@ -51,8 +52,14 @@ type SubSheet = "none" | "actions" | "create" | "form" | "updateLive" | "close" 
 
 export default function OpsTournaments() {
   const navigate = useNavigate();
-  const { loading: clubsLoading, user, clubs, operatorClubIds, error: clubsError } = useOperatorClubs();
-  const scopedIds = operatorClubIds;
+  const { user } = useOpsAuth();
+  const {
+    loading: clubsLoading,
+    clubs,
+    floorClubIds: scopedIds,
+    scopeError,
+    metadataError,
+  } = useOpsCapabilities();
   const activeClub = scopedIds[0];
   const { data: tournaments, isLoading: tourLoading } = useTournaments(activeClub);
 
@@ -80,12 +87,11 @@ export default function OpsTournaments() {
   // ---- guards (ordered: auth → login → clubs → permission → data) ----
   if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." />;
   if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập để xem giải đấu của câu lạc bộ." />;
-  if (clubs === null) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Lấy câu lạc bộ." />;
-  if (clubsError) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi CLB" sub="Không dùng dữ liệu thay thế. Hãy tải lại trang." />;
+  if (scopeError) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi CLB" sub="Không dùng dữ liệu thay thế. Hãy tải lại trang." />;
   if (!activeClub) return <Guard icon={<Trophy className="h-8 w-8 text-amber-300" />} title="Chưa có câu lạc bộ" sub="Chưa được phân công CLB nào để xem giải." />;
   if (tourLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải giải…" sub="Lấy danh sách giải đấu." />;
 
-  const clubName = clubs && clubs.length ? clubs[0].name : "CLB";
+  const clubName = clubs.find((club) => club.id === activeClub)?.name ?? "CLB";
 
   return (
     <div className="ios-in space-y-4 pt-2">
@@ -94,6 +100,7 @@ export default function OpsTournaments() {
         <p className="mt-0.5 text-[15px] text-[#9b8e97]">{clubName} · chạm 1 giải để thao tác</p>
       </header>
 
+      {metadataError && <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">{metadataError}</div>}
       <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">
         Danh sách <b>thật</b>. Nút trong sheet (cập nhật live / chốt / xoá) đang được nối — sẽ bật sau UAT.
       </div>
@@ -144,15 +151,15 @@ export default function OpsTournaments() {
             {sel?.time} · {sel?.entries ?? 0} người{sel?.level ? ` · L${sel.level} · ${sel.blinds}` : ""}
           </div>
           <div className="mt-4 space-y-1.5">
-            <button onClick={() => { const id = sel?.id; closeAll(); navigate(`/ops/tournaments/${id}`); }}
+            <button onClick={() => { const id = sel?.id; closeAll(); navigate(`/ops/floor/tournaments/${id}`); }}
               className="ios-press ios-primary flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
               <Play className="h-5 w-5 shrink-0" />
               <span className="text-[15px] font-bold">Vào giải (vận hành)</span>
             </button>
             <Row icon={<Activity className="h-5 w-5 text-emerald-300" />} label="Cập nhật live — người / level / blind" onTap={() => go("updateLive")} />
             <Row icon={<Edit className="h-5 w-5 text-[#9b8e97]" />} label="Sửa thông tin giải" onTap={() => go("form")} />
-            <Row icon={<Trophy className="h-5 w-5 text-[#d8bc85]" />} label="Cơ cấu thưởng" onTap={() => { const id = sel?.id; closeAll(); navigate(`/ops/tournaments/${id}?tab=payout`); }} />
-            <Row icon={<History className="h-5 w-5 text-[#9b8e97]" />} label="Lịch sử thao tác" onTap={() => { const id = sel?.id; closeAll(); navigate(`/ops/tournaments/${id}?tab=history`); }} />
+            <Row icon={<Trophy className="h-5 w-5 text-[#d8bc85]" />} label="Cơ cấu thưởng" onTap={() => { const id = sel?.id; closeAll(); navigate(`/ops/floor/tournaments/${id}?tab=payout`); }} />
+            <Row icon={<History className="h-5 w-5 text-[#9b8e97]" />} label="Lịch sử thao tác" onTap={() => { const id = sel?.id; closeAll(); navigate(`/ops/floor/tournaments/${id}?tab=history`); }} />
             <Row icon={<FlagTriangleRight className="h-5 w-5 text-amber-300" />} label={<span className="text-amber-300">Chốt giải</span>} onTap={() => go("close")} />
             <Row icon={<Trash2 className="h-5 w-5 text-rose-300" />} label={<span className="text-rose-300">Xoá giải</span>} onTap={() => go("delete")} />
           </div>
@@ -255,13 +262,9 @@ export default function OpsTournaments() {
 }
 
 function Guard({ icon, title, sub }: { icon: React.ReactNode; title: string; sub: string }) {
-  const navigate = useNavigate();
   return (
     <div className="ios-in space-y-4 pt-2">
       <header className="px-1">
-        <button onClick={() => navigate("/")} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
-          <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> App chính
-        </button>
         <h1 className="mt-1 text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Giải đấu</h1>
       </header>
       <div className="ios-card flex flex-col items-center gap-2 py-12 text-center">

@@ -86,7 +86,13 @@ test("one-shot Floor frontend rollout cannot mutate DB, Edge, flags or payment p
     /VITE_SUPABASE_PUBLISHABLE_KEY: \$\{\{ secrets\.SUPABASE_PUBLISHABLE_KEY \}\}/u,
   );
   assert.match(workflow, /trap 'rm -f \.vercel\/project\.json' EXIT/u);
-  assert.match(workflow, /"Cache-Control":"no-cache, must-revalidate"/u);
+  assert.match(workflow, /write-vercel-build-output-config\.mjs/u);
+  assert.match(workflow, /verify-app-shell-routing\.mjs/u);
+  assert.ok(
+    workflow.indexOf("verify-app-shell-routing.mjs")
+      < workflow.indexOf("environment: dealer-swing-production-critical"),
+    "the retired single-entry target must fail before protected deployment approval",
+  );
   assert.match(workflow, /git diff --quiet "\$TARGET_SHA" origin\/main/u);
   assert.match(workflow, /cmp --silent VinPoker\/dist\/version\.json/u);
   assert.match(

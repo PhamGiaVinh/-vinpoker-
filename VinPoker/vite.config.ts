@@ -5,6 +5,24 @@ import fs from "fs";
 import { componentTagger } from "lovable-tagger";
 import { visualizer } from "rollup-plugin-visualizer";
 
+const opsHtmlFallbackPlugin = (): Plugin => ({
+  name: "ops-html-fallback",
+  configureServer(server) {
+    server.middlewares.use((req, _res, next) => {
+      const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+      if (pathname === "/ops" || pathname.startsWith("/ops/")) req.url = "/ops.html";
+      next();
+    });
+  },
+  configurePreviewServer(server) {
+    server.middlewares.use((req, _res, next) => {
+      const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+      if (pathname === "/ops" || pathname.startsWith("/ops/")) req.url = "/ops.html";
+      next();
+    });
+  },
+});
+
 // Writes the exact build version to a static marker consumed by stale clients.
 const versionStampPlugin = (version: string): Plugin => ({
   name: "version-stamp",
@@ -30,6 +48,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       react(),
+      opsHtmlFallbackPlugin(),
       mode === "development" && componentTagger(),
       versionStampPlugin(buildVersion),
       mode === "analyze" &&
@@ -61,6 +80,12 @@ export default defineConfig(({ mode }) => {
       // Manual vendor chunks caused a circular import between vendor-react and
       // vendor-charts. Let Rollup decide chunking to keep lazy routes safe.
       sourcemap: "hidden",
+      rollupOptions: {
+        input: {
+          player: path.resolve(__dirname, "index.html"),
+          ops: path.resolve(__dirname, "ops.html"),
+        },
+      },
     },
   };
 });

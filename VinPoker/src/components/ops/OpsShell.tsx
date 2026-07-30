@@ -1,69 +1,52 @@
-import { Navigate, Outlet, useNavigate } from "react-router-dom";
-import { ChevronLeft } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
-import { useOperatorClubs } from "@/hooks/useOperatorClubs";
-import { FEATURES } from "@/lib/featureFlags";
-import { RouteLoader } from "@/components/RouteLoader";
-import { OpsBottomNav } from "./OpsBottomNav";
-import "./ops-ios.css";
+import { Outlet, useNavigate } from "react-router-dom";
+import { Layers3, UserRound } from "lucide-react";
+import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
+import { OpsBottomNav } from "@/components/ops/OpsBottomNav";
+import "@/components/ops/ops-ios.css";
 
 /**
- * OpsShell — native-iOS shell for mobileOpsV2 `/ops/*`. Slim frosted nav bar + large-title pages
- * (each page renders its own big title) + frosted tab bar. Chrome riêng, KHÔNG dùng Layout / /dealer/*.
- * Gate: flag `mobileOpsV2` + admin/owner preview → "chưa bật" notice. docs/design/ios-floor-ux-spec.md.
+ * Independent Ops chrome. It intentionally has no player Layout, player-app
+ * navigation, player prompts, profile synchronization, or service worker.
  */
 export default function OpsShell() {
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
-  const { loading: scopeLoading, hasOpsAccess, hasOwnerAccess } = useOperatorClubs();
-  const flagOn = FEATURES.mobileOpsV2;
-  const allowPreview = hasOwnerAccess;
-
-  if (authLoading || scopeLoading) return <RouteLoader />;
-  if (!user) return <Navigate to="/auth" replace />;
-  if (!hasOpsAccess) {
-    return (
-      <div className="ops-root grid min-h-screen place-items-center bg-[#030604] px-6 text-center">
-        <div className="max-w-xs">
-          <div className="text-[17px] font-semibold text-[#f2ece6]">Bạn chưa có quyền Vận hành</div>
-          <p className="mt-1 text-[15px] text-[#9b8e97]">Nhờ chủ CLB phân quyền Floor, Thu ngân hoặc Tracker cho tài khoản này.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!flagOn && !allowPreview) {
-    return (
-      <div className="ops-root min-h-screen grid place-items-center bg-[#030604] px-6 text-center">
-        <div className="max-w-xs">
-          <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-[18px] ios-card text-[#00ff88] text-2xl">✦</div>
-          <div className="text-[17px] font-semibold text-[#f2ece6]">Vận hành (bản mobile) chưa bật</div>
-          <p className="mt-1 text-[15px] text-[#9b8e97]">
-            Bản thử nghiệm iPhone đang chờ duyệt. Dùng bản máy tính ở mục VẬN HÀNH.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const capabilities = useOpsCapabilities();
+  const showModuleSelector =
+    capabilities.hasOwnerAccess ||
+    (capabilities.hasFloorAccess && capabilities.hasCashierAccess);
 
   return (
-    <div className="ops-root min-h-screen flex flex-col bg-[#030604] text-[#f2ece6]">
-      {/* Slim frosted iOS nav bar */}
-      <header className="sticky top-0 z-40 ios-blur bg-[#030604]/78 pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
-        <div className="mx-auto flex h-11 w-full max-w-md items-center justify-between px-2.5">
-          <button
-            onClick={() => navigate("/")}
-            className="ios-press-sm -ml-1 flex items-center gap-0.5 rounded-full py-1 pl-1 pr-2 text-[15px] text-[#00ff88]"
-          >
-            <ChevronLeft className="h-5 w-5" strokeWidth={2.4} />
-            App chính
-          </button>
-          {/* Chip "DỮ LIỆU MẪU" toàn cục đã GỠ: /ops nay có trang dữ liệu thật + GHI thật
-              (cockpit bust/chip/move, Bàn). Chip chuyển về TỪNG trang còn mock (MockChip). */}
+    <div className="ops-root flex min-h-[100dvh] flex-col bg-[#030604] text-[#f2ece6]">
+      <header className="sticky top-0 z-40 border-b border-white/8 bg-[#030604]/88 px-[env(safe-area-inset-left)] pt-[env(safe-area-inset-top)] backdrop-blur-xl">
+        <div className="mx-auto flex min-h-14 w-full max-w-7xl items-center justify-between px-4 sm:px-6">
+          <div>
+            <div className="text-sm font-semibold tracking-wide text-emerald-300">VINPOKER OPS</div>
+            <div className="text-xs text-[#91a49b]">Workspace vận hành</div>
+          </div>
+          <div className="flex items-center gap-2">
+            {showModuleSelector && (
+              <button
+                type="button"
+                onClick={() => navigate("/ops/select-module")}
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-[#d8e4de]"
+                aria-label="Chọn module"
+              >
+                <Layers3 className="h-5 w-5" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => navigate("/ops/account")}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-[#d8e4de]"
+              aria-label="Tài khoản Ops"
+            >
+              <UserRound className="h-5 w-5" />
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-md flex-1 px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-1">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 lg:pb-8">
         <Outlet />
       </main>
 

@@ -1,55 +1,41 @@
 import { NavLink } from "react-router-dom";
-import { CalendarDays, Trophy, LayoutGrid, Bell, Menu, type LucideIcon } from "lucide-react";
+import { Banknote, Grid3X3, UserRound, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 
-/**
- * OpsBottomNav — frosted native-iOS tab bar cho mobileOpsV2 (Hôm nay/Giải đấu/Bàn/Cảnh báo/Thêm).
- * Translucent material, neon active tint, hairline top edge. docs/design/ios-operations-components.md §2.
- */
-type OpsTab = { to: string; end: boolean; icon: LucideIcon; label: string; badge?: number };
-
-const TABS: OpsTab[] = [
-  { to: "/ops", end: true, icon: CalendarDays, label: "Hôm nay" },
-  { to: "/ops/tournaments", end: false, icon: Trophy, label: "Giải đấu" },
-  { to: "/ops/tables", end: false, icon: LayoutGrid, label: "Bàn" },
-  // badge cứng "4" đã GỠ — số giả cố định làm operator quen bỏ qua tab Cảnh báo;
-  // khi alerts nối dữ liệu thật sẽ derive badge từ số cảnh báo thật.
-  { to: "/ops/alerts", end: false, icon: Bell, label: "Cảnh báo" },
-  { to: "/ops/more", end: false, icon: Menu, label: "Thêm" },
-];
+type OpsTab = { to: string; end: boolean; icon: LucideIcon; label: string };
 
 export function OpsBottomNav() {
+  const capabilities = useOpsCapabilities();
+  const tabs: OpsTab[] = [
+    ...(capabilities.hasFloorAccess
+      ? [{ to: "/ops/floor", end: false, icon: Grid3X3, label: "Floor" }]
+      : []),
+    ...(capabilities.hasCashierAccess
+      ? [{ to: "/ops/cashier", end: false, icon: Banknote, label: "Cashier" }]
+      : []),
+    { to: "/ops/account", end: true, icon: UserRound, label: "Tài khoản" },
+  ];
+
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 ios-blur bg-[#020403]/88 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/8" />
-      <div className="mx-auto grid h-[58px] max-w-md grid-cols-5 items-stretch">
-        {TABS.map((tab) => (
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/8 bg-[#020403]/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
+      <div className="mx-auto grid h-16 max-w-lg" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+        {tabs.map((tab) => (
           <NavLink
             key={tab.to}
             to={tab.to}
             end={tab.end}
             className={({ isActive }) =>
               cn(
-                "ios-press-sm flex flex-col items-center justify-center gap-1 pt-1 text-[10px] font-medium transition-colors",
-                isActive ? "text-[#00ff88]" : "text-[#91a49b]",
+                "flex min-h-11 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors",
+                isActive ? "text-emerald-300" : "text-[#91a49b]",
               )
             }
           >
             {({ isActive }) => (
               <>
-                <span className="relative">
-                  <tab.icon
-                    className="h-[23px] w-[23px]"
-                    strokeWidth={isActive ? 2.4 : 2}
-                    style={isActive ? { filter: "drop-shadow(0 0 8px rgba(0,255,136,0.65))" } : undefined}
-                  />
-                  {tab.badge ? (
-                    <span className="absolute -right-2 -top-1.5 grid h-[15px] min-w-[15px] place-items-center rounded-full bg-[#e2718f] px-1 text-[9px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(226,113,143,0.7)]">
-                      {tab.badge}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="leading-none tracking-tight">{tab.label}</span>
+                <tab.icon className="h-5 w-5" strokeWidth={isActive ? 2.4 : 2} />
+                <span>{tab.label}</span>
               </>
             )}
           </NavLink>

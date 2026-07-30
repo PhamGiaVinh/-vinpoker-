@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { ErrorBoundary } from "react-error-boundary";
-import App from "./App.tsx";
+import PlayerApp from "./PlayerApp.tsx";
 import "./index.css";
 import "./i18n";
 import { initButtonSounds } from "./lib/sound";
@@ -29,7 +29,7 @@ root.render(
     onError={(error, info) => console.error("Root ErrorBoundary:", error, info)}
     onReset={() => window.location.reload()}
   >
-    <App />
+    <PlayerApp />
   </ErrorBoundary>
 );
 
@@ -41,7 +41,9 @@ requestAnimationFrame(() => {
     sessionStorage.removeItem("vp:just-updated");
     sessionStorage.removeItem("vp:auto-reloaded");
     sessionStorage.removeItem("vp:reloaded-after-preload-error");
-  } catch {}
+  } catch {
+    // Session storage is best-effort on privacy-restricted browsers.
+  }
   const splash = document.getElementById("boot-splash");
   if (!splash) return;
   splash.classList.add("boot-splash--hide");
@@ -54,7 +56,9 @@ window.addEventListener("vite:preloadError", (e) => {
   try {
     if (sessionStorage.getItem("vp:reloaded-after-preload-error")) return;
     sessionStorage.setItem("vp:reloaded-after-preload-error", "1");
-  } catch {}
+  } catch {
+    // Session storage is best-effort on privacy-restricted browsers.
+  }
   e.preventDefault?.();
   window.location.reload();
 });
@@ -69,7 +73,9 @@ window.addEventListener("error", (e) => {
     try {
       if (sessionStorage.getItem("vp:chunk-reloaded")) return;
       sessionStorage.setItem("vp:chunk-reloaded", "1");
-    } catch (_) {}
+    } catch {
+      // Session storage is best-effort on privacy-restricted browsers.
+    }
     const url = new URL(location.href);
     url.searchParams.set("recover", Date.now().toString());
     location.replace(url.toString());

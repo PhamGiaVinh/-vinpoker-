@@ -507,7 +507,7 @@ jobs:
       - name: Install deployment CLIs
         run: |
           npm install --global supabase@2.101.0
-          npm install --global vercel@latest
+          npm install --global vercel@56.4.1
 
       - name: Re-probe frontend live contracts
         shell: bash
@@ -562,8 +562,47 @@ jobs:
           vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
           mkdir -p .vercel/output/static
           cp -r VinPoker/dist/. .vercel/output/static/
-          printf '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' > .vercel/output/config.json
-          vercel deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN"
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/verify-app-shell-routing.mjs" \
+            --static-dir .vercel/output/static
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/write-vercel-build-output-config.mjs" \
+            --static-dir .vercel/output/static \
+            --output .vercel/output/config.json
+          vercel deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN" \
+            > "${RUNNER_TEMP}/frontend-deployment-url.txt"
+
+      - name: Verify Player and Ops application shells before receipt
+        shell: bash
+        working-directory: target-source
+        run: |
+          set -euo pipefail
+          deployment_url="$(tail -n 1 "${RUNNER_TEMP}/frontend-deployment-url.txt" | tr -d '\r\n')"
+          test -n "$deployment_url"
+          verified=false
+          for attempt in $(seq 1 24); do
+            if node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/verify-app-shell-routing.mjs" \
+              --base-url "$deployment_url"; then
+              verified=true
+              break
+            fi
+            sleep 5
+          done
+          test "$verified" = true
+
+          canonical_version="${RUNNER_TEMP}/canonical-version.json"
+          canonical_verified=false
+          for attempt in $(seq 1 24); do
+            if curl --silent --show-error --fail \
+              "https://vinpoker.vercel.app/version.json?rollout=${GITHUB_RUN_ID}" \
+              --output "$canonical_version" \
+              && cmp --silent VinPoker/dist/version.json "$canonical_version" \
+              && node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/verify-app-shell-routing.mjs" \
+                --base-url "https://vinpoker.vercel.app"; then
+              canonical_verified=true
+              break
+            fi
+            sleep 5
+          done
+          test "$canonical_verified" = true
 
       - name: Record receipt only after successful frontend deploy
         run: >-

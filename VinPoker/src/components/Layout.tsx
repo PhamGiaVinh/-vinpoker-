@@ -75,6 +75,11 @@ export const Layout = () => {
   const [qrOpen, setQrOpen] = useState(false);
   const { t } = useTranslation();
   const { user, isAdmin, isClubAdmin, isClubOwner, isAccountant, isCashier, isStaffOps, isMedia, isFloor, isTracker, isDealer, isChipMaster, isMarketing, isFnb, isFnbCashier, isFnbKitchen, isFnbServer, signOut } = useAuth();
+  const userMetadata = user?.user_metadata as Record<string, unknown> | undefined;
+  const userDisplayName =
+    typeof userMetadata?.display_name === "string"
+      ? userMetadata.display_name
+      : user?.email ?? null;
   const { count: unreadCount } = useUnreadChats();
   const adminPending = useAdminPendingCounts();
   const location = useLocation();
@@ -232,7 +237,7 @@ export const Layout = () => {
             {/* Operator entry (mobile + desktop) — role-aware menu (TD + cashier + dealer).
                 Each destination guards itself; this is a UI entry only. A pure dealer
                 (no operator role) sees this menu with ONLY the Dealer App item. */}
-            {(isCashier || isTracker || isAdmin || isClubAdmin || isClubOwner || isDealer || isAccountant || (FEATURES.chipOps && isChipMaster) || (FEATURES.marketingModule && isMarketing) || (FEATURES.fnbModule && isFnb) || (FEATURES.fnbDemo && (isClubOwner || isAdmin))) && (
+            {(isCashier || isFloor || isTracker || isAdmin || isClubAdmin || isClubOwner || isDealer || isAccountant || (FEATURES.chipOps && isChipMaster) || (FEATURES.marketingModule && isMarketing) || (FEATURES.fnbModule && isFnb) || (FEATURES.fnbDemo && (isClubOwner || isAdmin))) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -253,16 +258,20 @@ export const Layout = () => {
                       Tracker
                     </DropdownMenuItem>
                   )}
-                  {(isCashier || isAdmin) && (
-                    <DropdownMenuItem onClick={() => nav("/cashier")} className="gap-2.5 cursor-pointer">
-                      <Wallet className="w-4 h-4" />
-                      Cashier
+                  {(isCashier || isClubOwner || isAdmin) && (
+                    <DropdownMenuItem asChild className="gap-2.5 cursor-pointer">
+                      <a href="/ops/cashier">
+                        <Wallet className="w-4 h-4" />
+                        Cashier
+                      </a>
                     </DropdownMenuItem>
                   )}
-                  {(isCashier || isAdmin) && (
-                    <DropdownMenuItem onClick={() => nav("/floor")} className="gap-2.5 cursor-pointer">
-                      <LayoutGrid className="w-4 h-4" />
-                      Floor
+                  {(isFloor || isCashier || isClubOwner || isAdmin) && (
+                    <DropdownMenuItem asChild className="gap-2.5 cursor-pointer">
+                      <a href="/ops/floor">
+                        <LayoutGrid className="w-4 h-4" />
+                        Floor
+                      </a>
                     </DropdownMenuItem>
                   )}
                   {(isCashier || isAdmin) && (
@@ -481,7 +490,7 @@ export const Layout = () => {
           open={qrOpen}
           onOpenChange={setQrOpen}
           userId={user.id}
-          displayName={(user.user_metadata as any)?.display_name ?? user.email ?? null}
+          displayName={userDisplayName}
         />
       )}
     </div>

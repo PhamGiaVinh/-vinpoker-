@@ -1,0 +1,19 @@
+{
+  "id": "/ops/",
+  "name": "VinPoker Ops",
+  "short_name": "VP Ops",
+  "description": "Workspace vận hành VinPoker",
+  "start_url": "/ops/",
+  "scope": "/ops/",
+  "display": "standalone",
+  "background_color": "#060b09",
+  "theme_color": "#060b09",
+  "icons": [
+    {
+      "src": "/ops-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
