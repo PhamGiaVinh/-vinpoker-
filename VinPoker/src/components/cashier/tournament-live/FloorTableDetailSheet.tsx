@@ -12,6 +12,7 @@ import { FloorTableControlModeControl } from "@/components/ops/shared/FloorTable
 import { FloorSeatRoster } from "@/components/ops/shared/FloorSeatRoster";
 import { FIXED_FLOOR_TABLE_SEATS } from "@/components/ops/shared/floorTablePresentation";
 import type { FloorTableControlMode } from "@/lib/floorTableControlMode";
+import { OpenHandInputConsoleButton } from "./handinput/OpenHandInputConsoleButton";
 
 export interface MapSeat {
   seat_id: string;
@@ -129,6 +130,12 @@ export function FloorTableDetailSheet({
               )}
 
               <div className="mt-4 space-y-2">
+                {FEATURES.trackerUnifiedOpsFlow && (
+                  <OpenHandInputConsoleButton
+                    tournamentId={tournamentId}
+                    tournamentTableId={table.tt_id}
+                  />
+                )}
                 <div className="text-xs text-muted-foreground">Thao tác bàn</div>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1">
                   <ActionButton icon={ExternalLink} label="Mở bàn khác" onClick={() => setDialog("open")} />

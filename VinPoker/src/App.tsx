@@ -10,7 +10,9 @@ installToastSounds();
 // Pull GTO custom ranges from DB + listen realtime updates
 import { initRemoteRanges } from "@/lib/gto/precomputed";
 const isSeriesMarketDevRoute = import.meta.env.DEV && window.location.pathname === "/__dev/series-market";
-if (!isSeriesMarketDevRoute) initRemoteRanges();
+const isTrackerUnifiedOpsDevRoute =
+  import.meta.env.DEV && window.location.pathname === "/__dev/tracker-unified-ops";
+if (!isSeriesMarketDevRoute && !isTrackerUnifiedOpsDevRoute) initRemoteRanges();
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
@@ -142,6 +144,9 @@ const DevCardPreview = import.meta.env.DEV ? lazy(() => import("./dev/CardPrevie
 const DevSeriesMarketPreview = import.meta.env.DEV
   ? lazy(() => import("./components/series-market/VerifiedMarketDevPreview"))
   : null;
+const DevTrackerUnifiedOpsPreview = import.meta.env.DEV
+  ? lazy(() => import("./dev/TrackerUnifiedOpsPreview"))
+  : null;
 // Poker IQ Drill — player-facing cold-start feature (focused full-screen flow, no Layout chrome)
 const PokerIQ = lazy(() => import("./pages/PokerIQ"));
 // Dealer Mobile App (/dealer/*) — own mobile shell; gated by FEATURES.dealerMobileApp
@@ -180,6 +185,18 @@ const App = () => {
         <Suspense fallback={<RouteLoader />}>
           <Routes>
             <Route path="*" element={<DevSeriesMarketPreview />} />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+    );
+  }
+
+  if (isTrackerUnifiedOpsDevRoute && DevTrackerUnifiedOpsPreview) {
+    return (
+      <BrowserRouter>
+        <Suspense fallback={<RouteLoader />}>
+          <Routes>
+            <Route path="*" element={<DevTrackerUnifiedOpsPreview />} />
           </Routes>
         </Suspense>
       </BrowserRouter>

@@ -18,6 +18,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Construction } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { HandInputConsole } from "@/components/cashier/tournament-live/handinput/HandInputConsole";
+import {
+  TrackerChipMasterHandoffBoundary,
+  TrackerUnifiedOpsSourceOnlyBoundary,
+} from "@/components/cashier/tournament-live/handinput/unified/TrackerUnifiedOpsFixtureShell";
 
 /** Inner component: only mounted when the flag is ON and a tournament id exists.
  * Shares the SAME embeddable console as the operator "Nhập hand" tab (no drift). */
@@ -30,7 +34,7 @@ function ConsoleInner({ tournamentId }: { tournamentId: string }) {
 }
 
 export default function TrackerHandInputConsole() {
-  const { user, loading } = useAuth();
+  const { user, loading, isChipMaster } = useAuth();
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
   const tournamentId = searchParams.get("tournament") ?? "";
@@ -48,6 +52,14 @@ export default function TrackerHandInputConsole() {
         <Skeleton className="h-96 rounded-xl" />
       </div>
     );
+  }
+
+  if (FEATURES.trackerUnifiedOpsFlow) {
+    if (isChipMaster) {
+      return <TrackerChipMasterHandoffBoundary />;
+    }
+
+    return <TrackerUnifiedOpsSourceOnlyBoundary />;
   }
 
   // The console is gated by its OWN flag (decoupled from the embedded engine mode).

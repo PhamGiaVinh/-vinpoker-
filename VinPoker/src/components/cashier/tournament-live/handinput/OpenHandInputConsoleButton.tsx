@@ -8,21 +8,37 @@
 import { Link } from "react-router-dom";
 import { Maximize2 } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
+import { buildTrackerHandInputHrefV2 } from "@/lib/tracker-unified-ops/navigation";
 
-export function OpenHandInputConsoleButton({ tournamentId }: { tournamentId: string }) {
+export function OpenHandInputConsoleButton({
+  tournamentId,
+  tournamentTableId,
+}: {
+  tournamentId: string;
+  tournamentTableId?: string | null;
+}) {
   if (!FEATURES.trackerHandInputConsole) return null;
+
+  const unified = FEATURES.trackerUnifiedOpsFlow;
+  const href = unified
+    ? buildTrackerHandInputHrefV2(tournamentId, tournamentTableId)
+    : `/tracker/hand-input?tournament=${tournamentId}`;
 
   return (
     <Link
-      to={`/tracker/hand-input?tournament=${tournamentId}`}
+      to={href}
       className="mb-3 flex min-h-[48px] items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-200 transition-colors hover:border-emerald-400/70 hover:bg-emerald-500/20"
     >
       <span className="flex items-center gap-2">
         <Maximize2 className="h-4 w-4 shrink-0" />
-        Mở bảng nhập hand toàn màn hình
+        {unified
+          ? tournamentTableId
+            ? "Bàn giao sang Tracker — mở đúng bàn"
+            : "Mở trung tâm vận hành Tracker"
+          : "Mở bảng nhập hand toàn màn hình"}
       </span>
       <span className="rounded-md border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300/80">
-        Mới
+        {unified ? "V2" : "Mới"}
       </span>
     </Link>
   );
