@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -35,6 +35,7 @@ export function CloseTableDialog({
   unlinkedActiveSeatCount?: number;
   onDone: () => void;
 }) {
+  const supabase = useSupabaseClient();
   const [drawMode, setDrawMode] = useState<DrawMode>("redraw_balanced");
   const [phase, setPhase] = useState<"confirm" | "running" | "done">("confirm");
   const [moves, setMoves] = useState<CloseTableMove[]>([]);
