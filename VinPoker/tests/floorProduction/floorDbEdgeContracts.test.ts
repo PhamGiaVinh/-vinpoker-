@@ -17,7 +17,8 @@ const liveUpdateEdge = read("supabase/functions/tournament-live-update/index.ts"
 const clockEdge = read("supabase/functions/tournament-live-clock/index.ts");
 const operatorClubsHook = read("src/hooks/useOperatorClubs.ts");
 const stableFloorClubIdsHook = read("src/hooks/useStableFloorClubIds.ts");
-const opsShell = read("src/components/ops/OpsShell.tsx");
+const opsCapabilityProvider = read("src/ops/auth/OpsCapabilityProvider.tsx");
+const opsApp = read("src/OpsApp.tsx");
 const cashierAccess = read("src/components/ops/OpsCashierAccess.tsx");
 const desktopFloor = read("src/pages/FloorDashboard.tsx");
 const floorTableMap = read("src/components/cashier/tournament-live/FloorTableMapPanel.tsx");
@@ -336,7 +337,11 @@ describe("Floor V2 DB and Edge contracts", () => {
     expect(operatorClubsHook).toContain('supabase.rpc("get_my_floor_operator_scope")');
     expect(operatorClubsHook).not.toContain('supabase.rpc("cashier_club_ids"');
     expect(operatorClubsHook).not.toContain('supabase.rpc("floor_club_ids"');
-    expect(opsShell).toContain("hasOpsAccess");
+    expect(opsCapabilityProvider).toContain('client.rpc("get_my_floor_operator_scope")');
+    expect(opsCapabilityProvider).toContain("row.can_owner || row.can_floor");
+    expect(opsCapabilityProvider).toContain("row.can_owner || row.can_cashier");
+    expect(opsApp).toContain('<OpsModuleGate capability="floor">');
+    expect(opsApp).toContain("<OpsTournamentScopeGate>");
     expect(cashierAccess).toContain("hasCashierAccess");
     expect(desktopFloor).toContain("operatorClubIds");
     expect(desktopFloor).toContain("useStableFloorClubIds(operatorClubIds, dealerClubIds)");

@@ -578,7 +578,7 @@ jobs:
           deployment_url="$(tail -n 1 "${RUNNER_TEMP}/frontend-deployment-url.txt" | tr -d '\r\n')"
           test -n "$deployment_url"
           verified=false
-          for attempt in $(seq 1 24); do
+          for _ in $(seq 1 24); do
             if node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/verify-app-shell-routing.mjs" \
               --base-url "$deployment_url"; then
               verified=true
@@ -590,7 +590,7 @@ jobs:
 
           canonical_version="${RUNNER_TEMP}/canonical-version.json"
           canonical_verified=false
-          for attempt in $(seq 1 24); do
+          for _ in $(seq 1 24); do
             if curl --silent --show-error --fail \
               "https://vinpoker.vercel.app/version.json?rollout=${GITHUB_RUN_ID}" \
               --output "$canonical_version" \
