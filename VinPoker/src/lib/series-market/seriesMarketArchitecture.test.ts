@@ -394,22 +394,46 @@ describe("series-market public/private architecture boundary", () => {
       expect(contents).not.toMatch(
         /(?:Date\.now|Math\.random|randomUUID|fetch\s*\(|supabase|react|@\/components|@\/pages)/i,
       );
-      expect(contents).not.toMatch(
-        /(?:integrations\/supabase|series-registration|cashier|payment|playeridentifier|privateOperatorData)/i,
-      );
       expect(contents).not.toMatch(/(?:exchangeRate|convertCurrency|fx_conversion\s*\()/i);
     }
+    expect(source).not.toMatch(
+      /(?:integrations\/supabase|series-registration|cashier|payment|playeridentifier|privateOperatorData)/i,
+    );
+    expect(validator).not.toMatch(
+      /(?:integrations\/supabase|series-registration|cashier|privateOperatorData)/i,
+    );
     expect(source).toContain("observed_public_outcome_evidence");
     expect(source).toContain("OUTCOME_RELEASE_EMPTY");
+    expect(source).toContain('VIETNAM_OUTCOME_EVIDENCE_CONTRACT_VERSION = "v2"');
     expect(source).toContain("owner_provided_public_image_unverified");
-    expect(source).toContain("explicit-compatible-money-v1");
+    expect(source).toContain("explicit-final-event-scope-money-v2");
+    expect(source).toContain("OutcomeClaimState");
+    expect(source).toContain("OutcomeResolvedFieldState");
+    expect(source).toContain("partial_result");
+    expect(source).toContain("VietnamScheduleLinkageContext");
+    expect(source).toContain("validateLinkageContextRecord");
+    expect(source).toContain("validateSourceRecord");
+    expect(source).toContain("validateClaimRecord");
+    expect(source).toContain("validateCorrectionRecord");
+    expect(source).toContain("validateOutcomeRecord");
+    expect(source).toContain("validateLinkRecord");
+    expect(source).toContain("OUTCOME_RELEASE_FINAL_LINKED_OUTCOME_REQUIRED");
+    expect(source).toContain("OUTCOME_RELEASE_MISSING_ONLY");
+    expect(source).toContain("OUTCOME_D1A_CURRENT_IDENTITY_MISMATCH");
     expect(source).toContain("structural_candidate_requires_review");
     expect(source).not.toContain("createVietnamScheduleSupplyBundle");
     expect(validator).toContain("fixtureOnly");
+    expect(validator).toContain("--input");
+    expect(validator).toContain("return 64");
+    expect(validator).toContain(".strict()");
+    expect(validator).toContain("OUTCOME_PRIVATE_FIELD_FORBIDDEN");
     expect(validator).not.toContain("createVietnamOutcomeEvidenceBundle");
     expect(template).toContain('"templateOnly": true');
+    expect(template).toContain('"fixtureOnly": true');
     expect(template).toContain("FICTIONAL EXAMPLE ONLY");
-    expect(tests).toContain("flight or series counts");
+    expect(tests).toContain("47 table-driven cases");
+    expect(tests).toContain("same-scope poker count invariants");
+    expect(tests).toContain("real cycles");
 
     const candidates = sourceFiles("src").filter((file) => !file.includes(".test."));
     const outcomeImporters = candidates.filter((file) =>
