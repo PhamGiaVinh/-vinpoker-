@@ -22,6 +22,19 @@ describe("close-table client containment", () => {
     });
   });
 
+  it("accepts a complete already-closed idempotent receipt without replaying moves", () => {
+    expect(parseCloseTableResult({
+      ok: true,
+      closed: true,
+      already_closed: true,
+      moved_count: 0,
+      moved: [],
+    }, 3)).toMatchObject({
+      kind: "success",
+      response: { already_closed: true, moved_count: 0 },
+    });
+  });
+
   it("never renders a zero-move response as success for a populated source table", () => {
     expect(parseCloseTableResult({ ok: true, closed: true, moved_count: 0, moved: [] }, 1)).toMatchObject({
       kind: "error",
@@ -46,6 +59,16 @@ describe("close-table client containment", () => {
     };
     expect(parseCloseTableResult(response, 3)).toMatchObject({ kind: "error", code: "UNLINKED_ACTIVE_SEATS" });
     expect(closeTableErrorMessage(response)).toContain("2/3");
+  });
+
+  it("explains mismatch and active-hand guards without implying a partial write", () => {
+    expect(closeTableErrorMessage({ ok: false, error: "seat_entry_mismatch" }))
+      .toBe("Ghế và entry không khớp. Không có dữ liệu nào bị thay đổi.");
+    expect(closeTableErrorMessage({
+      ok: false,
+      error: "table_has_active_hand",
+      hand_id: "50000000-0000-4000-8000-000000000001",
+    })).toBe("Bàn đang có hand hoạt động. Hãy hoàn tất hoặc xử lý hand trước khi đóng bàn.");
   });
 
   it("parses the real supabase-js data/error split without mislabeling a database error", () => {
