@@ -1,0 +1,25 @@
+{
+  "name": "@vbacker/automation-platform-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "seed": "node --env-file-if-exists=.env src/cli.js seed",
+    "status": "node --env-file-if-exists=.env src/cli.js status",
+    "kill-switch": "node --env-file-if-exists=.env src/cli.js kill-switch",
+    "test": "node --test --test-reporter=spec test/*.test.js",
+    "check:schemas": "node scripts/validate-schemas.js",
+    "check:workflow": "node scripts/check-workflows.js",
+    "scan": "node scripts/scan-repository.js",
+    "checksum": "node scripts/update-workflow-checksums.js --check",
+    "verify": "npm run check:schemas && npm run test && npm run check:workflow && npm run checksum && npm run scan"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  }
+}

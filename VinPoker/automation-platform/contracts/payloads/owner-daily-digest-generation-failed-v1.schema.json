@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.vbacker.internal/automation/payloads/owner-daily-digest-generation-failed-v1.schema.json",
+  "title": "OwnerDailyDigestGenerationFailedPayloadV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["business_date", "stage", "error_code", "retryable", "attempt"],
+  "properties": {
+    "business_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "stage": {
+      "enum": ["PREFLIGHT", "SNAPSHOT", "AI_SUMMARY", "VALIDATION", "PERSISTENCE"]
+    },
+    "error_code": {
+      "type": "string",
+      "pattern": "^[A-Z0-9_]{2,96}$"
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10
+    }
+  }
+}

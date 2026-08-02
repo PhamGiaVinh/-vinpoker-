@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.vbacker.internal/automation/payloads/owner-daily-digest-skipped-v1.schema.json",
+  "title": "OwnerDailyDigestSkippedPayloadV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["business_date", "reason"],
+  "properties": {
+    "business_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "reason": {
+      "enum": ["DISABLED", "NO_DATA", "EXPIRED", "CLUB_INACTIVE", "KILL_SWITCH"]
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "manifest_version": 1,
+  "environment": "DEV",
+  "gateway_contract_version": 1,
+  "allowed_gateway_origin": "http://gateway:8787",
+  "credential_types": [
+    "crypto"
+  ],
+  "workflows": [
+    {
+      "file": "signed-gateway-request-v1.json",
+      "workflow_key": "signed.gateway.request.v1",
+      "workflow_version": 1,
+      "checksum_sha256": "0d4c8fe73bcdaea6ab4fb5407b5dd5c0104a8d2699701420a2837cebd53f2a7b",
+      "event_schema_versions": [
+        1
+      ],
+      "capabilities": [
+        "HMAC_SIGN",
+        "GATEWAY_HTTP"
+      ]
+    },
+    {
+      "file": "owner-daily-digest-v1.json",
+      "workflow_key": "owner.daily_digest.v1",
+      "workflow_version": 1,
+      "checksum_sha256": "c1006d431771a00f00681c9e2ee70920b56b80a97b6f03b23d8918e170c7ef52",
+      "event_schema_versions": [
+        1
+      ],
+      "capabilities": [
+        "CLAIM",
+        "PREFLIGHT",
+        "ARTIFACT",
+        "ENQUEUE",
+        "COMPLETE"
+      ]
+    }
+  ],
+  "allowed_nodes": [
+    "n8n-nodes-base.crypto",
+    "n8n-nodes-base.executeWorkflow",
+    "n8n-nodes-base.executeWorkflowTrigger",
+    "n8n-nodes-base.httpRequest",
+    "n8n-nodes-base.manualTrigger",
+    "n8n-nodes-base.set",
+    "n8n-nodes-base.splitOut"
+  ],
+  "forbidden_nodes": [
+    "n8n-nodes-base.code",
+    "n8n-nodes-base.executeCommand",
+    "n8n-nodes-base.function",
+    "n8n-nodes-base.functionItem",
+    "n8n-nodes-base.postgres",
+    "n8n-nodes-base.readWriteFile",
+    "n8n-nodes-base.scheduleTrigger",
+    "n8n-nodes-base.ssh",
+    "n8n-nodes-base.webhook"
+  ]
+}

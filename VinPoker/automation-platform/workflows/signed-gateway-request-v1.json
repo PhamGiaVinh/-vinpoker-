@@ -1,0 +1,261 @@
+{
+  "id": "55555555-5555-4555-8555-555555555555",
+  "name": "VBacker - Signed Gateway Request V1 (DEV)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "50000000-0000-4000-8000-000000000001",
+      "name": "Workflow Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [-900, 160]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "50000000-0000-4000-8000-000000000011",
+              "name": "method",
+              "value": "POST",
+              "type": "string"
+            },
+            {
+              "id": "50000000-0000-4000-8000-000000000012",
+              "name": "path",
+              "value": "={{ ({ CLAIM: '/automation-gateway/claim', PREFLIGHT: '/automation-gateway/preflight', DIGEST_ARTIFACT: '/automation-gateway/artifacts/owner-daily-digest', ENQUEUE: '/automation-gateway/notifications/enqueue', COMPLETE: '/automation-gateway/complete', FAIL: '/automation-gateway/fail', HEARTBEAT: '/automation-gateway/heartbeat' }[$json.gateway_operation] ?? '/__blocked__') }}",
+              "type": "string"
+            },
+            {
+              "id": "50000000-0000-4000-8000-000000000013",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "50000000-0000-4000-8000-000000000014",
+              "name": "raw_body",
+              "value": "={{ JSON.stringify($json.body ?? {}) }}",
+              "type": "string"
+            },
+            {
+              "id": "50000000-0000-4000-8000-000000000015",
+              "name": "environment",
+              "value": "DEV",
+              "type": "string"
+            },
+            {
+              "id": "50000000-0000-4000-8000-000000000016",
+              "name": "key_id",
+              "value": "dev-current",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "50000000-0000-4000-8000-000000000002",
+      "name": "Prepare Exact Body",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-680, 160]
+    },
+    {
+      "parameters": {
+        "action": "generate",
+        "encodingType": "uuid",
+        "dataPropertyName": "nonce"
+      },
+      "id": "50000000-0000-4000-8000-000000000003",
+      "name": "Generate Nonce",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [-460, 160]
+    },
+    {
+      "parameters": {
+        "action": "hash",
+        "binaryData": false,
+        "type": "SHA256",
+        "value": "={{ $json.raw_body }}",
+        "dataPropertyName": "body_hash",
+        "encoding": "hex"
+      },
+      "id": "50000000-0000-4000-8000-000000000004",
+      "name": "Hash Exact Body",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [-240, 160]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "50000000-0000-4000-8000-000000000021",
+              "name": "canonical",
+              "value": "={{ $json.method + '\\n' + $json.path + '\\n' + $json.key_id + '\\n' + $json.environment + '\\n' + $json.worker_id + '\\n' + $json.workflow_key + '\\n' + $json.timestamp + '\\n' + $json.nonce + '\\n' + $json.body_hash }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "50000000-0000-4000-8000-000000000005",
+      "name": "Build Canonical Request",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-20, 160]
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "binaryData": false,
+        "type": "SHA256",
+        "value": "={{ $json.canonical }}",
+        "dataPropertyName": "signature",
+        "encoding": "hex"
+      },
+      "id": "50000000-0000-4000-8000-000000000006",
+      "name": "Sign With Worker Credential",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [200, 160],
+      "credentials": {
+        "crypto": {
+          "id": "AUTOMATION_WORKER_HMAC_DEV",
+          "name": "Automation Worker HMAC DEV"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'http://gateway:8787' + $json.path }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-vbacker-key-id",
+              "value": "={{ $json.key_id }}"
+            },
+            {
+              "name": "x-vbacker-environment",
+              "value": "={{ $json.environment }}"
+            },
+            {
+              "name": "x-vbacker-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-vbacker-nonce",
+              "value": "={{ $json.nonce }}"
+            },
+            {
+              "name": "x-vbacker-signature",
+              "value": "={{ $json.signature }}"
+            },
+            {
+              "name": "x-vbacker-worker-id",
+              "value": "={{ $json.worker_id }}"
+            },
+            {
+              "name": "x-vbacker-workflow-key",
+              "value": "={{ $json.workflow_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.raw_body }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "50000000-0000-4000-8000-000000000007",
+      "name": "Call Allowlisted Gateway",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [430, 160]
+    }
+  ],
+  "connections": {
+    "Workflow Input": {
+      "main": [
+        [
+          {
+            "node": "Prepare Exact Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Exact Body": {
+      "main": [
+        [
+          {
+            "node": "Generate Nonce",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Nonce": {
+      "main": [
+        [
+          {
+            "node": "Hash Exact Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hash Exact Body": {
+      "main": [
+        [
+          {
+            "node": "Build Canonical Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Canonical Request": {
+      "main": [
+        [
+          {
+            "node": "Sign With Worker Credential",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign With Worker Credential": {
+      "main": [
+        [
+          {
+            "node": "Call Allowlisted Gateway",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": false
+  },
+  "pinData": {},
+  "tags": [],
+  "versionId": "55555555-5555-4555-8555-555555555556"
+}

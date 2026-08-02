@@ -1,0 +1,300 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.vbacker.internal/automation/automation-event-v1.schema.json",
+  "title": "AutomationEventV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "trigger_kind",
+    "scope",
+    "automation_policy",
+    "severity",
+    "producer",
+    "subject",
+    "dedupe_key",
+    "correlation_id",
+    "occurred_at",
+    "emitted_at",
+    "available_at",
+    "catch_up_policy",
+    "priority",
+    "hop_count",
+    "payload_schema_key",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_type": {
+      "enum": [
+        "owner.daily_digest.due",
+        "owner.daily_digest.ready",
+        "owner.daily_digest.skipped",
+        "owner.daily_digest.generation_failed",
+        "system.health.component.degraded",
+        "system.health.component.recovered",
+        "system.health.queue.backlog_high",
+        "system.health.delivery.failure_threshold",
+        "system.health.data.freshness_breached",
+        "system.health.delivery.reconciliation_required",
+        "system.health.worker.heartbeat_missed"
+      ]
+    },
+    "trigger_kind": {
+      "enum": ["DOMAIN", "SCHEDULE", "HEALTH"]
+    },
+    "scope": {
+      "$ref": "./common-v1.schema.json#/$defs/scope"
+    },
+    "automation_policy": {
+      "enum": [
+        "NOTIFY_ONLY",
+        "SENSITIVE_NOTIFY",
+        "MONEY_ADJACENT_WORKLIST"
+      ]
+    },
+    "severity": {
+      "enum": ["P0", "P1", "P2", "MARKETING"]
+    },
+    "producer": {
+      "$ref": "./common-v1.schema.json#/$defs/producer"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_type", "entity_id"],
+      "properties": {
+        "entity_type": {
+          "enum": ["digest", "system_component", "automation_queue", "notification_delivery"]
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9._:-]{1,128}$"
+        },
+        "entity_version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "dedupe_key": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9._:-]{8,180}$"
+    },
+    "correlation_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "causation_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "parent_event_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "emitted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "available_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scheduled_for": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "catch_up_policy": {
+      "enum": ["SEND_LATE", "SKIP_IF_LATE", "RECOMPUTE"]
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "hop_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8
+    },
+    "content_artifact_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "payload_schema_key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{2,95}$"
+    },
+    "payload": {
+      "type": "object",
+      "maxProperties": 32
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "trigger_kind": {
+            "const": "SCHEDULE"
+          }
+        },
+        "required": ["trigger_kind"]
+      },
+      "then": {
+        "required": ["scheduled_for", "expires_at"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "trigger_kind": {
+            "const": "DOMAIN"
+          }
+        },
+        "required": ["trigger_kind"]
+      },
+      "then": {
+        "properties": {
+          "subject": {
+            "type": "object",
+            "required": ["entity_version"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "owner.daily_digest.due"
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "trigger_kind": {
+            "const": "SCHEDULE"
+          },
+          "automation_policy": {
+            "const": "NOTIFY_ONLY"
+          },
+          "severity": {
+            "const": "P2"
+          },
+          "catch_up_policy": {
+            "const": "RECOMPUTE"
+          },
+          "payload_schema_key": {
+            "const": "owner.daily_digest.due.v1"
+          },
+          "payload": {
+            "$ref": "./payloads/owner-daily-digest-due-v1.schema.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "owner.daily_digest.ready"
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload_schema_key": {
+            "const": "owner.daily_digest.ready.v1"
+          },
+          "payload": {
+            "$ref": "./payloads/owner-daily-digest-ready-v1.schema.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "owner.daily_digest.skipped"
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload_schema_key": {
+            "const": "owner.daily_digest.skipped.v1"
+          },
+          "payload": {
+            "$ref": "./payloads/owner-daily-digest-skipped-v1.schema.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "owner.daily_digest.generation_failed"
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload_schema_key": {
+            "const": "owner.daily_digest.generation_failed.v1"
+          },
+          "payload": {
+            "$ref": "./payloads/owner-daily-digest-generation-failed-v1.schema.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "pattern": "^system\\.health\\."
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "trigger_kind": {
+            "const": "HEALTH"
+          },
+          "payload_schema_key": {
+            "const": "system.health.v1"
+          },
+          "payload": {
+            "$ref": "./payloads/system-health-v1.schema.json"
+          }
+        }
+      }
+    }
+  ]
+}

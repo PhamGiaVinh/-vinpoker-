@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.vbacker.internal/automation/artifacts/owner-daily-digest-artifact-v1.schema.json",
+  "title": "OwnerDailyDigestArtifactV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_id",
+    "club_id",
+    "artifact_type",
+    "schema_version",
+    "privacy_class",
+    "sensitivity",
+    "source_data_hash",
+    "generation_mode",
+    "input_hash",
+    "output_hash",
+    "generated_at",
+    "approval_status",
+    "content_payload",
+    "content_sha256",
+    "expires_at"
+  ],
+  "properties": {
+    "artifact_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "club_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "artifact_type": {
+      "const": "OWNER_DAILY_DIGEST"
+    },
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "privacy_class": {
+      "const": "NO_PII"
+    },
+    "sensitivity": {
+      "const": "CLUB_CONFIDENTIAL"
+    },
+    "source_data_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "generation_mode": {
+      "enum": ["DETERMINISTIC", "AI_ASSISTED"]
+    },
+    "model_id": {
+      "type": ["string", "null"],
+      "maxLength": 96
+    },
+    "prompt_version": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "input_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "output_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "approval_status": {
+      "enum": ["NOT_REQUIRED", "DRAFT", "APPROVED", "REJECTED"]
+    },
+    "approved_by": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "approved_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "content_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "business_date",
+        "timezone",
+        "window_start",
+        "window_end",
+        "freshness_state",
+        "money_state",
+        "metrics",
+        "warning_codes",
+        "action_codes"
+      ],
+      "properties": {
+        "business_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "timezone": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "window_start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "window_end": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "freshness_state": {
+          "enum": ["FRESH", "PARTIAL", "STALE"]
+        },
+        "money_state": {
+          "enum": ["NONE", "PROVISIONAL", "CLOSED"]
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "registrations",
+            "attendance",
+            "entries",
+            "rake_retained_vnd",
+            "fnb_net_revenue_vnd",
+            "pending_liabilities_vnd",
+            "payroll_provisional_vnd"
+          ],
+          "properties": {
+            "registrations": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "attendance": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "entries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "rake_retained_vnd": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000000000
+            },
+            "fnb_net_revenue_vnd": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000000000
+            },
+            "pending_liabilities_vnd": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000000000
+            },
+            "payroll_provisional_vnd": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000000000
+            }
+          }
+        },
+        "warning_codes": {
+          "type": "array",
+          "maxItems": 12,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "DATA_PARTIAL",
+              "DATA_STALE",
+              "MONEY_PROVISIONAL",
+              "LIABILITY_PENDING",
+              "ATTENDANCE_BELOW_REGISTRATION"
+            ]
+          }
+        },
+        "action_codes": {
+          "type": "array",
+          "maxItems": 12,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "REVIEW_DAILY_CLOSE",
+              "REVIEW_DATA_FRESHNESS",
+              "REVIEW_PENDING_LIABILITIES",
+              "REVIEW_ATTENDANCE_GAP"
+            ]
+          }
+        }
+      }
+    },
+    "content_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

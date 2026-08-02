@@ -1,0 +1,94 @@
+name: vbacker-automation-dev
+
+services:
+  postgres:
+    image: postgres:16.9-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: n8n_dev
+      POSTGRES_USER: n8n_dev
+      POSTGRES_PASSWORD: ${N8N_DB_PASSWORD:?Set N8N_DB_PASSWORD in .env}
+    volumes:
+      - n8n_postgres_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n_dev -d n8n_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [automation_dev]
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    restart: unless-stopped
+    environment:
+      AUTOMATION_ENVIRONMENT: DEV
+      AUTOMATION_GATEWAY_HOST: 0.0.0.0
+      AUTOMATION_GATEWAY_PORT: 8787
+      AUTOMATION_DB_PATH: /data/automation-dev.sqlite
+      AUTOMATION_HMAC_CURRENT_KEY_ID: ${AUTOMATION_HMAC_CURRENT_KEY_ID:?Set current key id}
+      AUTOMATION_HMAC_CURRENT_KEY: ${AUTOMATION_HMAC_CURRENT_KEY:?Set current HMAC key}
+      AUTOMATION_HMAC_NEXT_KEY_ID: ${AUTOMATION_HMAC_NEXT_KEY_ID:-}
+      AUTOMATION_HMAC_NEXT_KEY: ${AUTOMATION_HMAC_NEXT_KEY:-}
+      AUTOMATION_HMAC_REPLAY_WINDOW_SECONDS: 300
+      AUTOMATION_HMAC_NONCE_TTL_SECONDS: 600
+      AUTOMATION_RATE_LIMIT_PER_MINUTE: 120
+      AUTOMATION_AUTO_SEED: "true"
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - gateway_dev:/data
+    networks: [automation_dev]
+
+  n8n:
+    image: n8nio/n8n:2.32.6
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n_dev
+      DB_POSTGRESDB_USER: n8n_dev
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD:?Set N8N_DB_PASSWORD in .env}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Set N8N_ENCRYPTION_KEY in .env}
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      N8N_EDITOR_BASE_URL: http://localhost:5678
+      WEBHOOK_URL: http://localhost:5678/
+      GENERIC_TIMEZONE: Asia/Bangkok
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_COMMUNITY_PACKAGES_ENABLED: "false"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "168"
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      NODES_EXCLUDE: >-
+        ["n8n-nodes-base.executeCommand","n8n-nodes-base.ssh","n8n-nodes-base.readWriteFile",
+        "n8n-nodes-base.code","n8n-nodes-base.function","n8n-nodes-base.functionItem",
+        "n8n-nodes-base.postgres"]
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n_data_dev:/home/node/.n8n
+    networks: [automation_dev]
+
+volumes:
+  n8n_postgres_dev:
+  n8n_data_dev:
+  gateway_dev:
+
+networks:
+  automation_dev:
+    internal: true

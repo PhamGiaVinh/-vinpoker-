@@ -1,0 +1,61 @@
+{
+  "fixture_version": 1,
+  "clubs": [
+    {
+      "club_id": "11111111-1111-4111-8111-111111111111",
+      "display_code": "CLUB_ALPHA_FIXTURE",
+      "timezone": "Asia/Bangkok",
+      "operating_day_cutoff": "06:00",
+      "digest_send_time": "09:00",
+      "mock_owner_endpoint_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "snapshot": {
+        "freshness_state": "FRESH",
+        "money_state": "PROVISIONAL",
+        "registrations": 128,
+        "attendance": 117,
+        "entries": 154,
+        "rake_retained_vnd": 18480000,
+        "fnb_net_revenue_vnd": 7250000,
+        "pending_liabilities_vnd": 96000000,
+        "payroll_provisional_vnd": 12800000
+      }
+    },
+    {
+      "club_id": "22222222-2222-4222-8222-222222222222",
+      "display_code": "CLUB_BETA_FIXTURE",
+      "timezone": "Asia/Bangkok",
+      "operating_day_cutoff": "06:00",
+      "digest_send_time": "09:15",
+      "mock_owner_endpoint_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "snapshot": {
+        "freshness_state": "PARTIAL",
+        "money_state": "CLOSED",
+        "registrations": 76,
+        "attendance": 69,
+        "entries": 91,
+        "rake_retained_vnd": 10920000,
+        "fnb_net_revenue_vnd": 4380000,
+        "pending_liabilities_vnd": 42000000,
+        "payroll_provisional_vnd": 7600000
+      }
+    }
+  ],
+  "scheduled_events": [
+    {
+      "club_id": "11111111-1111-4111-8111-111111111111",
+      "event_id": "31111111-1111-4111-8111-111111111111",
+      "correlation_id": "41111111-1111-4111-8111-111111111111",
+      "available_offset_seconds": -60,
+      "expires_offset_seconds": 28800,
+      "priority": 40
+    },
+    {
+      "club_id": "22222222-2222-4222-8222-222222222222",
+      "event_id": "32222222-2222-4222-8222-222222222222",
+      "correlation_id": "42222222-2222-4222-8222-222222222222",
+      "available_offset_seconds": -30,
+      "expires_offset_seconds": 28800,
+      "priority": 40
+    }
+  ]
+}
