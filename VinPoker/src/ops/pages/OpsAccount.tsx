@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
+import { Link } from "react-router-dom";
 
 function maskedId(value: string): string {
   return value.length > 10 ? `${value.slice(0, 5)}…${value.slice(-4)}` : value;
@@ -83,6 +84,10 @@ export default function OpsAccount() {
             </form>
           </CardContent>
         </Card>
+      )}
+
+      {capabilities.hasOwnerAccess && (
+        <Button asChild className="min-h-11 w-full"><Link to="/ops/club-admin/accounts">Quản lý tài khoản CLB</Link></Button>
       )}
 
       <Button
