@@ -1,14 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- legacy read-only query rows are outside the auth-boundary scope */
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
-  ChevronLeft, ClipboardList, Banknote, ArrowLeftRight, HandCoins, ShieldCheck,
+  ClipboardList, Banknote, ArrowLeftRight, HandCoins, ShieldCheck,
   Monitor, IdCard, Loader2, LogIn, Users, AlertTriangle, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { useOperatorClubs } from "@/hooks/useOperatorClubs";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
+import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
+import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 
 /**
  * Cashier — thu ngân (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads Q1/Q3/Q4/Q5/Q6).
@@ -35,7 +37,9 @@ const PILLS = [
 type Pill = (typeof PILLS)[number]["key"];
 
 // ── loaders (reads-only, mirror desktop queries; id-then-name fetch = no FK-alias risk) ──
-async function namesByIds(ids: string[]): Promise<Record<string, { name: string; phone: string | null }>> {
+type OpsSupabaseClient = SupabaseClient<Database>;
+
+async function namesByIds(supabase: OpsSupabaseClient, ids: string[]): Promise<Record<string, { name: string; phone: string | null }>> {
   const uniq = [...new Set(ids.filter(Boolean))];
   if (!uniq.length) return {};
   const { data } = await supabase.from("profiles").select("user_id, display_name, phone").in("user_id", uniq);
@@ -44,7 +48,7 @@ async function namesByIds(ids: string[]): Promise<Record<string, { name: string;
   return m;
 }
 
-async function loadQueue(clubIds: string[]) {
+async function loadQueue(supabase: OpsSupabaseClient, clubIds: string[]) {
   let q = supabase.from("tournament_registrations")
     .select("id, reference_code, status, total_pay, player_id, tournament_id, committed_at")
     .in("status", ["pending", "confirmed"]).order("committed_at", { ascending: true }).limit(100);
@@ -52,7 +56,7 @@ async function loadQueue(clubIds: string[]) {
   const { data, error } = await q;
   if (error) throw error;
   const rows = (data ?? []) as any[];
-  const names = await namesByIds(rows.map((r) => r.player_id));
+  const names = await namesByIds(supabase, rows.map((r) => r.player_id));
   const tourIds = [...new Set(rows.map((r) => r.tournament_id).filter(Boolean))];
   const tmap: Record<string, string> = {};
   if (tourIds.length) {
@@ -65,7 +69,7 @@ async function loadQueue(clubIds: string[]) {
     tour: tmap[r.tournament_id] ?? "", at: r.committed_at,
   }));
 }
-async function loadTours(clubIds: string[]) {
+async function loadTours(supabase: OpsSupabaseClient, clubIds: string[]) {
   let q = supabase.from("tournaments").select("id, name, buy_in, rake_amount, service_fee_amount, start_time")
     .in("status", ACTIVE_TOUR_STATUSES).order("created_at", { ascending: false }).limit(50);
   if (clubIds.length) q = q.in("club_id", clubIds);
@@ -73,12 +77,12 @@ async function loadTours(clubIds: string[]) {
   if (error) throw error;
   return (data ?? []) as any[];
 }
-async function loadSepay(scope: "actionable" | "resolved") {
+async function loadSepay(supabase: OpsSupabaseClient, scope: "actionable" | "resolved") {
   const { data, error } = await (supabase.rpc as any)("sepay_cashier_settlement_worklist", { p_scope: scope, p_limit: 100 });
   if (error) throw error;
   return (Array.isArray(data) ? data : []) as any[];
 }
-async function loadStaking(clubIds: string[]) {
+async function loadStaking(supabase: OpsSupabaseClient, clubIds: string[]) {
   let dq = supabase.from("staking_deals").select("id, custom_event_name, player_id").limit(200);
   if (clubIds.length) dq = dq.in("club_id", clubIds);
   const { data: deals, error: de } = await dq;
@@ -92,14 +96,14 @@ async function loadStaking(clubIds: string[]) {
     .in("deal_id", dealIds).eq("status", "committed").order("committed_at", { ascending: true }).limit(100);
   if (pe) throw pe;
   const rows = (purchases ?? []) as any[];
-  const names = await namesByIds([...rows.map((r) => r.backer_id), ...Object.values(dealMap).map((d: any) => d.player_id)]);
+  const names = await namesByIds(supabase, [...rows.map((r) => r.backer_id), ...Object.values(dealMap).map((d: any) => d.player_id)]);
   return rows.map((r) => ({
     id: r.id, amount: r.amount_vnd, pct: r.percent,
     backer: names[r.backer_id]?.name ?? "Nhà đầu tư",
     player: names[dealMap[r.deal_id]?.player_id]?.name ?? dealMap[r.deal_id]?.custom_event_name ?? "—",
   }));
 }
-async function loadVerify(clubIds: string[]) {
+async function loadVerify(supabase: OpsSupabaseClient, clubIds: string[]) {
   let q = supabase.from("membership_verification_requests")
     .select("id, member_card_id, created_at, player_user_id")
     .eq("status", "pending").order("created_at", { ascending: true }).limit(100);
@@ -107,7 +111,7 @@ async function loadVerify(clubIds: string[]) {
   const { data, error } = await q;
   if (error) throw error;
   const rows = (data ?? []) as any[];
-  const names = await namesByIds(rows.map((r) => r.player_user_id));
+  const names = await namesByIds(supabase, rows.map((r) => r.player_user_id));
   return rows.map((r) => ({
     id: r.id, card: r.member_card_id, at: r.created_at,
     name: names[r.player_user_id]?.name ?? "—", phone: names[r.player_user_id]?.phone ?? "",
@@ -120,9 +124,15 @@ const REG_CHIP: Record<string, { label: string; cls: string }> = {
 };
 
 export default function OpsCashier() {
-  const navigate = useNavigate();
-  const { isAdmin } = useAuth();
-  const { loading: clubsLoading, user, clubs, cashierClubIds, error: clubsError } = useOperatorClubs();
+  const supabase = useSupabaseClient();
+  const { user } = useOpsAuth();
+  const {
+    loading: clubsLoading,
+    clubs,
+    cashierClubIds,
+    scopeError,
+    metadataError,
+  } = useOpsCapabilities();
   const [pill, setPill] = useState<Pill>("queue");
   const [sepayTab, setSepayTab] = useState<"todo" | "done">("todo");
   const [state, setState] = useState<{ loading: boolean; error: string | null; rows: any[] }>({ loading: true, error: null, rows: [] });
@@ -130,7 +140,7 @@ export default function OpsCashier() {
   const clubKey = cashierClubIds.join(",");
   const pending = () => { toast(PENDING); };
 
-  const canLoad = !clubsLoading && !clubsError && !!user && clubs !== null && (cashierClubIds.length > 0 || isAdmin);
+  const canLoad = !clubsLoading && !scopeError && !!user && cashierClubIds.length > 0;
   useEffect(() => {
     if (!canLoad) return;
     let alive = true;
@@ -138,11 +148,11 @@ export default function OpsCashier() {
     (async () => {
       try {
         let rows: any[] = [];
-        if (pill === "queue") rows = await loadQueue(cashierClubIds);
-        else if (pill === "buyin") rows = await loadTours(cashierClubIds);
-        else if (pill === "sepay") rows = await loadSepay(sepayTab === "todo" ? "actionable" : "resolved");
-        else if (pill === "staking") rows = await loadStaking(cashierClubIds);
-        else if (pill === "verify") rows = await loadVerify(cashierClubIds);
+        if (pill === "queue") rows = await loadQueue(supabase, cashierClubIds);
+        else if (pill === "buyin") rows = await loadTours(supabase, cashierClubIds);
+        else if (pill === "sepay") rows = await loadSepay(supabase, sepayTab === "todo" ? "actionable" : "resolved");
+        else if (pill === "staking") rows = await loadStaking(supabase, cashierClubIds);
+        else if (pill === "verify") rows = await loadVerify(supabase, cashierClubIds);
         if (alive) setState({ loading: false, error: null, rows });
       } catch (e) {
         if (alive) setState({ loading: false, error: e instanceof Error ? e.message : "Không tải được dữ liệu", rows: [] });
@@ -153,24 +163,21 @@ export default function OpsCashier() {
   }, [pill, sepayTab, clubKey, reload, canLoad]);
 
   // ---- guards ----
-  if (clubsLoading) return <Guard nav={navigate} icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." />;
-  if (!user) return <Guard nav={navigate} icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản thu ngân để xem quầy." />;
-  if (clubs === null) return <Guard nav={navigate} icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Lấy câu lạc bộ." />;
-  if (clubsError) return <Guard nav={navigate} icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi Cashier" sub="Không hiển thị dữ liệu thay thế. Hãy tải lại trang." />;
-  if (cashierClubIds.length === 0 && !isAdmin) return <Guard nav={navigate} icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền thu ngân." />;
+  if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." />;
+  if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản thu ngân để xem quầy." />;
+  if (scopeError) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi Cashier" sub="Không hiển thị dữ liệu thay thế. Hãy tải lại trang." />;
+  if (cashierClubIds.length === 0) return <Guard icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền thu ngân." />;
 
-  const clubName = clubs?.filter((club) => cashierClubIds.includes(club.id)).map((club) => club.name).join(", ") || "Toàn quyền";
+  const clubName = clubs.filter((club) => cashierClubIds.includes(club.id)).map((club) => club.name).join(", ") || "CLB được cấp quyền";
 
   return (
     <div className="ios-in space-y-4 pt-1">
       <header className="px-1">
-        <button onClick={() => navigate("/")} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
-          <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> App chính
-        </button>
         <h1 className="mt-1 text-[26px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Cashier</h1>
         <p className="mt-0.5 text-[14px] text-[#9b8e97]">{clubName} · thu ngân</p>
       </header>
 
+      {metadataError && <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">{metadataError}</div>}
       <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">Dữ liệu thật · nút hành động chưa nối</div>
 
       <div className="flex gap-1.5 overflow-x-auto px-1 pb-0.5">
@@ -321,13 +328,10 @@ function Empty({ text }: { text: string }) {
 function DesktopNote({ text }: { text: string }) {
   return <div className="ios-card flex items-start gap-2 p-3.5 text-[12px] text-[#9b8e97]"><Monitor className="mt-0.5 h-4 w-4 shrink-0 text-[#9b8e97]" /> <span>{text}</span></div>;
 }
-function Guard({ nav, icon, title, sub }: { nav: (to: string) => void; icon: React.ReactNode; title: string; sub: string }) {
+function Guard({ icon, title, sub }: { icon: React.ReactNode; title: string; sub: string }) {
   return (
     <div className="ios-in space-y-4 pt-1">
       <header className="px-1">
-        <button onClick={() => nav("/")} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
-          <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> App chính
-        </button>
         <h1 className="mt-1 text-[26px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Cashier</h1>
       </header>
       <div className="ios-card flex flex-col items-center gap-2 py-12 text-center">

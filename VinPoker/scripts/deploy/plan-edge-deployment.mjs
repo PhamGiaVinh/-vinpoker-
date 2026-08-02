@@ -12,6 +12,7 @@ const SHARED_PREFIXES = [
 const FRONTEND_PREFIXES = ["VinPoker/src/", "VinPoker/public/"];
 const FRONTEND_FILES = new Set([
   "VinPoker/index.html",
+  "VinPoker/ops.html",
   "VinPoker/package.json",
   "VinPoker/package-lock.json",
   "VinPoker/postcss.config.js",

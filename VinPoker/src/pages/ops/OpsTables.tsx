@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
-  Search, Plus, Shuffle, PauseCircle, XCircle, Loader2, LogIn, ChevronLeft, Users, Trophy, RefreshCw, AlertTriangle,
+  Search, Plus, Shuffle, PauseCircle, XCircle, Loader2, LogIn, Users, Trophy, RefreshCw, AlertTriangle,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { FEATURES } from "@/lib/featureFlags";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { useOperatorClubs } from "@/hooks/useOperatorClubs";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
+import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
+import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { useTournaments } from "@/hooks/useTournaments";
 import { useFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { FloorPlayerActions, type FloorSeatTarget } from "@/components/ops/shared/FloorPlayerActions";
@@ -84,9 +84,15 @@ interface RedrawResult {
 
 export default function OpsTables() {
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
-  const { loading: clubsLoading, user, clubs, operatorClubIds, error: clubsError } = useOperatorClubs();
-  const scopedIds = operatorClubIds;
+  const supabase = useSupabaseClient();
+  const { user } = useOpsAuth();
+  const {
+    loading: clubsLoading,
+    clubs,
+    floorClubIds: scopedIds,
+    scopeError,
+    metadataError,
+  } = useOpsCapabilities();
 
   // P1-1: 1 CLB → auto; >1 → pill chọn. Đổi CLB → reset giải.
   const [clubId, setClubId] = useState<string | null>(null);
@@ -118,20 +124,32 @@ export default function OpsTables() {
 
   // P0-3: auto-select CHỈ khi chưa chọn hoặc giải đã chọn biến mất — không clobber lựa chọn user.
   // Seed từ deep-link (nếu có) thay cho null; giải này nằm trong tourOptions nên guard không đè.
-  const [tourId, setTourId] = useState<string | null>(deepLinkTourIdRef.current);
+  // The URL value is an untrusted candidate. Data hooks stay disabled until
+  // the scoped tournament list proves the tournament belongs to this CLB.
+  const [tourId, setTourId] = useState<string | null>(null);
   useEffect(() => {
-    setTourId((currentTournamentId) => resolveOpsTablesTournamentId({
-      currentTournamentId,
-      tournamentOptions: tourOptions,
-      selectedClubId: clubId,
-      operatorClubsLoading: clubsLoading,
-      tournamentsLoading: toursLoading,
-    }));
+    setTourId((currentTournamentId) => {
+      const candidate = deepLinkTourIdRef.current;
+      if (
+        currentTournamentId == null
+        && candidate
+        && tourOptions.some((tournament) => tournament.id === candidate)
+      ) {
+        return candidate;
+      }
+      return resolveOpsTablesTournamentId({
+        currentTournamentId,
+        tournamentOptions: tourOptions,
+        selectedClubId: clubId,
+        operatorClubsLoading: clubsLoading,
+        tournamentsLoading: toursLoading,
+      });
+    });
   }, [tourOptions, clubId, clubsLoading, toursLoading]);
 
   const selectedTour = tourOptions.find((t) => t.id === tourId) ?? null;
   const onBreak = selectedTour?.status === "break";
-  const floor = useFloorSeats(tourId);
+  const floor = useFloorSeats(selectedTour?.id ?? null);
 
   const [openNo, setOpenNo] = useState<number | null>(null);
   const [searchOn, setSearchOn] = useState(false);
@@ -205,7 +223,7 @@ export default function OpsTables() {
     } finally {
       addBusyRef.current = false; setAddBusy(false);
     }
-  }, [addTable, tourId, addSeat, addName, floor]);
+  }, [addTable, tourId, addSeat, addName, floor, supabase]);
 
   // ── Floor-A3: Mở bàn → shared responsive picker + atomic v2 RPC ──
   const [openTableOpen, setOpenTableOpen] = useState(false);
@@ -260,7 +278,7 @@ export default function OpsTables() {
     } finally {
       closeBusyRef.current = false; setCloseBusy(false);
     }
-  }, [closeTable, closeMode, floor, tourId]);
+  }, [closeTable, closeMode, floor, supabase, tourId]);
 
   // ── Floor-A4: Bốc lại → redraw_tournament, 2 bước preview→confirm (gate floorTableOps) ──
   const [redrawOpen, setRedrawOpen] = useState(false);
@@ -283,7 +301,7 @@ export default function OpsTables() {
     });
     if (error) { toast.error(redrawError(null, error.message)); return null; }
     return (data ?? null) as RedrawResult | null;
-  }, [tourId, redrawMode, redrawTarget, redrawDraw]);
+  }, [supabase, tourId, redrawMode, redrawTarget, redrawDraw]);
   const runRedrawPreview = useCallback(async () => {
     if (redrawMode === "table_count_threshold" && !redrawTarget.trim()) { toast.error("Nhập số bàn đích."); return; }
     if (redrawBusyRef.current) return;
@@ -311,11 +329,10 @@ export default function OpsTables() {
   }, [callRedraw, floor]);
 
   // ---- guards (thứ tự chuẩn: auth → login → clubs → quyền → data) ----
-  if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." onBack={() => navigate("/")} />;
-  if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản floor/cashier để xem sơ đồ bàn thật." onBack={() => navigate("/")} />;
-  if (clubs === null) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Lấy câu lạc bộ." onBack={() => navigate("/")} />;
-  if (clubsError) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi CLB" sub="Không dùng dữ liệu thay thế. Hãy tải lại trang." onBack={() => navigate("/")} />;
-  if (scopedIds.length === 0 && !isAdmin) return <Guard icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền vận hành sàn." onBack={() => navigate("/")} />;
+  if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." />;
+  if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản Floor để xem sơ đồ bàn thật." />;
+  if (scopeError) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi CLB" sub="Không dùng dữ liệu thay thế. Hãy tải lại trang." />;
+  if (scopedIds.length === 0) return <Guard icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền vận hành sàn." />;
 
   const clubName = (id: string) => clubs?.find((c) => c.id === id)?.name ?? `CLB ${id.slice(0, 4)}…`;
 
@@ -325,6 +342,7 @@ export default function OpsTables() {
         <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Bàn</h1>
         <p className="mt-0.5 text-[15px] text-[#9b8e97]">{selectedTour ? selectedTour.name : "Cả phòng trong một màn"} · chạm 1 bàn để thao tác</p>
       </header>
+      {metadataError && <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">{metadataError}</div>}
 
       {/* P1-1: >1 CLB → pill chọn CLB */}
       {scopedIds.length > 1 && (
@@ -420,7 +438,7 @@ export default function OpsTables() {
           type="button"
           data-testid="floor-open-players"
           disabled={!tourId}
-          onClick={() => { if (tourId) navigate(`/ops/tournaments/${tourId}?tab=players`); }}
+          onClick={() => { if (tourId) navigate(`/ops/floor/tournaments/${tourId}?tab=players`); }}
           className="ios-press ios-fill flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-2xl px-2 text-[14px] font-medium text-[#f2ece6] disabled:opacity-50"
         >
           <Users className="h-[18px] w-[18px] shrink-0" /> <span className="truncate">Người chơi</span>
@@ -486,7 +504,7 @@ export default function OpsTables() {
             </button>
             {/* "Tạm dừng" không có ở mức 1 bàn (server chỉ pause CẢ GIẢI) → mở đồng hồ giải ở cockpit
                 (nơi có Tạm dừng/Tiếp tục/chỉnh giờ), không giả lập pause-per-table. */}
-            <button onClick={() => { if (!tourId) { pending(); return; } setOpenNo(null); navigate(`/ops/tournaments/${tourId}?tab=status`); }}
+            <button onClick={() => { if (!tourId) { pending(); return; } setOpenNo(null); navigate(`/ops/floor/tournaments/${tourId}?tab=status`); }}
               className="ios-press ios-fill flex items-center justify-center gap-1 rounded-2xl py-3 text-[13px] font-medium text-amber-300">
               <PauseCircle className="h-4 w-4" /> Đồng hồ
             </button>
@@ -503,7 +521,7 @@ export default function OpsTables() {
             onClick={() => {
               if (!tourId) return;
               setOpenNo(null);
-              navigate(`/ops/tournaments/${tourId}?tab=players`);
+              navigate(`/ops/floor/tournaments/${tourId}?tab=players`);
             }}
             className="ios-press ios-fill mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[14px] font-semibold text-[#f2ece6] disabled:opacity-50"
           >
@@ -671,13 +689,10 @@ export default function OpsTables() {
   );
 }
 
-function Guard({ icon, title, sub, onBack }: { icon: React.ReactNode; title: string; sub: string; onBack: () => void }) {
+function Guard({ icon, title, sub }: { icon: React.ReactNode; title: string; sub: string }) {
   return (
     <div className="ios-in space-y-4 pt-2">
       <header className="px-1">
-        <button onClick={onBack} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
-          <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> App chính
-        </button>
         <h1 className="mt-1 text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Bàn</h1>
       </header>
       <div className="ios-card flex flex-col items-center gap-2 py-12 text-center">

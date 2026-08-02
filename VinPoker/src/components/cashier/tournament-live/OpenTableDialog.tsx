@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import {
   Dialog,
   DialogContent,
@@ -64,6 +64,7 @@ export function OpenTableDialog({
   tournamentId: string;
   onDone: () => void;
 }) {
+  const supabase = useSupabaseClient();
   const [catalog, setCatalog] = useState<FloorTableCatalogRow[]>([]);
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
   const [controlMode, setControlMode] = useState<FloorTableControlMode>("manual");
@@ -96,7 +97,7 @@ export function OpenTableDialog({
     } finally {
       if (sequence === requestSequence.current) setLoadingCatalog(false);
     }
-  }, [tournamentId]);
+  }, [supabase, tournamentId]);
 
   useEffect(() => {
     if (!open) {

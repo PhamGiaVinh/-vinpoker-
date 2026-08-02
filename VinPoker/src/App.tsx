@@ -54,25 +54,13 @@ const FnbHub = lazy(() => import("./pages/FnbHub"));
 // F&B public DEMO (/fnb/demo) — self-contained static showcase; no supabase/RPC. Gated by FEATURES.fnbDemo.
 const FnbDemo = lazy(() => import("./pages/FnbDemo"));
 const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
-const CashierDashboard = lazy(() => import("./pages/CashierDashboard"));
 const DealerControlBoard = lazy(() => import("./pages/DealerControlBoard"));
 const TrackerDashboard = lazy(() => import("./pages/TrackerDashboard"));
 const TrackerHandInputConsole = lazy(() => import("./pages/TrackerHandInputConsole"));
-const FloorDashboard = lazy(() => import("./pages/FloorDashboard"));
 const DealerSwingDashboard = lazy(() => import("./pages/DealerSwingDashboard"));
 // Accountant workspace (/accountant) — dedicated role-gated area (club_accountants/owner/admin).
 const AccountantDashboard = lazy(() => import("./pages/AccountantDashboard"));
-// mobileOpsV2 — iPhone operator shell (/ops/*). Self-gates on FEATURES.mobileOpsV2 (OFF) + role.
-const OpsShell = lazy(() => import("./components/ops/OpsShell"));
-import { MobileOperatorRoute } from "./components/ops/MobileOperatorRoute";
-const OpsToday = lazy(() => import("./pages/ops/OpsToday"));
-const OpsTournaments = lazy(() => import("./pages/ops/OpsTournaments"));
-const OpsTournamentCockpit = lazy(() => import("./pages/ops/OpsTournamentCockpit"));
-const OpsTables = lazy(() => import("./pages/ops/OpsTables"));
-const OpsDealerSwing = lazy(() => import("./pages/ops/OpsDealerSwing"));
-const OpsDesktopOnly = lazy(() => import("./pages/ops/OpsDesktopOnly"));
-const OpsCashier = lazy(() => import("./pages/ops/OpsCashier"));
-const OpsCashierAccess = lazy(() => import("./components/ops/OpsCashierAccess"));
+import { DocumentRedirect } from "./components/DocumentRedirect";
 const MediaCenter = lazy(() => import("./pages/MediaCenter"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminLeaderboard = lazy(() => import("./pages/AdminLeaderboard"));
@@ -289,24 +277,6 @@ const App = () => {
                 <Route path="/staff/account" element={<StaffAccount />} />
                 <Route path="/staff/salary" element={<StaffSalary />} />
               </Route>
-              {/* mobileOpsV2 iPhone operator shell — its own mobile chrome, separate from Layout.
-                  OpsShell self-gates on FEATURES.mobileOpsV2 (OFF) + admin/owner preview. */}
-              <Route element={<OpsShell />}>
-                <Route path="/ops" element={<OpsToday />} />
-                <Route path="/ops/tournaments" element={<OpsTournaments />} />
-                <Route path="/ops/tournaments/:id" element={<OpsTournamentCockpit />} />
-                <Route path="/ops/tables" element={<OpsTables />} />
-                <Route path="/ops/alerts" element={<OpsDesktopOnly title="Cảnh báo" description="Cảnh báo mobile chưa có đủ dữ liệu vận hành đáng tin cậy. Dùng màn hình máy tính để xử lý." />} />
-                <Route path="/ops/more" element={<OpsDesktopOnly title="Tác vụ khác" description="Các tác vụ chưa được nối dữ liệu thật trên mobile được chuyển về màn hình máy tính." />} />
-                <Route path="/ops/dealer-swing" element={<OpsDealerSwing />} />
-                <Route path="/ops/fnb" element={<OpsDesktopOnly title="F&B" description="Quầy F&B trên điện thoại chưa được nối đủ dữ liệu và quyền ghi production." />} />
-                <Route path="/ops/chip-ops" element={<OpsDesktopOnly title="Chip Ops" description="Kho chip là luồng tiền nhạy cảm; hiện chỉ vận hành bằng màn hình máy tính đã được kiểm soát." />} />
-                <Route path="/ops/marketing" element={<OpsDesktopOnly title="Marketing" description="Trình soạn và duyệt nội dung hiện dùng trên máy tính." />} />
-                <Route path="/ops/finance" element={<OpsDesktopOnly title="Tài chính & Đối soát" description="Số liệu tài chính không được giả lập trên mobile; dùng màn hình máy tính có phân quyền." />} />
-                <Route path="/ops/accounting" element={<OpsDesktopOnly title="Tài chính & Đối soát" description="Luồng chốt và duyệt hiện chỉ có trên máy tính." />} />
-                <Route path="/ops/series" element={<OpsDesktopOnly title="Trí tuệ Series" description="Phân tích Series hiện chỉ dùng trên máy tính và chỉ mang tính tham khảo." />} />
-                <Route path="/ops/cashier" element={<OpsCashierAccess><OpsCashier /></OpsCashierAccess>} />
-              </Route>
               <Route element={<Layout />}>
                 <Route path="/" element={<Tournaments />} />
                 <Route path="/tournament/:id" element={<TournamentDetail />} />
@@ -343,30 +313,27 @@ const App = () => {
                 <Route path="/packages/:packageId" element={<PackageDetail />} />
                 <Route path="/player/:userId" element={<PlayerProfile />} />
                 <Route path="/club/admin" element={<ClubAdmin />} />
-                {/* Owner finance is device-aware: phones get the read-only mobile /ops/finance view,
-                    desktop the full dashboard. NOTE: /ops/finance sits in the (un-role-gated) ops shell;
-                    real-data wiring must add an isClubOwner guard there — mock data only for now. */}
-                <Route path="/club/admin/finance" element={<MobileOperatorRoute to="/ops/finance"><ClubFinanceDashboard /></MobileOperatorRoute>} />
+                <Route path="/club/admin/finance" element={<ClubFinanceDashboard />} />
                 <Route path="/club/admin/expenses" element={<ClubExpenses />} />
                 {/* Tài chính & Đối soát — mock cockpit. Page self-gates on FEATURES.accountingControl (default OFF).
                     Device-aware: phones get the read-only mobile /ops/accounting view. */}
-                <Route path="/club/admin/accounting-control" element={<MobileOperatorRoute to="/ops/accounting"><AccountingControl /></MobileOperatorRoute>} />
+                <Route path="/club/admin/accounting-control" element={<AccountingControl />} />
                 <Route path="/club/admin/insurance" element={<DealerInsuranceProfiles />} />
                 {/* Trí tuệ Series device-aware: phones get the read-only mobile /ops/series view. */}
-                <Route path="/club/admin/series-intelligence" element={<MobileOperatorRoute to="/ops/series"><SeriesIntelligence /></MobileOperatorRoute>} />
+                <Route path="/club/admin/series-intelligence" element={<SeriesIntelligence />} />
                 <Route path="/club/admin/market-intelligence" element={<VerifiedMarketJeju />} />
                 {/* CAPTURE v0 Decision Log — page self-gates on FEATURES.seriesDecisionLog (default OFF). */}
                 <Route path="/club/admin/series-decision-log" element={<SeriesDecisionLogAdmin />} />
                 {/* Chip Ops — read-only issued-chip inventory. Page self-gates on FEATURES.chipOps. */}
                 {/* Chip Ops is device-aware: phones get the mobile /ops/chip-ops UI, desktop the inventory. */}
-                <Route path="/chip-ops" element={<MobileOperatorRoute to="/ops/chip-ops"><ChipOpsInventory /></MobileOperatorRoute>} />
+                <Route path="/chip-ops" element={<ChipOpsInventory />} />
                 {/* Marketing — club-scoped composer/scheduler. Page self-gates on FEATURES.marketingModule + role.
                     Device-aware: phones get the mobile /ops/marketing UI, desktop the full composer. */}
-                <Route path="/marketing" element={<MobileOperatorRoute to="/ops/marketing"><Marketing /></MobileOperatorRoute>} />
+                <Route path="/marketing" element={<Marketing />} />
                 {/* F&B counter + admin — keep Layout chrome. Pages self-gate on FEATURES.fnb*. */}
                 <Route path="/fnb/hub" element={<FnbHub />} />
                 {/* F&B counter is device-aware: phones get the mobile /ops/fnb UI, desktop the counter. */}
-                <Route path="/fnb" element={<MobileOperatorRoute to="/ops/fnb"><FnbCounter /></MobileOperatorRoute>} />
+                <Route path="/fnb" element={<FnbCounter />} />
                 <Route path="/fnb/serve" element={<FnbServe />} />
                 <Route path="/fnb/admin" element={<FnbAdmin />} />
                 {/* F&B public DEMO — static showcase, keeps Layout chrome. Self-gates on FEATURES.fnbDemo. */}
@@ -374,16 +341,13 @@ const App = () => {
                 {/* GE-2D online-poker LOBBY — keeps Layout chrome. The TABLE route is
                     chrome-less above (full-screen). Pages self-gate on FEATURES.onlinePoker. */}
                 <Route path="/poker" element={<OnlinePoker />} />
-                {/* Cashier is device-aware: phones get the mobile /ops/cashier UI, desktop the dashboard. */}
-                <Route path="/cashier" element={<MobileOperatorRoute to="/ops/cashier"><CashierDashboard /></MobileOperatorRoute>} />
+                <Route path="/cashier" element={<DocumentRedirect to="/ops/cashier" />} />
                 <Route path="/dealer-board" element={<DealerControlBoard />} />
                 <Route path="/tracker" element={<TrackerDashboard />} />
                 <Route path="/accountant" element={<AccountantDashboard />} />
                 <Route path="/tracker/hand-input" element={<TrackerHandInputConsole />} />
-                {/* Floor is device-aware: phones get the mobile /ops UI, desktop gets the full dashboard. */}
-                <Route path="/floor" element={<MobileOperatorRoute to="/ops"><FloorDashboard /></MobileOperatorRoute>} />
-                {/* Dealer Swing is device-aware: phones get the mobile /ops/dealer-swing UI, desktop the dashboard. */}
-                <Route path="/dealer-swing" element={<MobileOperatorRoute to="/ops/dealer-swing"><DealerSwingDashboard /></MobileOperatorRoute>} />
+                <Route path="/floor" element={<DocumentRedirect to="/ops/floor" />} />
+                <Route path="/dealer-swing" element={<DealerSwingDashboard />} />
                 <Route path="/admin" element={<SuperAdmin />} />
                 <Route path="/admin/users" element={<AdminUsers />} />
                 <Route path="/media" element={<MediaCenter />} />

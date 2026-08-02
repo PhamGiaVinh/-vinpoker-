@@ -4,7 +4,11 @@
   "installCommand": "npm install",
   "framework": "vite",
   "git": { "deploymentEnabled": false },
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "rewrites": [
+    { "source": "/ops", "destination": "/ops.html" },
+    { "source": "/ops/:path*", "destination": "/ops.html" },
+    { "source": "/:path*", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/assets/(.*)",

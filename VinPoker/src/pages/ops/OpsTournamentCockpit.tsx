@@ -5,9 +5,9 @@ import { toast } from "sonner";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { FEATURES } from "@/lib/featureFlags";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { useTournamentTvData } from "@/hooks/useTournamentTvData";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
+import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
+import { useTournamentTvDataCore } from "@/hooks/useTournamentTvDataCore";
 import { groupPayoutRows } from "@/lib/tv/payoutBands";
 import { getDisplayableSatelliteRows } from "@/lib/satellitePayout";
 import { floorOpsErrorMessage, floorOpsResponseErrorCode } from "@/lib/floorOpsErrors";
@@ -24,11 +24,6 @@ import type { MockTable } from "@/components/ops/mock/opsData";
 import type { TournamentLeaderboardPlayer } from "@/types/tournament";
 
 type UnappliedFloorRpcResult = { data: unknown; error: { message?: string; code?: string } | null };
-const untypedFloorRpc = supabase.rpc.bind(supabase) as unknown as (
-  name: string,
-  args: Record<string, unknown>,
-) => Promise<UnappliedFloorRpcResult>;
-
 /**
  * Cockpit giải (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads S1/S3/S4/S5).
  * S1 Trạng thái + S5 Trả thưởng ← `useTournamentTvData(id)` (clock/level/players/prizes thật).
@@ -61,11 +56,24 @@ interface BustedRow { entry_id: string; player_id: string; entry_number: number;
 export default function OpsTournamentCockpit() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const supabase = useSupabaseClient();
+  const { user, loading: authLoading } = useOpsAuth();
+  const untypedFloorRpc = useMemo(
+    () => supabase.rpc.bind(supabase) as unknown as (
+      name: string,
+      args: Record<string, unknown>,
+    ) => Promise<UnappliedFloorRpcResult>,
+    [supabase],
+  );
   const [params, setParams] = useSearchParams();
   const tab = (params.get("tab") as TabKey) || "status";
   const setTab = (k: TabKey) => { const p = new URLSearchParams(params); p.set("tab", k); setParams(p, { replace: true }); };
 
-  const tv = useTournamentTvData(id, { enabled: !!id });
+  const tv = useTournamentTvDataCore(id, {
+    enabled: !!id,
+    userId: user?.id ?? null,
+    authLoading,
+  });
   const d = tv.data;
 
   // S3 leaderboard cũ (read-only) — CHỈ khi cờ cockpitFloorActions OFF (ON dùng nguồn seats + busted mới).
@@ -84,7 +92,7 @@ export default function OpsTournamentCockpit() {
       } catch (e) { if (alive) setPlayers({ loading: false, error: e instanceof Error ? e.message : "Không tải được bảng người chơi", rows: [] }); }
     })();
     return () => { alive = false; };
-  }, [tab, id]);
+  }, [id, tab, untypedFloorRpc]);
 
   // S4 levels — lazy
   const [levels, setLevels] = useState<{ loading: boolean; error: string | null; rows: LevelRow[] }>({ loading: false, error: null, rows: [] });
@@ -102,7 +110,7 @@ export default function OpsTournamentCockpit() {
       } catch (e) { if (alive) setLevels({ loading: false, error: e instanceof Error ? e.message : "Không tải được cấu trúc", rows: [] }); }
     })();
     return () => { alive = false; };
-  }, [tab, id]);
+  }, [id, supabase, tab]);
 
   // ── Điều khiển đồng hồ (S1) — mirror desktop ClockPanel: Edge `tournament-live-clock`
   //    actions start/pause/resume/previous_level/next_level/adjust_time. Server-authoritative
@@ -120,7 +128,7 @@ export default function OpsTournamentCockpit() {
     const { data, error } = await supabase.rpc("get_tournament_clock", { p_tournament_id: id });
     if (error) return;                       // read best-effort; đồng hồ lớn đã có từ tv.data
     setClk(data as unknown as OpsClock);
-  }, [id]);
+  }, [id, supabase]);
   useEffect(() => { if (tab === "status") loadClk(); }, [tab, loadClk]);
   const clockAct = useCallback(async (action: string, extra?: Record<string, unknown>) => {
     if (!id || clkBusy) return;
@@ -222,7 +230,7 @@ export default function OpsTournamentCockpit() {
       }
     })();
     return () => { alive = false; };
-  }, [cockpitOn, tab, id]);
+  }, [cockpitOn, id, supabase, tab]);
 
   // Restore người bị loại → RPC `restore_busted_player_to_seat` (un-bust + vào ghế trống + chip cũ).
   // ⚠️ SOURCE-ONLY tới khi owner apply → toast "chưa bật" nếu RPC chưa có (42883/PGRST202).
@@ -269,11 +277,11 @@ export default function OpsTournamentCockpit() {
     } finally {
       setRestoreBusy(false);
     }
-  }, [restoreTarget, restoreTtId, restoreSeat, restoreBusy, restoreConfirmed, floor]);
+  }, [restoreTarget, restoreTtId, restoreSeat, restoreBusy, restoreConfirmed, floor, untypedFloorRpc]);
 
   const header = (title: string, badge?: React.ReactNode) => (
     <header className="px-1">
-      <button onClick={() => navigate("/ops/tournaments")} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
+      <button onClick={() => navigate("/ops/floor")} className="ios-press-sm -ml-1 flex min-h-11 items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
         <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> Giải đấu
       </button>
       <div className="mt-1 flex items-center gap-2">
@@ -382,7 +390,7 @@ export default function OpsTournamentCockpit() {
               {clkBusy && <div className="flex items-center justify-center gap-1.5 text-[12px] text-[#9b8e97]"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Đang cập nhật…</div>}
             </div>
           )}
-          <button onClick={() => navigate(`/ops/tables?tour=${id}`)} className="ios-press ios-tinted flex w-full items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-semibold">
+          <button onClick={() => navigate(`/ops/floor/tables?tour=${id}`)} className="ios-press ios-tinted flex w-full items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-semibold">
             <LayoutGrid className="h-[18px] w-[18px]" /> Sơ đồ bàn
           </button>
           <DesktopNote text="Sửa cấu trúc blind — trên máy tính." />
@@ -406,7 +414,7 @@ export default function OpsTournamentCockpit() {
           ) : (
             <RoomGrid tables={cockVms.map((v) => v.mock)} onTap={(m) => setTableSheet(cockVms.find((v) => v.mock.tableNo === m.tableNo)?.raw.table_id ?? null)} />
           )}
-          <button onClick={() => navigate(`/ops/tables?tour=${id}`)} className="ios-press ios-fill flex w-full items-center justify-center gap-1.5 rounded-2xl py-3 text-[14px] font-medium text-[#f2ece6]">
+          <button onClick={() => navigate(`/ops/floor/tables?tour=${id}`)} className="ios-press ios-fill flex w-full items-center justify-center gap-1.5 rounded-2xl py-3 text-[14px] font-medium text-[#f2ece6]">
             <LayoutGrid className="h-[18px] w-[18px]" /> Mở màn Bàn (thêm/đóng bàn · bốc lại)
           </button>
         </div>
@@ -415,7 +423,7 @@ export default function OpsTournamentCockpit() {
           <LayoutGrid className="h-8 w-8 text-[#c9a86a]" />
           <div className="text-[15px] font-semibold text-[#f2ece6]">Sơ đồ bàn theo giải</div>
           <div className="max-w-[260px] text-[12px] text-[#9b8e97]">Xem ghế/người/chip thật + thao tác ở màn Bàn.</div>
-          <button onClick={() => navigate(`/ops/tables?tour=${id}`)} className="ios-press ios-primary rounded-2xl px-5 py-2.5 text-[14px] font-bold">Mở màn Bàn</button>
+          <button onClick={() => navigate(`/ops/floor/tables?tour=${id}`)} className="ios-press ios-primary rounded-2xl px-5 py-2.5 text-[14px] font-bold">Mở màn Bàn</button>
         </div>
       ))}
 
