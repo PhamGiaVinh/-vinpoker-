@@ -27,6 +27,8 @@ const PlayersWorkspace = lazy(() => import("@/ops/floor/PlayersWorkspace"));
 const ClockWorkspace = lazy(() => import("@/ops/floor/ClockWorkspace"));
 const PayoutWorkspace = lazy(() => import("@/ops/floor/PayoutWorkspace"));
 const ScreensWorkspace = lazy(() => import("@/ops/floor/ScreensWorkspace"));
+const PayoutRequestQueuePage = lazy(() => import("@/ops/payout/PayoutRequestQueuePage"));
+const PayoutPermissionsPage = lazy(() => import("@/ops/payout/PayoutPermissionsPage"));
 
 const opsQueryClient = new QueryClient({
   defaultOptions: {
@@ -99,6 +101,14 @@ export default function OpsApp() {
                     <Route
                       path="/ops/cashier"
                       element={<OpsModuleGate capability="cashier"><OpsCashier /></OpsModuleGate>}
+                    />
+                    <Route
+                      path="/ops/cashier/payout-requests"
+                      element={<OpsModuleGate capability="cashier"><PayoutRequestQueuePage /></OpsModuleGate>}
+                    />
+                    <Route
+                      path="/ops/cashier/payout-permissions"
+                      element={<OpsModuleGate capability="cashier"><PayoutPermissionsPage /></OpsModuleGate>}
                     />
                     <Route path="/ops/tournaments" element={<Navigate to="/ops/floor" replace />} />
                     <Route path="/ops/tournaments/:id" element={<LegacyTournamentRedirect />} />

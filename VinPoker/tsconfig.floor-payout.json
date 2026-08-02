@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true
+  },
+  "include": [],
+  "files": [
+    "src/vite-env.d.ts",
+    "src/OpsApp.tsx",
+    "src/ops/floor/PayoutWorkspace.tsx",
+    "src/ops/payout/FloorPayoutRequestPanel.tsx",
+    "src/ops/payout/PayoutPermissionsPage.tsx",
+    "src/ops/payout/PayoutRequestQueuePage.tsx",
+    "src/ops/payout/payoutRequestApi.ts",
+    "src/pages/ops/OpsCashier.tsx",
+    "tests/floorPayout/payoutRequestApi.test.ts",
+    "tests/floorPayout/payoutRequestContracts.test.ts"
+  ]
+}
