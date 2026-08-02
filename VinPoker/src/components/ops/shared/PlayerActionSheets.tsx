@@ -231,15 +231,14 @@ export function PlayerActionSheets({
           </SheetHeader>
           <div className="mt-0.5 text-[13px] text-[#9b8e97]">{s?.name} · đang ở <span className="font-mono">Bàn {t} · Ghế {s?.seat}</span></div>
 
-          {onMovePlayer ? (
-            (moveTargets && moveTargets.length > 0) ? (
+          {moveTargets.length > 0 ? (
               <>
                 <div className="ios-card mt-3 p-3.5">
                   <div className="text-[12px] text-[#9b8e97]">Chọn bàn đích (còn ghế trống)</div>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {moveTargets.map((tb) => (
                       <button key={tb.tt_id} onClick={() => { setMoveTableId(tb.tt_id); setMoveSeat(tb.freeSeats[0] ?? null); }}
-                        className={cn("ios-press-sm grid h-8 min-w-9 place-items-center rounded-lg px-2 text-[13px] font-semibold",
+                        className={cn("ios-press-sm grid min-h-11 min-w-11 place-items-center rounded-xl px-3 text-[13px] font-semibold",
                           moveTableId === tb.tt_id ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
                         {tb.table_number ?? "?"}
                       </button>
@@ -249,7 +248,7 @@ export function PlayerActionSheets({
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {(selMoveTarget?.freeSeats ?? []).map((seatNo) => (
                       <button key={seatNo} onClick={() => setMoveSeat(seatNo)}
-                        className={cn("ios-press-sm grid h-8 w-9 place-items-center rounded-lg text-[13px] font-semibold",
+                        className={cn("ios-press-sm grid min-h-11 min-w-11 place-items-center rounded-xl text-[13px] font-semibold",
                           moveSeat === seatNo ? "bg-[#c9a86a] text-[#241A08]" : "bg-emerald-400/15 text-emerald-300")}>
                         {seatNo}
                       </button>
@@ -266,7 +265,7 @@ export function PlayerActionSheets({
                   Lý do:
                   {MOVE_REASONS.map((r) => (
                     <button key={r} onClick={() => setMoveReason(r)}
-                      className={cn("ios-press-sm rounded-full px-2.5 py-1 text-[12px]", moveReason === r ? "bg-[#c9a86a]/15 text-[#d8bc85]" : "bg-white/5 text-[#9b8e97]")}>
+                      className={cn("ios-press-sm min-h-11 rounded-full px-3 py-2 text-[12px]", moveReason === r ? "bg-[#c9a86a]/15 text-[#d8bc85]" : "bg-white/5 text-[#9b8e97]")}>
                       {r}
                     </button>
                   ))}
@@ -293,53 +292,6 @@ export function PlayerActionSheets({
                 <div className="text-[14px] text-[#9b8e97]">Không còn ghế trống ở bàn khác — mở thêm bàn trước.</div>
                 <button onClick={close} className="ios-press-sm mt-1 rounded-full bg-white/8 px-4 py-1.5 text-[13px] text-[#f2ece6]">Đóng</button>
               </div>
-            )
-          ) : (
-            <>
-              <div className="ios-card mt-3 p-3.5">
-                <div className="text-[12px] text-[#9b8e97]">Chọn bàn đích</div>
-                <div className="mt-1.5 flex gap-1.5">
-                  {MOVE_TABLES.map((tb, i) => (
-                    <span key={tb} className={cn("grid h-8 w-9 place-items-center rounded-lg text-[13px] font-semibold", i === 0 ? "bg-emerald-400/15 text-emerald-300" : "bg-white/5 text-[#9b8e97]")}>{tb}</span>
-                  ))}
-                </div>
-                <div className="mt-3 text-[12px] text-[#9b8e97]">Ghế trống ở bàn 8 — chạm để chọn</div>
-                <div className="mt-1.5 flex gap-1.5">
-                  {MOVE_SEATS.map((seatNo) => {
-                    const free = FREE_SEATS.has(seatNo);
-                    const sel = moveSeat === seatNo;
-                    return (
-                      <button key={seatNo} disabled={!free} onClick={() => setMoveSeat(seatNo)}
-                        className={cn("ios-press-sm grid h-8 w-9 place-items-center rounded-lg text-[13px] font-semibold",
-                          sel ? "bg-[#c9a86a] text-[#241A08]" : free ? "bg-emerald-400/15 text-emerald-300" : "bg-white/5 text-[#5f545c]")}>
-                        {seatNo}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="ios-fill mt-2 rounded-2xl py-2.5 text-center text-[14px]">
-                <span className="font-mono text-[#f2ece6]">Bàn {t} · Ghế {s?.seat}</span>
-                <span className="mx-2 text-[#c9a86a]">→</span>
-                <span className="font-mono text-[#d8bc85]">Bàn 8 · Ghế {moveSeat ?? "—"}</span>
-              </div>
-              <div className="mt-2 flex items-center gap-1.5 px-1 text-[13px] text-[#9b8e97]">
-                Lý do:
-                {MOVE_REASONS.map((r) => (
-                  <button key={r} onClick={() => setMoveReason(r)}
-                    className={cn("ios-press-sm rounded-full px-2.5 py-1 text-[12px]", moveReason === r ? "bg-[#c9a86a]/15 text-[#d8bc85]" : "bg-white/5 text-[#9b8e97]")}>
-                    {r}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-3 flex gap-2">
-                <button onClick={close} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6]">Huỷ</button>
-                <button onClick={() => done(`Đã chuyển tới bàn 8 ghế ${moveSeat}`)} disabled={moveSeat === null}
-                  className="ios-press ios-primary flex-[2] rounded-2xl py-3 text-[15px] font-bold">
-                  Xác nhận chuyển
-                </button>
-              </div>
-            </>
           )}
         </SheetContent>
       </Sheet>

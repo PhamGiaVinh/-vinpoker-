@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -46,6 +46,7 @@ export function AddPlayerDialog({
   defaultSeatNumber?: number | null;
   onDone: () => void;
 }) {
+  const supabase = useSupabaseClient();
   const [name, setName] = useState("");
   const [seat, setSeat] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);

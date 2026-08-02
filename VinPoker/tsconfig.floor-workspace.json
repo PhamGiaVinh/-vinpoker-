@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true
+  },
+  "include": [],
+  "files": [
+    "src/vite-env.d.ts",
+    "src/OpsApp.tsx",
+    "src/components/ops/OpsShell.tsx",
+    "src/components/ops/shared/useFloorSeats.ts",
+    "src/components/cashier/tournament-live/AddPlayerDialog.tsx",
+    "src/components/cashier/tournament-live/CloseTableDialog.tsx",
+    "src/ops/floor/ClockWorkspace.tsx",
+    "src/ops/floor/FloorTournamentLayout.tsx",
+    "src/ops/floor/FloorTournamentList.tsx",
+    "src/ops/floor/PayoutWorkspace.tsx",
+    "src/ops/floor/PlayersWorkspace.tsx",
+    "src/ops/floor/ScreensWorkspace.tsx",
+    "src/ops/floor/TablesWorkspace.tsx",
+    "src/ops/floor/TournamentContextRail.tsx",
+    "src/ops/floor/TournamentOpsProvider.tsx",
+    "src/ops/floor/floorWorkspaceRoutes.ts"
+  ]
+}

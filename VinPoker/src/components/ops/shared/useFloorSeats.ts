@@ -24,9 +24,13 @@ export type UseFloorSeats = FloorState & { reload: () => void };
  * debounce 200ms). Thêm `opts.enabled` (default true → call cũ y hệt) để cockpit không fetch khi
  * chỉ ở tab đồng hồ. Channel có nonce (useId) → 2 instance không bao giờ đụng channel.
  */
-export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: boolean }): UseFloorSeats {
+export function useFloorSeats(
+  tournamentId: string | null,
+  opts?: { enabled?: boolean; realtime?: boolean },
+): UseFloorSeats {
   const supabase = useSupabaseClient();
   const enabled = opts?.enabled ?? true;
+  const realtime = opts?.realtime ?? true;
   const [state, setState] = useState<FloorState>({ loading: false, error: null, tables: [], seatsByTable: {} });
   const seqRef = useRef(0);
   const nonce = useId();
@@ -48,7 +52,7 @@ export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: bo
       if (seq !== seqRef.current) return;
       if (ttRes.error) throw new Error(ttRes.error.message);
       if (seatsRes.error) throw new Error(typeof seatsRes.error === "string" ? seatsRes.error : (seatsRes.error as Error).message ?? "get_seats lỗi");
-      const allTables: MapTable[] = ((ttRes.data ?? []) as Record<string, unknown>[])
+      const allTables: MapTable[] = ((ttRes.data ?? []) as unknown as Record<string, unknown>[])
         .map((t) => {
           const floorControlMode = parseFloorTableControlMode(t.floor_control_mode);
           const floorControlRevision = parseFloorTableControlRevision(t.floor_control_revision);
@@ -91,7 +95,7 @@ export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: bo
 
   // Realtime: seats + chip_counts của giải → debounce 200ms rồi refetch (P1-2).
   useEffect(() => {
-    if (!tournamentId || !enabled) return;
+    if (!tournamentId || !enabled || !realtime) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const bump = () => { if (timer) clearTimeout(timer); timer = setTimeout(() => load(), 200); };
     const ch = supabase
@@ -101,7 +105,7 @@ export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: bo
       .on("postgres_changes", { event: "*", schema: "public", table: "tournament_tables", filter: `tournament_id=eq.${tournamentId}` }, bump)
       .subscribe();
     return () => { if (timer) clearTimeout(timer); supabase.removeChannel(ch); };
-  }, [tournamentId, enabled, nonce, load, supabase]);
+  }, [tournamentId, enabled, realtime, nonce, load, supabase]);
 
   return { ...state, reload: load };
 }
