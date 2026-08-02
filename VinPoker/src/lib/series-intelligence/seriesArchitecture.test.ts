@@ -142,6 +142,27 @@ describe("A6 import / dependency guards", () => {
     expect(importSpecifiers(parse(`${SI}/turnoutForecast.ts`))).toContain("./featureBoundary");
   });
 
+  it("Decision Packet V1 is a pure private contract with no public-market, UI, network, or Supabase dependency", () => {
+    const sf = parse(`${SI}/decisionPacketV1.ts`);
+    expect(importSpecifiers(sf)).toEqual(["./provenanceHash"]);
+    const ids = identifiers(sf);
+    for (const forbidden of [
+      "fetch",
+      "supabase",
+      "useQuery",
+      "useMutation",
+      "localStorage",
+      "sessionStorage",
+      "DateNow",
+      "MathRandom",
+    ]) {
+      expect(ids.has(forbidden)).toBe(false);
+    }
+    for (const specifier of importSpecifiers(sf)) {
+      expect(specifier).not.toMatch(/series-market|react|supabase|components|pages/);
+    }
+  });
+
   it("the forecast engine never reads final/outcome quantities (rake/F&B/overlay/service-fee) as inputs", () => {
     // registry outcome-feature ids (camelCase) must not appear as identifiers in the engine; the target label
     // total_entries is intentionally excluded (it is the y-label joined in scoring, not a model feature).
