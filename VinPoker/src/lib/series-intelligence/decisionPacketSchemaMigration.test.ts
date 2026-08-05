@@ -92,7 +92,8 @@ describe("D2A decision packet source migration", () => {
       "create or replace function public._series_packet_slice_manifest_valid_v1",
       "create or replace function public._series_packet_source_cutoff_valid_v1",
       "sourcecutoff",
-      "decision_packet_invalid_evidence_or_slice_manifest",
+      "series_d2a_evidence_manifest_invalid",
+      "series_d2a_slice_manifest_invalid",
       "decision_packet_recommendation_source_mismatch",
       "public._series_packet_evidence_manifest_valid_v1(public_evidence_manifest, source_cutoff)",
       "public._series_packet_slice_manifest_valid_v1(",
@@ -108,7 +109,7 @@ describe("D2A decision packet source migration", () => {
     expectContains(
       "v_actor uuid := auth.uid()",
       "select * into v_event from public.tournaments where id = p_event_id and deleted_at is null",
-      "p_target_event_ts is distinct from v_event.start_time",
+      "v_target_event_ts is distinct from v_event.start_time",
       "public._series_sha256_jsonb_v1",
       "public._series_decision_packet_content_hash_v1",
       "frozen_at = pg_catalog.now()",
@@ -137,7 +138,7 @@ describe("D2A decision packet source migration", () => {
       "v_event.status::text in ('finished','completed','cancelled')",
       "decision_packet_event_already_closed",
       "decision_packet_event_not_freezable",
-      "p_as_of_ts > pg_catalog.now()",
+      "v_as_of_ts > pg_catalog.now()",
       "v_packet.as_of_ts > v_packet.created_at",
       "p_finality in ('final','corrected')",
       "v_event.status::text not in ('finished','completed')",
@@ -256,5 +257,54 @@ describe("D2A decision packet source migration", () => {
     expect(EXECUTABLE).not.toContain("functions deploy");
     expect(EXECUTABLE).not.toContain("seriesdecisionpacketv1");
     expect(EXECUTABLE).not.toContain("src/integrations/supabase/types.ts");
+  });
+
+  it("uses an explicit cross-runtime canonical hash contract instead of jsonb text serialization", () => {
+    expectContains(
+      "create or replace function public._series_canonical_json_v1",
+      "create or replace function public._series_canonical_timestamptz_v1",
+      "series-canonical-json-v1",
+      "pg_catalog.normalize",
+      "collate \"c\"",
+      "series_canonical_json_invalid_machine_key",
+      "series_canonical_json_invalid_safe_integer",
+      "public._series_canonical_json_v1(p_payload)",
+    );
+    expect(EXECUTABLE).not.toMatch(/jsonb\s*::\s*text/);
+    expect(EXECUTABLE).not.toMatch(/p_payload\s*::\s*text/);
+    expect(EXECUTABLE).not.toMatch(/to_jsonb\([^)]*\)\s*::\s*text/);
+  });
+
+  it("separates normalized request and content payloads with camelCase semantic fields", () => {
+    expectContains(
+      "create or replace function public._series_decision_packet_content_payload_v1",
+      "create or replace function public._series_decision_packet_request_payload_v1",
+      "create or replace function public._series_event_actual_content_payload_v1",
+      "create or replace function public._series_event_actual_request_payload_v1",
+      "'requestkind', 'decisionpacketcreaterequest'",
+      "'requestkind', 'eventactualcreaterequest'",
+      "'hashcontractversion', 'series-canonical-json-v1'",
+      "'publicevidence'",
+      "'registrationrecords'",
+      "'amountminor'",
+      "'idempotencykey', p_actual.idempotency_key",
+      "p_actual.prize_pool_amount_minor::text",
+      "p_actual.overlay_amount_minor::text",
+    );
+    expect(EXECUTABLE).not.toContain("'schema_version', 'series-event-actual-revision-v1'");
+    expect(EXECUTABLE).not.toContain("'amount_minor', p_overlay_amount_minor");
+  });
+
+  it("requires millisecond UTC semantics and safe count bounds before canonical hashing", () => {
+    expectContains(
+      "date_trunc('milliseconds', as_of_ts) = as_of_ts",
+      "date_trunc('milliseconds', source_cutoff) = source_cutoff",
+      "date_trunc('milliseconds', target_event_ts) = target_event_ts",
+      "date_trunc('milliseconds', source_timestamp) = source_timestamp",
+      "date_trunc('milliseconds', captured_at) = captured_at",
+      "9007199254740991",
+      "event_actual_invalid_canonical_time_or_count",
+      "decision_packet_invalid_canonical_time_or_count",
+    );
   });
 });

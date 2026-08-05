@@ -85,6 +85,50 @@ Deferred:
 Idempotent retries are accepted only when the full canonical request matches.
 Reusing a packet or actual idempotency key with changed content fails closed.
 
+## Cross-Runtime Hash Contract
+
+D2A uses the versioned `series-canonical-json-v1` contract for immutable
+semantic identities. It is deliberately narrower than the generic provenance
+serializer and is implemented in both TypeScript and PostgreSQL:
+
+- UTF-8, compact JSON, NFC-normalized and trimmed string values;
+- ASCII camelCase machine keys only, ordered bytewise by UTF-8/C collation;
+- arrays retain semantic order, while evidence and text-set arrays are
+  normalized, deduplicated, and sorted before hashing;
+- null and explicit zero remain distinct;
+- numeric JSON values are non-negative JavaScript-safe integers only;
+- money remains an explicit `{ amountMinor: string, currency, scale }` shape;
+- UUIDs are normalized to lowercase; timestamps are UTC and exactly
+  millisecond-precise as `YYYY-MM-DDTHH:mm:ss.SSSZ`.
+
+`jsonb::text`, `to_jsonb(row)::text`, insertion order, and PostgreSQL's
+implementation-defined JSONB key order are not identity serializers.
+
+Packet content hashes use the full normalized content shape excluding only
+`contentHash`. Packet request hashes add `requestKind` and exclude server scope
+and transport idempotency. Actual content hashes use the full normalized actual
+shape excluding only `contentHash`, including its stored `idempotencyKey`.
+Actual request hashes add `requestKind` and exclude server-derived club,
+capture, reconciliation, row, and transport-idempotency fields.
+
+Reviewed vectors live at
+`src/lib/series-intelligence/fixtures/decisionPacketCanonicalV1.vectors.json`.
+They are generated and checked with:
+
+```text
+npx vite-node --script scripts/series-intelligence/generate-decision-packet-canonical-vectors.ts
+npx vite-node --script scripts/series-intelligence/generate-decision-packet-canonical-vectors.ts --check
+npx vite-node --script scripts/series-intelligence/check-decision-packet-canonical-vectors.ts
+```
+
+The final schema gate also runs the exact migration against a disposable
+PostgreSQL 17 database using
+`scripts/series-intelligence/probe-decision-packet-pg17.mjs`. That probe binds
+the migration SHA-256 and vector SHA-256, compares canonical UTF-8 bytes and
+lowercase SHA-256 digests, then tears down its temporary database. It is not a
+production apply, does not contact Supabase, and does not prove live database
+readiness.
+
 ## Rollout Order
 
 1. Review and merge the source-only schema PR.

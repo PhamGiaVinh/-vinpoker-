@@ -1,7 +1,17 @@
-import { canonicalHash, canonicalize } from "./provenanceHash";
+import {
+  DECISION_PACKET_HASH_CONTRACT_VERSION,
+  hashDecisionPacketV1,
+  normalizeDecisionPacketCanonicalValue,
+  normalizeDecisionPacketText,
+  normalizeDecisionPacketTextSet,
+  compareDecisionPacketUtf8,
+  type D2ACanonicalValue,
+  DecisionPacketCanonicalError,
+} from "./decisionPacketCanonicalV1";
 
 export const DECISION_PACKET_SCHEMA_VERSION = "series-decision-packet-v1" as const;
 export const EVENT_ACTUAL_REVISION_SCHEMA_VERSION = "series-event-actual-revision-v1" as const;
+export { DECISION_PACKET_HASH_CONTRACT_VERSION } from "./decisionPacketCanonicalV1";
 
 export type DecisionPacketHorizon = "T-21" | "T-7" | "T-1" | "T-0";
 export type DecisionTargetMetric = "entries" | "unique_players" | "total_bullets";
@@ -57,13 +67,7 @@ export type MetricAvailability =
   | "not_applicable";
 export type SourceTimestampState = "exact" | "not_reported";
 
-export type CanonicalValue =
-  | null
-  | boolean
-  | number
-  | string
-  | readonly CanonicalValue[]
-  | { readonly [key: string]: CanonicalValue };
+export type CanonicalValue = D2ACanonicalValue;
 
 export interface DecisionEvidenceReferenceInput {
   readonly kind: DecisionEvidenceKind;
@@ -132,6 +136,7 @@ export interface DecisionPacketContentInput {
 }
 
 export interface DecisionPacketContent {
+  readonly hashContractVersion: typeof DECISION_PACKET_HASH_CONTRACT_VERSION;
   readonly schemaVersion: typeof DECISION_PACKET_SCHEMA_VERSION;
   readonly clubId: string;
   readonly eventId: string;
@@ -224,6 +229,7 @@ export interface EventActualRevisionContentInput {
 }
 
 export interface EventActualRevisionContent {
+  readonly hashContractVersion: typeof DECISION_PACKET_HASH_CONTRACT_VERSION;
   readonly schemaVersion: typeof EVENT_ACTUAL_REVISION_SCHEMA_VERSION;
   readonly clubId: string;
   readonly eventId: string;
@@ -249,6 +255,32 @@ export interface EventActualRevision extends EventActualRevisionContent {
 
 export interface EventActualRevisionInput extends EventActualRevisionContentInput {
   readonly revisionId: string;
+}
+
+export interface DecisionPacketCreateRequestInput extends Omit<DecisionPacketContentInput, "clubId"> {
+  readonly idempotencyKey: string;
+}
+
+export interface DecisionPacketCreateRequestIdentity {
+  readonly canonical: string;
+  readonly requestHash: string;
+}
+
+export interface EventActualCreateRequestInput {
+  readonly eventId: string;
+  readonly scope: EventOutcomeScope;
+  readonly finality: EventActualFinality;
+  readonly sourceTimestampState: SourceTimestampState;
+  readonly sourceTimestamp: string | null;
+  readonly metrics: EventActualMetricsInput;
+  readonly supersedesRevisionId: string | null;
+  readonly idempotencyKey: string;
+  readonly correctionReason: string | null;
+}
+
+export interface EventActualCreateRequestIdentity {
+  readonly canonical: string;
+  readonly requestHash: string;
 }
 
 export type EventActualResolution =
@@ -385,10 +417,6 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-function canonicalClone<T>(value: T): T {
-  return JSON.parse(canonicalize(value)) as T;
-}
-
 function hasDisallowedAsciiControl(value: string, allowTextWhitespace: boolean): boolean {
   for (const character of value) {
     const code = character.charCodeAt(0);
@@ -409,14 +437,32 @@ function normalizeReference(raw: string, label: string): string {
   return value;
 }
 
-function normalizeText(raw: string | null, label: string, maxLength = 4096): string | null {
-  if (raw === null) return null;
-  if (typeof raw !== "string") fail(`${label} must be text or null`, "INVALID_TEXT");
-  const value = raw.normalize("NFC").trim();
-  if (value.length === 0 || value.length > maxLength || hasDisallowedAsciiControl(value, true)) {
-    fail(`${label} must be non-blank bounded text`, "INVALID_TEXT");
+function normalizeUuid(raw: string, label: string): string {
+  const value = normalizeReference(raw, label).toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value)) {
+    fail(`${label} must be a UUID`, "INVALID_UUID");
   }
   return value;
+}
+
+function normalizeIdempotencyKey(raw: string, label: string): string {
+  const value = normalizeReference(raw, label);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,255}$/.test(value)) {
+    fail(`${label} must be a valid idempotency key`, "INVALID_IDEMPOTENCY_KEY");
+  }
+  return value;
+}
+
+function normalizeText(raw: string | null, label: string, maxLength = 4096): string | null {
+  if (raw === null) return null;
+  try {
+    return normalizeDecisionPacketText(raw, label, maxLength);
+  } catch (error) {
+    if (error instanceof DecisionPacketCanonicalError) {
+      fail(`${label} must be non-blank bounded text`, "INVALID_TEXT");
+    }
+    throw error;
+  }
 }
 
 function normalizeHash(raw: string, label: string): string {
@@ -426,10 +472,35 @@ function normalizeHash(raw: string, label: string): string {
 }
 
 function normalizeInstant(raw: string, label: string): string {
-  if (typeof raw !== "string" || !/(?:z|[+-]\d{2}:\d{2})$/i.test(raw.trim())) {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  const match = value.match(
+    /^([1-9]\d{3})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(z|[+-](\d{2}):(\d{2}))$/i,
+  );
+  if (!match) {
     fail(`${label} must include an explicit UTC offset`, "INVALID_INSTANT");
   }
-  const epoch = Date.parse(raw);
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, millisecondText, offset, offsetHourText, offsetMinuteText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const millisecond = Number((millisecondText ?? "").padEnd(3, "0"));
+  const calendar = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millisecond));
+  if (
+    calendar.getUTCFullYear() !== year
+    || calendar.getUTCMonth() !== month - 1
+    || calendar.getUTCDate() !== day
+    || calendar.getUTCHours() !== hour
+    || calendar.getUTCMinutes() !== minute
+    || calendar.getUTCSeconds() !== second
+    || calendar.getUTCMilliseconds() !== millisecond
+    || (offset.toLowerCase() !== "z" && (Number(offsetHourText) > 23 || Number(offsetMinuteText) > 59))
+  ) {
+    fail(`${label} must be a valid instant`, "INVALID_INSTANT");
+  }
+  const epoch = Date.parse(value);
   if (!Number.isFinite(epoch)) fail(`${label} must be a valid instant`, "INVALID_INSTANT");
   return new Date(epoch).toISOString();
 }
@@ -449,15 +520,15 @@ function normalizeDecimalInteger(raw: string, label: string): string {
 }
 
 function normalizeStringList(raw: readonly string[], label: string): readonly string[] {
-  if (!Array.isArray(raw)) fail(`${label} must be an array`, "INVALID_LIST");
-  const values = raw.map((value, index) => normalizeText(value, `${label}[${index}]`, 2048) as string);
-  const canonical = [...values].sort((left, right) => left.localeCompare(right));
-  for (let index = 1; index < canonical.length; index += 1) {
-    if (canonical[index] === canonical[index - 1]) {
-      fail(`${label} contains a duplicate`, "DUPLICATE_LIST_MEMBER");
+  try {
+    return normalizeDecisionPacketTextSet(raw, label, 2048);
+  } catch (error) {
+    if (error instanceof DecisionPacketCanonicalError) {
+      if (error.code === "DUPLICATE_LIST_MEMBER") fail(`${label} contains a duplicate`, "DUPLICATE_LIST_MEMBER");
+      fail(`${label} must be an array of bounded text`, "INVALID_LIST");
     }
+    throw error;
   }
-  return canonical;
 }
 
 function normalizeInformationKey(rawKey: string): string {
@@ -470,7 +541,6 @@ function normalizeInformationKey(rawKey: string): string {
 }
 
 function assertNoForbiddenInformation(value: CanonicalValue, path = "knownInformation"): void {
-  canonicalize(value);
   if (Array.isArray(value)) {
     value.forEach((item, index) => assertNoForbiddenInformation(item, `${path}[${index}]`));
     return;
@@ -484,6 +554,20 @@ function assertNoForbiddenInformation(value: CanonicalValue, path = "knownInform
       assertNoForbiddenInformation(nested, `${path}.${rawKey}`);
     }
   }
+}
+
+function normalizeKnownInformation(value: CanonicalValue): CanonicalValue {
+  assertNoForbiddenInformation(value);
+  let normalized: CanonicalValue;
+  try {
+    normalized = normalizeDecisionPacketCanonicalValue(value, "knownInformation");
+  } catch (error) {
+    if (error instanceof DecisionPacketCanonicalError) {
+      fail("known information is outside the D2A canonical payload domain", "INVALID_KNOWN_INFORMATION");
+    }
+    throw error;
+  }
+  return normalized;
 }
 
 function normalizeEvidence(input: DecisionEvidenceReferenceInput): DecisionEvidenceReference {
@@ -504,7 +588,7 @@ function normalizeEvidenceList(
   const evidence = input
     .map(normalizeEvidence)
     .sort((left, right) =>
-      `${left.kind}:${left.referenceId}`.localeCompare(`${right.kind}:${right.referenceId}`));
+      compareDecisionPacketUtf8(`${left.kind}:${left.referenceId}`, `${right.kind}:${right.referenceId}`));
   for (let index = 0; index < evidence.length; index += 1) {
     const current = evidence[index];
     if (current.sourceCutoff > packetCutoff) {
@@ -593,11 +677,80 @@ function assertForecastShape(
   }
 }
 
+/**
+ * The content payload is deliberately separate from the create-request payload.
+ * Content binds the saved packet; the request hash binds caller-controlled inputs
+ * while excluding club scope and idempotency transport details.
+ */
+export function decisionPacketContentHashPayload(
+  content: Omit<DecisionPacketContent, "contentHash">,
+): unknown {
+  return {
+    hashContractVersion: content.hashContractVersion,
+    schemaVersion: content.schemaVersion,
+    clubId: content.clubId,
+    eventId: content.eventId,
+    horizon: content.horizon,
+    targetMetric: content.targetMetric,
+    asOfTs: content.asOfTs,
+    sourceCutoff: content.sourceCutoff,
+    targetEventTs: content.targetEventTs,
+    forecastSnapshotId: content.forecastSnapshotId,
+    forecastState: content.forecastState,
+    manualExpectation: content.manualExpectation,
+    publicEvidence: content.publicEvidence,
+    registrationSlice: content.registrationSlice,
+    campaignSlice: content.campaignSlice,
+    knownInformation: content.knownInformation,
+    recommendedAction: content.recommendedAction,
+    ownerDecision: content.ownerDecision,
+    publicAction: content.publicAction,
+    decisionReason: content.decisionReason,
+    alternatives: content.alternatives,
+    assumptions: content.assumptions,
+    uncertaintyNotes: content.uncertaintyNotes,
+    supersedesPacketId: content.supersedesPacketId,
+    correctionReason: content.correctionReason,
+  };
+}
+
+export function decisionPacketCreateRequestHashPayload(
+  content: Omit<DecisionPacketContent, "contentHash" | "clubId">,
+): unknown {
+  return {
+    hashContractVersion: content.hashContractVersion,
+    requestKind: "decisionPacketCreateRequest",
+    schemaVersion: content.schemaVersion,
+    eventId: content.eventId,
+    horizon: content.horizon,
+    targetMetric: content.targetMetric,
+    asOfTs: content.asOfTs,
+    sourceCutoff: content.sourceCutoff,
+    targetEventTs: content.targetEventTs,
+    forecastSnapshotId: content.forecastSnapshotId,
+    forecastState: content.forecastState,
+    manualExpectation: content.manualExpectation,
+    publicEvidence: content.publicEvidence,
+    registrationSlice: content.registrationSlice,
+    campaignSlice: content.campaignSlice,
+    knownInformation: content.knownInformation,
+    recommendedAction: content.recommendedAction,
+    ownerDecision: content.ownerDecision,
+    publicAction: content.publicAction,
+    decisionReason: content.decisionReason,
+    alternatives: content.alternatives,
+    assumptions: content.assumptions,
+    uncertaintyNotes: content.uncertaintyNotes,
+    supersedesPacketId: content.supersedesPacketId,
+    correctionReason: content.correctionReason,
+  };
+}
+
 export async function buildDecisionPacketContent(
   input: DecisionPacketContentInput,
 ): Promise<DecisionPacketContent> {
-  const clubId = normalizeReference(input.clubId, "club id");
-  const eventId = normalizeReference(input.eventId, "event id");
+  const clubId = normalizeUuid(input.clubId, "club id");
+  const eventId = normalizeUuid(input.eventId, "event id");
   if (!HORIZONS.has(input.horizon)) fail("unsupported decision horizon", "INVALID_HORIZON");
   if (!TARGET_METRICS.has(input.targetMetric)) fail("unsupported target metric", "INVALID_TARGET_METRIC");
 
@@ -608,27 +761,27 @@ export async function buildDecisionPacketContent(
 
   const forecastSnapshotId = input.forecastSnapshotId === null
     ? null
-    : normalizeReference(input.forecastSnapshotId, "forecast snapshot id");
+    : normalizeUuid(input.forecastSnapshotId, "forecast snapshot id");
   const manualExpectation = input.manualExpectation === null
     ? null
     : normalizeCount(input.manualExpectation, "manual expectation");
   assertForecastShape(input.forecastState, input.targetMetric, forecastSnapshotId, manualExpectation);
 
-  assertNoForbiddenInformation(input.knownInformation);
-  const knownInformation = canonicalClone(input.knownInformation);
+  const knownInformation = normalizeKnownInformation(input.knownInformation);
   const publicEvidence = normalizeEvidenceList(input.publicEvidence, sourceCutoff);
   const registrationSlice = normalizeSlice(input.registrationSlice, "registration slice", sourceCutoff);
   const campaignSlice = normalizeSlice(input.campaignSlice, "campaign slice", sourceCutoff);
   const recommendedAction = normalizeRecommendation(input.recommendedAction, forecastSnapshotId, publicEvidence);
   const supersedesPacketId = input.supersedesPacketId === null
     ? null
-    : normalizeReference(input.supersedesPacketId, "superseded packet id");
+    : normalizeUuid(input.supersedesPacketId, "superseded packet id");
   const correctionReason = normalizeText(input.correctionReason, "correction reason", 4096);
   if ((supersedesPacketId === null) !== (correctionReason === null)) {
     fail("packet correction parent and reason must be supplied together", "INVALID_PACKET_CORRECTION");
   }
 
   const contentWithoutHash = {
+    hashContractVersion: DECISION_PACKET_HASH_CONTRACT_VERSION,
     schemaVersion: DECISION_PACKET_SCHEMA_VERSION,
     clubId,
     eventId,
@@ -655,8 +808,26 @@ export async function buildDecisionPacketContent(
     correctionReason,
   } as const;
 
-  const contentHash = await canonicalHash(contentWithoutHash);
+  const contentHash = (await hashDecisionPacketV1(decisionPacketContentHashPayload(contentWithoutHash))).sha256;
   return deepFreeze({ ...contentWithoutHash, contentHash });
+}
+
+const REQUEST_SCOPE_SENTINEL = "00000000-0000-4000-8000-000000000000";
+
+/**
+ * Idempotency keys are intentionally excluded from this request identity. The
+ * database binds them separately to this hash so replay and conflict semantics
+ * remain explicit without changing the semantic caller input fingerprint.
+ */
+export async function buildDecisionPacketCreateRequestIdentity(
+  input: DecisionPacketCreateRequestInput,
+): Promise<DecisionPacketCreateRequestIdentity> {
+  const { idempotencyKey, ...contentInput } = input;
+  normalizeIdempotencyKey(idempotencyKey, "idempotency key");
+  const content = await buildDecisionPacketContent({ ...contentInput, clubId: REQUEST_SCOPE_SENTINEL });
+  const { clubId: _clubId, contentHash: _contentHash, ...requestContent } = content;
+  const hash = await hashDecisionPacketV1(decisionPacketCreateRequestHashPayload(requestContent));
+  return deepFreeze({ canonical: hash.canonicalText, requestHash: hash.sha256 });
 }
 
 function normalizeCountMetric(input: CountMetricInput, label: string): CountMetric {
@@ -790,6 +961,48 @@ function assertActualSourceShape(
   }
 }
 
+export function eventActualRevisionContentHashPayload(
+  content: Omit<EventActualRevisionContent, "contentHash">,
+): unknown {
+  return {
+    hashContractVersion: content.hashContractVersion,
+    schemaVersion: content.schemaVersion,
+    clubId: content.clubId,
+    eventId: content.eventId,
+    scope: content.scope,
+    finality: content.finality,
+    sourceKind: content.sourceKind,
+    sourceTimestampState: content.sourceTimestampState,
+    sourceTimestamp: content.sourceTimestamp,
+    capturedAt: content.capturedAt,
+    reconciliationStatus: content.reconciliationStatus,
+    metrics: content.metrics,
+    supersedesRevisionId: content.supersedesRevisionId,
+    reconcilesAutoRevisionId: content.reconcilesAutoRevisionId,
+    reconcilesManualRevisionId: content.reconcilesManualRevisionId,
+    idempotencyKey: content.idempotencyKey,
+    correctionReason: content.correctionReason,
+  };
+}
+
+export function eventActualCreateRequestHashPayload(
+  content: Omit<EventActualRevisionContent, "contentHash" | "clubId" | "sourceKind" | "capturedAt" | "reconciliationStatus" | "idempotencyKey" | "reconcilesAutoRevisionId" | "reconcilesManualRevisionId">,
+): unknown {
+  return {
+    hashContractVersion: content.hashContractVersion,
+    requestKind: "eventActualCreateRequest",
+    schemaVersion: content.schemaVersion,
+    eventId: content.eventId,
+    scope: content.scope,
+    finality: content.finality,
+    sourceTimestampState: content.sourceTimestampState,
+    sourceTimestamp: content.sourceTimestamp,
+    metrics: content.metrics,
+    supersedesRevisionId: content.supersedesRevisionId,
+    correctionReason: content.correctionReason,
+  };
+}
+
 export async function buildEventActualRevisionContent(
   input: EventActualRevisionContentInput,
 ): Promise<EventActualRevisionContent> {
@@ -817,13 +1030,13 @@ export async function buildEventActualRevisionContent(
 
   const supersedesRevisionId = input.supersedesRevisionId === null
     ? null
-    : normalizeReference(input.supersedesRevisionId, "superseded revision id");
+    : normalizeUuid(input.supersedesRevisionId, "superseded revision id");
   const reconcilesAutoRevisionId = input.reconcilesAutoRevisionId === null
     ? null
-    : normalizeReference(input.reconcilesAutoRevisionId, "auto revision id");
+    : normalizeUuid(input.reconcilesAutoRevisionId, "auto revision id");
   const reconcilesManualRevisionId = input.reconcilesManualRevisionId === null
     ? null
-    : normalizeReference(input.reconcilesManualRevisionId, "manual revision id");
+    : normalizeUuid(input.reconcilesManualRevisionId, "manual revision id");
   const correctionReason = normalizeText(input.correctionReason, "correction reason", 4096);
   if ((supersedesRevisionId === null) !== (correctionReason === null)) {
     fail("actual correction parent and reason must be supplied together", "INVALID_ACTUAL_CORRECTION");
@@ -848,9 +1061,10 @@ export async function buildEventActualRevisionContent(
   }
 
   const contentWithoutHash = {
+    hashContractVersion: DECISION_PACKET_HASH_CONTRACT_VERSION,
     schemaVersion: EVENT_ACTUAL_REVISION_SCHEMA_VERSION,
-    clubId: normalizeReference(input.clubId, "club id"),
-    eventId: normalizeReference(input.eventId, "event id"),
+    clubId: normalizeUuid(input.clubId, "club id"),
+    eventId: normalizeUuid(input.eventId, "event id"),
     scope: input.scope,
     finality: input.finality,
     sourceKind: input.sourceKind,
@@ -862,18 +1076,56 @@ export async function buildEventActualRevisionContent(
     supersedesRevisionId,
     reconcilesAutoRevisionId,
     reconcilesManualRevisionId,
-    idempotencyKey: normalizeReference(input.idempotencyKey, "idempotency key"),
+    idempotencyKey: normalizeIdempotencyKey(input.idempotencyKey, "idempotency key"),
     correctionReason,
   } as const;
 
-  const contentHash = await canonicalHash(contentWithoutHash);
+  const contentHash = (await hashDecisionPacketV1(eventActualRevisionContentHashPayload(contentWithoutHash))).sha256;
   return deepFreeze({ ...contentWithoutHash, contentHash });
+}
+
+export async function buildEventActualCreateRequestIdentity(
+  input: EventActualCreateRequestInput,
+): Promise<EventActualCreateRequestIdentity> {
+  const capturedAt = input.sourceTimestampState === "exact"
+    ? input.sourceTimestamp
+    : "1970-01-01T00:00:00.000Z";
+  const content = await buildEventActualRevisionContent({
+    clubId: REQUEST_SCOPE_SENTINEL,
+    eventId: input.eventId,
+    scope: input.scope,
+    finality: input.finality,
+    sourceKind: "owner_manual",
+    sourceTimestampState: input.sourceTimestampState,
+    sourceTimestamp: input.sourceTimestamp,
+    capturedAt: capturedAt ?? "1970-01-01T00:00:00.000Z",
+    reconciliationStatus: "manual_only",
+    metrics: input.metrics,
+    supersedesRevisionId: input.supersedesRevisionId,
+    reconcilesAutoRevisionId: null,
+    reconcilesManualRevisionId: null,
+    idempotencyKey: input.idempotencyKey,
+    correctionReason: input.correctionReason,
+  });
+  const {
+    clubId: _clubId,
+    sourceKind: _sourceKind,
+    capturedAt: _capturedAt,
+    reconciliationStatus: _reconciliationStatus,
+    idempotencyKey: _idempotencyKey,
+    reconcilesAutoRevisionId: _reconcilesAutoRevisionId,
+    reconcilesManualRevisionId: _reconcilesManualRevisionId,
+    contentHash: _contentHash,
+    ...requestContent
+  } = content;
+  const hash = await hashDecisionPacketV1(eventActualCreateRequestHashPayload(requestContent));
+  return deepFreeze({ canonical: hash.canonicalText, requestHash: hash.sha256 });
 }
 
 export async function buildEventActualRevision(
   input: EventActualRevisionInput,
 ): Promise<EventActualRevision> {
-  const revisionId = normalizeReference(input.revisionId, "revision id");
+  const revisionId = normalizeUuid(input.revisionId, "revision id");
   const content = await buildEventActualRevisionContent(input);
   if (
     revisionId === content.supersedesRevisionId
@@ -917,7 +1169,10 @@ export async function validateEventActualRevisionGraph(
       idempotencyKey: revision.idempotencyKey,
       correctionReason: revision.correctionReason,
     });
-    if (rebuilt.contentHash !== revision.contentHash) {
+    if (
+      rebuilt.hashContractVersion !== revision.hashContractVersion
+      || rebuilt.contentHash !== revision.contentHash
+    ) {
       fail("actual revision content hash does not match its fields", "FORGED_REVISION");
     }
     byId.set(revision.revisionId, revision);

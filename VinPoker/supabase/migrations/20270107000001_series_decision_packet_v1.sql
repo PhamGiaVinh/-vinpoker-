@@ -154,7 +154,7 @@ BEGIN
   END IF;
 
   v_text := p_value #>> '{}';
-  IF v_text !~ E'^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$' THEN
+  IF v_text !~ E'^[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,3})?(Z|[+-][0-9]{2}:[0-9]{2})$' THEN
     RETURN false;
   END IF;
 
@@ -164,7 +164,8 @@ BEGIN
     RETURN false;
   END;
 
-  RETURN v_source_cutoff <= p_packet_cutoff;
+  RETURN v_source_cutoff <= p_packet_cutoff
+    AND pg_catalog.date_trunc('milliseconds', v_source_cutoff) = v_source_cutoff;
 END;
 $$;
 
@@ -294,7 +295,8 @@ SECURITY INVOKER
 SET search_path = ''
 AS $$
   SELECT CASE
-    WHEN p_availability = 'present' THEN p_value IS NOT NULL AND p_value > 0
+    WHEN p_availability = 'present' THEN
+      p_value IS NOT NULL AND p_value > 0 AND p_value <= 9007199254740991
     WHEN p_availability = 'explicit_zero' THEN p_value = 0
     WHEN p_availability IN ('missing','uncertain','conflicting','not_applicable') THEN p_value IS NULL
     ELSE false
@@ -410,8 +412,15 @@ CREATE TABLE IF NOT EXISTS public.series_decision_packets_v1 (
       'forecast_identity_eligible'
     )
   ),
-  CONSTRAINT sdp_v1_timing_chk CHECK (source_cutoff <= as_of_ts),
-  CONSTRAINT sdp_v1_expectation_chk CHECK (manual_expectation IS NULL OR manual_expectation >= 0),
+  CONSTRAINT sdp_v1_timing_chk CHECK (
+    source_cutoff <= as_of_ts
+    AND pg_catalog.date_trunc('milliseconds', as_of_ts) = as_of_ts
+    AND pg_catalog.date_trunc('milliseconds', source_cutoff) = source_cutoff
+    AND pg_catalog.date_trunc('milliseconds', target_event_ts) = target_event_ts
+  ),
+  CONSTRAINT sdp_v1_expectation_chk CHECK (
+    manual_expectation IS NULL OR (manual_expectation >= 0 AND manual_expectation <= 9007199254740991)
+  ),
   CONSTRAINT sdp_v1_forecast_shape_chk CHECK (
     (forecast_state = 'no_forecast_available'
       AND forecast_snapshot_id IS NULL AND manual_expectation IS NULL)
@@ -652,9 +661,13 @@ CREATE TABLE IF NOT EXISTS public.series_event_actual_revisions_v1 (
   CONSTRAINT sear_v1_source_time_chk CHECK (
     (source_timestamp_state = 'exact'
       AND source_timestamp IS NOT NULL
-      AND source_timestamp <= captured_at)
+      AND source_timestamp <= captured_at
+      AND pg_catalog.date_trunc('milliseconds', source_timestamp) = source_timestamp
+      AND pg_catalog.date_trunc('milliseconds', captured_at) = captured_at)
     OR
-    (source_timestamp_state = 'not_reported' AND source_timestamp IS NULL)
+    (source_timestamp_state = 'not_reported'
+      AND source_timestamp IS NULL
+      AND pg_catalog.date_trunc('milliseconds', captured_at) = captured_at)
   ),
   CONSTRAINT sear_v1_reconciliation_chk CHECK (
     reconciliation_status IN (
@@ -831,6 +844,130 @@ REVOKE ALL ON FUNCTION public._series_reject_actual_revision_mutation_v1()
 -- 4. Server-authoritative hashing and packet write path.
 -- ---------------------------------------------------------------------------------------------
 
+-- D2A's cross-runtime semantic hash contract. It intentionally accepts a
+-- narrower domain than generic jsonb: ASCII machine keys, NFC+trimmed strings,
+-- non-negative safe-integer JSON numbers, array order preserved, and C-order
+-- object keys. This mirrors decisionPacketCanonicalV1.ts byte for byte.
+CREATE OR REPLACE FUNCTION public._series_canonical_json_v1(p_value jsonb)
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_type text;
+  v_text text;
+  v_key text;
+  v_child jsonb;
+  v_result text;
+BEGIN
+  IF p_value IS NULL THEN
+    RAISE EXCEPTION 'series_canonical_json_sql_null' USING ERRCODE = '22023';
+  END IF;
+
+  v_type := pg_catalog.jsonb_typeof(p_value);
+  IF v_type = 'null' THEN
+    RETURN 'null';
+  ELSIF v_type = 'boolean' THEN
+    v_text := p_value #>> '{}';
+    IF v_text NOT IN ('true', 'false') THEN
+      RAISE EXCEPTION 'series_canonical_json_invalid_boolean' USING ERRCODE = '22023';
+    END IF;
+    RETURN v_text;
+  ELSIF v_type = 'number' THEN
+    v_text := p_value #>> '{}';
+    IF v_text !~ '^(0|[1-9][0-9]*)$'
+      OR v_text::numeric > 9007199254740991::numeric
+    THEN
+      RAISE EXCEPTION 'series_canonical_json_invalid_safe_integer' USING ERRCODE = '22023';
+    END IF;
+    RETURN v_text;
+  ELSIF v_type = 'string' THEN
+    v_text := pg_catalog.btrim(pg_catalog.normalize(p_value #>> '{}', NFC));
+    IF v_text ~ E'[\001-\010\013\014\016-\037\177]' THEN
+      RAISE EXCEPTION 'series_canonical_json_invalid_control' USING ERRCODE = '22023';
+    END IF;
+    RETURN pg_catalog.to_json(v_text)::text;
+  ELSIF v_type = 'array' THEN
+    SELECT '[' || COALESCE(
+      pg_catalog.string_agg(public._series_canonical_json_v1(member.value), ',' ORDER BY member.ordinality),
+      ''
+    ) || ']'
+    INTO v_result
+    FROM pg_catalog.jsonb_array_elements(p_value) WITH ORDINALITY AS member(value, ordinality);
+    RETURN v_result;
+  ELSIF v_type = 'object' THEN
+    IF EXISTS (
+      SELECT 1
+      FROM pg_catalog.jsonb_each(p_value) AS member(key, value)
+      WHERE pg_catalog.btrim(pg_catalog.normalize(member.key, NFC)) !~ '^[A-Za-z][A-Za-z0-9]*$'
+    ) THEN
+      RAISE EXCEPTION 'series_canonical_json_invalid_machine_key' USING ERRCODE = '22023';
+    END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM (
+        SELECT pg_catalog.btrim(pg_catalog.normalize(member.key, NFC)) AS normalized_key
+        FROM pg_catalog.jsonb_each(p_value) AS member(key, value)
+      ) AS normalized
+      GROUP BY normalized.normalized_key
+      HAVING pg_catalog.count(*) > 1
+    ) THEN
+      RAISE EXCEPTION 'series_canonical_json_duplicate_key_after_nfc' USING ERRCODE = '22023';
+    END IF;
+    SELECT '{' || COALESCE(
+      pg_catalog.string_agg(
+        pg_catalog.to_json(member.normalized_key)::text
+        || ':' || public._series_canonical_json_v1(member.value),
+        ',' ORDER BY member.normalized_key COLLATE "C"
+      ),
+      ''
+    ) || '}'
+    INTO v_result
+    FROM (
+      SELECT
+        pg_catalog.btrim(pg_catalog.normalize(source.key, NFC)) AS normalized_key,
+        source.value
+      FROM pg_catalog.jsonb_each(p_value) AS source(key, value)
+    ) AS member;
+    RETURN v_result;
+  END IF;
+
+  RAISE EXCEPTION 'series_canonical_json_unsupported_value' USING ERRCODE = '22023';
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public._series_canonical_jsonb_v1(p_value jsonb)
+RETURNS jsonb
+LANGUAGE sql
+IMMUTABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT public._series_canonical_json_v1(p_value)::jsonb
+$$;
+
+CREATE OR REPLACE FUNCTION public._series_canonical_timestamptz_v1(p_value timestamptz)
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+BEGIN
+  IF p_value IS NULL
+    OR pg_catalog.date_trunc('milliseconds', p_value) <> p_value
+  THEN
+    RAISE EXCEPTION 'series_canonical_timestamp_not_millisecond_exact' USING ERRCODE = '22023';
+  END IF;
+  RETURN pg_catalog.to_char(
+    p_value AT TIME ZONE 'UTC',
+    'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+  );
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public._series_sha256_jsonb_v1(p_payload jsonb)
 RETURNS text
 LANGUAGE sql
@@ -839,13 +976,58 @@ SECURITY INVOKER
 SET search_path = ''
 AS $$
   SELECT pg_catalog.encode(
-    extensions.digest(pg_catalog.convert_to(p_payload::text, 'UTF8'), 'sha256'),
+    extensions.digest(
+      pg_catalog.convert_to(public._series_canonical_json_v1(p_payload), 'UTF8'),
+      'sha256'
+    ),
     'hex'
   )
 $$;
 
-REVOKE ALL ON FUNCTION public._series_sha256_jsonb_v1(jsonb)
-  FROM PUBLIC, anon, authenticated, service_role;
+CREATE OR REPLACE FUNCTION public._series_decision_packet_content_payload_v1(
+  p_packet public.series_decision_packets_v1
+)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT pg_catalog.jsonb_build_object(
+    'hashContractVersion', 'series-canonical-json-v1',
+    'schemaVersion', p_packet.schema_version,
+    'clubId', p_packet.club_id::text,
+    'eventId', p_packet.event_id::text,
+    'horizon', p_packet.decision_horizon,
+    'targetMetric', p_packet.target_metric,
+    'asOfTs', public._series_canonical_timestamptz_v1(p_packet.as_of_ts),
+    'sourceCutoff', public._series_canonical_timestamptz_v1(p_packet.source_cutoff),
+    'targetEventTs', public._series_canonical_timestamptz_v1(p_packet.target_event_ts),
+    'forecastSnapshotId', CASE WHEN p_packet.forecast_snapshot_id IS NULL THEN NULL ELSE p_packet.forecast_snapshot_id::text END,
+    'forecastState', p_packet.forecast_state,
+    'manualExpectation', p_packet.manual_expectation,
+    'publicEvidence', p_packet.public_evidence_manifest,
+    'registrationSlice', p_packet.registration_slice_manifest,
+    'campaignSlice', p_packet.campaign_slice_manifest,
+    'knownInformation', p_packet.known_information,
+    'recommendedAction', CASE
+      WHEN p_packet.recommended_action IS NULL THEN NULL
+      ELSE pg_catalog.jsonb_build_object(
+        'text', p_packet.recommended_action,
+        'sourceKind', p_packet.recommendation_source_kind,
+        'sourceReferenceId', p_packet.recommendation_source_ref
+      )
+    END,
+    'ownerDecision', p_packet.owner_decision,
+    'publicAction', p_packet.public_action,
+    'decisionReason', p_packet.decision_reason,
+    'alternatives', p_packet.alternatives,
+    'assumptions', p_packet.assumptions,
+    'uncertaintyNotes', p_packet.uncertainty_notes,
+    'supersedesPacketId', CASE WHEN p_packet.supersedes_packet_id IS NULL THEN NULL ELSE p_packet.supersedes_packet_id::text END,
+    'correctionReason', p_packet.correction_reason
+  )
+$$;
 
 CREATE OR REPLACE FUNCTION public._series_decision_packet_content_hash_v1(
   p_packet public.series_decision_packets_v1
@@ -856,40 +1038,284 @@ STABLE
 SECURITY INVOKER
 SET search_path = ''
 AS $$
-  SELECT public._series_sha256_jsonb_v1(pg_catalog.jsonb_build_object(
-    'schema_version', p_packet.schema_version,
-    'club_id', p_packet.club_id,
-    'event_id', p_packet.event_id,
-    'decision_horizon', p_packet.decision_horizon,
-    'target_metric', p_packet.target_metric,
-    'as_of_ts', p_packet.as_of_ts,
-    'source_cutoff', p_packet.source_cutoff,
-    'target_event_ts', p_packet.target_event_ts,
-    'forecast_snapshot_id', p_packet.forecast_snapshot_id,
-    'forecast_state', p_packet.forecast_state,
-    'manual_expectation', p_packet.manual_expectation,
-    'public_evidence_manifest', p_packet.public_evidence_manifest,
-    'registration_slice_manifest', p_packet.registration_slice_manifest,
-    'registration_observation_count', p_packet.registration_observation_count,
-    'campaign_slice_manifest', p_packet.campaign_slice_manifest,
-    'campaign_observation_count', p_packet.campaign_observation_count,
-    'known_information', p_packet.known_information,
-    'recommended_action', p_packet.recommended_action,
-    'recommendation_source_kind', p_packet.recommendation_source_kind,
-    'recommendation_source_ref', p_packet.recommendation_source_ref,
-    'owner_decision', p_packet.owner_decision,
-    'public_action', p_packet.public_action,
-    'decision_reason', p_packet.decision_reason,
-    'alternatives', p_packet.alternatives,
-    'assumptions', p_packet.assumptions,
-    'uncertainty_notes', p_packet.uncertainty_notes,
-    'supersedes_packet_id', p_packet.supersedes_packet_id,
-    'correction_reason', p_packet.correction_reason
-  ))
+  SELECT public._series_sha256_jsonb_v1(public._series_decision_packet_content_payload_v1(p_packet))
 $$;
 
+CREATE OR REPLACE FUNCTION public._series_decision_packet_request_payload_v1(
+  p_packet public.series_decision_packets_v1
+)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT pg_catalog.jsonb_set(
+    public._series_decision_packet_content_payload_v1(p_packet) - 'clubId',
+    '{requestKind}',
+    '"decisionPacketCreateRequest"'::jsonb,
+    true
+  )
+$$;
+
+REVOKE ALL ON FUNCTION public._series_canonical_json_v1(jsonb)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_canonical_jsonb_v1(jsonb)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_canonical_timestamptz_v1(timestamptz)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_sha256_jsonb_v1(jsonb)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_decision_packet_content_payload_v1(
+  public.series_decision_packets_v1
+) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_decision_packet_request_payload_v1(
+  public.series_decision_packets_v1
+) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public._series_decision_packet_content_hash_v1(
   public.series_decision_packets_v1
+) FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public._series_d2a_normalize_bounded_text_v1(
+  p_value text,
+  p_max_length integer
+)
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_value text;
+BEGIN
+  IF p_value IS NULL THEN
+    RAISE EXCEPTION 'series_d2a_text_null' USING ERRCODE = '22023';
+  END IF;
+  v_value := pg_catalog.btrim(pg_catalog.normalize(p_value, NFC));
+  IF pg_catalog.char_length(v_value) = 0
+    OR pg_catalog.char_length(v_value) > p_max_length
+    OR v_value ~ E'[\001-\010\013\014\016-\037\177]'
+  THEN
+    RAISE EXCEPTION 'series_d2a_text_invalid' USING ERRCODE = '22023';
+  END IF;
+  RETURN v_value;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public._series_d2a_normalize_text_set_v1(
+  p_value jsonb,
+  p_max_length integer
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+IMMUTABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_item jsonb;
+  v_text text;
+  v_values text[] := ARRAY[]::text[];
+BEGIN
+  IF p_value IS NULL OR pg_catalog.jsonb_typeof(p_value) <> 'array' THEN
+    RAISE EXCEPTION 'series_d2a_text_set_invalid' USING ERRCODE = '22023';
+  END IF;
+  FOR v_item IN SELECT value FROM pg_catalog.jsonb_array_elements(p_value)
+  LOOP
+    IF pg_catalog.jsonb_typeof(v_item) <> 'string' THEN
+      RAISE EXCEPTION 'series_d2a_text_set_member_invalid' USING ERRCODE = '22023';
+    END IF;
+    v_text := public._series_d2a_normalize_bounded_text_v1(v_item #>> '{}', p_max_length);
+    IF v_text = ANY (v_values) THEN
+      RAISE EXCEPTION 'series_d2a_text_set_duplicate' USING ERRCODE = '22023';
+    END IF;
+    v_values := pg_catalog.array_append(v_values, v_text);
+  END LOOP;
+  SELECT COALESCE(
+    pg_catalog.jsonb_agg(pg_catalog.to_jsonb(member.value) ORDER BY member.value COLLATE "C"),
+    '[]'::jsonb
+  )
+  INTO p_value
+  FROM pg_catalog.unnest(v_values) AS member(value);
+  RETURN p_value;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public._series_d2a_normalize_evidence_manifest_v1(
+  p_value jsonb,
+  p_packet_cutoff timestamptz
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_item jsonb;
+  v_kind text;
+  v_reference_id text;
+  v_content_hash text;
+  v_source_cutoff timestamptz;
+  v_identity text;
+  v_seen text[] := ARRAY[]::text[];
+  v_normalized jsonb[] := ARRAY[]::jsonb[];
+BEGIN
+  IF NOT public._series_packet_evidence_manifest_valid_v1(p_value, p_packet_cutoff) THEN
+    RAISE EXCEPTION 'series_d2a_evidence_manifest_invalid' USING ERRCODE = '22023';
+  END IF;
+  FOR v_item IN SELECT value FROM pg_catalog.jsonb_array_elements(p_value)
+  LOOP
+    v_kind := public._series_d2a_normalize_bounded_text_v1(v_item ->> 'kind', 128);
+    v_reference_id := public._series_d2a_normalize_bounded_text_v1(v_item ->> 'referenceId', 512);
+    v_content_hash := pg_catalog.lower(v_item ->> 'contentHash');
+    v_source_cutoff := (v_item ->> 'sourceCutoff')::timestamptz;
+    v_identity := v_kind || ':' || v_reference_id;
+    IF v_identity = ANY (v_seen) THEN
+      RAISE EXCEPTION 'series_d2a_evidence_duplicate' USING ERRCODE = '22023';
+    END IF;
+    v_seen := pg_catalog.array_append(v_seen, v_identity);
+    v_normalized := pg_catalog.array_append(v_normalized, pg_catalog.jsonb_build_object(
+      'kind', v_kind,
+      'referenceId', v_reference_id,
+      'contentHash', v_content_hash,
+      'sourceCutoff', public._series_canonical_timestamptz_v1(v_source_cutoff)
+    ));
+  END LOOP;
+  SELECT COALESCE(
+    pg_catalog.jsonb_agg(member.value ORDER BY (member.value ->> 'kind') || ':' || (member.value ->> 'referenceId') COLLATE "C"),
+    '[]'::jsonb
+  )
+  INTO p_value
+  FROM pg_catalog.unnest(v_normalized) AS member(value);
+  RETURN p_value;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public._series_d2a_normalize_slice_manifest_v1(
+  p_value jsonb,
+  p_observation_count integer,
+  p_packet_cutoff timestamptz
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_source_cutoff timestamptz;
+BEGIN
+  IF p_value IS NULL THEN
+    IF p_observation_count IS NULL THEN
+      RETURN NULL;
+    END IF;
+    RAISE EXCEPTION 'series_d2a_slice_shape_invalid' USING ERRCODE = '22023';
+  END IF;
+  IF NOT public._series_packet_slice_manifest_valid_v1(p_value, p_observation_count, p_packet_cutoff) THEN
+    RAISE EXCEPTION 'series_d2a_slice_manifest_invalid' USING ERRCODE = '22023';
+  END IF;
+  v_source_cutoff := (p_value ->> 'sourceCutoff')::timestamptz;
+  RETURN pg_catalog.jsonb_build_object(
+    'manifestId', public._series_d2a_normalize_bounded_text_v1(p_value ->> 'manifestId', 512),
+    'contentHash', pg_catalog.lower(p_value ->> 'contentHash'),
+    'observationCount', p_observation_count,
+    'sourceCutoff', public._series_canonical_timestamptz_v1(v_source_cutoff)
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public._series_event_actual_content_payload_v1(
+  p_actual public.series_event_actual_revisions_v1
+)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT pg_catalog.jsonb_build_object(
+    'hashContractVersion', 'series-canonical-json-v1',
+    'schemaVersion', p_actual.schema_version,
+    'clubId', p_actual.club_id::text,
+    'eventId', p_actual.event_id::text,
+    'scope', p_actual.outcome_scope,
+    'finality', p_actual.finality,
+    'sourceKind', p_actual.source_kind,
+    'sourceTimestampState', p_actual.source_timestamp_state,
+    'sourceTimestamp', CASE
+      WHEN p_actual.source_timestamp IS NULL THEN NULL
+      ELSE public._series_canonical_timestamptz_v1(p_actual.source_timestamp)
+    END,
+    'capturedAt', public._series_canonical_timestamptz_v1(p_actual.captured_at),
+    'reconciliationStatus', p_actual.reconciliation_status,
+    'metrics', pg_catalog.jsonb_build_object(
+      'entries', pg_catalog.jsonb_build_object('availability', p_actual.entries_availability, 'value', p_actual.entries_value),
+      'uniquePlayers', pg_catalog.jsonb_build_object('availability', p_actual.unique_players_availability, 'value', p_actual.unique_players_value),
+      'totalBullets', pg_catalog.jsonb_build_object('availability', p_actual.total_bullets_availability, 'value', p_actual.total_bullets_value),
+      'reentries', pg_catalog.jsonb_build_object('availability', p_actual.reentries_availability, 'value', p_actual.reentries_value),
+      'registrationRecords', pg_catalog.jsonb_build_object('availability', p_actual.registration_records_availability, 'value', p_actual.registration_records_value),
+      'paidPlaces', pg_catalog.jsonb_build_object('availability', p_actual.paid_places_availability, 'value', p_actual.paid_places_value),
+      'prizePool', pg_catalog.jsonb_build_object(
+        'availability', p_actual.prize_pool_availability,
+        'amountMinor', CASE WHEN p_actual.prize_pool_amount_minor IS NULL THEN NULL ELSE p_actual.prize_pool_amount_minor::text END,
+        'currency', p_actual.prize_pool_currency,
+        'scale', p_actual.prize_pool_scale
+      ),
+      'overlay', pg_catalog.jsonb_build_object(
+        'availability', p_actual.overlay_availability,
+        'amountMinor', CASE WHEN p_actual.overlay_amount_minor IS NULL THEN NULL ELSE p_actual.overlay_amount_minor::text END,
+        'currency', p_actual.overlay_currency,
+        'scale', p_actual.overlay_scale
+      )
+    ),
+    'supersedesRevisionId', CASE WHEN p_actual.supersedes_revision_id IS NULL THEN NULL ELSE p_actual.supersedes_revision_id::text END,
+    'reconcilesAutoRevisionId', CASE WHEN p_actual.reconciles_auto_revision_id IS NULL THEN NULL ELSE p_actual.reconciles_auto_revision_id::text END,
+    'reconcilesManualRevisionId', CASE WHEN p_actual.reconciles_manual_revision_id IS NULL THEN NULL ELSE p_actual.reconciles_manual_revision_id::text END,
+    'idempotencyKey', p_actual.idempotency_key,
+    'correctionReason', p_actual.correction_reason
+  )
+$$;
+
+CREATE OR REPLACE FUNCTION public._series_event_actual_request_payload_v1(
+  p_actual public.series_event_actual_revisions_v1
+)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT pg_catalog.jsonb_set(
+    public._series_event_actual_content_payload_v1(p_actual)
+      - ARRAY[
+        'clubId',
+        'sourceKind',
+        'capturedAt',
+        'reconciliationStatus',
+        'reconcilesAutoRevisionId',
+        'reconcilesManualRevisionId'
+      ],
+    '{requestKind}',
+    '"eventActualCreateRequest"'::jsonb,
+    true
+  )
+$$;
+
+REVOKE ALL ON FUNCTION public._series_d2a_normalize_bounded_text_v1(text, integer)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_d2a_normalize_text_set_v1(jsonb, integer)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_d2a_normalize_evidence_manifest_v1(jsonb, timestamptz)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_d2a_normalize_slice_manifest_v1(jsonb, integer, timestamptz)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_event_actual_content_payload_v1(
+  public.series_event_actual_revisions_v1
+) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_event_actual_request_payload_v1(
+  public.series_event_actual_revisions_v1
 ) FROM PUBLIC, anon, authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public.series_create_decision_packet_v1(
@@ -933,6 +1359,23 @@ DECLARE
   v_parent public.series_decision_packets_v1%ROWTYPE;
   v_existing public.series_decision_packets_v1%ROWTYPE;
   v_snapshot public.series_forecast_snapshots%ROWTYPE;
+  v_as_of_ts timestamptz;
+  v_source_cutoff timestamptz;
+  v_target_event_ts timestamptz;
+  v_public_evidence_manifest jsonb;
+  v_registration_slice_manifest jsonb;
+  v_campaign_slice_manifest jsonb;
+  v_known_information jsonb;
+  v_alternatives jsonb;
+  v_assumptions jsonb;
+  v_recommended_action text;
+  v_recommendation_source_kind text;
+  v_recommendation_source_ref text;
+  v_owner_decision text;
+  v_public_action text;
+  v_decision_reason text;
+  v_uncertainty_notes text;
+  v_correction_reason text;
   v_request_hash text;
   v_result public.series_decision_packets_v1%ROWTYPE;
 BEGIN
@@ -953,33 +1396,78 @@ BEGIN
     RAISE EXCEPTION 'decision_packet_invalid_idempotency_key' USING ERRCODE = '22023';
   END IF;
 
+  IF p_as_of_ts IS NULL
+    OR p_source_cutoff IS NULL
+    OR p_target_event_ts IS NULL
+    OR pg_catalog.date_trunc('milliseconds', p_as_of_ts) <> p_as_of_ts
+    OR pg_catalog.date_trunc('milliseconds', p_source_cutoff) <> p_source_cutoff
+    OR pg_catalog.date_trunc('milliseconds', p_target_event_ts) <> p_target_event_ts
+    OR (p_manual_expectation IS NOT NULL AND (p_manual_expectation < 0 OR p_manual_expectation > 9007199254740991))
+  THEN
+    RAISE EXCEPTION 'decision_packet_invalid_canonical_time_or_count' USING ERRCODE = '22023';
+  END IF;
+  v_as_of_ts := p_as_of_ts;
+  v_source_cutoff := p_source_cutoff;
+  v_target_event_ts := p_target_event_ts;
+
+  IF public._series_jsonb_has_forbidden_packet_key_v1(p_public_evidence_manifest)
+    OR public._series_jsonb_has_forbidden_packet_key_v1(p_registration_slice_manifest)
+    OR public._series_jsonb_has_forbidden_packet_key_v1(p_campaign_slice_manifest)
+    OR public._series_jsonb_has_forbidden_packet_key_v1(p_known_information)
+  THEN
+    RAISE EXCEPTION 'decision_packet_outcome_or_pii_leakage' USING ERRCODE = '22023';
+  END IF;
+  v_public_evidence_manifest := public._series_d2a_normalize_evidence_manifest_v1(
+    COALESCE(p_public_evidence_manifest, '[]'::jsonb), v_source_cutoff
+  );
+  v_registration_slice_manifest := public._series_d2a_normalize_slice_manifest_v1(
+    p_registration_slice_manifest, p_registration_observation_count, v_source_cutoff
+  );
+  v_campaign_slice_manifest := public._series_d2a_normalize_slice_manifest_v1(
+    p_campaign_slice_manifest, p_campaign_observation_count, v_source_cutoff
+  );
+  v_known_information := public._series_canonical_jsonb_v1(COALESCE(p_known_information, '{}'::jsonb));
+  v_alternatives := public._series_d2a_normalize_text_set_v1(COALESCE(p_alternatives, '[]'::jsonb), 2048);
+  v_assumptions := public._series_d2a_normalize_text_set_v1(COALESCE(p_assumptions, '[]'::jsonb), 2048);
+  v_recommended_action := CASE WHEN p_recommended_action IS NULL THEN NULL ELSE public._series_d2a_normalize_bounded_text_v1(p_recommended_action, 4096) END;
+  v_recommendation_source_kind := CASE WHEN p_recommendation_source_kind IS NULL THEN NULL ELSE public._series_d2a_normalize_bounded_text_v1(p_recommendation_source_kind, 128) END;
+  v_recommendation_source_ref := CASE WHEN p_recommendation_source_ref IS NULL THEN NULL ELSE public._series_d2a_normalize_bounded_text_v1(p_recommendation_source_ref, 512) END;
+  v_owner_decision := CASE WHEN p_owner_decision IS NULL THEN NULL ELSE public._series_d2a_normalize_bounded_text_v1(p_owner_decision, 4096) END;
+  v_public_action := CASE WHEN p_public_action IS NULL THEN NULL ELSE public._series_d2a_normalize_bounded_text_v1(p_public_action, 4096) END;
+  v_decision_reason := CASE WHEN p_decision_reason IS NULL THEN NULL ELSE public._series_d2a_normalize_bounded_text_v1(p_decision_reason, 8192) END;
+  v_uncertainty_notes := CASE WHEN p_uncertainty_notes IS NULL THEN NULL ELSE public._series_d2a_normalize_bounded_text_v1(p_uncertainty_notes, 8192) END;
+  v_correction_reason := CASE WHEN p_correction_reason IS NULL THEN NULL ELSE public._series_d2a_normalize_bounded_text_v1(p_correction_reason, 4096) END;
+
   v_request_hash := public._series_sha256_jsonb_v1(pg_catalog.jsonb_build_object(
-    'event_id', p_event_id,
-    'decision_horizon', p_decision_horizon,
-    'target_metric', p_target_metric,
-    'as_of_ts', p_as_of_ts,
-    'source_cutoff', p_source_cutoff,
-    'target_event_ts', p_target_event_ts,
-    'forecast_snapshot_id', p_forecast_snapshot_id,
-    'forecast_state', p_forecast_state,
-    'manual_expectation', p_manual_expectation,
-    'public_evidence_manifest', p_public_evidence_manifest,
-    'registration_slice_manifest', p_registration_slice_manifest,
-    'registration_observation_count', p_registration_observation_count,
-    'campaign_slice_manifest', p_campaign_slice_manifest,
-    'campaign_observation_count', p_campaign_observation_count,
-    'known_information', p_known_information,
-    'recommended_action', p_recommended_action,
-    'recommendation_source_kind', p_recommendation_source_kind,
-    'recommendation_source_ref', p_recommendation_source_ref,
-    'owner_decision', p_owner_decision,
-    'public_action', p_public_action,
-    'decision_reason', p_decision_reason,
-    'alternatives', p_alternatives,
-    'assumptions', p_assumptions,
-    'uncertainty_notes', p_uncertainty_notes,
-    'supersedes_packet_id', p_supersedes_packet_id,
-    'correction_reason', p_correction_reason
+    'hashContractVersion', 'series-canonical-json-v1',
+    'requestKind', 'decisionPacketCreateRequest',
+    'schemaVersion', 'series-decision-packet-v1',
+    'eventId', p_event_id::text,
+    'horizon', p_decision_horizon,
+    'targetMetric', p_target_metric,
+    'asOfTs', public._series_canonical_timestamptz_v1(v_as_of_ts),
+    'sourceCutoff', public._series_canonical_timestamptz_v1(v_source_cutoff),
+    'targetEventTs', public._series_canonical_timestamptz_v1(v_target_event_ts),
+    'forecastSnapshotId', CASE WHEN p_forecast_snapshot_id IS NULL THEN NULL ELSE p_forecast_snapshot_id::text END,
+    'forecastState', p_forecast_state,
+    'manualExpectation', p_manual_expectation,
+    'publicEvidence', v_public_evidence_manifest,
+    'registrationSlice', v_registration_slice_manifest,
+    'campaignSlice', v_campaign_slice_manifest,
+    'knownInformation', v_known_information,
+    'recommendedAction', CASE WHEN v_recommended_action IS NULL THEN NULL ELSE pg_catalog.jsonb_build_object(
+      'text', v_recommended_action,
+      'sourceKind', v_recommendation_source_kind,
+      'sourceReferenceId', v_recommendation_source_ref
+    ) END,
+    'ownerDecision', v_owner_decision,
+    'publicAction', v_public_action,
+    'decisionReason', v_decision_reason,
+    'alternatives', v_alternatives,
+    'assumptions', v_assumptions,
+    'uncertaintyNotes', v_uncertainty_notes,
+    'supersedesPacketId', CASE WHEN p_supersedes_packet_id IS NULL THEN NULL ELSE p_supersedes_packet_id::text END,
+    'correctionReason', v_correction_reason
   ));
 
   PERFORM pg_catalog.pg_advisory_xact_lock(
@@ -1010,40 +1498,16 @@ BEGIN
   IF v_event.status::text IN ('finished','completed','cancelled') THEN
     RAISE EXCEPTION 'decision_packet_event_already_closed' USING ERRCODE = '55000';
   END IF;
-  IF p_target_event_ts IS DISTINCT FROM v_event.start_time THEN
+  IF v_target_event_ts IS DISTINCT FROM v_event.start_time THEN
     RAISE EXCEPTION 'decision_packet_target_event_mismatch' USING ERRCODE = '22023';
   END IF;
-  IF p_source_cutoff > p_as_of_ts OR p_as_of_ts > pg_catalog.now() THEN
+  IF v_source_cutoff > v_as_of_ts OR v_as_of_ts > pg_catalog.now() THEN
     RAISE EXCEPTION 'decision_packet_invalid_origin_time' USING ERRCODE = '22023';
   END IF;
-  IF public._series_jsonb_has_forbidden_packet_key_v1(p_public_evidence_manifest)
-    OR public._series_jsonb_has_forbidden_packet_key_v1(p_registration_slice_manifest)
-    OR public._series_jsonb_has_forbidden_packet_key_v1(p_campaign_slice_manifest)
-    OR public._series_jsonb_has_forbidden_packet_key_v1(p_known_information)
-  THEN
-    RAISE EXCEPTION 'decision_packet_outcome_or_pii_leakage' USING ERRCODE = '22023';
-  END IF;
-  IF NOT public._series_packet_evidence_manifest_valid_v1(
-      COALESCE(p_public_evidence_manifest, '[]'::jsonb),
-      p_source_cutoff
-    )
-    OR NOT public._series_packet_slice_manifest_valid_v1(
-      p_registration_slice_manifest,
-      p_registration_observation_count,
-      p_source_cutoff
-    )
-    OR NOT public._series_packet_slice_manifest_valid_v1(
-      p_campaign_slice_manifest,
-      p_campaign_observation_count,
-      p_source_cutoff
-    )
-  THEN
-    RAISE EXCEPTION 'decision_packet_invalid_evidence_or_slice_manifest' USING ERRCODE = '22023';
-  END IF;
-  IF p_recommendation_source_kind = 'research_artifact'
+  IF v_recommendation_source_kind = 'research_artifact'
     AND NOT public._series_packet_research_artifact_reference_valid_v1(
-      COALESCE(p_public_evidence_manifest, '[]'::jsonb),
-      p_recommendation_source_ref
+      v_public_evidence_manifest,
+      v_recommendation_source_ref
     )
   THEN
     RAISE EXCEPTION 'decision_packet_recommendation_source_mismatch' USING ERRCODE = '22023';
@@ -1059,10 +1523,10 @@ BEGIN
       OR v_snapshot.event_id <> p_event_id
       OR v_snapshot.forecast_issued_at IS NULL
       OR v_snapshot.as_of_ts IS NULL
-      OR v_snapshot.target_event_ts IS DISTINCT FROM p_target_event_ts
-      OR v_snapshot.forecast_issued_at > p_as_of_ts
+      OR v_snapshot.target_event_ts IS DISTINCT FROM v_target_event_ts
+      OR v_snapshot.forecast_issued_at > v_as_of_ts
       OR v_snapshot.as_of_ts > v_snapshot.forecast_issued_at
-      OR v_snapshot.forecast_issued_at > p_target_event_ts
+      OR v_snapshot.forecast_issued_at > v_target_event_ts
     THEN
       RAISE EXCEPTION 'decision_packet_forecast_identity_mismatch' USING ERRCODE = '22023';
     END IF;
@@ -1123,25 +1587,25 @@ BEGIN
     uncertainty_notes, idempotency_key, request_hash, created_by,
     supersedes_packet_id, correction_reason
   ) VALUES (
-    v_event.club_id, p_event_id, p_decision_horizon, p_target_metric, p_as_of_ts, p_source_cutoff,
-    p_target_event_ts, p_forecast_snapshot_id, p_forecast_state, p_manual_expectation,
-    COALESCE(p_public_evidence_manifest, '[]'::jsonb),
-    public._series_sha256_jsonb_v1(COALESCE(p_public_evidence_manifest, '[]'::jsonb)),
-    p_registration_slice_manifest,
-    CASE WHEN p_registration_slice_manifest IS NULL THEN NULL
-      ELSE public._series_sha256_jsonb_v1(p_registration_slice_manifest) END,
+    v_event.club_id, p_event_id, p_decision_horizon, p_target_metric, v_as_of_ts, v_source_cutoff,
+    v_target_event_ts, p_forecast_snapshot_id, p_forecast_state, p_manual_expectation,
+    v_public_evidence_manifest,
+    public._series_sha256_jsonb_v1(v_public_evidence_manifest),
+    v_registration_slice_manifest,
+    CASE WHEN v_registration_slice_manifest IS NULL THEN NULL
+      ELSE public._series_sha256_jsonb_v1(v_registration_slice_manifest) END,
     p_registration_observation_count,
-    p_campaign_slice_manifest,
-    CASE WHEN p_campaign_slice_manifest IS NULL THEN NULL
-      ELSE public._series_sha256_jsonb_v1(p_campaign_slice_manifest) END,
+    v_campaign_slice_manifest,
+    CASE WHEN v_campaign_slice_manifest IS NULL THEN NULL
+      ELSE public._series_sha256_jsonb_v1(v_campaign_slice_manifest) END,
     p_campaign_observation_count,
-    COALESCE(p_known_information, '{}'::jsonb),
-    public._series_sha256_jsonb_v1(COALESCE(p_known_information, '{}'::jsonb)),
-    p_recommended_action, p_recommendation_source_kind, p_recommendation_source_ref,
-    p_owner_decision, p_public_action, p_decision_reason,
-    COALESCE(p_alternatives, '[]'::jsonb), COALESCE(p_assumptions, '[]'::jsonb),
-    p_uncertainty_notes, p_idempotency_key, v_request_hash, v_actor,
-    p_supersedes_packet_id, p_correction_reason
+    v_known_information,
+    public._series_sha256_jsonb_v1(v_known_information),
+    v_recommended_action, v_recommendation_source_kind, v_recommendation_source_ref,
+    v_owner_decision, v_public_action, v_decision_reason,
+    v_alternatives, v_assumptions,
+    v_uncertainty_notes, p_idempotency_key, v_request_hash, v_actor,
+    p_supersedes_packet_id, v_correction_reason
   )
   RETURNING * INTO v_result;
 
@@ -1310,7 +1774,13 @@ DECLARE
   v_event public.tournaments%ROWTYPE;
   v_parent public.series_event_actual_revisions_v1%ROWTYPE;
   v_existing public.series_event_actual_revisions_v1%ROWTYPE;
-  v_now timestamptz := pg_catalog.now();
+  v_now timestamptz := pg_catalog.date_trunc('milliseconds', pg_catalog.clock_timestamp());
+  v_prize_pool_currency text;
+  v_overlay_currency text;
+  v_correction_reason text;
+  v_metrics jsonb;
+  v_request_payload jsonb;
+  v_content_payload jsonb;
   v_request_hash text;
   v_content_hash text;
   v_result public.series_event_actual_revisions_v1%ROWTYPE;
@@ -1331,29 +1801,62 @@ BEGIN
     RAISE EXCEPTION 'event_actual_invalid_idempotency_key' USING ERRCODE = '22023';
   END IF;
 
-  v_request_hash := public._series_sha256_jsonb_v1(pg_catalog.jsonb_build_object(
-    'event_id', p_event_id,
-    'outcome_scope', p_outcome_scope,
-    'finality', p_finality,
-    'source_timestamp_state', p_source_timestamp_state,
-    'source_timestamp', p_source_timestamp,
+  IF (p_source_timestamp_state = 'exact' AND (
+      p_source_timestamp IS NULL
+      OR pg_catalog.date_trunc('milliseconds', p_source_timestamp) <> p_source_timestamp
+      OR p_source_timestamp > v_now
+    ))
+    OR (p_source_timestamp_state = 'not_reported' AND p_source_timestamp IS NOT NULL)
+    OR p_source_timestamp_state NOT IN ('exact', 'not_reported')
+    OR p_entries_value > 9007199254740991
+    OR p_unique_players_value > 9007199254740991
+    OR p_total_bullets_value > 9007199254740991
+    OR p_reentries_value > 9007199254740991
+    OR p_registration_records_value > 9007199254740991
+    OR p_paid_places_value > 9007199254740991
+  THEN
+    RAISE EXCEPTION 'event_actual_invalid_canonical_time_or_count' USING ERRCODE = '22023';
+  END IF;
+  v_prize_pool_currency := CASE WHEN p_prize_pool_currency IS NULL THEN NULL ELSE pg_catalog.upper(p_prize_pool_currency) END;
+  v_overlay_currency := CASE WHEN p_overlay_currency IS NULL THEN NULL ELSE pg_catalog.upper(p_overlay_currency) END;
+  v_correction_reason := CASE
+    WHEN p_correction_reason IS NULL THEN NULL
+    ELSE public._series_d2a_normalize_bounded_text_v1(p_correction_reason, 4096)
+  END;
+  v_metrics := pg_catalog.jsonb_build_object(
     'entries', pg_catalog.jsonb_build_object('availability', p_entries_availability, 'value', p_entries_value),
-    'unique_players', pg_catalog.jsonb_build_object('availability', p_unique_players_availability, 'value', p_unique_players_value),
-    'total_bullets', pg_catalog.jsonb_build_object('availability', p_total_bullets_availability, 'value', p_total_bullets_value),
+    'uniquePlayers', pg_catalog.jsonb_build_object('availability', p_unique_players_availability, 'value', p_unique_players_value),
+    'totalBullets', pg_catalog.jsonb_build_object('availability', p_total_bullets_availability, 'value', p_total_bullets_value),
     'reentries', pg_catalog.jsonb_build_object('availability', p_reentries_availability, 'value', p_reentries_value),
-    'registration_records', pg_catalog.jsonb_build_object('availability', p_registration_records_availability, 'value', p_registration_records_value),
-    'paid_places', pg_catalog.jsonb_build_object('availability', p_paid_places_availability, 'value', p_paid_places_value),
-    'prize_pool', pg_catalog.jsonb_build_object(
-      'availability', p_prize_pool_availability, 'amount_minor', p_prize_pool_amount_minor,
-      'currency', p_prize_pool_currency, 'scale', p_prize_pool_scale
+    'registrationRecords', pg_catalog.jsonb_build_object('availability', p_registration_records_availability, 'value', p_registration_records_value),
+    'paidPlaces', pg_catalog.jsonb_build_object('availability', p_paid_places_availability, 'value', p_paid_places_value),
+    'prizePool', pg_catalog.jsonb_build_object(
+      'availability', p_prize_pool_availability,
+      'amountMinor', CASE WHEN p_prize_pool_amount_minor IS NULL THEN NULL ELSE p_prize_pool_amount_minor::text END,
+      'currency', v_prize_pool_currency,
+      'scale', p_prize_pool_scale
     ),
     'overlay', pg_catalog.jsonb_build_object(
-      'availability', p_overlay_availability, 'amount_minor', p_overlay_amount_minor,
-      'currency', p_overlay_currency, 'scale', p_overlay_scale
-    ),
-    'supersedes_revision_id', p_supersedes_revision_id,
-    'correction_reason', p_correction_reason
-  ));
+      'availability', p_overlay_availability,
+      'amountMinor', CASE WHEN p_overlay_amount_minor IS NULL THEN NULL ELSE p_overlay_amount_minor::text END,
+      'currency', v_overlay_currency,
+      'scale', p_overlay_scale
+    )
+  );
+  v_request_payload := pg_catalog.jsonb_build_object(
+    'hashContractVersion', 'series-canonical-json-v1',
+    'requestKind', 'eventActualCreateRequest',
+    'schemaVersion', 'series-event-actual-revision-v1',
+    'eventId', p_event_id::text,
+    'scope', p_outcome_scope,
+    'finality', p_finality,
+    'sourceTimestampState', p_source_timestamp_state,
+    'sourceTimestamp', CASE WHEN p_source_timestamp IS NULL THEN NULL ELSE public._series_canonical_timestamptz_v1(p_source_timestamp) END,
+    'metrics', v_metrics,
+    'supersedesRevisionId', CASE WHEN p_supersedes_revision_id IS NULL THEN NULL ELSE p_supersedes_revision_id::text END,
+    'correctionReason', v_correction_reason
+  );
+  v_request_hash := public._series_sha256_jsonb_v1(v_request_payload);
 
   PERFORM pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(
@@ -1415,35 +1918,26 @@ BEGIN
     END IF;
   END IF;
 
-  v_content_hash := public._series_sha256_jsonb_v1(pg_catalog.jsonb_build_object(
-    'schema_version', 'series-event-actual-revision-v1',
-    'club_id', v_event.club_id,
-    'event_id', p_event_id,
-    'outcome_scope', p_outcome_scope,
+  v_content_payload := pg_catalog.jsonb_build_object(
+    'hashContractVersion', 'series-canonical-json-v1',
+    'schemaVersion', 'series-event-actual-revision-v1',
+    'clubId', v_event.club_id::text,
+    'eventId', p_event_id::text,
+    'scope', p_outcome_scope,
     'finality', p_finality,
-    'source_kind', 'owner_manual',
-    'source_timestamp_state', p_source_timestamp_state,
-    'source_timestamp', p_source_timestamp,
-    'captured_at', v_now,
-    'reconciliation_status', 'manual_only',
-    'entries', pg_catalog.jsonb_build_object('availability', p_entries_availability, 'value', p_entries_value),
-    'unique_players', pg_catalog.jsonb_build_object('availability', p_unique_players_availability, 'value', p_unique_players_value),
-    'total_bullets', pg_catalog.jsonb_build_object('availability', p_total_bullets_availability, 'value', p_total_bullets_value),
-    'reentries', pg_catalog.jsonb_build_object('availability', p_reentries_availability, 'value', p_reentries_value),
-    'registration_records', pg_catalog.jsonb_build_object('availability', p_registration_records_availability, 'value', p_registration_records_value),
-    'paid_places', pg_catalog.jsonb_build_object('availability', p_paid_places_availability, 'value', p_paid_places_value),
-    'prize_pool', pg_catalog.jsonb_build_object(
-      'availability', p_prize_pool_availability, 'amount_minor', p_prize_pool_amount_minor,
-      'currency', p_prize_pool_currency, 'scale', p_prize_pool_scale
-    ),
-    'overlay', pg_catalog.jsonb_build_object(
-      'availability', p_overlay_availability, 'amount_minor', p_overlay_amount_minor,
-      'currency', p_overlay_currency, 'scale', p_overlay_scale
-    ),
-    'supersedes_revision_id', p_supersedes_revision_id,
-    'idempotency_key', p_idempotency_key,
-    'correction_reason', p_correction_reason
-  ));
+    'sourceKind', 'owner_manual',
+    'sourceTimestampState', p_source_timestamp_state,
+    'sourceTimestamp', CASE WHEN p_source_timestamp IS NULL THEN NULL ELSE public._series_canonical_timestamptz_v1(p_source_timestamp) END,
+    'capturedAt', public._series_canonical_timestamptz_v1(v_now),
+    'reconciliationStatus', 'manual_only',
+    'metrics', v_metrics,
+    'supersedesRevisionId', CASE WHEN p_supersedes_revision_id IS NULL THEN NULL ELSE p_supersedes_revision_id::text END,
+    'reconcilesAutoRevisionId', NULL,
+    'reconcilesManualRevisionId', NULL,
+    'idempotencyKey', p_idempotency_key,
+    'correctionReason', v_correction_reason
+  );
+  v_content_hash := public._series_sha256_jsonb_v1(v_content_payload);
 
   INSERT INTO public.series_event_actual_revisions_v1 (
     club_id, event_id, outcome_scope, finality, source_kind,
@@ -1468,9 +1962,9 @@ BEGIN
     p_reentries_availability, p_reentries_value,
     p_registration_records_availability, p_registration_records_value,
     p_paid_places_availability, p_paid_places_value,
-    p_prize_pool_availability, p_prize_pool_amount_minor, p_prize_pool_currency, p_prize_pool_scale,
-    p_overlay_availability, p_overlay_amount_minor, p_overlay_currency, p_overlay_scale,
-    p_supersedes_revision_id, p_idempotency_key, v_request_hash, v_content_hash, p_correction_reason
+    p_prize_pool_availability, p_prize_pool_amount_minor, v_prize_pool_currency, p_prize_pool_scale,
+    p_overlay_availability, p_overlay_amount_minor, v_overlay_currency, p_overlay_scale,
+    p_supersedes_revision_id, p_idempotency_key, v_request_hash, v_content_hash, v_correction_reason
   )
   RETURNING * INTO v_result;
 

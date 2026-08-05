@@ -18,6 +18,23 @@ const SHA_B = "b".repeat(64);
 const CLUB = "11111111-1111-4111-8111-111111111111";
 const EVENT = "22222222-2222-4222-8222-222222222222";
 const SNAPSHOT = "33333333-3333-4333-8333-333333333333";
+const PACKET_PARENT = "44444444-4444-4444-8444-444444444444";
+const REVISION_IDS = {
+  r1: "50000000-0000-4000-8000-000000000001",
+  r2: "50000000-0000-4000-8000-000000000002",
+  r3: "50000000-0000-4000-8000-000000000003",
+  r4: "50000000-0000-4000-8000-000000000004",
+  r1Auto: "50000000-0000-4000-8000-000000000005",
+  missing: "50000000-0000-4000-8000-000000000006",
+  auto: "50000000-0000-4000-8000-000000000007",
+  manual: "50000000-0000-4000-8000-000000000008",
+  reconciled: "50000000-0000-4000-8000-000000000009",
+  auto2: "50000000-0000-4000-8000-000000000010",
+} as const;
+
+function revisionId(label: keyof typeof REVISION_IDS): string {
+  return REVISION_IDS[label];
+}
 
 const packetInput = (): DecisionPacketContentInput => ({
   clubId: CLUB,
@@ -117,10 +134,10 @@ const actualInput = (
 });
 
 async function revision(
-  revisionId: string,
+  revisionLabel: keyof typeof REVISION_IDS,
   overrides: Partial<EventActualRevisionInput> = {},
 ): Promise<EventActualRevision> {
-  return buildEventActualRevision(actualInput(revisionId, overrides));
+  return buildEventActualRevision(actualInput(revisionId(revisionLabel), overrides));
 }
 
 function expectCode(action: () => unknown | Promise<unknown>, code: string) {
@@ -291,7 +308,7 @@ describe("Decision Packet V1 content", () => {
     await expectCode(
       () => buildDecisionPacketContent({
         ...packetInput(),
-        supersedesPacketId: "packet:old",
+        supersedesPacketId: PACKET_PARENT,
         correctionReason: null,
       }),
       "INVALID_PACKET_CORRECTION",
@@ -360,7 +377,7 @@ describe("Event actual revision V1", () => {
       () => buildEventActualRevisionContent({
         ...actualInput("r3"),
         finality: "void",
-        supersedesRevisionId: "r1",
+        supersedesRevisionId: revisionId("r1"),
         correctionReason: "Void invalid source.",
       }),
       "VOID_ACTUAL_HAS_VALUES",
@@ -371,7 +388,7 @@ describe("Event actual revision V1", () => {
     await expectCode(
       () => revision("r1", {
         finality: "corrected",
-        supersedesRevisionId: "r1",
+        supersedesRevisionId: revisionId("r1"),
         correctionReason: "Self reference.",
       }),
       "SELF_REFERENTIAL_REVISION",
@@ -381,14 +398,14 @@ describe("Event actual revision V1", () => {
     const forged = { ...root, contentHash: SHA_A };
     await expectCode(() => validateEventActualRevisionGraph([forged]), "FORGED_REVISION");
 
-    const secondAutoRoot = await revision("r1-auto", {
+    const secondAutoRoot = await revision("r1Auto", {
       idempotencyKey: "actual:r1-auto",
     });
     await expectCode(() => validateEventActualRevisionGraph([root, secondAutoRoot]), "DIVERGENT_REVISION");
 
     const unknown = await revision("r2", {
       finality: "corrected",
-      supersedesRevisionId: "missing",
+      supersedesRevisionId: revisionId("missing"),
       correctionReason: "Unknown parent.",
       capturedAt: "2026-08-10T00:00:00Z",
     });
@@ -396,13 +413,13 @@ describe("Event actual revision V1", () => {
 
     const childA = await revision("r2", {
       finality: "corrected",
-      supersedesRevisionId: "r1",
+      supersedesRevisionId: revisionId("r1"),
       correctionReason: "Correction A.",
       capturedAt: "2026-08-10T00:00:00Z",
     });
     const childB = await revision("r3", {
       finality: "corrected",
-      supersedesRevisionId: "r1",
+      supersedesRevisionId: revisionId("r1"),
       correctionReason: "Correction B.",
       capturedAt: "2026-08-11T00:00:00Z",
     });
@@ -410,7 +427,7 @@ describe("Event actual revision V1", () => {
 
     const reversed = await revision("r4", {
       finality: "corrected",
-      supersedesRevisionId: "r1",
+      supersedesRevisionId: revisionId("r1"),
       correctionReason: "Too early.",
       capturedAt: "2026-08-08T00:00:00Z",
       sourceTimestamp: "2026-08-08T00:00:00Z",
@@ -428,22 +445,22 @@ describe("Event actual revision V1", () => {
     const unresolved = await resolveEventActualTruth([auto, manual], EVENT, "event_total");
     expect(unresolved).toEqual({
       state: "needs_reconciliation",
-      autoRevisionIds: ["auto"],
-      manualRevisionIds: ["manual"],
+      autoRevisionIds: [revisionId("auto")],
+      manualRevisionIds: [revisionId("manual")],
     });
 
     const reconciled = await revision("reconciled", {
       sourceKind: "reconciled",
       reconciliationStatus: "matching",
-      reconcilesAutoRevisionId: "auto",
-      reconcilesManualRevisionId: "manual",
+      reconcilesAutoRevisionId: revisionId("auto"),
+      reconcilesManualRevisionId: revisionId("manual"),
       idempotencyKey: "reconciled:1",
     });
     const resolved = await resolveEventActualTruth([auto, manual, reconciled], EVENT, "event_total");
     expect(resolved.state).toBe("current");
     if (resolved.state === "current") {
       expect(resolved.sourceState).toBe("reconciled");
-      expect(resolved.revision.revisionId).toBe("reconciled");
+      expect(resolved.revision.revisionId).toBe(revisionId("reconciled"));
     }
   });
 
@@ -457,13 +474,13 @@ describe("Event actual revision V1", () => {
     const reconciled = await revision("reconciled", {
       sourceKind: "reconciled",
       reconciliationStatus: "matching",
-      reconcilesAutoRevisionId: "auto",
-      reconcilesManualRevisionId: "manual",
+      reconcilesAutoRevisionId: revisionId("auto"),
+      reconcilesManualRevisionId: revisionId("manual"),
       idempotencyKey: "reconciled:1",
     });
-    const correctedAuto = await revision("auto-2", {
+    const correctedAuto = await revision("auto2", {
       finality: "corrected",
-      supersedesRevisionId: "auto",
+      supersedesRevisionId: revisionId("auto"),
       correctionReason: "Late system correction.",
       capturedAt: "2026-08-10T00:00:00Z",
       sourceTimestamp: "2026-08-10T00:00:00Z",
