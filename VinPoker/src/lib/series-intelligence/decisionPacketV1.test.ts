@@ -237,8 +237,12 @@ describe("Decision Packet V1 content", () => {
 
   it.each([
     ["actual_entries", 100],
+    ["actualEntries", 100],
+    ["FINALENTRIES", 100],
     ["final_prize_pool", "600000000"],
     ["player_id", "private-player-id"],
+    ["playerId", "private-player-id"],
+    ["Full Name", "private-player-name"],
     ["phone", "0900000000"],
   ])("rejects outcome or PII key %s anywhere in the information set", async (key, value) => {
     await expectCode(
@@ -261,6 +265,28 @@ describe("Decision Packet V1 content", () => {
         },
       }),
       "RECOMMENDATION_SOURCE_MISMATCH",
+    );
+    await expectCode(
+      () => buildDecisionPacketContent({
+        ...packetInput(),
+        recommendedAction: {
+          text: "Use evidence that was not attached.",
+          sourceKind: "research_artifact",
+          sourceReferenceId: "artifact:not-attached",
+        },
+      }),
+      "RECOMMENDATION_SOURCE_MISMATCH",
+    );
+    await expectCode(
+      () => buildDecisionPacketContent({
+        ...packetInput(),
+        recommendedAction: {
+          text: "Unsupported source family.",
+          sourceKind: "human_analysis" as never,
+          sourceReferenceId: "human:untracked",
+        },
+      }),
+      "INVALID_RECOMMENDATION",
     );
     await expectCode(
       () => buildDecisionPacketContent({
@@ -354,6 +380,11 @@ describe("Event actual revision V1", () => {
     const root = await revision("r1");
     const forged = { ...root, contentHash: SHA_A };
     await expectCode(() => validateEventActualRevisionGraph([forged]), "FORGED_REVISION");
+
+    const secondAutoRoot = await revision("r1-auto", {
+      idempotencyKey: "actual:r1-auto",
+    });
+    await expectCode(() => validateEventActualRevisionGraph([root, secondAutoRoot]), "DIVERGENT_REVISION");
 
     const unknown = await revision("r2", {
       finality: "corrected",

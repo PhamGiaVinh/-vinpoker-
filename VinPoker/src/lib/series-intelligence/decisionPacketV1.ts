@@ -18,8 +18,7 @@ export type DecisionEvidenceKind =
   | "campaign_slice";
 export type RecommendationSourceKind =
   | "forecast_snapshot"
-  | "research_artifact"
-  | "human_analysis";
+  | "research_artifact";
 
 export type EventOutcomeScope =
   | "event_total"
@@ -310,6 +309,9 @@ const FORBIDDEN_INFORMATION_KEYS = new Set([
   "id_card",
   "full_name",
 ]);
+const FORBIDDEN_INFORMATION_KEY_COMPACTS = new Set(
+  [...FORBIDDEN_INFORMATION_KEYS].map((key) => key.split("_").join("")),
+);
 
 const FORECAST_STATES = new Set<DecisionForecastState>([
   "no_forecast_available",
@@ -329,7 +331,6 @@ const EVIDENCE_KINDS = new Set<DecisionEvidenceKind>([
 const RECOMMENDATION_SOURCE_KINDS = new Set<RecommendationSourceKind>([
   "forecast_snapshot",
   "research_artifact",
-  "human_analysis",
 ]);
 const OUTCOME_SCOPES = new Set<EventOutcomeScope>([
   "event_total",
@@ -459,6 +460,15 @@ function normalizeStringList(raw: readonly string[], label: string): readonly st
   return canonical;
 }
 
+function normalizeInformationKey(rawKey: string): string {
+  return rawKey
+    .normalize("NFC")
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[\s._-]+/g, "_")
+    .toLowerCase();
+}
+
 function assertNoForbiddenInformation(value: CanonicalValue, path = "knownInformation"): void {
   canonicalize(value);
   if (Array.isArray(value)) {
@@ -467,8 +477,8 @@ function assertNoForbiddenInformation(value: CanonicalValue, path = "knownInform
   }
   if (value !== null && typeof value === "object") {
     for (const [rawKey, nested] of Object.entries(value)) {
-      const key = rawKey.normalize("NFC").trim().toLowerCase();
-      if (FORBIDDEN_INFORMATION_KEYS.has(key)) {
+      const key = normalizeInformationKey(rawKey);
+      if (FORBIDDEN_INFORMATION_KEYS.has(key) || FORBIDDEN_INFORMATION_KEY_COMPACTS.has(key.split("_").join(""))) {
         fail(`${path}.${rawKey} is post-event, identity, or PII data`, "OUTCOME_OR_PII_LEAKAGE");
       }
       assertNoForbiddenInformation(nested, `${path}.${rawKey}`);
@@ -530,6 +540,7 @@ function normalizeSlice(
 function normalizeRecommendation(
   input: SourcedRecommendationInput | null,
   forecastSnapshotId: string | null,
+  publicEvidence: readonly DecisionEvidenceReference[],
 ): SourcedRecommendation | null {
   if (input === null) return null;
   if (!RECOMMENDATION_SOURCE_KINDS.has(input.sourceKind)) {
@@ -538,6 +549,15 @@ function normalizeRecommendation(
   const sourceReferenceId = normalizeReference(input.sourceReferenceId, "recommendation source reference");
   if (input.sourceKind === "forecast_snapshot" && sourceReferenceId !== forecastSnapshotId) {
     fail("forecast recommendation must reference the attached snapshot", "RECOMMENDATION_SOURCE_MISMATCH");
+  }
+  if (
+    input.sourceKind === "research_artifact"
+    && !publicEvidence.some((evidence) => (
+      evidence.kind === "public_research_artifact"
+      && evidence.referenceId === sourceReferenceId
+    ))
+  ) {
+    fail("research recommendation must reference attached research evidence", "RECOMMENDATION_SOURCE_MISMATCH");
   }
   return {
     text: normalizeText(input.text, "recommended action", 4096) as string,
@@ -599,7 +619,7 @@ export async function buildDecisionPacketContent(
   const publicEvidence = normalizeEvidenceList(input.publicEvidence, sourceCutoff);
   const registrationSlice = normalizeSlice(input.registrationSlice, "registration slice", sourceCutoff);
   const campaignSlice = normalizeSlice(input.campaignSlice, "campaign slice", sourceCutoff);
-  const recommendedAction = normalizeRecommendation(input.recommendedAction, forecastSnapshotId);
+  const recommendedAction = normalizeRecommendation(input.recommendedAction, forecastSnapshotId, publicEvidence);
   const supersedesPacketId = input.supersedesPacketId === null
     ? null
     : normalizeReference(input.supersedesPacketId, "superseded packet id");
@@ -876,6 +896,7 @@ export async function validateEventActualRevisionGraph(
 ): Promise<void> {
   const byId = new Map<string, EventActualRevision>();
   const childByParent = new Map<string, string>();
+  const rootBySourceFamily = new Map<string, string>();
   for (const revision of revisions) {
     if (byId.has(revision.revisionId)) fail("duplicate revision id", "DUPLICATE_REVISION");
     const rebuilt = await buildEventActualRevision({
@@ -903,6 +924,13 @@ export async function validateEventActualRevisionGraph(
   }
 
   for (const revision of revisions) {
+    if (revision.supersedesRevisionId === null) {
+      const rootKey = [revision.clubId, revision.eventId, revision.scope, sourceFamily(revision)].join(":");
+      if (rootBySourceFamily.has(rootKey)) {
+        fail("actual source-family root cannot diverge", "DIVERGENT_REVISION");
+      }
+      rootBySourceFamily.set(rootKey, revision.revisionId);
+    }
     if (revision.supersedesRevisionId !== null) {
       const parent = byId.get(revision.supersedesRevisionId);
       if (!parent) fail("actual predecessor is unknown", "UNKNOWN_PREDECESSOR");

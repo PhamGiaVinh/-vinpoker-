@@ -79,9 +79,29 @@ describe("D2A decision packet source migration", () => {
       expect(NORMALIZED).toContain(forbidden);
     }
     expectContains(
+      "create or replace function public._series_packet_normalize_information_key_v1",
+      "pg_catalog.replace(v_normalized_key, '_', '')",
       "not public._series_jsonb_has_forbidden_packet_key_v1(known_information)",
       "decision_packet_outcome_or_pii_leakage",
     );
+  });
+
+  it("validates manifest shape, source cutoff, and recommendation lineage inside the RPC boundary", () => {
+    expectContains(
+      "create or replace function public._series_packet_evidence_manifest_valid_v1",
+      "create or replace function public._series_packet_slice_manifest_valid_v1",
+      "create or replace function public._series_packet_source_cutoff_valid_v1",
+      "sourcecutoff",
+      "decision_packet_invalid_evidence_or_slice_manifest",
+      "decision_packet_recommendation_source_mismatch",
+      "public._series_packet_evidence_manifest_valid_v1(public_evidence_manifest, source_cutoff)",
+      "public._series_packet_slice_manifest_valid_v1(",
+      "recommendation_source_kind in ('forecast_snapshot','research_artifact')",
+      "recommended_action is not null",
+      "recommendation_source_ref is not null",
+      "public._series_packet_reference_text_valid_v1( pg_catalog.to_jsonb(recommendation_source_ref), 512 )",
+    );
+    expect(NORMALIZED).not.toContain("'human_analysis'");
   });
 
   it("derives club, actor, target event, and content hashes on the server", () => {
@@ -172,6 +192,9 @@ describe("D2A decision packet source migration", () => {
   it("uses append-only actual history with one successor and explicit reconciliation links", () => {
     expectContains(
       "create unique index if not exists idx_sear_v1_single_successor",
+      "create unique index if not exists idx_sear_v1_auto_root_unique",
+      "create unique index if not exists idx_sear_v1_manual_root_unique",
+      "create unique index if not exists idx_sear_v1_reconciled_root_unique",
       "series_event_actual_revision_is_append_only",
       "reconciles_auto_revision_id",
       "reconciles_manual_revision_id",

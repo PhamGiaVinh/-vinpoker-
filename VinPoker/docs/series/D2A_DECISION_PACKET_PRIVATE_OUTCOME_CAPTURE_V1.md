@@ -31,7 +31,7 @@ decision:
 
 - exact event, horizon, target metric, as-of timestamp, and source cutoff;
 - an optional same-event forecast snapshot with explicit provenance state;
-- hashed public evidence, registration, and campaign slices;
+- schema-validated, cutoff-bounded hashes for public evidence, registration, and campaign slices;
 - pre-decision facts, assumptions, alternatives, uncertainty, and owner action;
 - append-only correction lineage.
 
@@ -42,6 +42,12 @@ Existing forecast snapshots represent entries, so V1 rejects linking one to a
 unique-player or total-bullets target. Incomplete provenance and an explicitly
 non-identity-eligible snapshot remain separate states.
 
+Every evidence/slice manifest is validated again inside the write RPC: the
+server rejects unknown manifest keys, malformed references or hashes, duplicate
+evidence, and any source cutoff after the packet cutoff. Recommendation sources
+are restricted to the attached forecast snapshot or an attached public research
+artifact; untracked human-analysis labels are not a V1 source of truth.
+
 ## Private Actual Boundary
 
 `series_event_actual_revisions_v1` stores append-only revisions with explicit:
@@ -50,7 +56,7 @@ non-identity-eligible snapshot remain separate states.
 - finality (partial, provisional, final, corrected, conflicting, or void);
 - source and publication-time semantics;
 - per-metric availability, separating missing from explicit zero;
-- linear correction lineage and reconciliation references.
+- one root and linear correction lineage per source family, with reconciliation references.
 
 The schema never derives re-entry from entries minus unique players. Automatic
 and manual revisions remain separate until a later trusted reconciliation

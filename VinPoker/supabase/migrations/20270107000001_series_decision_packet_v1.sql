@@ -21,6 +21,28 @@ BEGIN;
 -- 1. Validation helpers. These return booleans only and expose no row data.
 -- ---------------------------------------------------------------------------------------------
 
+CREATE OR REPLACE FUNCTION public._series_packet_normalize_information_key_v1(p_key text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT pg_catalog.lower(
+    pg_catalog.regexp_replace(
+      pg_catalog.regexp_replace(
+        pg_catalog.btrim(p_key),
+        E'([[:lower:][:digit:]])([[:upper:]])',
+        E'\\1_\\2',
+        'g'
+      ),
+      E'[_[:space:].-]+',
+      '_',
+      'g'
+    )
+  )
+$$;
+
 CREATE OR REPLACE FUNCTION public._series_jsonb_has_forbidden_packet_key_v1(p_value jsonb)
 RETURNS boolean
 LANGUAGE plpgsql
@@ -30,6 +52,7 @@ SET search_path = ''
 AS $$
 DECLARE
   v_key text;
+  v_normalized_key text;
   v_child jsonb;
 BEGIN
   IF p_value IS NULL THEN
@@ -39,13 +62,21 @@ BEGIN
   IF pg_catalog.jsonb_typeof(p_value) = 'object' THEN
     FOR v_key, v_child IN SELECT key, value FROM pg_catalog.jsonb_each(p_value)
     LOOP
-      IF pg_catalog.lower(pg_catalog.btrim(v_key)) = ANY (ARRAY[
+      v_normalized_key := public._series_packet_normalize_information_key_v1(v_key);
+      IF v_normalized_key = ANY (ARRAY[
         'actual', 'actual_entries', 'actual_unique_players', 'actual_reentries',
         'actual_prize_pool', 'actual_overlay_amount', 'outcome', 'outcomes',
         'final_entries', 'final_unique_players', 'final_prize_pool', 'final_overlay',
         'paid_places', 'finished_place', 'finishers', 'payout', 'payouts',
         'bust_order', 'post_event_reason', 'source_entry_id', 'player_id', 'user_id',
         'phone', 'phone_number', 'email', 'telegram', 'id_card', 'full_name'
+      ]) OR pg_catalog.replace(v_normalized_key, '_', '') = ANY (ARRAY[
+        'actual', 'actualentries', 'actualuniqueplayers', 'actualreentries',
+        'actualprizepool', 'actualoverlayamount', 'outcome', 'outcomes',
+        'finalentries', 'finaluniqueplayers', 'finalprizepool', 'finaloverlay',
+        'paidplaces', 'finishedplace', 'finishers', 'payout', 'payouts',
+        'bustorder', 'posteventreason', 'sourceentryid', 'playerid', 'userid',
+        'phone', 'phonenumber', 'email', 'telegram', 'idcard', 'fullname'
       ]) THEN
         RETURN true;
       END IF;
@@ -81,6 +112,174 @@ AS $$
       FROM pg_catalog.jsonb_array_elements(p_value) AS member(value)
       WHERE pg_catalog.jsonb_typeof(member.value) <> 'string'
         OR pg_catalog.btrim(member.value #>> '{}') = ''
+    )
+$$;
+
+CREATE OR REPLACE FUNCTION public._series_packet_reference_text_valid_v1(
+  p_value jsonb,
+  p_max_length integer
+)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT p_value IS NOT NULL
+    AND pg_catalog.jsonb_typeof(p_value) = 'string'
+    AND pg_catalog.char_length(p_value #>> '{}') BETWEEN 1 AND p_max_length
+    AND pg_catalog.btrim(p_value #>> '{}') = p_value #>> '{}'
+    AND (p_value #>> '{}') !~ '[[:cntrl:]]'
+$$;
+
+CREATE OR REPLACE FUNCTION public._series_packet_source_cutoff_valid_v1(
+  p_value jsonb,
+  p_packet_cutoff timestamptz
+)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_source_cutoff timestamptz;
+  v_text text;
+BEGIN
+  IF p_value IS NULL
+    OR p_packet_cutoff IS NULL
+    OR pg_catalog.jsonb_typeof(p_value) <> 'string'
+  THEN
+    RETURN false;
+  END IF;
+
+  v_text := p_value #>> '{}';
+  IF v_text !~ E'^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$' THEN
+    RETURN false;
+  END IF;
+
+  BEGIN
+    v_source_cutoff := v_text::timestamptz;
+  EXCEPTION WHEN OTHERS THEN
+    RETURN false;
+  END;
+
+  RETURN v_source_cutoff <= p_packet_cutoff;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public._series_packet_evidence_manifest_valid_v1(
+  p_value jsonb,
+  p_packet_cutoff timestamptz
+)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_item jsonb;
+  v_kind text;
+  v_reference_id text;
+  v_identity text;
+  v_seen text[] := ARRAY[]::text[];
+BEGIN
+  IF p_value IS NULL OR pg_catalog.jsonb_typeof(p_value) <> 'array' THEN
+    RETURN false;
+  END IF;
+
+  FOR v_item IN SELECT value FROM pg_catalog.jsonb_array_elements(p_value)
+  LOOP
+    IF pg_catalog.jsonb_typeof(v_item) <> 'object'
+      OR NOT (v_item ?& ARRAY['kind', 'referenceId', 'contentHash', 'sourceCutoff'])
+      OR EXISTS (
+        SELECT 1
+        FROM pg_catalog.jsonb_object_keys(v_item) AS object_key(key)
+        WHERE object_key.key <> ALL (ARRAY['kind', 'referenceId', 'contentHash', 'sourceCutoff'])
+      )
+      OR pg_catalog.jsonb_typeof(v_item -> 'kind') <> 'string'
+      OR pg_catalog.jsonb_typeof(v_item -> 'contentHash') <> 'string'
+      OR (v_item ->> 'contentHash') !~ '^[0-9a-f]{64}$'
+      OR NOT public._series_packet_reference_text_valid_v1(v_item -> 'referenceId', 512)
+      OR NOT public._series_packet_source_cutoff_valid_v1(v_item -> 'sourceCutoff', p_packet_cutoff)
+    THEN
+      RETURN false;
+    END IF;
+
+    v_kind := v_item ->> 'kind';
+    v_reference_id := v_item ->> 'referenceId';
+    IF v_kind NOT IN ('forecast_snapshot', 'public_research_artifact', 'registration_slice', 'campaign_slice') THEN
+      RETURN false;
+    END IF;
+    v_identity := v_kind || ':' || v_reference_id;
+    IF v_identity = ANY (v_seen) THEN
+      RETURN false;
+    END IF;
+    v_seen := pg_catalog.array_append(v_seen, v_identity);
+  END LOOP;
+
+  RETURN true;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public._series_packet_slice_manifest_valid_v1(
+  p_value jsonb,
+  p_observation_count integer,
+  p_packet_cutoff timestamptz
+)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_observation_count text;
+BEGIN
+  IF p_value IS NULL THEN
+    RETURN p_observation_count IS NULL;
+  END IF;
+  IF p_observation_count IS NULL
+    OR p_observation_count < 0
+    OR pg_catalog.jsonb_typeof(p_value) <> 'object'
+    OR NOT (p_value ?& ARRAY['manifestId', 'contentHash', 'observationCount', 'sourceCutoff'])
+    OR EXISTS (
+      SELECT 1
+      FROM pg_catalog.jsonb_object_keys(p_value) AS object_key(key)
+      WHERE object_key.key <> ALL (ARRAY['manifestId', 'contentHash', 'observationCount', 'sourceCutoff'])
+    )
+    OR pg_catalog.jsonb_typeof(p_value -> 'contentHash') <> 'string'
+    OR (p_value ->> 'contentHash') !~ '^[0-9a-f]{64}$'
+    OR NOT public._series_packet_reference_text_valid_v1(p_value -> 'manifestId', 512)
+    OR NOT public._series_packet_source_cutoff_valid_v1(p_value -> 'sourceCutoff', p_packet_cutoff)
+    OR pg_catalog.jsonb_typeof(p_value -> 'observationCount') <> 'number'
+  THEN
+    RETURN false;
+  END IF;
+
+  v_observation_count := p_value ->> 'observationCount';
+  RETURN v_observation_count ~ '^(0|[1-9][0-9]*)$'
+    AND v_observation_count::numeric = p_observation_count::numeric;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public._series_packet_research_artifact_reference_valid_v1(
+  p_evidence jsonb,
+  p_reference_id text
+)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT p_reference_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM pg_catalog.jsonb_array_elements(p_evidence) AS evidence(value)
+      WHERE evidence.value ->> 'kind' = 'public_research_artifact'
+        AND evidence.value ->> 'referenceId' = p_reference_id
     )
 $$;
 
@@ -132,7 +331,19 @@ $$;
 
 REVOKE ALL ON FUNCTION public._series_jsonb_has_forbidden_packet_key_v1(jsonb)
   FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_packet_normalize_information_key_v1(text)
+  FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public._series_jsonb_is_string_array_v1(jsonb)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_packet_reference_text_valid_v1(jsonb, integer)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_packet_source_cutoff_valid_v1(jsonb, timestamptz)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_packet_evidence_manifest_valid_v1(jsonb, timestamptz)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_packet_slice_manifest_valid_v1(jsonb, integer, timestamptz)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._series_packet_research_artifact_reference_valid_v1(jsonb, text)
   FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public._series_count_metric_valid_v1(text, bigint)
   FROM PUBLIC, anon, authenticated, service_role;
@@ -218,8 +429,9 @@ CREATE TABLE IF NOT EXISTS public.series_decision_packets_v1 (
       AND target_metric = 'entries')
   ),
   CONSTRAINT sdp_v1_evidence_shape_chk CHECK (
-    pg_catalog.jsonb_typeof(public_evidence_manifest) = 'array'
-    AND public_evidence_manifest_hash ~ '^[0-9a-f]{64}$'
+     pg_catalog.jsonb_typeof(public_evidence_manifest) = 'array'
+     AND public_evidence_manifest_hash ~ '^[0-9a-f]{64}$'
+     AND public._series_packet_evidence_manifest_valid_v1(public_evidence_manifest, source_cutoff)
   ),
   CONSTRAINT sdp_v1_registration_shape_chk CHECK (
     (registration_slice_manifest IS NULL
@@ -227,8 +439,11 @@ CREATE TABLE IF NOT EXISTS public.series_decision_packets_v1 (
       AND registration_observation_count IS NULL)
     OR
     (pg_catalog.jsonb_typeof(registration_slice_manifest) = 'object'
-      AND registration_slice_hash ~ '^[0-9a-f]{64}$'
-      AND registration_observation_count >= 0)
+       AND registration_slice_hash ~ '^[0-9a-f]{64}$'
+       AND registration_observation_count >= 0)
+      AND public._series_packet_slice_manifest_valid_v1(
+        registration_slice_manifest, registration_observation_count, source_cutoff
+      )
   ),
   CONSTRAINT sdp_v1_campaign_shape_chk CHECK (
     (campaign_slice_manifest IS NULL
@@ -236,8 +451,11 @@ CREATE TABLE IF NOT EXISTS public.series_decision_packets_v1 (
       AND campaign_observation_count IS NULL)
     OR
     (pg_catalog.jsonb_typeof(campaign_slice_manifest) = 'object'
-      AND campaign_slice_hash ~ '^[0-9a-f]{64}$'
-      AND campaign_observation_count >= 0)
+       AND campaign_slice_hash ~ '^[0-9a-f]{64}$'
+       AND campaign_observation_count >= 0)
+      AND public._series_packet_slice_manifest_valid_v1(
+        campaign_slice_manifest, campaign_observation_count, source_cutoff
+      )
   ),
   CONSTRAINT sdp_v1_known_information_chk CHECK (
     pg_catalog.jsonb_typeof(known_information) = 'object'
@@ -253,9 +471,13 @@ CREATE TABLE IF NOT EXISTS public.series_decision_packets_v1 (
       AND recommendation_source_kind IS NULL
       AND recommendation_source_ref IS NULL)
     OR
-    (pg_catalog.btrim(recommended_action) <> ''
-      AND recommendation_source_kind IN ('forecast_snapshot','research_artifact','human_analysis')
-      AND pg_catalog.btrim(recommendation_source_ref) <> '')
+    (recommended_action IS NOT NULL
+      AND pg_catalog.btrim(recommended_action) <> ''
+      AND recommendation_source_kind IN ('forecast_snapshot','research_artifact')
+      AND recommendation_source_ref IS NOT NULL
+      AND public._series_packet_reference_text_valid_v1(
+        pg_catalog.to_jsonb(recommendation_source_ref), 512
+      ))
     AND (
       recommendation_source_kind IS DISTINCT FROM 'forecast_snapshot'
       OR (
@@ -549,6 +771,18 @@ CREATE TABLE IF NOT EXISTS public.series_event_actual_revisions_v1 (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sear_v1_single_successor
   ON public.series_event_actual_revisions_v1(supersedes_revision_id)
   WHERE supersedes_revision_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sear_v1_auto_root_unique
+  ON public.series_event_actual_revisions_v1(club_id, event_id, outcome_scope)
+  WHERE supersedes_revision_id IS NULL
+    AND source_kind IN ('native_tournament_system', 'auto_capture');
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sear_v1_manual_root_unique
+  ON public.series_event_actual_revisions_v1(club_id, event_id, outcome_scope)
+  WHERE supersedes_revision_id IS NULL
+    AND source_kind IN ('owner_manual', 'legacy_decision_log', 'import_verified');
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sear_v1_reconciled_root_unique
+  ON public.series_event_actual_revisions_v1(club_id, event_id, outcome_scope)
+  WHERE supersedes_revision_id IS NULL
+    AND source_kind = 'reconciled';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sear_v1_idempotency
   ON public.series_event_actual_revisions_v1(club_id, idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_sear_v1_event_scope
@@ -788,6 +1022,31 @@ BEGIN
     OR public._series_jsonb_has_forbidden_packet_key_v1(p_known_information)
   THEN
     RAISE EXCEPTION 'decision_packet_outcome_or_pii_leakage' USING ERRCODE = '22023';
+  END IF;
+  IF NOT public._series_packet_evidence_manifest_valid_v1(
+      COALESCE(p_public_evidence_manifest, '[]'::jsonb),
+      p_source_cutoff
+    )
+    OR NOT public._series_packet_slice_manifest_valid_v1(
+      p_registration_slice_manifest,
+      p_registration_observation_count,
+      p_source_cutoff
+    )
+    OR NOT public._series_packet_slice_manifest_valid_v1(
+      p_campaign_slice_manifest,
+      p_campaign_observation_count,
+      p_source_cutoff
+    )
+  THEN
+    RAISE EXCEPTION 'decision_packet_invalid_evidence_or_slice_manifest' USING ERRCODE = '22023';
+  END IF;
+  IF p_recommendation_source_kind = 'research_artifact'
+    AND NOT public._series_packet_research_artifact_reference_valid_v1(
+      COALESCE(p_public_evidence_manifest, '[]'::jsonb),
+      p_recommendation_source_ref
+    )
+  THEN
+    RAISE EXCEPTION 'decision_packet_recommendation_source_mismatch' USING ERRCODE = '22023';
   END IF;
 
   IF p_forecast_snapshot_id IS NOT NULL THEN
