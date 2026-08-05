@@ -1,1 +1,6 @@
 project_id = "orlesggcjamwuknxwcpk"
+[functions.process-swing-on-dealer-ready]
+verify_jwt = false
+
+[functions.send-push-notification]
+verify_jwt = false

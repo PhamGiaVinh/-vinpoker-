@@ -1,19 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-idempotency-key",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-interface NotifyPayload {
-  club_id: string;
-  attendance_id: string;
-  dealer_id: string;
-  current_state: string;
-  xmin: string;
-  fired_at: string;
-}
+import {
+  authorizeInternalTrigger,
+  getIdempotencyKey,
+  parseDealerReadyPayload,
+} from "../_shared/internal-trigger-auth.ts";
 
 interface PickResult {
   outcome: "swung" | "no_table" | "skipped" | "race_lost" | "error";
@@ -29,121 +19,96 @@ interface PickResult {
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" },
   });
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response(null, { status: 204 });
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
+  const auth = authorizeInternalTrigger(req);
+  if (!auth.ok) return json({ error: auth.code }, auth.status);
+
+  const idempotencyKey = getIdempotencyKey(req);
+  if (!idempotencyKey) return json({ error: "invalid_idempotency_key" }, 400);
+
+  const contentLength = Number(req.headers.get("content-length") ?? "0");
+  if (!Number.isFinite(contentLength) || contentLength > 4096) {
+    return json({ error: "payload_too_large" }, 413);
+  }
+
+  const payload = parseDealerReadyPayload(await req.json().catch(() => null));
+  if (!payload) return json({ error: "invalid_payload" }, 400);
+
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) return json({ error: "service_not_configured" }, 503);
+
+  // Create the privileged client only after the request passed custom authentication.
+  const admin = createClient(url, serviceKey);
   const startTime = Date.now();
-  let clubId: string | null = null;
-  let processedCount = 0;
-  let errorCount = 0;
 
   try {
-    const auth = req.headers.get("Authorization") ?? "";
-    if (!auth.startsWith("Bearer ")) {
-      return json({ error: "Unauthorized" }, 401);
-    }
-
-    const url = Deno.env.get("SUPABASE_URL")!;
-    const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    if (!url || !service) {
-      return json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY" }, 500);
-    }
-
-    const admin = createClient(url, service);
-    const body = (await req.json().catch(() => ({}))) as NotifyPayload;
-    clubId = body.club_id;
-
-    if (!body.attendance_id || !body.club_id) {
-      return json({ error: "Missing attendance_id or club_id" }, 400);
-    }
-
-    // ═══ Step 1: Atomic verify (BUG #1 fix layer 2) ═══
-    const { data: verifyResult, error: verifyErr } = await admin.rpc(
+    const { data: verifyResult, error: verifyError } = await admin.rpc(
       "atomic_dealer_ready_check",
       {
-        p_club_id: body.club_id,
-        p_attendance_id: body.attendance_id,
-      }
+        p_club_id: payload.clubId,
+        p_attendance_id: payload.attendanceId,
+      },
     );
 
-    if (verifyErr) {
-      console.error("[process-swing-on-dealer-ready] atomic check error:", verifyErr.message);
-      await logMetric(admin, "process-swing-on-dealer-ready", body.club_id, startTime, "failure", 1, 0, verifyErr.message);
-      return json({ error: "verify_failed", details: verifyErr.message }, 500);
+    if (verifyError) {
+      await logMetric(admin, payload.clubId, startTime, "failure", 1, 0, "verify_failed");
+      return json({ error: "verify_failed" }, 500);
     }
 
     if (verifyResult?.skipped) {
-      console.log(`[process-swing-on-dealer-ready] skipped: ${verifyResult.skipped}`, {
-        attendance_id: body.attendance_id,
-      });
-      await logMetric(admin, "process-swing-on-dealer-ready", body.club_id, startTime, "success", 0, 0, `skipped:${verifyResult.skipped}`);
-      return json({ skipped: verifyResult.skipped, ...verifyResult });
+      await logMetric(admin, payload.clubId, startTime, "success", 0, 0, "verified_skip");
+      return json({ skipped: verifyResult.skipped, verified: false });
     }
 
-    // Verified! Dealer is available
-    const verifiedAttendanceId = verifyResult.attendance_id;
-    const restMin = verifyResult.rest_min;
-    const restThreshold = verifyResult.rest_threshold_min;
+    const verifiedAttendanceId = verifyResult?.attendance_id;
+    const restThreshold = Number(verifyResult?.rest_threshold_min);
+    const restMin = Number(verifyResult?.rest_min);
+    if (!verifiedAttendanceId || !Number.isFinite(restThreshold) || !Number.isFinite(restMin)) {
+      await logMetric(admin, payload.clubId, startTime, "failure", 1, 0, "invalid_verification_result");
+      return json({ error: "verify_failed" }, 500);
+    }
+
     const restDeficit = Math.max(0, restThreshold - restMin);
-
-    console.log(`[process-swing-on-dealer-ready] verified attendance=${verifiedAttendanceId} rest=${restMin}min threshold=${restThreshold}min deficit=${restDeficit}min`);
-
-    // ═══ Scheduler gate (Forward Rotation Scheduler) ═══
-    // "Dealer ready" NEVER swings under the scheduler — instant perform_swing
-    // would bypass the 3-minute announce guarantee (R2) and the R3/R4 fairness
-    // order. The 30s planner tick picks this dealer up with full semantics.
-    const { data: swingCfg } = await admin
+    const { data: swingConfig } = await admin
       .from("swing_config")
       .select("rotation_planner_enabled")
-      .eq("club_id", body.club_id)
+      .eq("club_id", payload.clubId)
       .eq("table_type", "tournament")
       .maybeSingle();
-    if (swingCfg?.rotation_planner_enabled === true) {
-      console.log(`[process-swing-on-dealer-ready] scheduler active for club ${body.club_id} — deferring to planner tick`);
-      await logMetric(admin, "process-swing-on-dealer-ready", body.club_id, startTime, "success", 0, 0, "deferred_to_planner");
+
+    if (swingConfig?.rotation_planner_enabled === true) {
+      await logMetric(admin, payload.clubId, startTime, "success", 0, 0, "deferred_to_planner");
       return json({ skipped: "deferred_to_planner", verified: true });
     }
 
-    // ═══ Step 2 (LEGACY): Find most overdue table in this club ═══
-    const { data: overdueTable, error: overdueErr } = await admin
+    const { data: overdueTable, error: overdueError } = await admin
       .from("dealer_assignments")
-      .select(`
-        id,
-        version,
-        table_id,
-        attendance_id,
-        swing_due_at,
-        club_id,
-        game_tables!inner (
-          id,
-          table_name,
-          status
-        )
-      `)
-      .eq("club_id", body.club_id)
+      .select("id, version, table_id")
+      .eq("club_id", payload.clubId)
       .eq("status", "assigned")
       .lt("swing_due_at", new Date().toISOString())
       .order("swing_due_at", { ascending: true })
       .limit(1)
       .maybeSingle();
 
-    if (overdueErr) {
-      console.error("[process-swing-on-dealer-ready] query error:", overdueErr.message);
-      await logMetric(admin, "process-swing-on-dealer-ready", body.club_id, startTime, "failure", 1, 0, overdueErr.message);
-      return json({ error: "query_failed", details: overdueErr.message }, 500);
+    if (overdueError) {
+      await logMetric(admin, payload.clubId, startTime, "failure", 1, 0, "overdue_table_query_failed");
+      return json({ error: "query_failed" }, 500);
     }
 
     if (!overdueTable) {
-      console.log(`[process-swing-on-dealer-ready] no overdue table for club ${body.club_id}`);
-      await logMetric(admin, "process-swing-on-dealer-ready", body.club_id, startTime, "success", 0, 0, "no_overdue_table");
+      await logMetric(admin, payload.clubId, startTime, "success", 0, 0, "no_overdue_table");
       return json({ skipped: "no_overdue_table", verified: true });
     }
 
-    // ═══ Step 3: Call perform_swing with rest_deficit (BUG #5 fix) ═══
-    const { data: swingResult, error: swingErr } = await admin.rpc("perform_swing", {
+    const { data: swingResult, error: swingError } = await admin.rpc("perform_swing", {
       p_assignment_id: overdueTable.id,
       p_version: overdueTable.version,
       p_next_attendance_id: verifiedAttendanceId,
@@ -154,80 +119,48 @@ Deno.serve(async (req) => {
       p_rest_deficit_minutes: restDeficit,
     });
 
-    if (swingErr) {
-      console.error("[process-swing-on-dealer-ready] perform_swing error:", swingErr.message);
-      await logMetric(admin, "process-swing-on-dealer-ready", body.club_id, startTime, "failure", 1, 0, swingErr.message);
-      return json({ error: "swing_failed", details: swingErr.message }, 500);
+    if (swingError) {
+      await logMetric(admin, payload.clubId, startTime, "failure", 1, 0, "perform_swing_failed");
+      return json({ error: "swing_failed" }, 500);
     }
 
     const result: PickResult = {
-      outcome: swingResult?.outcome ?? "unknown",
+      outcome: swingResult?.outcome ?? "error",
       table_id: overdueTable.table_id,
       assignment_id: overdueTable.id,
       new_assignment_id: swingResult?.new_assignment_id,
       rest_deficit_minutes: restDeficit,
       duration_ms: Date.now() - startTime,
     };
-
-    if (swingResult?.outcome === "swung") {
-      processedCount = 1;
-      console.log(`[process-swing-on-dealer-ready] ✅ SWUNG table=${overdueTable.table_id} new_assignment=${swingResult.new_assignment_id}`);
-    } else {
-      console.log(`[process-swing-on-dealer-ready] outcome=${swingResult?.outcome}`, { swingResult });
-    }
-
-    await logMetric(
-      admin,
-      "process-swing-on-dealer-ready",
-      body.club_id,
-      startTime,
-      "success",
-      0,
-      processedCount,
-      JSON.stringify({ outcome: result.outcome, rest_deficit: restDeficit })
-    );
-
+    const processedCount = result.outcome === "swung" ? 1 : 0;
+    await logMetric(admin, payload.clubId, startTime, "success", 0, processedCount, `event:${idempotencyKey}`);
     return json(result);
-  } catch (err) {
-    errorCount = 1;
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("[process-swing-on-dealer-ready] unhandled error:", errorMsg);
-    if (clubId) {
-      try {
-        const url = Deno.env.get("SUPABASE_URL")!;
-        const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        const admin = createClient(url, service);
-        await logMetric(admin, "process-swing-on-dealer-ready", clubId, startTime, "failure", 1, 0, errorMsg);
-      } catch (_) {
-        // best-effort logging
-      }
-    }
-    return json({ error: "unhandled", details: errorMsg }, 500);
+  } catch {
+    await logMetric(admin, payload.clubId, startTime, "failure", 1, 0, "handler_failed");
+    return json({ error: "handler_failed" }, 500);
   }
 });
 
 async function logMetric(
   admin: any,
-  cronName: string,
   clubId: string,
   startTime: number,
   status: "success" | "failure" | "partial",
   errorCount: number,
   processedCount: number,
-  errorMessage?: string
+  errorMessage?: string,
 ): Promise<void> {
-  const duration = Date.now() - startTime;
   try {
     await admin.from("cron_metrics").insert({
-      cron_name: cronName,
+      cron_name: "process-swing-on-dealer-ready",
       club_id: clubId,
-      duration_ms: duration,
+      duration_ms: Date.now() - startTime,
       status,
       error_count: errorCount,
       processed_count: processedCount,
-      error_message: errorMessage ? errorMessage.substring(0, 500) : null,
+      error_message: errorMessage ? errorMessage.substring(0, 200) : null,
     });
-  } catch (err) {
-    console.warn(`[${cronName}] Failed to log metric:`, err);
+  } catch {
+    // Metrics are best-effort and must never reveal request headers or secrets.
   }
 }
