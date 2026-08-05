@@ -18,7 +18,6 @@ jobs:
       FLOOR_UAT_SUPABASE_URL: ${{ secrets.FLOOR_UAT_SUPABASE_URL }}
       FLOOR_UAT_PROJECT_REF: ${{ secrets.FLOOR_UAT_PROJECT_REF }}
       FLOOR_UAT_PRODUCTION_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-      FLOOR_UAT_BASE_URL: ${{ secrets.FLOOR_UAT_BASE_URL }}
       FLOOR_UAT_PRODUCTION_DOMAIN: ${{ secrets.FLOOR_UAT_PRODUCTION_DOMAIN }}
       FLOOR_UAT_FIXTURE_PREFIX: ${{ inputs.fixture_prefix }}
     steps:
@@ -27,7 +26,7 @@ jobs:
         with:
           node-version: "20"
       - name: Reject production or ambiguous Floor UAT context
-        run: node VinPoker/scripts/security/check-floor-audit-context.mjs
+        run: node VinPoker/scripts/security/check-floor-audit-context.mjs --allow-unresolved-base-url
 
   verify-preview-app-shells:
     name: Build and verify source-pinned Preview shells
@@ -39,7 +38,6 @@ jobs:
       FLOOR_UAT_SUPABASE_URL: ${{ secrets.FLOOR_UAT_SUPABASE_URL }}
       FLOOR_UAT_PROJECT_REF: ${{ secrets.FLOOR_UAT_PROJECT_REF }}
       FLOOR_UAT_PRODUCTION_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-      FLOOR_UAT_BASE_URL: ${{ secrets.FLOOR_UAT_BASE_URL }}
       FLOOR_UAT_PRODUCTION_DOMAIN: ${{ secrets.FLOOR_UAT_PRODUCTION_DOMAIN }}
       FLOOR_UAT_FIXTURE_PREFIX: ${{ inputs.fixture_prefix }}
     steps:
@@ -61,7 +59,7 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
         run: |
           set -euo pipefail
-          node VinPoker/scripts/security/check-floor-audit-context.mjs
+          node VinPoker/scripts/security/check-floor-audit-context.mjs --allow-unresolved-base-url
           test -n "$FLOOR_UAT_SUPABASE_ANON_KEY"
           test -n "$VERCEL_TOKEN"
           test -n "$VERCEL_ORG_ID"

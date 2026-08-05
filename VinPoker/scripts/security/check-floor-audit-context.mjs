@@ -10,18 +10,21 @@ function isSameOrChildDomain(candidate, domain) {
   return candidate === domain || candidate.endsWith(`.${domain}`);
 }
 
-export function validateFloorAuditContext(environment = process.env) {
+export function validateFloorAuditContext(
+  environment = process.env,
+  { requireBaseUrl = true } = {},
+) {
   const failures = [];
   const required = [
     "FLOOR_UAT_ENV",
     "FLOOR_UAT_SUPABASE_URL",
     "FLOOR_UAT_PROJECT_REF",
     "FLOOR_UAT_PRODUCTION_PROJECT_REF",
-    "FLOOR_UAT_BASE_URL",
     "FLOOR_UAT_PRODUCTION_DOMAIN",
     "FLOOR_UAT_FIXTURE_PREFIX",
     "GITHUB_REF",
   ];
+  if (requireBaseUrl) required.push("FLOOR_UAT_BASE_URL");
 
   for (const name of required) {
     if (!environment[name]) failures.push(`missing:${name}`);
@@ -53,19 +56,23 @@ export function validateFloorAuditContext(environment = process.env) {
     failures.push("FLOOR_UAT_SUPABASE_URL project ref must match FLOOR_UAT_PROJECT_REF");
   }
 
-  const baseHost = hostname(environment.FLOOR_UAT_BASE_URL);
-  const productionDomain = environment.FLOOR_UAT_PRODUCTION_DOMAIN.toLowerCase();
-  if (!baseHost) {
-    failures.push("FLOOR_UAT_BASE_URL must be a valid URL");
-  } else if (isSameOrChildDomain(baseHost, productionDomain)) {
-    failures.push("FLOOR_UAT_BASE_URL must not use the production domain");
+  if (requireBaseUrl) {
+    const baseHost = hostname(environment.FLOOR_UAT_BASE_URL);
+    const productionDomain = environment.FLOOR_UAT_PRODUCTION_DOMAIN.toLowerCase();
+    if (!baseHost) {
+      failures.push("FLOOR_UAT_BASE_URL must be a valid URL");
+    } else if (isSameOrChildDomain(baseHost, productionDomain)) {
+      failures.push("FLOOR_UAT_BASE_URL must not use the production domain");
+    }
   }
 
   return failures;
 }
 
 function run() {
-  const failures = validateFloorAuditContext();
+  const failures = validateFloorAuditContext(process.env, {
+    requireBaseUrl: !process.argv.includes("--allow-unresolved-base-url"),
+  });
   if (failures.length === 0) {
     console.log("Floor audit context guard passed.");
     return;
