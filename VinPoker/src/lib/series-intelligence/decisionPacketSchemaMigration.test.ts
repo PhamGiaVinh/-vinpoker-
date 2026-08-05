@@ -265,6 +265,7 @@ describe("D2A decision packet source migration", () => {
       "create or replace function public._series_canonical_timestamptz_v1",
       "series-canonical-json-v1",
       "pg_catalog.normalize",
+      "pg_catalog.normalize(member.key, 'nfc')",
       "collate \"c\"",
       "series_canonical_json_invalid_machine_key",
       "series_canonical_json_invalid_safe_integer",

@@ -884,7 +884,7 @@ BEGIN
     END IF;
     RETURN v_text;
   ELSIF v_type = 'string' THEN
-    v_text := pg_catalog.btrim(pg_catalog.normalize(p_value #>> '{}', NFC));
+    v_text := pg_catalog.btrim(pg_catalog.normalize(p_value #>> '{}', 'NFC'));
     IF v_text ~ E'[\001-\010\013\014\016-\037\177]' THEN
       RAISE EXCEPTION 'series_canonical_json_invalid_control' USING ERRCODE = '22023';
     END IF;
@@ -901,14 +901,14 @@ BEGIN
     IF EXISTS (
       SELECT 1
       FROM pg_catalog.jsonb_each(p_value) AS member(key, value)
-      WHERE pg_catalog.btrim(pg_catalog.normalize(member.key, NFC)) !~ '^[A-Za-z][A-Za-z0-9]*$'
+      WHERE pg_catalog.btrim(pg_catalog.normalize(member.key, 'NFC')) !~ '^[A-Za-z][A-Za-z0-9]*$'
     ) THEN
       RAISE EXCEPTION 'series_canonical_json_invalid_machine_key' USING ERRCODE = '22023';
     END IF;
     IF EXISTS (
       SELECT 1
       FROM (
-        SELECT pg_catalog.btrim(pg_catalog.normalize(member.key, NFC)) AS normalized_key
+        SELECT pg_catalog.btrim(pg_catalog.normalize(member.key, 'NFC')) AS normalized_key
         FROM pg_catalog.jsonb_each(p_value) AS member(key, value)
       ) AS normalized
       GROUP BY normalized.normalized_key
@@ -927,7 +927,7 @@ BEGIN
     INTO v_result
     FROM (
       SELECT
-        pg_catalog.btrim(pg_catalog.normalize(source.key, NFC)) AS normalized_key,
+        pg_catalog.btrim(pg_catalog.normalize(source.key, 'NFC')) AS normalized_key,
         source.value
       FROM pg_catalog.jsonb_each(p_value) AS source(key, value)
     ) AS member;
@@ -1092,7 +1092,7 @@ BEGIN
   IF p_value IS NULL THEN
     RAISE EXCEPTION 'series_d2a_text_null' USING ERRCODE = '22023';
   END IF;
-  v_value := pg_catalog.btrim(pg_catalog.normalize(p_value, NFC));
+  v_value := pg_catalog.btrim(pg_catalog.normalize(p_value, 'NFC'));
   IF pg_catalog.char_length(v_value) = 0
     OR pg_catalog.char_length(v_value) > p_max_length
     OR v_value ~ E'[\001-\010\013\014\016-\037\177]'
