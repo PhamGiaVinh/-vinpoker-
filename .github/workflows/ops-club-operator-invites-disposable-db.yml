@@ -46,4 +46,4 @@ jobs:
             exit 1
           fi
           psql -h localhost -U postgres -d ops_baseline_incompatible -v ON_ERROR_STOP=1 \
-            -c "SELECT CASE WHEN EXISTS (SELECT 1 FROM public.club_cashiers WHERE club_id = '10000000-0000-0000-0000-000000000010'::uuid) AND to_regclass('public.club_floors') IS NULL THEN 1 ELSE 1 / 0 END AS incompatible_contract_rolled_back"
+            -f tests/ops/disposableDb.incompatible.verify.sql

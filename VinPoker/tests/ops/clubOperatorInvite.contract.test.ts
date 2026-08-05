@@ -101,6 +101,7 @@ describe("Ops club operator invitation boundary", () => {
     expect(disposableWorkflow).toContain("ON_ERROR_STOP=1");
     expect(disposableWorkflow).toContain("tests/ops/disposableDb.integration.sql");
     expect(disposableWorkflow).toContain("tests/ops/disposableDb.incompatible.sql");
+    expect(disposableWorkflow).toContain("tests/ops/disposableDb.incompatible.verify.sql");
     expect(disposableWorkflow).not.toContain("SUPABASE_");
   });
 });
