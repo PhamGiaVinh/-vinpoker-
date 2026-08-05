@@ -80,8 +80,8 @@ function toBase64(value) {
   return Buffer.from(value, "utf8").toString("base64");
 }
 
-function fromBase64(value) {
-  return Buffer.from(value, "base64").toString("utf8");
+function toUtf8Hex(value) {
+  return Buffer.from(value, "utf8").toString("hex");
 }
 
 function psql(config, database, sql, { actor = undefined, role = undefined } = {}) {
@@ -287,13 +287,13 @@ async function main() {
         WITH payload AS (
           SELECT convert_from(decode(${sqlString(input)}, 'base64'), 'UTF8')::jsonb AS value
         )
-        SELECT encode(convert_to(public._series_canonical_json_v1(value), 'UTF8'), 'base64')
+        SELECT encode(convert_to(public._series_canonical_json_v1(value), 'UTF8'), 'hex')
           || '|' || public._series_sha256_jsonb_v1(value)
         FROM payload;
       `;
       await check(`vector-canonical-text:${vector.id}`, () => {
         const [actualText] = queryScalar(config, database, sql).split("|");
-        assert(actualText === toBase64(vector.canonicalText), "canonical UTF-8 bytes differ");
+        assert(actualText === toUtf8Hex(vector.canonicalText), "canonical UTF-8 bytes differ");
       });
       await check(`vector-sha256:${vector.id}`, () => {
         const [, actualHash] = queryScalar(config, database, sql).split("|");
