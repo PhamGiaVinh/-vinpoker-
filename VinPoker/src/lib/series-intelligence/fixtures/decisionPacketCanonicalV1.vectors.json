@@ -1,0 +1,406 @@
+{
+  "artifactVersion": "series-decision-packet-canonical-v1",
+  "hashContractVersion": "series-canonical-json-v1",
+  "vectors": [
+    {
+      "id": "generic-nfc-object",
+      "payload": {
+        "alpha": "Café",
+        "beta": 0,
+        "nested": {
+          "a": true,
+          "z": null
+        }
+      },
+      "canonicalText": "{\"alpha\":\"Café\",\"beta\":0,\"nested\":{\"a\":true,\"z\":null}}",
+      "utf8ByteLength": 55,
+      "sha256": "83ecca34465462816586e78dce4f22e6c320f6f50ab0ab392d42481152f0597d"
+    },
+    {
+      "id": "generic-key-order-reversed",
+      "payload": {
+        "nested": {
+          "z": null,
+          "a": true
+        },
+        "beta": 0,
+        "alpha": "Café"
+      },
+      "canonicalText": "{\"alpha\":\"Café\",\"beta\":0,\"nested\":{\"a\":true,\"z\":null}}",
+      "utf8ByteLength": 55,
+      "sha256": "83ecca34465462816586e78dce4f22e6c320f6f50ab0ab392d42481152f0597d"
+    },
+    {
+      "id": "generic-json-escaping-and-unicode",
+      "payload": {
+        "emoji": "Poker 🂡",
+        "lineBreak": "first\nsecond\tvalue",
+        "quote": "\"quoted\" \\ escaped   separator"
+      },
+      "canonicalText": "{\"emoji\":\"Poker 🂡\",\"lineBreak\":\"first\\nsecond\\tvalue\",\"quote\":\"\\\"quoted\\\" \\\\ escaped   separator\"}",
+      "utf8ByteLength": 103,
+      "sha256": "dd19a0eb9bbc1cef7a889ac256dc9584df11ee2b361a091e72547d4485351de9"
+    },
+    {
+      "id": "generic-zero-null-and-safe-integer",
+      "payload": {
+        "amountMinor": "600000000",
+        "missing": null,
+        "zero": 0,
+        "maxSafeInteger": 9007199254740991
+      },
+      "canonicalText": "{\"amountMinor\":\"600000000\",\"maxSafeInteger\":9007199254740991,\"missing\":null,\"zero\":0}",
+      "utf8ByteLength": 85,
+      "sha256": "d87b8702ff815bab052bc7628a27c7bfa52ed4e83982e7d2e473eb72ee196ef9"
+    },
+    {
+      "id": "semantic-array-forward",
+      "payload": {
+        "values": [
+          "first",
+          "second"
+        ]
+      },
+      "canonicalText": "{\"values\":[\"first\",\"second\"]}",
+      "utf8ByteLength": 29,
+      "sha256": "a4f86e4e025cadfb0145dab0f8d47d8044943bb3f819569a78422eaf9ce71cd4"
+    },
+    {
+      "id": "semantic-array-reversed",
+      "payload": {
+        "values": [
+          "second",
+          "first"
+        ]
+      },
+      "canonicalText": "{\"values\":[\"second\",\"first\"]}",
+      "utf8ByteLength": 29,
+      "sha256": "e15dd38c9bd49cdf8266513ecf3cafba079921094dcf76aaf787948bb5b3e883"
+    },
+    {
+      "id": "normalized-set-forward",
+      "payload": {
+        "values": [
+          "Alpha",
+          "Beta"
+        ]
+      },
+      "canonicalText": "{\"values\":[\"Alpha\",\"Beta\"]}",
+      "utf8ByteLength": 27,
+      "sha256": "efafc570b781734f36a0f836ad6a3c921aa206601882ff4c99626d11c039f3a4"
+    },
+    {
+      "id": "normalized-set-reversed",
+      "payload": {
+        "values": [
+          "Alpha",
+          "Beta"
+        ]
+      },
+      "canonicalText": "{\"values\":[\"Alpha\",\"Beta\"]}",
+      "utf8ByteLength": 27,
+      "sha256": "efafc570b781734f36a0f836ad6a3c921aa206601882ff4c99626d11c039f3a4"
+    },
+    {
+      "id": "public-evidence-manifest",
+      "payload": [
+        {
+          "kind": "forecast_snapshot",
+          "referenceId": "CDEFABCD-EFAB-4CDE-8CDE-CDEFABCDEF12",
+          "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "sourceCutoff": "2026-08-01T02:00:00.000Z"
+        },
+        {
+          "kind": "public_research_artifact",
+          "referenceId": "artifact:vietnam-supply-v1",
+          "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sourceCutoff": "2026-07-31T00:00:00.000Z"
+        }
+      ],
+      "canonicalText": "[{\"contentHash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"kind\":\"forecast_snapshot\",\"referenceId\":\"CDEFABCD-EFAB-4CDE-8CDE-CDEFABCDEF12\",\"sourceCutoff\":\"2026-08-01T02:00:00.000Z\"},{\"contentHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"kind\":\"public_research_artifact\",\"referenceId\":\"artifact:vietnam-supply-v1\",\"sourceCutoff\":\"2026-07-31T00:00:00.000Z\"}]",
+      "utf8ByteLength": 408,
+      "sha256": "5e7803b8b054dfea9416783c2e385bc54a6c0fc82c89612df2dab123c4ed9949"
+    },
+    {
+      "id": "registration-slice-manifest",
+      "payload": {
+        "manifestId": "registration-slice:1",
+        "contentHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "observationCount": 0,
+        "sourceCutoff": "2026-08-01T01:59:59.000Z"
+      },
+      "canonicalText": "{\"contentHash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"manifestId\":\"registration-slice:1\",\"observationCount\":0,\"sourceCutoff\":\"2026-08-01T01:59:59.000Z\"}",
+      "utf8ByteLength": 181,
+      "sha256": "e642be66188d35b67672b8fe8d205929ffdae612d33c86cca5666bc988278a37"
+    },
+    {
+      "id": "campaign-slice-manifest",
+      "payload": {
+        "manifestId": "campaign-slice:1",
+        "contentHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "observationCount": 7,
+        "sourceCutoff": "2026-08-01T01:58:00.000Z"
+      },
+      "canonicalText": "{\"contentHash\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"manifestId\":\"campaign-slice:1\",\"observationCount\":7,\"sourceCutoff\":\"2026-08-01T01:58:00.000Z\"}",
+      "utf8ByteLength": 177,
+      "sha256": "62100d6157a03317a6f8b053835a6c03b19d9448335ee8151cd08f5b007c1dc6"
+    },
+    {
+      "id": "known-information",
+      "payload": {
+        "currentGtdMinor": "6000000000",
+        "note": "Café",
+        "zeroObservedRegistrations": 0
+      },
+      "canonicalText": "{\"currentGtdMinor\":\"6000000000\",\"note\":\"Café\",\"zeroObservedRegistrations\":0}",
+      "utf8ByteLength": 77,
+      "sha256": "6432ff20aed960d117d01c5e4d29680c0353633fc6623bc5f8434d1c38caf0d6"
+    },
+    {
+      "id": "packet-content",
+      "payload": {
+        "hashContractVersion": "series-canonical-json-v1",
+        "schemaVersion": "series-decision-packet-v1",
+        "clubId": "abcdefab-cdef-4abc-8abc-abcdefabcdef",
+        "eventId": "bcdefabc-defa-4bcd-8bcd-bcdefabcdef1",
+        "horizon": "T-7",
+        "targetMetric": "entries",
+        "asOfTs": "2026-08-01T03:00:00.000Z",
+        "sourceCutoff": "2026-08-01T02:00:00.000Z",
+        "targetEventTs": "2026-08-08T03:00:00.000Z",
+        "forecastSnapshotId": "cdefabcd-efab-4cde-8cde-cdefabcdef12",
+        "forecastState": "forecast_identity_eligible",
+        "manualExpectation": null,
+        "publicEvidence": [
+          {
+            "kind": "forecast_snapshot",
+            "referenceId": "CDEFABCD-EFAB-4CDE-8CDE-CDEFABCDEF12",
+            "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "sourceCutoff": "2026-08-01T02:00:00.000Z"
+          },
+          {
+            "kind": "public_research_artifact",
+            "referenceId": "artifact:vietnam-supply-v1",
+            "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sourceCutoff": "2026-07-31T00:00:00.000Z"
+          }
+        ],
+        "registrationSlice": {
+          "manifestId": "registration-slice:1",
+          "contentHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "observationCount": 0,
+          "sourceCutoff": "2026-08-01T01:59:59.000Z"
+        },
+        "campaignSlice": null,
+        "knownInformation": {
+          "currentGtdMinor": "6000000000",
+          "note": "Café",
+          "zeroObservedRegistrations": 0
+        },
+        "recommendedAction": {
+          "text": "Review the current staffing assumption.",
+          "sourceKind": "research_artifact",
+          "sourceReferenceId": "artifact:vietnam-supply-v1"
+        },
+        "ownerDecision": "Keep the published schedule.",
+        "publicAction": null,
+        "decisionReason": "Preserve the current player communication.",
+        "alternatives": [
+          "Delay a public update",
+          "Keep the current announcement"
+        ],
+        "assumptions": [
+          "Registration observations are incomplete"
+        ],
+        "uncertaintyNotes": "No unique-player count is available.",
+        "supersedesPacketId": null,
+        "correctionReason": null
+      },
+      "canonicalText": "{\"alternatives\":[\"Delay a public update\",\"Keep the current announcement\"],\"asOfTs\":\"2026-08-01T03:00:00.000Z\",\"assumptions\":[\"Registration observations are incomplete\"],\"campaignSlice\":null,\"clubId\":\"abcdefab-cdef-4abc-8abc-abcdefabcdef\",\"correctionReason\":null,\"decisionReason\":\"Preserve the current player communication.\",\"eventId\":\"bcdefabc-defa-4bcd-8bcd-bcdefabcdef1\",\"forecastSnapshotId\":\"cdefabcd-efab-4cde-8cde-cdefabcdef12\",\"forecastState\":\"forecast_identity_eligible\",\"hashContractVersion\":\"series-canonical-json-v1\",\"horizon\":\"T-7\",\"knownInformation\":{\"currentGtdMinor\":\"6000000000\",\"note\":\"Café\",\"zeroObservedRegistrations\":0},\"manualExpectation\":null,\"ownerDecision\":\"Keep the published schedule.\",\"publicAction\":null,\"publicEvidence\":[{\"contentHash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"kind\":\"forecast_snapshot\",\"referenceId\":\"CDEFABCD-EFAB-4CDE-8CDE-CDEFABCDEF12\",\"sourceCutoff\":\"2026-08-01T02:00:00.000Z\"},{\"contentHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"kind\":\"public_research_artifact\",\"referenceId\":\"artifact:vietnam-supply-v1\",\"sourceCutoff\":\"2026-07-31T00:00:00.000Z\"}],\"recommendedAction\":{\"sourceKind\":\"research_artifact\",\"sourceReferenceId\":\"artifact:vietnam-supply-v1\",\"text\":\"Review the current staffing assumption.\"},\"registrationSlice\":{\"contentHash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"manifestId\":\"registration-slice:1\",\"observationCount\":0,\"sourceCutoff\":\"2026-08-01T01:59:59.000Z\"},\"schemaVersion\":\"series-decision-packet-v1\",\"sourceCutoff\":\"2026-08-01T02:00:00.000Z\",\"supersedesPacketId\":null,\"targetEventTs\":\"2026-08-08T03:00:00.000Z\",\"targetMetric\":\"entries\",\"uncertaintyNotes\":\"No unique-player count is available.\"}",
+      "utf8ByteLength": 1751,
+      "sha256": "a4b988fe9a9d24cb59f67300980a854f93ef319a87f99e9cf5c08d41bfacd515"
+    },
+    {
+      "id": "packet-create-request",
+      "payload": {
+        "alternatives": [
+          "Delay a public update",
+          "Keep the current announcement"
+        ],
+        "asOfTs": "2026-08-01T03:00:00.000Z",
+        "assumptions": [
+          "Registration observations are incomplete"
+        ],
+        "campaignSlice": null,
+        "correctionReason": null,
+        "decisionReason": "Preserve the current player communication.",
+        "eventId": "bcdefabc-defa-4bcd-8bcd-bcdefabcdef1",
+        "forecastSnapshotId": "cdefabcd-efab-4cde-8cde-cdefabcdef12",
+        "forecastState": "forecast_identity_eligible",
+        "hashContractVersion": "series-canonical-json-v1",
+        "horizon": "T-7",
+        "knownInformation": {
+          "currentGtdMinor": "6000000000",
+          "note": "Café",
+          "zeroObservedRegistrations": 0
+        },
+        "manualExpectation": null,
+        "ownerDecision": "Keep the published schedule.",
+        "publicAction": null,
+        "publicEvidence": [
+          {
+            "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "kind": "forecast_snapshot",
+            "referenceId": "CDEFABCD-EFAB-4CDE-8CDE-CDEFABCDEF12",
+            "sourceCutoff": "2026-08-01T02:00:00.000Z"
+          },
+          {
+            "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "public_research_artifact",
+            "referenceId": "artifact:vietnam-supply-v1",
+            "sourceCutoff": "2026-07-31T00:00:00.000Z"
+          }
+        ],
+        "recommendedAction": {
+          "sourceKind": "research_artifact",
+          "sourceReferenceId": "artifact:vietnam-supply-v1",
+          "text": "Review the current staffing assumption."
+        },
+        "registrationSlice": {
+          "contentHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "manifestId": "registration-slice:1",
+          "observationCount": 0,
+          "sourceCutoff": "2026-08-01T01:59:59.000Z"
+        },
+        "requestKind": "decisionPacketCreateRequest",
+        "schemaVersion": "series-decision-packet-v1",
+        "sourceCutoff": "2026-08-01T02:00:00.000Z",
+        "supersedesPacketId": null,
+        "targetEventTs": "2026-08-08T03:00:00.000Z",
+        "targetMetric": "entries",
+        "uncertaintyNotes": "No unique-player count is available."
+      },
+      "canonicalText": "{\"alternatives\":[\"Delay a public update\",\"Keep the current announcement\"],\"asOfTs\":\"2026-08-01T03:00:00.000Z\",\"assumptions\":[\"Registration observations are incomplete\"],\"campaignSlice\":null,\"correctionReason\":null,\"decisionReason\":\"Preserve the current player communication.\",\"eventId\":\"bcdefabc-defa-4bcd-8bcd-bcdefabcdef1\",\"forecastSnapshotId\":\"cdefabcd-efab-4cde-8cde-cdefabcdef12\",\"forecastState\":\"forecast_identity_eligible\",\"hashContractVersion\":\"series-canonical-json-v1\",\"horizon\":\"T-7\",\"knownInformation\":{\"currentGtdMinor\":\"6000000000\",\"note\":\"Café\",\"zeroObservedRegistrations\":0},\"manualExpectation\":null,\"ownerDecision\":\"Keep the published schedule.\",\"publicAction\":null,\"publicEvidence\":[{\"contentHash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"kind\":\"forecast_snapshot\",\"referenceId\":\"CDEFABCD-EFAB-4CDE-8CDE-CDEFABCDEF12\",\"sourceCutoff\":\"2026-08-01T02:00:00.000Z\"},{\"contentHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"kind\":\"public_research_artifact\",\"referenceId\":\"artifact:vietnam-supply-v1\",\"sourceCutoff\":\"2026-07-31T00:00:00.000Z\"}],\"recommendedAction\":{\"sourceKind\":\"research_artifact\",\"sourceReferenceId\":\"artifact:vietnam-supply-v1\",\"text\":\"Review the current staffing assumption.\"},\"registrationSlice\":{\"contentHash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"manifestId\":\"registration-slice:1\",\"observationCount\":0,\"sourceCutoff\":\"2026-08-01T01:59:59.000Z\"},\"requestKind\":\"decisionPacketCreateRequest\",\"schemaVersion\":\"series-decision-packet-v1\",\"sourceCutoff\":\"2026-08-01T02:00:00.000Z\",\"supersedesPacketId\":null,\"targetEventTs\":\"2026-08-08T03:00:00.000Z\",\"targetMetric\":\"entries\",\"uncertaintyNotes\":\"No unique-player count is available.\"}",
+      "utf8ByteLength": 1747,
+      "sha256": "7f3c8e61b42efce76dce9040f331d5043d2d5c7ec6d804b501e1e3c2a2581b87"
+    },
+    {
+      "id": "actual-content",
+      "payload": {
+        "hashContractVersion": "series-canonical-json-v1",
+        "schemaVersion": "series-event-actual-revision-v1",
+        "clubId": "abcdefab-cdef-4abc-8abc-abcdefabcdef",
+        "eventId": "bcdefabc-defa-4bcd-8bcd-bcdefabcdef1",
+        "scope": "event_total",
+        "finality": "final",
+        "sourceKind": "owner_manual",
+        "sourceTimestampState": "exact",
+        "sourceTimestamp": "2026-08-09T00:00:00.000Z",
+        "capturedAt": "2026-08-09T00:05:00.000Z",
+        "reconciliationStatus": "manual_only",
+        "metrics": {
+          "entries": {
+            "availability": "present",
+            "value": 100
+          },
+          "uniquePlayers": {
+            "availability": "present",
+            "value": 70
+          },
+          "totalBullets": {
+            "availability": "present",
+            "value": 100
+          },
+          "reentries": {
+            "availability": "present",
+            "value": 30
+          },
+          "registrationRecords": {
+            "availability": "present",
+            "value": 100
+          },
+          "paidPlaces": {
+            "availability": "present",
+            "value": 15
+          },
+          "prizePool": {
+            "availability": "present",
+            "amountMinor": "600000000",
+            "currency": "VND",
+            "scale": 0
+          },
+          "overlay": {
+            "availability": "explicit_zero",
+            "amountMinor": "0",
+            "currency": "VND",
+            "scale": 0
+          }
+        },
+        "supersedesRevisionId": null,
+        "reconcilesAutoRevisionId": null,
+        "reconcilesManualRevisionId": null,
+        "idempotencyKey": "actual:canonical-vector-1",
+        "correctionReason": null
+      },
+      "canonicalText": "{\"capturedAt\":\"2026-08-09T00:05:00.000Z\",\"clubId\":\"abcdefab-cdef-4abc-8abc-abcdefabcdef\",\"correctionReason\":null,\"eventId\":\"bcdefabc-defa-4bcd-8bcd-bcdefabcdef1\",\"finality\":\"final\",\"hashContractVersion\":\"series-canonical-json-v1\",\"idempotencyKey\":\"actual:canonical-vector-1\",\"metrics\":{\"entries\":{\"availability\":\"present\",\"value\":100},\"overlay\":{\"amountMinor\":\"0\",\"availability\":\"explicit_zero\",\"currency\":\"VND\",\"scale\":0},\"paidPlaces\":{\"availability\":\"present\",\"value\":15},\"prizePool\":{\"amountMinor\":\"600000000\",\"availability\":\"present\",\"currency\":\"VND\",\"scale\":0},\"reentries\":{\"availability\":\"present\",\"value\":30},\"registrationRecords\":{\"availability\":\"present\",\"value\":100},\"totalBullets\":{\"availability\":\"present\",\"value\":100},\"uniquePlayers\":{\"availability\":\"present\",\"value\":70}},\"reconcilesAutoRevisionId\":null,\"reconcilesManualRevisionId\":null,\"reconciliationStatus\":\"manual_only\",\"schemaVersion\":\"series-event-actual-revision-v1\",\"scope\":\"event_total\",\"sourceKind\":\"owner_manual\",\"sourceTimestamp\":\"2026-08-09T00:00:00.000Z\",\"sourceTimestampState\":\"exact\",\"supersedesRevisionId\":null}",
+      "utf8ByteLength": 1093,
+      "sha256": "6db4283270160c11f9e0d0c1537bac33967e86bb60e1ce80efdbb155a8a67981"
+    },
+    {
+      "id": "actual-create-request",
+      "payload": {
+        "correctionReason": null,
+        "eventId": "bcdefabc-defa-4bcd-8bcd-bcdefabcdef1",
+        "finality": "final",
+        "hashContractVersion": "series-canonical-json-v1",
+        "metrics": {
+          "entries": {
+            "availability": "present",
+            "value": 100
+          },
+          "overlay": {
+            "amountMinor": "0",
+            "availability": "explicit_zero",
+            "currency": "VND",
+            "scale": 0
+          },
+          "paidPlaces": {
+            "availability": "present",
+            "value": 15
+          },
+          "prizePool": {
+            "amountMinor": "600000000",
+            "availability": "present",
+            "currency": "VND",
+            "scale": 0
+          },
+          "reentries": {
+            "availability": "present",
+            "value": 30
+          },
+          "registrationRecords": {
+            "availability": "present",
+            "value": 100
+          },
+          "totalBullets": {
+            "availability": "present",
+            "value": 100
+          },
+          "uniquePlayers": {
+            "availability": "present",
+            "value": 70
+          }
+        },
+        "requestKind": "eventActualCreateRequest",
+        "schemaVersion": "series-event-actual-revision-v1",
+        "scope": "event_total",
+        "sourceTimestamp": "2026-08-09T00:00:00.000Z",
+        "sourceTimestampState": "exact",
+        "supersedesRevisionId": null
+      },
+      "canonicalText": "{\"correctionReason\":null,\"eventId\":\"bcdefabc-defa-4bcd-8bcd-bcdefabcdef1\",\"finality\":\"final\",\"hashContractVersion\":\"series-canonical-json-v1\",\"metrics\":{\"entries\":{\"availability\":\"present\",\"value\":100},\"overlay\":{\"amountMinor\":\"0\",\"availability\":\"explicit_zero\",\"currency\":\"VND\",\"scale\":0},\"paidPlaces\":{\"availability\":\"present\",\"value\":15},\"prizePool\":{\"amountMinor\":\"600000000\",\"availability\":\"present\",\"currency\":\"VND\",\"scale\":0},\"reentries\":{\"availability\":\"present\",\"value\":30},\"registrationRecords\":{\"availability\":\"present\",\"value\":100},\"totalBullets\":{\"availability\":\"present\",\"value\":100},\"uniquePlayers\":{\"availability\":\"present\",\"value\":70}},\"requestKind\":\"eventActualCreateRequest\",\"schemaVersion\":\"series-event-actual-revision-v1\",\"scope\":\"event_total\",\"sourceTimestamp\":\"2026-08-09T00:00:00.000Z\",\"sourceTimestampState\":\"exact\",\"supersedesRevisionId\":null}",
+      "utf8ByteLength": 870,
+      "sha256": "1056e545d342200e0e0c0db83d7e025571d49edeb49714e59b217411b244a318"
+    }
+  ]
+}
