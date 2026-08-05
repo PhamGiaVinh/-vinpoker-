@@ -1,5 +1,6 @@
 // Owner-gated Ops invitations. Browser sends intent only; server verifies Owner.
-// Never writes user_roles and never accepts an Owner role.
+// Membership, invitation ledger and audit are one RPC transaction. This function
+// is only responsible for Auth email delivery and calling that transaction.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   authenticateUser,
@@ -16,6 +17,11 @@ type InviteRequest = {
   operator_role: OperatorRole;
 };
 type RevokeRequest = { action: "revoke"; invite_id: string };
+type AuthUser = {
+  id: string;
+  email?: string;
+  email_confirmed_at?: string | null;
+};
 
 function normalizeEmail(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -32,27 +38,39 @@ function isUuid(value: unknown): value is string {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
       .test(value);
 }
-function inviteRedirectTo(): string | null {
-  const configured = Deno.env.get("OPS_INVITE_REDIRECT_TO");
-  if (!configured) return null;
+
+// Environment configuration is intentionally fail-closed. The Auth Redirect URL
+// allowlist itself is configured in Supabase; deployment preflight must confirm it.
+export function inviteRedirectTo(env = Deno.env): string | null {
+  const configured = env.get("OPS_INVITE_REDIRECT_TO");
+  const expectedOrigin = env.get("OPS_INVITE_EXPECTED_ORIGIN");
+  if (!configured || !expectedOrigin) return null;
   try {
     const url = new URL(configured);
-    return url.protocol === "https:" && url.pathname === "/ops/auth/callback"
+    const expected = new URL(expectedOrigin);
+    return url.protocol === "https:" && expected.protocol === "https:" &&
+        url.origin === expected.origin &&
+        url.pathname === "/ops/auth/callback" &&
+        expected.pathname === "/"
       ? url.toString()
       : null;
   } catch {
     return null;
   }
 }
-async function findUserByEmail(admin: SupabaseAdmin, email: string) {
-  // No client-supplied auth user ID; bound scan is the currently available Admin seam.
+
+async function findUserByEmail(
+  admin: SupabaseAdmin,
+  email: string,
+): Promise<AuthUser | null> {
+  // No client-supplied Auth user ID; this is the available Admin lookup seam.
   for (let page = 1; page <= 10; page += 1) {
     const { data, error } = await admin.auth.admin.listUsers({
       page,
       perPage: 1000,
     });
     if (error) throw new Error("AUTH_LOOKUP_FAILED");
-    const match = data.users.find((candidate: { email?: string }) =>
+    const match = data.users.find((candidate: AuthUser) =>
       candidate.email?.toLowerCase() === email
     );
     if (match) return match;
@@ -64,28 +82,79 @@ async function isOwner(admin: SupabaseAdmin, clubId: string, actorId: string) {
   const { data, error } = await admin.from("clubs").select("id").eq(
     "id",
     clubId,
-  ).eq("owner_id", actorId).maybeSingle();
+  )
+    .eq("owner_id", actorId).maybeSingle();
   return !error && Boolean(data?.id);
 }
-async function writeAudit(
+
+type InviteDelivery = {
+  user: AuthUser;
+  sent: boolean;
+  deliveryOutcome: "sent" | "resent" | "not_required";
+};
+export async function resolveInviteDelivery(
   admin: SupabaseAdmin,
-  clubId: string,
-  actorId: string,
-  action: string,
-  inviteId: string,
-  role: OperatorRole,
-) {
-  await admin.from("audit_logs").insert({
-    club_id: clubId,
-    actor_id: actorId,
-    action,
-    entity_type: "club_operator_invite",
-    entity_id: inviteId,
-    payload: { operator_role: role },
+  email: string,
+  redirectTo: string,
+): Promise<InviteDelivery> {
+  const existing = await findUserByEmail(admin, email);
+  if (existing?.email_confirmed_at) {
+    return { user: existing, sent: false, deliveryOutcome: "not_required" };
+  }
+
+  // Auth owns delivery and rate limiting. For an existing unconfirmed account,
+  // inviteUserByEmail is the only built-in re-invite attempt available here; an
+  // error is fail-closed rather than silently claiming the email was resent.
+  const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
+    redirectTo,
   });
+  if (error || !data.user) throw new Error("INVITE_DELIVERY_FAILED");
+  if (existing && data.user.id !== existing.id) {
+    throw new Error("INVITE_RESEND_ID_MISMATCH");
+  }
+  return {
+    user: data.user,
+    sent: true,
+    deliveryOutcome: existing ? "resent" : "sent",
+  };
 }
 
-Deno.serve(async (req) => {
+export async function applyInvite(
+  admin: SupabaseAdmin,
+  input: {
+    actorId: string;
+    clubId: string;
+    email: string;
+    role: OperatorRole;
+    delivery: InviteDelivery;
+  },
+) {
+  const { data, error } = await admin.rpc("apply_club_operator_invite", {
+    p_actor_id: input.actorId,
+    p_club_id: input.clubId,
+    p_auth_user_id: input.delivery.user.id,
+    p_email_normalized: input.email,
+    p_operator_role: input.role,
+    p_invitation_sent: input.delivery.sent,
+    p_delivery_outcome: input.delivery.deliveryOutcome,
+  }).single();
+  if (error || !data?.invite_id) throw new Error("ATOMIC_INVITE_FAILED");
+  return data as { invite_id: string; outcome: string; invite_status: string };
+}
+export async function revokeInvite(
+  admin: SupabaseAdmin,
+  actorId: string,
+  inviteId: string,
+) {
+  const { data, error } = await admin.rpc("revoke_club_operator_invite", {
+    p_actor_id: actorId,
+    p_invite_id: inviteId,
+  }).single();
+  if (error || !data?.invite_id) throw new Error("ATOMIC_REVOKE_FAILED");
+  return data as { invite_id: string; outcome: string; invite_status: string };
+}
+
+export async function handleOpsClubAccounts(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -116,121 +185,51 @@ Deno.serve(async (req) => {
       if (!redirectTo) {
         return json({ error: "INVITE_CONFIGURATION_REQUIRED" }, 503);
       }
-      let target = await findUserByEmail(admin, email);
-      let invitationSent = false;
-      if (!target) {
-        const { data, error } = await admin.auth.admin.inviteUserByEmail(
-          email,
-          { redirectTo },
-        );
-        if (error || !data.user) {
-          return json({ error: "INVITE_DELIVERY_FAILED" }, 502);
-        }
-        target = data.user;
-        invitationSent = true;
-      }
-      const membershipTable = body.operator_role === "floor"
-        ? "club_floors"
-        : "club_cashiers";
-      const { error: membershipError } = await admin.from(membershipTable)
-        .upsert(
-          { club_id: body.club_id, user_id: target.id, granted_by: auth.uid },
-          { onConflict: "club_id,user_id", ignoreDuplicates: true },
-        );
-      if (membershipError) {
-        return json({ error: "MEMBERSHIP_WRITE_FAILED" }, 500);
-      }
-      const now = new Date().toISOString();
-      const { data: activeInvite } = await admin.from("club_operator_invites")
-        .select("id").eq("club_id", body.club_id).eq("email_normalized", email)
-        .eq("operator_role", body.operator_role).eq("status", "active")
-        .maybeSingle();
-      const inviteWrite = activeInvite?.id
-        ? await admin.from("club_operator_invites").update({
-          auth_user_id: target.id,
-          invited_by: auth.uid,
-          updated_at: now,
-        }).eq("id", activeInvite.id).select("id").single()
-        : await admin.from("club_operator_invites").insert({
-          club_id: body.club_id,
-          email_normalized: email,
-          operator_role: body.operator_role,
-          auth_user_id: target.id,
-          invited_by: auth.uid,
-          status: "active",
-          updated_at: now,
-        }).select("id").single();
-      const { data: invite, error: inviteError } = inviteWrite;
-      if (inviteError || !invite?.id) {
-        return json({ error: "INVITE_RECORD_FAILED" }, 500);
-      }
-      await writeAudit(
-        admin,
-        body.club_id,
-        auth.uid,
-        invitationSent
-          ? "ops_operator_invited"
-          : "ops_operator_granted_existing",
-        invite.id,
-        body.operator_role,
-      );
+      const delivery = await resolveInviteDelivery(admin, email, redirectTo);
+      const result = await applyInvite(admin, {
+        actorId: auth.uid,
+        clubId: body.club_id,
+        email,
+        role: body.operator_role,
+        delivery,
+      });
       return json({
-        status: invitationSent ? "INVITED" : "GRANTED_EXISTING",
-        invite_id: invite.id,
+        status: result.outcome,
+        invite_id: result.invite_id,
+        invite_status: result.invite_status,
       });
     }
     if (body.action === "revoke") {
       if (!isUuid(body.invite_id)) {
         return json({ error: "INVALID_REQUEST" }, 400);
       }
-      const { data: invite, error: inviteError } = await admin.from(
-        "club_operator_invites",
-      )
-        .select("id,club_id,auth_user_id,operator_role,status").eq(
-          "id",
-          body.invite_id,
-        ).maybeSingle();
-      if (inviteError || !invite) return json({ error: "NOT_FOUND" }, 404);
-      if (!(await isOwner(admin, invite.club_id, auth.uid))) {
-        return json({ error: "FORBIDDEN" }, 403);
-      }
-      if (invite.status === "revoked") {
-        return json({ status: "ALREADY_REVOKED" });
-      }
-      if (invite.auth_user_id) {
-        const membershipTable = invite.operator_role === "floor"
-          ? "club_floors"
-          : "club_cashiers";
-        const { error } = await admin.from(membershipTable).delete().eq(
-          "club_id",
-          invite.club_id,
-        ).eq("user_id", invite.auth_user_id);
-        if (error) return json({ error: "MEMBERSHIP_REVOKE_FAILED" }, 500);
-      }
-      const { error: revokeError } = await admin.from("club_operator_invites")
-        .update({
-          status: "revoked",
-          revoked_at: new Date().toISOString(),
-          revoked_by: auth.uid,
-          updated_at: new Date().toISOString(),
-        }).eq("id", invite.id).eq("status", "active");
-      if (revokeError) return json({ error: "REVOKE_RECORD_FAILED" }, 500);
-      await writeAudit(
-        admin,
-        invite.club_id,
-        auth.uid,
-        "ops_operator_revoked",
-        invite.id,
-        invite.operator_role as OperatorRole,
-      );
-      return json({ status: "REVOKED" });
+      const result = await revokeInvite(admin, auth.uid, body.invite_id);
+      return json({
+        status: result.outcome,
+        invite_id: result.invite_id,
+        invite_status: result.invite_status,
+      });
     }
     return json({ error: "INVALID_REQUEST" }, 400);
   } catch (error) {
+    const message = error instanceof Error ? error.message : "INTERNAL_ERROR";
+    const status = message === "INVITE_DELIVERY_FAILED" ||
+        message === "INVITE_RESEND_ID_MISMATCH"
+      ? 502
+      : 500;
     return json({
-      error: error instanceof Error && error.message === "AUTH_LOOKUP_LIMIT"
-        ? "AUTH_LOOKUP_LIMIT"
+      error: [
+          "AUTH_LOOKUP_LIMIT",
+          "AUTH_LOOKUP_FAILED",
+          "INVITE_DELIVERY_FAILED",
+          "INVITE_RESEND_ID_MISMATCH",
+          "ATOMIC_INVITE_FAILED",
+          "ATOMIC_REVOKE_FAILED",
+        ].includes(message)
+        ? message
         : "INTERNAL_ERROR",
-    }, 500);
+    }, status);
   }
-});
+}
+
+if (import.meta.main) Deno.serve(handleOpsClubAccounts);
