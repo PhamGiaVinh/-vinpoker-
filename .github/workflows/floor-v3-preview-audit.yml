@@ -13,6 +13,7 @@ jobs:
   guard-preview-context:
     if: github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: ops-staging
     env:
       FLOOR_UAT_ENV: preview
       FLOOR_UAT_SUPABASE_URL: ${{ secrets.FLOOR_UAT_SUPABASE_URL }}
@@ -33,6 +34,7 @@ jobs:
     needs: guard-preview-context
     if: github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: ops-staging
     env:
       FLOOR_UAT_ENV: preview
       FLOOR_UAT_SUPABASE_URL: ${{ secrets.FLOOR_UAT_SUPABASE_URL }}

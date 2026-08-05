@@ -19,6 +19,14 @@ function list, and the exact non-production frontend host.
 
 ## Preflight
 
+- Configure only the GitHub Environment `ops-staging` with these protected
+  input names: `FLOOR_UAT_SUPABASE_URL`, `FLOOR_UAT_PROJECT_REF`,
+  `FLOOR_UAT_PRODUCTION_DOMAIN`, `FLOOR_UAT_SUPABASE_ANON_KEY`, and
+  `VERCEL_TOKEN`. Their values must point only to the persistent Preview
+  target; do not record values in source, chat, or this runbook.
+- Do not configure `FLOOR_UAT_BASE_URL`: the workflow derives it from the
+  source-pinned Vercel Preview deployment and validates it against the
+  production domain before any provisioning step.
 - Confirm both migration versions are absent from the Preview ledger.
 - Confirm the target is the persistent Preview project, not the production ref.
 - Run the disposable PostgreSQL workflow, Deno checks, Ops boundary check,
