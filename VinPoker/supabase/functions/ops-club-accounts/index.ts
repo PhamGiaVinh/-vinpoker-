@@ -1,5 +1,5 @@
 // Owner-gated Ops invitations. Browser sends intent only; server verifies Owner.
-// Membership, invitation ledger and audit are one RPC transaction. This function
+// Membership, invitation ledger and invitation events are one RPC transaction. This function
 // is only responsible for Auth email delivery and calling that transaction.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {

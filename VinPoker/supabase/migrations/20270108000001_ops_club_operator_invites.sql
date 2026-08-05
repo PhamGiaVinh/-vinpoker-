@@ -3,7 +3,7 @@
 -- An Owner can never be granted from this flow.
 --
 -- An Auth email may be sent before the database RPC runs. That external action
--- cannot share this transaction; all app authority, invitation state and audit
+-- cannot share this transaction; all app authority, invitation state and event
 -- history below must nevertheless commit together or roll back together.
 
 CREATE TABLE IF NOT EXISTS public.club_operator_invites (
@@ -44,6 +44,40 @@ CREATE POLICY club_operator_invites_select_owner
 
 COMMENT ON TABLE public.club_operator_invites IS
   'Owner-visible server-side Floor/Cashier invitations. Browser writes are forbidden.';
+
+CREATE TABLE IF NOT EXISTS public.club_operator_invite_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  invite_id uuid NOT NULL REFERENCES public.club_operator_invites(id) ON DELETE CASCADE,
+  club_id uuid NOT NULL REFERENCES public.clubs(id) ON DELETE CASCADE,
+  auth_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  actor_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  event_type text NOT NULL CHECK (event_type IN (
+    'invited', 'resent', 'granted_existing', 'accepted', 'revoked'
+  )),
+  operator_role text NOT NULL CHECK (operator_role IN ('floor', 'cashier')),
+  detail jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS club_operator_invite_events_invite_created_at
+  ON public.club_operator_invite_events (invite_id, created_at);
+CREATE INDEX IF NOT EXISTS club_operator_invite_events_club_created_at
+  ON public.club_operator_invite_events (club_id, created_at DESC);
+
+ALTER TABLE public.club_operator_invite_events ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.club_operator_invite_events FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.club_operator_invite_events TO authenticated;
+
+DROP POLICY IF EXISTS club_operator_invite_events_select_owner ON public.club_operator_invite_events;
+CREATE POLICY club_operator_invite_events_select_owner
+  ON public.club_operator_invite_events FOR SELECT TO authenticated
+  USING (EXISTS (
+    SELECT 1 FROM public.clubs c
+    WHERE c.id = club_operator_invite_events.club_id AND c.owner_id = auth.uid()
+  ));
+
+COMMENT ON TABLE public.club_operator_invite_events IS
+  'Append-only owner-visible history for server-side Ops invitations.';
 
 CREATE OR REPLACE FUNCTION public.apply_club_operator_invite(
   p_actor_id uuid,
@@ -114,7 +148,7 @@ BEGIN
     RAISE EXCEPTION 'INVITE_AUTH_USER_MISMATCH' USING ERRCODE = '42501';
   END IF;
 
-  -- Retrying an already completed grant is a genuine no-op, including audit.
+  -- Retrying an already completed grant is a genuine no-op, including events.
   v_status := CASE WHEN p_invitation_sent THEN 'pending' ELSE 'active' END;
   IF v_status = 'active' THEN
     IF p_operator_role = 'floor' THEN
@@ -179,14 +213,16 @@ BEGIN
   END IF;
 
   v_action := CASE
-    WHEN p_delivery_outcome = 'resent' THEN 'ops_operator_invite_resent'
-    WHEN p_invitation_sent THEN 'ops_operator_invited'
-    ELSE 'ops_operator_granted_existing'
+    WHEN p_delivery_outcome = 'resent' THEN 'resent'
+    WHEN p_invitation_sent THEN 'invited'
+    ELSE 'granted_existing'
   END;
-  INSERT INTO public.audit_logs (club_id, actor_id, action, entity_type, entity_id, payload)
+  INSERT INTO public.club_operator_invite_events (
+    invite_id, club_id, auth_user_id, actor_id, event_type, operator_role, detail
+  )
   VALUES (
-    p_club_id, p_actor_id, v_action, 'club_operator_invite', v_invite.id,
-    jsonb_build_object('operator_role', p_operator_role, 'status', v_invite.status)
+    v_invite.id, p_club_id, p_auth_user_id, p_actor_id, v_action, p_operator_role,
+    jsonb_build_object('status', v_invite.status)
   );
 
   RETURN QUERY SELECT
@@ -258,10 +294,12 @@ BEGIN
   SET status = 'revoked', revoked_at = now(), revoked_by = p_actor_id, updated_at = now()
   WHERE id = v_invite.id
   RETURNING * INTO v_invite;
-  INSERT INTO public.audit_logs (club_id, actor_id, action, entity_type, entity_id, payload)
+  INSERT INTO public.club_operator_invite_events (
+    invite_id, club_id, auth_user_id, actor_id, event_type, operator_role, detail
+  )
   VALUES (
-    v_invite.club_id, p_actor_id, 'ops_operator_revoked', 'club_operator_invite', v_invite.id,
-    jsonb_build_object('operator_role', v_invite.operator_role, 'status', v_invite.status)
+    v_invite.id, v_invite.club_id, v_invite.auth_user_id, p_actor_id, 'revoked',
+    v_invite.operator_role, jsonb_build_object('status', v_invite.status)
   );
   RETURN QUERY SELECT v_invite.id, 'REVOKED'::text, v_invite.status;
 END;
@@ -360,11 +398,12 @@ BEGIN
     IF NOT FOUND THEN
       RAISE EXCEPTION 'INVITE_ACCEPTANCE_CONFLICT' USING ERRCODE = '40001';
     END IF;
-    INSERT INTO public.audit_logs (club_id, actor_id, action, entity_type, entity_id, payload)
+    INSERT INTO public.club_operator_invite_events (
+      invite_id, club_id, auth_user_id, actor_id, event_type, operator_role, detail
+    )
     VALUES (
-      v_invite.club_id, v_actor, 'ops_operator_invite_accepted',
-      'club_operator_invite', v_invite.id,
-      jsonb_build_object('operator_role', v_invite.operator_role, 'status', 'active')
+      v_invite.id, v_invite.club_id, v_actor, v_actor, 'accepted',
+      v_invite.operator_role, jsonb_build_object('status', 'active')
     );
     v_accepted_count := v_accepted_count + 1;
     v_invite_ids := v_invite_ids || jsonb_build_array(v_invite.id);
