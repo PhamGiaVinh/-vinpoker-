@@ -238,7 +238,7 @@ BEGIN
       SET search_path = public
       AS $fn$
         WITH actor AS (SELECT auth.uid() AS user_id), scope_rows AS (
-          SELECT c.id, true, false, false
+          SELECT c.id AS club_id, true AS can_owner, false AS can_cashier, false AS can_floor
           FROM public.clubs c CROSS JOIN actor a
           WHERE c.owner_id = a.user_id
           UNION ALL
