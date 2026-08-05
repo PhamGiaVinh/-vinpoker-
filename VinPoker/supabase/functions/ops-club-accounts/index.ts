@@ -59,7 +59,7 @@ export function inviteRedirectTo(env = Deno.env): string | null {
   }
 }
 
-async function findUserByEmail(
+export async function findUserByEmail(
   admin: SupabaseAdmin,
   email: string,
 ): Promise<AuthUser | null> {

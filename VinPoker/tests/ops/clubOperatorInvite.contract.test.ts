@@ -14,6 +14,11 @@ const edge = readFileSync(
   resolve(root, "supabase/functions/ops-club-accounts/index.ts"),
   "utf8",
 );
+const account = readFileSync(resolve(root, "src/ops/pages/OpsAccount.tsx"), "utf8");
+const disposableWorkflow = readFileSync(
+  resolve(root, "../.github/workflows/ops-club-operator-invites-disposable-db.yml"),
+  "utf8",
+);
 
 describe("Ops club operator invitation boundary", () => {
   it("permits only club-scoped Floor and Cashier invitations", () => {
@@ -53,5 +58,27 @@ describe("Ops club operator invitation boundary", () => {
       "GRANT EXECUTE ON FUNCTION public.apply_club_operator_invite",
     );
     expect(migration).toContain("TO service_role");
+  });
+
+  it("keeps email-backed grants pending until the authenticated recipient accepts", () => {
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.accept_my_club_operator_invites()");
+    expect(migration).toContain("SECURITY DEFINER");
+    expect(migration).toContain("SET search_path = pg_catalog, public");
+    expect(migration).toContain("EMAIL_CONFIRMATION_REQUIRED");
+    expect(migration).toContain("AUTH_USER_UNCONFIRMED");
+    expect(migration).toContain("ops_operator_invite_accepted");
+    expect(migration).toContain("IF v_status = 'active' THEN");
+    expect(migration).toContain("p_invitation_sent THEN 'pending'");
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.accept_my_club_operator_invites() TO authenticated");
+    expect(account).toContain('client.rpc("accept_my_club_operator_invites")');
+    expect(account).toContain("capabilities.refresh()");
+    expect(account).toContain("Hoàn tất kích hoạt tài khoản");
+  });
+
+  it("runs the exact migration against disposable PostgreSQL without Supabase credentials", () => {
+    expect(disposableWorkflow).toContain("image: postgres:16");
+    expect(disposableWorkflow).toContain("ON_ERROR_STOP=1");
+    expect(disposableWorkflow).toContain("tests/ops/disposableDb.integration.sql");
+    expect(disposableWorkflow).not.toContain("SUPABASE_");
   });
 });

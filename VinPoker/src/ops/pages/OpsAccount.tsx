@@ -14,7 +14,10 @@ import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext
 import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { Link } from "react-router-dom";
-import { clearInvitePasswordSetupRequired } from "@/ops/auth/opsInviteCompletion";
+import {
+  clearInvitePasswordSetupRequired,
+  requiresInvitePasswordSetup,
+} from "@/ops/auth/opsInviteCompletion";
 
 function maskedId(value: string): string {
   return value.length > 10 ? `${value.slice(0, 5)}…${value.slice(-4)}` : value;
@@ -30,6 +33,24 @@ export default function OpsAccount() {
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [activationBusy, setActivationBusy] = useState(false);
+  const [passwordUpdated, setPasswordUpdated] = useState(false);
+  const inviteActivationRequired = requiresInvitePasswordSetup();
+
+  const acceptInvitations = async (): Promise<boolean> => {
+    setActivationBusy(true);
+    const { error } = await client.rpc("accept_my_club_operator_invites");
+    setActivationBusy(false);
+    if (error) {
+      setMessage(
+        "Mật khẩu đã cập nhật nhưng chưa hoàn tất cấp quyền. Vui lòng thử hoàn tất lại.",
+      );
+      return false;
+    }
+    capabilities.refresh();
+    clearInvitePasswordSetupRequired();
+    return true;
+  };
 
   const updatePassword = async (event: FormEvent) => {
     event.preventDefault();
@@ -43,7 +64,8 @@ export default function OpsAccount() {
       return;
     }
     setPassword("");
-    clearInvitePasswordSetupRequired();
+    setPasswordUpdated(true);
+    if (inviteActivationRequired && !(await acceptInvitations())) return;
     setMessage("Đã cập nhật mật khẩu Ops. Đang mở workspace…");
     window.setTimeout(() => navigate("/ops", { replace: true }), 700);
   };
@@ -93,27 +115,49 @@ export default function OpsAccount() {
         </CardContent>
       </Card>
 
-      {resetMode && (
+      {(resetMode || inviteActivationRequired) && (
         <Card className="border-amber-300/20 bg-amber-300/5 text-white">
           <CardHeader>
             <CardTitle className="text-lg">Đặt mật khẩu mới</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={updatePassword} className="space-y-3">
-              <Label htmlFor="ops-new-password">Mật khẩu mới</Label>
-              <Input
-                id="ops-new-password"
-                type="password"
-                autoComplete="new-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="min-h-11 bg-black/20"
-              />
-              {message && <p className="text-sm text-zinc-300">{message}</p>}
-              <Button type="submit" className="min-h-11">
-                Cập nhật mật khẩu
-              </Button>
-            </form>
+            {inviteActivationRequired && passwordUpdated ? (
+              <div className="space-y-3">
+                <p className="text-sm text-zinc-300">
+                  Mật khẩu đã được đặt. Hoàn tất kích hoạt để hệ thống cấp đúng quyền CLB.
+                </p>
+                {message && <p className="text-sm text-rose-200">{message}</p>}
+                <Button
+                  type="button"
+                  className="min-h-11"
+                  disabled={activationBusy}
+                  onClick={() => void acceptInvitations().then((accepted) => {
+                    if (accepted) {
+                      setMessage("Đã kích hoạt quyền Ops. Đang mở workspace…");
+                      window.setTimeout(() => navigate("/ops", { replace: true }), 700);
+                    }
+                  })}
+                >
+                  Hoàn tất kích hoạt tài khoản
+                </Button>
+              </div>
+            ) : (
+              <form onSubmit={updatePassword} className="space-y-3">
+                <Label htmlFor="ops-new-password">Mật khẩu mới</Label>
+                <Input
+                  id="ops-new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="min-h-11 bg-black/20"
+                />
+                {message && <p className="text-sm text-zinc-300">{message}</p>}
+                <Button type="submit" className="min-h-11" disabled={activationBusy}>
+                  Cập nhật mật khẩu
+                </Button>
+              </form>
+            )}
           </CardContent>
         </Card>
       )}

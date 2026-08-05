@@ -6,6 +6,7 @@ import {
 import type { SupabaseAdmin } from "../_shared/staking-common.ts";
 import {
   applyInvite,
+  findUserByEmail,
   inviteRedirectTo,
   resolveInviteDelivery,
 } from "./index.ts";
@@ -15,6 +16,7 @@ function fakeAdmin(options: {
     { id: string; email: string; email_confirmed_at?: string | null }
   >;
   inviteUser?: { id: string; error?: string };
+  listUsersError?: string;
   rpc?: {
     invite_id?: string;
     outcome?: string;
@@ -27,7 +29,9 @@ function fakeAdmin(options: {
       admin: {
         listUsers: async () => ({
           data: { users: options.users ?? [] },
-          error: null,
+          error: options.listUsersError
+            ? { message: options.listUsersError }
+            : null,
         }),
         inviteUserByEmail: async () =>
           options.inviteUser?.error
@@ -152,4 +156,36 @@ Deno.test("redirect must match the exact configured HTTPS Ops origin", () => {
       })[key],
   } as unknown as Deno.Env;
   assertEquals(inviteRedirectTo(wrong), null);
+});
+
+Deno.test("Auth lookup fails closed on pagination errors", async () => {
+  await assertRejects(
+    () =>
+      findUserByEmail(
+        fakeAdmin({ listUsersError: "unavailable" }),
+        "floor@example.com",
+      ),
+    Error,
+    "AUTH_LOOKUP_FAILED",
+  );
+});
+
+Deno.test("resend rejects a mismatched Auth identity instead of granting either account", async () => {
+  await assertRejects(
+    () =>
+      resolveInviteDelivery(
+        fakeAdmin({
+          users: [{
+            id: "expected",
+            email: "floor@example.com",
+            email_confirmed_at: null,
+          }],
+          inviteUser: { id: "different" },
+        }),
+        "floor@example.com",
+        "https://ops.example.com/ops/auth/callback",
+      ),
+    Error,
+    "INVITE_RESEND_ID_MISMATCH",
+  );
 });

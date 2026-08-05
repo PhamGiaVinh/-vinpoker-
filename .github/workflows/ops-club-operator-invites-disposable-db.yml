@@ -1,0 +1,38 @@
+name: Ops club operator invites disposable PostgreSQL
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ops-club-operator-invites-disposable-db.yml"
+      - "VinPoker/supabase/migrations/20270107000001_ops_club_operator_invites.sql"
+      - "VinPoker/supabase/functions/ops-club-accounts/**"
+      - "VinPoker/src/ops/auth/**"
+      - "VinPoker/src/ops/pages/OpsAccount.tsx"
+      - "VinPoker/tests/ops/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ops-club-operator-invites-disposable-db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply exact invitation migration and run disposable proof
+        working-directory: VinPoker
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f tests/ops/disposableDb.integration.sql
