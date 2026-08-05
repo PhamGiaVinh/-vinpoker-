@@ -144,7 +144,8 @@ describe("A6 import / dependency guards", () => {
 
   it("Decision Packet V1 is a pure private contract with no public-market, UI, network, or Supabase dependency", () => {
     const sf = parse(`${SI}/decisionPacketV1.ts`);
-    expect(importSpecifiers(sf)).toEqual(["./provenanceHash"]);
+    expect(importSpecifiers(sf)).toEqual(["./decisionPacketCanonicalV1"]);
+    expect(importSpecifiers(parse(`${SI}/decisionPacketCanonicalV1.ts`))).toEqual(["./provenanceHash"]);
     const ids = identifiers(sf);
     for (const forbidden of [
       "fetch",
