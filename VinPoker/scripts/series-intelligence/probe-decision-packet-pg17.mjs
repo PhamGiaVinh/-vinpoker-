@@ -99,6 +99,8 @@ function psql(config, database, sql, { actor = undefined, role = undefined } = {
     "--tuples-only",
     "--no-align",
     "--quiet",
+    "--pset", "pager=off",
+    "--pset", "columns=100000",
     "--host", config.host,
     "--port", config.port,
     "--username", config.user,
@@ -106,7 +108,15 @@ function psql(config, database, sql, { actor = undefined, role = undefined } = {
   ], {
     encoding: "utf8",
     input: `${prelude}\n${sql}${epilogue}\n`,
-    env: { ...process.env, PGHOST: config.host, PGPORT: config.port, PGUSER: config.user, PGPASSWORD: config.password },
+    env: {
+      ...process.env,
+      COLUMNS: "100000",
+      PAGER: "cat",
+      PGHOST: config.host,
+      PGPORT: config.port,
+      PGUSER: config.user,
+      PGPASSWORD: config.password,
+    },
   });
   if (result.error) throw new ProbeError(`psql execution failed: ${result.error.message}`);
   if (result.status !== 0) {
@@ -187,16 +197,18 @@ function actualCall({
   supersedesRevisionId = null,
   correctionReason = null,
 } = {}) {
+  const bigint = (value) => value === null ? "NULL::bigint" : `${value}::bigint`;
+  const numeric = (value) => value === null ? "NULL::numeric" : `${value}::numeric`;
   return `public.series_record_event_actual_v1(
     ${uuidLiteral(eventId)}, 'event_total', ${sqlString(finality)}, 'exact', ${timestampLiteral(sourceTimestamp)},
-    ${sqlString(entriesAvailability)}, ${entriesValue === null ? "NULL" : String(entriesValue)},
-    'present', 70, 'present', 100, 'present', 30, 'present', 100, 'present', 15,
-    ${sqlString(prizePoolAvailability)}, ${prizePoolAmount === null ? "NULL" : String(prizePoolAmount)},
-    ${prizePoolCurrency === null ? "NULL" : sqlString(prizePoolCurrency)}, 0,
-    ${sqlString(overlayAvailability)}, ${overlayAmount === null ? "NULL" : String(overlayAmount)},
-    ${overlayCurrency === null ? "NULL" : sqlString(overlayCurrency)}, 0,
-    ${supersedesRevisionId === null ? "NULL" : uuidLiteral(supersedesRevisionId)},
-    ${sqlString(idempotencyKey)}, ${correctionReason === null ? "NULL" : sqlString(correctionReason)}
+    ${sqlString(entriesAvailability)}, ${bigint(entriesValue)},
+    'present', 70::bigint, 'present', 100::bigint, 'present', 30::bigint, 'present', 100::bigint, 'present', 15::bigint,
+    ${sqlString(prizePoolAvailability)}, ${numeric(prizePoolAmount)},
+    ${prizePoolCurrency === null ? "NULL::text" : sqlString(prizePoolCurrency)}, 0::smallint,
+    ${sqlString(overlayAvailability)}, ${numeric(overlayAmount)},
+    ${overlayCurrency === null ? "NULL::text" : sqlString(overlayCurrency)}, 0::smallint,
+    ${supersedesRevisionId === null ? "NULL::uuid" : uuidLiteral(supersedesRevisionId)},
+    ${sqlString(idempotencyKey)}, ${correctionReason === null ? "NULL::text" : sqlString(correctionReason)}
   )`;
 }
 
