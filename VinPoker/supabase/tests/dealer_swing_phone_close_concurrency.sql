@@ -49,7 +49,7 @@ SELECT operation_id, jsonb_build_object('state_hash', response->'state_hash', 't
 FROM (
   SELECT
     operation_id,
-    public.close_dealer_tables(
+    public.close_dealer_tables_phone_v1(
       operation_id,
       'eb000000-0000-4000-8000-000000000001',
       'ec000000-0000-4000-8000-000000000001',
@@ -86,7 +86,7 @@ SELECT dblink_send_query('close_order_a', $query$
     SELECT expected_state FROM public._test_phone_close_snapshots
     WHERE operation_id = 'ee000000-0000-4000-8000-000000000001'
   )
-  SELECT public.close_dealer_tables(
+  SELECT public.close_dealer_tables_phone_v1(
     'ee000000-0000-4000-8000-000000000001',
     'eb000000-0000-4000-8000-000000000001',
     'ec000000-0000-4000-8000-000000000001',
@@ -108,7 +108,7 @@ SELECT dblink_send_query('close_order_b', $query$
     SELECT expected_state FROM public._test_phone_close_snapshots
     WHERE operation_id = 'ee000000-0000-4000-8000-000000000002'
   )
-  SELECT public.close_dealer_tables(
+  SELECT public.close_dealer_tables_phone_v1(
     'ee000000-0000-4000-8000-000000000002',
     'eb000000-0000-4000-8000-000000000001',
     'ec000000-0000-4000-8000-000000000001',

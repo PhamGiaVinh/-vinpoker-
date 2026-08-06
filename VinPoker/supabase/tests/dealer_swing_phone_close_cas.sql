@@ -30,18 +30,18 @@ $$;
 SELECT pg_temp.assert_true(
   NOT has_function_privilege(
     'anon',
-    'public.close_dealer_tables(uuid,uuid,uuid,uuid[],jsonb,boolean)',
+    'public.close_dealer_tables_phone_v1(uuid,uuid,uuid,uuid[],jsonb,boolean)',
     'EXECUTE'
   ),
-  'anon cannot execute guarded close'
+  'anon cannot execute canonical guarded phone close'
 );
 SELECT pg_temp.assert_true(
   has_function_privilege(
     'authenticated',
-    'public.close_dealer_tables(uuid,uuid,uuid,uuid[],jsonb,boolean)',
+    'public.close_dealer_tables_phone_v1(uuid,uuid,uuid,uuid[],jsonb,boolean)',
     'EXECUTE'
   ),
-  'authenticated can execute guarded close'
+  'authenticated can execute canonical guarded phone close'
 );
 SELECT pg_temp.assert_true(
   has_function_privilege(
@@ -117,7 +117,7 @@ SELECT set_config('request.jwt.claim.role', 'authenticated', true);
 DO $$
 DECLARE v jsonb;
 BEGIN
-  v := public.close_dealer_tables(
+  v := public.close_dealer_tables_phone_v1(
     'da000000-0000-4000-8000-000000000000',
     'cb000000-0000-4000-8000-000000000001',
     'cc000000-0000-4000-8000-000000000001',
@@ -150,7 +150,7 @@ WHERE id;
 DO $$
 DECLARE v jsonb;
 BEGIN
-  v := public.close_dealer_tables(
+  v := public.close_dealer_tables_phone_v1(
     'da000000-0000-4000-8000-000000000001',
     'cb000000-0000-4000-8000-000000000002',
     NULL,
@@ -160,7 +160,7 @@ BEGIN
   );
   PERFORM pg_temp.assert_eq(v->>'outcome', 'invalid_request', 'cross-club actor rejected');
 
-  v := public.close_dealer_tables(
+  v := public.close_dealer_tables_phone_v1(
     'da000000-0000-4000-8000-000000000002',
     'cb000000-0000-4000-8000-000000000001',
     NULL,
@@ -185,7 +185,7 @@ SELECT
   'da000000-0000-4000-8000-000000000003'::uuid,
   jsonb_build_object('state_hash', v->'state_hash', 'tables', v->'tables')
 FROM (
-  SELECT public.close_dealer_tables(
+  SELECT public.close_dealer_tables_phone_v1(
     'da000000-0000-4000-8000-000000000003',
     'cb000000-0000-4000-8000-000000000001',
     'cc000000-0000-4000-8000-000000000001',
@@ -216,7 +216,7 @@ WHERE id = 'd1000000-0000-4000-8000-000000000002';
 DO $$
 DECLARE v jsonb;
 BEGIN
-  SELECT public.close_dealer_tables(
+  SELECT public.close_dealer_tables_phone_v1(
     operation_id,
     'cb000000-0000-4000-8000-000000000001',
     'cc000000-0000-4000-8000-000000000001',
@@ -258,7 +258,7 @@ SELECT
   'da000000-0000-4000-8000-000000000004'::uuid,
   jsonb_build_object('state_hash', v->'state_hash', 'tables', v->'tables')
 FROM (
-  SELECT public.close_dealer_tables(
+  SELECT public.close_dealer_tables_phone_v1(
     'da000000-0000-4000-8000-000000000004',
     'cb000000-0000-4000-8000-000000000001',
     'cc000000-0000-4000-8000-000000000001',
@@ -273,7 +273,7 @@ FROM (
 
 CREATE TEMP TABLE close_apply_result (response jsonb NOT NULL);
 INSERT INTO close_apply_result
-SELECT public.close_dealer_tables(
+SELECT public.close_dealer_tables_phone_v1(
   operation_id,
   'cb000000-0000-4000-8000-000000000001',
   'cc000000-0000-4000-8000-000000000001',
@@ -308,7 +308,7 @@ SELECT pg_temp.assert_true(
 
 CREATE TEMP TABLE replay_result (response jsonb NOT NULL);
 INSERT INTO replay_result
-SELECT public.close_dealer_tables(
+SELECT public.close_dealer_tables_phone_v1(
   operation_id,
   'cb000000-0000-4000-8000-000000000001',
   'cc000000-0000-4000-8000-000000000001',
