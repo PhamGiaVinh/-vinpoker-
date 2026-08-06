@@ -1,0 +1,49 @@
+name: Ops club operator invites disposable PostgreSQL
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ops-club-operator-invites-disposable-db.yml"
+      - "VinPoker/supabase/migrations/20270108000000_ops_operator_membership_baseline.sql"
+      - "VinPoker/supabase/migrations/20270108000001_ops_club_operator_invites.sql"
+      - "VinPoker/supabase/functions/ops-club-accounts/**"
+      - "VinPoker/src/ops/auth/**"
+      - "VinPoker/src/ops/pages/OpsAccount.tsx"
+      - "VinPoker/tests/ops/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ops-club-operator-invites-disposable-db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply exact Ops migrations and run disposable proof
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f tests/ops/disposableDb.integration.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE ops_baseline_incompatible"
+          if psql -h localhost -U postgres -d ops_baseline_incompatible -v ON_ERROR_STOP=1 \
+            -f tests/ops/disposableDb.incompatible.sql; then
+            echo "incompatible baseline unexpectedly succeeded" >&2
+            exit 1
+          fi
+          psql -h localhost -U postgres -d ops_baseline_incompatible -v ON_ERROR_STOP=1 \
+            -f tests/ops/disposableDb.incompatible.verify.sql

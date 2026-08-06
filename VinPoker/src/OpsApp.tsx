@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
@@ -6,7 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { RouteLoader } from "@/components/RouteLoader";
 import OpsShell from "@/components/ops/OpsShell";
 import { OpsAuthProvider } from "@/ops/auth/OpsAuthProvider";
-import { OpsCapabilityProvider } from "@/ops/auth/OpsCapabilityProvider";
+import { OpsCapabilityProvider, useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { OpsTournamentScopeGate } from "@/ops/auth/OpsTournamentScopeGate";
 import {
   OpsEntryResolver,
@@ -18,6 +18,7 @@ const OpsLogin = lazy(() => import("@/ops/pages/OpsLogin"));
 const OpsAuthCallback = lazy(() => import("@/ops/pages/OpsAuthCallback"));
 const OpsForgotPassword = lazy(() => import("@/ops/pages/OpsForgotPassword"));
 const OpsAccount = lazy(() => import("@/ops/pages/OpsAccount"));
+const OpsClubAccounts = lazy(() => import("@/ops/pages/OpsClubAccounts"));
 const OpsSelectModule = lazy(() => import("@/ops/pages/OpsSelectModule"));
 const OpsTournaments = lazy(() => import("@/pages/ops/OpsTournaments"));
 const OpsTournamentCockpit = lazy(() => import("@/pages/ops/OpsTournamentCockpit"));
@@ -50,6 +51,12 @@ function LegacyTournamentRedirect() {
   return <Navigate to={id ? `/ops/floor/tournaments/${id}` : "/ops/floor"} replace />;
 }
 
+function OpsOwnerGate({ children }: { children: ReactNode }) {
+  const capabilities = useOpsCapabilities();
+  if (capabilities.loading) return <RouteLoader />;
+  return capabilities.hasOwnerAccess ? <>{children}</> : <Navigate to="/ops" replace />;
+}
+
 export default function OpsApp() {
   return (
     <QueryClientProvider client={opsQueryClient}>
@@ -66,6 +73,7 @@ export default function OpsApp() {
                   <Route path="/ops" element={<OpsEntryResolver />} />
                   <Route path="/ops/select-module" element={<OpsSelectModule />} />
                   <Route path="/ops/account" element={<OpsAccount />} />
+                  <Route path="/ops/club-admin/accounts" element={<OpsOwnerGate><OpsClubAccounts /></OpsOwnerGate>} />
                   <Route element={<OpsShell />}>
                     <Route
                       path="/ops/floor"

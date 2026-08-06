@@ -5,23 +5,43 @@ import { Button } from "@/components/ui/button";
 import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { resolveOpsEntry } from "@/ops/auth/opsCapabilityRouting";
+import { requiresInvitePasswordSetup } from "@/ops/auth/opsInviteCompletion";
 import type { ReactNode } from "react";
 
 export function OpsRequireSession({ children }: { children: ReactNode }) {
   const { user, loading } = useOpsAuth();
   const location = useLocation();
   if (loading) return <OpsLoading label="Đang kiểm tra phiên Ops…" />;
-  if (!user) return <Navigate to="/ops/login" replace state={{ from: location.pathname + location.search }} />;
+  if (!user) {
+    return (
+      <Navigate
+        to="/ops/login"
+        replace
+        state={{ from: location.pathname + location.search }}
+      />
+    );
+  }
+  if (requiresInvitePasswordSetup() && location.pathname !== "/ops/account") {
+    return (
+      <Navigate to="/ops/account?mode=reset-password&source=invite" replace />
+    );
+  }
   return <>{children}</>;
 }
 
 export function OpsEntryResolver() {
   const capabilities = useOpsCapabilities();
-  if (capabilities.loading) return <OpsLoading label="Đang tải quyền vận hành…" />;
-  if (capabilities.scopeError) return <OpsAccessDenied message={capabilities.scopeError} />;
+  if (capabilities.loading) {
+    return <OpsLoading label="Đang tải quyền vận hành…" />;
+  }
+  if (capabilities.scopeError) {
+    return <OpsAccessDenied message={capabilities.scopeError} />;
+  }
   const destination = resolveOpsEntry(capabilities);
   if (destination === "access-denied") {
-    return <OpsAccessDenied message="Tài khoản này chưa được cấp quyền Floor hoặc Cashier." />;
+    return (
+      <OpsAccessDenied message="Tài khoản này chưa được cấp quyền Floor hoặc Cashier." />
+    );
   }
   return <Navigate to={destination} replace />;
 }
@@ -34,12 +54,22 @@ export function OpsModuleGate({
   children: ReactNode;
 }) {
   const capabilities = useOpsCapabilities();
-  if (capabilities.loading) return <OpsLoading label="Đang tải quyền vận hành…" />;
-  if (capabilities.scopeError) return <OpsAccessDenied message={capabilities.scopeError} />;
+  if (capabilities.loading) {
+    return <OpsLoading label="Đang tải quyền vận hành…" />;
+  }
+  if (capabilities.scopeError) {
+    return <OpsAccessDenied message={capabilities.scopeError} />;
+  }
   const allowed = capability === "floor"
     ? capabilities.hasFloorAccess
     : capabilities.hasCashierAccess;
-  return allowed ? <>{children}</> : <OpsAccessDenied message={`Tài khoản chưa có quyền ${capability === "floor" ? "Floor" : "Cashier"}.`} />;
+  return allowed ? <>{children}</> : (
+    <OpsAccessDenied
+      message={`Tài khoản chưa có quyền ${
+        capability === "floor" ? "Floor" : "Cashier"
+      }.`}
+    />
+  );
 }
 
 export function OpsAccessDenied({ message }: { message: string }) {
@@ -54,8 +84,14 @@ export function OpsAccessDenied({ message }: { message: string }) {
         <ShieldX className="mx-auto h-8 w-8 text-rose-300" />
         <h1 className="mt-4 text-xl font-semibold">Không có quyền vận hành</h1>
         <p className="mt-2 text-sm leading-6 text-zinc-400">{message}</p>
-        {signOutError && <p className="mt-3 text-sm text-rose-300">{signOutError}</p>}
-        <Button variant="outline" className="mt-5 min-h-11 w-full" onClick={() => void handleSignOut()}>
+        {signOutError && (
+          <p className="mt-3 text-sm text-rose-300">{signOutError}</p>
+        )}
+        <Button
+          variant="outline"
+          className="mt-5 min-h-11 w-full"
+          onClick={() => void handleSignOut()}
+        >
           Đăng xuất Ops
         </Button>
       </div>

@@ -1,5 +1,5 @@
 import { Navigate, useNavigate } from "react-router-dom";
-import { Banknote, Grid3X3, UserRound } from "lucide-react";
+import { Banknote, Grid3X3, ShieldCheck, UserRound } from "lucide-react";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 
 export default function OpsSelectModule() {
@@ -30,6 +30,11 @@ export default function OpsSelectModule() {
       </header>
 
       <div className="mt-8 grid gap-4 md:grid-cols-2">
+        {capabilities.hasOwnerAccess && (
+          <button onClick={() => navigate("/ops/club-admin/accounts")} className="min-h-44 rounded-3xl border border-sky-300/20 bg-sky-300/7 p-6 text-left transition hover:bg-sky-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300">
+            <ShieldCheck className="h-7 w-7 text-sky-300" /><div className="mt-6 text-xl font-semibold">Quản trị CLB</div><p className="mt-2 text-sm leading-6 text-zinc-400">Mời và thu hồi quyền Floor/Cashier theo đúng CLB.</p>
+          </button>
+        )}
         {capabilities.hasFloorAccess && (
           <button
             onClick={() => navigate("/ops/floor")}

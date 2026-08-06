@@ -18,6 +18,19 @@ test("allows an explicitly identified non-production preview audit", () => {
   assert.deepEqual(validateFloorAuditContext(previewContext), []);
 });
 
+test("pre-deployment guard permits only the unresolved Preview URL", () => {
+  const preDeploymentContext = { ...previewContext };
+  delete preDeploymentContext.FLOOR_UAT_BASE_URL;
+
+  assert.deepEqual(
+    validateFloorAuditContext(preDeploymentContext, { requireBaseUrl: false }),
+    [],
+  );
+  assert.deepEqual(validateFloorAuditContext(preDeploymentContext), [
+    "missing:FLOOR_UAT_BASE_URL",
+  ]);
+});
+
 test("fails closed for production, main, or an unowned fixture prefix", () => {
   const failures = validateFloorAuditContext({
     ...previewContext,
