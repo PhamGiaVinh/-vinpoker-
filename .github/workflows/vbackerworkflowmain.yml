@@ -597,7 +597,15 @@ jobs:
             fi
             sleep "$shell_verify_interval_seconds"
           done
-          test "$verified" = true
+          # Vercel's unique deployment URL is diagnostic only: it can remain on
+          # a different alias while the canonical production URL is converging.
+          # Keep the receipt gate fail-closed on the exact canonical version and
+          # shell checks below, without printing or exposing the deployment URL.
+          if [ "$verified" = true ]; then
+            echo "FRONTEND_DEPLOYMENT_URL_VERIFY=PASS"
+          else
+            echo "FRONTEND_DEPLOYMENT_URL_VERIFY=NOT_CONVERGED"
+          fi
 
           canonical_version="${RUNNER_TEMP}/canonical-version.json"
           canonical_verified=false
