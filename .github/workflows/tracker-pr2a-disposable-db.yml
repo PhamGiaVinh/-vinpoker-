@@ -1,0 +1,114 @@
+name: Tracker PR2A disposable PostgreSQL
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/tracker-pr2a-disposable-db.yml"
+      - "VinPoker/supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql"
+      - "VinPoker/tests/trackerUnifiedOps/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tracker-pr2a-disposable-db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Install source-test dependencies without install hooks
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+
+      - name: Create clean baseline and rollback copy
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          createdb tracker_pr2a
+          psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
+            -f tests/trackerUnifiedOps/disposableDb.baseline.sql
+          createdb tracker_pr2a_rollback -T tracker_pr2a
+
+      - name: Apply exact PR2A migration to disposable database
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
+            -f supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql
+
+      - name: Run authoritative context/start integration and catalog proofs
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
+            -f tests/trackerUnifiedOps/disposableDb.integration.sql
+
+      - name: Prove migration transaction rollback on injected failure
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          failing="$RUNNER_TEMP/tracker-pr2a-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_pr2a_injected_failure;"; print }' \
+            supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql > "$failing"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a_rollback -f "$failing"; then
+            echo "Injected migration unexpectedly committed" >&2
+            exit 1
+          fi
+          rollback_state="$(psql -X -At -d tracker_pr2a_rollback -c \
+            "SELECT to_regclass('public.tracker_unified_ops_receipts') IS NULL
+                    AND to_regprocedure('public.start_tracker_hand_v2(uuid,uuid,integer,text,text)') IS NULL
+                    AND NOT EXISTS (
+                      SELECT 1 FROM information_schema.columns
+                      WHERE table_schema = 'public'
+                        AND table_name = 'tournament_hands'
+                        AND column_name = 'tracker_context_version'
+                    )")"
+          test "$rollback_state" = "t"
+          echo "PR2A_ROLLBACK_PROOF=PASS"
+
+      - name: Run focused source gates
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          npm test -- --run \
+            tests/trackerUnifiedOps/pr2a.migration.test.ts \
+            tests/trackerUnifiedOps/contracts.test.ts \
+            tests/trackerUnifiedOps/disposableDb.contract.test.ts \
+            tests/trackerUnifiedOps/legacyWriterInventory.test.ts
+          npm run check:credential-context
+          git diff --check
+
+      - name: Run bounded Deno syntax check
+        working-directory: VinPoker
+        run: |
+          deno check --no-config supabase/functions/health/index.ts
+          echo "PR2A_DENO=PASS_HEALTH_BASELINE_NO_PR2A_EDGE_SOURCE"
