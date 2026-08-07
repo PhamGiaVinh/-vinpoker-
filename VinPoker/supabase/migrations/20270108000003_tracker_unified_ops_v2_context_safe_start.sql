@@ -295,10 +295,10 @@ BEGIN
     );
     v_level_hash_json := jsonb_build_object(
       'id', v_level.id,
-      'number', GREATEST(v_level.level_number, 0),
-      'small_blind', GREATEST(v_level.small_blind, 0),
-      'big_blind', GREATEST(v_level.big_blind, 0),
-      'ante', GREATEST(v_level.ante, 0),
+      'number', v_level.level_number,
+      'small_blind', v_level.small_blind,
+      'big_blind', v_level.big_blind,
+      'ante', v_level.ante,
       'is_break', v_level.is_break,
       'clock_paused', v_tour.clock_paused_at IS NOT NULL
     );
@@ -351,11 +351,11 @@ BEGIN
         'seat_id', s.id,
         'entry_id', s.entry_id,
         'player_id', s.player_id,
-        'entry_number', GREATEST(s.entry_number, 0),
-        'seat_number', GREATEST(s.seat_number, 0),
-        'seat_stack', GREATEST(s.chip_count, 0),
-        'tracker_stack', GREATEST(COALESCE(tcc.chip_count, 0), 0),
-        'entry_stack', GREATEST(COALESCE(e.current_stack, 0), 0)
+        'entry_number', s.entry_number,
+        'seat_number', s.seat_number,
+        'seat_stack', s.chip_count,
+        'tracker_stack', tcc.chip_count,
+        'entry_stack', e.current_stack
       ) AS row_json
     FROM public.tournament_seats s
     LEFT JOIN public.tournament_entries e
@@ -380,7 +380,8 @@ BEGIN
    AND e.tournament_id = s.tournament_id
    AND e.player_id = s.player_id
    AND e.entry_no = s.entry_number
-    AND e.table_id IS NOT DISTINCT FROM v_tt.table_id
+   AND e.seat_number IS NOT DISTINCT FROM s.seat_number
+   AND e.table_id IS NOT DISTINCT FROM v_tt.table_id
    AND e.seat_id IS NOT DISTINCT FROM s.id
    AND e.status = 'seated'
   WHERE s.tournament_id = p_tournament_id
@@ -413,6 +414,7 @@ BEGIN
       e.id IS NULL
       OR e.player_id IS DISTINCT FROM s.player_id
       OR e.entry_no IS DISTINCT FROM s.entry_number
+      OR e.seat_number IS DISTINCT FROM s.seat_number
       OR e.table_id IS DISTINCT FROM v_tt.table_id
       OR e.seat_id IS DISTINCT FROM s.id
       OR e.status IS DISTINCT FROM 'seated'
@@ -428,6 +430,7 @@ BEGIN
      AND e.tournament_id = s.tournament_id
      AND e.player_id = s.player_id
      AND e.entry_no = s.entry_number
+     AND e.seat_number IS NOT DISTINCT FROM s.seat_number
      AND e.table_id IS NOT DISTINCT FROM v_tt.table_id
      AND e.seat_id IS NOT DISTINCT FROM s.id
      AND e.status = 'seated'
@@ -460,6 +463,7 @@ BEGIN
    AND e.tournament_id = s.tournament_id
    AND e.player_id = s.player_id
    AND e.entry_no = s.entry_number
+   AND e.seat_number IS NOT DISTINCT FROM s.seat_number
    AND e.table_id IS NOT DISTINCT FROM v_tt.table_id
    AND e.seat_id IS NOT DISTINCT FROM s.id
    AND e.status = 'seated'
@@ -481,6 +485,7 @@ BEGIN
    AND e.tournament_id = s.tournament_id
    AND e.player_id = s.player_id
    AND e.entry_no = s.entry_number
+   AND e.seat_number IS NOT DISTINCT FROM s.seat_number
    AND e.table_id IS NOT DISTINCT FROM v_tt.table_id
    AND e.seat_id IS NOT DISTINCT FROM s.id
    AND e.status = 'seated'
@@ -931,10 +936,6 @@ BEGIN
   IF NOT public.is_club_tracker(v_actor, v_tour.club_id) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'actor_not_allowed', 'message_key', 'tracker.errors.actorNotAllowed');
   END IF;
-  IF v_tour.status IN ('completed', 'cancelled') THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'tournament_not_open', 'message_key', 'tracker.errors.tournamentNotOpen');
-  END IF;
-
   -- Idempotency is checked after the tournament lock, so two tabs cannot race
   -- the same operation/key. A replay returns the persisted response unchanged
   -- except for the explicit replay marker.
@@ -953,6 +954,10 @@ BEGIN
       jsonb_set(v_existing.response, '{receipt,replayed}', 'true'::JSONB, true),
       '{replayed}', 'true'::JSONB, true
     );
+  END IF;
+
+  IF v_tour.status IN ('completed', 'cancelled') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'tournament_not_open', 'message_key', 'tracker.errors.tournamentNotOpen');
   END IF;
 
   SELECT tt.id, tt.tournament_id, tt.table_id, tt.max_seats, tt.status, tt.floor_control_mode

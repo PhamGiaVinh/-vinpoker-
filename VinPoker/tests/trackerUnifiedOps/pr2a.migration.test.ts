@@ -79,6 +79,61 @@ describe("Tracker Unified Ops V2 PR2A migration contract", () => {
     expect(migration).toMatch(/v_tt\.id,\r?\n\s+v_hand_number/);
   });
 
+  it("requires canonical entry seat identity and blocks wrong-seat entries", () => {
+    expect(
+      migration.match(/AND e\.seat_number IS NOT DISTINCT FROM s\.seat_number/g),
+    ).toHaveLength(4);
+    expect(migration).toContain(
+      "OR e.seat_number IS DISTINCT FROM s.seat_number",
+    );
+  });
+
+  it("hashes raw level and stack state without normalizing null, zero, or negatives", () => {
+    const levelHashStart = migration.indexOf("v_level_hash_json := jsonb_build_object");
+    const rosterHashStart = migration.indexOf("INTO v_roster_hash");
+    const levelHashEndMatch = /SELECT COALESCE\(jsonb_agg\(x\.row_json ORDER BY x\.seat_number, x\.seat_id\), '\[\]'::JSONB\)\r?\n\s+INTO v_roster/.exec(
+      migration.slice(levelHashStart),
+    );
+    const levelHashEnd = levelHashEndMatch
+      ? levelHashStart + levelHashEndMatch.index
+      : -1;
+    const readinessStart = migration.search(
+      /SELECT count\(\*\)::INTEGER\r?\n\s+INTO v_valid_roster_count/,
+    );
+    expect(levelHashStart).toBeGreaterThan(-1);
+    expect(levelHashEnd).toBeGreaterThan(levelHashStart);
+    expect(rosterHashStart).toBeGreaterThan(levelHashStart);
+    expect(readinessStart).toBeGreaterThan(rosterHashStart);
+    const levelHashSection = migration.slice(levelHashStart, levelHashEnd);
+    const rosterHashSection = migration.slice(rosterHashStart, readinessStart);
+    expect(levelHashSection).not.toMatch(/GREATEST\s*\(/i);
+    expect(levelHashSection).not.toMatch(/COALESCE\s*\(/i);
+    expect(rosterHashSection).not.toMatch(/GREATEST\s*\(/i);
+    expect(rosterHashSection).toContain("'tracker_stack', tcc.chip_count");
+    expect(rosterHashSection).toContain("'entry_stack', e.current_stack");
+  });
+
+  it("looks up a matching receipt before terminal tournament validation", () => {
+    const start = migration.indexOf(
+      "CREATE OR REPLACE FUNCTION public.start_tracker_hand_v2(",
+    );
+    const end = migration.indexOf(
+      "REVOKE ALL ON FUNCTION public.start_tracker_hand_v2(",
+      start,
+    );
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const startFunction = migration.slice(start, end);
+    const receiptLookup = startFunction.indexOf(
+      "SELECT r.* INTO v_existing",
+    );
+    const terminalStatusCheck = startFunction.indexOf(
+      "IF v_tour.status IN ('completed', 'cancelled') THEN",
+    );
+    expect(receiptLookup).toBeGreaterThan(-1);
+    expect(terminalStatusCheck).toBeGreaterThan(receiptLookup);
+  });
+
   it("preserves current start semantics and level/button rules", () => {
     expect(migration).toContain("v_tour.status IN ('completed', 'cancelled')");
     expect(migration).not.toContain("v_tour.status IN ('finished', 'cancelled')");
