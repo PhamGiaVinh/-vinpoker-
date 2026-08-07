@@ -67,7 +67,7 @@ function readConfig() {
 function psql(config, database, statement, actor) {
   const prelude = actor ? `SET request.jwt.claim.sub TO ${sql(actor)}; SET ROLE authenticated;` : "RESET request.jwt.claim.sub;";
   const result = spawnSync("psql", ["--no-psqlrc", "--set", "ON_ERROR_STOP=1", "--tuples-only", "--no-align", "--quiet", "--host", config.host, "--port", config.port, "--username", config.user, "--dbname", database], {
-    input: `${prelude}\n${statement}\nRESET ROLE;`, encoding: "utf8",
+    input: `${prelude}\n${statement}\n`, encoding: "utf8",
     env: { ...process.env, PGHOST: config.host, PGPORT: config.port, PGUSER: config.user, PGPASSWORD: config.password }
   });
   if (result.error) throw new Error(`psql execution failed: ${result.error.message}`);
