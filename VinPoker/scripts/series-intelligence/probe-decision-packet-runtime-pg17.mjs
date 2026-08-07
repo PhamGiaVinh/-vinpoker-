@@ -28,11 +28,11 @@ const EVENTS = {
   missing: "bcdefabc-defa-4bcd-8bcd-bcdefabcdef5",
   noForecast: "bcdefabc-defa-4bcd-8bcd-bcdefabcdef6",
   supersession: "bcdefabc-defa-4bcd-8bcd-bcdefabcdef7",
-  wrongClub: "bcdefabc-defa-4bcd-8bcd-bcdefabcdf1",
-  deleted: "bcdefabc-defa-4bcd-8bcd-bcdefabcdf2",
-  cancelled: "bcdefabc-defa-4bcd-8bcd-bcdefabcdf3",
-  unknown: "bcdefabc-defa-4bcd-8bcd-bcdefabcdf4",
-  timing: "bcdefabc-defa-4bcd-8bcd-bcdefabcdf5"
+  wrongClub: "bcdefabc-defa-4bcd-8bcd-bcdefabcdef8",
+  deleted: "bcdefabc-defa-4bcd-8bcd-bcdefabcdef9",
+  cancelled: "bcdefabc-defa-4bcd-8bcd-bcdefabcdefa",
+  unknown: "bcdefabc-defa-4bcd-8bcd-bcdefabcdefb",
+  timing: "bcdefabc-defa-4bcd-8bcd-bcdefabcdefc"
 };
 const SNAPSHOTS = {
   eligible: "70000000-0000-4000-8000-000000000001",
