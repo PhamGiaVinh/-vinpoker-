@@ -149,11 +149,11 @@ INSERT INTO public.tournament_registrations(id,tournament_id,club_id,player_id,s
 ('50000000-0000-4000-8000-000000000006',${sql(e.completed)}::uuid,${sql(CLUB)}::uuid,${sql(PLAYER_1)}::uuid,'confirmed',200000000,20000000,220000000,'2026-02-04T00:00:00Z');
 INSERT INTO public.series_event_actuals(event_id,club_id) VALUES (${sql(e.completed)}::uuid,${sql(CLUB)}::uuid);
 INSERT INTO public.series_forecast_snapshots(id,club_id,event_id,forecast_issued_at,as_of_ts,target_event_ts,forecast_identity_eligible,provenance_completeness) VALUES
-(${sql(SNAPSHOTS.eligible)}::uuid,${sql(CLUB)}::uuid,${sql(e.eligible)}::uuid,'2026-01-01T00:00:00Z','2026-01-02T00:00:00Z','2026-02-01T00:00:00Z',true,'complete'),
-(${sql(SNAPSHOTS.incomplete)}::uuid,${sql(CLUB)}::uuid,${sql(e.missing)}::uuid,'2026-01-01T00:00:00Z','2026-01-02T00:00:00Z','2026-02-09T00:00:00Z',false,'missing_code_sha'),
-(${sql(SNAPSHOTS.noForecast)}::uuid,${sql(CLUB)}::uuid,${sql(e.noForecast)}::uuid,'2026-01-01T00:00:00Z','2026-01-02T00:00:00Z','2026-02-11T00:00:00Z',false,'manual'),
-(${sql(SNAPSHOTS.supersession)}::uuid,${sql(CLUB)}::uuid,${sql(e.supersession)}::uuid,'2026-01-01T00:00:00Z','2026-01-02T00:00:00Z','2026-02-13T00:00:00Z',true,'complete'),
-(${sql(SNAPSHOTS.wrongClub)}::uuid,${sql(OTHER_CLUB)}::uuid,${sql(e.wrongClub)}::uuid,'2026-01-01T00:00:00Z','2026-01-02T00:00:00Z','2026-02-15T00:00:00Z',true,'complete')`);
+(${sql(SNAPSHOTS.eligible)}::uuid,${sql(CLUB)}::uuid,${sql(e.eligible)}::uuid,'2026-01-02T00:00:00Z','2026-01-01T00:00:00Z','2026-02-01T00:00:00Z',true,'complete'),
+(${sql(SNAPSHOTS.incomplete)}::uuid,${sql(CLUB)}::uuid,${sql(e.missing)}::uuid,'2026-01-02T00:00:00Z','2026-01-01T00:00:00Z','2026-02-09T00:00:00Z',false,'missing_code_sha'),
+(${sql(SNAPSHOTS.noForecast)}::uuid,${sql(CLUB)}::uuid,${sql(e.noForecast)}::uuid,'2026-01-02T00:00:00Z','2026-01-01T00:00:00Z','2026-02-11T00:00:00Z',false,'manual'),
+(${sql(SNAPSHOTS.supersession)}::uuid,${sql(CLUB)}::uuid,${sql(e.supersession)}::uuid,'2026-01-02T00:00:00Z','2026-01-01T00:00:00Z','2026-02-13T00:00:00Z',true,'complete'),
+(${sql(SNAPSHOTS.wrongClub)}::uuid,${sql(OTHER_CLUB)}::uuid,${sql(e.wrongClub)}::uuid,'2026-01-02T00:00:00Z','2026-01-01T00:00:00Z','2026-02-15T00:00:00Z',true,'complete')`);
 }
 
 async function main() {
