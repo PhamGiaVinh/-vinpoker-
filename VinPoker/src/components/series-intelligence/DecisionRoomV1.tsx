@@ -35,6 +35,7 @@ import type {
   CountMetricInput,
   DecisionPacketHorizon,
   EventActualCreateRequestInput,
+  EventActualMetrics,
   EventActualMetricsInput,
   MetricAvailability,
 } from "@/lib/series-intelligence/decisionPacketV1";
@@ -119,6 +120,14 @@ function emptyMetrics(entries: number): EventActualMetricsInput {
   };
 }
 
+type ReconciliationMode = "blocked_conflict" | "manual";
+
+function manualResolutionFields(metrics: EventActualMetrics): Record<string, Record<string, unknown>> {
+  return Object.fromEntries(
+    Object.entries(metrics).map(([key, metric]) => [key, { ...metric, resolutionSource: "chose_manual" }]),
+  );
+}
+
 function errorLabel(error: string): string {
   if (error === "backend_unavailable") return "Backend D2A/D2B chưa có trên môi trường này.";
   if (error === "malformed_response") return "Phản hồi backend không đúng contract; đã dừng và không hiển thị số liệu.";
@@ -138,18 +147,29 @@ function ActualMetrics({ revision }: { revision: DecisionEventStateActualRevisio
   );
 }
 
-function PacketList({ packets }: { packets: readonly DecisionEventStatePacket[] }) {
+function PacketList({
+  packets,
+  onCorrect,
+}: {
+  packets: readonly DecisionEventStatePacket[];
+  onCorrect: (packet: DecisionEventStatePacket) => void;
+}) {
   if (packets.length === 0) {
     return <p className="text-sm text-muted-foreground">Chưa có packet nào cho giải này.</p>;
   }
+  const supersededPacketIds = new Set(
+    packets
+      .map((packet) => packet.supersedesPacketId)
+      .filter((packetId): packetId is string => packetId !== null),
+  );
   return (
     <div className="grid gap-2 sm:grid-cols-2" data-testid="decision-room-packets">
       {packets.map((packet) => (
-        <div key={packet.packetId} className="rounded-md border border-border/60 p-3">
+        <div key={packet.packetId} className="rounded-md border border-border/60 p-3" data-testid={`decision-room-packet-${packet.packetId}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-medium">{packetLabel(packet)}</span>
-            <Badge variant={packet.packetState === "frozen" ? "default" : "outline"}>
-              {packet.packetState === "frozen" ? "Đã khóa" : "Bản nháp"}
+            <Badge variant={packet.packetState === "frozen" && !supersededPacketIds.has(packet.packetId) ? "default" : "outline"}>
+              {supersededPacketIds.has(packet.packetId) ? "Đã được thay thế" : packet.packetState === "frozen" ? "Đang dùng" : "Bản nháp"}
             </Badge>
           </div>
           <dl className="mt-3 grid gap-2 text-xs text-muted-foreground">
@@ -157,6 +177,17 @@ function PacketList({ packets }: { packets: readonly DecisionEventStatePacket[] 
             <div className="flex justify-between gap-3"><dt>Chỉ số</dt><dd className="text-right text-foreground">{packet.targetMetric}</dd></div>
             <div className="flex justify-between gap-3"><dt>Khóa lúc</dt><dd className="text-right text-foreground">{packet.frozenAt ? formatShortDate(packet.frozenAt) : "Chưa khóa"}</dd></div>
           </dl>
+          {packet.packetState === "frozen" && !supersededPacketIds.has(packet.packetId) && (
+            <Button
+              className="mt-3 w-full sm:w-auto"
+              data-testid="decision-room-correction"
+              onClick={() => onCorrect(packet)}
+              size="sm"
+              variant="outline"
+            >
+              Tạo bản sửa
+            </Button>
+          )}
         </div>
       ))}
     </div>
@@ -168,7 +199,11 @@ export function DecisionRoomV1() {
   const [eventId, setEventId] = useState("");
   const [horizon, setHorizon] = useState<DecisionPacketHorizon>("T-7");
   const [decisionReason, setDecisionReason] = useState("");
+  const [correctionSource, setCorrectionSource] = useState<DecisionEventStatePacket | null>(null);
+  const [correctionReason, setCorrectionReason] = useState("");
   const [actualEntries, setActualEntries] = useState("");
+  const [reconciliationMode, setReconciliationMode] = useState<ReconciliationMode>("blocked_conflict");
+  const [reconciliationReason, setReconciliationReason] = useState("");
   const [state, setState] = useState<DecisionEventStateResponse | null>(null);
   const [stateError, setStateError] = useState<string | null>(null);
   const [loadingState, setLoadingState] = useState(false);
@@ -201,6 +236,10 @@ export function DecisionRoomV1() {
   };
 
   useEffect(() => {
+    setCorrectionSource(null);
+    setCorrectionReason("");
+    setReconciliationMode("blocked_conflict");
+    setReconciliationReason("");
     void refreshState();
     // Event selection is the deliberate refresh boundary; the button handles manual refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -219,15 +258,20 @@ export function DecisionRoomV1() {
     return true;
   };
 
-  const createPacket = async () => {
+  const createPacket = async (sourcePacket: DecisionEventStatePacket | null = correctionSource) => {
     if (!selectedEvent?.start_time || !capture.clubId) {
       toast.error("Giải chưa có thời điểm bắt đầu hoặc chưa chọn CLB.");
+      return;
+    }
+    const normalizedCorrectionReason = correctionReason.trim();
+    if (sourcePacket && !normalizedCorrectionReason) {
+      toast.error("Bản sửa phải có lý do.");
       return;
     }
     const asOf = new Date();
     const request = {
       eventId: selectedEvent.id,
-      horizon,
+      horizon: sourcePacket?.horizon ?? horizon,
       targetMetric: "entries" as const,
       asOfTs: asOf.toISOString(),
       sourceCutoff: new Date(asOf.getTime() - 1000).toISOString(),
@@ -242,15 +286,24 @@ export function DecisionRoomV1() {
       recommendedAction: null,
       ownerDecision: null,
       publicAction: null,
-      decisionReason: decisionReason.trim() || null,
+      decisionReason: decisionReason.trim() || normalizedCorrectionReason || null,
       alternatives: [],
       assumptions: ["Decision Room V1 tạo packet không có dự báo khi chưa có snapshot đủ provenance."],
       uncertaintyNotes: "Chưa có forecast snapshot identity-eligible.",
-      supersedesPacketId: null,
-      correctionReason: null,
-      idempotencyKey: `d2c:packet:${selectedEvent.id}:${horizon}:${asOf.getTime()}`,
+      supersedesPacketId: sourcePacket?.packetId ?? null,
+      correctionReason: sourcePacket ? normalizedCorrectionReason : null,
+      idempotencyKey: sourcePacket
+        ? `d2c:packet-correction:${sourcePacket.packetId}:${asOf.getTime()}`
+        : `d2c:packet:${selectedEvent.id}:${horizon}:${asOf.getTime()}`,
     };
-    await runMutation(() => createDecisionPacket(request), "Đã tạo packet bản nháp.");
+    const succeeded = await runMutation(
+      () => createDecisionPacket(request),
+      sourcePacket ? "Đã tạo bản nháp sửa; packet cũ vẫn được giữ nguyên." : "Đã tạo packet bản nháp.",
+    );
+    if (succeeded && sourcePacket) {
+      setCorrectionSource(null);
+      setCorrectionReason("");
+    }
   };
 
   const freezePacket = async (packet: DecisionEventStatePacket) => {
@@ -279,6 +332,31 @@ export function DecisionRoomV1() {
       correctionReason: null,
     };
     await runMutation(() => recordEventActual(request), "Đã ghi kết quả thật với các trường thiếu được giữ là thiếu.");
+  };
+
+  const submitReconciliation = async () => {
+    const autoHead = state?.actualTruth.autoHead;
+    const manualHead = state?.actualTruth.manualHead;
+    const normalizedReason = reconciliationReason.trim();
+    if (!autoHead || !manualHead || !normalizedReason) {
+      toast.error("Đối soát phải có đủ hai nguồn và lý do.");
+      return;
+    }
+    const resolution = reconciliationMode === "manual"
+      ? { mode: "manual", fields: manualResolutionFields(manualHead.metrics) }
+      : { mode: "blocked_conflict", blockReasons: ["owner_review_required"] };
+    await runMutation(
+      () => reconcileEventActual({
+        autoRevisionId: autoHead.revisionId,
+        manualRevisionId: manualHead.revisionId,
+        resolution,
+        reason: normalizedReason,
+        idempotencyKey: `d2c:reconcile:${eventId}:${reconciliationMode}:${Date.now()}`,
+      }),
+      reconciliationMode === "manual"
+        ? "Đã chọn nguồn manual làm kết quả đã đối soát."
+        : "Đã ghi trạng thái xung đột để owner xem lại.",
+    );
   };
 
   if (!capture.loading && capture.clubs.length === 0) {
@@ -361,13 +439,20 @@ export function DecisionRoomV1() {
 
           <Card>
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><LockKeyhole className="h-4 w-4 text-primary" /> Decision packets</CardTitle><CardDescription>Packet là bản ghi append-only. Freeze chỉ khóa packet; không sửa lại lịch sử.</CardDescription></CardHeader>
-            <CardContent className="space-y-4"><PacketList packets={state.decisionPackets} />
-              <div className="grid gap-3 border-t border-border/60 pt-4 md:grid-cols-[8rem_minmax(0,1fr)_auto]">
-                <Select value={horizon} onValueChange={(value) => setHorizon(value as DecisionPacketHorizon)}><SelectTrigger aria-label="Horizon"><SelectValue /></SelectTrigger><SelectContent>{HORIZONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
-                <Textarea value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} placeholder="Lý do quyết định (tuỳ chọn)" aria-label="Lý do quyết định" className="min-h-10" />
-                <Button onClick={() => void createPacket()} disabled={saving || !selectedEvent.start_time}><FileClock className="mr-2 h-4 w-4" /> Tạo bản nháp</Button>
-              </div>
-              {draftPacket && <Button variant="outline" onClick={() => void freezePacket(draftPacket)} disabled={saving}><LockKeyhole className="mr-2 h-4 w-4" /> Khóa packet bản nháp</Button>}
+            <CardContent className="space-y-4"><PacketList packets={state.decisionPackets} onCorrect={setCorrectionSource} />
+               <div className="grid gap-3 border-t border-border/60 pt-4 md:grid-cols-[8rem_minmax(0,1fr)_auto]">
+                 <Select value={horizon} onValueChange={(value) => setHorizon(value as DecisionPacketHorizon)}><SelectTrigger aria-label="Horizon"><SelectValue /></SelectTrigger><SelectContent>{HORIZONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
+                 <Textarea value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} placeholder="Lý do quyết định (tuỳ chọn)" aria-label="Lý do quyết định" className="min-h-10" />
+                 <Button data-testid="decision-room-create-packet" onClick={() => void createPacket()} disabled={saving || !selectedEvent.start_time || Boolean(correctionSource && !correctionReason.trim())}><FileClock className="mr-2 h-4 w-4" /> {correctionSource ? "Tạo bản sửa" : "Tạo bản nháp"}</Button>
+               </div>
+               {correctionSource && (
+                 <div className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3">
+                   <p className="text-sm font-medium">Đang tạo bản sửa cho {correctionSource.horizon}. Packet đã khóa sẽ không bị sửa.</p>
+                   <Textarea data-testid="decision-room-correction-reason" value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} placeholder="Lý do bản sửa (bắt buộc)" aria-label="Lý do bản sửa" className="min-h-16" />
+                   <Button type="button" variant="ghost" size="sm" onClick={() => { setCorrectionSource(null); setCorrectionReason(""); }}>Hủy bản sửa</Button>
+                 </div>
+               )}
+               {draftPacket && <Button variant="outline" onClick={() => void freezePacket(draftPacket)} disabled={saving}><LockKeyhole className="mr-2 h-4 w-4" /> Khóa packet bản nháp</Button>}
             </CardContent>
           </Card>
 
@@ -381,7 +466,22 @@ export function DecisionRoomV1() {
               </div>
               <p className="text-xs text-muted-foreground">Bản ghi manual V1 chưa có source timestamp sẽ không đủ điều kiện chấm forecast. Đây là chủ ý fail-closed.</p>
               {canPromote && <Button variant="outline" onClick={() => void runMutation(() => promoteNativeEventActual({ eventId, idempotencyKey: `d2c:native:${eventId}:${Date.now()}` }), "Đã yêu cầu đưa nguồn hệ thống vào D2B.")} disabled={saving}><DatabaseZap className="mr-2 h-4 w-4" /> Đưa nguồn hệ thống vào</Button>}
-              {canReconcile && <Button variant="outline" onClick={() => void runMutation(() => reconcileEventActual({ autoRevisionId: state.actualTruth.autoHead!.revisionId, manualRevisionId: state.actualTruth.manualHead!.revisionId, resolution: { mode: "blocked_conflict", blockReasons: ["owner_review_required"] }, reason: "Decision Room chưa tự chọn giữa hai nguồn khác nhau.", idempotencyKey: `d2c:reconcile:${eventId}:${Date.now()}` }), "Đã ghi trạng thái cần owner xem lại.")} disabled={saving}><AlertTriangle className="mr-2 h-4 w-4" /> Ghi nhận cần đối soát</Button>}
+              {canReconcile && (
+                <div className="space-y-2 border-t border-border/60 pt-4" data-testid="decision-room-reconciliation">
+                  <p className="text-sm font-medium">Hai nguồn đang khác nhau. Chọn cách xử lý và ghi rõ lý do.</p>
+                  <Select value={reconciliationMode} onValueChange={(value) => setReconciliationMode(value as ReconciliationMode)}>
+                    <SelectTrigger aria-label="Cách đối soát"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="blocked_conflict">Giữ xung đột để owner xem lại</SelectItem>
+                      <SelectItem value="manual">Chọn toàn bộ nguồn manual</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Textarea data-testid="decision-room-reconciliation-reason" value={reconciliationReason} onChange={(event) => setReconciliationReason(event.target.value)} placeholder="Lý do đối soát (bắt buộc)" aria-label="Lý do đối soát" className="min-h-16" />
+                  <Button variant="outline" onClick={() => void submitReconciliation()} disabled={saving || !reconciliationReason.trim()}>
+                    <AlertTriangle className="mr-2 h-4 w-4" /> {reconciliationMode === "manual" ? "Chọn nguồn manual" : "Ghi nhận xung đột"}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
 

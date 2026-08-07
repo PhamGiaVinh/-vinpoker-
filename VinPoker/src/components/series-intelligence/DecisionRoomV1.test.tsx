@@ -1,10 +1,11 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const getDecisionEventState = vi.hoisted(() => vi.fn());
+const createDecisionPacket = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/series-intelligence/decisionPacketRpc", () => ({
-  createDecisionPacket: vi.fn(),
+  createDecisionPacket,
   freezeDecisionPacket: vi.fn(),
   getDecisionEventState,
   promoteNativeEventActual: vi.fn(),
@@ -60,5 +61,43 @@ describe("DecisionRoomV1", () => {
     expect(screen.getByText(/Chưa có bản ghi kết quả thật/)).toBeInTheDocument();
     expect(screen.getByText(/Room không tự tính điểm/)).toBeInTheDocument();
     expect(screen.queryByText(/probability|khuyến nghị|tối ưu/i)).toBeNull();
+  });
+
+  it("exposes an append-only correction flow and labels superseded packets", async () => {
+    const frozenPacket = {
+      packetId: "packet-frozen",
+      horizon: "T-7" as const,
+      targetMetric: "entries" as const,
+      packetState: "frozen" as const,
+      asOfTs: "2026-08-07T00:00:00.000Z",
+      sourceCutoff: "2026-08-06T23:59:59.000Z",
+      forecastSnapshotId: null,
+      forecastState: "no_forecast_available" as const,
+      contentHash: "hash-frozen",
+      frozenAt: "2026-08-07T00:00:01.000Z",
+      supersedesPacketId: null,
+    };
+    const currentFrozen = {
+      ...frozenPacket,
+      packetId: "packet-current",
+      contentHash: "hash-current",
+      frozenAt: "2026-08-07T00:00:02.000Z",
+      supersedesPacketId: "packet-frozen",
+    };
+    getDecisionEventState.mockResolvedValue({ ok: true, value: { ...state, decisionPackets: [frozenPacket, currentFrozen] } });
+    createDecisionPacket.mockResolvedValue({ ok: true, value: { id: "packet-correction", schema_version: "series-decision-packet-v1" } });
+    render(<DecisionRoomV1 />);
+
+    await waitFor(() => expect(screen.getByTestId("decision-room-correction")).toBeInTheDocument());
+    expect(screen.getByText("Đã được thay thế")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("decision-room-correction"));
+    fireEvent.change(screen.getByTestId("decision-room-correction-reason"), { target: { value: "Sửa lại thông tin đã chốt." } });
+    fireEvent.click(screen.getByTestId("decision-room-create-packet"));
+
+    await waitFor(() => expect(createDecisionPacket).toHaveBeenCalledWith(expect.objectContaining({
+      supersedesPacketId: "packet-current",
+      correctionReason: "Sửa lại thông tin đã chốt.",
+      horizon: "T-7",
+    })));
   });
 });
