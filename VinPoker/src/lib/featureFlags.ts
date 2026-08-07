@@ -935,6 +935,13 @@ export const FEATURES = {
    */
   seriesDecisionLog: true,
   /**
+   * Series Intelligence — D2C Decision Room V1. Owner-scoped packet/actual
+   * read model and explicit D2A/D2B RPC actions. Default OFF until the
+   * source-only Preview UAT proves the live contract and mobile states.
+   * Kill-switch: set false to keep the existing CAPTURE console unchanged.
+   */
+  seriesDecisionPacketV1: false,
+  /**
    * Series Intelligence — turnout forecast (transparent ridge log-linear, RESEARCH tier). When ON, step ④
    * of the SI page shows the TurnoutForecastPanel: predicts entries for an upcoming event from the club's
    * OWN past events with a confidence band + tier + walk-forward CV error vs a median baseline. Labeled
