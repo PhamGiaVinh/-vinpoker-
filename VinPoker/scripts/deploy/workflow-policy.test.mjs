@@ -59,6 +59,9 @@ test("frontend receipt verification has a bounded Vercel alias convergence windo
   assert.match(frontendDeploy, /shell_verify_attempts=72/);
   assert.match(frontendDeploy, /shell_verify_interval_seconds=5/);
   assert.equal((frontendDeploy.match(/\$\(seq 1 "\$shell_verify_attempts"\)/gu) ?? []).length, 2);
+  assert.match(frontendDeploy, /FRONTEND_DEPLOYMENT_URL_VERIFY=NOT_CONVERGED/);
+  assert.doesNotMatch(frontendDeploy, /test "\$verified" = true/);
+  assert.match(frontendDeploy, /test "\$canonical_verified" = true/);
 });
 
 test("Floor clock deploy remains an explicit protected critical selection", () => {
