@@ -65,4 +65,29 @@ describe("Tracker Unified Ops V2 PR2A migration contract", () => {
       "GRANT EXECUTE ON FUNCTION public.start_tracker_hand_v2(UUID, UUID, INTEGER, TEXT, TEXT)",
     );
   });
+
+  it("keeps canonical seat, physical entry, and compatible hand identity domains", () => {
+    expect(migration).toContain("AND s.table_id = v_tt.id");
+    expect(migration).not.toContain("AND s.table_id = v_tt.table_id");
+    expect(migration).toContain(
+      "AND e.table_id IS NOT DISTINCT FROM v_tt.table_id",
+    );
+    expect(migration).not.toMatch(
+      /e\.table_id IS (?:NOT )?DISTINCT FROM s\.table_id/,
+    );
+    expect(migration).toContain("AND h.table_id IN (v_tt.id, v_tt.table_id)");
+    expect(migration).toContain("v_tt.id,\n    v_hand_number");
+  });
+
+  it("preserves current start semantics and level/button rules", () => {
+    expect(migration).toContain("v_tour.status IN ('completed', 'cancelled')");
+    expect(migration).not.toContain("v_tour.status IN ('finished', 'cancelled')");
+    expect(migration).toContain("tt.max_seats");
+    expect(migration).toContain("IF p_button_seat > v_tt.max_seats THEN");
+    expect(migration).not.toMatch(/jsonb_array_elements\(v_context->'roster'\).*p_button_seat/s);
+    expect(migration).toMatch(/starting_stack,\r?\n\s+ending_stack,/);
+    expect(migration).toMatch(/\(r->>'seat_stack'\)::INTEGER,\r?\n\s+NULL,/);
+    expect(migration).toContain("OR v_level.ante < 0");
+    expect(migration).not.toContain("OR v_level.ante <= 0");
+  });
 });

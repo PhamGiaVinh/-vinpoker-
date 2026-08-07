@@ -215,14 +215,14 @@ BEGIN
   INTO v_next_hand_number
   FROM public.tournament_hands h
   WHERE h.tournament_id = p_tournament_id
-    AND h.table_id = v_tt.table_id;
+    AND h.table_id IN (v_tt.id, v_tt.table_id);
 
   SELECT h.id, h.hand_number, h.status, h.hand_time, h.locked_by_user_id,
          h.locked_at, COALESCE(h.tracker_lock_version, 0) AS tracker_lock_version
   INTO v_active
   FROM public.tournament_hands h
   WHERE h.tournament_id = p_tournament_id
-    AND h.table_id = v_tt.table_id
+    AND h.table_id IN (v_tt.id, v_tt.table_id)
     AND h.status = 'in_progress'
     AND COALESCE(h.is_voided, false) = false
   ORDER BY h.hand_number DESC, h.id DESC
@@ -335,7 +335,7 @@ BEGIN
      AND tcc.entry_number = s.entry_number
     LEFT JOIN public.profiles p ON p.user_id = s.player_id
     WHERE s.tournament_id = p_tournament_id
-      AND s.table_id = v_tt.table_id
+      AND s.table_id = v_tt.id
       AND s.is_active
       AND s.status = 'active'
       AND s.entry_id IS NOT NULL
@@ -366,7 +366,7 @@ BEGIN
      AND tcc.player_id = s.player_id
      AND tcc.entry_number = s.entry_number
     WHERE s.tournament_id = p_tournament_id
-      AND s.table_id = v_tt.table_id
+      AND s.table_id = v_tt.id
       AND s.is_active
       AND s.status = 'active'
       AND s.entry_id IS NOT NULL
@@ -380,11 +380,11 @@ BEGIN
    AND e.tournament_id = s.tournament_id
    AND e.player_id = s.player_id
    AND e.entry_no = s.entry_number
-   AND e.table_id IS NOT DISTINCT FROM s.table_id
+    AND e.table_id IS NOT DISTINCT FROM v_tt.table_id
    AND e.seat_id IS NOT DISTINCT FROM s.id
    AND e.status = 'seated'
   WHERE s.tournament_id = p_tournament_id
-    AND s.table_id = v_tt.table_id
+    AND s.table_id = v_tt.id
     AND s.is_active
     AND s.status = 'active'
     AND s.entry_id IS NOT NULL;
@@ -393,7 +393,7 @@ BEGIN
   INTO v_missing_entry_count
   FROM public.tournament_seats s
   WHERE s.tournament_id = p_tournament_id
-    AND s.table_id = v_tt.table_id
+    AND s.table_id = v_tt.id
     AND s.is_active
     AND s.status = 'active'
     AND s.entry_id IS NULL;
@@ -405,7 +405,7 @@ BEGIN
     ON e.id = s.entry_id
    AND e.tournament_id = s.tournament_id
   WHERE s.tournament_id = p_tournament_id
-    AND s.table_id = v_tt.table_id
+    AND s.table_id = v_tt.id
     AND s.is_active
     AND s.status = 'active'
     AND s.entry_id IS NOT NULL
@@ -413,7 +413,7 @@ BEGIN
       e.id IS NULL
       OR e.player_id IS DISTINCT FROM s.player_id
       OR e.entry_no IS DISTINCT FROM s.entry_number
-      OR e.table_id IS DISTINCT FROM s.table_id
+      OR e.table_id IS DISTINCT FROM v_tt.table_id
       OR e.seat_id IS DISTINCT FROM s.id
       OR e.status IS DISTINCT FROM 'seated'
     );
@@ -428,11 +428,11 @@ BEGIN
      AND e.tournament_id = s.tournament_id
      AND e.player_id = s.player_id
      AND e.entry_no = s.entry_number
-     AND e.table_id IS NOT DISTINCT FROM s.table_id
+     AND e.table_id IS NOT DISTINCT FROM v_tt.table_id
      AND e.seat_id IS NOT DISTINCT FROM s.id
      AND e.status = 'seated'
     WHERE s.tournament_id = p_tournament_id
-      AND s.table_id = v_tt.table_id
+      AND s.table_id = v_tt.id
       AND s.is_active
       AND s.status = 'active'
     GROUP BY s.player_id
@@ -445,7 +445,7 @@ BEGIN
     SELECT s.seat_number
     FROM public.tournament_seats s
     WHERE s.tournament_id = p_tournament_id
-      AND s.table_id = v_tt.table_id
+      AND s.table_id = v_tt.id
       AND s.is_active
       AND s.status = 'active'
     GROUP BY s.seat_number
@@ -460,7 +460,7 @@ BEGIN
    AND e.tournament_id = s.tournament_id
    AND e.player_id = s.player_id
    AND e.entry_no = s.entry_number
-   AND e.table_id IS NOT DISTINCT FROM s.table_id
+   AND e.table_id IS NOT DISTINCT FROM v_tt.table_id
    AND e.seat_id IS NOT DISTINCT FROM s.id
    AND e.status = 'seated'
   LEFT JOIN public.tournament_chip_counts tcc
@@ -468,7 +468,7 @@ BEGIN
    AND tcc.player_id = s.player_id
    AND tcc.entry_number = s.entry_number
   WHERE s.tournament_id = p_tournament_id
-    AND s.table_id = v_tt.table_id
+    AND s.table_id = v_tt.id
     AND s.is_active
     AND s.status = 'active'
     AND (s.chip_count <= 0 OR COALESCE(tcc.chip_count, 0) <= 0 OR e.current_stack <= 0);
@@ -481,7 +481,7 @@ BEGIN
    AND e.tournament_id = s.tournament_id
    AND e.player_id = s.player_id
    AND e.entry_no = s.entry_number
-   AND e.table_id IS NOT DISTINCT FROM s.table_id
+   AND e.table_id IS NOT DISTINCT FROM v_tt.table_id
    AND e.seat_id IS NOT DISTINCT FROM s.id
    AND e.status = 'seated'
   LEFT JOIN public.tournament_chip_counts tcc
@@ -489,7 +489,7 @@ BEGIN
    AND tcc.player_id = s.player_id
    AND tcc.entry_number = s.entry_number
   WHERE s.tournament_id = p_tournament_id
-    AND s.table_id = v_tt.table_id
+    AND s.table_id = v_tt.id
     AND s.is_active
     AND s.status = 'active'
     AND (
@@ -595,7 +595,7 @@ BEGIN
     ));
   ELSIF v_level.small_blind <= 0
      OR v_level.big_blind <= 0
-     OR v_level.ante <= 0
+     OR v_level.ante < 0
      OR v_level.big_blind < v_level.small_blind
      OR v_level.level_number <= 0 THEN
     v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
@@ -920,7 +920,7 @@ BEGIN
 
   PERFORM public.tracker_unified_ops_lock_tournament(p_tournament_id);
 
-  SELECT t.id, t.club_id, t.status
+  SELECT t.id, t.club_id, t.status, t.current_level, t.current_level_id
   INTO v_tour
   FROM public.tournaments t
   WHERE t.id = p_tournament_id
@@ -931,7 +931,7 @@ BEGIN
   IF NOT public.is_club_tracker(v_actor, v_tour.club_id) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'actor_not_allowed', 'message_key', 'tracker.errors.actorNotAllowed');
   END IF;
-  IF v_tour.status IN ('finished', 'cancelled') THEN
+  IF v_tour.status IN ('completed', 'cancelled') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'tournament_not_open', 'message_key', 'tracker.errors.tournamentNotOpen');
   END IF;
 
@@ -955,7 +955,7 @@ BEGIN
     );
   END IF;
 
-  SELECT tt.id, tt.tournament_id, tt.table_id, tt.status, tt.floor_control_mode
+  SELECT tt.id, tt.tournament_id, tt.table_id, tt.max_seats, tt.status, tt.floor_control_mode
   INTO v_tt
   FROM public.tournament_tables tt
   WHERE tt.id = p_tournament_table_id
@@ -968,11 +968,20 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'table_not_found', 'message_key', 'tracker.errors.tableNotFound');
   END IF;
 
+  IF p_button_seat > v_tt.max_seats THEN
+    RETURN jsonb_build_object(
+      'ok', false,
+      'error', 'invalid_button_seat',
+      'message_key', 'tracker.errors.invalidButtonSeat',
+      'max_seats', v_tt.max_seats
+    );
+  END IF;
+
   -- Fixed row-lock order after the tournament advisory lock.
   SELECT h.* INTO v_active
   FROM public.tournament_hands h
   WHERE h.tournament_id = p_tournament_id
-    AND h.table_id = v_tt.table_id
+    AND h.table_id IN (v_tt.id, v_tt.table_id)
     AND h.status = 'in_progress'
     AND COALESCE(h.is_voided, false) = false
   ORDER BY h.hand_number DESC, h.id DESC
@@ -983,13 +992,18 @@ BEGIN
   PERFORM 1
   FROM public.tournament_seats s
   WHERE s.tournament_id = p_tournament_id
-    AND s.table_id = v_tt.table_id
+    AND s.table_id = v_tt.id
   FOR UPDATE;
 
   PERFORM 1
   FROM public.tournament_entries e
-  WHERE e.tournament_id = p_tournament_id
-    AND e.table_id = v_tt.table_id
+  WHERE e.id IN (
+    SELECT s.entry_id
+    FROM public.tournament_seats s
+    WHERE s.tournament_id = p_tournament_id
+      AND s.table_id = v_tt.id
+      AND s.entry_id IS NOT NULL
+  )
   FOR UPDATE;
 
   PERFORM 1
@@ -999,7 +1013,7 @@ BEGIN
       SELECT 1
       FROM public.tournament_seats s
       WHERE s.tournament_id = c.tournament_id
-        AND s.table_id = v_tt.table_id
+        AND s.table_id = v_tt.id
         AND s.player_id = c.player_id
         AND s.entry_number = c.entry_number
     )
@@ -1008,6 +1022,14 @@ BEGIN
   PERFORM 1
   FROM public.tournament_levels l
   WHERE l.tournament_id = p_tournament_id
+    AND (
+      (v_tour.current_level_id IS NOT NULL AND l.id = v_tour.current_level_id)
+      OR (
+        v_tour.current_level_id IS NULL
+        AND v_tour.current_level IS NOT NULL
+        AND l.level_number = v_tour.current_level
+      )
+    )
   FOR UPDATE;
 
   v_context := public._tracker_unified_ops_context_v2(p_tournament_id, p_tournament_table_id, v_actor);
@@ -1046,19 +1068,6 @@ BEGIN
     );
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1
-    FROM jsonb_array_elements(v_context->'roster') r
-    WHERE (r->>'seat_number')::INTEGER = p_button_seat
-  ) THEN
-    RETURN jsonb_build_object(
-      'ok', false,
-      'error', 'invalid_button_seat',
-      'message_key', 'tracker.errors.invalidButtonSeat',
-      'context_version', v_context->>'context_version'
-    );
-  END IF;
-
   v_hand_number := (v_context->>'next_hand_number')::INTEGER;
   v_level := v_context->'level';
   v_roster := v_context->'roster';
@@ -1084,7 +1093,7 @@ BEGIN
   )
   VALUES (
     p_tournament_id,
-    v_tt.table_id,
+    v_tt.id,
     v_hand_number,
     v_hand_time,
     'in_progress',
@@ -1124,7 +1133,7 @@ BEGIN
     (r->>'entry_number')::INTEGER,
     (r->>'seat_number')::INTEGER,
     (r->>'seat_stack')::INTEGER,
-    (r->>'seat_stack')::INTEGER,
+    NULL,
     false,
     '[]'::JSONB,
     '[]'::JSONB,
