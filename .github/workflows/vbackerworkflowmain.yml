@@ -30,6 +30,11 @@ on:
         required: true
         default: false
         type: boolean
+      deploy_ops_club_accounts:
+        description: "Deploy critical Edge function ops-club-accounts"
+        required: true
+        default: false
+        type: boolean
       deploy_frontend:
         description: "Deploy the reviewed frontend source at commit_sha"
         required: true
@@ -122,6 +127,7 @@ jobs:
           DEPLOY_MASS_ASSIGN: ${{ inputs.deploy_mass_assign || false }}
           DEPLOY_CHECKOUT_DEALER: ${{ inputs.deploy_checkout_dealer || false }}
           DEPLOY_TOURNAMENT_LIVE_CLOCK: ${{ inputs.deploy_tournament_live_clock || false }}
+          DEPLOY_OPS_CLUB_ACCOUNTS: ${{ inputs.deploy_ops_club_accounts || false }}
           DEPLOY_FRONTEND: ${{ inputs.deploy_frontend || false }}
           FORCE_FRONTEND_REDEPLOY: ${{ inputs.force_frontend_redeploy || false }}
         run: |
@@ -131,6 +137,7 @@ jobs:
           [[ "$DEPLOY_MASS_ASSIGN" == "true" ]] && selected+=("mass-assign")
           [[ "$DEPLOY_CHECKOUT_DEALER" == "true" ]] && selected+=("checkout-dealer")
           [[ "$DEPLOY_TOURNAMENT_LIVE_CLOCK" == "true" ]] && selected+=("tournament-live-clock")
+          [[ "$DEPLOY_OPS_CLUB_ACCOUNTS" == "true" ]] && selected+=("ops-club-accounts")
           selected_csv="$(IFS=,; echo "${selected[*]-}")"
           node control-plane/VinPoker/scripts/deploy/plan-edge-deployment.mjs \
             --event "${{ github.event_name }}" \

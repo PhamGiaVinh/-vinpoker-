@@ -68,6 +68,17 @@ test("Floor clock deploy remains an explicit protected critical selection", () =
   );
 });
 
+test("Ops club-account deploy remains an explicit protected critical selection", () => {
+  const criticalJob = workflow.slice(
+    workflow.indexOf("deploy-critical-edge:"),
+    workflow.indexOf("deploy-frontend:"),
+  );
+  assert.match(workflow, /deploy_ops_club_accounts:/);
+  assert.match(workflow, /selected\+=\("ops-club-accounts"\)/);
+  assert.match(workflow, /validate-critical-environment:/);
+  assert.match(criticalJob, /environment:\s*\n\s*name: dealer-swing-production-critical/);
+});
+
 test("every live probe derives its profile from the exact target checkout", () => {
   const probes = [...workflow.matchAll(/probe-live-schema-contracts\.mjs([\s\S]{0,300})/g)];
   assert.equal(probes.length, 4);

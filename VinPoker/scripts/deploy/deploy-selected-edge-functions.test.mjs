@@ -22,6 +22,10 @@ test("critical JWT posture is preserved by deployment arguments", () => {
     deploymentArguments("tournament-live-clock", manifest.functions["tournament-live-clock"]),
     ["functions", "deploy", "tournament-live-clock"],
   );
+  assert.deepEqual(
+    deploymentArguments("ops-club-accounts", manifest.functions["ops-club-accounts"]),
+    ["functions", "deploy", "ops-club-accounts"],
+  );
 });
 
 test("target parser rejects duplicate deployment targets", () => {

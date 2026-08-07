@@ -274,6 +274,8 @@ test("full receipt-to-target diff catches a change hidden behind a later commit"
     runGit("config", "user.name", "Control Plane Test");
     put("VinPoker/src/App.tsx", "baseline");
     put("VinPoker/supabase/functions/process-swing/index.ts", "baseline");
+    put("VinPoker/supabase/functions/mass-assign/index.ts", "baseline");
+    put("VinPoker/supabase/functions/checkout-dealer/index.ts", "baseline");
     put("VinPoker/supabase/functions/_shared/shared.ts", "baseline");
     runGit("add", "."); runGit("commit", "-m", "baseline");
     const baseline = runGit("rev-parse", "HEAD");
@@ -392,6 +394,8 @@ test("pre-922 rollback target can be planned with current control-plane", () => 
     baselines,
     manifest,
   });
+  assert.equal(diffs.functions["ops-club-accounts"].targetHasEntrypoint, false);
+  assert.equal(diffs.functions["ops-club-accounts"].changed, false);
   assert.equal(diffs.functions["tournament-live-clock"].retainedCompatibility.satisfied, false);
   assert.throws(() => buildDeploymentPlan({
     event: "workflow_dispatch",
