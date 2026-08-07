@@ -221,7 +221,7 @@ SELECT public.tracker_test_assert(
   (SELECT context_version FROM tracker_pr2a_contexts WHERE label = 'baseline') <> (public.tracker_test_context(
     '00000000-0000-0000-0000-000000000001',
     '00000000-0000-0000-0000-000000000100',
-    '00000000-0000-000000000301'
+    '00000000-0000-0000-0000-000000000301'
   )->>'context_version'),
   'missing tracker projection changes context hash'
 );
