@@ -288,11 +288,7 @@ SELECT public.tracker_test_assert(
     '00000000-0000-0000-0000-000000000100',
     '00000000-0000-0000-0000-000000000301',
     2,
-    (public.tracker_test_context(
-      '00000000-0000-0000-0000-000000000001',
-      '00000000-0000-0000-0000-000000000100',
-      '00000000-0000-0000-0000-000000000301'
-    )->>'context_version'),
+    (SELECT context_version FROM tracker_pr2a_contexts WHERE label = 'baseline'),
     'start-key-0001'
   )->>'replayed')::BOOLEAN,
   'same idempotency request returns replayed receipt'
