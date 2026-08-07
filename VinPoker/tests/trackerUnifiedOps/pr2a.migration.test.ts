@@ -2,14 +2,14 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const migrationName = "20270108000002_tracker_unified_ops_v2_context_safe_start.sql";
+const migrationName = "20270108000003_tracker_unified_ops_v2_context_safe_start.sql";
 const migrationPath = resolve(process.cwd(), "supabase", "migrations", migrationName);
 const migration = readFileSync(migrationPath, "utf8");
 
 describe("Tracker Unified Ops V2 PR2A migration contract", () => {
   it("uses one unique migration version after the repository maximum", () => {
     const migrationNames = readdirSync(resolve(process.cwd(), "supabase", "migrations"));
-    expect(migrationNames.filter((name) => name.startsWith("20270108000002_"))).toEqual([
+    expect(migrationNames.filter((name) => name.startsWith("20270108000003_"))).toEqual([
       migrationName,
     ]);
   });
@@ -76,7 +76,7 @@ describe("Tracker Unified Ops V2 PR2A migration contract", () => {
       /e\.table_id IS (?:NOT )?DISTINCT FROM s\.table_id/,
     );
     expect(migration).toContain("AND h.table_id IN (v_tt.id, v_tt.table_id)");
-    expect(migration).toContain("v_tt.id,\n    v_hand_number");
+    expect(migration).toMatch(/v_tt\.id,\r?\n\s+v_hand_number/);
   });
 
   it("preserves current start semantics and level/button rules", () => {
