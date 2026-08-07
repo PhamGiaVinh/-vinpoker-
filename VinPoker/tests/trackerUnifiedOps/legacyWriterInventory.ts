@@ -4,7 +4,10 @@ export type LegacyWriterInventoryRow = {
   sourceMigration: string;
   contextFields: readonly string[];
   lockStrategy: string;
-  runtimeStatus: "WRITER_BODY_NOT_FAITHFULLY_REPRODUCED" | "INCOMPATIBLE_ADVISORY_LOCK_ORDER";
+  runtimeStatus:
+    | "WRITER_BODY_NOT_FAITHFULLY_REPRODUCED"
+    | "INCOMPATIBLE_ADVISORY_LOCK_ORDER"
+    | "RUNTIME_PROVEN_DEADLOCK";
   note: string;
 };
 
@@ -17,8 +20,8 @@ export const legacyWriterInventory: readonly LegacyWriterInventoryRow[] = [
     sourceMigration: "20270105000001_floor_table_control_mode.sql",
     contextFields: ["control_mode", "control_revision", "active_hand"],
     lockStrategy: "table row -> tournament row -> hashtext(tournament, table) advisory lock",
-    runtimeStatus: "INCOMPATIBLE_ADVISORY_LOCK_ORDER",
-    note: "V2 locks the tournament advisory key before table rows; the current writer uses a different advisory key and row order.",
+    runtimeStatus: "RUNTIME_PROVEN_DEADLOCK",
+    note: "Exact current-main body reproduced locally; start-first scheduling returned 40P01 while V2 start committed and mode rolled back.",
   },
   {
     writer: "floor_assign_player_to_seat",

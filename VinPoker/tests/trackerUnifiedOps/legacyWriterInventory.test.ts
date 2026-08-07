@@ -42,7 +42,13 @@ describe("Tracker PR2A legacy-writer inventory", () => {
         [
           "WRITER_BODY_NOT_FAITHFULLY_REPRODUCED",
           "INCOMPATIBLE_ADVISORY_LOCK_ORDER",
+          "RUNTIME_PROVEN_DEADLOCK",
         ].includes(row.runtimeStatus),
+      ),
+    ).toBe(true);
+    expect(
+      legacyWriterInventory.some(
+        (row) => row.runtimeStatus === "RUNTIME_PROVEN_DEADLOCK",
       ),
     ).toBe(true);
     expect(
