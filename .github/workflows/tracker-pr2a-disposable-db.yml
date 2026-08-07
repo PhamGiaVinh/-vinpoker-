@@ -72,6 +72,25 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
             -f tests/trackerUnifiedOps/disposableDb.integration.sql
 
+      - name: Install exact current-main mode writer fixture
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
+            -f tests/trackerUnifiedOps/legacyWriterMode.dependencies.sql
+          awk '/^CREATE OR REPLACE FUNCTION public[.]floor_set_table_control_mode/ {capture=1} capture {sub(/\\r$/, ""); print} capture && $0 == "$$;" {exit}' \
+            supabase/migrations/20270105000001_floor_table_control_mode.sql \
+            > "$RUNNER_TEMP/floor_set_table_control_mode.current-main.sql"
+          psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
+            -f "$RUNNER_TEMP/floor_set_table_control_mode.current-main.sql"
+
+      - name: Run exact mode-writer/V2 lock race
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
+            -f tests/trackerUnifiedOps/legacyWriterMode.integration.sql
+
       - name: Prove migration transaction rollback on injected failure
         working-directory: VinPoker
         run: |

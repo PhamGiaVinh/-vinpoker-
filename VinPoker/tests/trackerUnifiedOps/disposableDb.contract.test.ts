@@ -14,6 +14,17 @@ const integration = readFileSync(
   resolve(process.cwd(), "tests/trackerUnifiedOps/disposableDb.integration.sql"),
   "utf8",
 );
+const legacyModeIntegration = readFileSync(
+  resolve(process.cwd(), "tests/trackerUnifiedOps/legacyWriterMode.integration.sql"),
+  "utf8",
+);
+const legacyModeSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "supabase/migrations/20270105000001_floor_table_control_mode.sql",
+  ),
+  "utf8",
+);
 
 describe("Tracker PR2A disposable database contract", () => {
   it("uses PostgreSQL 17 with trust auth and read-only repository permissions", () => {
@@ -68,5 +79,21 @@ describe("Tracker PR2A disposable database contract", () => {
     expect(integration).toContain("concurrent different-key starts serialize without duplicate hands");
     expect(integration).toContain("no stale-lock auto-void or destructive cleanup occurred");
     expect(integration).toContain("dblink_send_query");
+  });
+
+  it("runs the exact current-main mode writer and records deadlock evidence", () => {
+    expect(workflow).toContain("legacyWriterMode.dependencies.sql");
+    expect(workflow).toContain("floor_set_table_control_mode.current-main.sql");
+    expect(workflow).toContain("legacyWriterMode.integration.sql");
+    expect(legacyModeSource).toContain(
+      "CREATE OR REPLACE FUNCTION public.floor_set_table_control_mode(",
+    );
+    expect(legacyModeIntegration).toContain("wait_event_type = 'Lock'");
+    expect(legacyModeIntegration).toContain("dblink_is_busy");
+    expect(legacyModeIntegration).toContain("40P01");
+    expect(legacyModeIntegration).toContain(
+      "PR2A_LEGACY_MODE_DEADLOCK_PROOF=PASS",
+    );
+    expect(legacyModeIntegration).toContain("DROP TABLE public.tracker_legacy_mode_context_shared");
   });
 });
