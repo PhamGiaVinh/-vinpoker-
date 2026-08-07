@@ -122,6 +122,8 @@ describe("Tracker Unified Ops V2 contract", () => {
       replayed: true,
       actor_user_id: TRACKER_UNIFIED_FIXTURE_IDS.trackerUser,
     });
+    expect(TRACKER_OPS_FAILURE_CODES).toContain("invalid_idempotency_key");
+    expect(TRACKER_OPS_FAILURE_CODES).toContain("tournament_not_open");
   });
 
   it("locks all three between-hand stack projections in the ready fixture", () => {
