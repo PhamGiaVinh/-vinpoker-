@@ -390,6 +390,8 @@ test("pre-922 rollback runs planning, source quality and target-aware contract p
       baselines,
       manifest,
     });
+    assert.equal(componentDiffs.functions["ops-club-accounts"].targetHasEntrypoint, false);
+    assert.equal(componentDiffs.functions["ops-club-accounts"].changed, false);
     assert.equal(
       componentDiffs.functions["tournament-live-clock"].retainedCompatibility.satisfied,
       false,

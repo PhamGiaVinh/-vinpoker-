@@ -5,11 +5,18 @@ import { fileURLToPath } from "node:url";
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_MANIFEST_PATH = resolve(scriptDirectory, "deployment-contracts.json");
 
+const PROFILED_CRITICAL_FUNCTIONS = [
+  "process-swing",
+  "mass-assign",
+  "checkout-dealer",
+  "tournament-live-clock",
+];
 const REQUIRED_CRITICAL_POSTURE = new Map([
   ["process-swing", false],
   ["mass-assign", true],
   ["checkout-dealer", true],
   ["tournament-live-clock", true],
+  ["ops-club-accounts", true],
 ]);
 const TARGET_REQUIREMENTS = new Set(["floorClockRevisionV1"]);
 
@@ -41,7 +48,7 @@ export function validateDeploymentManifest(manifest, repositoryRoot) {
     if (!Array.isArray(profile.frontend?.additionalContracts)) {
       throw new Error(`target-aware contract profile ${profileName} must declare frontend additions`);
     }
-    for (const functionName of REQUIRED_CRITICAL_POSTURE.keys()) {
+    for (const functionName of PROFILED_CRITICAL_FUNCTIONS) {
       if (!Array.isArray(profile.functions?.[functionName]?.additionalContracts)) {
         throw new Error(`target-aware contract profile ${profileName} must declare ${functionName} additions`);
       }

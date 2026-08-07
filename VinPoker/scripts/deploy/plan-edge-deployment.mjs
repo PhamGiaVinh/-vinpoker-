@@ -121,7 +121,8 @@ export function buildComponentDiffs({ repositoryRoot, targetSha, baselines, mani
   for (const [name, config] of Object.entries(manifest.functions)) {
     const receipt = receiptFor(baselines, name);
     if (receipt?.sha) verifyCommitOnMain(repositoryRoot, receipt.sha, mainRef);
-    const files = receipt?.sha
+    const targetHasEntrypoint = sourceAtCommit(repositoryRoot, targetSha, `${config.path}/index.ts`) !== null;
+    const files = targetHasEntrypoint && receipt?.sha
       ? diffFiles(repositoryRoot, receipt.sha, targetSha, [config.path, ...SHARED_PREFIXES])
       : [];
     const directFiles = files.filter((path) => path === config.path || path.startsWith(`${config.path}/`));
@@ -129,7 +130,11 @@ export function buildComponentDiffs({ repositoryRoot, targetSha, baselines, mani
     result.functions[name] = {
       baselineSha: receipt?.sha ?? null,
       baselineSource: receipt?.source ?? "missing",
-      changed: receipt?.sha ? directFiles.length > 0 || sharedFiles.length > 0 : true,
+      targetHasEntrypoint,
+      // A target predating this function must retain the existing receipt rather
+      // than being forced to deploy source it does not contain. A present target
+      // without a receipt remains changed and therefore manual-only.
+      changed: targetHasEntrypoint && (receipt?.sha ? directFiles.length > 0 || sharedFiles.length > 0 : true),
       directFiles,
       sharedFiles,
       retainedCompatibility: config.retainedFrontendCompatibility
