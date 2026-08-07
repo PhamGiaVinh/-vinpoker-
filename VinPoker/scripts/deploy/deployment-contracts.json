@@ -32,7 +32,7 @@
         "arguments": [],
         "argumentTypes": [],
         "allowOtherOverloads": false,
-        "acl": { "authenticated": true, "anon": false, "service_role": false },
+        "acl": { "authenticated": true, "anon": false, "service_role": true },
         "dependencyKind": "direct_frontend"
       }
     ]

@@ -293,6 +293,18 @@ test("Floor clock requires the exact revision-token RPC signature and runtime AC
   );
 });
 
+test("Ops invite acceptance preserves the source ACL inherited by service_role", () => {
+  const acceptInvite = manifest.frontend.contracts.find(
+    (contract) => contract.type === "function" &&
+      contract.name === "public.accept_my_club_operator_invites",
+  );
+  assert.deepEqual(acceptInvite?.acl, {
+    authenticated: true,
+    anon: false,
+    service_role: true,
+  });
+});
+
 test("current target fails without alert objects and passes with the full alert contract", () => {
   const current = allContracts(repositoryRoot);
   assert.equal(current.selection.profile, "dealer_shortage_alert_v1");
