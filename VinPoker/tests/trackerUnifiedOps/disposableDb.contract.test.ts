@@ -38,6 +38,7 @@ describe("Tracker PR2A disposable database contract", () => {
   });
 
   it("keeps the Deno check bounded to a non-PR2A syntax target", () => {
+    expect(workflow).toContain("denoland/setup-deno@v2");
     expect(workflow).toContain(
       "deno check --no-config supabase/functions/health/index.ts",
     );

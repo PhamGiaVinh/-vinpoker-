@@ -41,6 +41,10 @@ jobs:
           cache: npm
           cache-dependency-path: VinPoker/package-lock.json
 
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - name: Install source-test dependencies without install hooks
         working-directory: VinPoker
         run: npm ci --ignore-scripts
