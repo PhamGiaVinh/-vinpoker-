@@ -43,12 +43,13 @@ describe("Tracker PR2A legacy-writer inventory", () => {
           "WRITER_BODY_NOT_FAITHFULLY_REPRODUCED",
           "INCOMPATIBLE_ADVISORY_LOCK_ORDER",
           "RUNTIME_PROVEN_DEADLOCK",
+          "FIXED_BY_SHARED_TOURNAMENT_LOCK",
         ].includes(row.runtimeStatus),
       ),
     ).toBe(true);
     expect(
       legacyWriterInventory.some(
-        (row) => row.runtimeStatus === "RUNTIME_PROVEN_DEADLOCK",
+        (row) => row.runtimeStatus === "FIXED_BY_SHARED_TOURNAMENT_LOCK",
       ),
     ).toBe(true);
     expect(
@@ -67,12 +68,25 @@ describe("Tracker PR2A legacy-writer inventory", () => {
       resolve(migrationsRoot, "20270106000003_close_table_canonical_contract.sql"),
       "utf8",
     );
+    const containment = readFileSync(
+      resolve(
+        migrationsRoot,
+        "20270108000004_tracker_unified_ops_writer_lock_containment.sql",
+      ),
+      "utf8",
+    );
 
     expect(pr2aMigration).toContain(
       "hashtextextended('tracker-unified-ops:' || p_tournament_id::TEXT, 0)",
     );
     expect(mode).toContain("hashtext(p_tournament_id::text)");
     expect(close).toContain("hashtext(v_tour.id::text)");
+    expect(containment).toContain(
+      "PERFORM public.tracker_unified_ops_lock_tournament(p_tournament_id);",
+    );
+    expect(containment.indexOf("tracker_unified_ops_lock_tournament(p_tournament_id)")).toBeLessThan(
+      containment.indexOf("FOR UPDATE"),
+    );
     expect(mode.indexOf("FOR UPDATE")).toBeLessThan(
       mode.indexOf("PERFORM pg_advisory_xact_lock"),
     );

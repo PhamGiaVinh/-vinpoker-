@@ -7,7 +7,8 @@ export type LegacyWriterInventoryRow = {
   runtimeStatus:
     | "WRITER_BODY_NOT_FAITHFULLY_REPRODUCED"
     | "INCOMPATIBLE_ADVISORY_LOCK_ORDER"
-    | "RUNTIME_PROVEN_DEADLOCK";
+    | "RUNTIME_PROVEN_DEADLOCK"
+    | "FIXED_BY_SHARED_TOURNAMENT_LOCK";
   note: string;
 };
 
@@ -19,9 +20,9 @@ export const legacyWriterInventory: readonly LegacyWriterInventoryRow[] = [
     signature: "floor_set_table_control_mode(uuid,uuid,text,bigint)",
     sourceMigration: "20270105000001_floor_table_control_mode.sql",
     contextFields: ["control_mode", "control_revision", "active_hand"],
-    lockStrategy: "table row -> tournament row -> hashtext(tournament, table) advisory lock",
-    runtimeStatus: "RUNTIME_PROVEN_DEADLOCK",
-    note: "Exact current-main body reproduced locally; start-first scheduling returned 40P01 while V2 start committed and mode rolled back.",
+    lockStrategy: "shared tournament advisory -> table row -> tournament row -> hashtext(tournament, table) advisory lock",
+    runtimeStatus: "FIXED_BY_SHARED_TOURNAMENT_LOCK",
+    note: "Pre-fix exact body returned 40P01 while V2 start committed; forward containment adds the shared tournament advisory before existing row locks and post-fix race is certified separately.",
   },
   {
     writer: "floor_assign_player_to_seat",
