@@ -54,6 +54,13 @@ test("frontend deployment is manual-only", () => {
   assert.match(frontendDeploy, /github\.event_name == 'workflow_dispatch'/);
 });
 
+test("frontend receipt verification has a bounded Vercel alias convergence window", () => {
+  const frontendDeploy = workflow.slice(workflow.indexOf("deploy-frontend:"));
+  assert.match(frontendDeploy, /shell_verify_attempts=72/);
+  assert.match(frontendDeploy, /shell_verify_interval_seconds=5/);
+  assert.equal((frontendDeploy.match(/\$\(seq 1 "\$shell_verify_attempts"\)/gu) ?? []).length, 2);
+});
+
 test("Floor clock deploy remains an explicit protected critical selection", () => {
   const criticalJob = workflow.slice(
     workflow.indexOf("deploy-critical-edge:"),

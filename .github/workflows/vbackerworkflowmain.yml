@@ -584,20 +584,24 @@ jobs:
           set -euo pipefail
           deployment_url="$(tail -n 1 "${RUNNER_TEMP}/frontend-deployment-url.txt" | tr -d '\r\n')"
           test -n "$deployment_url"
+          # Vercel can take longer than two minutes to update its production alias.
+          # Keep the receipt fail-closed, but allow a bounded six-minute convergence window.
+          shell_verify_attempts=72
+          shell_verify_interval_seconds=5
           verified=false
-          for _ in $(seq 1 24); do
+          for _ in $(seq 1 "$shell_verify_attempts"); do
             if node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/verify-app-shell-routing.mjs" \
               --base-url "$deployment_url"; then
               verified=true
               break
             fi
-            sleep 5
+            sleep "$shell_verify_interval_seconds"
           done
           test "$verified" = true
 
           canonical_version="${RUNNER_TEMP}/canonical-version.json"
           canonical_verified=false
-          for _ in $(seq 1 24); do
+          for _ in $(seq 1 "$shell_verify_attempts"); do
             if curl --silent --show-error --fail \
               "https://vinpoker.vercel.app/version.json?rollout=${GITHUB_RUN_ID}" \
               --output "$canonical_version" \
@@ -607,7 +611,7 @@ jobs:
               canonical_verified=true
               break
             fi
-            sleep 5
+            sleep "$shell_verify_interval_seconds"
           done
           test "$canonical_verified" = true
 
