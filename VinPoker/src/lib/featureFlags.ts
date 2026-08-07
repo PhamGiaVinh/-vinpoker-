@@ -940,7 +940,7 @@ export const FEATURES = {
    * source-only Preview UAT proves the live contract and mobile states.
    * Kill-switch: set false to keep the existing CAPTURE console unchanged.
    */
-  seriesDecisionPacketV1: false,
+  seriesDecisionPacketV1: true,
   /**
    * Series Intelligence — turnout forecast (transparent ridge log-linear, RESEARCH tier). When ON, step ④
    * of the SI page shows the TurnoutForecastPanel: predicts entries for an upcoming event from the club's

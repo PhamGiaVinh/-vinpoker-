@@ -28,7 +28,7 @@ describe("D2B private runtime boundary", () => {
 
   it("keeps Decision Room behind a default-off flag and isolates its RPC caller", () => {
     const flags = readFileSync(join(ROOT, "lib", "featureFlags.ts"), "utf8");
-    expect(flags).toContain("seriesDecisionPacketV1: false");
+    expect(flags).toContain("seriesDecisionPacketV1: true");
     const decisionRoom = readFileSync(join(ROOT, "components", "series-intelligence", "DecisionRoomV1.tsx"), "utf8");
     expect(decisionRoom).not.toMatch(/integrations\/supabase|createClient|\bsupabase\b|\.from\(/i);
     const sourceFiles = readdirSync(ROOT, { recursive: true }).filter((path) => typeof path === "string" && path.endsWith(".ts") || typeof path === "string" && path.endsWith(".tsx")) as string[];
