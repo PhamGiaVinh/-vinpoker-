@@ -61,6 +61,7 @@ export function FloorSeatRoster({
             <button
               key={seatNumber}
               type="button"
+              data-ops-action="floor.tables.select_seat"
               data-testid={`floor-seat-row-${seatNumber}`}
               disabled={!interactive || hasIntegrityIssue}
               onClick={() => {

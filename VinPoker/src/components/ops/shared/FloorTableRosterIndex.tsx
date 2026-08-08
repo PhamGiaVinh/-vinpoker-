@@ -49,6 +49,7 @@ export function FloorTableRosterIndex({
             <button
               key={table.id}
               type="button"
+              data-ops-action="floor.tables.open_roster"
               data-testid="floor-table-roster-card"
               data-floor-table-number={table.tableNumber ?? undefined}
               onClick={() => onOpen(table.id)}

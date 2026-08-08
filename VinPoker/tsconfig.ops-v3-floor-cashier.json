@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/ops-v3-floor-cashier.tsbuildinfo"
+  },
+  "include": [
+    "src/vite-env.d.ts",
+    "src/OpsApp.tsx",
+    "src/components/ops/OpsShell.tsx",
+    "src/ops/auth/OpsTournamentScopeGate.tsx",
+    "src/ops/floor/FloorTournamentWorkspace.tsx",
+    "src/ops/floor/floorTournamentSections.ts",
+    "src/ops/workspace/TournamentOpsProvider.tsx",
+    "src/pages/ops/OpsCashier.tsx",
+    "src/pages/ops/OpsTables.tsx",
+    "src/pages/ops/OpsTournamentCockpit.tsx",
+    "src/pages/ops/OpsTournaments.tsx"
+  ]
+}

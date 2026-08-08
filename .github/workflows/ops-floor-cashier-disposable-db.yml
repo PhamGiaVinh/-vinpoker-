@@ -7,10 +7,15 @@ on:
       - "VinPoker/supabase/migrations/20270109000000_ops_floor_cashier_canonical_mutations.sql"
       - "VinPoker/src/ops/**"
       - "VinPoker/src/pages/ops/**"
+      - "VinPoker/src/OpsApp.tsx"
+      - "VinPoker/src/components/ops/shared/**"
+      - "VinPoker/src/components/cashier/tournament-live/OpenTableDialog.tsx"
       - "VinPoker/src/components/cashier/OfflineBuyInPanel.tsx"
       - "VinPoker/src/components/floor/useFloorTournaments.ts"
       - "VinPoker/src/hooks/useTournaments.ts"
       - "VinPoker/src/pages/SuperAdmin.tsx"
+      - "VinPoker/e2e/ops-v3-floor-cashier.mock.spec.ts"
+      - "VinPoker/tsconfig.ops-v3-floor-cashier.json"
       - "VinPoker/tests/opsFloorCashier/**"
   workflow_dispatch:
 
@@ -53,6 +58,7 @@ jobs:
         run: |
           npm run check:ops-boundary
           npm run check:ops-money-boundary
+          npm run check:ops-v3-shell-text
           npm run check:credential-context
           git diff --check
 
@@ -67,16 +73,53 @@ jobs:
         working-directory: VinPoker
         run: >-
           npx eslint
+          src/OpsApp.tsx
+          src/components/cashier/tournament-live/OpenTableDialog.tsx
+          src/components/ops/shared/FloorPlayerActions.tsx
+          src/components/ops/shared/FloorSeatRoster.tsx
+          src/components/ops/shared/FloorTableControlMode.tsx
+          src/components/ops/shared/FloorTableModePicker.tsx
+          src/components/ops/shared/FloorTableNumberPicker.tsx
+          src/components/ops/shared/FloorTableRosterIndex.tsx
+          src/components/ops/shared/PlayerActionSheets.tsx
+          src/components/ops/shared/RoomGrid.tsx
+          src/components/ops/shared/floorSeatEntryPreflight.ts
+          src/components/ops/shared/useFloorSeats.ts
+          src/ops/auth/OpsTournamentScopeGate.tsx
+          src/ops/coverage/floorCashierButtonManifest.ts
+          src/ops/floor/FloorTournamentWorkspace.tsx
+          src/ops/floor/floorTournamentSections.ts
           src/ops/opsMutations.ts
+          src/ops/workspace/TournamentOpsProvider.tsx
+          src/pages/ops/OpsCashier.tsx
+          src/pages/ops/OpsTables.tsx
+          src/pages/ops/OpsTournamentCockpit.tsx
+          src/pages/ops/OpsTournaments.tsx
+          e2e/ops-v3-floor-cashier.mock.spec.ts
           tests/opsFloorCashier
 
       - name: Type-check canonical Ops mutation seam and tests
         working-directory: VinPoker
         run: npx tsc -p tsconfig.ops-floor-cashier.json --pretty false
 
+      - name: Type-check unified Floor and Cashier workspaces
+        working-directory: VinPoker
+        run: npx tsc -p tsconfig.ops-v3-floor-cashier.json --pretty false
+
       - name: Build production source (flags remain default-off)
         working-directory: VinPoker
         run: npm run build
+
+      - name: Install Chromium for responsive mock-session verification
+        working-directory: VinPoker
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Floor and Cashier responsive mock-session verification
+        working-directory: VinPoker
+        env:
+          VITE_SUPABASE_URL: http://127.0.0.1:54321
+          VITE_SUPABASE_PUBLISHABLE_KEY: local-publishable-key
+        run: npx playwright test e2e/ops-v3-floor-cashier.mock.spec.ts --workers=1
 
       - name: Create isolated disposable fixture baseline
         working-directory: VinPoker

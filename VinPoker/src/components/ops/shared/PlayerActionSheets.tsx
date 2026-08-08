@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { User, ArrowRightLeft, Coins, Receipt, UserMinus, Loader2, Printer } from "lucide-react";
+import { User, ArrowRightLeft, Coins, Receipt, UserMinus, Loader2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog,
@@ -18,12 +18,13 @@ import type { FloorTableControlMode } from "@/lib/floorTableControlMode";
  * S7 sheet thao tác (Thông tin / Chuyển / Sửa chip / Phiếu / Loại) → S8 thẻ thông tin band ·
  * S9 chuyển bàn-ghế (chọn ghế trống trực quan) · N5 sửa chip (numpad + lý do) · N6 phiếu · S10 xác nhận Loại.
  * "Ấn vào người chơi ở BẤT KỲ đâu đều thao tác được" — mọi list người chơi đều mở component này.
- * DỮ LIỆU MẪU, read-only: mọi xác nhận là toast "(bản mẫu)".
+ * Chỉ nhận dữ liệu ghế thật và fixed server adapters từ FloorPlayerActions;
+ * không có nhánh mock-success trong production Ops.
  */
 export interface PlayerTarget {
   seat: { seat: number; name: string | null; chip: string | null; entryNo?: number };
   tableNo: number;
-  /** Chip HIỆN TẠI (số thật) để khởi tạo numpad khi nối thật; bỏ trống = mock. */
+  /** Chip hiện tại từ server snapshot, dùng để khởi tạo numpad. */
   chipCount: number;
 }
 
@@ -35,7 +36,6 @@ const CHIP_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0", "⌫"
 export function PlayerActionSheets({
   target,
   onClose,
-  pendingNotice,
   onSaveChip,
   onBustPlayer,
   onOpenBust,
@@ -49,28 +49,21 @@ export function PlayerActionSheets({
 }: {
   target: PlayerTarget | null;
   onClose: () => void;
-  /** Khi màn chủ chạy DỮ LIỆU THẬT nhưng hành động CHƯA nối: mọi nút con (Thông tin/Chuyển/
-   *  Sửa chip/Phiếu/Loại) chỉ toast notice này và đóng — KHÔNG mở các sheet con (chúng còn
-   *  scaffold mẫu, không được hiện như thật). Bỏ trống = hành vi mock cũ "(bản mẫu)". */
-  pendingNotice?: never;
-  /** Nếu có → nút "Sửa chip" mở numpad THẬT; xác nhận gọi callback này (màn chủ ghi update_seats
-   *  với identity ghế thật) và trả về true nếu thành công. Các nút khác vẫn theo pendingNotice. */
+  /** Fixed adapter ghi chip bằng identity ghế thật; trả true chỉ sau server success. */
   onSaveChip: (newChip: number) => Promise<boolean>;
-  /** Nếu có → nút "Loại" mở xác nhận THẬT (💰 ITM). onOpenBust: màn chủ ĐỌC LẠI hạng+thưởng tạm
+  /** Nút "Loại" mở xác nhận server-backed (💰 ITM). onOpenBust: màn chủ ĐỌC LẠI hạng+thưởng tạm
    *  tính ngay lúc mở (P0-5, không dùng cache). bustInfo: kết quả đọc lại. onBustPlayer: ghi
    *  update_seats is_active:false, trả true nếu thành công. */
   onBustPlayer: () => Promise<boolean>;
   onOpenBust: () => Promise<boolean>;
   bustInfo: { loading: boolean; place: number | null; prize: number | null } | null;
-  /** Nếu có → nút "Chuyển" mở chọn bàn/ghế THẬT: bàn đích + ghế trống lấy từ moveTargets; xác nhận
+  /** Nút "Chuyển" mở chọn bàn/ghế thật: bàn đích + ghế trống lấy từ moveTargets; xác nhận
    *  gọi onMovePlayer(tt_id, seat, lý do) (màn chủ tra entry_id + gọi move_player_seat). */
   moveTargets: { tt_id: string; table_number: number | null; freeSeats: number[] }[];
   onMovePlayer: (toTtId: string, toSeat: number, reason: string) => Promise<boolean>;
-  /** Nếu có → nút "Phiếu" mở phiếu THẬT (SeatReceiptDialog ở màn chủ: QR + in, read-only). act()
-   *  gọi callback này rồi đóng — KHÔNG mở N6 mock. Bỏ trống = hành vi cũ (pendingNotice/mock). */
+  /** Nút "Phiếu" mở SeatReceiptDialog server-backed ở màn chủ rồi đóng sheet này. */
   onOpenReceipt: () => void;
-  /** true → nút "Thông tin" mở thẻ S8 với DỮ LIỆU THẬT (tên/bàn·ghế/chip/lượt vào từ target),
-   *  không còn chặn bởi pendingNotice. Mặc định (false) → theo pendingNotice (chưa nối). */
+  /** Marker bắt buộc: thông tin người chơi đến từ snapshot server đã xác minh. */
   infoLive: true;
   bustControlMode: FloorTableControlMode | null;
   /** A Tracker table has an authoritative stack source outside Floor. */
@@ -102,12 +95,7 @@ export function PlayerActionSheets({
     setChipValue("62500");
     onClose();
   };
-  const done = (msg: string) => {
-    toast.success(msg + " (bản mẫu)");
-    close();
-  };
-  /** Điều hướng nút con: chip có onSaveChip → mở numpad THẬT (init = chip hiện tại);
-   *  còn lại pendingNotice set → toast + đóng (không mở sheet con mock). */
+  /** Điều hướng nút con qua fixed adapters; không có nhánh mock-success. */
   const act = (next: Step) => {
     if (next === "chip" && onSaveChip) {
       setChipValue(String(target?.chipCount ?? 0));
@@ -140,11 +128,6 @@ export function PlayerActionSheets({
       close();
       return;
     }
-    if (pendingNotice) {
-      toast(pendingNotice);
-      close();
-      return;
-    }
     go(next);
   };
 
@@ -170,16 +153,17 @@ export function PlayerActionSheets({
             <span className="font-mono">{s?.chip}</span> chip · lượt vào #{s?.entryNo ?? 1}
           </div>
           <div className="mt-4 space-y-1.5">
-            <button onClick={() => act("info")} className="ios-press ios-tinted flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
+            <button data-ops-action="floor.player.open_info" onClick={() => act("info")} className="ios-press ios-tinted flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
               <User className="h-5 w-5 shrink-0" />
               <span className="text-[15px] font-semibold">Thông tin người chơi</span>
             </button>
             <div className="grid grid-cols-2 gap-1.5">
-              <button onClick={() => act("move")} className="ios-press ios-fill flex items-center gap-3 rounded-2xl p-3.5 text-left">
+              <button data-ops-action="floor.player.open_move" onClick={() => act("move")} className="ios-press ios-fill flex items-center gap-3 rounded-2xl p-3.5 text-left">
                 <ArrowRightLeft className="h-5 w-5 shrink-0 text-[#d8bc85]" />
                 <span><span className="block text-[15px] font-semibold text-[#f2ece6]">Chuyển</span><span className="block text-[11px] text-[#9b8e97]">bàn / ghế</span></span>
               </button>
               <button
+                data-ops-action="floor.player.open_chip"
                 disabled={chipEditDisabled}
                 title={chipEditDisabledReason ?? undefined}
                 onClick={() => { if (!chipEditDisabled) act("chip"); }}
@@ -188,11 +172,11 @@ export function PlayerActionSheets({
                 <Coins className="h-5 w-5 shrink-0 text-amber-300" />
                 <span><span className="block text-[15px] font-semibold text-[#f2ece6]">Sửa chip</span><span className="block text-[11px] text-[#9b8e97]">{chipEditDisabled ? "Tracker quản lý chip" : "điều chỉnh"}</span></span>
               </button>
-              <button onClick={() => act("receipt")} className="ios-press ios-fill flex items-center gap-3 rounded-2xl p-3.5 text-left">
+              <button data-ops-action="floor.player.open_receipt" onClick={() => act("receipt")} className="ios-press ios-fill flex items-center gap-3 rounded-2xl p-3.5 text-left">
                 <Receipt className="h-5 w-5 shrink-0 text-sky-300" />
                 <span><span className="block text-[15px] font-semibold text-[#f2ece6]">Phiếu</span><span className="block text-[11px] text-[#9b8e97]">xem / in lại</span></span>
               </button>
-              <button disabled={bustPreparing} onClick={() => act("bust")} className="ios-press flex items-center gap-3 rounded-2xl bg-rose-500/12 p-3.5 text-left text-rose-300 disabled:opacity-40">
+              <button data-ops-action="floor.player.open_bust" disabled={bustPreparing} onClick={() => act("bust")} className="ios-press flex items-center gap-3 rounded-2xl bg-rose-500/12 p-3.5 text-left text-rose-300 disabled:opacity-40">
                 <UserMinus className="h-5 w-5 shrink-0" />
                 <span><span className="block text-[15px] font-semibold">Loại</span><span className="block text-[11px] opacity-80">bust out</span></span>
               </button>
@@ -231,14 +215,13 @@ export function PlayerActionSheets({
           </SheetHeader>
           <div className="mt-0.5 text-[13px] text-[#9b8e97]">{s?.name} · đang ở <span className="font-mono">Bàn {t} · Ghế {s?.seat}</span></div>
 
-          {onMovePlayer ? (
-            (moveTargets && moveTargets.length > 0) ? (
+          {moveTargets.length > 0 ? (
               <>
                 <div className="ios-card mt-3 p-3.5">
                   <div className="text-[12px] text-[#9b8e97]">Chọn bàn đích (còn ghế trống)</div>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {moveTargets.map((tb) => (
-                      <button key={tb.tt_id} onClick={() => { setMoveTableId(tb.tt_id); setMoveSeat(tb.freeSeats[0] ?? null); }}
+                      <button key={tb.tt_id} data-ops-action="floor.player.select_move_table" onClick={() => { setMoveTableId(tb.tt_id); setMoveSeat(tb.freeSeats[0] ?? null); }}
                         className={cn("ios-press-sm grid h-8 min-w-9 place-items-center rounded-lg px-2 text-[13px] font-semibold",
                           moveTableId === tb.tt_id ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
                         {tb.table_number ?? "?"}
@@ -248,7 +231,7 @@ export function PlayerActionSheets({
                   <div className="mt-3 text-[12px] text-[#9b8e97]">Ghế trống — chạm để chọn</div>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {(selMoveTarget?.freeSeats ?? []).map((seatNo) => (
-                      <button key={seatNo} onClick={() => setMoveSeat(seatNo)}
+                      <button key={seatNo} data-ops-action="floor.player.select_move_seat" onClick={() => setMoveSeat(seatNo)}
                         className={cn("ios-press-sm grid h-8 w-9 place-items-center rounded-lg text-[13px] font-semibold",
                           moveSeat === seatNo ? "bg-[#c9a86a] text-[#241A08]" : "bg-emerald-400/15 text-emerald-300")}>
                         {seatNo}
@@ -265,15 +248,16 @@ export function PlayerActionSheets({
                 <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1 text-[13px] text-[#9b8e97]">
                   Lý do:
                   {MOVE_REASONS.map((r) => (
-                    <button key={r} onClick={() => setMoveReason(r)}
+                    <button key={r} data-ops-action="floor.player.select_move_reason" onClick={() => setMoveReason(r)}
                       className={cn("ios-press-sm rounded-full px-2.5 py-1 text-[12px]", moveReason === r ? "bg-[#c9a86a]/15 text-[#d8bc85]" : "bg-white/5 text-[#9b8e97]")}>
                       {r}
                     </button>
                   ))}
                 </div>
                 <div className="mt-3 flex gap-2">
-                  <button onClick={close} disabled={moveBusy} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6] disabled:opacity-40">Huỷ</button>
+                  <button data-ops-action="floor.player.cancel_move" onClick={close} disabled={moveBusy} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6] disabled:opacity-40">Huỷ</button>
                   <button
+                    data-ops-action="floor.player.move"
                     disabled={moveBusy || moveTableId === null || moveSeat === null}
                     onClick={async () => {
                       if (moveTableId === null || moveSeat === null) return;
@@ -291,55 +275,8 @@ export function PlayerActionSheets({
               <div className="ios-card mt-3 flex flex-col items-center gap-2 py-8 text-center">
                 <ArrowRightLeft className="h-7 w-7 text-[#9b8e97]" />
                 <div className="text-[14px] text-[#9b8e97]">Không còn ghế trống ở bàn khác — mở thêm bàn trước.</div>
-                <button onClick={close} className="ios-press-sm mt-1 rounded-full bg-white/8 px-4 py-1.5 text-[13px] text-[#f2ece6]">Đóng</button>
+                <button data-ops-action="floor.player.close_move" onClick={close} className="ios-press-sm mt-1 rounded-full bg-white/8 px-4 py-1.5 text-[13px] text-[#f2ece6]">Đóng</button>
               </div>
-            )
-          ) : (
-            <>
-              <div className="ios-card mt-3 p-3.5">
-                <div className="text-[12px] text-[#9b8e97]">Chọn bàn đích</div>
-                <div className="mt-1.5 flex gap-1.5">
-                  {MOVE_TABLES.map((tb, i) => (
-                    <span key={tb} className={cn("grid h-8 w-9 place-items-center rounded-lg text-[13px] font-semibold", i === 0 ? "bg-emerald-400/15 text-emerald-300" : "bg-white/5 text-[#9b8e97]")}>{tb}</span>
-                  ))}
-                </div>
-                <div className="mt-3 text-[12px] text-[#9b8e97]">Ghế trống ở bàn 8 — chạm để chọn</div>
-                <div className="mt-1.5 flex gap-1.5">
-                  {MOVE_SEATS.map((seatNo) => {
-                    const free = FREE_SEATS.has(seatNo);
-                    const sel = moveSeat === seatNo;
-                    return (
-                      <button key={seatNo} disabled={!free} onClick={() => setMoveSeat(seatNo)}
-                        className={cn("ios-press-sm grid h-8 w-9 place-items-center rounded-lg text-[13px] font-semibold",
-                          sel ? "bg-[#c9a86a] text-[#241A08]" : free ? "bg-emerald-400/15 text-emerald-300" : "bg-white/5 text-[#5f545c]")}>
-                        {seatNo}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="ios-fill mt-2 rounded-2xl py-2.5 text-center text-[14px]">
-                <span className="font-mono text-[#f2ece6]">Bàn {t} · Ghế {s?.seat}</span>
-                <span className="mx-2 text-[#c9a86a]">→</span>
-                <span className="font-mono text-[#d8bc85]">Bàn 8 · Ghế {moveSeat ?? "—"}</span>
-              </div>
-              <div className="mt-2 flex items-center gap-1.5 px-1 text-[13px] text-[#9b8e97]">
-                Lý do:
-                {MOVE_REASONS.map((r) => (
-                  <button key={r} onClick={() => setMoveReason(r)}
-                    className={cn("ios-press-sm rounded-full px-2.5 py-1 text-[12px]", moveReason === r ? "bg-[#c9a86a]/15 text-[#d8bc85]" : "bg-white/5 text-[#9b8e97]")}>
-                    {r}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-3 flex gap-2">
-                <button onClick={close} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6]">Huỷ</button>
-                <button onClick={() => done(`Đã chuyển tới bàn 8 ghế ${moveSeat}`)} disabled={moveSeat === null}
-                  className="ios-press ios-primary flex-[2] rounded-2xl py-3 text-[15px] font-bold">
-                  Xác nhận chuyển
-                </button>
-              </div>
-            </>
           )}
         </SheetContent>
       </Sheet>
@@ -355,69 +292,33 @@ export function PlayerActionSheets({
           <div className="ios-fill mt-3 rounded-2xl py-3 text-center font-mono text-[22px] font-semibold text-[#c9a86a]">{chipDisplay}</div>
           <div className="mt-2 grid grid-cols-3 gap-1.5">
             {CHIP_KEYS.map((k) => (
-              <button key={k} onClick={() => pressKey(k)} className="ios-press-sm rounded-xl bg-white/5 py-2.5 text-center text-[16px] text-[#f2ece6]">{k}</button>
+              <button key={k} data-ops-action="floor.player.chip_key" onClick={() => pressKey(k)} className="ios-press-sm rounded-xl bg-white/5 py-2.5 text-center text-[16px] text-[#f2ece6]">{k}</button>
             ))}
           </div>
-          {onSaveChip ? (
-            (() => {
-              const cur = target?.chipCount ?? 0;
-              const next = Number(chipValue || "0");
-              const delta = next - cur;
-              return (
-                <div className="mt-2.5 rounded-xl bg-white/5 px-3 py-2 text-center text-[13px] text-[#9b8e97]">
-                  {cur.toLocaleString("vi-VN")} → <b className="font-mono text-[#f2ece6]">{next.toLocaleString("vi-VN")}</b>
-                  {delta !== 0 && <span className={delta > 0 ? " text-emerald-300" : " text-rose-300"}> ({delta > 0 ? "+" : ""}{delta.toLocaleString("vi-VN")})</span>}
-                </div>
-              );
-            })()
-          ) : (
-            <div className="mt-2.5 rounded-xl bg-amber-400/10 px-3 py-2 text-[13px] text-amber-300">
-              Chênh lệch so với hiện tại — lý do: <b className="text-[#f2ece6]">đếm lại</b>
-            </div>
-          )}
+          {(() => {
+            const cur = target?.chipCount ?? 0;
+            const next = Number(chipValue || "0");
+            const delta = next - cur;
+            return (
+              <div className="mt-2.5 rounded-xl bg-white/5 px-3 py-2 text-center text-[13px] text-[#9b8e97]">
+                {cur.toLocaleString("vi-VN")} → <b className="font-mono text-[#f2ece6]">{next.toLocaleString("vi-VN")}</b>
+                {delta !== 0 && <span className={delta > 0 ? " text-emerald-300" : " text-rose-300"}> ({delta > 0 ? "+" : ""}{delta.toLocaleString("vi-VN")})</span>}
+              </div>
+            );
+          })()}
           <button
+            data-ops-action="floor.player.save_chip"
             disabled={chipBusy || !chipValue || Number(chipValue) < 0}
             onClick={async () => {
-              if (onSaveChip) {
-                setChipBusy(true);
-                const ok = await onSaveChip(Number(chipValue || "0"));
-                setChipBusy(false);
-                if (ok) close();            // refetch do màn chủ lo; không optimistic
-              } else {
-                done(`Đã lưu ${chipDisplay} chip`);
-              }
+              setChipBusy(true);
+              const ok = await onSaveChip(Number(chipValue || "0"));
+              setChipBusy(false);
+              if (ok) close();            // refetch do màn chủ lo; không optimistic
             }}
             className="ios-press ios-primary mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[15px] font-bold disabled:opacity-40">
             {chipBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {chipBusy ? "Đang lưu…" : `Lưu ${chipDisplay}`}
           </button>
-        </SheetContent>
-      </Sheet>
-
-      {/* N6 — phiếu */}
-      <Sheet open={sheetOpen("receipt")} onOpenChange={(v) => { if (!v) close(); }}>
-        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
-          <div className="ios-grabber mb-3 mt-1" />
-          <SheetHeader className="text-center">
-            <SheetTitle className="text-[#f2ece6]">Phiếu #72 <span className="ml-1 rounded-full bg-emerald-400/12 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">Đã thu</span></SheetTitle>
-          </SheetHeader>
-          <div className="mt-3 rounded-xl bg-[#F5F1E8] p-3.5 text-[#241A08]">
-            <div className="flex justify-between text-[12px] font-semibold"><span>HANOI ROYAL</span><span className="font-mono font-normal">07/07 13:20</span></div>
-            <div className="my-2 border-t border-dashed border-[#b8ad9a]" />
-            <div className="flex justify-between text-[12px]"><span>{s?.name}</span><span className="font-mono">HSOP Main</span></div>
-            <div className="flex justify-between text-[12px]"><span>Buy-in + phí</span><b className="font-mono">5.500.000</b></div>
-            <div className="flex justify-between text-[12px]"><span>Bàn · ghế</span><b className="font-mono">{t} · {s?.seat}</b></div>
-            <div className="mt-2 text-center">
-              <span className="inline-block h-9 w-9 rounded bg-[#241A08]" />
-              <div className="font-mono text-[11px]">#72</div>
-            </div>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <button onClick={() => toast("Đã gửi lệnh in (bản mẫu)")} className="ios-press ios-fill flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-3 text-[14px] text-[#f2ece6]">
-              <Printer className="h-4 w-4" /> In lại
-            </button>
-            <button onClick={close} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[14px] text-[#9b8e97]">Đóng</button>
-          </div>
         </SheetContent>
       </Sheet>
 
@@ -435,8 +336,7 @@ export function PlayerActionSheets({
           </AlertDialogHeader>
           <div className="ios-card min-w-0 p-5 text-center">
             <div className="min-w-0 break-all text-[17px] font-semibold text-[#f2ece6]">{s?.name}</div>
-            {onBustPlayer ? (
-              !bustInfo || bustInfo.loading ? (
+            {!bustInfo || bustInfo.loading ? (
                 <div className="flex flex-col items-center gap-2 py-4"><Loader2 className="h-6 w-6 animate-spin text-[#c9a86a]" /><span className="text-[13px] text-[#9b8e97]">Đang đọc lại hạng…</span></div>
               ) : (
                 <>
@@ -449,15 +349,7 @@ export function PlayerActionSheets({
                     <div className="text-[14px] text-[#9b8e97]">Ngoài cơ cấu giải — chưa tới hạng có thưởng</div>
                   )}
                 </>
-              )
-            ) : (
-              <>
-                <div className="mt-2 text-[13px] uppercase tracking-wider text-[#9b8e97]">Về hạng</div>
-                <div className="font-mono text-[40px] font-bold leading-none text-[#f2ece6]">84</div>
-                <div className="mx-auto my-3 h-px w-16 bg-white/8" />
-                <div className="text-[14px] text-[#9b8e97]">Ngoài cơ cấu giải — chưa tới hạng có thưởng (mẫu)</div>
-              </>
-            )}
+              )}
           </div>
           {bustControlMode === "manual" && (target?.chipCount ?? 0) > 0 && (
             <div className="min-w-0 rounded-xl border border-amber-400/35 bg-amber-400/10 px-3 py-2.5 text-left text-[13px] leading-5 text-amber-100">
@@ -466,18 +358,15 @@ export function PlayerActionSheets({
             </div>
           )}
           <AlertDialogFooter className="min-w-0 gap-2 sm:gap-2">
-            <button onClick={close} disabled={bustBusy} className="ios-press ios-fill w-full min-w-0 flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6] disabled:opacity-40">Huỷ</button>
+            <button data-ops-action="floor.player.cancel_bust" onClick={close} disabled={bustBusy} className="ios-press ios-fill w-full min-w-0 flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6] disabled:opacity-40">Huỷ</button>
             <button
-              disabled={bustBusy || (!!onBustPlayer && (!bustInfo || bustInfo.loading))}
+              data-ops-action="floor.player.bust"
+              disabled={bustBusy || !bustInfo || bustInfo.loading}
               onClick={async () => {
-                if (onBustPlayer) {
-                  setBustBusy(true);
-                  const ok = await onBustPlayer();
-                  setBustBusy(false);
-                  if (ok) close();              // refetch do màn chủ lo; không optimistic
-                } else {
-                  done("Đã loại");
-                }
+                setBustBusy(true);
+                const ok = await onBustPlayer();
+                setBustBusy(false);
+                if (ok) close();              // refetch do màn chủ lo; không optimistic
               }}
               className="ios-press flex w-full min-w-0 flex-1 items-center justify-center gap-1.5 rounded-2xl bg-rose-500/90 py-3 text-[15px] font-bold text-white disabled:opacity-40">
               {bustBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4" />} {bustBusy ? "Đang loại…" : "Xác nhận loại"}
