@@ -30,6 +30,7 @@ export function RoomGrid({ tables, onTap }: { tables: MockTable[]; onTap?: (t: M
         {tables.map((t) => (
           <button
             key={t.tableNo}
+            data-ops-action="floor.tables.open_table"
             onClick={() => onTap?.(t)}
             data-testid="floor-table-open"
             data-floor-table-number={t.tableNo}

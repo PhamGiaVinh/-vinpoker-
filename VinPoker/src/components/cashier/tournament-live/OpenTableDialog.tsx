@@ -164,7 +164,7 @@ export function OpenTableDialog({
             <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-rose-400/30 bg-rose-400/8 px-4 text-center">
               <AlertTriangle className="h-7 w-7 text-rose-300" />
               <p className="mt-2 max-w-md text-sm leading-6 text-rose-100">{catalogError}</p>
-              <Button type="button" variant="outline" className="mt-4" onClick={() => void loadCatalog()}>
+              <Button data-ops-action="floor.tables.reload_catalog" type="button" variant="outline" className="mt-4" onClick={() => void loadCatalog()}>
                 <RefreshCw className="mr-2 h-4 w-4" /> Tải lại
               </Button>
             </div>
@@ -235,10 +235,11 @@ export function OpenTableDialog({
 
         <div className="border-t border-white/8 bg-[#0d0913]/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:px-6 sm:pb-4">
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+            <Button data-ops-action="floor.tables.cancel_open_table" type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
               Huỷ
             </Button>
             <Button
+              data-ops-action="floor.tables.open_table"
               data-testid="floor-open-table-confirm"
               type="button"
               onClick={() => void submit()}

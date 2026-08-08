@@ -3,24 +3,19 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
-  ChevronRight, Plus, Play, Activity, Edit, Trophy, History, FlagTriangleRight, Trash2, Image, Minus,
+  ChevronRight, Plus, Play, Activity, Edit, Trophy, History, Minus,
   Loader2, LogIn, AlertTriangle,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import {
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription,
-} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useTournaments } from "@/hooks/useTournaments";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
+import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
 import {
-  closeTournament,
   createTournament,
-  deleteTournament,
   mutationError,
-  OPS_CASHIER_MUTATIONS_ENABLED,
   updateTournament,
   updateTournamentLive,
 } from "@/ops/opsMutations";
@@ -58,7 +53,7 @@ function toVM(t: Tournament): TVM {
   return { id: t.id, name: t.name, statusKey, statusLabel, time, buyIn, entries, level: t.current_level, blinds: t.current_blinds };
 }
 
-type SubSheet = "none" | "actions" | "create" | "form" | "updateLive" | "close" | "delete";
+type SubSheet = "none" | "actions" | "create" | "form" | "updateLive";
 const LIVE_STATUS_OPTIONS = [
   { value: "live", label: "Đang chơi" },
   { value: "break", label: "Giải lao" },
@@ -74,11 +69,18 @@ export default function OpsTournaments() {
     loading: clubsLoading,
     clubs,
     floorClubIds: scopedIds,
-    hasOwnerAccess,
+    scope,
+    isSuperAdmin,
     scopeError,
     metadataError,
   } = useOpsCapabilities();
-  const activeClub = scopedIds[0];
+  const { selectedClubId } = useOpsWorkspace();
+  const activeClub = selectedClubId && (isSuperAdmin || scopedIds.includes(selectedClubId))
+    ? selectedClubId
+    : undefined;
+  const hasOwnerAccess = isSuperAdmin || scope.some(
+    (row) => row.club_id === activeClub && row.can_owner,
+  );
   const { data: tournaments, isLoading: tourLoading } = useTournaments(activeClub);
 
   const [filter, setFilter] = useState<"live" | "today" | "all">("live");
@@ -202,30 +204,9 @@ export default function OpsTournaments() {
     );
   };
 
-  const submitClose = () => {
-    if (!sel) return;
-    if (!OPS_CASHIER_MUTATIONS_ENABLED) {
-      toast.error("Chốt giải đang tắt ngoài Preview có kiểm soát.");
-      return;
-    }
-    void runMutation(() => closeTournament(client, sel.id), "Máy chủ đã xác nhận chốt giải.");
-  };
-
-  const submitDelete = () => {
-    if (!sel) return;
-    if (!hasOwnerAccess) {
-      toast.error("Chỉ chủ CLB được xoá giải.");
-      return;
-    }
-    void runMutation(() => deleteTournament(client, sel.id), "Đã xoá giải.");
-  };
-
   const done = () => {
     if (sub === "form") return submitForm();
     if (sub === "updateLive") return submitLive();
-    if (sub === "close") return submitClose();
-    if (sub === "delete") return submitDelete();
-    toast("Chọn một thao tác cụ thể trước khi xác nhận.");
   };
 
   // ---- guards (ordered: auth → login → clubs → permission → data) ----
@@ -254,7 +235,7 @@ export default function OpsTournaments() {
 
       <div className="flex gap-1.5 px-1">
         {FILTERS.map((f) => (
-          <button key={f.key} onClick={() => setFilter(f.key)}
+          <button key={f.key} data-ops-action="floor.tournaments.filter" onClick={() => setFilter(f.key)}
             className={cn("ios-press-sm rounded-full px-3 py-1.5 text-[13px] font-medium", filter === f.key ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
             {f.label}
           </button>
@@ -266,7 +247,7 @@ export default function OpsTournaments() {
       ) : (
         <div className="ios-group">
           {rows.map((r) => (
-            <button key={r.id} onClick={() => openActions(r)} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left">
+            <button key={r.id} data-ops-action="floor.tournaments.open_actions" onClick={() => openActions(r)} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left">
               <span className="min-w-0 flex-1">
                 <span className={cn("block truncate text-[16px] font-semibold", r.statusKey === "closed" ? "text-[#9b8e97]" : "text-[#f2ece6]")}>{r.name}</span>
                 <span className="mt-0.5 block font-mono text-[12px] text-[#9b8e97]">
@@ -280,7 +261,7 @@ export default function OpsTournaments() {
         </div>
       )}
 
-      <button onClick={() => { setSel(null); setSub("create"); }} disabled={!hasOwnerAccess} title={!hasOwnerAccess ? "Chá»‰ owner Ä‘Æ°á»£c táº¡o giáº£i" : undefined} className="ios-press ios-primary flex w-full items-center justify-center gap-1.5 rounded-2xl py-3.5 text-[16px] font-bold disabled:opacity-40">
+      <button data-ops-action="floor.tournaments.create_open" onClick={() => { setSel(null); setSub("create"); }} disabled={!hasOwnerAccess} title={!hasOwnerAccess ? "Chỉ owner được tạo giải" : undefined} className="ios-press ios-primary flex w-full items-center justify-center gap-1.5 rounded-2xl py-3.5 text-[16px] font-bold disabled:opacity-40">
         <Plus className="h-5 w-5" /> Tạo giải
       </button>
 
@@ -298,17 +279,15 @@ export default function OpsTournaments() {
             {sel?.time} · {sel?.entries ?? 0} người{sel?.level ? ` · L${sel.level} · ${sel.blinds}` : ""}
           </div>
           <div className="mt-4 space-y-1.5">
-            <button onClick={() => { const id = sel?.id; closeAll(); navigate(`/ops/floor/tournaments/${id}`); }}
+            <button data-ops-action="floor.tournaments.enter_workspace" onClick={() => { const id = sel?.id; closeAll(); navigate(`/ops/floor/tournaments/${id}/tables?club=${encodeURIComponent(activeClub!)}`); }}
               className="ios-press ios-primary flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
               <Play className="h-5 w-5 shrink-0" />
               <span className="text-[15px] font-bold">Vào giải (vận hành)</span>
             </button>
             <Row icon={<Activity className="h-5 w-5 text-emerald-300" />} label="Cập nhật live — người / level / blind" onTap={() => go("updateLive")} />
             <Row icon={<Edit className="h-5 w-5 text-[#9b8e97]" />} label="Sửa thông tin giải" onTap={() => go("form")} />
-            <Row icon={<Trophy className="h-5 w-5 text-[#d8bc85]" />} label="Cơ cấu thưởng" onTap={() => { const id = sel?.id; closeAll(); navigate(`/ops/floor/tournaments/${id}?tab=payout`); }} />
-            <Row icon={<History className="h-5 w-5 text-[#9b8e97]" />} label="Lịch sử thao tác" onTap={() => { const id = sel?.id; closeAll(); navigate(`/ops/floor/tournaments/${id}?tab=history`); }} />
-            <Row icon={<FlagTriangleRight className="h-5 w-5 text-amber-300" />} label={<span className="text-amber-300">Chốt giải</span>} onTap={() => go("close")} />
-            <Row icon={<Trash2 className="h-5 w-5 text-rose-300" />} label={<span className="text-rose-300">Xoá giải</span>} onTap={() => go("delete")} />
+            <Row icon={<Trophy className="h-5 w-5 text-[#d8bc85]" />} label="Cơ cấu thưởng" onTap={() => { const id = sel?.id; closeAll(); navigate(`/ops/floor/tournaments/${id}/payout?club=${encodeURIComponent(activeClub!)}`); }} />
+            <Row icon={<History className="h-5 w-5 text-[#9b8e97]" />} label="TV & màn hình" onTap={() => { const id = sel?.id; closeAll(); navigate(`/ops/floor/tournaments/${id}/screens?club=${encodeURIComponent(activeClub!)}`); }} />
           </div>
         </SheetContent>
       </Sheet>
@@ -320,7 +299,6 @@ export default function OpsTournaments() {
           <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Tạo giải</SheetTitle></SheetHeader>
           <div className="mt-3 space-y-1.5">
             <Row icon={<Plus className="h-5 w-5 text-[#d8bc85]" />} label="Tạo mới — điền 5 ô" onTap={() => go("form")} />
-            <Row icon={<Image className="h-5 w-5 text-sky-300" />} label="Tạo từ ảnh lịch — máy tự đọc" onTap={() => { closeAll(); toast("Tạo từ ảnh lịch (bản mẫu) — luồng N2"); }} />
           </div>
         </SheetContent>
       </Sheet>
@@ -342,7 +320,7 @@ export default function OpsTournaments() {
             </div>
             <Field label="Cấu trúc blind" value="Turbo 20 phút — mẫu có sẵn ▾" muted />
           </div>
-          <button onClick={() => done()} className="ios-press ios-primary mt-4 w-full rounded-2xl py-3 text-[15px] font-bold">
+          <button data-ops-action="floor.tournaments.save" onClick={() => done()} className="ios-press ios-primary mt-4 w-full rounded-2xl py-3 text-[15px] font-bold">
             {sel ? "Lưu thay đổi" : "Tạo giải"}
           </button>
         </SheetContent>
@@ -363,47 +341,18 @@ export default function OpsTournaments() {
           </div>
           <div className="mt-2.5 px-1 text-[12px] text-[#9b8e97]">Trạng thái</div>
           <div className="mt-1 flex flex-wrap gap-1.5 px-1">
-            {["Đang chơi", "Giải lao", "Final", "Kết thúc"].map((st) => (
-              <button key={st} onClick={() => setLiveStatus(st)}
+            {["Đang chơi", "Giải lao", "Final"].map((st) => (
+              <button key={st} data-ops-action="floor.tournaments.select_live_status" onClick={() => setLiveStatus(st)}
                 className={cn("ios-press-sm rounded-full px-3 py-1.5 text-[13px] font-medium", liveStatus === st ? "bg-emerald-400/15 text-emerald-300" : "bg-white/5 text-[#9b8e97]")}>
                 {st}
               </button>
             ))}
           </div>
-          <button onClick={() => done()} className="ios-press ios-primary mt-4 w-full rounded-2xl py-3 text-[15px] font-bold">Lưu cập nhật</button>
+          <button data-ops-action="floor.tournaments.update_live" onClick={() => done()} className="ios-press ios-primary mt-4 w-full rounded-2xl py-3 text-[15px] font-bold">Lưu cập nhật</button>
           <div className="mt-2 text-center text-[12px] text-[#7c7079]">đồng hồ và TV cập nhật theo ngay</div>
         </SheetContent>
       </Sheet>
 
-      {/* chốt giải — amber confirm */}
-      <AlertDialog open={sub === "close"} onOpenChange={(v) => { if (!v) closeAll(); }}>
-        <AlertDialogContent className="max-w-[340px] rounded-[24px] border-none bg-[#0d0913]">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-[#f2ece6]">Chốt giải {sel?.name}?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#9b8e97]">
-              Khoá kết quả và số liệu của giải. Số tiền trả thưởng sẽ chuyển sang trạng thái Đã chốt.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2 sm:gap-2">
-            <button onClick={closeAll} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6]">Huỷ</button>
-            <button onClick={() => done()} className="ios-press flex-1 rounded-2xl bg-amber-400/90 py-3 text-[15px] font-bold text-[#241A08]">Chốt giải</button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* xoá giải — red confirm */}
-      <AlertDialog open={sub === "delete"} onOpenChange={(v) => { if (!v) closeAll(); }}>
-        <AlertDialogContent className="max-w-[340px] rounded-[24px] border-none bg-[#0d0913]">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-[#f2ece6]">Xoá giải {sel?.name}?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#9b8e97]">Không hoàn tác được. Giải có người đăng ký sẽ không xoá được.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2 sm:gap-2">
-            <button onClick={closeAll} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6]">Huỷ</button>
-            <button onClick={() => done()} className="ios-press flex-1 rounded-2xl bg-rose-500/90 py-3 text-[15px] font-bold text-white">Xoá giải</button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
@@ -425,7 +374,7 @@ function Guard({ icon, title, sub }: { icon: React.ReactNode; title: string; sub
 
 function Row({ icon, label, onTap }: { icon: React.ReactNode; label: React.ReactNode; onTap: () => void }) {
   return (
-    <button onClick={onTap} className="ios-press ios-fill flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
+    <button data-ops-action="floor.tournaments.sheet_navigation" onClick={onTap} className="ios-press ios-fill flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
       {icon}
       <span className="text-[15px] text-[#f2ece6]">{label}</span>
     </button>
@@ -451,9 +400,9 @@ function Stepper({ label, value, onDec, onInc }: { label: string; value: number;
     <div className="ios-fill rounded-xl px-2 py-2 text-center">
       <div className="text-[11px] text-[#9b8e97]">{label}</div>
       <div className="mt-1 flex items-center justify-center gap-3">
-        <button onClick={onDec} className="ios-press-sm grid h-8 w-8 place-items-center rounded-lg bg-white/6 text-[#f2ece6]"><Minus className="h-4 w-4" /></button>
+        <button data-ops-action="floor.tournaments.stepper" onClick={onDec} className="ios-press-sm grid h-8 w-8 place-items-center rounded-lg bg-white/6 text-[#f2ece6]"><Minus className="h-4 w-4" /></button>
         <span className="min-w-[2.5rem] font-mono text-[20px] font-semibold text-[#f2ece6]">{value}</span>
-        <button onClick={onInc} className="ios-press-sm grid h-8 w-8 place-items-center rounded-lg bg-white/6 text-[#f2ece6]"><Plus className="h-4 w-4" /></button>
+        <button data-ops-action="floor.tournaments.stepper" onClick={onInc} className="ios-press-sm grid h-8 w-8 place-items-center rounded-lg bg-white/6 text-[#f2ece6]"><Plus className="h-4 w-4" /></button>
       </div>
     </div>
   );

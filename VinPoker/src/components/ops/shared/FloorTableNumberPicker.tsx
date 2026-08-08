@@ -72,6 +72,7 @@ export function FloorTableNumberPicker({
           <button
             key={item.value}
             type="button"
+            data-ops-action="floor.tables.filter_number_catalog"
             aria-pressed={filter === item.value}
             onClick={() => setFilter(item.value)}
             className={cn(
@@ -97,6 +98,7 @@ export function FloorTableNumberPicker({
             <button
               key={option.number}
               type="button"
+              data-ops-action="floor.tables.select_number"
               data-testid="floor-table-number-option"
               data-floor-table-number={option.number}
               disabled={disabled || active}

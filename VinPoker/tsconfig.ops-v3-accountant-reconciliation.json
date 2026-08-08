@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vite/client", "vitest/globals"],
+    "tsBuildInfoFile": "./node_modules/.tmp/ops-v3-accountant-reconciliation.tsbuildinfo"
+  },
+  "include": [
+    "src/vite-env.d.ts",
+    "src/OpsApp.tsx",
+    "src/ops/accountant/**/*.ts",
+    "src/ops/registry/opsModuleRegistry.ts",
+    "tests/opsAccountantReconciliation/**/*.ts"
+  ]
+}

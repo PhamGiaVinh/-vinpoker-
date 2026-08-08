@@ -48,7 +48,7 @@ export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: bo
       if (seq !== seqRef.current) return;
       if (ttRes.error) throw new Error(ttRes.error.message);
       if (seatsRes.error) throw new Error(typeof seatsRes.error === "string" ? seatsRes.error : (seatsRes.error as Error).message ?? "get_seats lỗi");
-      const allTables: MapTable[] = ((ttRes.data ?? []) as Record<string, unknown>[])
+      const allTables: MapTable[] = ((ttRes.data ?? []) as unknown as Record<string, unknown>[])
         .map((t) => {
           const floorControlMode = parseFloorTableControlMode(t.floor_control_mode);
           const floorControlRevision = parseFloorTableControlRevision(t.floor_control_revision);

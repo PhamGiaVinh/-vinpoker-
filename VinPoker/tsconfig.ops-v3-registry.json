@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/ops-v3-registry.tsbuildinfo"
+  },
+  "include": [
+    "src/vite-env.d.ts",
+    "src/components/ops/OpsBottomNav.tsx",
+    "src/components/ops/OpsHubShell.tsx",
+    "src/components/ops/OpsShell.tsx",
+    "src/ops/auth/OpsCapabilityProvider.tsx",
+    "src/ops/auth/opsCapabilityLoader.ts",
+    "src/ops/auth/opsCapabilityLoader.test.ts",
+    "src/ops/auth/opsCapabilityRouting.ts",
+    "src/ops/pages/OpsEntryResolver.tsx",
+    "src/ops/pages/OpsSelectModule.tsx",
+    "src/ops/pages/OpsAlertsHub.tsx",
+    "src/ops/pages/OpsAccount.tsx",
+    "src/ops/registry/opsModuleRegistry.ts",
+    "src/ops/registry/opsModuleRegistry.test.ts",
+    "src/ops/registry/opsRegistryRoutes.test.ts",
+    "src/ops/workspace/OpsWorkspaceProvider.tsx"
+  ]
+}

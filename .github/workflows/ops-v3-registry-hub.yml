@@ -1,0 +1,90 @@
+name: Ops V3 registry and Hub
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ops-v3-registry-hub.yml"
+      - "VinPoker/src/OpsApp.tsx"
+      - "VinPoker/src/components/ops/OpsBottomNav.tsx"
+      - "VinPoker/src/components/ops/OpsHubShell.tsx"
+      - "VinPoker/src/components/ops/OpsShell.tsx"
+      - "VinPoker/src/ops/**"
+      - "VinPoker/scripts/security/check-ops-v3-shell-text.mjs"
+      - "VinPoker/e2e/ops-v3-hub.mock.spec.ts"
+      - "VinPoker/package.json"
+      - "VinPoker/tsconfig.ops-v3-registry.json"
+      - "VinPoker/tests/floorProduction/floorDbEdgeContracts.test.ts"
+      - "VinPoker/tests/ops/clubOperatorInvite.contract.test.ts"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  registry-hub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+      - name: Install locked dependencies without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+      - name: Run security and text guards
+        working-directory: VinPoker
+        run: |
+          npm run check:credential-context
+          npm run check:ops-boundary
+          npm run check:ops-money-boundary
+          npm run check:ops-v3-shell-text
+          git diff --check
+      - name: Run registry and compatibility tests
+        working-directory: VinPoker
+        run: >-
+          npx vitest run
+          src/ops/auth/opsCapabilityLoader.test.ts
+          src/ops/auth/opsAuthBoundary.test.ts
+          src/ops/registry/opsModuleRegistry.test.ts
+          src/ops/registry/opsRegistryRoutes.test.ts
+      - name: Lint targeted Ops V3 source
+        working-directory: VinPoker
+        run: >-
+          npx eslint
+          src/OpsApp.tsx
+          src/components/ops/OpsBottomNav.tsx
+          src/components/ops/OpsHubShell.tsx
+          src/components/ops/OpsShell.tsx
+          src/ops/auth/OpsCapabilityProvider.tsx
+          src/ops/auth/opsCapabilityLoader.ts
+          src/ops/auth/opsCapabilityLoader.test.ts
+          src/ops/auth/opsCapabilityRouting.ts
+          src/ops/pages/OpsEntryResolver.tsx
+          src/ops/pages/OpsSelectModule.tsx
+          src/ops/pages/OpsAlertsHub.tsx
+          src/ops/pages/OpsAccount.tsx
+          src/ops/registry/opsModuleRegistry.ts
+          src/ops/registry/opsModuleRegistry.test.ts
+          src/ops/registry/opsRegistryRoutes.test.ts
+          src/ops/workspace/OpsWorkspaceProvider.tsx
+          e2e/ops-v3-hub.mock.spec.ts
+          tests/floorProduction/floorDbEdgeContracts.test.ts
+          tests/ops/clubOperatorInvite.contract.test.ts
+      - name: Type-check Ops V3 registry
+        working-directory: VinPoker
+        run: npx tsc -p tsconfig.ops-v3-registry.json --pretty false
+      - name: Build production source
+        working-directory: VinPoker
+        run: npm run build
+      - name: Install Chromium for mock-session responsive check
+        working-directory: VinPoker
+        run: npx playwright install --with-deps chromium
+      - name: Run mock-session browser boundary check
+        working-directory: VinPoker
+        env:
+          VITE_SUPABASE_URL: http://127.0.0.1:54321
+          VITE_SUPABASE_PUBLISHABLE_KEY: local-publishable-key
+        run: npx playwright test e2e/ops-v3-hub.mock.spec.ts

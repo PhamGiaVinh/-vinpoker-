@@ -1,0 +1,87 @@
+name: Ops V3 Finance Series read-only
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ops-v3-finance-series.yml"
+      - "VinPoker/src/OpsApp.tsx"
+      - "VinPoker/src/ops/coverage/financeSeriesButtonManifest.ts"
+      - "VinPoker/src/ops/finance/**"
+      - "VinPoker/src/ops/registry/opsModuleRegistry.ts"
+      - "VinPoker/src/ops/series/**"
+      - "VinPoker/scripts/security/check-ops-v3-shell-text.mjs"
+      - "VinPoker/e2e/ops-v3-finance-series.mock.spec.ts"
+      - "VinPoker/tests/opsFinanceSeries/**"
+      - "VinPoker/tsconfig.ops-v3-finance-series.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  finance-series-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - name: Install locked dependencies without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+
+      - name: Run Ops security and text guards
+        working-directory: VinPoker
+        run: |
+          npm run check:ops-boundary
+          npm run check:ops-money-boundary
+          npm run check:ops-v3-shell-text
+          npm run check:credential-context
+          git diff --check
+
+      - name: Run Finance and Series contracts
+        working-directory: VinPoker
+        run: >-
+          npx vitest run
+          tests/opsFinanceSeries/financeSeries.contract.test.ts
+          src/ops/registry/opsModuleRegistry.test.ts
+          --maxWorkers=1 --minWorkers=1
+
+      - name: Lint targeted read-only source and tests
+        working-directory: VinPoker
+        run: >-
+          npx eslint
+          src/OpsApp.tsx
+          src/ops/coverage/financeSeriesButtonManifest.ts
+          src/ops/finance
+          src/ops/registry/opsModuleRegistry.ts
+          src/ops/series
+          scripts/security/check-ops-v3-shell-text.mjs
+          e2e/ops-v3-finance-series.mock.spec.ts
+          tests/opsFinanceSeries
+
+      - name: Type-check Finance and Series workspaces
+        working-directory: VinPoker
+        run: npx tsc -p tsconfig.ops-v3-finance-series.json --pretty false
+
+      - name: Build production source
+        working-directory: VinPoker
+        run: npm run build
+
+      - name: Install Chromium for responsive mock-session verification
+        working-directory: VinPoker
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify RPC-only Finance and native Series reads
+        working-directory: VinPoker
+        env:
+          VITE_SUPABASE_URL: http://127.0.0.1:54321
+          VITE_SUPABASE_PUBLISHABLE_KEY: local-publishable-key
+        run: npx playwright test e2e/ops-v3-finance-series.mock.spec.ts --workers=1
