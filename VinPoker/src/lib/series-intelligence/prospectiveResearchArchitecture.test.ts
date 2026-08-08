@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = resolve(process.cwd(), "src");
 const kernel = readFileSync(resolve(ROOT, "lib/series-intelligence/prospectiveResearchCohortV1.ts"), "utf8");
+const trustedHistory = readFileSync(resolve(ROOT, "lib/series-intelligence/trustedForecastHistoryV1.ts"), "utf8");
 const component = readFileSync(resolve(ROOT, "components/series-intelligence/ProspectiveResearchQueue.tsx"), "utf8");
 const flags = readFileSync(resolve(ROOT, "lib/featureFlags.ts"), "utf8");
 const viteConfig = readFileSync(resolve(process.cwd(), "vite.config.ts"), "utf8");
@@ -23,6 +24,15 @@ describe("D3A architecture boundary", () => {
     expect(kernel).toContain("forecastTurnout");
   });
 
+  it("keeps trusted history pure and refuses native current outcomes", () => {
+    expect(trustedHistory).not.toMatch(/from ["'].*(?:react|supabase|integrations\/supabase)["']/i);
+    expect(trustedHistory).not.toMatch(/\.(?:insert|update|upsert|delete)\s*\(/);
+    expect(trustedHistory).toContain("source_timestamp_after_as_of");
+    expect(trustedHistory).toContain("unresolvedMismatch");
+    expect(trustedHistory).toContain("total_entries: entries");
+    expect(trustedHistory).not.toContain("source: \"csv\"");
+  });
+
   it("keeps commit identity separate from the human-readable build timestamp", () => {
     expect(viteConfig).toContain("__APP_GIT_COMMIT_SHA__");
     expect(viteConfig).toContain("VERCEL_GIT_COMMIT_SHA");
@@ -35,6 +45,8 @@ describe("D3A architecture boundary", () => {
     expect(component).toContain("hook.insertForecast");
     expect(component).toContain("promoteNativeEventActual");
     expect(component).toContain("getBuildGitSha");
+    expect(component).toContain("useTrustedForecastHistory");
+    expect(component).toContain("trustedHistory.result.events");
     expect(component).not.toContain("VITE_GIT_COMMIT_SHA");
     expect(component).not.toContain("d3a:native:${event.eventId}");
     expect(component).not.toMatch(/from ["'].*(?:supabase|integrations\/supabase)["']/i);

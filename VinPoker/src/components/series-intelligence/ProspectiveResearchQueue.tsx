@@ -18,6 +18,7 @@ import {
 } from "@/lib/series-intelligence/prospectiveResearchCohortV1";
 import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
 import type { UseSeriesCapture } from "@/lib/series-intelligence/useSeriesCapture";
+import { useTrustedForecastHistory } from "@/lib/series-intelligence/useTrustedForecastHistory";
 
 const timingLabel: Record<HorizonTimingStatus, string> = {
   ON_TIME: "Đến hạn",
@@ -49,6 +50,13 @@ export function ProspectiveResearchQueue({ hook, nativeEvents }: { hook: UseSeri
   const [asOfTs, setAsOfTs] = useState(() => new Date().toISOString());
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<Record<string, string>>({});
+  const trustedHistory = useTrustedForecastHistory({
+    enabled: FEATURES.seriesProspectiveResearchCohortV1,
+    clubId: hook.clubId,
+    asOfTs,
+    nativeEvents,
+    captureEvents: hook.events,
+  });
   const queue = useMemo(() => buildProspectiveResearchQueueV1({
     asOfTs,
     events: hook.events.map((event) => ({ event: nativeEvents.find((item) => item.event_id === event.id) ?? {
@@ -95,9 +103,13 @@ export function ProspectiveResearchQueue({ hook, nativeEvents }: { hook: UseSeri
       setResults((current) => ({ ...current, [`${row.eventId}:${row.horizon}`]: "Thiếu event native" }));
       return false;
     }
+    if (trustedHistory.status !== "ready") {
+      setResults((current) => ({ ...current, [`${row.eventId}:${row.horizon}`]: trustedHistory.reason ?? "Trusted D2B history is unavailable." }));
+      return false;
+    }
     const result = await buildProspectiveEngineSnapshotV1({
       event,
-      history: nativeEvents,
+      history: trustedHistory.result.events,
       horizon: row.horizon,
       capturedAt: new Date().toISOString(),
       codeSha: getBuildGitSha() ?? undefined,
@@ -128,7 +140,7 @@ export function ProspectiveResearchQueue({ hook, nativeEvents }: { hook: UseSeri
     for (const event of pastEvents) {
       const idempotencyKey = buildNativePromotionIdempotencyKey(operationId, event.eventId);
       let result = await promoteNativeEventActual({ eventId: event.eventId, idempotencyKey });
-      if (!result.ok) result = await promoteNativeEventActual({ eventId: event.eventId, idempotencyKey });
+      if (!result.ok && result.retryable) result = await promoteNativeEventActual({ eventId: event.eventId, idempotencyKey });
       setResults((current) => ({ ...current, [`native:${event.eventId}`]: result.ok ? "Đã yêu cầu đồng bộ" : `Bị chặn: ${result.error}` }));
     }
     setRunning(false);

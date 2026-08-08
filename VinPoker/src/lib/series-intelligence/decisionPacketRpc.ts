@@ -29,7 +29,7 @@ const D2A_RPC = {
 
 export type DecisionPacketRpcResult<T> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly error: DecisionEventStateBackendError };
+  | { readonly ok: false; readonly error: DecisionEventStateBackendError; readonly retryable: boolean };
 
 export interface PromoteNativeEventActualRequest {
   readonly eventId: string;
@@ -51,34 +51,46 @@ export interface FreezeDecisionPacketRequest {
 
 export type DecisionPacketMutationSummary = Readonly<Record<string, unknown>>;
 
-function classifyRpcError(error: { code?: string; message?: string } | null): DecisionEventStateBackendError {
-  if (!error) return "malformed_response";
-  if (["42P01", "PGRST202", "PGRST205", "PGRST203", "404"].includes(error.code ?? "") || /does not exist|could not find|schema cache/i.test(error.message ?? "")) return "backend_unavailable";
-  return "rpc_error";
+function classifyRpcError(error: { code?: string; message?: string; status?: number } | null): { readonly error: DecisionEventStateBackendError; readonly retryable: boolean } {
+  if (!error) return { error: "malformed_response", retryable: false };
+  if (["42P01", "PGRST202", "PGRST205", "PGRST203", "404"].includes(error.code ?? "") || /does not exist|could not find|schema cache/i.test(error.message ?? "")) return { error: "backend_unavailable", retryable: false };
+  const retryable = [408, 429, 502, 503, 504].includes(error.status ?? Number.NaN)
+    || /network|fetch|timeout|timed out|aborted|temporarily unavailable|gateway/i.test(error.message ?? "");
+  return { error: "rpc_error", retryable };
+}
+
+function classifyThrownRpcError(error: unknown): { readonly error: DecisionEventStateBackendError; readonly retryable: boolean } {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return classifyRpcError({ message });
 }
 
 function parseMutationResponse(value: unknown): DecisionPacketRpcResult<Record<string, unknown>> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, error: "malformed_response" };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, error: "malformed_response", retryable: false };
   const record = value as Record<string, unknown>;
-  if (record.version !== "series-decision-event-state-v1" || typeof record.state !== "string") return { ok: false, error: "malformed_response" };
+  if (record.version !== "series-decision-event-state-v1" || typeof record.state !== "string") return { ok: false, error: "malformed_response", retryable: false };
   return { ok: true, value: record };
 }
 
 function parseD2AMutationResponse(value: unknown): DecisionPacketRpcResult<DecisionPacketMutationSummary> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, error: "malformed_response" };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, error: "malformed_response", retryable: false };
   const record = value as Record<string, unknown>;
   if (typeof record.id !== "string" || typeof record.schema_version !== "string") {
-    return { ok: false, error: "malformed_response" };
+    return { ok: false, error: "malformed_response", retryable: false };
   }
   return { ok: true, value: record };
 }
 
 export async function promoteNativeEventActual(request: PromoteNativeEventActualRequest): Promise<DecisionPacketRpcResult<Record<string, unknown>>> {
-  const { data, error } = await d2bClient.rpc(D2B_RPC.promoteNativeActual, {
-    p_event_id: request.eventId,
-    p_idempotency_key: request.idempotencyKey,
-  });
-  return error ? { ok: false, error: classifyRpcError(error) } : parseMutationResponse(data);
+  try {
+    const { data, error } = await d2bClient.rpc(D2B_RPC.promoteNativeActual, {
+      p_event_id: request.eventId,
+      p_idempotency_key: request.idempotencyKey,
+    });
+    const classification = classifyRpcError(error);
+    return error ? { ok: false, ...classification } : parseMutationResponse(data);
+  } catch (error) {
+    return { ok: false, ...classifyThrownRpcError(error) };
+  }
 }
 
 export async function reconcileEventActual(request: ReconcileEventActualRequest): Promise<DecisionPacketRpcResult<Record<string, unknown>>> {
@@ -89,7 +101,8 @@ export async function reconcileEventActual(request: ReconcileEventActualRequest)
     p_reason: request.reason,
     p_idempotency_key: request.idempotencyKey,
   });
-  return error ? { ok: false, error: classifyRpcError(error) } : parseMutationResponse(data);
+  const classification = classifyRpcError(error);
+  return error ? { ok: false, ...classification } : parseMutationResponse(data);
 }
 
 export async function createDecisionPacket(
@@ -98,7 +111,7 @@ export async function createDecisionPacket(
   try {
     await buildDecisionPacketCreateRequestIdentity(request);
   } catch {
-    return { ok: false, error: "malformed_response" };
+    return { ok: false, error: "malformed_response", retryable: false };
   }
 
   const { data, error } = await d2bClient.rpc(D2A_RPC.createPacket, {
@@ -130,20 +143,22 @@ export async function createDecisionPacket(
     p_correction_reason: request.correctionReason,
     p_idempotency_key: request.idempotencyKey,
   });
-  return error ? { ok: false, error: classifyRpcError(error) } : parseD2AMutationResponse(data);
+  const classification = classifyRpcError(error);
+  return error ? { ok: false, ...classification } : parseD2AMutationResponse(data);
 }
 
 export async function freezeDecisionPacket(
   request: FreezeDecisionPacketRequest,
 ): Promise<DecisionPacketRpcResult<DecisionPacketMutationSummary>> {
   if (!request.packetId || !Number.isSafeInteger(request.expectedDraftVersion) || request.expectedDraftVersion < 1) {
-    return { ok: false, error: "malformed_response" };
+    return { ok: false, error: "malformed_response", retryable: false };
   }
   const { data, error } = await d2bClient.rpc(D2A_RPC.freezePacket, {
     p_packet_id: request.packetId,
     p_expected_draft_version: request.expectedDraftVersion,
   });
-  return error ? { ok: false, error: classifyRpcError(error) } : parseD2AMutationResponse(data);
+  const classification = classifyRpcError(error);
+  return error ? { ok: false, ...classification } : parseD2AMutationResponse(data);
 }
 
 export async function recordEventActual(
@@ -179,11 +194,13 @@ export async function recordEventActual(
     p_idempotency_key: request.idempotencyKey,
     p_correction_reason: request.correctionReason,
   });
-  return error ? { ok: false, error: classifyRpcError(error) } : parseD2AMutationResponse(data);
+  const classification = classifyRpcError(error);
+  return error ? { ok: false, ...classification } : parseD2AMutationResponse(data);
 }
 
 export async function getDecisionEventState(eventId: string): Promise<DecisionPacketRpcResult<DecisionEventStateResponse>> {
   const { data, error } = await d2bClient.rpc(D2B_RPC.getEventState, { p_event_id: eventId });
-  if (error) return { ok: false, error: classifyRpcError(error) };
-  return parseDecisionEventStateResponse(data);
+  if (error) return { ok: false, ...classifyRpcError(error) };
+  const parsed = parseDecisionEventStateResponse(data);
+  return parsed.ok ? parsed : { ...parsed, retryable: false };
 }
