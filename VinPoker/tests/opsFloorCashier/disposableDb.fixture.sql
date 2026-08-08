@@ -94,6 +94,15 @@ CREATE TABLE public.tournament_state_transitions (
 CREATE TABLE public.tournament_prize_payments (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tournament_id uuid, status text);
 CREATE TABLE public.non_fk_tournament_evidence (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tournament_id uuid, note text);
 
+-- Browser-role read/write privileges needed only by the assertion script's
+-- direct fixture setup. The migration under test revokes tournament DELETE and
+-- all idempotency-table access before the ACL assertions run.
+GRANT SELECT ON public.tournaments, public.tournament_registrations,
+  public.tournament_entries, public.tournament_seats, public.seat_draw_receipts,
+  public.seat_assignment_history, public.non_fk_tournament_evidence TO authenticated;
+GRANT INSERT, UPDATE ON public.game_tables, public.tournament_tables TO authenticated;
+GRANT INSERT, DELETE ON public.non_fk_tournament_evidence TO authenticated;
+
 -- Existing legacy signature is present only to prove the migration revokes it;
 -- the new Ops function must not call it.
 CREATE OR REPLACE FUNCTION public.create_offline_buyin_and_seat(uuid, text, bigint, bigint, text, text)
