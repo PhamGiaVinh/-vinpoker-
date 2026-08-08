@@ -1,0 +1,87 @@
+name: Ops V3 Tracker Dealer read-only
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ops-v3-tracker-dealer.yml"
+      - "VinPoker/src/OpsApp.tsx"
+      - "VinPoker/src/ops/coverage/trackerDealerButtonManifest.ts"
+      - "VinPoker/src/ops/dealer-control/**"
+      - "VinPoker/src/ops/registry/opsModuleRegistry.ts"
+      - "VinPoker/src/ops/tracker/**"
+      - "VinPoker/scripts/security/check-ops-v3-shell-text.mjs"
+      - "VinPoker/e2e/ops-v3-tracker-dealer.mock.spec.ts"
+      - "VinPoker/tests/opsTrackerDealer/**"
+      - "VinPoker/tsconfig.ops-v3-tracker-dealer.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tracker-dealer-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - name: Install locked dependencies without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+
+      - name: Run Ops security and text guards
+        working-directory: VinPoker
+        run: |
+          npm run check:ops-boundary
+          npm run check:ops-money-boundary
+          npm run check:ops-v3-shell-text
+          npm run check:credential-context
+          git diff --check
+
+      - name: Run Tracker and Dealer Control contracts
+        working-directory: VinPoker
+        run: >-
+          npx vitest run
+          tests/opsTrackerDealer/opsTrackerDealer.contract.test.ts
+          src/ops/registry/opsModuleRegistry.test.ts
+          --maxWorkers=1 --minWorkers=1
+
+      - name: Lint targeted read-only source and tests
+        working-directory: VinPoker
+        run: >-
+          npx eslint
+          src/OpsApp.tsx
+          src/ops/coverage/trackerDealerButtonManifest.ts
+          src/ops/dealer-control
+          src/ops/registry/opsModuleRegistry.ts
+          src/ops/tracker
+          scripts/security/check-ops-v3-shell-text.mjs
+          e2e/ops-v3-tracker-dealer.mock.spec.ts
+          tests/opsTrackerDealer
+
+      - name: Type-check Tracker and Dealer Control workspaces
+        working-directory: VinPoker
+        run: npx tsc -p tsconfig.ops-v3-tracker-dealer.json --pretty false
+
+      - name: Build production source
+        working-directory: VinPoker
+        run: npm run build
+
+      - name: Install Chromium for responsive mock-session verification
+        working-directory: VinPoker
+        run: npx playwright install --with-deps chromium
+
+      - name: Run responsive exact-club read-only verification
+        working-directory: VinPoker
+        env:
+          VITE_SUPABASE_URL: http://127.0.0.1:54321
+          VITE_SUPABASE_PUBLISHABLE_KEY: local-publishable-key
+        run: npx playwright test e2e/ops-v3-tracker-dealer.mock.spec.ts --workers=1

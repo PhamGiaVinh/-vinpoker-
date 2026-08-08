@@ -3,6 +3,11 @@ import { Loader2 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
+import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
+import {
+  TournamentOpsProvider,
+  type TournamentOpsSnapshot,
+} from "@/ops/workspace/TournamentOpsProvider";
 import {
   floorScopeFingerprint,
   isCurrentTournamentScope,
@@ -18,13 +23,18 @@ import { OpsAccessDenied } from "@/ops/pages/OpsEntryResolver";
 export function OpsTournamentScopeGate({ children }: { children: ReactNode }) {
   const { id } = useParams();
   const client = useSupabaseClient();
-  const { floorClubIds, loading, scopeError } = useOpsCapabilities();
-  const scopeFingerprint = floorScopeFingerprint(floorClubIds);
+  const { floorClubIds, isSuperAdmin, loading, scopeError } = useOpsCapabilities();
+  const { selectedClubId } = useOpsWorkspace();
+  const selectedScope = selectedClubId && (isSuperAdmin || floorClubIds.includes(selectedClubId))
+    ? [selectedClubId]
+    : [];
+  const scopeFingerprint = floorScopeFingerprint(selectedScope);
   const [verification, setVerification] = useState<VerifiedTournamentScope>({
     status: "checking",
     tournamentId: null,
     scopeFingerprint: "",
   });
+  const [snapshot, setSnapshot] = useState<TournamentOpsSnapshot | null>(null);
 
   useEffect(() => {
     if (loading) {
@@ -35,12 +45,13 @@ export function OpsTournamentScopeGate({ children }: { children: ReactNode }) {
       });
       return;
     }
-    if (scopeError || !id || floorClubIds.length === 0) {
+    if (scopeError || !id || !selectedClubId || selectedScope.length === 0) {
       setVerification({
         status: "denied",
         tournamentId: id ?? null,
         scopeFingerprint,
       });
+      setSnapshot(null);
       return;
     }
 
@@ -54,16 +65,23 @@ export function OpsTournamentScopeGate({ children }: { children: ReactNode }) {
       try {
         const { data, error } = await client
           .from("tournaments")
-          .select("id")
+          .select("id, club_id, name, status")
           .eq("id", id)
-          .in("club_id", floorClubIds)
+          .eq("club_id", selectedClubId)
           .maybeSingle();
         if (cancelled) return;
+        const allowed = !error && data?.id === id && data.club_id === selectedClubId;
         setVerification({
-          status: !error && data?.id === id ? "allowed" : "denied",
+          status: allowed ? "allowed" : "denied",
           tournamentId: id,
           scopeFingerprint,
         });
+        setSnapshot(allowed ? {
+          tournamentId: data.id,
+          clubId: data.club_id,
+          tournamentName: data.name,
+          status: data.status,
+        } : null);
       } catch {
         if (!cancelled) {
           setVerification({
@@ -72,13 +90,14 @@ export function OpsTournamentScopeGate({ children }: { children: ReactNode }) {
             scopeFingerprint,
           });
         }
+        setSnapshot(null);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [client, floorClubIds, id, loading, scopeError, scopeFingerprint]);
+  }, [client, id, isSuperAdmin, loading, scopeError, scopeFingerprint, selectedClubId, selectedScope.length]);
 
   const verificationMatchesRoute = verification.tournamentId === (id ?? null)
     && verification.scopeFingerprint === scopeFingerprint;
@@ -91,9 +110,9 @@ export function OpsTournamentScopeGate({ children }: { children: ReactNode }) {
     );
   }
   if (verification.status === "denied") {
-    return <OpsAccessDenied message="Giải đấu không thuộc phạm vi Floor được cấp cho tài khoản này." />;
+    return <OpsAccessDenied message="Giải đấu không thuộc CLB Floor đang được chọn." />;
   }
-  return isCurrentTournamentScope(verification, id, scopeFingerprint)
-    ? <>{children}</>
+  return isCurrentTournamentScope(verification, id, scopeFingerprint) && snapshot
+    ? <TournamentOpsProvider snapshot={snapshot}>{children}</TournamentOpsProvider>
     : null;
 }

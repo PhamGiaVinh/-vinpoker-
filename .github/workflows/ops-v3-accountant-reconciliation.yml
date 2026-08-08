@@ -1,0 +1,125 @@
+name: Ops V3 Accountant payroll authority
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ops-v3-accountant-reconciliation.yml"
+      - "VinPoker/supabase/migrations/20270110000001_ops_accountant_payroll_approval_guard.sql"
+      - "VinPoker/src/ops/accountant/**"
+      - "VinPoker/src/ops/registry/opsModuleRegistry.ts"
+      - "VinPoker/tests/opsAccountantReconciliation/**"
+      - "VinPoker/tsconfig.ops-v3-accountant-reconciliation.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  accountant-payroll-authority:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - name: Install locked dependencies without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+
+      - name: Run credential and Ops boundary guards
+        working-directory: VinPoker
+        run: |
+          npm run check:credential-context
+          npm run check:ops-boundary
+          npm run check:ops-money-boundary
+          git diff --check
+
+      - name: Run targeted Accountant contract tests
+        working-directory: VinPoker
+        run: >-
+          npx vitest run
+          tests/opsAccountantReconciliation/accountantReconciliation.contract.test.ts
+          src/ops/registry/opsModuleRegistry.test.ts
+
+      - name: Lint targeted Accountant source
+        working-directory: VinPoker
+        run: >-
+          npx eslint
+          src/ops/accountant/accountantWorkspaceManifest.ts
+          src/ops/registry/opsModuleRegistry.ts
+          tests/opsAccountantReconciliation/accountantReconciliation.contract.test.ts
+
+      - name: Type-check Accountant manifest
+        working-directory: VinPoker
+        run: npx tsc -p tsconfig.ops-v3-accountant-reconciliation.json --pretty false
+
+      - name: Build production source
+        working-directory: VinPoker
+        run: npm run build
+
+      - name: Create disposable payroll baseline
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/opsAccountantReconciliation/disposableDb.fixture.sql
+
+      - name: Apply exact source migration to disposable PostgreSQL only
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270110000001_ops_accountant_payroll_approval_guard.sql
+
+      - name: Run authority and cross-club assertions
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/opsAccountantReconciliation/disposableDb.integration.sql
+
+      - name: Prove missing prerequisite fails closed and rolls back
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: |
+          createdb -h localhost -U postgres ops_accountant_missing_prerequisite
+          psql -h localhost -U postgres -d ops_accountant_missing_prerequisite -v ON_ERROR_STOP=1 \
+            -f tests/opsAccountantReconciliation/disposableDb.fixture.sql
+          psql -h localhost -U postgres -d ops_accountant_missing_prerequisite -v ON_ERROR_STOP=1 \
+            -c "DROP FUNCTION public._is_payroll_accountant(uuid) CASCADE;"
+          if psql -h localhost -U postgres -d ops_accountant_missing_prerequisite -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20270110000001_ops_accountant_payroll_approval_guard.sql; then
+            echo "Migration unexpectedly accepted a missing prerequisite"
+            exit 1
+          fi
+          rolled_back=$(psql -At -h localhost -U postgres -d ops_accountant_missing_prerequisite \
+            -c "SELECT to_regprocedure('public._assert_payroll_approval_actor(uuid)') IS NULL;")
+          [ "$rolled_back" = "t" ] || { echo "Failed preflight left partial schema"; exit 1; }
+          echo "Missing-prerequisite rollback PASS"
+
+      - name: Prove concurrent approval changes payroll state once
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
+            "INSERT INTO public.payroll_periods(id,club_id,status) VALUES ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','submitted');"
+          PGHOST=localhost PGUSER=postgres PGDATABASE=postgres \
+            sh tests/opsAccountantReconciliation/runConcurrentApprove.sh

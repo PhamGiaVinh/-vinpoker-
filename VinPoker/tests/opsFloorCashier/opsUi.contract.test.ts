@@ -5,13 +5,16 @@ import { describe, expect, it } from "vitest";
 const repo = resolve(import.meta.dirname, "../..");
 
 describe("Ops production safety affordances", () => {
-  it("keeps cashier mutation gate explicit and owner UX checks present", () => {
+  it("keeps production Cashier read-only and owner tournament writes scoped", () => {
     const cashier = readFileSync(resolve(repo, "src/pages/ops/OpsCashier.tsx"), "utf8");
     const tournaments = readFileSync(resolve(repo, "src/pages/ops/OpsTournaments.tsx"), "utf8");
-    expect(cashier).toContain("OPS_CASHIER_MUTATIONS_ENABLED");
-    expect(cashier).toContain("money_path_disabled");
+    expect(cashier).toContain("OPS MONEY GATE B đang tắt");
+    expect(cashier).not.toContain("@/ops/opsMutations");
+    expect(cashier).not.toMatch(/\.rpc\s*\(|functions\.invoke/u);
     expect(tournaments).toContain("hasOwnerAccess");
-    expect(tournaments).toContain("deleteTournament");
+    expect(tournaments).toContain("row.club_id === activeClub && row.can_owner");
+    expect(tournaments).not.toContain("closeTournament");
+    expect(tournaments).not.toContain("deleteTournament");
   });
 
   it("does not leave a direct tournament delete in application source", () => {

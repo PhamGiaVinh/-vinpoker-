@@ -29,11 +29,10 @@ describe("Ops authentication boundary", () => {
 
 describe("Ops capability routing", () => {
   it.each([
-    [{ hasOwnerAccess: false, hasFloorAccess: true, hasCashierAccess: false }, "/ops/floor"],
-    [{ hasOwnerAccess: false, hasFloorAccess: false, hasCashierAccess: true }, "/ops/cashier"],
-    [{ hasOwnerAccess: true, hasFloorAccess: true, hasCashierAccess: true }, "/ops/select-module"],
-    [{ hasOwnerAccess: false, hasFloorAccess: true, hasCashierAccess: true }, "/ops/select-module"],
-    [{ hasOwnerAccess: false, hasFloorAccess: false, hasCashierAccess: false }, "access-denied"],
+    [{ availableModuleRoutes: ["/ops/floor"] }, "/ops/floor"],
+    [{ availableModuleRoutes: ["/ops/cashier"] }, "/ops/cashier"],
+    [{ availableModuleRoutes: ["/ops/floor", "/ops/cashier"] }, "/ops/select-module"],
+    [{ availableModuleRoutes: [] }, "access-denied"],
   ] as const)("routes caller-bound capabilities without role enums", (input, expected) => {
     expect(resolveOpsEntry(input)).toBe(expected);
   });
