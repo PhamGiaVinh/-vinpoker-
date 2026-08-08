@@ -942,6 +942,11 @@ export const FEATURES = {
    */
   seriesDecisionPacketV1: true,
   /**
+   * D3A prospective research capture queue. Read-only queue plus explicit owner actions through the existing
+   * CAPTURE hook and D2B native-actual RPC. Default OFF until owner Preview UAT; no migration or new RPC.
+   */
+  seriesProspectiveResearchCohortV1: false,
+  /**
    * Series Intelligence — turnout forecast (transparent ridge log-linear, RESEARCH tier). When ON, step ④
    * of the SI page shows the TurnoutForecastPanel: predicts entries for an upcoming event from the club's
    * OWN past events with a confidence band + tier + walk-forward CV error vs a median baseline. Labeled

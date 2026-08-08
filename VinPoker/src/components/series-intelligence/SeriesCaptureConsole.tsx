@@ -12,6 +12,7 @@ import { CaptureOverview } from "./capture/CaptureOverview";
 import { CalibrationCard } from "./capture/CalibrationCard";
 import { MarketingImportPanel } from "./MarketingImportPanel";
 import { EventLoopPanel } from "./capture/EventLoopPanel";
+import { ProspectiveResearchQueue } from "./ProspectiveResearchQueue";
 
 /**
  * Series Intelligence — CAPTURE console (self-contained). Event-centric: pick a club tournament, then capture
@@ -102,6 +103,9 @@ export function SeriesCaptureConsole() {
       </div>
 
       <CaptureOverview decisions={hook.decisions} snapshots={hook.snapshots} />
+      {FEATURES.seriesProspectiveResearchCohortV1 && (
+        <ProspectiveResearchQueue hook={hook} nativeEvents={native.events} />
+      )}
       {FEATURES.seriesCalibration && <CalibrationCard decisions={hook.decisions} snapshots={hook.snapshots} />}
       {FEATURES.seriesMarketingImport && (
         <MarketingImportPanel
