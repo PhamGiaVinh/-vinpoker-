@@ -6,6 +6,7 @@ const ROOT = resolve(process.cwd(), "src");
 const kernel = readFileSync(resolve(ROOT, "lib/series-intelligence/prospectiveResearchCohortV1.ts"), "utf8");
 const component = readFileSync(resolve(ROOT, "components/series-intelligence/ProspectiveResearchQueue.tsx"), "utf8");
 const flags = readFileSync(resolve(ROOT, "lib/featureFlags.ts"), "utf8");
+const viteConfig = readFileSync(resolve(process.cwd(), "vite.config.ts"), "utf8");
 
 describe("D3A architecture boundary", () => {
   it("keeps the pure cohort kernel free of React, Supabase and direct writes", () => {
@@ -22,9 +23,20 @@ describe("D3A architecture boundary", () => {
     expect(kernel).toContain("forecastTurnout");
   });
 
+  it("keeps commit identity separate from the human-readable build timestamp", () => {
+    expect(viteConfig).toContain("__APP_GIT_COMMIT_SHA__");
+    expect(viteConfig).toContain("VERCEL_GIT_COMMIT_SHA");
+    expect(viteConfig).toContain("GITHUB_SHA");
+    expect(viteConfig).toContain("execFileSync(\"git\", [\"rev-parse\", \"HEAD\"]");
+    expect(viteConfig).not.toMatch(/__APP_GIT_COMMIT_SHA__:\s*JSON\.stringify\(buildVersion\)/);
+  });
+
   it("keeps capture and native promotion behind existing boundaries", () => {
     expect(component).toContain("hook.insertForecast");
     expect(component).toContain("promoteNativeEventActual");
+    expect(component).toContain("getBuildGitSha");
+    expect(component).not.toContain("VITE_GIT_COMMIT_SHA");
+    expect(component).not.toContain("d3a:native:${event.eventId}");
     expect(component).not.toMatch(/from ["'].*(?:supabase|integrations\/supabase)["']/i);
     expect(component).not.toMatch(/\.from\s*\(/);
   });
