@@ -64,8 +64,9 @@ export default function OpsApp() {
         <Toaster theme="dark" position="top-center" />
         <BrowserRouter>
           <OpsAuthProvider>
-            <Suspense fallback={<RouteLoader />}>
-              <Routes>
+            <div className="ops-root min-h-[100dvh] bg-[#030604] text-[#f2ece6]">
+              <Suspense fallback={<RouteLoader />}>
+                <Routes>
                 <Route path="/ops/login" element={<OpsLogin />} />
                 <Route path="/ops/auth/callback" element={<OpsAuthCallback />} />
                 <Route path="/ops/forgot-password" element={<OpsForgotPassword />} />
@@ -103,8 +104,9 @@ export default function OpsApp() {
                   </Route>
                 </Route>
                 <Route path="*" element={<Navigate to="/ops" replace />} />
-              </Routes>
-            </Suspense>
+                </Routes>
+              </Suspense>
+            </div>
           </OpsAuthProvider>
         </BrowserRouter>
       </TooltipProvider>
