@@ -1,13 +1,15 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { RouteLoader } from "@/components/RouteLoader";
 import OpsShell from "@/components/ops/OpsShell";
+import OpsHubShell from "@/components/ops/OpsHubShell";
 import { OpsAuthProvider } from "@/ops/auth/OpsAuthProvider";
-import { OpsCapabilityProvider, useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
+import { OpsCapabilityProvider } from "@/ops/auth/OpsCapabilityProvider";
 import { OpsTournamentScopeGate } from "@/ops/auth/OpsTournamentScopeGate";
+import { OpsWorkspaceProvider } from "@/ops/workspace/OpsWorkspaceProvider";
 import {
   OpsEntryResolver,
   OpsModuleGate,
@@ -20,6 +22,7 @@ const OpsForgotPassword = lazy(() => import("@/ops/pages/OpsForgotPassword"));
 const OpsAccount = lazy(() => import("@/ops/pages/OpsAccount"));
 const OpsClubAccounts = lazy(() => import("@/ops/pages/OpsClubAccounts"));
 const OpsSelectModule = lazy(() => import("@/ops/pages/OpsSelectModule"));
+const OpsAlertsHub = lazy(() => import("@/ops/pages/OpsAlertsHub"));
 const OpsTournaments = lazy(() => import("@/pages/ops/OpsTournaments"));
 const OpsTournamentCockpit = lazy(() => import("@/pages/ops/OpsTournamentCockpit"));
 const OpsTables = lazy(() => import("@/pages/ops/OpsTables"));
@@ -40,7 +43,9 @@ function ProtectedOpsRoot() {
   return (
     <OpsRequireSession>
       <OpsCapabilityProvider>
-        <Outlet />
+        <OpsWorkspaceProvider>
+          <Outlet />
+        </OpsWorkspaceProvider>
       </OpsCapabilityProvider>
     </OpsRequireSession>
   );
@@ -49,12 +54,6 @@ function ProtectedOpsRoot() {
 function LegacyTournamentRedirect() {
   const { id } = useParams();
   return <Navigate to={id ? `/ops/floor/tournaments/${id}` : "/ops/floor"} replace />;
-}
-
-function OpsOwnerGate({ children }: { children: ReactNode }) {
-  const capabilities = useOpsCapabilities();
-  if (capabilities.loading) return <RouteLoader />;
-  return capabilities.hasOwnerAccess ? <>{children}</> : <Navigate to="/ops" replace />;
 }
 
 export default function OpsApp() {
@@ -69,40 +68,56 @@ export default function OpsApp() {
                 <Routes>
                 <Route path="/ops/login" element={<OpsLogin />} />
                 <Route path="/ops/auth/callback" element={<OpsAuthCallback />} />
-                <Route path="/ops/forgot-password" element={<OpsForgotPassword />} />
-                <Route element={<ProtectedOpsRoot />}>
-                  <Route path="/ops" element={<OpsEntryResolver />} />
-                  <Route path="/ops/select-module" element={<OpsSelectModule />} />
-                  <Route path="/ops/account" element={<OpsAccount />} />
-                  <Route path="/ops/club-admin/accounts" element={<OpsOwnerGate><OpsClubAccounts /></OpsOwnerGate>} />
-                  <Route element={<OpsShell />}>
-                    <Route
-                      path="/ops/floor"
-                      element={<OpsModuleGate capability="floor"><OpsTournaments /></OpsModuleGate>}
-                    />
-                    <Route
-                      path="/ops/floor/tables"
-                      element={<OpsModuleGate capability="floor"><OpsTables /></OpsModuleGate>}
-                    />
-                    <Route
-                      path="/ops/floor/tournaments/:id"
-                      element={(
-                        <OpsModuleGate capability="floor">
-                          <OpsTournamentScopeGate>
-                            <OpsTournamentCockpit />
-                          </OpsTournamentScopeGate>
-                        </OpsModuleGate>
-                      )}
-                    />
-                    <Route
-                      path="/ops/cashier"
-                      element={<OpsModuleGate capability="cashier"><OpsCashier /></OpsModuleGate>}
-                    />
-                    <Route path="/ops/tournaments" element={<Navigate to="/ops/floor" replace />} />
-                    <Route path="/ops/tournaments/:id" element={<LegacyTournamentRedirect />} />
-                    <Route path="/ops/tables" element={<Navigate to="/ops/floor" replace />} />
+                  <Route path="/ops/forgot-password" element={<OpsForgotPassword />} />
+                  <Route element={<ProtectedOpsRoot />}>
+                    <Route path="/ops" element={<OpsEntryResolver />} />
+                    <Route element={<OpsHubShell />}>
+                      <Route path="/ops/select-module" element={<OpsSelectModule />} />
+                      <Route path="/ops/spaces" element={<Navigate to="/ops/select-module?view=spaces" replace />} />
+                      <Route path="/ops/alerts" element={<OpsAlertsHub />} />
+                      <Route path="/ops/account" element={<OpsAccount />} />
+                    </Route>
+                    <Route element={<OpsShell />}>
+                      <Route
+                        path="/ops/club-admin/accounts"
+                        element={<OpsModuleGate capability="club-admin"><OpsClubAccounts /></OpsModuleGate>}
+                      />
+                      <Route
+                        path="/ops/floor"
+                        element={<OpsModuleGate capability="floor"><OpsTournaments /></OpsModuleGate>}
+                      />
+                      <Route
+                        path="/ops/floor/tables"
+                        element={<OpsModuleGate capability="floor"><OpsTables /></OpsModuleGate>}
+                      />
+                      <Route
+                        path="/ops/floor/tournaments/:id"
+                        element={(
+                          <OpsModuleGate capability="floor">
+                            <OpsTournamentScopeGate>
+                              <OpsTournamentCockpit />
+                            </OpsTournamentScopeGate>
+                          </OpsModuleGate>
+                        )}
+                      />
+                      <Route
+                        path="/ops/cashier"
+                        element={<OpsModuleGate capability="cashier"><OpsCashier /></OpsModuleGate>}
+                      />
+                      <Route path="/ops/tracker" element={<OpsModuleGate capability="tracker" />} />
+                      <Route path="/ops/dealer-swing" element={<OpsModuleGate capability="dealer-control" />} />
+                      <Route path="/ops/fnb" element={<OpsModuleGate capability="fnb" />} />
+                      <Route path="/ops/marketing" element={<OpsModuleGate capability="marketing" />} />
+                      <Route path="/ops/chip-ops" element={<OpsModuleGate capability="chip-ops" />} />
+                      <Route path="/ops/finance" element={<OpsModuleGate capability="finance" />} />
+                      <Route path="/ops/accountant" element={<OpsModuleGate capability="accountant" />} />
+                      <Route path="/ops/series" element={<OpsModuleGate capability="series" />} />
+                      <Route path="/ops/accounting" element={<Navigate to="/ops/finance" replace />} />
+                      <Route path="/ops/tournaments" element={<Navigate to="/ops/floor" replace />} />
+                      <Route path="/ops/tournaments/:id" element={<LegacyTournamentRedirect />} />
+                      <Route path="/ops/tables" element={<Navigate to="/ops/floor" replace />} />
+                    </Route>
                   </Route>
-                </Route>
                 <Route path="*" element={<Navigate to="/ops" replace />} />
                 </Routes>
               </Suspense>

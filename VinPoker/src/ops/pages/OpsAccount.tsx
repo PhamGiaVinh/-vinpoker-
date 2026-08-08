@@ -14,6 +14,9 @@ import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext
 import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { Link } from "react-router-dom";
+import { Layers3 } from "lucide-react";
+import type { OpsClubCapabilityRow } from "@/ops/auth/opsCapabilityContract";
+import type { OpsRpcClient } from "@/ops/auth/opsCapabilityLoader";
 import {
   clearInvitePasswordSetupRequired,
   requiresInvitePasswordSetup,
@@ -23,8 +26,25 @@ function maskedId(value: string): string {
   return value.length > 10 ? `${value.slice(0, 5)}…${value.slice(-4)}` : value;
 }
 
+function capabilityLabels(row: OpsClubCapabilityRow): string[] {
+  return [
+    row.can_owner && "Owner",
+    row.can_floor && "Floor",
+    row.can_cashier && "Cashier",
+    row.can_tracker && "Tracker",
+    row.can_dealer_control && "Dealer Control",
+    row.can_accountant && "Accountant",
+    row.can_chip_master && "Chip Master",
+    row.can_marketer && "Marketing",
+    row.can_fnb_cashier && "F&B Cashier",
+    row.can_fnb_server && "F&B Server",
+    row.can_fnb_kitchen && "F&B Kitchen",
+  ].filter((label): label is string => Boolean(label));
+}
+
 export default function OpsAccount() {
   const client = useSupabaseClient();
+  const rpcClient = client as unknown as OpsRpcClient;
   const { user, signOutLocal } = useOpsAuth();
   const capabilities = useOpsCapabilities();
   const [params] = useSearchParams();
@@ -39,7 +59,7 @@ export default function OpsAccount() {
 
   const acceptInvitations = async (): Promise<boolean> => {
     setActivationBusy(true);
-    const { error } = await client.rpc("accept_my_club_operator_invites");
+    const { error } = await rpcClient.rpc("accept_my_club_operator_invites");
     setActivationBusy(false);
     if (error) {
       setMessage(
@@ -101,11 +121,7 @@ export default function OpsAccount() {
                   ?.name ?? `CLB ${maskedId(row.club_id)}`}
               </div>
               <div className="mt-1 text-zinc-400">
-                {[
-                  row.can_owner && "Owner",
-                  row.can_floor && "Floor",
-                  row.can_cashier && "Cashier",
-                ].filter(Boolean).join(" · ")}
+                {capabilityLabels(row).join(" · ")}
               </div>
             </div>
           ))}
@@ -165,6 +181,15 @@ export default function OpsAccount() {
       {capabilities.hasOwnerAccess && (
         <Button asChild className="min-h-11 w-full">
           <Link to="/ops/club-admin/accounts">Quản lý tài khoản CLB</Link>
+        </Button>
+      )}
+
+      {capabilities.hasAnyAccess && (
+        <Button asChild variant="outline" className="min-h-11 w-full border-white/10 bg-transparent text-white">
+          <Link to="/ops/select-module">
+            <Layers3 className="mr-2 h-4 w-4" />
+            Đổi không gian làm việc
+          </Link>
         </Button>
       )}
 
