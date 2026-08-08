@@ -227,8 +227,13 @@ export function useDeleteTournament() {
 
   return useMutation({
     mutationFn: async ({ id, club_id }: { id: string; club_id: string }) => {
-      const { error } = await supabase.from("tournaments").delete().eq("id", id);
+      const { data, error } = await supabase.rpc("ops_delete_tournament_safe", {
+        p_tournament_id: id,
+        p_reason: "tournament_hook_delete",
+      });
       if (error) throw error;
+      const result = data as { ok?: boolean; error?: string } | null;
+      if (result?.ok === false) throw new Error(result.error ?? "tournament_delete_failed");
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({

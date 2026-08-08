@@ -221,6 +221,7 @@ DECLARE
   v_tour public.tournaments;
   v_fk RECORD;
   v_has_rows BOOLEAN;
+  v_evidence_table TEXT;
 BEGIN
   IF v_actor IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'error', 'unauthorized');
@@ -229,12 +230,37 @@ BEGIN
   IF NOT FOUND THEN
     RETURN jsonb_build_object('ok', false, 'error', 'tournament_not_found');
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM public.clubs WHERE id = v_tour.club_id AND owner_id = v_actor) THEN
+  IF NOT EXISTS (SELECT 1 FROM public.clubs WHERE id = v_tour.club_id AND owner_id = v_actor)
+     AND NOT public.has_role(v_actor, 'super_admin'::public.app_role) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'owner_required');
   END IF;
   IF v_tour.status IN ('completed', 'cancelled') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'tournament_terminal');
   END IF;
+
+  -- Explicit canonical evidence list. Optional tables are checked only when
+  -- present, so this remains forward-compatible with older schemas.
+  FOREACH v_evidence_table IN ARRAY ARRAY[
+    'tournament_registrations', 'tournament_entries', 'tournament_seats',
+    'tournament_hands', 'seat_draw_receipts', 'seat_assignment_history',
+    'tournament_prize_payments', 'tournament_prize_payment_requests',
+    'bank_transactions', 'sepay_transactions', 'staking_deals', 'staking_purchases'
+  ] LOOP
+    IF to_regclass(format('public.%I', v_evidence_table)) IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM pg_attribute a
+         WHERE a.attrelid = to_regclass(format('public.%I', v_evidence_table))
+           AND a.attname = 'tournament_id' AND NOT a.attisdropped
+       ) THEN
+      EXECUTE format(
+        'SELECT EXISTS (SELECT 1 FROM public.%I WHERE tournament_id = $1)',
+        v_evidence_table
+      ) INTO v_has_rows USING p_tournament_id;
+      IF v_has_rows THEN
+        RETURN jsonb_build_object('ok', false, 'error', 'tournament_has_related_evidence', 'evidence_table', v_evidence_table);
+      END IF;
+    END IF;
+  END LOOP;
 
   -- Any child row is evidence that must survive; never cascade-delete it.
   FOR v_fk IN
@@ -266,6 +292,26 @@ BEGIN
         'error', 'tournament_has_related_evidence',
         'evidence_table', v_fk.child_table
       );
+    END IF;
+  END LOOP;
+
+  -- Conservative fallback: evidence tables are not required to declare an FK.
+  -- Any public table with a canonical tournament_id column blocks deletion.
+  FOR v_fk IN
+    SELECT n.nspname AS child_schema, c.relname AS child_table
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'tournament_id' AND NOT a.attisdropped
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r', 'p')
+      AND c.relname <> 'tournaments'
+  LOOP
+    EXECUTE format(
+      'SELECT EXISTS (SELECT 1 FROM %I.%I WHERE tournament_id = $1)',
+      v_fk.child_schema, v_fk.child_table
+    ) INTO v_has_rows USING p_tournament_id;
+    IF v_has_rows THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'tournament_has_related_evidence', 'evidence_table', v_fk.child_table);
     END IF;
   END LOOP;
 
@@ -318,6 +364,21 @@ DECLARE
   v_response JSONB;
   v_buy_in BIGINT;
   v_fee BIGINT;
+  v_name TEXT := NULLIF(btrim(p_player_name), '');
+  v_player_id UUID := gen_random_uuid();
+  v_table_tour_id UUID;
+  v_table_game_id UUID;
+  v_table_number INTEGER;
+  v_max_seats INTEGER;
+  v_seat_number INTEGER;
+  v_registration_id UUID;
+  v_entry_id UUID;
+  v_seat_id UUID;
+  v_receipt_id UUID;
+  v_receipt_code TEXT;
+  v_reference_code TEXT;
+  v_attempt INTEGER := 0;
+  v_member_id UUID;
 BEGIN
   IF v_actor IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'error', 'unauthorized');
@@ -332,6 +393,8 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'invalid_draw_mode');
   END IF;
 
+  -- Lock order starts with the tournament. Every Ops buy-in for this
+  -- tournament therefore serializes before resolving capacity or writing data.
   SELECT * INTO v_tour FROM public.tournaments WHERE id = p_tournament_id FOR UPDATE;
   IF NOT FOUND THEN
     RETURN jsonb_build_object('ok', false, 'error', 'tournament_not_found');
@@ -342,14 +405,12 @@ BEGIN
   IF NOT v_allowed THEN
     RETURN jsonb_build_object('ok', false, 'error', 'actor_not_allowed');
   END IF;
-  IF v_tour.status IN ('completed', 'cancelled') THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'tournament_not_open', 'status', v_tour.status);
-  END IF;
-
   v_buy_in := coalesce(v_tour.buy_in, 0);
   v_fee := coalesce(v_tour.rake_amount, 0) + coalesce(v_tour.service_fee_amount, 0);
-  v_hash := md5(concat_ws('|', p_tournament_id::text, btrim(p_player_name), coalesce(p_phone, ''), coalesce(p_draw_mode, ''), v_buy_in::text, v_fee::text));
+  v_hash := md5(concat_ws('|', p_tournament_id::text, v_name, coalesce(p_phone, ''), coalesce(p_draw_mode, ''), v_buy_in::text, v_fee::text));
 
+  -- The idempotency row is locked before business-state validation. A second
+  -- request with the same key waits here and converges on the first response.
   INSERT INTO public.ops_cashier_mutation_idempotency (idempotency_key, actor_user_id, operation, request_hash)
   VALUES (btrim(p_idempotency_key), v_actor, 'offline_buyin', v_hash)
   ON CONFLICT (idempotency_key) DO NOTHING;
@@ -365,17 +426,162 @@ BEGIN
     RETURN v_existing.response || jsonb_build_object('idempotent', true);
   END IF;
 
-  v_response := public.create_offline_buyin_and_seat(
-    p_tournament_id, btrim(p_player_name), v_buy_in, v_fee, coalesce(p_draw_mode, 'random_balanced'), p_phone
-  );
-  IF coalesce((v_response->>'ok')::boolean, false) THEN
-    UPDATE public.ops_cashier_mutation_idempotency
-    SET response = v_response, updated_at = now()
-    WHERE idempotency_key = btrim(p_idempotency_key);
-  ELSE
-    DELETE FROM public.ops_cashier_mutation_idempotency
-    WHERE idempotency_key = btrim(p_idempotency_key);
+  IF v_buy_in <= 0 OR v_fee < 0 THEN
+    DELETE FROM public.ops_cashier_mutation_idempotency WHERE idempotency_key = btrim(p_idempotency_key);
+    RETURN jsonb_build_object('ok', false, 'error', 'invalid_tournament_pricing');
   END IF;
+
+  IF v_tour.status IN ('completed', 'cancelled') THEN
+    DELETE FROM public.ops_cashier_mutation_idempotency WHERE idempotency_key = btrim(p_idempotency_key);
+    RETURN jsonb_build_object('ok', false, 'error', 'tournament_not_open', 'status', v_tour.status);
+  END IF;
+
+  -- Preflight all capacity before the first business write. The tournament
+  -- lock plus the selected tournament-table lock serializes capacity selection.
+  IF coalesce(p_draw_mode, 'random_balanced') = 'fill_lowest_table' THEN
+    SELECT tt.id, tt.table_id, tt.table_number, tt.max_seats
+      INTO v_table_tour_id, v_table_game_id, v_table_number, v_max_seats
+    FROM public.tournament_tables tt
+    WHERE tt.tournament_id = p_tournament_id
+      AND tt.status = 'active'
+      AND tt.table_id IS NOT NULL
+      AND (SELECT count(*) FROM public.tournament_seats ts
+           WHERE ts.table_id = tt.id AND ts.is_active = true) < tt.max_seats
+    ORDER BY tt.table_number ASC NULLS LAST, tt.id
+    LIMIT 1
+    FOR UPDATE;
+  ELSE
+    SELECT tt.id, tt.table_id, tt.table_number, tt.max_seats
+      INTO v_table_tour_id, v_table_game_id, v_table_number, v_max_seats
+    FROM public.tournament_tables tt
+    WHERE tt.tournament_id = p_tournament_id
+      AND tt.status = 'active'
+      AND tt.table_id IS NOT NULL
+      AND (SELECT count(*) FROM public.tournament_seats ts
+           WHERE ts.table_id = tt.id AND ts.is_active = true) < tt.max_seats
+    ORDER BY (SELECT count(*) FROM public.tournament_seats ts
+              WHERE ts.table_id = tt.id AND ts.is_active = true),
+             tt.table_number ASC NULLS LAST, tt.id
+    LIMIT 1
+    FOR UPDATE;
+  END IF;
+
+  IF v_table_tour_id IS NULL THEN
+    DELETE FROM public.ops_cashier_mutation_idempotency WHERE idempotency_key = btrim(p_idempotency_key);
+    RETURN jsonb_build_object('ok', false, 'error', 'no_table_available');
+  END IF;
+
+  SELECT s.n INTO v_seat_number
+  FROM generate_series(1, greatest(v_max_seats, 1)) AS s(n)
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.tournament_seats ts
+    WHERE ts.table_id = v_table_tour_id
+      AND ts.seat_number = s.n
+      AND ts.is_active = true
+  )
+  ORDER BY s.n
+  LIMIT 1;
+  IF v_seat_number IS NULL THEN
+    DELETE FROM public.ops_cashier_mutation_idempotency WHERE idempotency_key = btrim(p_idempotency_key);
+    RETURN jsonb_build_object('ok', false, 'error', 'no_seat_available');
+  END IF;
+
+  -- From this point onward, unexpected errors raise and roll the complete
+  -- transaction back, including registration and idempotency state.
+  LOOP
+    v_attempt := v_attempt + 1;
+    v_reference_code := format('CASH-%s', upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)));
+    BEGIN
+      INSERT INTO public.tournament_registrations (
+        tournament_id, player_id, club_id, buy_in, platform_fixed_fee, total_pay,
+        reference_code, status, committed_at, confirmed_at, confirmed_by
+      ) VALUES (
+        p_tournament_id, v_player_id, v_tour.club_id, v_buy_in, v_fee, v_buy_in + v_fee,
+        v_reference_code, 'confirmed', now(), now(), v_actor
+      ) RETURNING id INTO v_registration_id;
+      EXIT;
+    EXCEPTION WHEN unique_violation THEN
+      IF v_attempt >= 5 THEN RAISE; END IF;
+    END;
+  END LOOP;
+
+  INSERT INTO public.tournament_entries (
+    tournament_id, registration_id, player_id, entry_no, source, status,
+    current_stack, table_id, seat_number, seated_at
+  ) VALUES (
+    p_tournament_id, v_registration_id, v_player_id, 1, 'offline', 'seated',
+    coalesce(v_tour.starting_stack, 0), v_table_game_id, v_seat_number, now()
+  ) RETURNING id INTO v_entry_id;
+
+  INSERT INTO public.tournament_seats (
+    tournament_id, player_id, entry_number, table_id, seat_number, chip_count,
+    is_active, player_name, status, entry_id, assigned_by, assigned_at
+  ) VALUES (
+    p_tournament_id, v_player_id, 1, v_table_tour_id, v_seat_number,
+    coalesce(v_tour.starting_stack, 0), true, v_name, 'active', v_entry_id, v_actor, now()
+  ) RETURNING id INTO v_seat_id;
+
+  UPDATE public.tournament_entries SET seat_id = v_seat_id WHERE id = v_entry_id;
+
+  BEGIN
+    IF public.normalize_phone(p_phone) IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM public.club_settings cs
+         WHERE cs.club_id = v_tour.club_id AND cs.player_history_enabled
+       ) THEN
+      v_member_id := NULLIF(public.find_or_create_club_member(v_tour.club_id, p_phone, v_name, NULL)->>'member_id', '')::uuid;
+      IF v_member_id IS NOT NULL THEN
+        UPDATE public.tournament_entries SET member_id = v_member_id WHERE id = v_entry_id;
+      END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO public.player_history_link_errors (club_id, context, detail)
+    VALUES (v_tour.club_id, 'ops_create_offline_buyin_and_seat', left(SQLERRM, 500));
+  END;
+
+  LOOP
+    v_attempt := v_attempt + 1;
+    v_receipt_code := format('T%s-S%s-%s', coalesce(v_table_number::text, '?'), v_seat_number,
+      upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6)));
+    BEGIN
+      INSERT INTO public.seat_draw_receipts (
+        tournament_id, registration_id, entry_id, player_id, display_name, table_id,
+        table_number, seat_id, seat_number, receipt_code, qr_payload, draw_type,
+        status, issued_by
+      ) VALUES (
+        p_tournament_id, v_registration_id, v_entry_id, v_player_id, v_name, v_table_game_id,
+        v_table_number, v_seat_id, v_seat_number, v_receipt_code,
+        jsonb_build_object('v', 1, 'receipt_code', v_receipt_code, 'entry_id', v_entry_id,
+          'tournament_id', p_tournament_id, 'player_id', v_player_id,
+          'table_number', v_table_number, 'seat_number', v_seat_number, 'source', 'offline'),
+        'initial', 'issued', v_actor
+      ) RETURNING id INTO v_receipt_id;
+      EXIT;
+    EXCEPTION WHEN unique_violation THEN
+      IF v_attempt >= 5 THEN RAISE; END IF;
+    END;
+  END LOOP;
+
+  INSERT INTO public.seat_assignment_history (
+    tournament_id, entry_id, player_id, to_table_id, to_table_number, to_seat_number,
+    reason, draw_type, actor_user_id, metadata
+  ) VALUES (
+    p_tournament_id, v_entry_id, v_player_id, v_table_game_id, v_table_number, v_seat_number,
+    'offline_buyin', 'initial', v_actor,
+    jsonb_build_object('draw_mode', coalesce(p_draw_mode, 'random_balanced'),
+      'registration_id', v_registration_id, 'buy_in', v_buy_in, 'fee', v_fee, 'source', 'offline')
+  );
+
+  v_response := jsonb_build_object(
+    'ok', true, 'registration_id', v_registration_id, 'entry_id', v_entry_id,
+    'seat_id', v_seat_id, 'receipt_id', v_receipt_id, 'receipt_code', v_receipt_code,
+    'reference_code', v_reference_code, 'table_id', v_table_game_id,
+    'table_number', v_table_number, 'seat_number', v_seat_number,
+    'display_name', v_name, 'starting_stack', coalesce(v_tour.starting_stack, 0)
+  );
+  UPDATE public.ops_cashier_mutation_idempotency
+  SET response = v_response, updated_at = now()
+  WHERE idempotency_key = btrim(p_idempotency_key);
   RETURN v_response;
 END;
 $$;
@@ -384,6 +590,7 @@ $$;
 -- Tighten only DELETE; create/edit are now routed through the Ops RPCs above.
 DROP POLICY IF EXISTS "tournaments_delete" ON public.tournaments;
 DROP POLICY IF EXISTS "Club owners can delete tournaments" ON public.tournaments;
+REVOKE DELETE ON public.tournaments FROM authenticated;
 CREATE POLICY "tournaments_delete_owner_only"
   ON public.tournaments FOR DELETE TO authenticated
   USING (

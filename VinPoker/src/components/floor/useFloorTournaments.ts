@@ -110,8 +110,12 @@ export function useFloorTournaments(clubIds: string[]) {
 
   const deleteTour = useCallback(async (id: string) => {
     if (!confirm(t("clubAdmin.deleteConfirm"))) return;
-    const { error } = await supabase.from("tournaments").delete().eq("id", id);
-    if (error) toast.error(error.message);
+    const { data, error } = await supabase.rpc("ops_delete_tournament_safe", {
+      p_tournament_id: id,
+      p_reason: "floor_tournament_delete",
+    });
+    const result = data as { ok?: boolean; error?: string } | null;
+    if (error || result?.ok === false) toast.error(error?.message ?? result?.error ?? "Không thể xoá giải");
     else { toast.success(t("clubAdmin.tournamentDeleted")); load(); }
   }, [t, load]);
 

@@ -236,8 +236,13 @@ const SuperAdmin = () => {
 
   const deleteTour = async (id: string) => {
     if (!confirm("Delete this tournament?")) return;
-    const { error } = await supabase.from("tournaments").delete().eq("id", id);
-    if (error) toast.error(error.message); else { toast.success("Deleted"); load(); }
+    const { data, error } = await supabase.rpc("ops_delete_tournament_safe", {
+      p_tournament_id: id,
+      p_reason: "super_admin_tournament_delete",
+    });
+    const result = data as { ok?: boolean; error?: string } | null;
+    if (error || result?.ok === false) toast.error(error?.message ?? result?.error ?? "Tournament delete failed");
+    else { toast.success("Deleted"); load(); }
   };
 
   return (

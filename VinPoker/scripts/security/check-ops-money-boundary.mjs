@@ -9,6 +9,9 @@ const FORBIDDEN_DIRECT_WRITES = [
   /(?:paid|is_paid)\s*[:=]\s*true/u,
 ];
 
+const FORBIDDEN_DIRECT_TOURNAMENT_DELETE =
+  /\.from\(\s*["']tournaments["']\s*\)[\s\S]{0,120}\.delete\(\s*\)/u;
+
 const REQUIRED_RPC_NAMES = [
   "ops_create_tournament",
   "ops_update_tournament",
@@ -23,6 +26,11 @@ export async function scanOpsMoneyBoundary(repositoryRoot) {
     path.join(repositoryRoot, "src", "pages", "ops", "OpsCashier.tsx"),
     path.join(repositoryRoot, "src", "components", "cashier", "OfflineBuyInPanel.tsx"),
   ];
+  const deleteCallerFiles = [
+    path.join(repositoryRoot, "src", "components", "floor", "useFloorTournaments.ts"),
+    path.join(repositoryRoot, "src", "hooks", "useTournaments.ts"),
+    path.join(repositoryRoot, "src", "pages", "SuperAdmin.tsx"),
+  ];
   const findings = [];
   for (const file of files) {
     const source = await readFile(file, "utf8");
@@ -34,6 +42,12 @@ export async function scanOpsMoneyBoundary(repositoryRoot) {
         if (!source.includes(`rpc(\"${name}\"`)) findings.push(`missing_rpc:${name}`);
       }
       if (source.includes('rpc("create_offline_buyin_and_seat"')) findings.push("legacy_buyin_rpc");
+    }
+  }
+  for (const file of deleteCallerFiles) {
+    const source = await readFile(file, "utf8");
+    if (FORBIDDEN_DIRECT_TOURNAMENT_DELETE.test(source)) {
+      findings.push(`${path.relative(repositoryRoot, file)}:direct_tournament_delete`);
     }
   }
   return findings;
