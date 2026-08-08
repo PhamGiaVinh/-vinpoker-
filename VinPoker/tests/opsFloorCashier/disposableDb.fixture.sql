@@ -101,6 +101,7 @@ GRANT SELECT ON public.tournaments, public.tournament_registrations,
   public.tournament_entries, public.tournament_seats, public.seat_draw_receipts,
   public.seat_assignment_history, public.game_tables, public.tournament_tables,
   public.non_fk_tournament_evidence TO authenticated;
+GRANT INSERT ON public.tournaments TO authenticated;
 GRANT INSERT, UPDATE ON public.game_tables, public.tournament_tables TO authenticated;
 GRANT INSERT, DELETE ON public.non_fk_tournament_evidence TO authenticated;
 
