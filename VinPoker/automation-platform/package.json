@@ -15,8 +15,10 @@
     "check:schemas": "node scripts/validate-schemas.js",
     "check:workflow": "node scripts/check-workflows.js",
     "scan": "node scripts/scan-repository.js",
+    "check:env-policy": "node scripts/validate-local-env-policy.js",
+    "test:verification": "node --test --test-reporter=spec verification-test/*.test.js",
     "checksum": "node scripts/update-workflow-checksums.js --check",
-    "verify": "npm run check:schemas && npm run test && npm run check:workflow && npm run checksum && npm run scan"
+    "verify": "npm run check:schemas && npm run test && npm run check:workflow && npm run checksum && npm run scan && npm run check:env-policy && npm run test:verification"
   },
   "dependencies": {
     "ajv": "8.20.0",
