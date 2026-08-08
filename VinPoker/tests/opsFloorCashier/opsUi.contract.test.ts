@@ -43,4 +43,9 @@ describe("Ops production safety affordances", () => {
       /REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.ops_create_offline_buyin_and_seat\s*\(uuid\s*,\s*text\s*,\s*text\s*,\s*text\s*,\s*text\s*\)\s+FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated\s*,\s*service_role\s*;/iu,
     );
   });
+
+  it("keeps profile review off until approve_verification authority is proven", () => {
+    const gate = readFileSync(resolve(repo, "src/lib/profileReviewGate.ts"), "utf8");
+    expect(gate).toContain("export const PROFILE_REVIEW_ENABLED = false;");
+  });
 });
