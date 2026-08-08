@@ -201,6 +201,10 @@ export default function OpsTournaments() {
 
   const submitDelete = () => {
     if (!sel) return;
+    if (!hasOwnerAccess) {
+      toast.error("Chỉ chủ CLB được xoá giải.");
+      return;
+    }
     void runMutation(() => deleteTournament(client, sel.id), "Đã xoá giải.");
   };
 
