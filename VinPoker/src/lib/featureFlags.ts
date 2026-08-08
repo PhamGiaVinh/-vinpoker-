@@ -1029,6 +1029,13 @@ export const FEATURES = {
    */
   seriesAssistant: true,
   /**
+   * Series Intelligence — V Copilot V1 local vertical slice. When ON, renders the read-only mock flow:
+   * deterministic context + schedule health + precomputed candidate options → mock V response → strict
+   * evidence/number/privacy validation. No Gemini SDK, network, Edge, DB read/write, production data, or money
+   * action. Default OFF until Preview UAT; provider integration remains a separate owner-gated wave.
+   */
+  seriesVCopilotV1: false,
+  /**
    * Series Intelligence — TP3 small-field overlay distribution. When ON, overlay simulations whose
    * central field is below 60 entries use a discrete Negative Binomial sampler instead of a continuous
    * log-normal draw, so tiny fields keep realistic integer count mass. Fields at/above 60 stay on the
