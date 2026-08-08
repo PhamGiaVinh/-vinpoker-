@@ -18,6 +18,12 @@ const FILES = [
   "src/ops/tracker/TrackerWorkspaceView.tsx",
   "src/ops/dealer-control/OpsDealerControlWorkspace.tsx",
   "src/ops/dealer-control/DealerControlWorkspaceView.tsx",
+  "src/ops/chip-ops/OpsChipOpsWorkspace.tsx",
+  "src/ops/chip-ops/ChipOpsWorkspaceView.tsx",
+  "src/ops/finance/OpsFinanceWorkspace.tsx",
+  "src/ops/finance/FinanceWorkspaceView.tsx",
+  "src/ops/series/OpsSeriesWorkspace.tsx",
+  "src/ops/series/SeriesWorkspaceView.tsx",
 ];
 
 const BROKEN_UTF8 = /(?:Ã.|Â.|Ä.|Æ.|áº.|á»|â€¦|â†’|ï¿½)/gu;
