@@ -12,7 +12,7 @@ export const FEATURES = {
   cashierRegistrations: true,
   /**
    * Cashier "Buy-in tại quầy" (offline cash / walk-in): pick tournament → name →
-   * server-derived buy-in/fee → auto-draw seat + receipt via the Ops RPC.
+   * buy-in + fee → auto-draw seat + receipt via `create_offline_buyin_and_seat`.
    * ENABLED 2026-06-14: RPC applied live + hardened (PUBLIC/anon revoked) in a
    * controlled session, owner UAT passed. Now the section is visible to all
    * cashiers and the Buy-in button calls the live RPC. Kill-switch: set false to
@@ -941,6 +941,11 @@ export const FEATURES = {
    * Kill-switch: set false to keep the existing CAPTURE console unchanged.
    */
   seriesDecisionPacketV1: true,
+  /**
+   * D3A prospective research capture queue. Read-only queue plus explicit owner actions through the existing
+   * CAPTURE hook and D2B native-actual RPC. Default OFF until owner Preview UAT; no migration or new RPC.
+   */
+  seriesProspectiveResearchCohortV1: false,
   /**
    * Series Intelligence — turnout forecast (transparent ridge log-linear, RESEARCH tier). When ON, step ④
    * of the SI page shows the TurnoutForecastPanel: predicts entries for an upcoming event from the club's
