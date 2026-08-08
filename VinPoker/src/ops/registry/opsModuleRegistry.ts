@@ -184,10 +184,14 @@ export const OPS_MODULE_REGISTRY = [
     group: "CONTROL",
     capabilityPredicate: anyClub(inherited((row) => row.can_accountant)),
     clubCapabilityPredicate: inherited((row) => row.can_accountant),
-    requiredContracts: ["club_accountants", "cashier payroll lock finding", "accountant write UAT"],
+    requiredContracts: [
+      "club_accountants",
+      "20270110000001 payroll approval guard applied and verified",
+      "accountant write UAT",
+    ],
     sideEffectClass: "MONEY",
     defaultState: "BLOCKED",
-    disabledReasonCode: "ACCOUNTANT_WRITE_AUTHORITY_INCOMPLETE",
+    disabledReasonCode: "ACCOUNTANT_PAYROLL_GUARD_NOT_LIVE",
   },
   {
     id: "series",
