@@ -1,0 +1,114 @@
+name: Ops Floor Cashier disposable PostgreSQL 17
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ops-floor-cashier-disposable-db.yml"
+      - "VinPoker/supabase/migrations/20270109000000_ops_floor_cashier_canonical_mutations.sql"
+      - "VinPoker/src/ops/**"
+      - "VinPoker/src/pages/ops/**"
+      - "VinPoker/src/components/cashier/OfflineBuyInPanel.tsx"
+      - "VinPoker/src/components/floor/useFloorTournaments.ts"
+      - "VinPoker/src/hooks/useTournaments.ts"
+      - "VinPoker/src/pages/SuperAdmin.tsx"
+      - "VinPoker/tests/opsFloorCashier/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ops-floor-cashier-disposable-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - name: Install locked dependencies without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+
+      - name: Run Ops guards
+        working-directory: VinPoker
+        run: |
+          npm run check:ops-boundary
+          npm run check:ops-money-boundary
+          npm run check:credential-context
+          git diff --check
+
+      - name: Run targeted Ops mutation and UI tests
+        working-directory: VinPoker
+        run: >-
+          npx vitest run
+          src/ops/opsMutations.test.ts
+          tests/opsFloorCashier
+
+      - name: Lint targeted Ops source and tests
+        working-directory: VinPoker
+        run: >-
+          npx eslint
+          src/ops/opsMutations.ts
+          tests/opsFloorCashier
+
+      - name: Type-check canonical Ops mutation seam and tests
+        working-directory: VinPoker
+        run: npx tsc -p tsconfig.ops-floor-cashier.json --pretty false
+
+      - name: Build production source (flags remain default-off)
+        working-directory: VinPoker
+        run: npm run build
+
+      - name: Create isolated disposable fixture baseline
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/opsFloorCashier/disposableDb.fixture.sql
+
+      - name: Apply exact Ops migration to disposable PostgreSQL only
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270109000000_ops_floor_cashier_canonical_mutations.sql
+
+      - name: Run PostgreSQL 17 runtime assertions
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/opsFloorCashier/disposableDb.integration.sql
+
+      - name: Prove same-key concurrency converges to one business write
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/opsFloorCashier/concurrent.sql >/tmp/ops-concurrent-a.log 2>&1 &
+          first=$!
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/opsFloorCashier/concurrent.sql >/tmp/ops-concurrent-b.log 2>&1 &
+          second=$!
+          wait "$first"
+          wait "$second"
+          result=$(psql -At -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.tournament_registrations r JOIN public.ops_cashier_mutation_idempotency i ON (i.response->>'registration_id')::uuid = r.id WHERE i.idempotency_key = 'atomic-concurrent';")
+          test "$result" = "1"
+          echo OPS_FLOOR_CASHIER_CONCURRENCY_PASS

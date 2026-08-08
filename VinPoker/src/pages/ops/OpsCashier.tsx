@@ -11,6 +11,17 @@ import type { Database } from "@/integrations/supabase/types";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
+import {
+  confirmOfflineBuyIn,
+  confirmRegistration,
+  confirmSepay,
+  confirmStaking,
+  ignoreSepay,
+  mutationError,
+  OPS_CASHIER_MUTATIONS_ENABLED,
+  reviewVerification,
+} from "@/ops/opsMutations";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 /**
  * Cashier — thu ngân (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads Q1/Q3/Q4/Q5/Q6).
@@ -18,11 +29,8 @@ import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
  * sepay_cashier_settlement_worklist, staking_purchases/deals, membership_verification_requests,
  * tournaments). Ngữ cảnh CLB = useOperatorClubs().clubIds (= cashier_club_ids).
  *
- * ⚠️ Module tiền-vào: mọi NÚT hành động (thu tiền / khớp SePay / FUNDED / duyệt / bốc thăm) CHƯA nối —
- * bấm chỉ nhắc; sẽ gắn RPC/Edge thật (confirm_registration_and_assign_seat / manual_confirm_bank_transaction
- * / admin-confirm-funded / approve_verification …) ở bước sau, mỗi cái owner UAT. KHÔNG fallback mock.
+ * Module tiền-vào chỉ gửi intent qua RPC/Edge đã kiểm quyền; UI không tự tính tiền, ghế hoặc quyền.
  */
-const PENDING = "Chức năng đang nối dữ liệu — chưa thao tác trên live.";
 const vnd = (n: number | null | undefined) => (n == null ? "—" : n.toLocaleString("vi-VN") + "đ");
 const hhmm = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "";
 const ACTIVE_TOUR_STATUSES = ["upcoming", "registering", "drawing", "active", "live", "break", "final_table"];
@@ -35,6 +43,12 @@ const PILLS = [
   { key: "verify", label: "Xác minh", icon: ShieldCheck },
 ] as const;
 type Pill = (typeof PILLS)[number]["key"];
+type CashierAction =
+  | { kind: "registration"; row: any }
+  | { kind: "buyin"; row: any }
+  | { kind: "sepay"; row: any; mode: "confirm" | "ignore" }
+  | { kind: "staking"; row: any }
+  | { kind: "verify"; row: any; decision: "approve" | "reject" };
 
 // ── loaders (reads-only, mirror desktop queries; id-then-name fetch = no FK-alias risk) ──
 type OpsSupabaseClient = SupabaseClient<Database>;
@@ -137,8 +151,76 @@ export default function OpsCashier() {
   const [sepayTab, setSepayTab] = useState<"todo" | "done">("todo");
   const [state, setState] = useState<{ loading: boolean; error: string | null; rows: any[] }>({ loading: true, error: null, rows: [] });
   const [reload, setReload] = useState(0);
+  const [selectedAction, setSelectedAction] = useState<CashierAction | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionNote, setActionNote] = useState("");
+  const [playerName, setPlayerName] = useState("");
+  const [playerPhone, setPlayerPhone] = useState("");
+  const [buyinIdempotencyKey, setBuyinIdempotencyKey] = useState<string | null>(null);
   const clubKey = cashierClubIds.join(",");
-  const pending = () => { toast(PENDING); };
+
+  const closeAction = (force = false) => {
+    if (actionBusy && !force) return;
+    setSelectedAction(null);
+    setActionNote("");
+    setPlayerName("");
+    setPlayerPhone("");
+    setBuyinIdempotencyKey(null);
+  };
+
+  const runAction = async () => {
+    if (!selectedAction || !user) return;
+    setActionBusy(true);
+    try {
+      if (selectedAction.kind === "registration") {
+        await confirmRegistration(supabase, { registrationId: selectedAction.row.id, actorUserId: user.id });
+        toast.success("Đã xác nhận đăng ký và xếp ghế.");
+      } else if (selectedAction.kind === "buyin") {
+        if (!OPS_CASHIER_MUTATIONS_ENABLED) throw new Error("money_path_disabled");
+        if (!playerName.trim()) throw new Error("Nhập tên người chơi trước khi tạo buy-in.");
+        const idempotencyKey = buyinIdempotencyKey ?? crypto.randomUUID();
+        setBuyinIdempotencyKey(idempotencyKey);
+        await confirmOfflineBuyIn(supabase, {
+          tournamentId: selectedAction.row.id,
+          playerName: playerName.trim(),
+          phone: playerPhone,
+          idempotencyKey,
+        });
+        toast.success("Đã tạo buy-in và xếp ghế.");
+      } else if (selectedAction.kind === "sepay") {
+        if (!actionNote.trim()) throw new Error("Nhập lý do để lưu dấu vết thao tác.");
+        if (selectedAction.mode === "confirm") {
+          if (!selectedAction.row.registration_id) throw new Error("Không có đúng một đăng ký để xác nhận.");
+          await confirmSepay(supabase, {
+            bankTransactionId: selectedAction.row.bank_transaction_id,
+            registrationId: selectedAction.row.registration_id,
+            reason: actionNote.trim(),
+          });
+          toast.success("Đã xác nhận SePay và xếp ghế.");
+        } else {
+          await ignoreSepay(supabase, { bankTransactionId: selectedAction.row.bank_transaction_id, reason: actionNote.trim() });
+          toast.success("Đã bỏ qua giao dịch.");
+        }
+      } else if (selectedAction.kind === "staking") {
+        await confirmStaking(supabase, { purchaseId: selectedAction.row.id, note: actionNote.trim() });
+        toast.success("Đã xác nhận góp vốn.");
+      } else {
+        if (selectedAction.decision === "reject" && !actionNote.trim()) throw new Error("Nhập lý do từ chối.");
+        await reviewVerification(supabase, {
+          requestId: selectedAction.row.id,
+          action: selectedAction.decision,
+          rejectionReason: actionNote.trim() || undefined,
+        });
+        toast.success(selectedAction.decision === "approve" ? "Đã duyệt hồ sơ." : "Đã từ chối hồ sơ.");
+      }
+      closeAction(true);
+      setReload((n) => n + 1);
+    } catch (error) {
+      toast.error(mutationError(error).message);
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
   const canLoad = !clubsLoading && !scopeError && !!user && cashierClubIds.length > 0;
   useEffect(() => {
@@ -178,7 +260,8 @@ export default function OpsCashier() {
       </header>
 
       {metadataError && <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">{metadataError}</div>}
-      <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">Dữ liệu thật · nút hành động chưa nối</div>
+      <div className="rounded-xl bg-emerald-400/8 px-3 py-2 text-[12px] text-emerald-300/90">Dữ liệu thật · thao tác ghi chỉ đi qua RPC/Edge có kiểm quyền.</div>
+      {!OPS_CASHIER_MUTATIONS_ENABLED && <div className="rounded-xl bg-amber-400/10 px-3 py-2 text-[12px] text-amber-200/90">Các thao tác thu tiền/xếp ghế đang TẮT ngoài Preview; màn hình chỉ cho kiểm tra dữ liệu.</div>}
 
       <div className="flex gap-1.5 overflow-x-auto px-1 pb-0.5">
         {PILLS.map((p) => (
@@ -216,7 +299,7 @@ export default function OpsCashier() {
               {state.rows.map((r) => {
                 const chip = REG_CHIP[r.status] ?? REG_CHIP.pending;
                 return (
-                  <button key={r.id} onClick={pending} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
+                  <button key={r.id} disabled={r.status !== "pending"} onClick={() => { if (r.status === "pending") setSelectedAction({ kind: "registration", row: r }); }} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left disabled:cursor-default disabled:opacity-70">
                     <span className="min-w-0 flex-1">
                       <span className="block text-[15px] text-[#f2ece6]">{r.name} {r.phone && <span className="font-mono text-[12px] text-[#7c7079]">{maskPhone(r.phone)}</span>}</span>
                       <span className="block truncate text-[12px] text-[#9b8e97]">{r.tour}{r.total != null ? ` · ${vnd(r.total)}` : ""}{r.ref ? ` · ${r.ref}` : ""}</span>
@@ -228,19 +311,19 @@ export default function OpsCashier() {
             </div>
           ))}
 
-          {/* Q3 — Buy-in: chọn giải thật; form thu tiền = đang nối */}
+          {/* Q3 — Buy-in: chọn giải thật; form thu tiền qua RPC */}
           {pill === "buyin" && (state.rows.length === 0 ? <Empty text="Không có giải đang mở để buy-in." /> : (
             <div className="space-y-3">
               <div className="px-1 text-[12px] text-[#9b8e97]">Chọn giải</div>
               <div className="ios-group">
                 {state.rows.map((t) => (
-                  <button key={t.id} onClick={pending} className="ios-press-sm ios-row-inset flex w-full items-center justify-between px-4 py-3 text-left">
+                  <button key={t.id} onClick={() => setSelectedAction({ kind: "buyin", row: t })} className="ios-press-sm ios-row-inset flex w-full items-center justify-between px-4 py-3 text-left">
                     <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">{t.name}</span><span className="block text-[12px] text-[#9b8e97]">{hhmm(t.start_time)}</span></span>
                     <span className="font-mono text-[12px] text-[#9b8e97]">{vnd((t.buy_in ?? 0) + (t.rake_amount ?? 0) + (t.service_fee_amount ?? 0))}</span>
                   </button>
                 ))}
               </div>
-              <button onClick={pending} className="ios-press ios-primary w-full rounded-2xl py-3 text-[15px] font-bold">Buy-in / Re-entry (đang nối)</button>
+              <div className="px-1 text-[12px] text-[#9b8e97]">Chạm vào một giải để nhập người chơi và ghi buy-in.</div>
             </div>
           ))}
 
@@ -258,8 +341,8 @@ export default function OpsCashier() {
                   </div>
                   {sepayTab === "todo" && (
                     <div className="mt-2 flex gap-2">
-                      <button onClick={pending} className="ios-press-sm ios-primary flex-1 rounded-xl py-2 text-[13px] font-bold">Xác nhận &amp; xếp ghế</button>
-                      <button onClick={pending} className="ios-press-sm ios-fill rounded-xl px-4 py-2 text-[13px] text-[#9b8e97]">Bỏ qua</button>
+                      <button disabled={!r.registration_id} onClick={() => setSelectedAction({ kind: "sepay", row: r, mode: "confirm" })} className="ios-press-sm ios-primary flex-1 rounded-xl py-2 text-[13px] font-bold disabled:opacity-50">Xác nhận &amp; xếp ghế</button>
+                      <button onClick={() => setSelectedAction({ kind: "sepay", row: r, mode: "ignore" })} className="ios-press-sm ios-fill rounded-xl px-4 py-2 text-[13px] text-[#9b8e97]">Bỏ qua</button>
                     </div>
                   )}
                 </div>
@@ -277,7 +360,7 @@ export default function OpsCashier() {
                       <span className="block text-[14px] text-[#f2ece6]">{s.backer} → <b>{s.player}</b></span>
                       <span className="block font-mono text-[12px] text-[#9b8e97]">{vnd(s.amount)}{s.pct != null ? ` · ${s.pct}% kèo` : ""}</span>
                     </span>
-                    <button onClick={pending} className="ios-press-sm rounded-full bg-[#c9a86a]/15 px-3 py-1 text-[12px] font-semibold text-[#d8bc85]">Xác nhận góp</button>
+                    <button onClick={() => setSelectedAction({ kind: "staking", row: s })} className="ios-press-sm rounded-full bg-[#c9a86a]/15 px-3 py-1 text-[12px] font-semibold text-[#d8bc85]">Xác nhận góp</button>
                   </div>
                 ))}
               </div>
@@ -299,8 +382,8 @@ export default function OpsCashier() {
                         </span>
                       </div>
                       <div className="mt-2 flex gap-2">
-                        <button onClick={pending} className="ios-press-sm ios-primary flex-1 rounded-xl py-2 text-[13px] font-bold">Duyệt</button>
-                        <button onClick={pending} className="ios-press-sm ios-fill rounded-xl px-4 py-2 text-[13px] text-rose-300">Từ chối</button>
+                        <button onClick={() => setSelectedAction({ kind: "verify", row: v, decision: "approve" })} className="ios-press-sm ios-primary flex-1 rounded-xl py-2 text-[13px] font-bold">Duyệt</button>
+                        <button onClick={() => setSelectedAction({ kind: "verify", row: v, decision: "reject" })} className="ios-press-sm ios-fill rounded-xl px-4 py-2 text-[13px] text-rose-300">Từ chối</button>
                       </div>
                     </div>
                   ))}
@@ -315,6 +398,45 @@ export default function OpsCashier() {
           )}
         </>
       )}
+      <Sheet open={selectedAction !== null} onOpenChange={(open) => { if (!open) closeAction(); }}>
+        <SheetContent side="bottom" className="rounded-t-3xl border-white/10 bg-[#0a0d0b] text-[#f2ece6]">
+          <SheetHeader>
+            <SheetTitle className="text-left text-[#f2ece6]">
+              {selectedAction?.kind === "registration" && "Xác nhận đăng ký"}
+              {selectedAction?.kind === "buyin" && "Tạo buy-in / re-entry"}
+              {selectedAction?.kind === "sepay" && (selectedAction.mode === "confirm" ? "Xác nhận SePay" : "Bỏ qua giao dịch")}
+              {selectedAction?.kind === "staking" && "Xác nhận góp vốn"}
+              {selectedAction?.kind === "verify" && (selectedAction.decision === "approve" ? "Duyệt hồ sơ" : "Từ chối hồ sơ")}
+            </SheetTitle>
+          </SheetHeader>
+          {selectedAction && (
+            <div className="space-y-3 pb-4 pt-3">
+              <div className="rounded-2xl bg-white/5 px-4 py-3 text-[13px] text-[#b9adb5]">
+                {selectedAction.kind === "registration" && <>Người chơi: <b className="text-[#f2ece6]">{selectedAction.row.name}</b><br />Giải: {selectedAction.row.tour}</>}
+                {selectedAction.kind === "buyin" && <>Giải: <b className="text-[#f2ece6]">{selectedAction.row.name}</b><br />Tổng dự kiến: {vnd((selectedAction.row.buy_in ?? 0) + (selectedAction.row.rake_amount ?? 0) + (selectedAction.row.service_fee_amount ?? 0))}</>}
+                {selectedAction.kind === "sepay" && <>Số tiền: <b className="text-[#f2ece6]">{vnd(selectedAction.row.amount)}</b><br />Nội dung: {selectedAction.row.content ?? selectedAction.row.txn_ref ?? "—"}</>}
+                {selectedAction.kind === "staking" && <>{selectedAction.row.backer} → <b className="text-[#f2ece6]">{selectedAction.row.player}</b><br />Số tiền: {vnd(selectedAction.row.amount)}</>}
+                {selectedAction.kind === "verify" && <>Người chơi: <b className="text-[#f2ece6]">{selectedAction.row.name}</b><br />Thẻ: {selectedAction.row.card ?? "—"}</>}
+              </div>
+              {selectedAction.kind === "buyin" && (
+                <>
+                  <input value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Tên người chơi" className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-[15px] outline-none focus:border-[#c9a86a]" />
+                  <input value={playerPhone} onChange={(event) => setPlayerPhone(event.target.value)} placeholder="Số điện thoại (không bắt buộc)" className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-[15px] outline-none focus:border-[#c9a86a]" />
+                </>
+              )}
+              {(selectedAction.kind === "sepay" || selectedAction.kind === "staking" || (selectedAction.kind === "verify" && selectedAction.decision === "reject")) && (
+                <textarea value={actionNote} onChange={(event) => setActionNote(event.target.value)} placeholder={selectedAction.kind === "verify" ? "Lý do từ chối" : "Ghi chú / lý do thao tác"} rows={3} className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-[15px] outline-none focus:border-[#c9a86a]" />
+              )}
+              <div className="flex gap-2">
+                <button disabled={actionBusy} onClick={closeAction} className="ios-press-sm ios-fill flex-1 rounded-xl py-3 text-[14px] text-[#b9adb5]">Hủy</button>
+                <button disabled={actionBusy || (!OPS_CASHIER_MUTATIONS_ENABLED && ["registration", "buyin", "sepay", "staking"].includes(selectedAction.kind)) || (selectedAction.kind === "buyin" && !playerName.trim()) || (selectedAction.kind === "sepay" && !actionNote.trim()) || (selectedAction.kind === "verify" && selectedAction.decision === "reject" && !actionNote.trim())} onClick={runAction} className="ios-press-sm ios-primary flex-1 rounded-xl py-3 text-[14px] font-bold disabled:opacity-50">
+                  {actionBusy ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Xác nhận"}
+                </button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
       <div className="pb-2" />
     </div>
   );

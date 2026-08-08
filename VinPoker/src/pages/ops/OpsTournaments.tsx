@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -11,15 +12,24 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useTournaments } from "@/hooks/useTournaments";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
+import {
+  closeTournament,
+  createTournament,
+  deleteTournament,
+  mutationError,
+  OPS_CASHIER_MUTATIONS_ENABLED,
+  updateTournament,
+  updateTournamentLive,
+} from "@/ops/opsMutations";
 import type { Tournament } from "@/types/tournament";
 
 /**
  * Giải đấu (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads danh sách A1).
  * Danh sách giải đọc từ `useTournaments(clubId)` (đúng hook desktop dùng), ngữ cảnh CLB qua `useOperatorClubs()`.
- * ⚠️ Các thao tác trong sheet (cập nhật live / chốt / xoá / tạo) CHƯA nối — bấm chỉ nhắc; gắn RPC/Edge thật
- * (tournament-live-clock/-update, update_tournament_state, update_tournament_prizes…) ở bước sau, owner UAT.
+ * Ghi chú: mọi thao tác ghi ở sheet đi qua RPC/RLS hiện có; không fallback mock và không tự apply migration.
  */
 type StatusKey = "running" | "break" | "upcoming" | "closed";
 const STATUS_CHIP: Record<StatusKey, string> = {
@@ -49,14 +59,22 @@ function toVM(t: Tournament): TVM {
 }
 
 type SubSheet = "none" | "actions" | "create" | "form" | "updateLive" | "close" | "delete";
+const LIVE_STATUS_OPTIONS = [
+  { value: "live", label: "Đang chơi" },
+  { value: "break", label: "Giải lao" },
+  { value: "final_table", label: "Final" },
+] as const;
 
 export default function OpsTournaments() {
   const navigate = useNavigate();
+  const client = useSupabaseClient();
+  const queryClient = useQueryClient();
   const { user } = useOpsAuth();
   const {
     loading: clubsLoading,
     clubs,
     floorClubIds: scopedIds,
+    hasOwnerAccess,
     scopeError,
     metadataError,
   } = useOpsCapabilities();
@@ -68,7 +86,16 @@ export default function OpsTournaments() {
   const [sub, setSub] = useState<SubSheet>("none");
   const [livePlayers, setLivePlayers] = useState(42);
   const [liveLevel, setLiveLevel] = useState(8);
-  const [liveStatus, setLiveStatus] = useState("Đang chơi");
+  const [liveStatus, setLiveStatus] = useState("live");
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({
+    name: "Daily Turbo tối",
+    startTime: "",
+    buyIn: "1000000",
+    startingStack: "30000",
+    minutesPerLevel: "20",
+    lateRegCloseLevel: "6",
+  });
 
   const allVMs = useMemo(() => (tournaments ?? []).map((t) => toVM(t as unknown as Tournament)), [tournaments]);
   const rows = useMemo(() => {
@@ -82,7 +109,124 @@ export default function OpsTournaments() {
   const openActions = (r: TVM) => { setSel(r); setSub("actions"); };
   const go = (next: SubSheet) => { setSub("none"); requestAnimationFrame(() => setSub(next)); };
   const closeAll = () => { setSub("none"); setSel(null); };
-  const done = () => { toast("Nút này đang được nối — sẽ bật sau khi anh xác nhận dữ liệu đúng (UAT)"); closeAll(); };
+  useEffect(() => {
+    if (!sel) return;
+    const source = tournaments?.find((t) => t.id === sel.id) as (Tournament & {
+      start_time?: string | null;
+      buy_in?: number | null;
+      starting_stack?: number | null;
+      minutes_per_level?: number | null;
+      late_reg_close_level?: number | null;
+    }) | undefined;
+    setForm({
+      name: sel.name,
+      startTime: source?.start_time?.slice(0, 16) ?? "",
+      buyIn: String(source?.buy_in ?? 1000000),
+      startingStack: String(source?.starting_stack ?? 30000),
+      minutesPerLevel: String(source?.minutes_per_level ?? 20),
+      lateRegCloseLevel: String(source?.late_reg_close_level ?? 6),
+    });
+    setLivePlayers(sel.entries);
+    setLiveLevel(sel.level ?? 1);
+    const sourceStatus = source?.status ?? "live";
+    setLiveStatus(LIVE_STATUS_OPTIONS.find((option) => option.value === sourceStatus)?.label ?? (sourceStatus === "completed" ? "Final" : sourceStatus));
+  }, [sel, tournaments]);
+
+  const refreshTournaments = () => {
+    void queryClient.invalidateQueries({ queryKey: ["tournaments", activeClub] });
+  };
+
+  const runMutation = async (action: () => Promise<unknown>, success: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await action();
+      toast.success(success);
+      refreshTournaments();
+      closeAll();
+    } catch (error) {
+      toast.error(mutationError(error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitForm = () => {
+    if (sel && !hasOwnerAccess) {
+      toast.error("Chỉ chủ CLB được sửa giải.");
+      return;
+    }
+    const fields = Array.from(document.querySelectorAll<HTMLInputElement>("[data-ops-field]"));
+    const name = (fields[0]?.value ?? form.name).trim();
+    const rawStart = fields[1]?.value ?? form.startTime;
+    const parsedStart = /^\d{2}:\d{2}$/.test(rawStart)
+      ? (() => { const d = new Date(); const [hours, minutes] = rawStart.split(":").map(Number); d.setHours(hours, minutes, 0, 0); return d; })()
+      : new Date(rawStart);
+    const startTime = Number.isNaN(parsedStart.getTime()) ? new Date().toISOString() : parsedStart.toISOString();
+    const numeric = (value: string | undefined, fallback: string) => {
+      const parsed = Number((value ?? fallback).replace(/[^\d-]/g, ""));
+      return Number.isFinite(parsed) ? parsed : Number(fallback);
+    };
+    const buyIn = numeric(fields[3]?.value, form.buyIn);
+    const startingStack = numeric(fields[4]?.value, form.startingStack);
+    const minutesPerLevel = Number(form.minutesPerLevel);
+    const lateRegCloseLevel = Number(form.lateRegCloseLevel);
+    if (!name || !Number.isFinite(buyIn) || buyIn < 0 || !Number.isFinite(startingStack) || startingStack <= 0 || minutesPerLevel <= 0) {
+      toast.error("Kiểm tra tên giải, buy-in, stack và thời lượng blind.");
+      return;
+    }
+    void runMutation(
+      () => sel
+        ? updateTournament(client, sel.id, { name, startTime, buyIn, startingStack, minutesPerLevel, lateRegCloseLevel })
+        : createTournament(client, { clubId: activeClub!, name, startTime, buyIn, startingStack, minutesPerLevel, lateRegCloseLevel }),
+      sel ? "Đã lưu thông tin giải." : "Đã tạo giải.",
+    );
+  };
+
+  const submitLive = () => {
+    if (!sel) return;
+    const normalizedStatus = LIVE_STATUS_OPTIONS.find((option) => option.label === liveStatus)?.value ?? liveStatus;
+    if (!LIVE_STATUS_OPTIONS.some((option) => option.value === normalizedStatus)) {
+      toast.error("Trạng thái live không hợp lệ; dùng Chốt giải để kết thúc.");
+      return;
+    }
+    void runMutation(
+      () => updateTournamentLive(client, {
+        tournamentId: sel.id,
+        status: normalizedStatus,
+        playersRemaining: livePlayers,
+        level: liveLevel,
+        blinds: liveLevel > 0 ? "2.000 / 4.000 · ante 4.000" : null,
+      }),
+      "Đã cập nhật trạng thái live.",
+    );
+  };
+
+  const submitClose = () => {
+    if (!sel) return;
+    if (!OPS_CASHIER_MUTATIONS_ENABLED) {
+      toast.error("Chốt giải đang tắt ngoài Preview có kiểm soát.");
+      return;
+    }
+    void runMutation(() => closeTournament(client, sel.id), "Máy chủ đã xác nhận chốt giải.");
+  };
+
+  const submitDelete = () => {
+    if (!sel) return;
+    if (!hasOwnerAccess) {
+      toast.error("Chỉ chủ CLB được xoá giải.");
+      return;
+    }
+    void runMutation(() => deleteTournament(client, sel.id), "Đã xoá giải.");
+  };
+
+  const done = () => {
+    if (sub === "form") return submitForm();
+    if (sub === "updateLive") return submitLive();
+    if (sub === "close") return submitClose();
+    if (sub === "delete") return submitDelete();
+    toast("Chọn một thao tác cụ thể trước khi xác nhận.");
+  };
 
   // ---- guards (ordered: auth → login → clubs → permission → data) ----
   if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." />;
@@ -101,7 +245,10 @@ export default function OpsTournaments() {
       </header>
 
       {metadataError && <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">{metadataError}</div>}
-      <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">
+      <div className="rounded-xl bg-emerald-400/8 px-3 py-2 text-[12px] text-emerald-300/90">
+        Dữ liệu thật. Máy chủ phải xác nhận mọi thao tác ghi; lỗi quyền hoặc thiếu RPC sẽ giữ nguyên dữ liệu.
+      </div>
+      <div className="hidden rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">
         Danh sách <b>thật</b>. Nút trong sheet (cập nhật live / chốt / xoá) đang được nối — sẽ bật sau UAT.
       </div>
 
@@ -133,7 +280,7 @@ export default function OpsTournaments() {
         </div>
       )}
 
-      <button onClick={() => setSub("create")} className="ios-press ios-primary flex w-full items-center justify-center gap-1.5 rounded-2xl py-3.5 text-[16px] font-bold">
+      <button onClick={() => { setSel(null); setSub("create"); }} disabled={!hasOwnerAccess} title={!hasOwnerAccess ? "Chá»‰ owner Ä‘Æ°á»£c táº¡o giáº£i" : undefined} className="ios-press ios-primary flex w-full items-center justify-center gap-1.5 rounded-2xl py-3.5 text-[16px] font-bold disabled:opacity-40">
         <Plus className="h-5 w-5" /> Tạo giải
       </button>
 
@@ -180,7 +327,7 @@ export default function OpsTournaments() {
 
       {/* N1 — form tạo/sửa giải */}
       <Sheet open={sub === "form"} onOpenChange={(v) => { if (!v) closeAll(); }}>
-        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+        <SheetContent key={`form-${sel?.id ?? "new"}`} side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">{sel ? "Sửa thông tin giải" : "Tạo giải mới"}</SheetTitle></SheetHeader>
           <div className="mt-3 space-y-2.5">
@@ -289,7 +436,12 @@ function Field({ label, value, mono, muted }: { label: string; value: string; mo
   return (
     <div>
       <div className="px-1 text-[12px] text-[#9b8e97]">{label}</div>
-      <div className={cn("ios-fill mt-1 rounded-xl px-3 py-2.5 text-[15px]", mono && "font-mono text-center", muted ? "text-[#9b8e97]" : "text-[#f2ece6]")}>{value}</div>
+      <input
+        data-ops-field={label}
+        defaultValue={value}
+        readOnly={muted}
+        className={cn("ios-fill mt-1 w-full rounded-xl px-3 py-2.5 text-[15px] outline-none", mono && "font-mono text-center", muted ? "text-[#9b8e97]" : "text-[#f2ece6]")}
+      />
     </div>
   );
 }

@@ -29,7 +29,7 @@
     radial-gradient(80% 46% at 88% 8%, rgba(56, 189, 248, 0.07), transparent 60%),
     linear-gradient(180deg, #07100c 0%, var(--ops-bg) 44%, #010302 100%);
   color: var(--ops-text);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1, "case" 1;
@@ -38,7 +38,7 @@
 
 .ops-root,
 .ops-root * {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif !important;
+  font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif !important;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1, "case" 1;
   letter-spacing: 0;
@@ -46,7 +46,7 @@
 
 .ops-sheet,
 .ops-sheet * {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif !important;
+  font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif !important;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1, "case" 1;
   letter-spacing: 0;

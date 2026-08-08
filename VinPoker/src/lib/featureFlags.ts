@@ -12,7 +12,7 @@ export const FEATURES = {
   cashierRegistrations: true,
   /**
    * Cashier "Buy-in tại quầy" (offline cash / walk-in): pick tournament → name →
-   * buy-in + fee → auto-draw seat + receipt via `create_offline_buyin_and_seat`.
+   * server-derived buy-in/fee → auto-draw seat + receipt via the Ops RPC.
    * ENABLED 2026-06-14: RPC applied live + hardened (PUBLIC/anon revoked) in a
    * controlled session, owner UAT passed. Now the section is visible to all
    * cashiers and the Buy-in button calls the live RPC. Kill-switch: set false to
