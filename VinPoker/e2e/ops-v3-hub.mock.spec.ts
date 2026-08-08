@@ -67,7 +67,7 @@ test("Ops Control Deck renders the conservative registry without horizontal over
 
   await expect(page.getByRole("heading", { name: "Một lối vào cho mọi công việc vận hành" })).toBeVisible();
   await expect(page.getByText("Kế toán vận hành", { exact: true })).toBeVisible();
-  await expect(page.getByText("ACCOUNTANT_WRITE_AUTHORITY_INCOMPLETE", { exact: true })).toBeHidden();
+  await expect(page.getByText("ACCOUNTANT_PAYROLL_GUARD_NOT_LIVE", { exact: true })).toBeHidden();
   await expect(page.getByRole("button", { name: "Mở" })).toHaveCount(8);
   for (const viewport of [
     { width: 360, height: 800 },
@@ -105,7 +105,7 @@ test("blocked direct route does not mount a module data hook", async ({ page }, 
   await page.goto(`/ops/accountant?club=${clubId}`);
 
   await expect(page.getByRole("heading", { name: "Kế toán vận hành" })).toBeVisible();
-  await expect(page.getByText("ACCOUNTANT_WRITE_AUTHORITY_INCOMPLETE", { exact: true })).toBeVisible();
+  await expect(page.getByText("ACCOUNTANT_PAYROLL_GUARD_NOT_LIVE", { exact: true })).toBeVisible();
   expect(moduleRequests.filter((path) => path.includes("rpc/") || path.includes("rest/v1"))).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath("ops-blocked-desktop.png"), fullPage: true });
 });
