@@ -351,6 +351,7 @@ export async function buildProspectiveEngineSnapshotV1(input: {
   }
   if (captured.ms >= target.ms) return { ok: false, code: "event_already_started", reason: "Prospective capture stops when the event starts." };
   const pointInTimeHistory = input.history.filter((event) => {
+    if (event.event_id === input.event.event_id) return false;
     if (!event.event_date) return false;
     const eventMs = new Date(event.event_date).getTime();
     if (!Number.isFinite(eventMs) || eventMs >= captured.ms) return false;

@@ -207,6 +207,17 @@ describe("engine-origin snapshot builder", () => {
     if (a.ok && b.ok) expect(a.insert.training_data_hash).toBe(b.insert.training_data_hash);
   });
 
+  it("excludes a target event accidentally present in trusted history", async () => {
+    const targetHistory = { ...HISTORY[0], event_id: EVENT.event_id, event_date: "2026-07-01T12:00:00.000Z", total_entries: 9999 };
+    const a = await buildProspectiveEngineSnapshotV1({ event: EVENT, history: HISTORY, horizon: "T-7", capturedAt: "2026-08-25T11:59:00.000Z", codeSha: "a".repeat(40) });
+    const b = await buildProspectiveEngineSnapshotV1({ event: EVENT, history: [...HISTORY, targetHistory], horizon: "T-7", capturedAt: "2026-08-25T11:59:00.000Z", codeSha: "a".repeat(40) });
+    expect(a.ok && b.ok).toBe(true);
+    if (a.ok && b.ok) {
+      expect(b.insert.training_data_hash).toBe(a.insert.training_data_hash);
+      expect(b.insert.input_content_hash).toBe(a.insert.input_content_hash);
+    }
+  });
+
   it("excludes history that was not available at the capture timestamp", async () => {
     const futureAtCapture = { ...HISTORY[HISTORY.length - 1], event_id: "future-at-capture", event_date: "2026-08-26T12:00:00.000Z", total_entries: 9999 };
     const a = await buildProspectiveEngineSnapshotV1({ event: EVENT, history: HISTORY, horizon: "T-7", capturedAt: "2026-08-25T11:59:00.000Z", codeSha: "a".repeat(40) });
