@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import {
   OPS_CASHIER_MUTATIONS_ENABLED,
   confirmOfflineBuyIn,
@@ -8,7 +10,7 @@ import {
 } from "@/ops/opsMutations";
 
 function clientWith(result = { data: { ok: true }, error: null }) {
-  return { rpc: vi.fn().mockResolvedValue(result) } as any;
+  return { rpc: vi.fn().mockResolvedValue(result) } as unknown as SupabaseClient<Database>;
 }
 
 describe("Ops canonical mutation seams", () => {

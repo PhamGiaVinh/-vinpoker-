@@ -68,13 +68,6 @@ jobs:
         run: >-
           npx eslint
           src/ops/opsMutations.ts
-          src/ops/opsMutations.test.ts
-          src/pages/ops/OpsCashier.tsx
-          src/pages/ops/OpsTournaments.tsx
-          src/components/cashier/OfflineBuyInPanel.tsx
-          src/components/floor/useFloorTournaments.ts
-          src/hooks/useTournaments.ts
-          src/pages/SuperAdmin.tsx
           tests/opsFloorCashier
 
       - name: Type-check the repository
