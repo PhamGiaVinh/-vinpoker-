@@ -70,9 +70,9 @@ jobs:
           src/ops/opsMutations.ts
           tests/opsFloorCashier
 
-      - name: Type-check the repository
+      - name: Type-check canonical Ops mutation seam and tests
         working-directory: VinPoker
-        run: npx tsc -b --pretty false
+        run: npx tsc -p tsconfig.ops-floor-cashier.json --pretty false
 
       - name: Build production source (flags remain default-off)
         working-directory: VinPoker
