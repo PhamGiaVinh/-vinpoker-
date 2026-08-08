@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/tracker-pr2a-disposable-db.yml"
       - "VinPoker/supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql"
+      - "VinPoker/supabase/migrations/20270108000004_tracker_unified_ops_writer_lock_containment.sql"
       - "VinPoker/tests/trackerUnifiedOps/**"
   workflow_dispatch:
 
@@ -65,12 +66,59 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
             -f supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql
 
+      - name: Apply forward writer-lock containment migration
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
+            -f supabase/migrations/20270108000004_tracker_unified_ops_writer_lock_containment.sql
+
+      - name: Prove containment dependency fails closed
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          createdb tracker_pr2a_missing_helper
+          psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a_missing_helper \
+            -f tests/trackerUnifiedOps/disposableDb.baseline.sql
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a_missing_helper \
+            -f supabase/migrations/20270108000004_tracker_unified_ops_writer_lock_containment.sql; then
+            echo "Containment unexpectedly applied without PR2A helper" >&2
+            exit 1
+          fi
+          rollback_state="$(psql -X -At -d tracker_pr2a_missing_helper -c \
+            "SELECT to_regprocedure('public.tracker_unified_ops_lock_tournament(uuid)') IS NULL
+                    AND to_regprocedure('public.floor_set_table_control_mode(uuid,uuid,text,bigint)') IS NULL")"
+          test "$rollback_state" = "t"
+          echo "PR2A_CONTAINMENT_DEPENDENCY_ROLLBACK=PASS"
+
       - name: Run authoritative context/start integration and catalog proofs
         working-directory: VinPoker
         run: |
           set -euo pipefail
           psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
             -f tests/trackerUnifiedOps/disposableDb.integration.sql
+
+      - name: Install mode-writer race fixture
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
+            -f tests/trackerUnifiedOps/legacyWriterMode.dependencies.sql
+
+      - name: Run contained mode-writer/V2 lock race
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
+            -f tests/trackerUnifiedOps/legacyWriterMode.containment.integration.sql
+
+      - name: Run exact Close Table and remaining-writer regressions
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          createdb tracker_pr2a_close
+          psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a_close \
+            -f tests/trackerUnifiedOps/legacyWriterClose.integration.sql
 
       - name: Prove migration transaction rollback on injected failure
         working-directory: VinPoker
