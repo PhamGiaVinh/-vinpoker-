@@ -30,4 +30,22 @@ describe("Ops production safety affordances", () => {
     expect(guard).toContain("p_actor_user_id IS DISTINCT FROM auth.uid()");
     expect(guard).toContain("REVOKE EXECUTE ON FUNCTION public.confirm_registration_and_assign_seat");
   });
+
+  it("keeps the new offline buy-in RPC server-only", () => {
+    const migration = readFileSync(
+      resolve(repo, "supabase/migrations/20270109000000_ops_floor_cashier_canonical_mutations.sql"),
+      "utf8",
+    );
+    expect(migration).not.toMatch(
+      /GRANT\s+EXECUTE[\s\S]{0,220}ops_create_offline_buyin_and_seat[\s\S]{0,220}\bTO\s+authenticated\b/iu,
+    );
+    expect(migration).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.ops_create_offline_buyin_and_seat\s*\(uuid\s*,\s*text\s*,\s*text\s*,\s*text\s*,\s*text\s*\)\s+FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated\s*,\s*service_role\s*;/iu,
+    );
+  });
+
+  it("keeps profile review off until approve_verification authority is proven", () => {
+    const gate = readFileSync(resolve(repo, "src/lib/profileReviewGate.ts"), "utf8");
+    expect(gate).toContain("export const PROFILE_REVIEW_ENABLED = false;");
+  });
 });

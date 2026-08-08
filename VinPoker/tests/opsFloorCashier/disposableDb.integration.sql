@@ -9,8 +9,9 @@ BEGIN
 END;
 $$;
 
--- Owner create and status lifecycle.
-SET ROLE authenticated;
+-- Business-path calls run under the controlled test owner/postgres context.
+-- Browser roles must not execute the new buy-in RPC; ACL is asserted below.
+RESET ROLE;
 SET test.actor = '00000000-0000-0000-0000-000000000001';
 SELECT public.test_assert((public.ops_create_tournament(
   '10000000-0000-0000-0000-000000000001', 'Atomic test', now(), 100000, 30000, 20
@@ -25,7 +26,7 @@ BEGIN
   END LOOP;
   UPDATE public.tournaments SET status = 'active' WHERE name = 'Atomic test';
 END $$;
-SET ROLE authenticated;
+RESET ROLE;
 SET test.actor = '00000000-0000-0000-0000-000000000001';
 
 SELECT public.test_assert(
@@ -155,9 +156,24 @@ END $$;
 -- Direct authenticated DELETE is denied by ACL; legacy RPC is not executable.
 SELECT public.test_assert(NOT has_table_privilege('authenticated', 'public.tournaments', 'DELETE'), 'direct delete ACL denied');
 SELECT public.test_assert(NOT has_function_privilege('authenticated', 'public.create_offline_buyin_and_seat(uuid,text,bigint,bigint,text,text)', 'EXECUTE'), 'legacy RPC revoked');
-SELECT public.test_assert(has_function_privilege('authenticated', 'public.ops_create_offline_buyin_and_seat(uuid,text,text,text,text)', 'EXECUTE'), 'canonical RPC granted');
+SELECT public.test_assert(NOT has_function_privilege('anon', 'public.ops_create_offline_buyin_and_seat(uuid,text,text,text,text)', 'EXECUTE'), 'canonical RPC anon denied');
+SELECT public.test_assert(NOT has_function_privilege('authenticated', 'public.ops_create_offline_buyin_and_seat(uuid,text,text,text,text)', 'EXECUTE'), 'canonical RPC authenticated denied');
 SELECT public.test_assert(NOT has_function_privilege('service_role', 'public.ops_create_offline_buyin_and_seat(uuid,text,text,text,text)', 'EXECUTE'), 'service role explicit deny');
 SELECT public.test_assert(NOT has_table_privilege('authenticated', 'public.ops_cashier_mutation_idempotency', 'SELECT'), 'idempotency table denied');
+
+-- Negative smoke: the browser role is denied before any business transaction.
+SET ROLE authenticated;
+DO $$
+BEGIN
+  PERFORM public.ops_create_offline_buyin_and_seat(
+    (SELECT id FROM public.tournaments WHERE name = 'Atomic test'),
+    'Denied Browser Role',
+    'acl-denied-smoke'
+  );
+  RAISE EXCEPTION 'OPS_TEST_ASSERT: browser role unexpectedly executed canonical RPC';
+EXCEPTION
+  WHEN insufficient_privilege THEN NULL;
+END $$;
 
 RESET ROLE;
 SELECT 'OPS_FLOOR_CASHIER_PG17_PASS' AS result;

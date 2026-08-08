@@ -30,6 +30,7 @@ import { OfflineBuyInPanel } from "@/components/cashier/OfflineBuyInPanel";
 import { ReentryPanel } from "@/components/cashier/ReentryPanel";
 import { SePaySettlementTab } from "@/components/cashier/SePaySettlementTab";
 import { FEATURES } from "@/lib/featureFlags";
+import { PROFILE_REVIEW_ENABLED } from "@/lib/profileReviewGate";
 import {
   LayoutDashboard, Coins, Users as UsersIcon, FileBarChart, Loader2, CheckCircle2, XCircle,
   ScanLine, Wallet, Search, RefreshCw, Download, ImageIcon, AlertTriangle,
@@ -644,7 +645,9 @@ function HistoryTab({ clubIds }: { clubIds: string[] }) {
 
 function MembersPanel({ clubIds, clubs }: { clubIds: string[]; clubs: ClubRow[] }) {
   const [params, setParams] = useSearchParams();
-  const allowed = ["lookup", "sync", "qr", "verify", "reissue"] as const;
+  const allowed = PROFILE_REVIEW_ENABLED
+    ? (["lookup", "sync", "qr", "verify", "reissue"] as const)
+    : (["lookup", "sync", "qr", "reissue"] as const);
   const sub = (params.get("sub") as typeof allowed[number]) || "lookup";
   const value = allowed.includes(sub) ? sub : "lookup";
   const onChange = (v: string) => {
@@ -656,13 +659,13 @@ function MembersPanel({ clubIds, clubs }: { clubIds: string[]; clubs: ClubRow[] 
         <TabsTrigger value="lookup">Tra cứu</TabsTrigger>
         <TabsTrigger value="sync">Đồng bộ</TabsTrigger>
         <TabsTrigger value="qr">QR thẻ CLB</TabsTrigger>
-        <TabsTrigger value="verify">Yêu cầu xác minh</TabsTrigger>
+        {PROFILE_REVIEW_ENABLED && <TabsTrigger value="verify">Yêu cầu xác minh</TabsTrigger>}
         <TabsTrigger value="reissue">Cấp lại thẻ</TabsTrigger>
       </TabsList>
       <TabsContent value="lookup" className="mt-4"><UnifiedLookupTab clubIds={clubIds} clubs={clubs} /></TabsContent>
       <TabsContent value="sync" className="mt-4"><SyncMembersTab clubs={clubs} /></TabsContent>
       <TabsContent value="qr" className="mt-4"><ClubCardQrTab clubs={clubs} /></TabsContent>
-      <TabsContent value="verify" className="mt-4"><VerificationRequestsTab clubIds={clubIds} clubs={clubs} /></TabsContent>
+      {PROFILE_REVIEW_ENABLED && <TabsContent value="verify" className="mt-4"><VerificationRequestsTab clubIds={clubIds} clubs={clubs} /></TabsContent>}
       <TabsContent value="reissue" className="mt-4"><CardReissueTab clubIds={clubIds} clubs={clubs} /></TabsContent>
     </Tabs>
   );

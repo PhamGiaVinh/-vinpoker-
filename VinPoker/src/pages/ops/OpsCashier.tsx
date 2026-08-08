@@ -22,6 +22,7 @@ import {
   reviewVerification,
 } from "@/ops/opsMutations";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { PROFILE_REVIEW_ENABLED } from "@/lib/profileReviewGate";
 
 /**
  * Cashier — thu ngân (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads Q1/Q3/Q4/Q5/Q6).
@@ -42,6 +43,7 @@ const PILLS = [
   { key: "staking", label: "Staking", icon: HandCoins },
   { key: "verify", label: "Xác minh", icon: ShieldCheck },
 ] as const;
+const VISIBLE_PILLS = PROFILE_REVIEW_ENABLED ? PILLS : PILLS.filter((pill) => pill.key !== "verify");
 type Pill = (typeof PILLS)[number]["key"];
 type CashierAction =
   | { kind: "registration"; row: any }
@@ -206,6 +208,7 @@ export default function OpsCashier() {
         toast.success("Đã xác nhận góp vốn.");
       } else {
         if (selectedAction.decision === "reject" && !actionNote.trim()) throw new Error("Nhập lý do từ chối.");
+        if (!PROFILE_REVIEW_ENABLED) throw new Error("profile_review_disabled_until_server_authority_verified");
         await reviewVerification(supabase, {
           requestId: selectedAction.row.id,
           action: selectedAction.decision,
@@ -234,7 +237,7 @@ export default function OpsCashier() {
         else if (pill === "buyin") rows = await loadTours(supabase, cashierClubIds);
         else if (pill === "sepay") rows = await loadSepay(supabase, sepayTab === "todo" ? "actionable" : "resolved");
         else if (pill === "staking") rows = await loadStaking(supabase, cashierClubIds);
-        else if (pill === "verify") rows = await loadVerify(supabase, cashierClubIds);
+        else if (pill === "verify" && PROFILE_REVIEW_ENABLED) rows = await loadVerify(supabase, cashierClubIds);
         if (alive) setState({ loading: false, error: null, rows });
       } catch (e) {
         if (alive) setState({ loading: false, error: e instanceof Error ? e.message : "Không tải được dữ liệu", rows: [] });
@@ -264,7 +267,7 @@ export default function OpsCashier() {
       {!OPS_CASHIER_MUTATIONS_ENABLED && <div className="rounded-xl bg-amber-400/10 px-3 py-2 text-[12px] text-amber-200/90">Các thao tác thu tiền/xếp ghế đang TẮT ngoài Preview; màn hình chỉ cho kiểm tra dữ liệu.</div>}
 
       <div className="flex gap-1.5 overflow-x-auto px-1 pb-0.5">
-        {PILLS.map((p) => (
+        {VISIBLE_PILLS.map((p) => (
           <button key={p.key} onClick={() => setPill(p.key)}
             className={cn("ios-press-sm flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[13px] font-medium", pill === p.key ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
             <p.icon className="h-3.5 w-3.5" /> {p.label}

@@ -32,6 +32,12 @@ export async function scanOpsMoneyBoundary(repositoryRoot) {
     path.join(repositoryRoot, "src", "pages", "SuperAdmin.tsx"),
   ];
   const findings = [];
+  const canonicalMigration = path.join(
+    repositoryRoot,
+    "supabase",
+    "migrations",
+    "20270109000000_ops_floor_cashier_canonical_mutations.sql",
+  );
   for (const file of files) {
     const source = await readFile(file, "utf8");
     for (const pattern of FORBIDDEN_DIRECT_WRITES) {
@@ -49,6 +55,15 @@ export async function scanOpsMoneyBoundary(repositoryRoot) {
     if (FORBIDDEN_DIRECT_TOURNAMENT_DELETE.test(source)) {
       findings.push(`${path.relative(repositoryRoot, file)}:direct_tournament_delete`);
     }
+  }
+  const migrationSource = await readFile(canonicalMigration, "utf8");
+  const authenticatedGrant = /GRANT\s+EXECUTE[\s\S]{0,220}ops_create_offline_buyin_and_seat[\s\S]{0,220}\bTO\s+authenticated\b/iu;
+  if (authenticatedGrant.test(migrationSource)) {
+    findings.push("new_offline_buyin_authenticated_grant");
+  }
+  const canonicalRevoke = /REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.ops_create_offline_buyin_and_seat\s*\(uuid\s*,\s*text\s*,\s*text\s*,\s*text\s*,\s*text\s*\)\s+FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated\s*,\s*service_role\s*;/iu;
+  if (!canonicalRevoke.test(migrationSource)) {
+    findings.push("new_offline_buyin_acl_revoke_missing");
   }
   return findings;
 }
