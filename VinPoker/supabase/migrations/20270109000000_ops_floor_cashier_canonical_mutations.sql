@@ -619,7 +619,6 @@ REVOKE ALL ON FUNCTION public.ops_delete_tournament_safe(uuid,text)
   FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.ops_delete_tournament_safe(uuid,text) TO authenticated;
 REVOKE ALL ON FUNCTION public.ops_create_offline_buyin_and_seat(uuid,text,text,text,text)
-  FROM PUBLIC, anon, service_role;
-GRANT EXECUTE ON FUNCTION public.ops_create_offline_buyin_and_seat(uuid,text,text,text,text) TO authenticated;
+  FROM PUBLIC, anon, authenticated, service_role;
 
 COMMIT;
