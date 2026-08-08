@@ -8,6 +8,20 @@ const pr2aMigration = readFileSync(
   resolve(migrationsRoot, "20270108000003_tracker_unified_ops_v2_context_safe_start.sql"),
   "utf8",
 );
+const containmentMigration = readFileSync(
+  resolve(
+    migrationsRoot,
+    "20270108000004_tracker_unified_ops_writer_lock_containment.sql",
+  ),
+  "utf8",
+);
+const remainingWriterIntegration = readFileSync(
+  resolve(
+    process.cwd(),
+    "tests/trackerUnifiedOps/legacyWriterClose.integration.sql",
+  ),
+  "utf8",
+);
 
 describe("Tracker PR2A legacy-writer inventory", () => {
   it("lists every required context-affecting writer exactly once", () => {
@@ -36,30 +50,65 @@ describe("Tracker PR2A legacy-writer inventory", () => {
     }
   });
 
-  it("does not claim runtime certification without exact writer bodies", () => {
+  it("records exact body reproduction and the measured/unmeasured runtime boundary", () => {
+    const measured = new Set([
+      "floor_set_table_control_mode",
+      "floor_assign_player_to_seat",
+      "move_player_seat",
+      "close_tournament_table",
+      "redraw_tournament",
+      "floor_bust_player",
+      "floor_update_tournament_seat_chip",
+      "floor_start_tournament_clock",
+      "floor_control_tournament_clock",
+      "create_offline_buyin_and_seat",
+    ]);
+
+    for (const writer of legacyWriterInventory) {
+      const start = containmentMigration.indexOf(
+        `CREATE OR REPLACE FUNCTION public.${writer.writer}(`,
+      );
+      expect(start, writer.writer).toBeGreaterThanOrEqual(0);
+      const end = containmentMigration.indexOf(
+        "\nCREATE OR REPLACE FUNCTION public.",
+        start + 1,
+      );
+      const block = containmentMigration.slice(
+        start,
+        end === -1 ? undefined : end,
+      );
+      expect(block, writer.writer).toContain(
+        "tracker_unified_ops_lock_tournament",
+      );
+      expect(
+        block.indexOf("tracker_unified_ops_lock_tournament"),
+        writer.writer,
+      ).toBeLessThan(block.indexOf("FOR UPDATE"));
+    }
+
+    for (const writer of measured) {
+      expect(
+        legacyWriterInventory.find((row) => row.writer === writer)?.runtimeStatus,
+      ).toBe("FIXED_BY_SHARED_TOURNAMENT_LOCK");
+    }
     expect(
-      legacyWriterInventory.every((row) =>
-        [
-          "WRITER_BODY_NOT_FAITHFULLY_REPRODUCED",
-          "INCOMPATIBLE_ADVISORY_LOCK_ORDER",
-          "RUNTIME_PROVEN_DEADLOCK",
-          "FIXED_BY_SHARED_TOURNAMENT_LOCK",
-        ].includes(row.runtimeStatus),
-      ),
-    ).toBe(true);
-    expect(
-      legacyWriterInventory.some(
-        (row) => row.runtimeStatus === "FIXED_BY_SHARED_TOURNAMENT_LOCK",
-      ),
-    ).toBe(true);
-    expect(
-      legacyWriterInventory.some(
-        (row) => row.runtimeStatus === "WRITER_BODY_NOT_FAITHFULLY_REPRODUCED",
-      ),
-    ).toBe(true);
+      legacyWriterInventory
+        .filter(
+          (row) =>
+            row.runtimeStatus === "RUNTIME_NOT_MEASURED_IDENTITY_DEPENDENCIES",
+        )
+        .map((row) => row.writer),
+    ).toEqual(["restore_busted_player_to_seat", "reenter_tournament_player"]);
+    expect(remainingWriterIntegration).toContain("REMAINING_WRITER_RACE_PASS");
+    expect(remainingWriterIntegration).toContain(
+      "RESTORE_REENTRY_NOT_MEASURED_IDENTITY_DEPENDENCIES",
+    );
   });
 
   it("records the confirmed V2/legacy advisory lock incompatibility", () => {
+    const closeRow = legacyWriterInventory.find(
+      (row) => row.writer === "close_tournament_table",
+    );
     const mode = readFileSync(
       resolve(migrationsRoot, "20270105000001_floor_table_control_mode.sql"),
       "utf8",
@@ -83,6 +132,10 @@ describe("Tracker PR2A legacy-writer inventory", () => {
     expect(close).toContain("hashtext(v_tour.id::text)");
     expect(containment).toContain(
       "PERFORM public.tracker_unified_ops_lock_tournament(p_tournament_id);",
+    );
+    expect(closeRow?.runtimeStatus).toBe("FIXED_BY_SHARED_TOURNAMENT_LOCK");
+    expect(containment).toContain(
+      "PERFORM public.tracker_unified_ops_lock_tournament(v_lock_tournament_id);",
     );
     expect(containment.indexOf("tracker_unified_ops_lock_tournament(p_tournament_id)")).toBeLessThan(
       containment.indexOf("FOR UPDATE"),

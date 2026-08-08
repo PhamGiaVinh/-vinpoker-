@@ -112,6 +112,14 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
             -f tests/trackerUnifiedOps/legacyWriterMode.containment.integration.sql
 
+      - name: Run exact Close Table and remaining-writer regressions
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          createdb tracker_pr2a_close
+          psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a_close \
+            -f tests/trackerUnifiedOps/legacyWriterClose.integration.sql
+
       - name: Prove migration transaction rollback on injected failure
         working-directory: VinPoker
         run: |

@@ -25,6 +25,13 @@ const containedModeIntegration = readFileSync(
   ),
   "utf8",
 );
+const legacyCloseIntegration = readFileSync(
+  resolve(
+    process.cwd(),
+    "tests/trackerUnifiedOps/legacyWriterClose.integration.sql",
+  ),
+  "utf8",
+);
 const legacyModeSource = readFileSync(
   resolve(
     process.cwd(),
@@ -122,6 +129,40 @@ describe("Tracker PR2A disposable database contract", () => {
     expect(containedModeIntegration).toContain("NOT EXISTS (");
     expect(containedModeIntegration).toContain(
       "DROP TABLE public.tracker_legacy_mode_context_shared",
+    );
+  });
+
+  it("runs the exact canonical Close Table suite in both race directions", () => {
+    expect(workflow).toContain("createdb tracker_pr2a_close");
+    expect(workflow).toContain(
+      "tests/trackerUnifiedOps/legacyWriterClose.integration.sql",
+    );
+    expect(legacyCloseIntegration).toContain(
+      "20270108000004_tracker_unified_ops_writer_lock_containment.sql",
+    );
+    expect(legacyCloseIntegration).toContain(
+      "close table canonical disposable DB integration passed",
+    );
+    expect(legacyCloseIntegration).toContain("CLOSE_TABLE_RACE_PASS");
+    expect(legacyCloseIntegration).toContain("table_has_active_hand");
+    expect(legacyCloseIntegration).toContain(
+      "tracker_test_v2_start_attempt",
+    );
+    expect(legacyCloseIntegration).toContain("wait_event_type = 'Lock'");
+    expect(legacyCloseIntegration).toContain("dblink_is_busy");
+    expect(legacyCloseIntegration).toContain("40P01");
+    expect(legacyCloseIntegration).toContain(
+      "DIFFERENT_TOURNAMENT_INDEPENDENCE_PASS",
+    );
+    expect(legacyCloseIntegration).toContain("REMAINING_WRITER_RACE_PASS");
+    expect(legacyCloseIntegration).toContain(
+      "RESTORE_REENTRY_NOT_MEASURED_IDENTITY_DEPENDENCIES",
+    );
+    expect(legacyCloseIntegration).toContain(
+      "ALTER COLUMN id SET DEFAULT gen_random_uuid()",
+    );
+    expect(legacyCloseIntegration).toContain(
+      "ALTER TABLE public.tournament_registrations",
     );
   });
 });
