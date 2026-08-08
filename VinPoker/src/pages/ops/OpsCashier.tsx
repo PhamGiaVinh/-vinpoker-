@@ -18,6 +18,7 @@ import {
   confirmStaking,
   ignoreSepay,
   mutationError,
+  OPS_CASHIER_MUTATIONS_ENABLED,
   reviewVerification,
 } from "@/ops/opsMutations";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -155,6 +156,7 @@ export default function OpsCashier() {
   const [actionNote, setActionNote] = useState("");
   const [playerName, setPlayerName] = useState("");
   const [playerPhone, setPlayerPhone] = useState("");
+  const [buyinIdempotencyKey, setBuyinIdempotencyKey] = useState<string | null>(null);
   const clubKey = cashierClubIds.join(",");
 
   const closeAction = (force = false) => {
@@ -163,6 +165,7 @@ export default function OpsCashier() {
     setActionNote("");
     setPlayerName("");
     setPlayerPhone("");
+    setBuyinIdempotencyKey(null);
   };
 
   const runAction = async () => {
@@ -173,13 +176,15 @@ export default function OpsCashier() {
         await confirmRegistration(supabase, { registrationId: selectedAction.row.id, actorUserId: user.id });
         toast.success("Đã xác nhận đăng ký và xếp ghế.");
       } else if (selectedAction.kind === "buyin") {
+        if (!OPS_CASHIER_MUTATIONS_ENABLED) throw new Error("money_path_disabled");
         if (!playerName.trim()) throw new Error("Nhập tên người chơi trước khi tạo buy-in.");
+        const idempotencyKey = buyinIdempotencyKey ?? crypto.randomUUID();
+        setBuyinIdempotencyKey(idempotencyKey);
         await confirmOfflineBuyIn(supabase, {
           tournamentId: selectedAction.row.id,
           playerName: playerName.trim(),
           phone: playerPhone,
-          buyIn: Number(selectedAction.row.buy_in ?? 0),
-          fee: Number(selectedAction.row.rake_amount ?? 0) + Number(selectedAction.row.service_fee_amount ?? 0),
+          idempotencyKey,
         });
         toast.success("Đã tạo buy-in và xếp ghế.");
       } else if (selectedAction.kind === "sepay") {
@@ -256,6 +261,7 @@ export default function OpsCashier() {
 
       {metadataError && <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">{metadataError}</div>}
       <div className="rounded-xl bg-emerald-400/8 px-3 py-2 text-[12px] text-emerald-300/90">Dữ liệu thật · thao tác ghi chỉ đi qua RPC/Edge có kiểm quyền.</div>
+      {!OPS_CASHIER_MUTATIONS_ENABLED && <div className="rounded-xl bg-amber-400/10 px-3 py-2 text-[12px] text-amber-200/90">Các thao tác thu tiền/xếp ghế đang TẮT ngoài Preview; màn hình chỉ cho kiểm tra dữ liệu.</div>}
 
       <div className="flex gap-1.5 overflow-x-auto px-1 pb-0.5">
         {PILLS.map((p) => (
@@ -423,7 +429,7 @@ export default function OpsCashier() {
               )}
               <div className="flex gap-2">
                 <button disabled={actionBusy} onClick={closeAction} className="ios-press-sm ios-fill flex-1 rounded-xl py-3 text-[14px] text-[#b9adb5]">Hủy</button>
-                <button disabled={actionBusy || (selectedAction.kind === "buyin" && !playerName.trim()) || (selectedAction.kind === "sepay" && !actionNote.trim()) || (selectedAction.kind === "verify" && selectedAction.decision === "reject" && !actionNote.trim())} onClick={runAction} className="ios-press-sm ios-primary flex-1 rounded-xl py-3 text-[14px] font-bold disabled:opacity-50">
+                <button disabled={actionBusy || (!OPS_CASHIER_MUTATIONS_ENABLED && ["registration", "buyin", "sepay", "staking"].includes(selectedAction.kind)) || (selectedAction.kind === "buyin" && !playerName.trim()) || (selectedAction.kind === "sepay" && !actionNote.trim()) || (selectedAction.kind === "verify" && selectedAction.decision === "reject" && !actionNote.trim())} onClick={runAction} className="ios-press-sm ios-primary flex-1 rounded-xl py-3 text-[14px] font-bold disabled:opacity-50">
                   {actionBusy ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Xác nhận"}
                 </button>
               </div>

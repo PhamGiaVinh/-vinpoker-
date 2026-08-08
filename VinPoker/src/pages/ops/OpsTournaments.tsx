@@ -20,6 +20,7 @@ import {
   createTournament,
   deleteTournament,
   mutationError,
+  OPS_CASHIER_MUTATIONS_ENABLED,
   updateTournament,
   updateTournamentLive,
 } from "@/ops/opsMutations";
@@ -62,7 +63,6 @@ const LIVE_STATUS_OPTIONS = [
   { value: "live", label: "Đang chơi" },
   { value: "break", label: "Giải lao" },
   { value: "final_table", label: "Final" },
-  { value: "completed", label: "Kết thúc" },
 ] as const;
 
 export default function OpsTournaments() {
@@ -129,7 +129,7 @@ export default function OpsTournaments() {
     setLivePlayers(sel.entries);
     setLiveLevel(sel.level ?? 1);
     const sourceStatus = source?.status ?? "live";
-    setLiveStatus(LIVE_STATUS_OPTIONS.find((option) => option.value === sourceStatus)?.label ?? sourceStatus);
+    setLiveStatus(LIVE_STATUS_OPTIONS.find((option) => option.value === sourceStatus)?.label ?? (sourceStatus === "completed" ? "Final" : sourceStatus));
   }, [sel, tournaments]);
 
   const refreshTournaments = () => {
@@ -152,6 +152,10 @@ export default function OpsTournaments() {
   };
 
   const submitForm = () => {
+    if (sel && !hasOwnerAccess) {
+      toast.error("Chỉ chủ CLB được sửa giải.");
+      return;
+    }
     const fields = Array.from(document.querySelectorAll<HTMLInputElement>("[data-ops-field]"));
     const name = (fields[0]?.value ?? form.name).trim();
     const rawStart = fields[1]?.value ?? form.startTime;
@@ -182,6 +186,10 @@ export default function OpsTournaments() {
   const submitLive = () => {
     if (!sel) return;
     const normalizedStatus = LIVE_STATUS_OPTIONS.find((option) => option.label === liveStatus)?.value ?? liveStatus;
+    if (!LIVE_STATUS_OPTIONS.some((option) => option.value === normalizedStatus)) {
+      toast.error("Trạng thái live không hợp lệ; dùng Chốt giải để kết thúc.");
+      return;
+    }
     void runMutation(
       () => updateTournamentLive(client, {
         tournamentId: sel.id,
@@ -196,6 +204,10 @@ export default function OpsTournaments() {
 
   const submitClose = () => {
     if (!sel) return;
+    if (!OPS_CASHIER_MUTATIONS_ENABLED) {
+      toast.error("Chốt giải đang tắt ngoài Preview có kiểm soát.");
+      return;
+    }
     void runMutation(() => closeTournament(client, sel.id), "Máy chủ đã xác nhận chốt giải.");
   };
 

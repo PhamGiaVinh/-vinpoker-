@@ -16,7 +16,9 @@ import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 
 // RPC gate: while false the Buy-in button is disabled "Cần bật RPC" and the
 // handler refuses to call the (not-yet-applied) RPC. Flip after live apply.
-const BUYIN_LIVE = FEATURES.offlineBuyIn;
+const BUYIN_LIVE = FEATURES.offlineBuyIn
+  && import.meta.env.VITE_OPS_CASHIER_MUTATIONS === "preview"
+  && import.meta.env.VITE_FLOOR_UAT_ENV === "preview";
 
 const ACTIVE_STATUSES = ["upcoming", "registering", "drawing", "active", "live", "break", "final_table"];
 
@@ -36,7 +38,7 @@ function mapErr(res: any, raw?: string): string {
 
 /**
  * Cashier offline (cash / walk-in) buy-in: pick a tournament → enter player name
- * → buy-in + fee → auto-draw a seat + print receipt (via create_offline_buyin_and_seat).
+ * → server derives buy-in + fee → auto-draw a seat + print receipt.
  * The RPC takes the actor from auth.uid() server-side (no client actor id).
  */
 export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
@@ -50,6 +52,7 @@ export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
   const [fee, setFee] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<SeatReceiptData | null>(null);
 
   // Player History (Phase 1): optional phone lookup, gated by FEATURES.playerHistory. Best-effort —
@@ -84,6 +87,7 @@ export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
     setFee((Number((t as any).rake_amount) || 0) + svc);
     setPhone("");
     setLookupMatch(null);
+    setIdempotencyKey(null);
   };
 
   // Debounced phone lookup — read-only, never creates a member. Best-effort: any error just clears
@@ -113,14 +117,15 @@ export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
   const formValid = !!selected && playerName.trim().length >= 2 && Number(buyIn) > 0 && Number(fee) >= 0;
 
   const submit = async (drawMode: DrawMode) => {
-    if (!BUYIN_LIVE || !selected) return; // defence-in-depth: never call a missing RPC
+    if (!BUYIN_LIVE || !selected) return; // production/off-preview is intentionally read-only
+    const requestKey = idempotencyKey ?? crypto.randomUUID();
+    setIdempotencyKey(requestKey);
     setBusy(true);
     try {
-      const { data, error } = await (supabase as any).rpc("create_offline_buyin_and_seat", {
+      const { data, error } = await (supabase as any).rpc("ops_create_offline_buyin_and_seat", {
         p_tournament_id: selected.id,
         p_player_name: playerName.trim(),
-        p_buy_in: Number(buyIn),
-        p_fee: Number(fee),
+        p_idempotency_key: requestKey,
         p_draw_mode: drawMode,
         ...(FEATURES.playerHistory && phone.trim() ? { p_phone: phone.trim() } : {}),
       });
@@ -139,6 +144,7 @@ export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
       });
       setConfirmOpen(false);
       setPlayerName("");
+      setIdempotencyKey(null);
     } catch (e: any) {
       toast.error(e.message || "Lỗi");
     } finally {
@@ -166,8 +172,7 @@ export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
 
       {!BUYIN_LIVE && (
         <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
-          Chế độ xem trước: RPC <code>create_offline_buyin_and_seat</code> chưa bật trên production — chọn giải / nhập
-          được nhưng chưa buy-in được. Bật sau khi apply RPC trong phiên DB có kiểm soát.
+          Chế độ xem trước: buy-in chỉ bật khi cả cờ module và môi trường Preview cùng xác nhận; production luôn chỉ đọc.
         </div>
       )}
 
@@ -258,7 +263,7 @@ export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
                 <Coins className="mr-1.5 h-5 w-5" /> Buy-in
               </Button>
             ) : (
-              <Button className="h-12 w-full text-base" variant="outline" disabled title="Cần apply RPC create_offline_buyin_and_seat">
+              <Button className="h-12 w-full text-base" variant="outline" disabled title="Chỉ bật trong Preview có kiểm soát">
                 <Lock className="mr-1.5 h-5 w-5" /> Cần bật RPC
               </Button>
             )}

@@ -13906,6 +13906,56 @@ export type Database = {
         }
         Returns: Json
       }
+      ops_create_tournament: {
+        Args: {
+          p_buy_in: number
+          p_club_id: string
+          p_game_type?: string
+          p_late_reg_close_level?: number
+          p_minutes_per_level: number
+          p_name: string
+          p_start_time: string
+          p_starting_stack: number
+        }
+        Returns: Json
+      }
+      ops_update_tournament: {
+        Args: {
+          p_buy_in: number
+          p_late_reg_close_level?: number
+          p_minutes_per_level: number
+          p_name: string
+          p_start_time: string
+          p_starting_stack: number
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      ops_update_tournament_live: {
+        Args: {
+          p_blinds?: string | null
+          p_level: number
+          p_players_remaining: number
+          p_reason?: string | null
+          p_status: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      ops_delete_tournament_safe: {
+        Args: { p_reason?: string | null; p_tournament_id: string }
+        Returns: Json
+      }
+      ops_create_offline_buyin_and_seat: {
+        Args: {
+          p_draw_mode?: string
+          p_idempotency_key: string
+          p_phone?: string | null
+          p_player_name: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
       club_local_date: { Args: { p_club_id: string }; Returns: string }
       complete_dealer_break: {
         Args: { p_attendance_id: string }

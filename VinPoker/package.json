@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "check:credential-context": "node scripts/security/check-sensitive-credential-context.mjs",
     "check:ops-boundary": "node scripts/security/check-ops-app-boundary.mjs",
+    "check:ops-money-boundary": "node scripts/security/check-ops-money-boundary.mjs",
     "check:floor-audit-context": "node scripts/security/check-floor-audit-context.mjs",
     "preview": "vite preview",
     "test": "vitest run",
