@@ -229,6 +229,61 @@ BEGIN
 END;
 $$;
 
+SELECT pg_temp.seed_busted_entry(
+  '30000000-0000-0000-0000-000000000001',
+  '32000000-0000-0000-0000-000000000011',
+  '31000000-0000-0000-0000-000000000011',
+  '10000000-0000-0000-0000-000000000016',
+  '34000000-0000-0000-0000-000000000061',
+  '35000000-0000-0000-0000-000000000061',
+  '36000000-0000-0000-0000-000000000061',
+  'Race Two'
+);
+
+SELECT dblink_connect('reentry_independence', format('dbname=%s', current_database()));
+SELECT pg_advisory_lock(hashtextextended('tracker-unified-ops:' || '30000000-0000-0000-0000-000000000005', 0));
+SELECT dblink_send_query(
+  'reentry_independence',
+  format($query$
+    WITH auth AS MATERIALIZED (
+      SELECT set_config('request.jwt.claim.sub', %L, false)
+    )
+    SELECT public.reenter_tournament_player(%L::uuid, 100, 10, 'random_balanced')
+    FROM auth
+  $query$, '10000000-0000-0000-0000-000000000001', '34000000-0000-0000-0000-000000000061')
+);
+DO $$
+DECLARE
+  v_busy INTEGER := 1;
+  v_attempt INTEGER := 0;
+BEGIN
+  WHILE v_busy <> 0 AND v_attempt < 50 LOOP
+    v_busy := dblink_is_busy('reentry_independence');
+    v_attempt := v_attempt + 1;
+    IF v_busy <> 0 THEN PERFORM pg_sleep(0.02); END IF;
+  END LOOP;
+  IF v_busy <> 0 THEN RAISE EXCEPTION 'different-tournament request remained blocked'; END IF;
+END;
+$$;
+SELECT * FROM dblink_get_result('reentry_independence') AS result(value JSONB);
+SELECT pg_advisory_unlock(hashtextextended('tracker-unified-ops:' || '30000000-0000-0000-0000-000000000005', 0));
+SELECT dblink_disconnect('reentry_independence');
+
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM public.tournament_registrations
+      WHERE source_entry_id = '34000000-0000-0000-0000-000000000061'
+        AND status IN ('pending', 'confirmed')) <> 1
+     OR (SELECT count(*) FROM public.tournament_seats
+         WHERE tournament_id = '30000000-0000-0000-0000-000000000001'
+           AND player_id = '10000000-0000-0000-0000-000000000016'
+           AND is_active) <> 1 THEN
+    RAISE EXCEPTION 'different-tournament reentry did not complete independently';
+  END IF;
+  RAISE NOTICE 'REENTRY_DIFFERENT_TOURNAMENT_INDEPENDENCE_PASS';
+END;
+$$;
+
 DO $$
 DECLARE
   v_res JSONB;
