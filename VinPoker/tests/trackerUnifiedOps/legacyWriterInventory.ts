@@ -76,8 +76,8 @@ export const legacyWriterInventory: readonly LegacyWriterInventoryRow[] = [
     sourceMigration: "20261240000000_floor_production_hardening.sql",
     contextFields: ["active_roster", "seat", "entry", "stack_projection"],
     lockStrategy: "shared tournament advisory -> entry row -> tournament row -> destination table row -> seat/entry writes",
-    runtimeStatus: "RUNTIME_NOT_MEASURED_IDENTITY_DEPENDENCIES",
-    note: "Exact current-main body is reproduced in the containment migration, but the full identity-link dependency graph was intentionally not installed; runtime race remains NOT_MEASURED.",
+    runtimeStatus: "FIXED_BY_SHARED_TOURNAMENT_LOCK",
+    note: "Exact current-main body is reproduced in the containment migration; an active-hand guard now fails closed before any restore write, and restore runtime/race evidence is covered by the disposable harness.",
   },
   {
     writer: "floor_update_tournament_seat_chip",

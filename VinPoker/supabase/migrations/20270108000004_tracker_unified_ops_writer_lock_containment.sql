@@ -1954,6 +1954,21 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'invalid_seat_number', 'max_seats', v_to_tt.max_seats);
   END IF;
 
+  -- A restore is a roster mutation. Once Tracker has an in-progress hand on
+  -- this tournament table, fail closed before the first seat/receipt write.
+  -- Hands created by legacy start_hand store the physical table id while V2
+  -- stores the canonical tournament-table id, so guard both identities.
+  IF EXISTS (
+    SELECT 1
+    FROM public.tournament_hands h
+    WHERE h.tournament_id = v_entry.tournament_id
+      AND h.table_id IN (v_to_tt.id, v_to_tt.table_id)
+      AND h.status = 'in_progress'
+      AND COALESCE(h.is_voided, false) = false
+  ) THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'table_has_active_hand');
+  END IF;
+
   BEGIN
     INSERT INTO public.tournament_seats (
       tournament_id, player_id, entry_number, table_id, seat_number,

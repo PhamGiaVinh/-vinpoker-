@@ -417,7 +417,7 @@ RETURNS jsonb
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  PERFORM set_config('request.jwt.claim.sub', p_actor::text, false);
+  PERFORM set_config('request.jwt.claim.sub', COALESCE(p_actor::text, ''), false);
   RETURN public.close_tournament_table(
     '00000000-0000-0000-0000-000000000301',
     p_draw_mode,
@@ -1869,4 +1869,336 @@ SELECT writer, schedule, response
 FROM tracker_writer_race_results
 ORDER BY writer, schedule;
 SELECT 'REMAINING_WRITER_RACE_PASS' AS result;
-SELECT 'RESTORE_REENTRY_NOT_MEASURED_IDENTITY_DEPENDENCIES' AS result;
+
+-- Restore certification uses the exact contained writer and the canonical
+-- Floor identity shape. Re-entry is intentionally not faked here: current-main
+-- calls _assign_reentry_seat(), but no current-main migration defines that
+-- helper. The exact historical helper exists only in an older commit and is
+-- not a dependency we may silently install in this PR.
+CREATE OR REPLACE FUNCTION public.tracker_test_prepare_restore_case(
+  p_with_active_hand boolean DEFAULT false,
+  p_destination_seat integer DEFAULT 2
+)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_entry_id uuid := public.floor_test_uuid(2101);
+  v_player_id uuid := public.floor_test_uuid(2102);
+  v_old_seat_id uuid := public.floor_test_uuid(2103);
+  v_registration_id uuid := public.floor_test_uuid(2104);
+  v_receipt_id uuid := public.floor_test_uuid(2105);
+  v_hand_id uuid := public.floor_test_uuid(2106);
+BEGIN
+  PERFORM public.floor_test_reset_close_case('active', 4, 4);
+  PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
+
+  UPDATE public.tournaments
+  SET status = 'active', players_remaining = 0, current_players = 0
+  WHERE id = '00000000-0000-0000-0000-000000000100';
+
+  INSERT INTO public.tournament_registrations (
+    id, tournament_id, status, buy_in, total_pay
+  ) VALUES (
+    v_registration_id, '00000000-0000-0000-0000-000000000100', 'confirmed', 1000, 1000
+  );
+
+  INSERT INTO public.tournament_entries (
+    id, tournament_id, registration_id, player_id, entry_no, source, status,
+    current_stack, table_id, seat_id, seat_number, busted_at, bust_order, finished_place
+  ) VALUES (
+    v_entry_id, '00000000-0000-0000-0000-000000000100', v_registration_id,
+    v_player_id, 1, 'online', 'busted', 125,
+    '00000000-0000-0000-0000-000000000201', v_old_seat_id, 1,
+    now(), 7, 12
+  );
+
+  INSERT INTO public.tournament_seats (
+    id, tournament_id, player_id, entry_number, table_id, seat_number,
+    chip_count, is_active, player_name, entry_id, status, assigned_by, assigned_at
+  ) VALUES (
+    v_old_seat_id, '00000000-0000-0000-0000-000000000100', v_player_id, 1,
+    '00000000-0000-0000-0000-000000000301', 1, 125, false,
+    'Restore Candidate', v_entry_id, 'busted', '00000000-0000-0000-0000-000000000001', now()
+  );
+
+  INSERT INTO public.seat_draw_receipts (
+    id, tournament_id, registration_id, entry_id, player_id, display_name,
+    table_id, table_number, seat_id, seat_number, receipt_code, qr_payload,
+    draw_type, status, issued_by
+  ) VALUES (
+    v_receipt_id, '00000000-0000-0000-0000-000000000100', v_registration_id,
+    v_entry_id, v_player_id, 'Restore Candidate', '00000000-0000-0000-0000-000000000201',
+    1, v_old_seat_id, 1, 'RESTORE-OLD', '{}'::jsonb, 'initial', 'issued',
+    '00000000-0000-0000-0000-000000000001'
+  );
+
+  IF p_with_active_hand THEN
+    INSERT INTO public.tournament_hands (
+      id, tournament_id, table_id, hand_number, status, is_voided, created_by, locked_by_user_id, locked_at
+    ) VALUES (
+      v_hand_id, '00000000-0000-0000-0000-000000000100',
+      '00000000-0000-0000-0000-000000000202', 1, 'in_progress', false,
+      '00000000-0000-0000-0000-000000000004',
+      '00000000-0000-0000-0000-000000000004', now()
+    );
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.tracker_test_restore_call(
+  p_actor uuid,
+  p_entry_id uuid DEFAULT public.floor_test_uuid(2101),
+  p_destination uuid DEFAULT '00000000-0000-0000-0000-000000000302'::uuid,
+  p_seat integer DEFAULT 2
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', COALESCE(p_actor::text, ''), false);
+  RETURN public.restore_busted_player_to_seat(
+    p_entry_id, p_destination, p_seat, p_actor, 'tracker_pr2a_restore_test'
+  );
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object('ok', false, 'sqlstate', SQLSTATE, 'message', SQLERRM);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.tracker_test_prepare_restore_v2_case()
+RETURNS text
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_context jsonb;
+BEGIN
+  PERFORM public.tracker_test_prepare_restore_case();
+  PERFORM public.floor_test_add_destination_player(
+    1, '00000000-0000-0000-0000-000000000302',
+    '00000000-0000-0000-0000-000000000202', 1, 100
+  );
+  PERFORM public.floor_test_add_destination_player(
+    2, '00000000-0000-0000-0000-000000000302',
+    '00000000-0000-0000-0000-000000000202', 2, 100
+  );
+  INSERT INTO public.tournament_chip_counts (tournament_id, player_id, entry_number, chip_count)
+  VALUES
+    ('00000000-0000-0000-0000-000000000100', public.floor_test_uuid(1501), 1, 100),
+    ('00000000-0000-0000-0000-000000000100', public.floor_test_uuid(1502), 1, 100);
+  INSERT INTO public.tournament_levels (
+    id, tournament_id, level_number, duration_minutes,
+    small_blind, big_blind, ante, is_break
+  ) VALUES (
+    '00000000-0000-0000-0000-000000000902',
+    '00000000-0000-0000-0000-000000000100', 1, 20, 100, 200, 200, false
+  );
+  UPDATE public.tournaments
+  SET status = 'active', current_level = 1,
+      current_level_id = '00000000-0000-0000-0000-000000000902'
+  WHERE id = '00000000-0000-0000-0000-000000000100';
+  UPDATE public.tournament_tables
+  SET floor_control_mode = 'tracker', floor_control_revision = 0
+  WHERE id = '00000000-0000-0000-0000-000000000302';
+  v_context := public.get_tracker_table_context_v2(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000302'
+  );
+  IF v_context->>'ok' <> 'true' THEN
+    RAISE EXCEPTION 'restore V2 fixture context failed: %', v_context;
+  END IF;
+  RETURN v_context->>'context_version';
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.tracker_test_v2_start_destination(
+  p_context_version text,
+  p_key text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
+  RETURN public.start_tracker_hand_v2(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000302',
+    1, p_context_version, p_key
+  );
+END;
+$$;
+
+-- Functional baseline: the same busted entry is restored, no new registration
+-- or payment row is created, and every receipt/history projection is safe.
+SELECT public.tracker_test_prepare_restore_case();
+CREATE TEMP TABLE tracker_restore_baseline (response jsonb NOT NULL);
+INSERT INTO tracker_restore_baseline
+SELECT public.tracker_test_restore_call('00000000-0000-0000-0000-000000000001');
+CREATE TEMP TABLE tracker_restore_baseline_state AS
+SELECT
+  (SELECT status FROM public.tournament_entries WHERE id = public.floor_test_uuid(2101)) AS entry_status,
+  (SELECT busted_at IS NULL AND bust_order IS NULL AND finished_place IS NULL FROM public.tournament_entries WHERE id = public.floor_test_uuid(2101)) AS bust_fields_cleared,
+  (SELECT count(*) FROM public.tournament_seats WHERE entry_id = public.floor_test_uuid(2101) AND is_active) AS active_seats,
+  (SELECT count(*) FROM public.tournament_seats WHERE entry_id = public.floor_test_uuid(2101) AND status = 'moved') AS moved_seats,
+  (SELECT count(*) FROM public.seat_draw_receipts WHERE entry_id = public.floor_test_uuid(2101) AND id <> public.floor_test_uuid(2105)) AS new_receipts,
+  (SELECT count(*) FROM public.seat_assignment_history WHERE entry_id = public.floor_test_uuid(2101)) AS history_rows,
+  (SELECT count(*) FROM public.tournament_registrations) AS registrations,
+  (SELECT players_remaining FROM public.tournaments WHERE id = '00000000-0000-0000-0000-000000000100') AS players_remaining;
+SELECT public.floor_test_assert(
+  (SELECT (response->>'ok')::boolean FROM tracker_restore_baseline)
+  AND entry_status = 'seated' AND bust_fields_cleared IS TRUE
+  AND active_seats = 1 AND moved_seats = 1 AND new_receipts = 1
+  AND history_rows = 1 AND registrations = 1 AND players_remaining = 1,
+  'restore functional baseline preserves entry identity and cardinality'
+)
+FROM tracker_restore_baseline_state;
+SELECT 'RESTORE_FUNCTIONAL_BASELINE_PASS' AS result;
+
+-- Canonical failure paths that must not write roster, receipts, history, or registration rows.
+DO $$
+DECLARE
+  v_case text;
+  v_before jsonb;
+  v_result jsonb;
+  v_expected text;
+BEGIN
+  FOREACH v_case IN ARRAY ARRAY['unauthorized', 'actor_mismatch', 'entry_not_found', 'entry_not_busted', 'actor_not_allowed', 'already_active', 'invalid_destination_table', 'invalid_seat_number', 'seat_occupied'] LOOP
+    PERFORM public.tracker_test_prepare_restore_case();
+    CASE v_case
+      WHEN 'unauthorized' THEN
+        v_before := jsonb_build_object('entries', (SELECT count(*) FROM public.tournament_entries), 'seats', (SELECT count(*) FROM public.tournament_seats), 'receipts', (SELECT count(*) FROM public.seat_draw_receipts), 'history', (SELECT count(*) FROM public.seat_assignment_history));
+        v_result := public.tracker_test_restore_call(NULL);
+        v_expected := 'unauthorized';
+      WHEN 'actor_mismatch' THEN
+        v_before := jsonb_build_object('entries', (SELECT count(*) FROM public.tournament_entries), 'seats', (SELECT count(*) FROM public.tournament_seats), 'receipts', (SELECT count(*) FROM public.seat_draw_receipts), 'history', (SELECT count(*) FROM public.seat_assignment_history));
+        PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
+        v_result := public.restore_busted_player_to_seat(public.floor_test_uuid(2101), '00000000-0000-0000-0000-000000000302', 2, '00000000-0000-0000-0000-000000000099', 'test');
+        v_expected := 'actor_mismatch';
+      WHEN 'entry_not_found' THEN
+        v_before := jsonb_build_object('entries', (SELECT count(*) FROM public.tournament_entries), 'seats', (SELECT count(*) FROM public.tournament_seats), 'receipts', (SELECT count(*) FROM public.seat_draw_receipts), 'history', (SELECT count(*) FROM public.seat_assignment_history));
+        v_result := public.tracker_test_restore_call('00000000-0000-0000-0000-000000000001', public.floor_test_uuid(2199));
+        v_expected := 'entry_not_found';
+      WHEN 'entry_not_busted' THEN
+        UPDATE public.tournament_entries SET status = 'seated' WHERE id = public.floor_test_uuid(2101);
+        v_before := jsonb_build_object('entries', (SELECT count(*) FROM public.tournament_entries), 'seats', (SELECT count(*) FROM public.tournament_seats), 'receipts', (SELECT count(*) FROM public.seat_draw_receipts), 'history', (SELECT count(*) FROM public.seat_assignment_history));
+        v_result := public.tracker_test_restore_call('00000000-0000-0000-0000-000000000001');
+        v_expected := 'entry_not_busted';
+      WHEN 'actor_not_allowed' THEN
+        v_before := jsonb_build_object('entries', (SELECT count(*) FROM public.tournament_entries), 'seats', (SELECT count(*) FROM public.tournament_seats), 'receipts', (SELECT count(*) FROM public.seat_draw_receipts), 'history', (SELECT count(*) FROM public.seat_assignment_history));
+        v_result := public.tracker_test_restore_call('00000000-0000-0000-0000-000000000099');
+        v_expected := 'actor_not_allowed';
+      WHEN 'already_active' THEN
+        INSERT INTO public.tournament_seats (id, tournament_id, player_id, entry_number, table_id, seat_number, chip_count, is_active, player_name, entry_id, status)
+        VALUES (public.floor_test_uuid(2110), '00000000-0000-0000-0000-000000000100', public.floor_test_uuid(2102), 1, '00000000-0000-0000-0000-000000000302', 3, 125, true, 'Already active', public.floor_test_uuid(2101), 'active');
+        v_before := jsonb_build_object('entries', (SELECT count(*) FROM public.tournament_entries), 'seats', (SELECT count(*) FROM public.tournament_seats), 'receipts', (SELECT count(*) FROM public.seat_draw_receipts), 'history', (SELECT count(*) FROM public.seat_assignment_history));
+        v_result := public.tracker_test_restore_call('00000000-0000-0000-0000-000000000001');
+        v_expected := 'already_active';
+      WHEN 'invalid_destination_table' THEN
+        v_before := jsonb_build_object('entries', (SELECT count(*) FROM public.tournament_entries), 'seats', (SELECT count(*) FROM public.tournament_seats), 'receipts', (SELECT count(*) FROM public.seat_draw_receipts), 'history', (SELECT count(*) FROM public.seat_assignment_history));
+        v_result := public.tracker_test_restore_call('00000000-0000-0000-0000-000000000001', public.floor_test_uuid(2101), public.floor_test_uuid(399), 2);
+        v_expected := 'invalid_destination_table';
+      WHEN 'invalid_seat_number' THEN
+        v_before := jsonb_build_object('entries', (SELECT count(*) FROM public.tournament_entries), 'seats', (SELECT count(*) FROM public.tournament_seats), 'receipts', (SELECT count(*) FROM public.seat_draw_receipts), 'history', (SELECT count(*) FROM public.seat_assignment_history));
+        v_result := public.tracker_test_restore_call('00000000-0000-0000-0000-000000000001', public.floor_test_uuid(2101), '00000000-0000-0000-0000-000000000302', 99);
+        v_expected := 'invalid_seat_number';
+      WHEN 'seat_occupied' THEN
+        INSERT INTO public.tournament_seats (id, tournament_id, player_id, entry_number, table_id, seat_number, chip_count, is_active, player_name, entry_id, status)
+        VALUES (public.floor_test_uuid(2111), '00000000-0000-0000-0000-000000000100', public.floor_test_uuid(2112), 1, '00000000-0000-0000-0000-000000000302', 2, 50, true, 'Seat blocker', NULL, 'active');
+        v_before := jsonb_build_object('entries', (SELECT count(*) FROM public.tournament_entries), 'seats', (SELECT count(*) FROM public.tournament_seats), 'receipts', (SELECT count(*) FROM public.seat_draw_receipts), 'history', (SELECT count(*) FROM public.seat_assignment_history));
+        v_result := public.tracker_test_restore_call('00000000-0000-0000-0000-000000000001');
+        v_expected := 'seat_occupied';
+    END CASE;
+    PERFORM public.tracker_test_assert(v_result->>'error' = v_expected, v_case || ' returns ' || v_expected);
+    PERFORM public.tracker_test_assert(
+      v_before = jsonb_build_object('entries', (SELECT count(*) FROM public.tournament_entries), 'seats', (SELECT count(*) FROM public.tournament_seats), 'receipts', (SELECT count(*) FROM public.seat_draw_receipts), 'history', (SELECT count(*) FROM public.seat_assignment_history)),
+      v_case || ' performs zero writes'
+    );
+  END LOOP;
+END;
+$$;
+SELECT 'RESTORE_FAILURE_ZERO_WRITE_PASS' AS result;
+
+-- V2 commits first: restore into the live table is rejected before any write.
+CREATE TEMP TABLE tracker_restore_stale_context (context_version text NOT NULL);
+INSERT INTO tracker_restore_stale_context
+SELECT public.tracker_test_prepare_restore_v2_case();
+SELECT public.floor_test_assert(
+  (public.tracker_test_restore_call(
+    '00000000-0000-0000-0000-000000000001',
+    public.floor_test_uuid(2101),
+    '00000000-0000-0000-0000-000000000302', 3
+  )->>'ok')::boolean,
+  'restore succeeds before V2 start in stale-context schedule'
+);
+CREATE TEMP TABLE tracker_restore_stale_start (response jsonb NOT NULL);
+INSERT INTO tracker_restore_stale_start
+SELECT public.tracker_test_v2_start_destination(
+  (SELECT context_version FROM tracker_restore_stale_context),
+  'restore-first-stale-context'
+);
+SELECT public.floor_test_assert(
+  (response->>'error') = 'stale_table_context'
+  AND NOT EXISTS (
+    SELECT 1 FROM public.tournament_hands
+    WHERE tournament_id = '00000000-0000-0000-0000-000000000100'
+      AND table_id IN ('00000000-0000-0000-0000-000000000302', '00000000-0000-0000-0000-000000000202')
+  ),
+  'V2 rejects the pre-restore context without creating a hand'
+)
+FROM tracker_restore_stale_start;
+SELECT 'RESTORE_FIRST_STALE_CONTEXT_PASS' AS result;
+
+CREATE TEMP TABLE tracker_restore_start_first_context (context_version text NOT NULL);
+INSERT INTO tracker_restore_start_first_context
+SELECT public.tracker_test_prepare_restore_v2_case();
+CREATE TEMP TABLE tracker_restore_start_first (response jsonb NOT NULL);
+INSERT INTO tracker_restore_start_first
+SELECT public.tracker_test_v2_start_destination(
+  (SELECT context_version FROM tracker_restore_start_first_context),
+  'start-first-restore'
+);
+SELECT public.floor_test_assert(
+  (response->>'ok')::boolean,
+  'V2 start succeeds before restore in start-first schedule'
+)
+FROM tracker_restore_start_first;
+CREATE TEMP TABLE tracker_restore_start_first_state AS
+SELECT
+  (SELECT count(*) FROM public.tournament_entries WHERE id = public.floor_test_uuid(2101)) AS entry_count,
+  (SELECT count(*) FROM public.tournament_seats WHERE entry_id = public.floor_test_uuid(2101)) AS seat_count,
+  (SELECT count(*) FROM public.seat_draw_receipts WHERE entry_id = public.floor_test_uuid(2101)) AS receipt_count,
+  (SELECT count(*) FROM public.seat_assignment_history WHERE entry_id = public.floor_test_uuid(2101)) AS history_count;
+CREATE TEMP TABLE tracker_restore_start_first_result (response jsonb NOT NULL);
+INSERT INTO tracker_restore_start_first_result
+SELECT public.tracker_test_restore_call(
+  '00000000-0000-0000-0000-000000000001',
+  public.floor_test_uuid(2101),
+  '00000000-0000-0000-0000-000000000302', 3
+);
+SELECT public.floor_test_assert(
+  (response->>'error') = 'table_has_active_hand'
+  AND (SELECT count(*) FROM public.tournament_entries WHERE id = public.floor_test_uuid(2101)) = entry_count
+  AND (SELECT count(*) FROM public.tournament_seats WHERE entry_id = public.floor_test_uuid(2101)) = seat_count
+  AND (SELECT count(*) FROM public.seat_draw_receipts WHERE entry_id = public.floor_test_uuid(2101)) = receipt_count
+  AND (SELECT count(*) FROM public.seat_assignment_history WHERE entry_id = public.floor_test_uuid(2101)) = history_count,
+  'restore rejects an in-progress hand before any restore write'
+)
+FROM tracker_restore_start_first_result, tracker_restore_start_first_state;
+SELECT 'RESTORE_ACTIVE_HAND_GUARD_PASS' AS result;
+
+-- Two restore calls for one busted entry serialize on the shared tournament lock.
+SELECT public.tracker_test_prepare_restore_case();
+SELECT dblink_connect('restore_same_a', 'dbname=' || current_database());
+SELECT dblink_connect('restore_same_b', 'dbname=' || current_database());
+SELECT dblink_send_query('restore_same_a', $$SELECT public.tracker_test_restore_call('00000000-0000-0000-0000-000000000001')$$);
+SELECT dblink_send_query('restore_same_b', $$SELECT public.tracker_test_restore_call('00000000-0000-0000-0000-000000000001')$$);
+CREATE TEMP TABLE tracker_restore_concurrent_results (response jsonb NOT NULL);
+INSERT INTO tracker_restore_concurrent_results SELECT response FROM dblink_get_result('restore_same_a') AS x(response jsonb);
+INSERT INTO tracker_restore_concurrent_results SELECT response FROM dblink_get_result('restore_same_b') AS x(response jsonb);
+SELECT dblink_disconnect('restore_same_a');
+SELECT dblink_disconnect('restore_same_b');
+SELECT public.tracker_test_assert((SELECT count(*) FROM tracker_restore_concurrent_results WHERE (response->>'ok')::boolean) = 1, 'same-entry concurrent restore has one success');
+SELECT public.tracker_test_assert((SELECT count(*) FROM public.tournament_seats WHERE entry_id = public.floor_test_uuid(2101) AND is_active) = 1, 'same-entry concurrent restore has one active seat');
+SELECT public.tracker_test_assert((SELECT count(*) FROM public.seat_assignment_history WHERE entry_id = public.floor_test_uuid(2101)) = 1, 'same-entry concurrent restore has one history row');
+SELECT 'RESTORE_WRITER_RACE_PASS' AS result;
+
+SELECT 'IDENTITY_DEPENDENCY_REPRODUCTION_BLOCKED' AS result;

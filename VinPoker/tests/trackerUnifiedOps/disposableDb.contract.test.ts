@@ -156,7 +156,10 @@ describe("Tracker PR2A disposable database contract", () => {
     );
     expect(legacyCloseIntegration).toContain("REMAINING_WRITER_RACE_PASS");
     expect(legacyCloseIntegration).toContain(
-      "RESTORE_REENTRY_NOT_MEASURED_IDENTITY_DEPENDENCIES",
+      "RESTORE_WRITER_RACE_PASS",
+    );
+    expect(legacyCloseIntegration).toContain(
+      "IDENTITY_DEPENDENCY_REPRODUCTION_BLOCKED",
     );
     expect(legacyCloseIntegration).toContain(
       "ALTER COLUMN id SET DEFAULT gen_random_uuid()",

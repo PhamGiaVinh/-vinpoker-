@@ -62,6 +62,7 @@ describe("Tracker PR2A legacy-writer inventory", () => {
       "floor_start_tournament_clock",
       "floor_control_tournament_clock",
       "create_offline_buyin_and_seat",
+      "restore_busted_player_to_seat",
     ]);
 
     for (const writer of legacyWriterInventory) {
@@ -92,16 +93,21 @@ describe("Tracker PR2A legacy-writer inventory", () => {
       ).toBe("FIXED_BY_SHARED_TOURNAMENT_LOCK");
     }
     expect(
-      legacyWriterInventory
-        .filter(
-          (row) =>
-            row.runtimeStatus === "RUNTIME_NOT_MEASURED_IDENTITY_DEPENDENCIES",
-        )
-        .map((row) => row.writer),
-    ).toEqual(["restore_busted_player_to_seat", "reenter_tournament_player"]);
+      legacyWriterInventory.find(
+        (row) => row.writer === "restore_busted_player_to_seat",
+      )?.runtimeStatus,
+    ).toBe("FIXED_BY_SHARED_TOURNAMENT_LOCK");
+    expect(
+      legacyWriterInventory.find(
+        (row) => row.writer === "reenter_tournament_player",
+      )?.runtimeStatus,
+    ).toBe("RUNTIME_NOT_MEASURED_IDENTITY_DEPENDENCIES");
     expect(remainingWriterIntegration).toContain("REMAINING_WRITER_RACE_PASS");
     expect(remainingWriterIntegration).toContain(
-      "RESTORE_REENTRY_NOT_MEASURED_IDENTITY_DEPENDENCIES",
+      "RESTORE_WRITER_RACE_PASS",
+    );
+    expect(remainingWriterIntegration).toContain(
+      "IDENTITY_DEPENDENCY_REPRODUCTION_BLOCKED",
     );
   });
 
