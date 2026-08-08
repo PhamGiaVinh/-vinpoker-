@@ -47,7 +47,7 @@ export function preflightFloorTableEntries(
 
   for (const seatId of expectedSeatIds) {
     const result = preflightFloorSeatEntry(byId.get(seatId));
-    if (!result.ok) {
+    if (result.ok === false) {
       firstError ??= result.error;
       blockedSeatCount += 1;
     }

@@ -76,7 +76,7 @@ export function FloorPlayerActions({
         return false;
       }
       const result = preflightFloorSeatEntry(data);
-      if (!result.ok) {
+      if (result.ok === false) {
         toast.error(floorOpsErrorMessage(result.error, "Không thể xác minh lượt đăng ký của ghế."));
         return false;
       }

@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { RouteLoader } from "@/components/RouteLoader";
@@ -24,9 +24,9 @@ const OpsClubAccounts = lazy(() => import("@/ops/pages/OpsClubAccounts"));
 const OpsSelectModule = lazy(() => import("@/ops/pages/OpsSelectModule"));
 const OpsAlertsHub = lazy(() => import("@/ops/pages/OpsAlertsHub"));
 const OpsTournaments = lazy(() => import("@/pages/ops/OpsTournaments"));
-const OpsTournamentCockpit = lazy(() => import("@/pages/ops/OpsTournamentCockpit"));
 const OpsTables = lazy(() => import("@/pages/ops/OpsTables"));
 const OpsCashier = lazy(() => import("@/pages/ops/OpsCashier"));
+const FloorTournamentWorkspace = lazy(() => import("@/ops/floor/FloorTournamentWorkspace"));
 
 const opsQueryClient = new QueryClient({
   defaultOptions: {
@@ -53,7 +53,24 @@ function ProtectedOpsRoot() {
 
 function LegacyTournamentRedirect() {
   const { id } = useParams();
-  return <Navigate to={id ? `/ops/floor/tournaments/${id}` : "/ops/floor"} replace />;
+  const location = useLocation();
+  return <Navigate to={id ? `/ops/floor/tournaments/${id}/tables${location.search}` : `/ops/floor${location.search}`} replace />;
+}
+
+function TournamentRootRedirect() {
+  const { id } = useParams();
+  const location = useLocation();
+  return <Navigate to={id ? `/ops/floor/tournaments/${id}/tables${location.search}` : `/ops/floor${location.search}`} replace />;
+}
+
+function FloorTournamentRoute({ section }: { section: "tables" | "players" | "clock" | "payout" | "screens" }) {
+  return (
+    <OpsModuleGate capability="floor">
+      <OpsTournamentScopeGate>
+        <FloorTournamentWorkspace section={section} />
+      </OpsTournamentScopeGate>
+    </OpsModuleGate>
+  );
 }
 
 export default function OpsApp() {
@@ -92,14 +109,13 @@ export default function OpsApp() {
                       />
                       <Route
                         path="/ops/floor/tournaments/:id"
-                        element={(
-                          <OpsModuleGate capability="floor">
-                            <OpsTournamentScopeGate>
-                              <OpsTournamentCockpit />
-                            </OpsTournamentScopeGate>
-                          </OpsModuleGate>
-                        )}
+                        element={<TournamentRootRedirect />}
                       />
+                      <Route path="/ops/floor/tournaments/:id/tables" element={<FloorTournamentRoute section="tables" />} />
+                      <Route path="/ops/floor/tournaments/:id/players" element={<FloorTournamentRoute section="players" />} />
+                      <Route path="/ops/floor/tournaments/:id/clock" element={<FloorTournamentRoute section="clock" />} />
+                      <Route path="/ops/floor/tournaments/:id/payout" element={<FloorTournamentRoute section="payout" />} />
+                      <Route path="/ops/floor/tournaments/:id/screens" element={<FloorTournamentRoute section="screens" />} />
                       <Route
                         path="/ops/cashier"
                         element={<OpsModuleGate capability="cashier"><OpsCashier /></OpsModuleGate>}

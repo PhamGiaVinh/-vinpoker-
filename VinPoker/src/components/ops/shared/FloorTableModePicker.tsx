@@ -53,6 +53,7 @@ export function FloorTableModePicker({
           <button
             key={item.mode}
             type="button"
+            data-ops-action="floor.tables.select_control_mode"
             role="radio"
             data-testid={`${testIdPrefix}-${item.mode}`}
             aria-checked={selected}

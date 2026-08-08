@@ -101,6 +101,7 @@ export function FloorTableControlModeControl({
       </div>
 
       <Button
+        data-ops-action="floor.tables.open_control_mode_confirm"
         data-testid="floor-table-control-mode-save"
         type="button"
         className="mt-3 w-full"
@@ -117,8 +118,8 @@ export function FloorTableControlModeControl({
             <AlertDialogDescription>{selectedSummary} Ván đang chạy luôn bị chặn.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2 sm:gap-2">
-            <AlertDialogCancel disabled={busy}>Huỷ</AlertDialogCancel>
-            <AlertDialogAction data-testid="floor-table-control-mode-confirm" disabled={busy} onClick={(event) => { event.preventDefault(); void save(); }}>
+            <AlertDialogCancel data-ops-action="floor.tables.cancel_control_mode" disabled={busy}>Huỷ</AlertDialogCancel>
+            <AlertDialogAction data-ops-action="floor.tables.save_control_mode" data-testid="floor-table-control-mode-confirm" disabled={busy} onClick={(event) => { event.preventDefault(); void save(); }}>
               {busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Đang lưu</> : "Xác nhận đổi chế độ"}
             </AlertDialogAction>
           </AlertDialogFooter>
