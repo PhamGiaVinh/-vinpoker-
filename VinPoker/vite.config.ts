@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
+import { execFileSync } from "node:child_process";
 import path from "path";
 import fs from "fs";
 import { componentTagger } from "lovable-tagger";
@@ -34,9 +35,46 @@ const versionStampPlugin = (version: string): Plugin => ({
   },
 });
 
+const GIT_SHA_PATTERN = /^[0-9a-f]{7,64}$/;
+
+function normalizeBuildGitSha(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (/^\d+$/.test(normalized)) return null;
+  return GIT_SHA_PATTERN.test(normalized) ? normalized : null;
+}
+
+function resolveBuildGitSha(): string | null {
+  const fromEnvironment = [
+    process.env.VERCEL_GIT_COMMIT_SHA,
+    process.env.GITHUB_SHA,
+    process.env.CI_COMMIT_SHA,
+  ];
+  for (const value of fromEnvironment) {
+    const normalized = normalizeBuildGitSha(value);
+    if (normalized) return normalized;
+  }
+
+  // A CI/hosted build must fail closed rather than silently identifying itself
+  // with whatever checkout happens to be present on the runner.
+  if (process.env.CI || process.env.VERCEL) return null;
+
+  try {
+    const localRevision = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: __dirname,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return normalizeBuildGitSha(localRevision);
+  } catch {
+    return null;
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const buildVersion = String(Date.now());
+  const buildGitSha = resolveBuildGitSha();
 
   return {
     server: {
@@ -62,6 +100,7 @@ export default defineConfig(({ mode }) => {
     ].filter(Boolean),
     define: {
       __APP_VERSION__: JSON.stringify(buildVersion),
+      __APP_GIT_COMMIT_SHA__: JSON.stringify(buildGitSha),
     },
     resolve: {
       alias: {
