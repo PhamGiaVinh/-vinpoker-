@@ -305,7 +305,7 @@ export default function OpsCashier() {
             </div>
           ))}
 
-          {/* Q3 — Buy-in: chọn giải thật; form thu tiền = đang nối */}
+          {/* Q3 — Buy-in: chọn giải thật; form thu tiền qua RPC */}
           {pill === "buyin" && (state.rows.length === 0 ? <Empty text="Không có giải đang mở để buy-in." /> : (
             <div className="space-y-3">
               <div className="px-1 text-[12px] text-[#9b8e97]">Chọn giải</div>
