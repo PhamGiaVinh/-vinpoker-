@@ -1,9 +1,10 @@
-# VinPoker — Canonical Claude Code Instructions
+# VinPoker — Claude Code Instructions
 
-This is the **canonical** instruction file for VinPoker. The machine root `CLAUDE.md` is only a
-global bootstrap; **if anything conflicts, this file wins** for work inside this repo. Detailed
-rules live in `docs/agent/*.md` and should be loaded **only when the task needs them** (do not
-`@`-embed them — that re-inflates context).
+The shared canonical rulebook is **`D:\Quy trình\AGENTS.md`**; read it first. This file only adds
+Claude-specific instructions and references the shared Delivery Mode / Build vs Production rules
+without duplicating them. If instructions conflict, follow the latest owner instruction and the
+stricter safety boundary. Detailed rules live in `docs/agent/*.md` and should be loaded **only when
+the task needs them** (do not `@`-embed them — that re-inflates context).
 
 ## Identity & context
 
