@@ -224,7 +224,11 @@ BEGIN
   RETURN QUERY
   SELECT c.id, c.name
   FROM public.clubs c
-  WHERE (v_search IS NULL OR c.name ILIKE '%' || v_search || '%')
+  WHERE (
+    v_search IS NULL
+    OR c.name ILIKE '%' || v_search || '%'
+    OR c.id::text = v_search
+  )
     AND (
       p_after_name IS NULL
       OR (lower(c.name), c.id) > (lower(p_after_name), p_after_id)

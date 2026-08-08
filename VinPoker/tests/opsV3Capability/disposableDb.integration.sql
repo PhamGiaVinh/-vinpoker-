@@ -86,6 +86,7 @@ SELECT public.test_assert((SELECT is_super_admin FROM public.get_my_ops_global_c
 SELECT public.test_assert((SELECT count(*) = 0 FROM public.get_my_ops_capability_scope()), 'super-admin login scope bounded');
 SELECT public.test_assert((SELECT count(*) = 2 FROM public.list_ops_clubs_for_super_admin(NULL, NULL, NULL, 2)), 'super-admin bounded page');
 SELECT public.test_assert((SELECT count(*) = 1 FROM public.list_ops_clubs_for_super_admin('char', NULL, NULL, 50)), 'super-admin search');
+SELECT public.test_assert((SELECT count(*) = 1 FROM public.list_ops_clubs_for_super_admin('10000000-0000-4000-8000-000000000003', NULL, NULL, 50)), 'super-admin exact club id lookup');
 
 -- Non-super users cannot use the global club browser.
 SET test.actor = '00000000-0000-4000-8000-000000000004';

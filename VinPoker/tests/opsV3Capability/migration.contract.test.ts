@@ -46,4 +46,9 @@ describe("Ops V3 capability migration contract", () => {
     );
     expect(scopeBody).not.toContain("super_admin");
   });
+
+  it("supports bounded exact-id verification for a refreshed super-admin route", () => {
+    expect(migration).toContain("OR c.id::text = v_search");
+    expect(migration).toContain("v_limit := least(greatest(coalesce(p_limit, 50), 1), 100)");
+  });
 });
