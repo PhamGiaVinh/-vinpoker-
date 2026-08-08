@@ -14,6 +14,10 @@ const FILES = [
   "src/ops/pages/OpsSelectModule.tsx",
   "src/ops/pages/OpsAlertsHub.tsx",
   "src/ops/registry/opsModuleRegistry.ts",
+  "src/ops/tracker/OpsTrackerWorkspace.tsx",
+  "src/ops/tracker/TrackerWorkspaceView.tsx",
+  "src/ops/dealer-control/OpsDealerControlWorkspace.tsx",
+  "src/ops/dealer-control/DealerControlWorkspaceView.tsx",
 ];
 
 const BROKEN_UTF8 = /(?:Ã.|Â.|Ä.|Æ.|áº.|á»|â€¦|â†’|ï¿½)/gu;

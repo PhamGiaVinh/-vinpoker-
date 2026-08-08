@@ -27,6 +27,8 @@ const OpsTournaments = lazy(() => import("@/pages/ops/OpsTournaments"));
 const OpsTables = lazy(() => import("@/pages/ops/OpsTables"));
 const OpsCashier = lazy(() => import("@/pages/ops/OpsCashier"));
 const FloorTournamentWorkspace = lazy(() => import("@/ops/floor/FloorTournamentWorkspace"));
+const OpsTrackerWorkspace = lazy(() => import("@/ops/tracker/OpsTrackerWorkspace"));
+const OpsDealerControlWorkspace = lazy(() => import("@/ops/dealer-control/OpsDealerControlWorkspace"));
 
 const opsQueryClient = new QueryClient({
   defaultOptions: {
@@ -120,8 +122,8 @@ export default function OpsApp() {
                         path="/ops/cashier"
                         element={<OpsModuleGate capability="cashier"><OpsCashier /></OpsModuleGate>}
                       />
-                      <Route path="/ops/tracker" element={<OpsModuleGate capability="tracker" />} />
-                      <Route path="/ops/dealer-swing" element={<OpsModuleGate capability="dealer-control" />} />
+                      <Route path="/ops/tracker" element={<OpsModuleGate capability="tracker"><OpsTrackerWorkspace /></OpsModuleGate>} />
+                      <Route path="/ops/dealer-swing" element={<OpsModuleGate capability="dealer-control"><OpsDealerControlWorkspace /></OpsModuleGate>} />
                       <Route path="/ops/fnb" element={<OpsModuleGate capability="fnb" />} />
                       <Route path="/ops/marketing" element={<OpsModuleGate capability="marketing" />} />
                       <Route path="/ops/chip-ops" element={<OpsModuleGate capability="chip-ops" />} />
