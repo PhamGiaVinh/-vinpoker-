@@ -1,0 +1,95 @@
+name: Ops V3 Capability disposable PostgreSQL 17
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ops-v3-capability-disposable-db.yml"
+      - "VinPoker/supabase/migrations/20270110000000_ops_unified_capability_scope.sql"
+      - "VinPoker/src/ops/auth/opsCapabilityContract.ts"
+      - "VinPoker/src/ops/auth/opsCapabilityContract.test.ts"
+      - "VinPoker/tests/opsV3Capability/**"
+      - "VinPoker/tsconfig.ops-v3-capability.json"
+      - "VinPoker/docs/ops/ops-v3-live-contract-inventory-20260809.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capability-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - name: Install locked dependencies without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+
+      - name: Run credential and Ops boundary guards
+        working-directory: VinPoker
+        run: |
+          npm run check:credential-context
+          npm run check:ops-boundary
+          git diff --check
+
+      - name: Run targeted capability tests
+        working-directory: VinPoker
+        run: >-
+          npx vitest run
+          src/ops/auth/opsCapabilityContract.test.ts
+          tests/opsV3Capability/migration.contract.test.ts
+
+      - name: Lint targeted capability source
+        working-directory: VinPoker
+        run: >-
+          npx eslint
+          src/ops/auth/opsCapabilityContract.ts
+          src/ops/auth/opsCapabilityContract.test.ts
+          tests/opsV3Capability/migration.contract.test.ts
+
+      - name: Type-check capability parser
+        working-directory: VinPoker
+        run: npx tsc -p tsconfig.ops-v3-capability.json --pretty false
+
+      - name: Build production source
+        working-directory: VinPoker
+        run: npm run build
+
+      - name: Create disposable baseline
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/opsV3Capability/disposableDb.fixture.sql
+
+      - name: Apply exact capability migration to disposable PostgreSQL only
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270110000000_ops_unified_capability_scope.sql
+
+      - name: Run PostgreSQL 17 capability assertions
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/opsV3Capability/disposableDb.integration.sql
