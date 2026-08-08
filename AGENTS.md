@@ -10,6 +10,8 @@
 > **A green test suite without a working end-to-end capability is not product delivery.**
 >
 > **Do not build infrastructure for hypothetical future consumers while the current vertical slice does not run.**
+>
+> **Do not ask the owner to make routine engineering decisions that can be resolved from evidence, tests, repository conventions, or reversibility. The coding agent owns ordinary technical decisions. Escalate only business decisions, irreversible actions, cost commitments, or material production risk.**
 
 ---
 
@@ -26,8 +28,8 @@
 
 | LOCAL / REVERSIBLE | PRODUCTION / IRREVERSIBLE |
 |---|---|
-| Tự làm, tự debug, retry hợp lý, tự sửa và test lại | Gate, evidence, explicit approval, rollback và live verification |
-| Ship vertical slice chạy được E2E | Không tự ý apply/deploy/bật flag |
+| Tự làm, tự debug, retry hợp lý, tự sửa, test lại và auto-merge khi đủ điều kiện | Gate, evidence, explicit approval, rollback và live verification |
+| Ship vertical slice chạy được E2E | Không tự ý apply/deploy/bật flag hay merge high-risk |
 
 ---
 
@@ -221,7 +223,7 @@ dụng cho **Grok, Codex, Claude, Gemini và mọi AI CLI** làm việc dưới 
 3. Với Claude Code trong `VinPoker`, `VinPoker/CLAUDE.md` bổ sung luật riêng cho Claude.
 4. Vault `D:\Quy trình\VBacker` là nguồn sự thật về trạng thái, quyết định và runbook.
 5. Khi hai nguồn mâu thuẫn về an toàn, chọn phương án **nghiêm ngặt hơn** và báo owner; không tự
-   suy diễn quyền deploy/apply/merge.
+   suy diễn quyền deploy/apply. Merge chỉ được tự động theo đúng mục 16.
 
 Không được tuyên bố đã đọc hoặc tuân thủ một file/skill nếu file/skill đó không tồn tại hoặc không
 đọc được. Các tài liệu chi tiết chỉ load theo nhu cầu của task; không kéo toàn bộ kho tài liệu vào
@@ -290,8 +292,8 @@ Mỗi task phải nói rõ mode và lý do. Không chắc thì chọn CRITICAL/R
 - Session mới khởi động tại `D:\Quy trình` phải đọc file này trước mọi thao tác.
 - Session đang chạy phải dừng ở checkpoint an toàn, đọc lại file này trước lần sửa/commit/deploy
   tiếp theo và xác nhận không có xung đột worktree/module.
-- Việc cập nhật file luật **không cấp thêm quyền** deploy production, apply DB, bật flag, merge PR
-  hay sửa money-path. Mọi cổng owner ở các mục trên vẫn giữ nguyên.
+- Việc cập nhật file luật **không cấp thêm quyền** deploy production, apply DB, bật flag hay sửa
+  money-path. Quyền merge chỉ áp dụng cho PR xanh đủ điều kiện ở mục 16; mọi cổng owner khác giữ nguyên.
 
 ---
 
@@ -478,3 +480,61 @@ Cuối mỗi session, bổ sung vào khung mục 9:
 ---
 
 *Cập nhật: 2026-08-09. Owner áp dụng Delivery Mode V2: build nhanh ở local, nghiêm ngặt tại production gate.*
+
+---
+
+## 16. AUTO-MERGE POLICY — SAFE GREEN PRs
+
+### 16.1. Agent sở hữu quyết định kỹ thuật thông thường
+
+- Coding agent tự quyết các lựa chọn có thể giải bằng evidence, test, convention và reversibility: công cụ test,
+  retry local hợp lý, sửa compile/type error, regression test, refactor nhỏ và merge PR đủ điều kiện.
+- Không ném quyết định kỹ thuật vô nghĩa cho owner. Chỉ escalate quyết định nghiệp vụ, hành động không dễ hoàn tác,
+  cam kết chi phí hoặc rủi ro production đáng kể.
+
+### 16.2. Khi nào PHẢI auto-merge
+
+Codex phải tự push, mở/cập nhật PR, chờ required checks rồi merge mà không hỏi owner nếu toàn bộ điều kiện sau đúng:
+
+1. Thay đổi reversible, isolated và diff đã hiểu rõ; không có file ngoài scope hay merge conflict.
+2. Test phù hợp PASS; lint/typecheck/build PASS khi task cần; `git diff --check` PASS.
+3. Không lộ secret/PII; không có unresolved review comment hoặc high-confidence finding.
+4. Required GitHub checks xanh thật; branch protection được tôn trọng; branch đủ cập nhật để merge an toàn.
+5. Không có production incident, money, security, data-destruction hoặc rollback-uncertain risk.
+
+Nhóm thường được phép gồm UI/copy/frontend, docs/rules, local tooling/dev setup, tests, mock/fixture,
+non-production script, behavior-preserving refactor, source-only/default-OFF feature, local-only automation,
+additive observability, safe bug/build/CI fix và backend nhỏ không đổi privileged/security/money invariant.
+Dependency change chỉ auto-merge khi audit/test sạch và không có material runtime risk.
+
+Luồng bắt buộc: **PUSH → OPEN/UPDATE PR → WAIT REQUIRED CHECKS → AUTO-MERGE → VERIFY MERGE → UPDATE HANDOFF**.
+
+### 16.3. Khi nào CẤM auto-merge
+
+Không tự merge thay đổi có hoặc ảnh hưởng đáng kể tới:
+
+- production DB migration/apply, destructive SQL, drop/rename production schema hoặc production data deletion;
+- RLS, auth/authz boundary, `SECURITY DEFINER` privilege, service-role exposure, secret rotation hoặc unresolved security finding;
+- payout, payroll, cashier, SePay/payment, chip ledger, staking, reconciliation write, tournament result hoặc live dealer invariant;
+- production flag activation, destructive cleanup, paid infrastructure/cost commitment, irreversible external action hoặc real bulk notification;
+- failing/flaky required CI, unclear diff ownership, unresolved blocking review hoặc rollback không chắc chắn.
+
+Các trường hợp này: **BUILD + TEST + PREPARE PR → STOP HIGH-RISK GATE → REQUEST EXPLICIT OWNER APPROVAL**.
+
+### 16.4. Không bypass và không săn false-green
+
+- Cấm bypass branch protection, admin-merge quanh failed checks, disable checks, xóa test để CI xanh, force-push
+  `main`, dùng `--no-verify`, merge với known failure hoặc bỏ qua review finding đáng tin cậy.
+- Check fail phải đọc lỗi thật: deterministic thì sửa; hạ tầng flaky rõ ràng chỉ retry hữu hạn. Không rerun vô hạn
+  tới khi ngẫu nhiên xanh.
+
+### 16.5. Sau merge
+
+- Xác nhận PR merged, ghi merge commit và kiểm tra default branch chứa đúng file dự kiến.
+- Cập nhật `CODEX_LATEST.md` hoặc handoff tương ứng, vẫn tách đúng `SOURCE / LOCAL E2E / USER-VISIBLE / PRODUCTION`.
+- Báo owner sau merge: `AUTO-MERGED`, capability, checks, completion level, risk và next product step.
+- Merge source không tự động đồng nghĩa deployed, user-visible hay production complete.
+
+---
+
+*Cập nhật: 2026-08-09. Owner cho phép auto-merge PR xanh, reversible và không high-risk; không làm yếu production gates.*

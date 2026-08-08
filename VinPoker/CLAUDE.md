@@ -1,10 +1,10 @@
 # VinPoker — Claude Code Instructions
 
 The shared canonical rulebook is **`D:\Quy trình\AGENTS.md`**; read it first. This file only adds
-Claude-specific instructions and references the shared Delivery Mode / Build vs Production rules
-without duplicating them. If instructions conflict, follow the latest owner instruction and the
-stricter safety boundary. Detailed rules live in `docs/agent/*.md` and should be loaded **only when
-the task needs them** (do not `@`-embed them — that re-inflates context).
+Claude-specific instructions and references the shared Delivery Mode / Build vs Production and
+Safe Green Auto-Merge rules without duplicating them. If instructions conflict, follow the latest
+owner instruction and the stricter safety boundary. Detailed rules live in `docs/agent/*.md` and
+should be loaded **only when the task needs them** (do not `@`-embed them — that re-inflates context).
 
 ## Identity & context
 
