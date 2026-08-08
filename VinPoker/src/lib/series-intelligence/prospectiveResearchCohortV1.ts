@@ -13,7 +13,7 @@ export type HorizonTimingStatus = "ON_TIME" | "LATE_WITHIN_ALLOWED_WINDOW" | "MI
 export type ProspectiveNextAction =
   | "capture_forecast"
   | "already_captured"
-  | "review_packet"
+  | "open_decision_room"
   | "promote_native_actual"
   | "evaluation_pending"
   | "not_yet_due"
@@ -59,6 +59,8 @@ export interface ProspectiveSnapshotRef {
   readonly targetEventTs: string | null;
   readonly forecastInstanceId: string | null;
   readonly inputContentHash: string | null;
+  readonly forecastIdentityEligible: boolean;
+  readonly provenanceCompleteness: string | null;
 }
 
 export interface ProspectiveCohortEvent {
@@ -75,9 +77,9 @@ export interface ProspectiveCohortRow {
   readonly timingStatus: HorizonTimingStatus;
   readonly leadTimeMinutes: number;
   readonly forecastState: "captured" | "due" | "not_yet_due" | "missed" | "unavailable";
-  readonly packetState: "not_loaded" | "draft" | "frozen";
-  readonly actualState: ProspectiveActualRef["state"] | "not_loaded";
-  readonly evaluationState: "not_started" | "pending" | "available";
+  readonly packetState: "state_not_loaded" | "draft" | "frozen";
+  readonly actualState: ProspectiveActualRef["state"] | "state_not_loaded";
+  readonly evaluationState: "not_started" | "pending" | "available" | "state_not_loaded";
   readonly nextAction: ProspectiveNextAction;
   readonly snapshotId: string | null;
   readonly packetId: string | null;
@@ -198,7 +200,14 @@ function matchingSnapshot(
 ): ProspectiveSnapshotRef | null {
   const target = instant(targetEventTs, "targetEventTs").iso;
   for (const snapshot of snapshots) {
-    if (snapshot.eventId !== eventId || snapshot.horizon !== horizon || snapshot.targetEventTs === null) continue;
+    if (
+      snapshot.eventId !== eventId ||
+      snapshot.horizon !== horizon ||
+      snapshot.targetEventTs === null ||
+      snapshot.forecastIdentityEligible !== true ||
+      snapshot.provenanceCompleteness !== "complete" ||
+      snapshot.forecastInstanceId === null
+    ) continue;
     try {
       if (instant(snapshot.targetEventTs, "snapshot.targetEventTs").iso === target) return snapshot;
     } catch {
@@ -206,6 +215,31 @@ function matchingSnapshot(
     }
   }
   return null;
+}
+
+/** Statuses explicitly reviewed as eligible pre-event capture states. Unknown values fail closed. */
+export const PROSPECTIVE_FORECAST_ALLOWED_STATUSES = Object.freeze([
+  "scheduled",
+  "upcoming",
+  "registering",
+  "open",
+] as const);
+
+export function isProspectiveForecastStatus(status: string | null | undefined): boolean {
+  return status !== null && status !== undefined &&
+    (PROSPECTIVE_FORECAST_ALLOWED_STATUSES as readonly string[]).includes(status);
+}
+
+export function buildNativePromotionIdempotencyKey(operationId: string, eventId: string): string {
+  const operation = operationId.trim();
+  const event = eventId.trim();
+  if (!operation || !event) throw new Error("operationId and eventId are required");
+  return `d3a:native:${operation}:${event}`;
+}
+
+export function createNativePromotionOperationId(): string | null {
+  const uuid = globalThis.crypto?.randomUUID;
+  return typeof uuid === "function" ? uuid.call(globalThis.crypto) : null;
 }
 
 function packetFor(eventId: string, horizon: ProspectiveResearchHorizon, packets: readonly ProspectivePacketRef[]): ProspectivePacketRef | null {
@@ -236,7 +270,7 @@ export function buildProspectiveResearchQueueV1(input: {
   });
 
   for (const item of sortedEvents) {
-    if (!item.event.event_date) continue;
+    if (!item.event.event_date || !isProspectiveForecastStatus(item.status)) continue;
     let target: { iso: string; ms: number };
     try { target = instant(item.event.event_date, "event.event_date"); } catch { continue; }
     if (target.ms <= asOf.ms) continue;
@@ -246,15 +280,22 @@ export function buildProspectiveResearchQueueV1(input: {
       const packet = packetFor(item.event.event_id, horizon, packets);
       const actual = actualFor(item.event.event_id, actuals);
       const forecastState = snapshot ? "captured" : timingStatus === "MISSED" ? "missed" : timingStatus === "NOT_YET_DUE" ? "not_yet_due" : item.event.buy_in != null ? "due" : "unavailable";
-      const packetState = packet?.state ?? "not_loaded";
-      const actualState = actual?.state ?? "not_loaded";
-      const evaluationState = actualState === "current" && snapshot ? "available" : snapshot ? "pending" : "not_started";
+      const packetState = packet?.state ?? "state_not_loaded";
+      const actualState = actual?.state ?? "state_not_loaded";
+      const stateNotLoaded = packetState === "state_not_loaded" || actualState === "state_not_loaded";
+      const evaluationState = !snapshot
+        ? "not_started"
+        : stateNotLoaded
+          ? "state_not_loaded"
+          : actualState === "current"
+            ? "available"
+            : "pending";
       let nextAction: ProspectiveNextAction = "no_action";
       if (!snapshot && forecastState === "due") nextAction = "capture_forecast";
       else if (!snapshot && forecastState === "not_yet_due") nextAction = "not_yet_due";
       else if (!snapshot && forecastState === "missed") nextAction = "missed";
       else if (!snapshot) nextAction = "forecast_unavailable";
-      else if (packetState === "not_loaded") nextAction = "review_packet";
+      else if (stateNotLoaded) nextAction = "open_decision_room";
       else if (actualState === "current" && evaluationState === "available") nextAction = "no_action";
       else if (target.ms <= asOf.ms) nextAction = "promote_native_actual";
       else nextAction = "evaluation_pending";
@@ -285,7 +326,7 @@ export function buildNativeTruthPromotionQueueV1(input: {
 }): readonly { readonly eventId: string; readonly startTime: string }[] {
   const asOf = instant(input.asOfTs, "asOfTs");
   return freezeDeep(input.events
-    .filter((event) => event.start_time !== null && new Date(event.start_time).getTime() < asOf.ms && event.status !== "cancelled")
+    .filter((event) => event.start_time !== null && new Date(event.start_time).getTime() < asOf.ms && event.status === "completed")
     .map((event) => ({ eventId: event.id, startTime: new Date(event.start_time as string).toISOString() }))
     .sort((a, b) => a.startTime.localeCompare(b.startTime) || a.eventId.localeCompare(b.eventId)));
 }
@@ -312,7 +353,11 @@ export async function buildProspectiveEngineSnapshotV1(input: {
   const pointInTimeHistory = input.history.filter((event) => {
     if (!event.event_date) return false;
     const eventMs = new Date(event.event_date).getTime();
-    return Number.isFinite(eventMs) && eventMs < captured.ms;
+    if (!Number.isFinite(eventMs) || eventMs >= captured.ms) return false;
+    if (!Number.isFinite(event.total_entries ?? NaN)) return false;
+    if (!event.outcome_available_at) return false;
+    const outcomeAvailableMs = new Date(event.outcome_available_at).getTime();
+    return Number.isFinite(outcomeAvailableMs) && outcomeAvailableMs <= captured.ms;
   });
   const targetInput = {
     event_date: target.iso,
@@ -334,7 +379,7 @@ export async function buildProspectiveEngineSnapshotV1(input: {
       targetInput,
       options,
       { forecastIssuedAt: captured.iso, asOfTs: captured.iso, targetEventTs: target.iso },
-      { kind: "engine", codeSha: input.codeSha ?? "unknown" },
+      { kind: "engine", ...(input.codeSha === undefined ? {} : { codeSha: input.codeSha }) },
     );
   } catch (error) {
     return { ok: false, code: "provenance_failed", reason: error instanceof Error ? error.message : "Could not build forecast provenance." };

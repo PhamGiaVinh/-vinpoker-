@@ -4,12 +4,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FEATURES } from "@/lib/featureFlags";
+import { getBuildGitSha } from "@/lib/buildIdentity";
 import { formatShortDate } from "@/lib/format";
 import { promoteNativeEventActual } from "@/lib/series-intelligence/decisionPacketRpc";
 import {
   buildNativeTruthPromotionQueueV1,
+  buildNativePromotionIdempotencyKey,
   buildProspectiveEngineSnapshotV1,
   buildProspectiveResearchQueueV1,
+  createNativePromotionOperationId,
   type HorizonTimingStatus,
   type ProspectiveCohortRow,
 } from "@/lib/series-intelligence/prospectiveResearchCohortV1";
@@ -23,11 +26,6 @@ const timingLabel: Record<HorizonTimingStatus, string> = {
   NOT_YET_DUE: "Chưa đến mốc",
 };
 
-function buildCodeSha(): string | undefined {
-  const runtime = import.meta as unknown as { env?: Record<string, string | undefined> };
-  return runtime.env?.VITE_GIT_COMMIT_SHA;
-}
-
 function rowBadge(row: ProspectiveCohortRow): "default" | "secondary" | "outline" | "destructive" {
   if (row.nextAction === "capture_forecast") return "default";
   if (row.nextAction === "missed") return "destructive";
@@ -39,7 +37,7 @@ function rowAction(row: ProspectiveCohortRow): string {
   switch (row.nextAction) {
     case "capture_forecast": return "Ghi dự báo";
     case "already_captured": return "Đã ghi";
-    case "review_packet": return "Mở Decision Room";
+    case "open_decision_room": return "Mở Decision Room";
     case "not_yet_due": return "Chưa đến mốc";
     case "missed": return "Đã lỡ mốc";
     case "forecast_unavailable": return "Thiếu dữ liệu";
@@ -77,6 +75,8 @@ export function ProspectiveResearchQueue({ hook, nativeEvents }: { hook: UseSeri
       targetEventTs: snapshot.target_event_ts,
       forecastInstanceId: snapshot.forecast_instance_id,
       inputContentHash: snapshot.input_content_hash,
+      forecastIdentityEligible: snapshot.forecast_identity_eligible === true,
+      provenanceCompleteness: snapshot.provenance_completeness,
     })),
   }), [asOfTs, hook.events, hook.snapshots, nativeEvents]);
   const dueRows = queue.rows.filter((row) => row.nextAction === "capture_forecast").slice(0, 10);
@@ -100,7 +100,7 @@ export function ProspectiveResearchQueue({ hook, nativeEvents }: { hook: UseSeri
       history: nativeEvents,
       horizon: row.horizon,
       capturedAt: new Date().toISOString(),
-      codeSha: buildCodeSha(),
+      codeSha: getBuildGitSha() ?? undefined,
       options: { calendarFeatures: FEATURES.seriesCalendarFeatures, censoring: FEATURES.seriesCensoring },
     });
     if (!result.ok) {
@@ -119,9 +119,16 @@ export function ProspectiveResearchQueue({ hook, nativeEvents }: { hook: UseSeri
   };
 
   const promoteNative = async () => {
+    const operationId = createNativePromotionOperationId();
+    if (!operationId) {
+      setResults((current) => ({ ...current, native: "Thiếu bộ sinh mã thao tác an toàn" }));
+      return;
+    }
     setRunning(true);
     for (const event of pastEvents) {
-      const result = await promoteNativeEventActual({ eventId: event.eventId, idempotencyKey: `d3a:native:${event.eventId}` });
+      const idempotencyKey = buildNativePromotionIdempotencyKey(operationId, event.eventId);
+      let result = await promoteNativeEventActual({ eventId: event.eventId, idempotencyKey });
+      if (!result.ok) result = await promoteNativeEventActual({ eventId: event.eventId, idempotencyKey });
       setResults((current) => ({ ...current, [`native:${event.eventId}`]: result.ok ? "Đã yêu cầu đồng bộ" : `Bị chặn: ${result.error}` }));
     }
     setRunning(false);
@@ -174,7 +181,7 @@ export function ProspectiveResearchQueue({ hook, nativeEvents }: { hook: UseSeri
                   {results[key] && <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><TriangleAlert className="h-3 w-3" /> {results[key]}</p>}
                 </div>
                 {row.nextAction === "capture_forecast" && <Button variant="outline" size="sm" onClick={() => void captureOne(row)} disabled={running}>Ghi ngay</Button>}
-                {row.nextAction === "review_packet" && <a className="text-sm font-medium text-primary underline-offset-4 hover:underline" href="/club/admin/series-decision-log">Xem packet</a>}
+                {row.nextAction === "open_decision_room" && <a className="text-sm font-medium text-primary underline-offset-4 hover:underline" href="/club/admin/series-decision-log">Mở Decision Room</a>}
               </div>
             );
           })}
