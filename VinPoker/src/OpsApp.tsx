@@ -29,6 +29,7 @@ const OpsCashier = lazy(() => import("@/pages/ops/OpsCashier"));
 const FloorTournamentWorkspace = lazy(() => import("@/ops/floor/FloorTournamentWorkspace"));
 const OpsTrackerWorkspace = lazy(() => import("@/ops/tracker/OpsTrackerWorkspace"));
 const OpsDealerControlWorkspace = lazy(() => import("@/ops/dealer-control/OpsDealerControlWorkspace"));
+const OpsChipOpsWorkspace = lazy(() => import("@/ops/chip-ops/OpsChipOpsWorkspace"));
 
 const opsQueryClient = new QueryClient({
   defaultOptions: {
@@ -125,8 +126,12 @@ export default function OpsApp() {
                       <Route path="/ops/tracker" element={<OpsModuleGate capability="tracker"><OpsTrackerWorkspace /></OpsModuleGate>} />
                       <Route path="/ops/dealer-swing" element={<OpsModuleGate capability="dealer-control"><OpsDealerControlWorkspace /></OpsModuleGate>} />
                       <Route path="/ops/fnb" element={<OpsModuleGate capability="fnb" />} />
+                      <Route path="/ops/fnb/counter" element={<OpsModuleGate capability="fnb" />} />
+                      <Route path="/ops/fnb/serve" element={<OpsModuleGate capability="fnb" />} />
+                      <Route path="/ops/fnb/kitchen" element={<OpsModuleGate capability="fnb" />} />
+                      <Route path="/ops/fnb/admin" element={<OpsModuleGate capability="fnb" />} />
                       <Route path="/ops/marketing" element={<OpsModuleGate capability="marketing" />} />
-                      <Route path="/ops/chip-ops" element={<OpsModuleGate capability="chip-ops" />} />
+                      <Route path="/ops/chip-ops" element={<OpsModuleGate capability="chip-ops"><OpsChipOpsWorkspace /></OpsModuleGate>} />
                       <Route path="/ops/finance" element={<OpsModuleGate capability="finance" />} />
                       <Route path="/ops/accountant" element={<OpsModuleGate capability="accountant" />} />
                       <Route path="/ops/series" element={<OpsModuleGate capability="series" />} />
