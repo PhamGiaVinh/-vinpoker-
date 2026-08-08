@@ -83,7 +83,7 @@ describe("Ops club operator invitation boundary", () => {
     expect(migration).toContain("IF v_status = 'active' THEN");
     expect(migration).toContain("p_invitation_sent THEN 'pending'");
     expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.accept_my_club_operator_invites() TO authenticated");
-    expect(account).toContain('client.rpc("accept_my_club_operator_invites")');
+    expect(account).toContain('rpcClient.rpc("accept_my_club_operator_invites")');
     expect(account).toContain("capabilities.refresh()");
     expect(account).toContain("Hoàn tất kích hoạt tài khoản");
   });
