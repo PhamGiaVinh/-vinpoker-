@@ -28,6 +28,20 @@ END $$;
 SET ROLE authenticated;
 SET test.actor = '00000000-0000-0000-0000-000000000001';
 
+SELECT public.test_assert(
+  EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.tournaments'::regclass
+      AND conname = 'tournaments_ops_status_check'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.tournaments'::regclass
+      AND conname = 'tournaments_status_check'
+  ),
+  'status constraint replaced without duplicate narrower check'
+);
+
 DO $$
 DECLARE v_id uuid;
 BEGIN
@@ -68,6 +82,31 @@ BEGIN
   PERFORM public.test_assert(n = 0, 'no table receipt zero');
   SELECT count(*) INTO n FROM public.seat_assignment_history WHERE tournament_id = v_id;
   PERFORM public.test_assert(n = 0, 'no table history zero');
+END $$;
+
+-- A table whose only seat is already occupied must still be a zero-write
+-- failure; no registration/entry/seat/receipt/history may be left behind.
+DO $$
+DECLARE v_id uuid; v_game uuid; v_table uuid; v jsonb; n integer;
+BEGIN
+  SELECT id INTO v_id FROM public.tournaments WHERE name = 'Atomic test';
+  INSERT INTO public.game_tables(club_id, table_name, status)
+  VALUES ('10000000-0000-0000-0000-000000000001', 'Full table', 'active')
+  RETURNING id INTO v_game;
+  INSERT INTO public.tournament_tables(tournament_id, table_id, table_number, max_seats, status)
+  VALUES (v_id, v_game, 99, 1, 'active') RETURNING id INTO v_table;
+  INSERT INTO public.tournament_seats(tournament_id, player_id, table_id, seat_number, player_name, status)
+  VALUES (v_id, '90000000-0000-0000-0000-000000000001', v_table, 1, 'Occupied', 'active');
+  v := public.ops_create_offline_buyin_and_seat(v_id, 'No Seat', 'atomic-no-seat');
+  PERFORM public.test_assert(v->>'error' = 'no_table_available', 'full table no-seat error');
+  SELECT count(*) INTO n FROM public.tournament_registrations WHERE tournament_id = v_id;
+  PERFORM public.test_assert(n = 0, 'full table registration zero');
+  SELECT count(*) INTO n FROM public.tournament_entries WHERE tournament_id = v_id;
+  PERFORM public.test_assert(n = 0, 'full table entry zero');
+  SELECT count(*) INTO n FROM public.seat_draw_receipts WHERE tournament_id = v_id;
+  PERFORM public.test_assert(n = 0, 'full table receipt zero');
+  SELECT count(*) INTO n FROM public.seat_assignment_history WHERE tournament_id = v_id;
+  PERFORM public.test_assert(n = 0, 'full table history zero');
 END $$;
 
 -- Add capacity and prove server-derived money + idempotent retry/conflict.

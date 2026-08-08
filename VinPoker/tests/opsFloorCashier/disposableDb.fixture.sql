@@ -103,6 +103,7 @@ GRANT SELECT ON public.tournaments, public.tournament_registrations,
   public.non_fk_tournament_evidence TO authenticated;
 GRANT INSERT ON public.tournaments TO authenticated;
 GRANT INSERT, UPDATE ON public.game_tables, public.tournament_tables TO authenticated;
+GRANT INSERT ON public.tournament_seats TO authenticated;
 GRANT INSERT, DELETE ON public.non_fk_tournament_evidence TO authenticated;
 
 -- Existing legacy signature is present only to prove the migration revokes it;
