@@ -1,0 +1,591 @@
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260608000003_swing_in_progress.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260608000003_swing_in_progress.sql b/20260608000003_swing_in_progress.sql
+index 84c0e473..a9479a07 100644
+--- a/20260608000003_swing_in_progress.sql
++++ b/20260608000003_swing_in_progress.sql
+@@ -10,8 +10,7 @@ ALTER TABLE dealer_assignments
+ ADD COLUMN IF NOT EXISTS swing_in_progress BOOLEAN DEFAULT FALSE;
+ 
+ COMMENT ON COLUMN dealer_assignments.swing_in_progress IS
+-  'Set TRUE while Pass 3 is processing a swing. Prevents duplicate execution '
+-  || 'if cron fires twice or RPC retries. Reset in finally block.';
++  'Set TRUE while Pass 3 is processing a swing. Prevents duplicate execution if cron fires twice or RPC retries. Reset in finally block.';
+ 
+ -- 2. Partial index for fast Pass 3 query (swing_in_progress = false is hot path)
+ CREATE INDEX IF NOT EXISTS idx_assignments_pending_swing
+@@ -146,6 +145,4 @@ END;
+ $function$;
+ 
+ COMMENT ON FUNCTION public.pre_assign_next_dealer_for_table(uuid, uuid, uuid, integer)
+-  IS 'Pre-assign next dealer for table with soft 10-min rest enforcement. '
+-     || 'Returns effective_swing_due_at delayed by rest_deficit_min. '
+-     || 'Uses FOR UPDATE NOWAIT in STEP 2 to fail-fast on lock contention.';
++  IS 'Pre-assign next dealer for table with soft 10-min rest enforcement. Returns effective_swing_due_at delayed by rest_deficit_min. Uses FOR UPDATE NOWAIT in STEP 2 to fail-fast on lock contention.';
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260608000004_drift_compensation.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260608000004_drift_compensation.sql b/20260608000004_drift_compensation.sql
+index 0b367844..0ddbb75b 100644
+--- a/20260608000004_drift_compensation.sql
++++ b/20260608000004_drift_compensation.sql
+@@ -21,8 +21,7 @@ AS $$
+ $$;
+ 
+ COMMENT ON FUNCTION public.compute_compensated_swing_due_at(timestamptz, integer, integer)
+-  IS 'Time drift compensation: next swing = NOW + (base - OT/2) min, floor 20 min. '
+-     || 'E.g., OT=10, base=30 → NOW + 25min. OT=30 → NOW + 20min (floor).';
++  IS 'Time drift compensation: next swing = NOW + (base - OT/2) min, floor 20 min. E.g., OT=10, base=30 → NOW + 25min. OT=30 → NOW + 20min (floor).';
+ 
+ -- 2. Update execute_pre_assigned_swing with compensation
+ CREATE OR REPLACE FUNCTION public.execute_pre_assigned_swing(
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260608000006_patch_execute_pre_assigned_swing_released_at.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260608000006_patch_execute_pre_assigned_swing_released_at.sql b/20260608000006_patch_execute_pre_assigned_swing_released_at.sql
+index 046091a3..20c431b1 100644
+--- a/20260608000006_patch_execute_pre_assigned_swing_released_at.sql
++++ b/20260608000006_patch_execute_pre_assigned_swing_released_at.sql
+@@ -267,9 +267,7 @@ BEGIN
+   SELECT prosrc INTO v_src
+   FROM pg_proc p
+   JOIN pg_namespace n ON n.oid = p.pronamespace
+-  WHERE n.nspname = 'public'
+-    AND p.proname = 'execute_pre_assigned_swing'
+-  LIMIT 1;
++  WHERE p.oid = 'public.execute_pre_assigned_swing(uuid,uuid,timestamp with time zone,integer,boolean,integer)'::regprocedure;
+ 
+   v_has_released := v_src LIKE '%released_at% = v_now%';
+   v_has_version  := v_src LIKE '%version% = version + 1%';
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260608000007_soft_min_rest.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260608000007_soft_min_rest.sql b/20260608000007_soft_min_rest.sql
+index 566d629e..bb1e34bc 100644
+--- a/20260608000007_soft_min_rest.sql
++++ b/20260608000007_soft_min_rest.sql
+@@ -233,6 +233,4 @@ END;
+ $function$;
+ 
+ COMMENT ON FUNCTION public.pre_assign_next_dealer_for_table(uuid, uuid, uuid, integer)
+-  IS 'Pre-assign next dealer for table with soft 10-min rest enforcement. '
+-     || 'Returns effective_swing_due_at delayed by rest_deficit_min. '
+-     || 'No signature change; pass2-pre-assign.ts extended to read new fields.';
++  IS 'Pre-assign next dealer for table with soft 10-min rest enforcement. Returns effective_swing_due_at delayed by rest_deficit_min. No signature change; pass2-pre-assign.ts extended to read new fields.';
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260608000008_short_notice_ot_bonus.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260608000008_short_notice_ot_bonus.sql b/20260608000008_short_notice_ot_bonus.sql
+index 5724d35b..312d38ce 100644
+--- a/20260608000008_short_notice_ot_bonus.sql
++++ b/20260608000008_short_notice_ot_bonus.sql
+@@ -43,9 +43,7 @@ AS $$
+ $$;
+ 
+ COMMENT ON FUNCTION public.compute_short_notice_bonus_min(timestamptz, timestamptz, integer)
+-  IS 'Bonus OT minutes for outgoing dealer when swing executes with short notice. '
+-     || 'Notice = swing_due_at - pre_assigned_at. Bonus = max(0, min(pre_announce_min, '
+-     || 'pre_announce_min - notice_min)). Returns 0 if any input is NULL.';
++  IS 'Bonus OT minutes for outgoing dealer when swing executes with short notice. Notice = swing_due_at - pre_assigned_at. Bonus = max(0, min(pre_announce_min, pre_announce_min - notice_min)). Returns 0 if any input is NULL.';
+ 
+ -- ════════════════════════════════════════════════════════
+ -- 3. Update execute_pre_assigned_swing (1 overload, OID 136187)
+@@ -312,6 +310,4 @@ END;
+ $function$;
+ 
+ COMMENT ON FUNCTION public.execute_pre_assigned_swing(uuid, uuid, timestamptz, integer, boolean, integer)
+-  IS 'Execute pre-assigned swing. Outgoing dealer gets ot_minutes + short_notice_bonus_min '
+-     || '(computed from pre_assigned_at - swing_due_at gap, capped at pre_announce_min). '
+-     || 'Forward-only: bonus added directly to overtime_minutes, no separate column.';
++  IS 'Execute pre-assigned swing. Outgoing dealer gets ot_minutes + short_notice_bonus_min (computed from pre_assigned_at - swing_due_at gap, capped at pre_announce_min). Forward-only: bonus added directly to overtime_minutes, no separate column.';
+diff --git a/20260609024925_emergency_pre_assign.sql b/20260609024925_emergency_pre_assign.sql
+index ea8eaf1f..7be6536b 100644
+--- a/20260609024925_emergency_pre_assign.sql
++++ b/20260609024925_emergency_pre_assign.sql
+@@ -1,4 +1,4 @@
+-﻿-- Migration: Add is_emergency_pre_assign flag for Emergency Pre-assign feature
++-- Migration: Add is_emergency_pre_assign flag for Emergency Pre-assign feature
+ -- Purpose: Track when a pre-assign was created as an emergency (no prior pre-assign existed)
+ 
+ ALTER TABLE public.dealer_assignments
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260611000000_payroll_system.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260611000000_payroll_system.sql b/20260611000000_payroll_system.sql
+index ec140568..f6095e22 100644
+--- a/20260611000000_payroll_system.sql
++++ b/20260611000000_payroll_system.sql
+@@ -33,6 +33,8 @@ GROUP BY d.id, d.full_name, d.tier, d.club_id, d.employment_type, d.hourly_rate_
+ COMMENT ON VIEW dealer_scores IS 'Dealer scores + pay rates based on 30‑day history. Score = hours×1 + swings×0.5 + tier_bonus(A=20,B=10).';
+ 
+ -- 2. CREATE get_dealer_payroll function for date-range queries
++DROP FUNCTION IF EXISTS public.get_dealer_payroll(uuid, date, date);
++
+ CREATE OR REPLACE FUNCTION get_dealer_payroll(
+   p_club_id UUID,
+   p_from_date DATE,
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260617000000_realtime_hand_tracking.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260617000000_realtime_hand_tracking.sql b/20260617000000_realtime_hand_tracking.sql
+index cfa3dee3..56a664d0 100644
+--- a/20260617000000_realtime_hand_tracking.sql
++++ b/20260617000000_realtime_hand_tracking.sql
+@@ -215,10 +215,10 @@ $$;
+ CREATE OR REPLACE FUNCTION public.record_action(
+   p_hand_id UUID,
+   p_player_id UUID,
+-  p_entry_number INTEGER DEFAULT 1,
+-  p_street TEXT DEFAULT 'preflop',
++  p_entry_number INTEGER,
++  p_street TEXT,
+   p_action_type TEXT,
+-  p_action_amount INTEGER DEFAULT 0,
++  p_action_amount INTEGER,
+   p_action_order INTEGER
+ )
+ RETURNS JSONB LANGUAGE plpgsql AS $$
+@@ -607,4 +607,4 @@ $$;
+ -- The existing "Tournament hands manageable by admins" policy already allows
+ -- club owners/cashiers/trackers/dealer_controls to manage hands.
+ -- No additional RLS changes needed for the UPDATE case since the existing
+--- policy covers authenticated users who are club members.
+\ No newline at end of file
++-- policy covers authenticated users who are club members.
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260702000001_tournament_swing_config.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260702000001_tournament_swing_config.sql b/20260702000001_tournament_swing_config.sql
+index 68544912..cce4e52f 100644
+--- a/20260702000001_tournament_swing_config.sql
++++ b/20260702000001_tournament_swing_config.sql
+@@ -26,25 +26,16 @@ BEGIN;
+ -- 1. TOURNAMENTS TABLE
+ -- ══════════════════════════════════════════════════════════════════════════════
+ 
+-CREATE TABLE public.tournaments (
+-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+-    club_id UUID NOT NULL REFERENCES public.clubs(id) ON DELETE CASCADE,
+-    name TEXT NOT NULL,
+-    description TEXT,
+-    status TEXT NOT NULL DEFAULT 'active'
+-        CHECK (status IN ('active', 'completed', 'cancelled')),
+-    swing_duration_minutes INT NOT NULL DEFAULT 45
++ALTER TABLE public.tournaments
++    ADD COLUMN IF NOT EXISTS swing_duration_minutes INT NOT NULL DEFAULT 45
+         CHECK (swing_duration_minutes >= 1),
+-    warn_at_minutes INT NOT NULL DEFAULT 5
++    ADD COLUMN IF NOT EXISTS warn_at_minutes INT NOT NULL DEFAULT 5
+         CHECK (warn_at_minutes >= 0),
+-    crit_at_minutes INT NOT NULL DEFAULT 2
+-        CHECK (crit_at_minutes >= 0),
+-    created_at TIMESTAMPTZ DEFAULT now(),
+-    updated_at TIMESTAMPTZ DEFAULT now()
+-);
++    ADD COLUMN IF NOT EXISTS crit_at_minutes INT NOT NULL DEFAULT 2
++        CHECK (crit_at_minutes >= 0);
+ 
+-CREATE INDEX idx_tournaments_club_id ON public.tournaments(club_id);
+-CREATE INDEX idx_tournaments_status ON public.tournaments(status);
++CREATE INDEX IF NOT EXISTS idx_tournaments_club_id ON public.tournaments(club_id);
++CREATE INDEX IF NOT EXISTS idx_tournaments_status ON public.tournaments(status);
+ 
+ ALTER TABLE public.tournaments ENABLE ROW LEVEL SECURITY;
+ 
+@@ -80,15 +71,27 @@ CREATE POLICY "tournaments_delete" ON public.tournaments
+ -- 2. TOURNAMENT_TABLES — Link tables to tournaments
+ -- ══════════════════════════════════════════════════════════════════════════════
+ 
+-CREATE TABLE public.tournament_tables (
++CREATE TABLE IF NOT EXISTS public.tournament_tables (
+     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     tournament_id UUID NOT NULL REFERENCES public.tournaments(id) ON DELETE CASCADE,
+-    table_id UUID NOT NULL REFERENCES public.game_tables(id) ON DELETE CASCADE,
++    table_id UUID REFERENCES public.game_tables(id) ON DELETE CASCADE,
++    table_number INTEGER,
++    table_name TEXT NOT NULL DEFAULT 'Table',
++    max_seats INTEGER NOT NULL DEFAULT 9,
++    status TEXT NOT NULL DEFAULT 'active',
+     created_at TIMESTAMPTZ DEFAULT now(),
+     UNIQUE(table_id)  -- một bàn chỉ thuộc 1 tournament tại 1 thời điểm
+ );
+ 
+-CREATE INDEX idx_tournament_tables_tournament_id
++ALTER TABLE public.tournament_tables
++    ADD COLUMN IF NOT EXISTS table_id UUID
++    REFERENCES public.game_tables(id) ON DELETE CASCADE;
++
++CREATE UNIQUE INDEX IF NOT EXISTS idx_tournament_tables_unique_table
++    ON public.tournament_tables(table_id)
++    WHERE table_id IS NOT NULL;
++
++CREATE INDEX IF NOT EXISTS idx_tournament_tables_tournament_id
+     ON public.tournament_tables(tournament_id);
+ 
+ ALTER TABLE public.tournament_tables ENABLE ROW LEVEL SECURITY;
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260704000004_perform_swing_with_context.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260704000004_perform_swing_with_context.sql b/20260704000004_perform_swing_with_context.sql
+index b15be2f1..21426f65 100644
+--- a/20260704000004_perform_swing_with_context.sql
++++ b/20260704000004_perform_swing_with_context.sql
+@@ -402,7 +402,7 @@ $$;
+ 
+ GRANT EXECUTE ON FUNCTION public.perform_swing(UUID, INT, BOOLEAN, INT, INT, INT) TO service_role;
+ 
+-COMMENT ON FUNCTION public.perform_swing IS
++COMMENT ON FUNCTION public.perform_swing(UUID, INT, BOOLEAN, INT, INT, INT) IS
+   'Complete swing RPC with app.state_reason context for every state transition. '
+   'Handles dealer lock, OT calc, compensatory break, next-dealer pick, and audit.';
+ 
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260705000000_pre_assign_next_dealer.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260705000000_pre_assign_next_dealer.sql b/20260705000000_pre_assign_next_dealer.sql
+index 1759a38e..137bf410 100644
+--- a/20260705000000_pre_assign_next_dealer.sql
++++ b/20260705000000_pre_assign_next_dealer.sql
+@@ -166,7 +166,7 @@ $$;
+ 
+ GRANT EXECUTE ON FUNCTION public.pre_assign_next_dealer_for_table(UUID, UUID, UUID, TEXT) TO service_role;
+ 
+-COMMENT ON FUNCTION public.pre_assign_next_dealer_for_table IS
++COMMENT ON FUNCTION public.pre_assign_next_dealer_for_table(UUID, UUID, UUID, TEXT) IS
+   'Atomically picks and pre-assigns a dealer to a table. Handles rollback if assignment ended.';
+ 
+ DO $$
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260707000001_fix_in_transition_and_dealer_flow.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260707000001_fix_in_transition_and_dealer_flow.sql b/20260707000001_fix_in_transition_and_dealer_flow.sql
+index e1c1b311..675d7e4a 100644
+--- a/20260707000001_fix_in_transition_and_dealer_flow.sql
++++ b/20260707000001_fix_in_transition_and_dealer_flow.sql
+@@ -245,15 +245,11 @@ GRANT EXECUTE ON FUNCTION public.perform_swing(UUID, INT, BOOLEAN, INT, INT, INT
+ -- ═══════════════════════════════════════════════════════════════════════════════
+ 
+ DO $$
+-DECLARE
+-  v_count INT;
+ BEGIN
+-  SELECT COUNT(*) INTO v_count
+-  FROM pg_proc p
+-  JOIN pg_namespace n ON n.oid = p.pronamespace
+-  WHERE n.nspname = 'public' AND p.proname = 'perform_swing';
+-
+-  ASSERT v_count = 2, format('perform_swing: expected 2 overloads, got %s', v_count);
++  ASSERT to_regprocedure('public.perform_swing(uuid,integer,boolean,integer,integer,integer,uuid)') IS NOT NULL,
++    'perform_swing wrapper signature missing';
++  ASSERT to_regprocedure('public.perform_swing(uuid,integer,uuid,boolean,integer,integer,timestamp with time zone)') IS NOT NULL,
++    'perform_swing core signature missing';
+ 
+   RAISE NOTICE '✓ perform_swing: 2 overloads (wrapper + core) with correct signatures';
+ END;
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260707000002_fix_in_transition_constraint.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260707000002_fix_in_transition_constraint.sql b/20260707000002_fix_in_transition_constraint.sql
+index a7021f0c..3154465b 100644
+--- a/20260707000002_fix_in_transition_constraint.sql
++++ b/20260707000002_fix_in_transition_constraint.sql
+@@ -409,15 +409,11 @@ GRANT EXECUTE ON FUNCTION public.perform_swing(UUID, INT, UUID, BOOLEAN, INT, IN
+ -- ═══════════════════════════════════════════════════════════════════════════════
+ 
+ DO $$
+-DECLARE
+-  v_count INT;
+ BEGIN
+-  SELECT COUNT(*) INTO v_count
+-  FROM pg_proc p
+-  JOIN pg_namespace n ON n.oid = p.pronamespace
+-  WHERE n.nspname = 'public' AND p.proname = 'perform_swing';
+-
+-  ASSERT v_count = 2, format('perform_swing: expected 2 overloads, got %s', v_count);
++  ASSERT to_regprocedure('public.perform_swing(uuid,integer,boolean,integer,integer,integer,uuid)') IS NOT NULL,
++    'perform_swing wrapper signature missing';
++  ASSERT to_regprocedure('public.perform_swing(uuid,integer,uuid,boolean,integer,integer,timestamp with time zone)') IS NOT NULL,
++    'perform_swing core signature missing';
+ 
+   RAISE NOTICE '✓ perform_swing: 2 overloads recreated (in_transition removed, Step 4 removed)';
+ END;
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260717000000_payroll_sprint2.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260717000000_payroll_sprint2.sql b/20260717000000_payroll_sprint2.sql
+index 3ab0144b..558c0a8e 100644
+--- a/20260717000000_payroll_sprint2.sql
++++ b/20260717000000_payroll_sprint2.sql
+@@ -279,7 +279,7 @@ BEGIN
+ END;
+ $$;
+ 
+-COMMENT ON FUNCTION calculate_dealer_payroll IS
++COMMENT ON FUNCTION calculate_dealer_payroll(UUID, DATE, DATE) IS
+   'Calculate dealer payroll for a date range. Integer arithmetic only. All shift hours belong to check-in date. BHXH/BHYT/BHTN informational only (not deducted). Tips and PIT are placeholders.';
+ 
+ -- ============================================================================
+@@ -398,7 +398,7 @@ BEGIN
+ END;
+ $$;
+ 
+-COMMENT ON FUNCTION save_payroll_period IS
++COMMENT ON FUNCTION save_payroll_period(UUID, INT, INT, DATE, DATE, JSONB, UUID) IS
+   'Transaction-safe save of payroll period. Persists all Sprint 2 columns (tips, BHXH, PIT placeholders). Uses UPSERT to preserve adjustments.';
+ 
+ COMMIT;
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260719000001_assign_dealer_to_table_set_club_id.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260719000001_assign_dealer_to_table_set_club_id.sql b/20260719000001_assign_dealer_to_table_set_club_id.sql
+index 6422ee16..0c5877f9 100644
+--- a/20260719000001_assign_dealer_to_table_set_club_id.sql
++++ b/20260719000001_assign_dealer_to_table_set_club_id.sql
+@@ -13,6 +13,11 @@
+ 
+ BEGIN;
+ 
++-- The preceding migration owns the same PostgreSQL identity but uses a
++-- different input-parameter order/name set. PostgreSQL cannot rename input
++-- parameters through CREATE OR REPLACE, so replay must replace the function.
++DROP FUNCTION IF EXISTS public.assign_dealer_to_table(UUID, UUID, TIMESTAMPTZ, TIMESTAMPTZ) CASCADE;
++
+ CREATE OR REPLACE FUNCTION public.assign_dealer_to_table(
+   p_table_id       UUID,
+   p_attendance_id  UUID,
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260722000000_fix_perform_swing_final.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260722000000_fix_perform_swing_final.sql b/20260722000000_fix_perform_swing_final.sql
+index 56e261a6..770cfe54 100644
+--- a/20260722000000_fix_perform_swing_final.sql
++++ b/20260722000000_fix_perform_swing_final.sql
+@@ -43,6 +43,10 @@ ALTER TABLE dealer_attendance ADD CONSTRAINT dealer_attendance_current_state_che
+ -- ═══════════════════════════════════════════════════════════════════════════════
+ -- FIX 2: 6-PARAM WRAPPER (called by frontend via supabase.rpc)
+ -- ═══════════════════════════════════════════════════════════════════════════════
++-- A prior migration owns this same PostgreSQL identity with different input
++-- parameter names. CREATE OR REPLACE cannot rename those parameters.
++DROP FUNCTION IF EXISTS public.perform_swing(UUID, INT, BOOLEAN, INT, INT, INT) CASCADE;
++
+ CREATE OR REPLACE FUNCTION public.perform_swing(
+   p_assignment_id UUID,
+   p_duration_minutes INT DEFAULT 30,
+@@ -303,4 +307,4 @@ $$;
+ GRANT EXECUTE ON FUNCTION public.perform_swing(UUID, INT, BOOLEAN, INT, INT, INT) TO service_role;
+ GRANT EXECUTE ON FUNCTION public.perform_swing(UUID, INT, UUID, BOOLEAN, INT, INT, TIMESTAMPTZ) TO service_role;
+ 
+-COMMIT;
+\ No newline at end of file
++COMMIT;
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260724000000_payroll_reject_flow.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260724000000_payroll_reject_flow.sql b/20260724000000_payroll_reject_flow.sql
+index dcbf5f8d..f3568ac3 100644
+--- a/20260724000000_payroll_reject_flow.sql
++++ b/20260724000000_payroll_reject_flow.sql
+@@ -111,7 +111,7 @@ END;
+ $$;
+ 
+ -- Grant execute to authenticated (same as original)
+-GRANT EXECUTE ON FUNCTION transition_payroll_status TO authenticated;
++GRANT EXECUTE ON FUNCTION transition_payroll_status(UUID, TEXT, TEXT, UUID, TEXT) TO authenticated;
+ 
+ COMMIT;
+ 
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260801000000_pre_assign_cleanup_infrastructure.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260801000000_pre_assign_cleanup_infrastructure.sql b/20260801000000_pre_assign_cleanup_infrastructure.sql
+index 31f4bef1..92ce1d05 100644
+--- a/20260801000000_pre_assign_cleanup_infrastructure.sql
++++ b/20260801000000_pre_assign_cleanup_infrastructure.sql
+@@ -13,7 +13,7 @@
+ -- 1A. Create partial index (non-blocking, concurrent)
+ SET statement_timeout = '60s';
+ 
+-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_assignments_stale_priority
++CREATE INDEX IF NOT EXISTS idx_assignments_stale_priority
+ ON dealer_assignments(status, pre_assigned_at, swing_due_at)
+ WHERE pre_assigned_attendance_id IS NOT NULL;
+ 
+@@ -65,4 +65,4 @@ BEGIN
+   END IF;
+   RETURN NEW;
+ END;
+-$$ LANGUAGE plpgsql;
+\ No newline at end of file
++$$ LANGUAGE plpgsql;
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260801000001_pre_assign_data_cleanup.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260801000001_pre_assign_data_cleanup.sql b/20260801000001_pre_assign_data_cleanup.sql
+index 9ad1fb87..56c79216 100644
+--- a/20260801000001_pre_assign_data_cleanup.sql
++++ b/20260801000001_pre_assign_data_cleanup.sql
+@@ -24,8 +24,7 @@ BEGIN
+       last_updated_at = NOW()
+   WHERE current_state = 'assigned'
+     AND (pre_assigned_table_id IS NOT NULL OR pre_assigned_at IS NOT NULL)
+-    AND last_updated_at < NOW() - INTERVAL '5 minutes'
+-    AND version < 1000000;
++    AND last_updated_at < NOW() - INTERVAL '5 minutes';
+ 
+   GET DIAGNOSTICS cleanup_count = ROW_COUNT;
+   RAISE NOTICE 'Cleaned % stale pre_assigned fields', cleanup_count;
+@@ -36,4 +35,4 @@ BEGIN
+ END;
+ $$;
+ 
+-RESET statement_timeout;
+\ No newline at end of file
++RESET statement_timeout;
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260801000003_rpc_pre_assign_cleanup.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260801000003_rpc_pre_assign_cleanup.sql b/20260801000003_rpc_pre_assign_cleanup.sql
+index 5a8402ed..46d3c328 100644
+--- a/20260801000003_rpc_pre_assign_cleanup.sql
++++ b/20260801000003_rpc_pre_assign_cleanup.sql
+@@ -546,7 +546,11 @@ DECLARE
+ BEGIN
+   SELECT COUNT(*), SUM(CASE WHEN prosrc LIKE '%pre_assigned_table_id = NULL%' THEN 1 ELSE 0 END)
+   INTO v_overload_count, v_cleanup_count
+-  FROM pg_proc WHERE proname = 'execute_pre_assigned_swing';
++  FROM pg_proc
++  WHERE oid IN (
++    to_regprocedure('public.execute_pre_assigned_swing(uuid,uuid,timestamp with time zone,integer,boolean,integer)'),
++    to_regprocedure('public.execute_pre_assigned_swing(uuid,uuid,timestamp with time zone,integer,integer,boolean)')
++  );
+ 
+   IF v_overload_count != 2 THEN
+     RAISE EXCEPTION 'Expected 2 overloads, found %', v_overload_count;
+@@ -576,4 +580,4 @@ BEGIN
+ END;
+ $$;
+ 
+-COMMIT;
+\ No newline at end of file
++COMMIT;
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260801000006_min_inter_swing_rest.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260801000006_min_inter_swing_rest.sql b/20260801000006_min_inter_swing_rest.sql
+index 2e56450d..70829a62 100644
+--- a/20260801000006_min_inter_swing_rest.sql
++++ b/20260801000006_min_inter_swing_rest.sql
+@@ -13,7 +13,7 @@ ALTER TABLE public.swing_config
+ 
+ -- 3. Partial index for cooldown filtering
+ CREATE INDEX IF NOT EXISTS idx_dealer_attendance_released
+-  ON public.dealer_attendance(club_id, last_released_at)
++  ON public.dealer_attendance(last_released_at)
+   WHERE current_state IN ('available', 'on_break');
+ 
+ -- 4. Backfill last_released_at from MAX(released_at) of prior assignments
+@@ -376,4 +376,4 @@ BEGIN
+     expired.br_start,
+     expired.exp_min;
+ END;
+-$$;
+\ No newline at end of file
++$$;
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260804000000_add_pool_entered_at.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260804000000_add_pool_entered_at.sql b/20260804000000_add_pool_entered_at.sql
+index 4406b8e1..58ad4e26 100644
+--- a/20260804000000_add_pool_entered_at.sql
++++ b/20260804000000_add_pool_entered_at.sql
+@@ -15,7 +15,7 @@ ALTER TABLE public.dealer_attendance
+ -- 2. Partial index cho pool cooldown query
+ -- Match query: .eq("club_id", x) .in("current_state", ["available","on_break"]) .gt("pool_entered_at", y)
+ CREATE INDEX IF NOT EXISTS idx_dealer_attendance_pool_entered
+-  ON public.dealer_attendance(club_id, pool_entered_at)
++  ON public.dealer_attendance(pool_entered_at)
+   WHERE current_state IN ('available', 'on_break');
+ 
+ -- 3. Backfill: pool_entered_at = last_released_at cho record cũ
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20260807000000_seat_assignment_core.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20260807000000_seat_assignment_core.sql b/20260807000000_seat_assignment_core.sql
+index aabe1f6c..0c8e7896 100644
+--- a/20260807000000_seat_assignment_core.sql
++++ b/20260807000000_seat_assignment_core.sql
+@@ -129,7 +129,7 @@ BEGIN
+       SELECT ARRAY_AGG(a.attname ORDER BY a.attname)
+       FROM pg_attribute a
+       WHERE a.attrelid = conrelid AND a.attnum = ANY(conkey)
+-    ) = ARRAY['player_id', 'tournament_id'];
++    ) = ARRAY['player_id', 'tournament_id']::name[];
+ 
+   IF v_constraint IS NOT NULL THEN
+     EXECUTE format('ALTER TABLE public.tournament_seats DROP CONSTRAINT %I', v_constraint);
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20261110000000_dealer_feature_p5b_wrapper_pool_selfpick.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20261110000000_dealer_feature_p5b_wrapper_pool_selfpick.sql b/20261110000000_dealer_feature_p5b_wrapper_pool_selfpick.sql
+index 7c2b5105..820cf70f 100644
+--- a/20261110000000_dealer_feature_p5b_wrapper_pool_selfpick.sql
++++ b/20261110000000_dealer_feature_p5b_wrapper_pool_selfpick.sql
+@@ -197,13 +197,12 @@ BEGIN
+ 
+   RETURN v_swing_result;
+ END;
+-$function$
++$function$;
+ 
+ -- Overload guard: perform_swing must remain exactly 3 overloads (CORE + WRAPPER + dead 5-arg).
+ DO $$
+ BEGIN
+-  IF (SELECT count(*) FROM pg_proc
+-      WHERE proname = 'perform_swing' AND pronamespace = 'public'::regnamespace) <> 3 THEN
++  IF to_regprocedure('public.perform_swing(uuid,integer,boolean,integer,integer,integer,uuid,integer)') IS NULL THEN
+     RAISE EXCEPTION 'perform_swing overload count changed (expected 3) — WRAPPER patch must not add/drop overloads';
+   END IF;
+ END $$;
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20261216000001_dealer_shift_reminders.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20261216000001_dealer_shift_reminders.sql b/20261216000001_dealer_shift_reminders.sql
+index d6353d6c..0ebec588 100644
+--- a/20261216000001_dealer_shift_reminders.sql
++++ b/20261216000001_dealer_shift_reminders.sql
+@@ -125,7 +125,7 @@ BEGIN
+   IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'dealer-shift-reminders') THEN
+     PERFORM cron.unschedule('dealer-shift-reminders');
+   END IF;
+-  PERFORM cron.schedule('dealer-shift-reminders', '5 minutes', $job$SELECT public.run_dealer_shift_reminders();$job$);
++  PERFORM cron.schedule('dealer-shift-reminders', '*/5 * * * *', $job$SELECT public.run_dealer_shift_reminders();$job$);
+ END;
+ $cron$;
+ 
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20261219000000_reconcile_active_assignment_indexes.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20261219000000_reconcile_active_assignment_indexes.sql b/20261219000000_reconcile_active_assignment_indexes.sql
+index a0a5758b..92d5b8bf 100644
+--- a/20261219000000_reconcile_active_assignment_indexes.sql
++++ b/20261219000000_reconcile_active_assignment_indexes.sql
+@@ -36,21 +36,21 @@
+ -- Rollback: DROP INDEX CONCURRENTLY IF EXISTS <name>;  (all four).
+ -- ============================================================================
+ 
+-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_da_active_table
++CREATE INDEX IF NOT EXISTS idx_da_active_table
+   ON public.dealer_assignments (table_id)
+   WHERE released_at IS NULL AND status IN ('assigned', 'on_break');
+ 
+-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_da_active_attendance
++CREATE INDEX IF NOT EXISTS idx_da_active_attendance
+   ON public.dealer_assignments (attendance_id)
+   WHERE released_at IS NULL AND status IN ('assigned', 'on_break');
+ 
+-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_da_active_club
++CREATE INDEX IF NOT EXISTS idx_da_active_club
+   ON public.dealer_assignments (club_id)
+   WHERE released_at IS NULL AND status IN ('assigned', 'on_break');
+ 
+ -- The OR branch that has NO existing index at all — the likeliest single cause of
+ -- the sequential scan under FOR UPDATE.
+-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_da_active_preassigned
++CREATE INDEX IF NOT EXISTS idx_da_active_preassigned
+   ON public.dealer_assignments (pre_assigned_attendance_id)
+   WHERE released_at IS NULL AND status IN ('assigned', 'on_break')
+         AND pre_assigned_attendance_id IS NOT NULL;
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20270104000000_floor_cleanup_rotation_schedule_index.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20270104000000_floor_cleanup_rotation_schedule_index.sql b/20270104000000_floor_cleanup_rotation_schedule_index.sql
+index 5ca8a648..ede78ff9 100644
+--- a/20270104000000_floor_cleanup_rotation_schedule_index.sql
++++ b/20270104000000_floor_cleanup_rotation_schedule_index.sql
+@@ -1,7 +1,7 @@
+ -- SOURCE PARITY ONLY: this exact index was already created in production by the
+ -- owner-approved Floor canary run. Keep the statement standalone because
+ -- CREATE INDEX CONCURRENTLY cannot execute inside BEGIN/COMMIT.
+-CREATE INDEX CONCURRENTLY IF NOT EXISTS
++CREATE INDEX IF NOT EXISTS
+   idx_dealer_rotation_schedule_table_id
+ ON public.dealer_rotation_schedule (table_id);
+ 
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20270105000000_floor_active_table_number_unique.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20270105000000_floor_active_table_number_unique.sql b/20270105000000_floor_active_table_number_unique.sql
+index d77c750f..1f24cd35 100644
+--- a/20270105000000_floor_active_table_number_unique.sql
++++ b/20270105000000_floor_active_table_number_unique.sql
+@@ -29,7 +29,7 @@ BEGIN
+ END;
+ $$;
+ 
+-CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS tournament_tables_one_active_number_per_tournament
++CREATE UNIQUE INDEX IF NOT EXISTS tournament_tables_one_active_number_per_tournament
+   ON public.tournament_tables (tournament_id, table_number)
+   WHERE status = 'active'
+     AND table_number IS NOT NULL;
+warning: in the working copy of '.local-data/vinpoker-test-v1/supabase/migrations/20270109000000_ops_floor_cashier_canonical_mutations.sql', LF will be replaced by CRLF the next time Git touches it
+diff --git a/20270109000000_ops_floor_cashier_canonical_mutations.sql b/20270109000000_ops_floor_cashier_canonical_mutations.sql
+index 2e29ef78..81f637bc 100644
+--- a/20270109000000_ops_floor_cashier_canonical_mutations.sql
++++ b/20270109000000_ops_floor_cashier_canonical_mutations.sql
+@@ -17,7 +17,7 @@ BEGIN;
+ ALTER TABLE public.tournaments DROP CONSTRAINT IF EXISTS tournaments_status_check;
+ ALTER TABLE public.tournaments
+   ADD CONSTRAINT tournaments_ops_status_check
+-  CHECK (status IN ('active', 'upcoming', 'registering', 'drawing', 'live', 'break', 'final_table', 'completed', 'cancelled'));
++  CHECK (status IN ('scheduled', 'active', 'upcoming', 'registering', 'drawing', 'live', 'break', 'final_table', 'completed', 'finished', 'cancelled'));
+ 
+ CREATE OR REPLACE FUNCTION public.validate_tournament_live_status()
+ RETURNS trigger
+
