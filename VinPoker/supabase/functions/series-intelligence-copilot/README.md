@@ -19,7 +19,7 @@ removed during consumption so the table is not an unbounded request log.
 
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
-- `SERIES_GEMINI_API_KEY`
+- `GEMINI_API_KEY`
 - `SERIES_GEMINI_MODEL` using one explicit model ID, never a `latest` alias
 
 Do not use a browser environment variable or a key previously exposed in chat.
@@ -34,7 +34,7 @@ allowlist, and Origin is not treated as authentication.
 ## Production gates
 
 Source readiness does not mean production readiness. The reviewed migrations
-must be applied exactly, a fresh Gemini secret must be provisioned outside
+must be applied exactly, the rotated Gemini secret must be provisioned outside
 source/chat, the Edge function must be deployed through the protected workflow,
 and both UI flags remain off until authenticated UAT.
 
