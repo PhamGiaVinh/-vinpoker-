@@ -58,4 +58,33 @@ describe("VCopilotPanel", () => {
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
     expect(document.querySelector('input[type="number"]')).toBeNull();
   });
+
+  it("uses a supplied server aggregate without falling back to mock pulse values", async () => {
+    render(<VCopilotPanel contextMode="live" clubPulse={{
+      version: "series-club-pulse-v1",
+      sourceMode: "server_aggregate",
+      metrics: [{
+        metricId: "entries_today",
+        value: 21,
+        unit: "count",
+        availability: "exact",
+        privacyState: "safe",
+        asOf: "2026-08-09T12:34:56.789Z",
+        sourceId: "tournaments.tournament_registrations",
+        grain: "club_event_start_local_calendar_day",
+        definitionVersion: "club-entries-event-day-v1",
+      }],
+    }} />);
+
+    expect(await screen.findByText("Club Pulse đã nối · phương án minh họa")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Club Pulse minh họa")).toBeNull();
+    expect(screen.queryByText("342")).toBeNull();
+    expect(screen.getByText("Sức khỏe lịch")).toBeInTheDocument();
+  });
+
+  it("fails closed when live mode has no Club Pulse", async () => {
+    render(<VCopilotPanel contextMode="live" clubPulse={null} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Chưa có Club Pulse đủ điều kiện để V sử dụng.");
+    expect(screen.getByRole("button", { name: "Hỏi V" })).toBeDisabled();
+  });
 });

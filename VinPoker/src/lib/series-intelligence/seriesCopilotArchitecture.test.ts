@@ -30,7 +30,7 @@ describe("Series Copilot PR1 architecture boundary", () => {
     const flags = source("src/lib/featureFlags.ts");
     const page = source("src/pages/SeriesIntelligence.tsx");
     expect(flags).toMatch(/seriesVCopilotV1:\s*false/);
-    expect(page).toContain("FEATURES.seriesVCopilotV1 && <VCopilotPanel />");
+    expect(page).toMatch(/FEATURES\.seriesVCopilotV1\s*&&\s*\(\s*<VCopilotPanel\b/);
     expect(page).not.toMatch(/GeminiSeriesCopilotProvider|series-intelligence-copilot/);
   });
 
