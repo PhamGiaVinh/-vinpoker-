@@ -11,7 +11,7 @@ import {
   type MockSeriesCopilotResultV1,
 } from "@/lib/series-intelligence/seriesCopilotMockAdapter";
 import { renderValidatedCopilotText } from "@/lib/series-intelligence/seriesCopilotEvidenceValidator";
-import type { SeriesCopilotContextV1 } from "@/lib/series-intelligence/seriesCopilotContextV1";
+import type { ClubPulseV1, SeriesCopilotContextV1 } from "@/lib/series-intelligence/seriesCopilotContextV1";
 import { DataGapPanel } from "./DataGapPanel";
 import { ScheduleHealthPanel } from "./ScheduleHealthPanel";
 import { VThinkingIndicator } from "./VThinkingIndicator";
@@ -39,7 +39,15 @@ function formatPulseValue(value: number | string | null): string {
   return value;
 }
 
-export function VCopilotPanel({ ask = askMockSeriesCopilotV1 }: { ask?: AskV }) {
+export function VCopilotPanel({
+  ask = askMockSeriesCopilotV1,
+  contextMode = "mock",
+  clubPulse = null,
+}: {
+  ask?: AskV;
+  contextMode?: "mock" | "live";
+  clubPulse?: ClubPulseV1 | null;
+}) {
   const [context, setContext] = useState<SeriesCopilotContextV1 | null>(null);
   const [question, setQuestion] = useState("Lịch nào cân bằng hơn cho cuối tuần này?");
   const [requestState, setRequestState] = useState<RequestState>("idle");
@@ -49,7 +57,16 @@ export function VCopilotPanel({ ask = askMockSeriesCopilotV1 }: { ask?: AskV }) 
 
   useEffect(() => {
     let active = true;
-    createMockSeriesCopilotContextV1()
+    if (contextMode === "live" && !clubPulse) {
+      setContext(null);
+      setError("Chưa có Club Pulse đủ điều kiện để V sử dụng.");
+      return () => {
+        active = false;
+        controllerRef.current?.abort();
+      };
+    }
+    setError(null);
+    createMockSeriesCopilotContextV1(contextMode === "live" ? clubPulse ?? undefined : undefined)
       .then((next) => {
         if (active) setContext(next);
       })
@@ -60,7 +77,7 @@ export function VCopilotPanel({ ask = askMockSeriesCopilotV1 }: { ask?: AskV }) 
       active = false;
       controllerRef.current?.abort();
     };
-  }, []);
+  }, [clubPulse, contextMode]);
 
   const askV = async () => {
     if (!context || question.trim().length === 0 || requestState === "solving") return;
@@ -100,12 +117,14 @@ export function VCopilotPanel({ ask = askMockSeriesCopilotV1 }: { ask?: AskV }) 
               <p className="mt-0.5 text-xs text-muted-foreground">So sánh phương án đã được code tạo sẵn; chủ CLB quyết định cuối cùng.</p>
             </div>
           </div>
-          <Badge variant="outline" className="border-warning/35 bg-warning/10 text-warning">Dữ liệu minh họa</Badge>
+          <Badge variant="outline" className="border-warning/35 bg-warning/10 text-warning">
+            {contextMode === "live" ? "Club Pulse đã nối · phương án minh họa" : "Dữ liệu minh họa"}
+          </Badge>
         </div>
       </div>
 
       <div className="space-y-5 p-4">
-        <div className="grid gap-2 sm:grid-cols-4" aria-label="Club Pulse minh họa">
+        {contextMode === "mock" && <div className="grid gap-2 sm:grid-cols-4" aria-label="Club Pulse minh họa">
           {(context?.clubPulse.metrics ?? []).map((metric) => (
             <div key={metric.metricId} className="min-h-20 rounded-md border border-border/70 bg-background/30 p-3">
               <p className="text-[10px] uppercase text-muted-foreground">
@@ -119,7 +138,7 @@ export function VCopilotPanel({ ask = askMockSeriesCopilotV1 }: { ask?: AskV }) 
             </div>
           ))}
           {!context && !error && <p className="text-xs text-muted-foreground">Đang chuẩn bị dữ liệu minh họa…</p>}
-        </div>
+        </div>}
 
         {context && <ScheduleHealthPanel health={context.scheduleHealth} />}
 
