@@ -48,7 +48,7 @@ describe("Series V candidate and durable rate-limit migration", () => {
   });
 
   it("pins SECURITY DEFINER search paths and denies anon and service role execution", () => {
-    expect(MIGRATION.match(/SECURITY DEFINER\nSET search_path = ''/g)?.length).toBe(3);
+    expect(MIGRATION.match(/SECURITY DEFINER\r?\nSET search_path = ''/g)?.length).toBe(3);
     expect(MIGRATION).toContain("REVOKE ALL ON FUNCTION public.series_get_approved_schedule_candidates_v1(uuid, text[])");
     expect(MIGRATION).toContain("REVOKE ALL ON FUNCTION public.series_consume_copilot_rate_limit_v1(uuid, uuid)");
     expect(MIGRATION).toContain("FROM PUBLIC, anon, service_role");
