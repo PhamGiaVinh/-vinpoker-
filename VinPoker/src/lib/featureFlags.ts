@@ -1029,6 +1029,13 @@ export const FEATURES = {
    */
   seriesAssistant: true,
   /**
+   * Series Intelligence — owner-scoped Club Pulse V1. When ON, the operations page reads the fixed
+   * get_series_club_live_pulse_v1 RPC and shows seven aggregate metrics with explicit freshness and
+   * unavailable states. No client-side counting, polling, realtime claim, or write path. Default OFF
+   * until the corrected migration is applied and authenticated Preview UAT passes.
+   */
+  seriesClubPulseV1: false,
+  /**
    * Series Intelligence — V Copilot V1 local vertical slice. When ON, renders the read-only mock flow:
    * deterministic context + schedule health + precomputed candidate options → mock V response → strict
    * evidence/number/privacy validation. No Gemini SDK, network, Edge, DB read/write, production data, or money
