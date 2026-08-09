@@ -108,8 +108,8 @@ export default function CashierDashboard() {
   // hidden from regular cashiers until FEATURES.offlineBuyIn flips; admins/owners see it.
   const showOfflineBuyIn = clubIds.length > 0 && (FEATURES.offlineBuyIn || isAdmin || isClubOwner);
   // Re-entry (re-buy a busted player) — same UAT-override rollout; the panel's own
-  // action button stays gated by FEATURES.registrationExtensions until the RPC is live.
-  const showReentry = clubIds.length > 0 && (FEATURES.registrationExtensions || isAdmin || isClubOwner);
+  // action button stays gated by FEATURES.cashierReentry until its DB contract is UAT-approved.
+  const showReentry = clubIds.length > 0 && (FEATURES.cashierReentry || isAdmin || isClubOwner);
   // SePay reconciliation "Đối soát SePay" — same UAT-override rollout; hidden from regular cashiers
   // until FEATURES.sepayReconcile flips; admins/club owners see it for UAT.
   const showSettlement = clubIds.length > 0 && (FEATURES.sepayReconcile || isAdmin || isClubOwner);

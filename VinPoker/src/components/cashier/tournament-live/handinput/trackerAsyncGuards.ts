@@ -34,6 +34,30 @@ export function buildNextHandNumberRequest(tournamentId: string, tableId: string
   return { p_tournament_id: tournamentId, p_table_id: tableId };
 }
 
+export type TableHandIdentity =
+  | { kind: "resume"; hand: { id: string; hand_number: number } }
+  | { kind: "next"; handNumber: number }
+  | { kind: "stale" };
+
+/**
+ * Resolve an in-progress hand before asking for the next number. This ordering is
+ * intentional: a late next-number response must never replace the identity of a
+ * hand the operator is resuming.
+ */
+export async function resolveTableHandIdentity(args: {
+  loadOrphan: () => Promise<{ id: string; hand_number: number } | null>;
+  loadNextHandNumber: () => Promise<number>;
+  isCurrent: () => boolean;
+}): Promise<TableHandIdentity> {
+  const orphan = await args.loadOrphan();
+  if (!args.isCurrent()) return { kind: "stale" };
+  if (orphan) return { kind: "resume", hand: orphan };
+
+  const handNumber = await args.loadNextHandNumber();
+  if (!args.isCurrent()) return { kind: "stale" };
+  return { kind: "next", handNumber };
+}
+
 export interface ActionWriteToken {
   readonly id: number;
   readonly scope: string;

@@ -33,11 +33,13 @@ root.render(
   </ErrorBoundary>
 );
 
-// Hide the inline boot splash once React has mounted, and signal the boot
-// watchdog in index.html that we're alive.
+// Signal boot synchronously after React accepts the root render. Background tabs
+// can throttle requestAnimationFrame for longer than the watchdog timeout.
+window.dispatchEvent(new Event("vp:react-mounted"));
+
+// Keep the visual splash transition on the next frame.
 requestAnimationFrame(() => {
   try {
-    window.dispatchEvent(new Event("vp:react-mounted"));
     sessionStorage.removeItem("vp:just-updated");
     sessionStorage.removeItem("vp:auto-reloaded");
     sessionStorage.removeItem("vp:reloaded-after-preload-error");

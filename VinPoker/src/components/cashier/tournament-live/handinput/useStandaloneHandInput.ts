@@ -66,8 +66,10 @@ import {
   createActionWriteGuard,
   createTableLoadGuard,
   isConfirmedActionWrite,
+  resolveTableHandIdentity,
   type TableLoadToken,
 } from "./trackerAsyncGuards";
+import { createSingleFlightGuard } from "@/lib/singleFlight";
 import type { SyncPhase } from "./ViewerSyncStatus";
 import type { User } from "@supabase/supabase-js";
 import {
@@ -261,6 +263,7 @@ export function useStandaloneHandInput(tournamentId: string) {
   // them. The refs provide synchronous protection before React can re-render.
   const tableLoadGuardRef = useRef(createTableLoadGuard());
   const actionWriteGuardRef = useRef(createActionWriteGuard());
+  const handSubmitGuardRef = useRef(createSingleFlightGuard());
   const actionScopeRef = useRef("");
   const blockedActionScopeRef = useRef<string | null>(null);
 
@@ -529,7 +532,12 @@ export function useStandaloneHandInput(tournamentId: string) {
     if (actionSyncBlocked) window.location.reload();
   }, [actionSyncBlocked]);
 
-  const resetHand = useCallback((opts?: { restoreStacks?: boolean; tableId?: string; loadToken?: TableLoadToken }) => {
+  const resetHand = useCallback((opts?: {
+    restoreStacks?: boolean;
+    tableId?: string;
+    loadToken?: TableLoadToken;
+    loadNextHandNumber?: boolean;
+  }) => {
     // C2 hard-gate (ref: stable callback, no dep churn): never wipe local state while
     // the rollback chain is mid-flight — server deletes would keep landing on it.
     if (streetRollbackRef.current) {
@@ -566,7 +574,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     setPlayers((prev) => clearBettingState(prev, opts?.restoreStacks === true));
     const targetTableId = opts?.tableId ?? tableId;
     const loadToken = opts?.loadToken ?? tableLoadGuardRef.current.capture(targetTableId);
-    if (targetTableId) {
+    if (targetTableId && opts?.loadNextHandNumber !== false) {
       supabase
         .rpc("get_next_hand_number", buildNextHandNumberRequest(tournamentId, targetTableId))
         .then(({ data }) => {
@@ -860,7 +868,10 @@ export function useStandaloneHandInput(tournamentId: string) {
           avatar_url: (loadedSeats![i] as any)?.avatar_url ?? avatarByUser.get(p.player_id) ?? null,
         }))
       );
-      resetHand({ tableId: newTableId, loadToken });
+      // Clear the previous hand without requesting a new number yet. The orphan
+      // lookup below owns identity resolution and only asks for the next number
+      // after it proves there is no in-progress hand on this exact table.
+      resetHand({ tableId: newTableId, loadToken, loadNextHandNumber: false });
 
       const activeNums = loadedSeats
         .filter((s) => s.player_id)
@@ -880,18 +891,43 @@ export function useStandaloneHandInput(tournamentId: string) {
       if (lastHand?.button_seat) setButtonSeat(nextButton(activeNums, lastHand.button_seat));
       else setButtonSeat(activeNums[0] ?? 1);
 
-      const { data: orphan } = await supabase
-        .from("tournament_hands")
-        .select("id, hand_number")
-        .eq("tournament_id", tournamentId)
-        .eq("table_id", newTableId)
-        .eq("status", "in_progress")
-        .limit(1)
-        .maybeSingle();
-      if (!isCurrentLoad()) return;
-      if (orphan) {
-        setOrphanHand(orphan);
-        setAutoResumeArmed(orphan.id); // A5: fires once seats for THIS table have loaded
+      const identity = await resolveTableHandIdentity({
+        loadOrphan: async () => {
+          const { data, error: orphanError } = await supabase
+            .from("tournament_hands")
+            .select("id, hand_number")
+            .eq("tournament_id", tournamentId)
+            .eq("table_id", newTableId)
+            .eq("status", "in_progress")
+            .limit(1)
+            .maybeSingle();
+          if (orphanError) throw orphanError;
+          return data;
+        },
+        loadNextHandNumber: async () => {
+          const { data, error: nextNumberError } = await supabase.rpc(
+            "get_next_hand_number",
+            buildNextHandNumberRequest(tournamentId, newTableId),
+          );
+          if (nextNumberError || data == null) {
+            throw nextNumberError ?? new Error("Could not load the next hand number");
+          }
+          return Number(data);
+        },
+        isCurrent: isCurrentLoad,
+      }).catch((error: unknown) => {
+        if (isCurrentLoad()) {
+          toast.error(error instanceof Error ? error.message : "Không tải được trạng thái hand của bàn");
+        }
+        return null;
+      });
+      if (!identity) return;
+      if (identity.kind === "stale") return;
+      if (identity.kind === "resume") {
+        setOrphanHand(identity.hand);
+        setAutoResumeArmed(identity.hand.id); // A5: fires once seats for THIS table have loaded
+      } else {
+        setHandNumber(identity.handNumber);
       }
     },
     [availableTables, tournamentId, resetHand]
@@ -1328,23 +1364,32 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
   };
 
-  const handleContinueOrphan = async (opts?: { silent?: boolean }) => {
-    if (!orphanHand) return;
+  const handleContinueOrphan = async (opts?: { silent?: boolean }): Promise<boolean> => {
+    if (!orphanHand) return false;
+    const targetOrphan = orphanHand;
+    const loadToken = tableLoadGuardRef.current.capture(tableId);
     setSubmitting(true);
     try {
-      const { data: hand, error: handErr } = await supabase
-        .from("tournament_hands")
-        .select("button_seat, community_cards")
-        .eq("id", orphanHand.id)
-        .single();
+      const [handResult, actionResult] = await Promise.all([
+        supabase
+          .from("tournament_hands")
+          .select("id, hand_number, table_id, button_seat, community_cards")
+          .eq("id", targetOrphan.id)
+          .eq("tournament_id", tournamentId)
+          .eq("table_id", tableId)
+          .eq("status", "in_progress")
+          .single(),
+        supabase
+          .from("hand_actions")
+          .select("player_id, action_type, action_amount, action_order, street")
+          .eq("hand_id", targetOrphan.id)
+          .order("action_order", { ascending: true }),
+      ]);
+      const { data: hand, error: handErr } = handResult;
+      const { data: actionRows, error: actErr } = actionResult;
       if (handErr || !hand) throw new Error(handErr?.message || "Không tải được hand đang diễn ra");
-
-      const { data: actionRows, error: actErr } = await supabase
-        .from("hand_actions")
-        .select("player_id, action_type, action_amount, action_order, street")
-        .eq("hand_id", orphanHand.id)
-        .order("action_order", { ascending: true });
       if (actErr) throw new Error(actErr.message);
+      if (!tableLoadGuardRef.current.isCurrent(loadToken)) return false;
       const rows = (actionRows ?? []) as ResumeActionRow[];
 
       const stored = Array.isArray(hand.community_cards) ? (hand.community_cards as unknown[]) : [];
@@ -1371,6 +1416,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       if (communityCount >= 5) sent.add("river");
 
       setButtonSeat(hand.button_seat ?? buttonSeat);
+      setHandNumber(Number(hand.hand_number));
       setCommunityCards(communitySlots);
       setPlayers(rebuiltPlayers);
       setActions(rebuiltActions);
@@ -1380,12 +1426,14 @@ export function useStandaloneHandInput(tournamentId: string) {
       setPersistedBoardCount(communityCount);
       setUndoStack([]);
       setSelectedActorId(null);
-      setHandId(orphanHand.id);
+      setHandId(hand.id);
       setHandStarted(true);
       setOrphanHand(null);
-      if (!opts?.silent) toast.success("Resuming hand #" + orphanHand.hand_number);
+      if (!opts?.silent) toast.success("Resuming hand #" + hand.hand_number);
+      return true;
     } catch (e: any) {
       toast.error(e.message || "Không thể tiếp tục hand");
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -1403,7 +1451,8 @@ export function useStandaloneHandInput(tournamentId: string) {
     if (!players.length) return;
     const orphanNumber = orphanHand.hand_number;
     setAutoResumeArmed(null);
-    void handleContinueOrphan({ silent: true }).then(() => {
+    void handleContinueOrphan({ silent: true }).then((resumed) => {
+      if (!resumed) return;
       toast.success(`Đã tự động tiếp tục Hand #${orphanNumber}`, {
         duration: 8000,
         action: { label: "Huỷ ván treo", onClick: () => handleVoidRef.current() },
@@ -2344,6 +2393,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       (p) => endingStacks[p.player_id] !== undefined && endingStacks[p.player_id] !== p.current_stack
     );
     if (stacksEdited && !confirm("Bạn đã chỉnh sửa stack kết thúc thủ công. Xác nhận lưu các số đã chỉnh?")) return;
+    if (!handSubmitGuardRef.current.begin()) return;
     setSubmitting(true);
     markSync("sending", `Gửi Hand #${Number(handNumber)}`);
     try {
@@ -2422,6 +2472,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       toast.error(e.message || "Failed to record hand");
       markSync("error");
     } finally {
+      handSubmitGuardRef.current.finish();
       setSubmitting(false);
     }
   };

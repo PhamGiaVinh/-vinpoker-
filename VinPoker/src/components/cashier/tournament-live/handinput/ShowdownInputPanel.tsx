@@ -69,7 +69,7 @@ export function ShowdownInputPanel({
   onSkipReveal,
   revealOrder,
 }: ShowdownInputPanelProps) {
-  // UAT wave 2: 2-tap confirm for the skip-reveal escape — first tap arms for 3s.
+  // UAT wave 2: 2-tap confirm for the skip-reveal escape — first tap arms for 8s.
   const [skipArmed, setSkipArmed] = useState(false);
   const skipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -81,7 +81,7 @@ export function ShowdownInputPanel({
   const handleSkipTap = () => {
     if (!skipArmed) {
       setSkipArmed(true);
-      skipTimer.current = setTimeout(() => setSkipArmed(false), 3000);
+      skipTimer.current = setTimeout(() => setSkipArmed(false), 8000);
       return;
     }
     if (skipTimer.current) clearTimeout(skipTimer.current);
@@ -190,8 +190,11 @@ export function ShowdownInputPanel({
                   onClick={handleSkipTap}
                   className="w-full rounded-lg border border-amber-500/60 bg-transparent px-3 py-2 text-xs font-semibold text-amber-300 transition active:scale-[0.99] disabled:opacity-40"
                 >
-                  {skipArmed ? "Bấm lần nữa để xác nhận" : "Tiếp tục không lật (không có thông tin bài)"}
+                  {skipArmed ? "Xác nhận: tiếp tục không lật" : "Tiếp tục không lật (không có thông tin bài)"}
                 </button>
+                <div role="status" aria-live="polite" className="min-h-4 text-[10px] text-amber-200">
+                  {skipArmed ? "Bấm Xác nhận trong 8 giây để chạy board mà không hiện bài tẩy." : ""}
+                </div>
               </div>
             )}
           </>
