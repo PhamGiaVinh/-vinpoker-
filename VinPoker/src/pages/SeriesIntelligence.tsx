@@ -24,12 +24,14 @@ import { SeriesIntelEmptyState } from "@/components/series-intelligence/SeriesIn
 import { SeriesCaptureConsole } from "@/components/series-intelligence/SeriesCaptureConsole";
 import { SeriesAssistant } from "@/components/series-intelligence/SeriesAssistant";
 import { VCopilotPanel } from "@/components/series-intelligence/VCopilotPanel";
+import { ClubPulsePanel } from "@/components/series-intelligence/ClubPulsePanel";
 import { RegistrationPacePanel } from "@/components/series-intelligence/RegistrationPacePanel";
 import { SeriesIntelligenceWorkspaceNav } from "@/components/series-intelligence/SeriesIntelligenceWorkspaceNav";
 import { parseSeriesCsv, SAMPLE_CSV_TEXT } from "@/lib/series-intelligence/csvImport";
 import type { ScheduleEvent } from "@/lib/series-intelligence/scheduleGenerator";
 import { useSeriesLibrary } from "@/lib/series-intelligence/useSeriesLibrary";
 import { useGroupingOverrides } from "@/lib/series-intelligence/useGroupingOverrides";
+import { mapClubPulseToExternalCopilotContextV1, type SeriesClubLivePulseV1 } from "@/lib/series-intelligence/seriesClubLivePulseV1";
 
 /**
  * Club Admin → Series Intelligence — Owner Command Center (Phase 9).
@@ -66,6 +68,7 @@ export default function SeriesIntelligence() {
   const [forecastFeed, setForecastFeed] = useState<ForecastFeedWithFee | null>(null);
   // CTA "Xem rủi ro overlay với dự đoán này": bump the signal → the simulator switches source + we scroll to it.
   const [forecastSignal, setForecastSignal] = useState(0);
+  const [liveClubPulse, setLiveClubPulse] = useState<SeriesClubLivePulseV1 | null>(null);
   const viewOverlayWithForecast = () => {
     setForecastSignal((s) => s + 1);
     // scroll after the state flush so the panel has re-rendered in forecast mode
@@ -123,6 +126,8 @@ export default function SeriesIntelligence() {
 
       <SeriesIntelligenceWorkspaceNav active="operations" />
 
+      {FEATURES.seriesClubPulseV1 && <ClubPulsePanel enabled onPulseChange={setLiveClubPulse} />}
+
       {/* transparency badge + report entry */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-[11px] text-muted-foreground">
@@ -151,7 +156,12 @@ export default function SeriesIntelligence() {
 
       {/* W1 — Trợ lý Series: workflow ring + "hôm nay cần làm gì" (gated; hooks only run when mounted) */}
       {FEATURES.seriesAssistant && <SeriesAssistant csvEvents={lib.activeEvents} onLoadSample={loadSample} />}
-      {FEATURES.seriesVCopilotV1 && <VCopilotPanel />}
+      {FEATURES.seriesVCopilotV1 && (
+        <VCopilotPanel
+          contextMode={FEATURES.seriesClubPulseV1 ? "live" : "mock"}
+          clubPulse={liveClubPulse ? mapClubPulseToExternalCopilotContextV1(liveClubPulse) : null}
+        />
+      )}
 
       {/* start-here CTA when no series is loaded */}
       {!hasData && <SeriesIntelEmptyState onUpload={scrollToLoad} onSample={loadSample} />}

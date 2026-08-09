@@ -157,20 +157,33 @@ const MOCK_DATA_GAPS: readonly DataGapV1[] = [
   },
 ];
 
-export async function createMockSeriesCopilotContextV1(): Promise<SeriesCopilotContextV1> {
+export async function createMockSeriesCopilotContextV1(clubPulse: ClubPulseV1 = MOCK_PULSE): Promise<SeriesCopilotContextV1> {
+  const livePulse = clubPulse.sourceMode === "server_aggregate";
+  const evidence: readonly CopilotEvidenceV1[] = MOCK_EVIDENCE.map((item) => {
+    if (item.evidenceId === "mock_club_pulse") {
+      return {
+        ...item,
+        labelVi: livePulse ? "Club Pulse của CLB" : item.labelVi,
+        sourceId: livePulse ? "series_club_live_pulse_v1" : item.sourceId,
+        quality: livePulse ? "owner_scoped_server_aggregate" : item.quality,
+        metricIds: clubPulse.metrics.map((metric) => metric.metricId),
+      };
+    }
+    return livePulse ? { ...item, metricIds: [] } : item;
+  });
   const scheduleHealth = buildScheduleHealthV1({
-    clubPulse: MOCK_PULSE,
+    clubPulse,
     candidateOptions: MOCK_CANDIDATES,
     dataGaps: MOCK_DATA_GAPS,
-    evidence: MOCK_EVIDENCE,
+    evidence,
   });
   return createSeriesCopilotContextV1({
     asOf: MOCK_AS_OF,
-    clubPulse: MOCK_PULSE,
+    clubPulse,
     scheduleHealth,
     candidateOptions: MOCK_CANDIDATES,
     dataGaps: MOCK_DATA_GAPS,
-    evidence: MOCK_EVIDENCE,
+    evidence,
   });
 }
 
