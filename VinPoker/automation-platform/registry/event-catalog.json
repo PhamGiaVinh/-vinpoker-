@@ -1,0 +1,48 @@
+{
+  "catalog_version": 1,
+  "events": [
+    {
+      "event_type": "owner.daily_digest.due",
+      "producer": "SUPABASE_CRON_RPC_FUTURE",
+      "phase_1_producer": "LOCAL_FIXTURE",
+      "payload_schema_key": "owner.daily_digest.due.v1",
+      "catch_up_policy": "RECOMPUTE",
+      "expires_after_seconds": 28800,
+      "owner": "N8N_ORCHESTRATION",
+      "external_send": false
+    },
+    {
+      "event_type": "owner.daily_digest.ready",
+      "producer": "AUTOMATION_GATEWAY",
+      "payload_schema_key": "owner.daily_digest.ready.v1",
+      "catch_up_policy": "SEND_LATE",
+      "owner": "AUTOMATION_GATEWAY",
+      "external_send": false
+    },
+    {
+      "event_type": "owner.daily_digest.skipped",
+      "producer": "AUTOMATION_GATEWAY",
+      "payload_schema_key": "owner.daily_digest.skipped.v1",
+      "catch_up_policy": "SKIP_IF_LATE",
+      "owner": "AUDIT",
+      "external_send": false
+    },
+    {
+      "event_type": "owner.daily_digest.generation_failed",
+      "producer": "AUTOMATION_GATEWAY",
+      "payload_schema_key": "owner.daily_digest.generation_failed.v1",
+      "catch_up_policy": "SEND_LATE",
+      "owner": "AUTOMATION_GATEWAY",
+      "external_send": false
+    },
+    {
+      "event_type": "system.health.worker.heartbeat_missed",
+      "producer": "HEALTH_MONITOR",
+      "payload_schema_key": "system.health.v1",
+      "catch_up_policy": "SEND_LATE",
+      "owner": "SERVER_NATIVE",
+      "external_send": false,
+      "n8n_claimable": false
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "registry_version": 1,
+  "environment": "DEV",
+  "workflows": [
+    {
+      "workflow_key": "owner.daily_digest.v1",
+      "workflow_version": 1,
+      "business_owner": "N8N_ORCHESTRATION_GATEWAY_DELIVERY",
+      "current_owner": "LOCAL_FIXTURE",
+      "future_owner": "N8N_ORCHESTRATION_GATEWAY_DELIVERY",
+      "enabled": true,
+      "allowed_event_types": [
+        "owner.daily_digest.due"
+      ],
+      "allowed_producer_environments": [
+        "DEV"
+      ],
+      "allowed_club_ids": [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222"
+      ],
+      "shadow_state": "LOCAL_FIXTURE",
+      "ordering_policy": "LATEST_ONLY",
+      "max_active_leases_per_club": 2,
+      "event_schema_versions": [1],
+      "gateway_contract_version": 1,
+      "cutover_time": null,
+      "rollback_owner": "NO_PREVIOUS_OWNER",
+      "approved_by": "OWNER_PLAN_2026_07_31"
+    },
+    {
+      "workflow_key": "system.health.p0.native",
+      "workflow_version": 1,
+      "business_owner": "SERVER_NATIVE",
+      "current_owner": "SERVER_NATIVE",
+      "future_owner": "SERVER_NATIVE",
+      "enabled": false,
+      "allowed_event_types": [],
+      "allowed_producer_environments": [],
+      "allowed_club_ids": [],
+      "shadow_state": "NOT_IN_N8N",
+      "ordering_policy": "PROCESS_ALL",
+      "max_active_leases_per_club": 0,
+      "event_schema_versions": [1],
+      "gateway_contract_version": 1,
+      "cutover_time": null,
+      "rollback_owner": "SERVER_NATIVE",
+      "approved_by": "OWNER_PLAN_2026_07_31"
+    }
+  ]
+}

@@ -1,0 +1,135 @@
+{
+  "registry_version": 1,
+  "records": [
+    {
+      "workflow_or_event": "Owner Daily Digest",
+      "current_owner": "NONE",
+      "future_owner": "N8N_ORCHESTRATION_GATEWAY_DELIVERY",
+      "current_channel": "NONE",
+      "new_channel": "MOCK_IN_APP",
+      "cutover_criteria": "TEST_SHADOW_BEFORE_ANY_REAL_RECIPIENT",
+      "rollback": "DISABLE_WORKFLOW_NO_CORE_IMPACT",
+      "kill_switches": ["GLOBAL", "CLUB", "WORKFLOW"]
+    },
+    {
+      "workflow_or_event": "P0 operational alert",
+      "current_owner": "SERVER_NATIVE",
+      "future_owner": "SERVER_NATIVE_DURING_LOCAL_PHASE",
+      "current_channel": "EXISTING_PUSH_OR_TELEGRAM",
+      "new_channel": "N8N_SHADOW_ONLY_LATER",
+      "cutover_criteria": "HOST_24_7_SLO_UAT_FAILOVER_SHADOW",
+      "rollback": "KEEP_LEGACY_OWNER",
+      "kill_switches": ["NATIVE", "GATEWAY"]
+    },
+    {
+      "workflow_or_event": "System Health P1",
+      "current_owner": "PARTIAL_NATIVE_OR_MANUAL",
+      "future_owner": "N8N_ORCHESTRATION",
+      "current_channel": "FRAGMENTED",
+      "new_channel": "DIGEST_IN_APP_PUSH",
+      "cutover_criteria": "OWNER_DAILY_DIGEST_PASS",
+      "rollback": "DISABLE_WORKFLOW",
+      "kill_switches": ["WORKFLOW", "COMPONENT"]
+    },
+    {
+      "workflow_or_event": "n8n heartbeat missed",
+      "current_owner": "UNASSIGNED",
+      "future_owner": "SERVER_NATIVE_MONITOR",
+      "current_channel": "NONE",
+      "new_channel": "EXISTING_P0_CHANNEL",
+      "cutover_criteria": "NEVER_DEPEND_ON_N8N",
+      "rollback": "SERVER_NATIVE",
+      "kill_switches": ["NATIVE"]
+    },
+    {
+      "workflow_or_event": "Existing push trigger",
+      "current_owner": "DB_TRIGGER_AND_EDGE",
+      "future_owner": "NO_CUTOVER_IN_V1",
+      "current_channel": "ONESIGNAL",
+      "new_channel": "GATEWAY_SHADOW_ONLY_LATER",
+      "cutover_criteria": "PARITY_AND_CANARY_PER_TYPE",
+      "rollback": "LEGACY_OWNER",
+      "kill_switches": ["CHANNEL", "TYPE"]
+    },
+    {
+      "workflow_or_event": "Dealer shift reminder",
+      "current_owner": "CRON_AND_EDGE",
+      "future_owner": "KEEP_NATIVE_IN_V1",
+      "current_channel": "TELEGRAM_AND_ONESIGNAL",
+      "new_channel": "N8N_SHADOW_LAST",
+      "cutover_criteria": "DIGEST_AND_FNB_PASS_NO_DUAL_SEND",
+      "rollback": "NATIVE_OWNER",
+      "kill_switches": ["CLUB", "WORKFLOW"]
+    },
+    {
+      "workflow_or_event": "Dealer Swing assignment",
+      "current_owner": "SUPABASE_EDGE_RPC",
+      "future_owner": "KEEP_NATIVE",
+      "current_channel": "APP_AND_TELEGRAM",
+      "new_channel": "HEALTH_OR_DIGEST_ONLY",
+      "cutover_criteria": "NO_CUTOVER",
+      "rollback": "NOT_APPLICABLE",
+      "kill_switches": ["NATIVE"]
+    },
+    {
+      "workflow_or_event": "F&B pending expiry",
+      "current_owner": "DB_CRON_RPC",
+      "future_owner": "KEEP_NATIVE",
+      "current_channel": "IN_APP",
+      "new_channel": "NO_CHANGE",
+      "cutover_criteria": "NO_CUTOVER",
+      "rollback": "NOT_APPLICABLE",
+      "kill_switches": ["NATIVE"]
+    },
+    {
+      "workflow_or_event": "F&B Insight",
+      "current_owner": "REPORT_UI_OR_MANUAL",
+      "future_owner": "N8N_ORCHESTRATION",
+      "current_channel": "NONE",
+      "new_channel": "DIGEST_OR_IN_APP",
+      "cutover_criteria": "SYSTEM_HEALTH_PASS",
+      "rollback": "DISABLE_INSIGHT",
+      "kill_switches": ["CLUB", "WORKFLOW"]
+    },
+    {
+      "workflow_or_event": "SePay reconcile",
+      "current_owner": "EDGE_DB_RPC",
+      "future_owner": "KEEP_NATIVE",
+      "current_channel": "CASHIER_UI",
+      "new_channel": "EXCEPTION_ALERT_LATER",
+      "cutover_criteria": "NEVER_TRANSFER_SETTLEMENT",
+      "rollback": "DISABLE_ALERT",
+      "kill_switches": ["NATIVE", "ALERT"]
+    },
+    {
+      "workflow_or_event": "Marketing draft and dispatch",
+      "current_owner": "DB_CRON_EDGE_LEDGER",
+      "future_owner": "KEEP_NATIVE_IN_PILOT",
+      "current_channel": "TELEGRAM_AND_FACEBOOK",
+      "new_channel": "NOT_IN_V1",
+      "cutover_criteria": "SEPARATE_LIFECYCLE_AND_CONSENT",
+      "rollback": "KEEP_NATIVE",
+      "kill_switches": ["CAMPAIGN", "CHANNEL"]
+    },
+    {
+      "workflow_or_event": "Online Poker runner and timeout",
+      "current_owner": "DB_CRON_EDGE_RPC",
+      "future_owner": "KEEP_NATIVE",
+      "current_channel": "APP",
+      "new_channel": "HEALTH_ONLY",
+      "cutover_criteria": "NO_CUTOVER",
+      "rollback": "NOT_APPLICABLE",
+      "kill_switches": ["NATIVE"]
+    },
+    {
+      "workflow_or_event": "Payroll chip payout staking",
+      "current_owner": "SERVER_RPC_AND_EDGE",
+      "future_owner": "KEEP_NATIVE",
+      "current_channel": "VBACKER_UI",
+      "new_channel": "READ_ONLY_WORKLIST_LATER",
+      "cutover_criteria": "NO_MUTATION_FROM_N8N",
+      "rollback": "NOT_APPLICABLE",
+      "kill_switches": ["MODULE_NATIVE"]
+    }
+  ]
+}

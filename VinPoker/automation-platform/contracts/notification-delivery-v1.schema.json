@@ -1,0 +1,448 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.vbacker.internal/automation/notification-delivery-v1.schema.json",
+  "title": "NotificationDeliveryV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "delivery_id",
+    "notification_id",
+    "request_id",
+    "event_id",
+    "scope",
+    "notification_key",
+    "stage",
+    "template_version",
+    "recipient_endpoint_id",
+    "channel",
+    "provider",
+    "provider_idempotency_key",
+    "status",
+    "attempt_count",
+    "max_attempts",
+    "content_sha256",
+    "row_version",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "delivery_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "notification_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "request_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "scope": {
+      "$ref": "./common-v1.schema.json#/$defs/scope"
+    },
+    "notification_key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]{2,95}$"
+    },
+    "stage": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{1,31}$"
+    },
+    "template_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "recipient_endpoint_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "channel": {
+      "enum": ["IN_APP", "PUSH", "TELEGRAM", "EMAIL"]
+    },
+    "provider": {
+      "enum": ["SUPABASE", "ONESIGNAL", "TELEGRAM", "RESEND"]
+    },
+    "provider_idempotency_key": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "replaces_delivery_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "provider_reference": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9._:-]{1,200}$"
+    },
+    "status": {
+      "enum": [
+        "QUEUED",
+        "LEASED",
+        "SENDING",
+        "SENT",
+        "DELIVERED",
+        "RETRY_WAIT",
+        "SKIPPED",
+        "PERMANENT_FAILED",
+        "UNKNOWN",
+        "RECONCILED"
+      ]
+    },
+    "attempt_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10
+    },
+    "next_attempt_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_attempt_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "provider_lease_token": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "provider_lease_until": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "content_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "row_version": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "error": {
+      "$ref": "./common-v1.schema.json#/$defs/safeError"
+    },
+    "reconciliation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "reason"],
+      "properties": {
+        "state": {
+          "enum": ["PENDING", "RESOLVED"]
+        },
+        "reason": {
+          "enum": [
+            "TIMEOUT_AFTER_SUBMIT",
+            "UNPARSEABLE_PROVIDER_RESPONSE",
+            "WORKER_CRASH_AFTER_SUBMIT",
+            "LEDGER_WRITE_FAILED_AFTER_PROVIDER_SUCCESS"
+          ]
+        },
+        "outcome": {
+          "enum": ["CONFIRMED_SENT", "CONFIRMED_NOT_SENT", "SUPERSEDED"]
+        },
+        "resolution_source": {
+          "enum": ["PROVIDER_LOOKUP", "OWNER_MANUAL"]
+        },
+        "checked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "evidence_code": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_]{2,96}$"
+        },
+        "superseded_by_delivery_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "replaces_delivery_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "unknown_since": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "delivered_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "channel": {
+            "const": "IN_APP"
+          }
+        },
+        "required": ["channel"]
+      },
+      "then": {
+        "properties": {
+          "provider": {
+            "const": "SUPABASE"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "channel": {
+            "const": "PUSH"
+          }
+        },
+        "required": ["channel"]
+      },
+      "then": {
+        "properties": {
+          "provider": {
+            "const": "ONESIGNAL"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "channel": {
+            "const": "TELEGRAM"
+          }
+        },
+        "required": ["channel"]
+      },
+      "then": {
+        "properties": {
+          "provider": {
+            "const": "TELEGRAM"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "channel": {
+            "const": "EMAIL"
+          }
+        },
+        "required": ["channel"]
+      },
+      "then": {
+        "properties": {
+          "provider": {
+            "const": "RESEND"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": ["LEASED", "SENDING"]
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["provider_lease_token", "provider_lease_until"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "RETRY_WAIT"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["error", "next_attempt_at"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PERMANENT_FAILED"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["error"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": ["SENT", "DELIVERED"]
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["provider_reference", "sent_at"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "DELIVERED"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["delivered_at"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "UNKNOWN"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["reconciliation", "unknown_since"],
+        "properties": {
+          "reconciliation": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "const": "PENDING"
+              }
+            },
+            "not": {
+              "required": ["outcome"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "RECONCILED"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["reconciliation"],
+        "properties": {
+          "reconciliation": {
+            "type": "object",
+            "required": ["outcome", "resolution_source", "checked_at"],
+            "properties": {
+              "state": {
+                "const": "RESOLVED"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "SENT",
+              "DELIVERED",
+              "SKIPPED",
+              "PERMANENT_FAILED",
+              "RECONCILED"
+            ]
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "not": {
+          "required": ["next_attempt_at"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "QUEUED" }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "required": ["provider_reference"] },
+            { "required": ["provider_lease_token"] },
+            { "required": ["provider_lease_until"] },
+            { "required": ["next_attempt_at"] },
+            { "required": ["error"] },
+            { "required": ["reconciliation"] },
+            { "required": ["unknown_since"] },
+            { "required": ["sent_at"] },
+            { "required": ["delivered_at"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "UNKNOWN" }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "required": ["provider_lease_token"] },
+            { "required": ["provider_lease_until"] },
+            { "required": ["next_attempt_at"] },
+            { "required": ["sent_at"] },
+            { "required": ["delivered_at"] }
+          ]
+        }
+      }
+    }
+  ]
+}

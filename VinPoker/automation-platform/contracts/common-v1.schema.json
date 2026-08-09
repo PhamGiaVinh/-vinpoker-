@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.vbacker.internal/automation/common-v1.schema.json",
+  "title": "AutomationCommonV1",
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": ["CLUB", "PLATFORM"]
+        },
+        "club_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "CLUB"
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["club_id"]
+          },
+          "else": {
+            "not": {
+              "required": ["club_id"]
+            }
+          }
+        }
+      ]
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["service", "module", "version", "environment"],
+      "properties": {
+        "service": {
+          "enum": [
+            "VINPOKER_DB",
+            "VINPOKER_EDGE",
+            "AUTOMATION_GATEWAY",
+            "HEALTH_MONITOR"
+          ]
+        },
+        "module": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "environment": {
+          "enum": ["DEV", "TEST", "PROD"]
+        }
+      }
+    },
+    "safeError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "code", "retryable"],
+      "properties": {
+        "class": {
+          "enum": [
+            "RATE_LIMIT",
+            "TRANSIENT",
+            "PERMANENT",
+            "AUTH",
+            "CONFIG",
+            "UNKNOWN"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_]{2,96}$"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

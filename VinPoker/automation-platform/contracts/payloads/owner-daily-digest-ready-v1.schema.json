@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.vbacker.internal/automation/payloads/owner-daily-digest-ready-v1.schema.json",
+  "title": "OwnerDailyDigestReadyPayloadV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_id",
+    "metric_count",
+    "warning_count",
+    "action_count",
+    "freshness_state",
+    "money_state"
+  ],
+  "properties": {
+    "artifact_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "metric_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "warning_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "action_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "freshness_state": {
+      "enum": ["FRESH", "PARTIAL", "STALE"]
+    },
+    "money_state": {
+      "enum": ["NONE", "PROVISIONAL", "CLOSED"]
+    }
+  }
+}

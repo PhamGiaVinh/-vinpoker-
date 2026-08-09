@@ -1,0 +1,353 @@
+{
+  "id": "66666666-6666-4666-8666-666666666666",
+  "name": "VBacker - Owner Daily Digest V1 (DEV Fixture)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "60000000-0000-4000-8000-000000000001",
+      "name": "Manual Fixture Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-1160, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "60000000-0000-4000-8000-000000000011",
+              "name": "gateway_operation",
+              "value": "CLAIM",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000012",
+              "name": "worker_id",
+              "value": "n8n-dev-owner-digest-01",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000013",
+              "name": "workflow_key",
+              "value": "owner.daily_digest.v1",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000014",
+              "name": "body",
+              "value": "={{ ({ workflow_key: 'owner.daily_digest.v1', worker_id: 'n8n-dev-owner-digest-01', batch_size: 20 }) }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "60000000-0000-4000-8000-000000000002",
+      "name": "Prepare Claim",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-940, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "55555555-5555-4555-8555-555555555555",
+          "mode": "list",
+          "cachedResultName": "VBacker - Signed Gateway Request V1 (DEV)"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "60000000-0000-4000-8000-000000000003",
+      "name": "Signed Claim",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [-720, 200]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "events",
+        "options": {}
+      },
+      "id": "60000000-0000-4000-8000-000000000004",
+      "name": "One Event Per Item",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [-500, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "60000000-0000-4000-8000-000000000021",
+              "name": "gateway_operation",
+              "value": "PREFLIGHT",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000022",
+              "name": "worker_id",
+              "value": "n8n-dev-owner-digest-01",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000023",
+              "name": "workflow_key",
+              "value": "owner.daily_digest.v1",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000024",
+              "name": "body",
+              "value": "={{ ({ event_id: $json.event.event_id, lease_token: $json.lease_token }) }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "60000000-0000-4000-8000-000000000005",
+      "name": "Prepare Preflight",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-280, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "55555555-5555-4555-8555-555555555555",
+          "mode": "list",
+          "cachedResultName": "VBacker - Signed Gateway Request V1 (DEV)"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "60000000-0000-4000-8000-000000000006",
+      "name": "Signed Preflight",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [-60, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "60000000-0000-4000-8000-000000000031",
+              "name": "gateway_operation",
+              "value": "DIGEST_ARTIFACT",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000032",
+              "name": "worker_id",
+              "value": "n8n-dev-owner-digest-01",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000033",
+              "name": "workflow_key",
+              "value": "owner.daily_digest.v1",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000034",
+              "name": "body",
+              "value": "={{ ({ event_id: $('One Event Per Item').item.json.event.event_id, lease_token: $('One Event Per Item').item.json.lease_token, simulate_ai_outage: false }) }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "60000000-0000-4000-8000-000000000007",
+      "name": "Prepare Artifact",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [160, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "55555555-5555-4555-8555-555555555555",
+          "mode": "list",
+          "cachedResultName": "VBacker - Signed Gateway Request V1 (DEV)"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "60000000-0000-4000-8000-000000000008",
+      "name": "Signed Artifact",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [380, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "60000000-0000-4000-8000-000000000041",
+              "name": "gateway_operation",
+              "value": "ENQUEUE",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000042",
+              "name": "worker_id",
+              "value": "n8n-dev-owner-digest-01",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000043",
+              "name": "workflow_key",
+              "value": "owner.daily_digest.v1",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000044",
+              "name": "body",
+              "value": "={{ ({ event_id: $('One Event Per Item').item.json.event.event_id, lease_token: $('One Event Per Item').item.json.lease_token, request: { schema_version: 1, request_id: $('One Event Per Item').item.json.event.event_id, event_id: $('One Event Per Item').item.json.event.event_id, scope: $('One Event Per Item').item.json.event.scope, notification_key: 'owner.daily_digest', stage: 'initial', template_key: 'owner.daily_digest.v1', template_version: 1, routing_policy_key: 'club_owners_daily_digest_v1', routing_policy_version: 1, severity: 'P2', content_artifact_id: $json.artifact_id, action: { action_key: 'OPEN_DAILY_DIGEST', entity_id: $json.artifact_id }, requested_at: $json.generated_at, not_before: $json.generated_at, expires_at: $json.expires_at, unknown_policy: 'MANUAL_RECONCILE_NO_RETRY' } }) }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "60000000-0000-4000-8000-000000000009",
+      "name": "Prepare Enqueue",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [600, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "55555555-5555-4555-8555-555555555555",
+          "mode": "list",
+          "cachedResultName": "VBacker - Signed Gateway Request V1 (DEV)"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "60000000-0000-4000-8000-000000000010",
+      "name": "Signed Enqueue",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [820, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "60000000-0000-4000-8000-000000000051",
+              "name": "gateway_operation",
+              "value": "COMPLETE",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000052",
+              "name": "worker_id",
+              "value": "n8n-dev-owner-digest-01",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000053",
+              "name": "workflow_key",
+              "value": "owner.daily_digest.v1",
+              "type": "string"
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000054",
+              "name": "body",
+              "value": "={{ ({ event_id: $('One Event Per Item').item.json.event.event_id, lease_token: $('One Event Per Item').item.json.lease_token, notification_id: $json.notification_id }) }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "60000000-0000-4000-8000-000000000011",
+      "name": "Prepare Complete",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1040, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "55555555-5555-4555-8555-555555555555",
+          "mode": "list",
+          "cachedResultName": "VBacker - Signed Gateway Request V1 (DEV)"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "60000000-0000-4000-8000-000000000012",
+      "name": "Signed Complete",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [1260, 200]
+    }
+  ],
+  "connections": {
+    "Manual Fixture Start": {
+      "main": [[{"node": "Prepare Claim", "type": "main", "index": 0}]]
+    },
+    "Prepare Claim": {
+      "main": [[{"node": "Signed Claim", "type": "main", "index": 0}]]
+    },
+    "Signed Claim": {
+      "main": [[{"node": "One Event Per Item", "type": "main", "index": 0}]]
+    },
+    "One Event Per Item": {
+      "main": [[{"node": "Prepare Preflight", "type": "main", "index": 0}]]
+    },
+    "Prepare Preflight": {
+      "main": [[{"node": "Signed Preflight", "type": "main", "index": 0}]]
+    },
+    "Signed Preflight": {
+      "main": [[{"node": "Prepare Artifact", "type": "main", "index": 0}]]
+    },
+    "Prepare Artifact": {
+      "main": [[{"node": "Signed Artifact", "type": "main", "index": 0}]]
+    },
+    "Signed Artifact": {
+      "main": [[{"node": "Prepare Enqueue", "type": "main", "index": 0}]]
+    },
+    "Prepare Enqueue": {
+      "main": [[{"node": "Signed Enqueue", "type": "main", "index": 0}]]
+    },
+    "Signed Enqueue": {
+      "main": [[{"node": "Prepare Complete", "type": "main", "index": 0}]]
+    },
+    "Prepare Complete": {
+      "main": [[{"node": "Signed Complete", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": false
+  },
+  "pinData": {},
+  "tags": [],
+  "versionId": "66666666-6666-4666-8666-666666666667"
+}

@@ -1,0 +1,266 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.vbacker.internal/automation/notification-request-v1.schema.json",
+  "title": "NotificationRequestV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "request_id",
+    "event_id",
+    "scope",
+    "notification_key",
+    "stage",
+    "template_key",
+    "template_version",
+    "routing_policy_key",
+    "routing_policy_version",
+    "severity",
+    "action",
+    "requested_at",
+    "not_before",
+    "expires_at",
+    "unknown_policy"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "request_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "scope": {
+      "$ref": "./common-v1.schema.json#/$defs/scope"
+    },
+    "notification_key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]{2,95}$"
+    },
+    "stage": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{1,31}$"
+    },
+    "template_key": {
+      "enum": [
+        "owner.daily_digest.v1",
+        "system.health.component_degraded.v1",
+        "system.health.component_recovered.v1",
+        "system.health.backlog_high.v1",
+        "system.health.reconciliation_required.v1"
+      ]
+    },
+    "template_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "routing_policy_key": {
+      "enum": [
+        "club_owners_daily_digest_v1",
+        "club_owners_system_health_v1",
+        "platform_owners_system_health_v1"
+      ]
+    },
+    "routing_policy_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "severity": {
+      "enum": ["P0", "P1", "P2", "MARKETING"]
+    },
+    "content_artifact_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "template_params": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 8,
+      "properties": {
+        "incident_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "component": {
+          "enum": [
+            "SUPABASE_DB",
+            "SUPABASE_AUTH",
+            "EDGE_FUNCTIONS",
+            "REALTIME",
+            "VERCEL_FRONTEND",
+            "N8N_WORKER",
+            "ONESIGNAL",
+            "TELEGRAM",
+            "RESEND"
+          ]
+        },
+        "error_code": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_]{2,96}$"
+        },
+        "pending_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "oldest_age_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31536000
+        },
+        "freshness_state": {
+          "enum": ["FRESH", "PARTIAL", "STALE"]
+        }
+      }
+    },
+    "action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action_key"],
+          "properties": {
+            "action_key": {
+              "const": "NONE"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action_key", "entity_id"],
+          "properties": {
+            "action_key": {
+              "enum": [
+                "OPEN_DAILY_DIGEST",
+                "OPEN_AUTOMATION_HEALTH",
+                "OPEN_DELIVERY_RECONCILIATION"
+              ]
+            },
+            "entity_id": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      ]
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "not_before": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "unknown_policy": {
+      "enum": [
+        "MANUAL_RECONCILE_NO_RETRY",
+        "RETRY_ONLY_AFTER_CONFIRMED_NOT_SENT"
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["content_artifact_id"],
+      "not": {
+        "required": ["template_params"]
+      }
+    },
+    {
+      "required": ["template_params"],
+      "not": {
+        "required": ["content_artifact_id"]
+      }
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "template_key": {
+            "const": "owner.daily_digest.v1"
+          }
+        },
+        "required": ["template_key"]
+      },
+      "then": {
+        "required": ["content_artifact_id"],
+        "properties": {
+          "routing_policy_key": {
+            "const": "club_owners_daily_digest_v1"
+          },
+          "severity": {
+            "const": "P2"
+          },
+          "unknown_policy": {
+            "const": "MANUAL_RECONCILE_NO_RETRY"
+          },
+          "action": {
+            "type": "object",
+            "properties": {
+              "action_key": {
+                "const": "OPEN_DAILY_DIGEST"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "template_key": {
+            "type": "string",
+            "pattern": "^system\\.health\\."
+          }
+        },
+        "required": ["template_key"]
+      },
+      "then": {
+        "required": ["template_params"],
+        "properties": {
+          "severity": {
+            "enum": ["P0", "P1"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "template_key": {
+            "const": "system.health.reconciliation_required.v1"
+          }
+        },
+        "required": ["template_key"]
+      },
+      "then": {
+        "properties": {
+          "unknown_policy": {
+            "const": "MANUAL_RECONCILE_NO_RETRY"
+          },
+          "action": {
+            "type": "object",
+            "properties": {
+              "action_key": {
+                "const": "OPEN_DELIVERY_RECONCILIATION"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

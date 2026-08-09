@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.vbacker.internal/automation/payloads/system-health-v1.schema.json",
+  "title": "SystemHealthPayloadV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["incident_id", "component"],
+  "properties": {
+    "incident_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "component": {
+      "enum": [
+        "SUPABASE_DB",
+        "SUPABASE_AUTH",
+        "EDGE_FUNCTIONS",
+        "REALTIME",
+        "VERCEL_FRONTEND",
+        "N8N_WORKER",
+        "ONESIGNAL",
+        "TELEGRAM",
+        "RESEND"
+      ]
+    },
+    "error_code": {
+      "type": "string",
+      "pattern": "^[A-Z0-9_]{2,96}$"
+    },
+    "pending_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000
+    },
+    "oldest_age_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 31536000
+    },
+    "affected_club_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000
+    },
+    "automation_depth": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1
+    }
+  }
+}
