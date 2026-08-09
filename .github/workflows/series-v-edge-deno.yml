@@ -1,0 +1,28 @@
+name: Series V Edge Deno
+
+on:
+  pull_request:
+    paths:
+      - "VinPoker/supabase/functions/series-intelligence-copilot/**"
+      - "VinPoker/supabase/migrations/20270110000004_series_v_candidate_and_rate_limit_v1.sql"
+      - ".github/workflows/series-v-edge-deno.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deno-proof:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: VinPoker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.8.0
+      - name: Check Edge import graph
+        run: deno check supabase/functions/series-intelligence-copilot/index.ts
+      - name: Run Deno-native contract tests
+        run: deno test --no-config supabase/functions/series-intelligence-copilot/runtime_deno_test.ts

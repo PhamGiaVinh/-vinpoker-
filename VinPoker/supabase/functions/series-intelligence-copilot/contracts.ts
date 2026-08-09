@@ -5,6 +5,7 @@ export const SERIES_V_VALIDATOR_VERSION = "series-v-edge-validator-v1" as const;
 
 export interface SeriesVRequestV1 {
   version: typeof SERIES_V_REQUEST_VERSION;
+  requestId: string;
   clubId: string;
   question: string;
   selectedOptionIds: readonly string[];
@@ -110,7 +111,7 @@ export interface SafeProviderReceiptV1 {
   inputTokens: number | null;
   outputTokens: number | null;
   validationState: "accepted" | "rejected";
-  rateLimitScope: "process_local_prototype";
+  rateLimitScope: "actor_club_global";
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -139,14 +140,16 @@ function stableIds(value: unknown, label: string, max: number): readonly string[
 
 export function parseSeriesVRequestV1(value: unknown): SeriesVRequestV1 {
   const input = record(value, "request");
-  exactKeys(input, ["version", "clubId", "question", "selectedOptionIds"], ["version", "clubId", "question"], "request");
+  exactKeys(input, ["version", "requestId", "clubId", "question", "selectedOptionIds"], ["version", "requestId", "clubId", "question"], "request");
   if (input.version !== SERIES_V_REQUEST_VERSION) throw new Error("request.version is invalid");
+  if (typeof input.requestId !== "string" || !UUID.test(input.requestId)) throw new Error("request.requestId is invalid");
   if (typeof input.clubId !== "string" || !UUID.test(input.clubId)) throw new Error("request.clubId is invalid");
   if (typeof input.question !== "string") throw new Error("request.question is invalid");
   const question = input.question.trim().normalize("NFC");
   if (question.length < 1 || question.length > 1_000) throw new Error("request.question must contain 1-1000 characters");
   return Object.freeze({
     version: SERIES_V_REQUEST_VERSION,
+    requestId: input.requestId.toLowerCase(),
     clubId: input.clubId.toLowerCase(),
     question,
     selectedOptionIds: input.selectedOptionIds === undefined
