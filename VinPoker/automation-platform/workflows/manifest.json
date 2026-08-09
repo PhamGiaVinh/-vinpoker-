@@ -11,7 +11,7 @@
       "file": "signed-gateway-request-v1.json",
       "workflow_key": "signed.gateway.request.v1",
       "workflow_version": 1,
-      "checksum_sha256": "0d4c8fe73bcdaea6ab4fb5407b5dd5c0104a8d2699701420a2837cebd53f2a7b",
+      "checksum_sha256": "fba058f4669d61ccddefdd7d33d27abc63f3787ae578133c0bd850ff86869d59",
       "event_schema_versions": [
         1
       ],
@@ -24,7 +24,7 @@
       "file": "owner-daily-digest-v1.json",
       "workflow_key": "owner.daily_digest.v1",
       "workflow_version": 1,
-      "checksum_sha256": "64fc555e83a6140283cff4d7688fa9a2c04f961d2f142448208658057d4c0ff7",
+      "checksum_sha256": "1885727b7564d1e1cd5abc24f296faf743a720a797edfe50614739799a14c5e9",
       "event_schema_versions": [
         1
       ],
