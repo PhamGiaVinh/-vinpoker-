@@ -57,7 +57,7 @@ import {
   REQUIRED_BOARD_COUNT,
 } from "./trackerWorkflow";
 import type { RailSeat } from "./SeatRail";
-import type { InputTableSummary } from "./InputTableMap";
+import type { InputTableLoadState, InputTableSummary } from "./InputTableMap";
 import { formatStack } from "./format";
 import { friendlyValidationError } from "./validationMessages";
 import {
@@ -172,6 +172,10 @@ export function useStandaloneHandInput(tournamentId: string) {
   const [tableName, setTableName] = useState("");
   const [handNumber, setHandNumber] = useState<number | "">("");
   const [availableTables, setAvailableTables] = useState<InputTableSummary[]>([]);
+  const [tableLoadState, setTableLoadState] = useState<InputTableLoadState>("loading");
+  const [tableLoadError, setTableLoadError] = useState<string | null>(null);
+  const [tableReloadAttempt, setTableReloadAttempt] = useState(0);
+  const [tableSelectionNotice, setTableSelectionNotice] = useState<string | null>(null);
   const [players, setPlayers] = useState<PlayerState[]>([]);
   const [currentStreet, setCurrentStreet] = useState<Street>("preflop");
   const [actions, setActions] = useState<ActionRecord[]>([]);
@@ -268,6 +272,9 @@ export function useStandaloneHandInput(tournamentId: string) {
   const spRef = useRef(searchParams);
   spRef.current = searchParams;
   const resumedTableRef = useRef<string | null>(null);
+  const tableListLoadGuardRef = useRef(createTableLoadGuard());
+  const loadedTablesTournamentRef = useRef<string | null>(null);
+  const activeTournamentRef = useRef(tournamentId);
 
   const setTableParam = useCallback(
     (id: string | null) => {
@@ -279,6 +286,10 @@ export function useStandaloneHandInput(tournamentId: string) {
     [setSearchParams]
   );
 
+  const retryTableLoad = useCallback(() => {
+    setTableReloadAttempt((attempt) => attempt + 1);
+  }, []);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
   }, []);
@@ -288,70 +299,150 @@ export function useStandaloneHandInput(tournamentId: string) {
   }, [tableId, handId]);
 
   useEffect(() => {
-    const guard = tableLoadGuardRef.current;
-    return () => guard.dispose();
+    const tableGuard = tableLoadGuardRef.current;
+    const tableListGuard = tableListLoadGuardRef.current;
+    return () => {
+      tableGuard.dispose();
+      tableListGuard.dispose();
+    };
   }, []);
+
+  useEffect(() => {
+    if (activeTournamentRef.current === tournamentId) return;
+
+    activeTournamentRef.current = tournamentId;
+    tableLoadGuardRef.current.begin("");
+    tableListLoadGuardRef.current.begin("");
+    actionScopeRef.current = "";
+    loadedTablesTournamentRef.current = null;
+    resumedTableRef.current = null;
+    setTableId("");
+    setTableName("");
+    setPlayers([]);
+    setHandId(null);
+    setHandStarted(false);
+    setLastHandId(null);
+    setOrphanHand(null);
+    setAutoResumeArmed(null);
+    setIsReadOnly(false);
+    setActionSyncBlocked(false);
+    setTableSelectionNotice(null);
+  }, [tournamentId]);
 
   // ----- Load tables (read-only enrichment, no new RPC) -------------------
   useEffect(() => {
-    if (!tournamentId) return;
     let cancelled = false;
-    const loadTables = async () => {
-      const { data } = await supabase.rpc("get_tournament_tables", { p_tournament_id: tournamentId });
-      const base = (Array.isArray(data) ? data : []).map((t: any) => ({
-        id: t.table_id,
-        name: t.table_name || t.table_id.slice(0, 8),
-      }));
-      const [{ data: seatRows }, { data: liveHands }] = await Promise.all([
-        supabase
-          .from("tournament_seats")
-          .select("table_id, player_id")
-          .eq("tournament_id", tournamentId)
-          .eq("is_active", true),
-        supabase
-          .from("tournament_hands")
-          .select("table_id")
-          .eq("tournament_id", tournamentId)
-          .eq("status", "in_progress"),
-      ]);
-      if (cancelled) return;
-      const countByTable = new Map<string, number>();
-      (seatRows ?? []).forEach((s: any) => {
-        if (s.player_id) countByTable.set(s.table_id, (countByTable.get(s.table_id) || 0) + 1);
-      });
-      const liveSet = new Set<string>((liveHands ?? []).map((h: any) => h.table_id));
+    const requestToken = tableListLoadGuardRef.current.begin(tournamentId);
+    loadedTablesTournamentRef.current = null;
+    setAvailableTables([]);
+    setTableSelectionNotice(null);
 
-      // trackerMultiTable: enrich with "who holds each table" via the read-only lock RPC.
-      // Flag OFF → this call is skipped entirely (byte-identical). If the migration isn't
-      // applied the RPC 42883s → we swallow it and just omit lock info (no crash).
-      const lockByTable = new Map<string, any>();
-      if (FEATURES.trackerMultiTable && user?.id) {
-        const { data: lockData, error: lockErr } = await supabase.rpc("get_tracker_table_locks" as any, {
-          p_tournament_id: tournamentId,
-          p_actor_user_id: user.id,
-        });
-        const res = lockData as { ok?: boolean; locks?: any[] } | null;
-        if (!lockErr && res?.ok && Array.isArray(res.locks)) {
-          res.locks.forEach((l: any) => lockByTable.set(l.table_id, l));
+    const isCurrentRequest = () => !cancelled && tableListLoadGuardRef.current.isCurrent(requestToken);
+
+    if (!tournamentId) {
+      setTableLoadState("not_found");
+      setTableLoadError("Thiếu mã giải đấu.");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setTableLoadState("loading");
+    setTableLoadError(null);
+    const loadTables = async () => {
+      try {
+        const { data: tournament, error: tournamentError } = await supabase
+          .from("tournaments")
+          .select("id")
+          .eq("id", tournamentId)
+          .maybeSingle();
+
+        if (!isCurrentRequest()) return;
+        if (tournamentError) {
+          setTableLoadState("error");
+          setTableLoadError("Không thể xác minh giải đang mở. Hãy kiểm tra quyền truy cập rồi thử lại.");
+          return;
         }
+        if (!tournament) {
+          setTableLoadState("not_found");
+          setTableLoadError("Không tìm thấy giải hoặc bạn không có quyền truy cập.");
+          return;
+        }
+
+        const { data, error: tablesError } = await supabase.rpc("get_tournament_tables", { p_tournament_id: tournamentId });
+        if (!isCurrentRequest()) return;
+        if (tablesError) {
+          setTableLoadState("error");
+          setTableLoadError("Không thể tải danh sách bàn. Hãy thử lại.");
+          return;
+        }
+        const base = (Array.isArray(data) ? data : []).map((t: any) => ({
+          id: t.table_id,
+          name: t.table_name || t.table_id.slice(0, 8),
+        }));
+        const [{ data: seatRows, error: seatError }, { data: liveHands, error: liveHandsError }] = await Promise.all([
+          supabase
+            .from("tournament_seats")
+            .select("table_id, player_id")
+            .eq("tournament_id", tournamentId)
+            .eq("is_active", true),
+          supabase
+            .from("tournament_hands")
+            .select("table_id")
+            .eq("tournament_id", tournamentId)
+            .eq("status", "in_progress"),
+        ]);
+        if (!isCurrentRequest()) return;
+        if (seatError || liveHandsError) {
+          setTableLoadState("error");
+          setTableLoadError("Không thể tải trạng thái bàn. Hãy thử lại.");
+          return;
+        }
+        const countByTable = new Map<string, number>();
+        (seatRows ?? []).forEach((s: any) => {
+          if (s.player_id) countByTable.set(s.table_id, (countByTable.get(s.table_id) || 0) + 1);
+        });
+        const liveSet = new Set<string>((liveHands ?? []).map((h: any) => h.table_id));
+
+        // trackerMultiTable: enrich with "who holds each table" via the read-only lock RPC.
+        // Flag OFF → this call is skipped entirely (byte-identical). If the migration isn't
+        // applied the RPC 42883s → we swallow it and just omit lock info (no crash).
+        const lockByTable = new Map<string, any>();
+        if (FEATURES.trackerMultiTable && user?.id) {
+          const { data: lockData, error: lockErr } = await supabase.rpc("get_tracker_table_locks" as any, {
+            p_tournament_id: tournamentId,
+            p_actor_user_id: user.id,
+          });
+          const res = lockData as { ok?: boolean; locks?: any[] } | null;
+          if (!lockErr && res?.ok && Array.isArray(res.locks)) {
+            res.locks.forEach((l: any) => lockByTable.set(l.table_id, l));
+          }
+        }
+        if (!isCurrentRequest()) return;
+        loadedTablesTournamentRef.current = tournamentId;
+        setAvailableTables(
+          base.map((t) => ({
+            ...t,
+            playerCount: countByTable.get(t.id) || 0,
+            hasLiveHand: liveSet.has(t.id),
+            ...lockFieldsFrom(lockByTable.get(t.id)),
+          }))
+        );
+        setTableLoadState("ready");
+      } catch {
+        if (!isCurrentRequest()) return;
+        setAvailableTables([]);
+        setTableLoadState("error");
+        setTableLoadError("Không thể tải danh sách bàn. Hãy thử lại.");
       }
-      if (cancelled) return;
-      setAvailableTables(
-        base.map((t) => ({
-          ...t,
-          playerCount: countByTable.get(t.id) || 0,
-          hasLiveHand: liveSet.has(t.id),
-          ...lockFieldsFrom(lockByTable.get(t.id)),
-        }))
-      );
     };
-    loadTables();
+    void loadTables();
     return () => {
       cancelled = true;
     };
     // Review fix: gate user?.id on the flag so flag-OFF the dep is a constant null and
     // the base table queries don't double-fire when auth resolves async (byte-identical).
-  }, [tournamentId, FEATURES.trackerMultiTable ? user?.id ?? null : null]);
+  }, [tournamentId, FEATURES.trackerMultiTable ? user?.id ?? null : null, tableReloadAttempt]);
 
   // trackerMultiTable review fix: while the picker is open (no table selected), refresh
   // JUST the lock info every ~45s — so a lock that goes stale becomes takeover-able
@@ -680,10 +771,10 @@ export function useStandaloneHandInput(tournamentId: string) {
 
       // P2-5: physical seat capacity for the dead-button ring (read-only; default 9).
       supabase
-        .from("tournament_tables")
-        .select("max_seats")
-        .eq("tournament_id", tournamentId)
-        .eq("table_id", newTableId)
+          .from("tournament_tables")
+          .select("max_seats")
+          .eq("tournament_id", tournamentId)
+          .eq("id", newTableId)
         .maybeSingle()
         .then(({ data }) => {
           if (isCurrentLoad()) setMaxSeats((data as any)?.max_seats ?? 9);
@@ -808,6 +899,7 @@ export function useStandaloneHandInput(tournamentId: string) {
 
   const handlePickTable = useCallback(
     (id: string) => {
+      setTableSelectionNotice(null);
       setTableParam(id);
       void handleTableChange(id);
     },
@@ -819,6 +911,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     setTableName("");
     setPlayers([]);
     setOrphanHand(null);
+    setTableSelectionNotice(null);
     resumedTableRef.current = null;
     setTableParam(null);
   }, [setTableParam]);
@@ -864,16 +957,25 @@ export function useStandaloneHandInput(tournamentId: string) {
   // Resume the table from the URL once, when the list is ready and nothing selected.
   useEffect(() => {
     const tableFromUrl = searchParams.get("table");
-    if (!tableFromUrl || tableId || availableTables.length === 0) return;
+    if (
+      !tableFromUrl ||
+      tableId ||
+      tableLoadState !== "ready" ||
+      loadedTablesTournamentRef.current !== tournamentId
+    ) {
+      return;
+    }
     if (resumedTableRef.current === tableFromUrl) return;
     resumedTableRef.current = tableFromUrl;
     if (!availableTables.some((t) => t.id === tableFromUrl)) {
+      setTableSelectionNotice("Bàn được yêu cầu không thuộc giải đang mở. Hãy chọn một bàn trong danh sách.");
       setTableParam(null);
       return;
     }
+    setTableSelectionNotice(null);
     void handleTableChange(tableFromUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [availableTables, searchParams, tableId]);
+  }, [availableTables, searchParams, tableId, tableLoadState, tournamentId]);
 
   // ----- Derived ----------------------------------------------------------
   const potSize = useMemo(
@@ -2426,6 +2528,10 @@ export function useStandaloneHandInput(tournamentId: string) {
     handNumber,
     setHandNumber,
     availableTables,
+    tableLoadState,
+    tableLoadError,
+    retryTableLoad,
+    tableSelectionNotice,
     players,
     activePlayers,
     showdownOrderIds,

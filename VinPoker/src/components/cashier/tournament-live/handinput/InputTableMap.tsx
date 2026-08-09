@@ -25,12 +25,18 @@ export interface InputTableSummary {
   lockStale?: boolean;
 }
 
+export type InputTableLoadState = "loading" | "ready" | "error" | "not_found";
+
 interface InputTableMapProps {
   tables: InputTableSummary[];
   activeTableId: string | null;
   onSelect: (tableId: string) => void;
   /** trackerMultiTable — take over a stale lock, then open the table. */
   onTakeover?: (handId: string, tableId: string) => void;
+  loadState?: InputTableLoadState;
+  loadError?: string | null;
+  onRetry?: () => void;
+  selectionNotice?: string | null;
 }
 
 /** Poker-table top-view "logo": felt oval + 6 seat marks + a centered label. */
@@ -53,7 +59,39 @@ function TableTileIcon({ label, active }: { label: string; active: boolean }) {
   );
 }
 
-export function InputTableMap({ tables, activeTableId, onSelect, onTakeover }: InputTableMapProps) {
+export function InputTableMap({
+  tables,
+  activeTableId,
+  onSelect,
+  onTakeover,
+  loadState = "ready",
+  loadError = null,
+  onRetry,
+  selectionNotice = null,
+}: InputTableMapProps) {
+  if (loadState === "loading") {
+    return <div className="py-6 text-center text-sm text-muted-foreground">Đang tải danh sách bàn...</div>;
+  }
+
+  if (loadState === "not_found" || loadState === "error") {
+    return (
+      <div className="space-y-3 py-6 text-center" role="alert">
+        <div className="text-sm text-destructive">
+          {loadError ?? (loadState === "not_found" ? "Không tìm thấy giải hoặc bạn không có quyền truy cập." : "Không thể tải danh sách bàn.")}
+        </div>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-emerald-500/40"
+          >
+            Thử lại
+          </button>
+        )}
+      </div>
+    );
+  }
+
   if (!tables || tables.length === 0) {
     return (
       <div className="text-sm text-muted-foreground text-center py-6">
@@ -67,6 +105,7 @@ export function InputTableMap({ tables, activeTableId, onSelect, onTakeover }: I
       <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest px-0.5">
         Chọn bàn để nhập hand
       </div>
+      {selectionNotice && <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">{selectionNotice}</div>}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
         {tables.map((tbl) => {
           const isActive = activeTableId === tbl.id;

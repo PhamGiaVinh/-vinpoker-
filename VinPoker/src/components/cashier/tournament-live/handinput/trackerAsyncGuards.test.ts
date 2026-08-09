@@ -23,6 +23,15 @@ describe("tracker async guards", () => {
     expect(guard.isCurrent(tableB)).toBe(false);
   });
 
+  it("rejects a late table-list response after the routed tournament changes", () => {
+    const guard = createTableLoadGuard();
+    const tournamentA = guard.begin("tournament-a");
+    const tournamentB = guard.begin("tournament-b");
+
+    expect(guard.isCurrent(tournamentA)).toBe(false);
+    expect(guard.isCurrent(tournamentB)).toBe(true);
+  });
+
   it("builds a next-hand request from the explicit selected table, never a stale closure", () => {
     expect(buildNextHandNumberRequest("tournament-1", "table-b")).toEqual({
       p_tournament_id: "tournament-1",
