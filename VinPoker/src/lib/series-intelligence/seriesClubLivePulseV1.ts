@@ -38,15 +38,15 @@ export const SERIES_CLUB_PULSE_METRIC_DEFINITIONS: Readonly<Record<SeriesClubPul
   }),
   uniquePlayersToday: Object.freeze({
     metricId: "unique_players_today",
-    sourceId: "tournament_registrations.tournament_entries",
-    grain: "club_local_calendar_day",
-    definitionVersion: "club-unique-players-local-day-v1",
+    sourceId: "tournaments.tournament_registrations.tournament_entries",
+    grain: "club_event_start_local_calendar_day",
+    definitionVersion: "club-unique-players-event-day-v1",
   }),
   entriesToday: Object.freeze({
     metricId: "entries_today",
-    sourceId: "tournament_registrations",
-    grain: "club_local_calendar_day",
-    definitionVersion: "club-entries-local-day-v1",
+    sourceId: "tournaments.tournament_registrations",
+    grain: "club_event_start_local_calendar_day",
+    definitionVersion: "club-entries-event-day-v1",
   }),
   playersPlayingNow: Object.freeze({
     metricId: "players_playing_now",
@@ -270,21 +270,37 @@ export function parseSeriesClubLivePulseV1(value: unknown): SeriesClubLivePulseV
   }) as SeriesClubLivePulseV1;
 }
 
-export function mapSeriesClubLivePulseToCopilotClubPulseV1(pulse: SeriesClubLivePulseV1): ClubPulseV1 {
+function mapMetric(metric: SeriesClubPulseMetricV1, redactForExternalContext: boolean): CopilotMetricV1 {
+  const shouldSuppress = redactForExternalContext
+    && metric.availability !== "unavailable"
+    && metric.privacyState !== "safe";
+  return {
+    metricId: metric.metricId,
+    value: shouldSuppress ? null : metric.value,
+    unit: metric.unit,
+    availability: metric.availability,
+    privacyState: metric.privacyState,
+    asOf: metric.asOf,
+    sourceId: metric.sourceId,
+    grain: metric.grain,
+    definitionVersion: metric.definitionVersion,
+    ...(metric.unavailableReason ? { unavailableReason: metric.unavailableReason } : {}),
+    ...(shouldSuppress
+      ? { suppressionReason: metric.privacyState === "small_cohort_suppressed" ? "SMALL_COHORT_SUPPRESSED" as const : "NOT_EXPORTABLE" as const }
+      : {}),
+  };
+}
+
+export function mapSeriesClubLivePulseToOwnerClubPulseV1(pulse: SeriesClubLivePulseV1): ClubPulseV1 {
+  const trustedPulse = parseSeriesClubLivePulseV1(pulse);
   const metrics: CopilotMetricV1[] = SERIES_CLUB_PULSE_METRIC_KEYS.map((key) => {
-    const metric = pulse[key];
-    return {
-      metricId: metric.metricId,
-      value: metric.value,
-      unit: metric.unit,
-      availability: metric.availability,
-      privacyState: metric.privacyState,
-      asOf: metric.asOf,
-      sourceId: metric.sourceId,
-      grain: metric.grain,
-      definitionVersion: metric.definitionVersion,
-      ...(metric.unavailableReason ? { unavailableReason: metric.unavailableReason } : {}),
-    };
+    return mapMetric(trustedPulse[key], false);
   });
+  return deepFreeze({ version: "series-club-pulse-v1", sourceMode: "server_aggregate", metrics });
+}
+
+export function mapClubPulseToExternalCopilotContextV1(pulse: SeriesClubLivePulseV1): ClubPulseV1 {
+  const trustedPulse = parseSeriesClubLivePulseV1(pulse);
+  const metrics = SERIES_CLUB_PULSE_METRIC_KEYS.map((key) => mapMetric(trustedPulse[key], true));
   return deepFreeze({ version: "series-club-pulse-v1", sourceMode: "server_aggregate", metrics });
 }

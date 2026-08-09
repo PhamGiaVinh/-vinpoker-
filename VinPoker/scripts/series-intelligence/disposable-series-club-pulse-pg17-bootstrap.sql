@@ -35,6 +35,7 @@ CREATE TABLE public.tournaments (
   id uuid PRIMARY KEY,
   club_id uuid NOT NULL,
   status text NOT NULL,
+  start_time timestamptz,
   deleted_at timestamptz
 );
 

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { createSeriesCopilotContextV1 } from "./seriesCopilotContextV1";
+import { createMockSeriesCopilotContextV1 } from "./seriesCopilotMockAdapter";
 import {
-  mapSeriesClubLivePulseToCopilotClubPulseV1,
+  mapClubPulseToExternalCopilotContextV1,
+  mapSeriesClubLivePulseToOwnerClubPulseV1,
   parseSeriesClubLivePulseV1,
   SERIES_CLUB_PULSE_METRIC_DEFINITIONS,
   SERIES_CLUB_PULSE_METRIC_KEYS,
@@ -99,9 +102,9 @@ describe("SeriesClubLivePulseV1", () => {
     expect(() => parseSeriesClubLivePulseV1(payload)).toThrow(/small cohort/);
   });
 
-  it("maps every trusted metric to the existing Copilot context without losing provenance", () => {
+  it("keeps raw small cohorts in the explicit owner mapper", () => {
     const pulse = parseSeriesClubLivePulseV1(validPayload());
-    const mapped = mapSeriesClubLivePulseToCopilotClubPulseV1(pulse);
+    const mapped = mapSeriesClubLivePulseToOwnerClubPulseV1(pulse);
     expect(mapped.sourceMode).toBe("server_aggregate");
     expect(mapped.metrics).toHaveLength(SERIES_CLUB_PULSE_METRIC_KEYS.length);
     const unique = mapped.metrics.find((item) => item.metricId === "unique_players_today");
@@ -109,10 +112,94 @@ describe("SeriesClubLivePulseV1", () => {
       value: 3,
       availability: "partial",
       privacyState: "small_cohort_suppressed",
-      sourceId: "tournament_registrations.tournament_entries",
-      grain: "club_local_calendar_day",
-      definitionVersion: "club-unique-players-local-day-v1",
+      sourceId: "tournaments.tournament_registrations.tournament_entries",
+      grain: "club_event_start_local_calendar_day",
+      definitionVersion: "club-unique-players-event-day-v1",
     });
     expect(Object.isFrozen(mapped)).toBe(true);
+  });
+
+  it.each([1, 4])("redacts an external small cohort of %i while preserving provenance", (count) => {
+    const payload = validPayload();
+    payload.uniquePlayersToday = metric("uniquePlayersToday", count, "partial");
+    const pulse = parseSeriesClubLivePulseV1(payload);
+    const mapped = mapClubPulseToExternalCopilotContextV1(pulse);
+    const unique = mapped.metrics.find((item) => item.metricId === "unique_players_today");
+
+    expect(unique).toMatchObject({
+      value: null,
+      availability: "partial",
+      privacyState: "small_cohort_suppressed",
+      suppressionReason: "SMALL_COHORT_SUPPRESSED",
+      sourceId: "tournaments.tournament_registrations.tournament_entries",
+      grain: "club_event_start_local_calendar_day",
+      definitionVersion: "club-unique-players-event-day-v1",
+    });
+    expect(pulse.uniquePlayersToday.value).toBe(count);
+  });
+
+  it("keeps a safe external cohort visible and leaves unavailable distinct from zero", () => {
+    const payload = validPayload();
+    payload.uniquePlayersToday = metric("uniquePlayersToday", 5, "partial");
+    const unavailable = {
+      ...SERIES_CLUB_PULSE_METRIC_DEFINITIONS.entriesToday,
+      value: null,
+      unit: "count",
+      availability: "unavailable",
+      privacyState: "not_exportable",
+      asOf: AS_OF,
+      unavailableReason: "SOURCE_UNAVAILABLE",
+    };
+    payload.entriesToday = unavailable;
+    payload.dataQuality = {
+      unavailableMetricIds: ["entries_today"],
+      partialMetricIds: ["players_playing_now", "unique_players_today"],
+      staleMetricIds: [],
+    };
+    const mapped = mapClubPulseToExternalCopilotContextV1(parseSeriesClubLivePulseV1(payload));
+
+    expect(mapped.metrics.find((item) => item.metricId === "unique_players_today")?.value).toBe(5);
+    expect(mapped.metrics.find((item) => item.metricId === "entries_today")).toMatchObject({
+      value: null,
+      availability: "unavailable",
+      privacyState: "not_exportable",
+      unavailableReason: "SOURCE_UNAVAILABLE",
+    });
+  });
+
+  it("redacts an explicitly non-exportable available metric", () => {
+    const payload = validPayload();
+    payload.openTables = { ...metric("openTables", 6), privacyState: "not_exportable" };
+    const pulse = parseSeriesClubLivePulseV1(payload);
+    const mapped = mapClubPulseToExternalCopilotContextV1(pulse);
+
+    expect(mapped.metrics.find((item) => item.metricId === "open_tables")).toMatchObject({
+      value: null,
+      availability: "exact",
+      privacyState: "not_exportable",
+      suppressionReason: "NOT_EXPORTABLE",
+    });
+    expect(pulse.openTables.value).toBe(6);
+  });
+
+  it("hashes privacy-redacted context rather than hidden small-cohort values", async () => {
+    const mock = await createMockSeriesCopilotContextV1();
+    const contextFor = async (count: number) => {
+      const payload = validPayload();
+      payload.uniquePlayersToday = metric("uniquePlayersToday", count, "partial");
+      return createSeriesCopilotContextV1({
+        asOf: mock.asOf,
+        clubPulse: mapClubPulseToExternalCopilotContextV1(parseSeriesClubLivePulseV1(payload)),
+        scheduleHealth: mock.scheduleHealth,
+        candidateOptions: mock.candidateOptions,
+        dataGaps: mock.dataGaps,
+        evidence: mock.evidence.map((item) => ({ ...item, metricIds: [] })),
+      });
+    };
+
+    const hiddenOne = await contextFor(1);
+    const hiddenFour = await contextFor(4);
+    expect(hiddenOne.contextHash).toBe(hiddenFour.contextHash);
+    expect(hiddenOne.clubPulse.metrics.find((item) => item.metricId === "unique_players_today")?.value).toBeNull();
   });
 });

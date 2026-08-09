@@ -6,6 +6,7 @@ export const SERIES_COPILOT_PRIVACY_POLICY_VERSION = "series-copilot-aggregate-p
 
 export type CopilotAvailabilityV1 = "exact" | "partial" | "stale" | "unavailable";
 export type CopilotPrivacyStateV1 = "safe" | "small_cohort_suppressed" | "not_exportable";
+export type CopilotSuppressionReasonV1 = "SMALL_COHORT_SUPPRESSED" | "NOT_EXPORTABLE";
 export type CopilotMetricUnitV1 = "count" | "vnd" | "minutes" | "ratio" | "text";
 
 export interface CopilotMetricV1 {
@@ -19,6 +20,7 @@ export interface CopilotMetricV1 {
   grain: string;
   definitionVersion: string;
   unavailableReason?: string;
+  suppressionReason?: CopilotSuppressionReasonV1;
 }
 
 export interface ClubPulseV1 {
@@ -138,14 +140,30 @@ function normalizeMetric(metric: CopilotMetricV1): CopilotMetricV1 {
   if (metric.availability === "unavailable" && metric.value !== null) {
     throw new Error(`${metricId} cannot carry a value when unavailable`);
   }
-  if (metric.availability !== "unavailable" && metric.value === null) {
-    throw new Error(`${metricId} must carry a value when available`);
+  const expectedSuppressionReason = metric.privacyState === "small_cohort_suppressed"
+    ? "SMALL_COHORT_SUPPRESSED"
+    : metric.privacyState === "not_exportable"
+      ? "NOT_EXPORTABLE"
+      : undefined;
+  if (metric.availability !== "unavailable" && metric.value === null
+    && metric.suppressionReason !== expectedSuppressionReason) {
+    throw new Error(`${metricId} must carry a value or an explicit privacy suppression reason when available`);
   }
   if (metric.availability === "unavailable" && !metric.unavailableReason?.trim()) {
     throw new Error(`${metricId} must explain why it is unavailable`);
   }
   if (metric.availability !== "unavailable" && metric.unavailableReason !== undefined) {
     throw new Error(`${metricId}.unavailableReason is only valid when unavailable`);
+  }
+  if (metric.availability === "unavailable" && metric.suppressionReason !== undefined) {
+    throw new Error(`${metricId}.suppressionReason is invalid when unavailable`);
+  }
+  if (metric.value !== null && metric.suppressionReason !== undefined) {
+    throw new Error(`${metricId}.suppressionReason is only valid when the value is redacted`);
+  }
+  if (metric.value === null && metric.availability !== "unavailable"
+    && metric.privacyState === "safe") {
+    throw new Error(`${metricId} safe value cannot be redacted`);
   }
   if (typeof metric.value === "number" && (!Number.isFinite(metric.value) || metric.value < 0)) {
     throw new Error(`${metricId} must be a finite non-negative value`);
@@ -161,6 +179,7 @@ function normalizeMetric(metric: CopilotMetricV1): CopilotMetricV1 {
     grain: metric.grain.trim().normalize("NFC"),
     definitionVersion: normalizeId(metric.definitionVersion, `${metricId}.definitionVersion`),
     ...(metric.unavailableReason ? { unavailableReason: metric.unavailableReason.trim().normalize("NFC") } : {}),
+    ...(metric.suppressionReason ? { suppressionReason: metric.suppressionReason } : {}),
   };
 }
 

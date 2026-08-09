@@ -146,25 +146,37 @@ async function main() {
       FROM generate_series(1, 6) AS i;
       INSERT INTO public.club_members (id, club_id) VALUES ('20000000-0000-4000-8000-000000000001', ${quote(OTHER_CLUB)});
 
-      INSERT INTO public.tournaments (id, club_id, status, deleted_at) VALUES
-        ('30000000-0000-4000-8000-000000000001', ${quote(CLUB)}, 'live', NULL),
-        ('30000000-0000-4000-8000-000000000002', ${quote(CLUB)}, 'break', NULL),
-        ('30000000-0000-4000-8000-000000000003', ${quote(CLUB)}, 'final_table', NULL),
-        ('30000000-0000-4000-8000-000000000004', ${quote(CLUB)}, 'registering', NULL),
-        ('30000000-0000-4000-8000-000000000005', ${quote(CLUB)}, 'live', pg_catalog.clock_timestamp()),
-        ('30000000-0000-4000-8000-000000000006', ${quote(OTHER_CLUB)}, 'live', NULL);
+      WITH bounds AS (
+        SELECT ((pg_catalog.clock_timestamp() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh') AS start_at
+      )
+      INSERT INTO public.tournaments (id, club_id, status, start_time, deleted_at)
+      SELECT * FROM (VALUES
+        ('30000000-0000-4000-8000-000000000001'::uuid, ${quote(CLUB)}::uuid, 'live', (SELECT start_at + interval '8 hours' FROM bounds), NULL::timestamptz),
+        ('30000000-0000-4000-8000-000000000002', ${quote(CLUB)}, 'break', (SELECT start_at + interval '9 hours' FROM bounds), NULL),
+        ('30000000-0000-4000-8000-000000000003', ${quote(CLUB)}, 'final_table', (SELECT start_at + interval '10 hours' FROM bounds), NULL),
+        ('30000000-0000-4000-8000-000000000004', ${quote(CLUB)}, 'registering', (SELECT start_at + interval '1 day 8 hours' FROM bounds), NULL),
+        ('30000000-0000-4000-8000-000000000005', ${quote(CLUB)}, 'live', (SELECT start_at + interval '11 hours' FROM bounds), pg_catalog.clock_timestamp()),
+        ('30000000-0000-4000-8000-000000000006', ${quote(OTHER_CLUB)}, 'live', (SELECT start_at + interval '8 hours' FROM bounds), NULL),
+        ('30000000-0000-4000-8000-000000000007', ${quote(CLUB)}, 'upcoming', (SELECT start_at - interval '16 hours' FROM bounds), NULL),
+        ('30000000-0000-4000-8000-000000000008', ${quote(CLUB)}, 'cancelled', (SELECT start_at + interval '12 hours' FROM bounds), NULL),
+        ('30000000-0000-4000-8000-000000000009', ${quote(CLUB)}, 'upcoming', (SELECT start_at + interval '30 minutes' FROM bounds), NULL)
+      ) AS rows(id, club_id, status, start_time, deleted_at);
 
       WITH bounds AS (
         SELECT ((pg_catalog.clock_timestamp() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh') AS start_at
       )
       INSERT INTO public.tournament_registrations (id, tournament_id, player_id, status, confirmed_at)
       SELECT * FROM (VALUES
-        ('40000000-0000-4000-8000-000000000001'::uuid, '30000000-0000-4000-8000-000000000001'::uuid, '50000000-0000-4000-8000-000000000001'::uuid, 'confirmed', (SELECT start_at + interval '1 hour' FROM bounds)),
+        ('40000000-0000-4000-8000-000000000001'::uuid, '30000000-0000-4000-8000-000000000001'::uuid, '50000000-0000-4000-8000-000000000001'::uuid, 'confirmed', (SELECT start_at - interval '1 hour' FROM bounds)),
         ('40000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'confirmed', (SELECT start_at + interval '2 hours' FROM bounds)),
         ('40000000-0000-4000-8000-000000000003', '30000000-0000-4000-8000-000000000002', '50000000-0000-4000-8000-000000000002', 'confirmed', (SELECT start_at + interval '3 hours' FROM bounds)),
         ('40000000-0000-4000-8000-000000000004', '30000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000003', 'pending', (SELECT start_at + interval '4 hours' FROM bounds)),
-        ('40000000-0000-4000-8000-000000000005', '30000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000004', 'confirmed', (SELECT start_at - interval '1 second' FROM bounds)),
-        ('40000000-0000-4000-8000-000000000006', '30000000-0000-4000-8000-000000000006', '50000000-0000-4000-8000-000000000005', 'confirmed', (SELECT start_at + interval '1 hour' FROM bounds))
+        ('40000000-0000-4000-8000-000000000005', '30000000-0000-4000-8000-000000000004', '50000000-0000-4000-8000-000000000004', 'confirmed', (SELECT start_at + interval '4 hours' FROM bounds)),
+        ('40000000-0000-4000-8000-000000000006', '30000000-0000-4000-8000-000000000006', '50000000-0000-4000-8000-000000000005', 'confirmed', (SELECT start_at + interval '1 hour' FROM bounds)),
+        ('40000000-0000-4000-8000-000000000007', '30000000-0000-4000-8000-000000000007', '50000000-0000-4000-8000-000000000006', 'confirmed', (SELECT start_at + interval '5 hours' FROM bounds)),
+        ('40000000-0000-4000-8000-000000000008', '30000000-0000-4000-8000-000000000005', '50000000-0000-4000-8000-000000000007', 'confirmed', (SELECT start_at + interval '5 hours' FROM bounds)),
+        ('40000000-0000-4000-8000-000000000009', '30000000-0000-4000-8000-000000000008', '50000000-0000-4000-8000-000000000008', 'confirmed', (SELECT start_at + interval '5 hours' FROM bounds)),
+        ('40000000-0000-4000-8000-000000000010', '30000000-0000-4000-8000-000000000009', '50000000-0000-4000-8000-000000000009', 'confirmed', (SELECT start_at - interval '30 minutes' FROM bounds))
       ) AS rows(id, tournament_id, player_id, status, confirmed_at);
 
       INSERT INTO public.tournament_entries (id, tournament_id, registration_id, player_id, member_id) VALUES
@@ -220,8 +232,8 @@ async function main() {
     await check("canonical-timezone", () => assert(first.timezone === "Asia/Ho_Chi_Minh", "timezone mismatch"));
     await check("club-local-date", () => assert(/^\d{4}-\d{2}-\d{2}$/.test(first.clubLocalDate), "local date missing"));
     await check("member-profiles", () => assert(first.clubMemberProfiles.value === 6, "member count mismatch"));
-    await check("entries-today", () => assert(first.entriesToday.value === 3, "entry count mismatch"));
-    await check("unique-players-today", () => assert(first.uniquePlayersToday.value === 2, "unique count mismatch"));
+    await check("entries-today", () => assert(first.entriesToday.value === 4, "event-day entry count mismatch"));
+    await check("unique-players-today", () => assert(first.uniquePlayersToday.value === 3, "event-day unique count mismatch"));
     await check("unique-player-partial-linkage", () => assert(first.uniquePlayersToday.availability === "partial", "partial linkage not disclosed"));
     await check("players-playing-now", () => {
       const identities = scalar(connection, database, `
@@ -245,6 +257,35 @@ async function main() {
     await check("normalized-repeat-is-byte-identical", () => assert(normalized(first) === normalized(second), "normalized output drifted"));
     await check("no-raw-member-id", () => assert(!JSON.stringify(first).includes("10000000-0000-4000-8000"), "member id leaked"));
     await check("no-raw-dealer-id", () => assert(!JSON.stringify(first).includes("90000000-0000-4000-8000"), "dealer id leaked"));
+
+    const isolateRegistration = (registrationId) => {
+      psql(connection, database, `
+        UPDATE public.tournament_registrations SET status = 'pending';
+        UPDATE public.tournament_registrations SET status = 'confirmed'
+        WHERE id = ${quote(registrationId)}::uuid;
+      `);
+      return pulse(connection, database);
+    };
+    await check("event-today-registration-yesterday-counted", () => assert(isolateRegistration("40000000-0000-4000-8000-000000000001").entriesToday.value === 1, "prior-day registration was not counted for today's event"));
+    await check("event-today-registration-today-counted", () => assert(isolateRegistration("40000000-0000-4000-8000-000000000003").entriesToday.value === 1, "same-day registration was not counted"));
+    await check("event-tomorrow-registration-today-excluded", () => assert(isolateRegistration("40000000-0000-4000-8000-000000000005").entriesToday.value === 0, "tomorrow's event leaked into today"));
+    await check("event-yesterday-registration-today-excluded", () => assert(isolateRegistration("40000000-0000-4000-8000-000000000007").entriesToday.value === 0, "yesterday's event leaked into today"));
+    await check("deleted-event-excluded", () => assert(isolateRegistration("40000000-0000-4000-8000-000000000008").entriesToday.value === 0, "deleted event was counted"));
+    await check("cancelled-event-excluded", () => assert(isolateRegistration("40000000-0000-4000-8000-000000000009").entriesToday.value === 0, "cancelled event was counted"));
+    await check("local-day-crossing-counted", () => assert(isolateRegistration("40000000-0000-4000-8000-000000000010").entriesToday.value === 1, "local midnight event was not counted"));
+    await check("dst-boundary-uses-zone-aware-instants", () => {
+      const hours = Number(scalar(connection, database, `
+        SELECT EXTRACT(epoch FROM (
+          ('2026-03-09'::date::timestamp AT TIME ZONE 'America/New_York')
+          - ('2026-03-08'::date::timestamp AT TIME ZONE 'America/New_York')
+        )) / 3600;
+      `));
+      assert(hours === 23, `expected a 23-hour DST day, received ${hours}`);
+    });
+    psql(connection, database, `
+      UPDATE public.tournament_registrations
+      SET status = CASE WHEN id = '40000000-0000-4000-8000-000000000004'::uuid THEN 'pending' ELSE 'confirmed' END;
+    `);
 
     psql(connection, database, `UPDATE public.club_settings SET timezone = NULL WHERE club_id = ${quote(CLUB)};`);
     const missingTimezone = pulse(connection, database);

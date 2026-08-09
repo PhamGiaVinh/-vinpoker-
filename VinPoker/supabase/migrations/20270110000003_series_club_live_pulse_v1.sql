@@ -2,6 +2,8 @@
 -- SOURCE-ONLY: this migration must not be applied outside an owner-gated DB runbook.
 -- The function returns aggregate counts only. It does not expose player, dealer,
 -- registration, seat, or table identifiers and it performs no writes.
+-- Amended before first production apply: today metrics use the tournament's
+-- canonical start_time in the club timezone, not registration confirmation time.
 --
 -- ROLLBACK (owner-gated, forward-only): add a reviewed migration that revokes
 -- and drops public.get_series_club_live_pulse_v1(uuid).
@@ -119,10 +121,11 @@ BEGIN
         JOIN public.tournaments AS t ON t.id = tr.tournament_id
         WHERE t.club_id = p_club_id
           AND t.deleted_at IS NULL
+          AND t.status <> 'cancelled'
+          AND t.start_time IS NOT NULL
+          AND t.start_time >= v_day_start
+          AND t.start_time < v_day_end
           AND tr.status = 'confirmed'
-          AND tr.confirmed_at IS NOT NULL
-          AND tr.confirmed_at >= v_day_start
-          AND tr.confirmed_at < v_day_end
       ), identities AS (
         SELECT q.id,
                COALESCE(te.member_id::text, q.player_id::text) AS canonical_identity,
@@ -147,10 +150,11 @@ BEGIN
       JOIN public.tournaments AS t ON t.id = tr.tournament_id
       WHERE t.club_id = p_club_id
         AND t.deleted_at IS NULL
-        AND tr.status = 'confirmed'
-        AND tr.confirmed_at IS NOT NULL
-        AND tr.confirmed_at >= v_day_start
-        AND tr.confirmed_at < v_day_end;
+        AND t.status <> 'cancelled'
+        AND t.start_time IS NOT NULL
+        AND t.start_time >= v_day_start
+        AND t.start_time < v_day_end
+        AND tr.status = 'confirmed';
 
       v_unique_today_availability := CASE WHEN v_unique_today_fallback THEN 'partial' ELSE 'exact' END;
       v_entries_today_availability := 'exact';
@@ -294,15 +298,15 @@ BEGIN
       'metricId', 'unique_players_today', 'value', v_unique_today_count, 'unit', 'count',
       'availability', v_unique_today_availability,
       'privacyState', CASE WHEN v_unique_today_availability = 'unavailable' THEN 'not_exportable' WHEN v_unique_today_count BETWEEN 1 AND 4 THEN 'small_cohort_suppressed' ELSE 'safe' END,
-      'asOf', v_as_of_text, 'sourceId', 'tournament_registrations.tournament_entries', 'grain', 'club_local_calendar_day',
-      'definitionVersion', 'club-unique-players-local-day-v1'
+      'asOf', v_as_of_text, 'sourceId', 'tournaments.tournament_registrations.tournament_entries', 'grain', 'club_event_start_local_calendar_day',
+      'definitionVersion', 'club-unique-players-event-day-v1'
     ) || CASE WHEN v_unique_today_reason IS NULL THEN '{}'::jsonb ELSE pg_catalog.jsonb_build_object('unavailableReason', v_unique_today_reason) END,
     'entriesToday', pg_catalog.jsonb_build_object(
       'metricId', 'entries_today', 'value', v_entries_today_count, 'unit', 'count',
       'availability', v_entries_today_availability,
       'privacyState', CASE WHEN v_entries_today_availability = 'unavailable' THEN 'not_exportable' WHEN v_entries_today_count BETWEEN 1 AND 4 THEN 'small_cohort_suppressed' ELSE 'safe' END,
-      'asOf', v_as_of_text, 'sourceId', 'tournament_registrations', 'grain', 'club_local_calendar_day',
-      'definitionVersion', 'club-entries-local-day-v1'
+      'asOf', v_as_of_text, 'sourceId', 'tournaments.tournament_registrations', 'grain', 'club_event_start_local_calendar_day',
+      'definitionVersion', 'club-entries-event-day-v1'
     ) || CASE WHEN v_entries_today_reason IS NULL THEN '{}'::jsonb ELSE pg_catalog.jsonb_build_object('unavailableReason', v_entries_today_reason) END,
     'playersPlayingNow', pg_catalog.jsonb_build_object(
       'metricId', 'players_playing_now', 'value', v_playing_count, 'unit', 'count',

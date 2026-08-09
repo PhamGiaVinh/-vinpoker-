@@ -28,7 +28,10 @@ describe("Series Club Pulse V1 source-only migration", () => {
 
   it("keeps the seven metric semantics explicit and aggregate-only", () => {
     expect(MIGRATION).toContain("tr.status = 'confirmed'");
-    expect(MIGRATION).toContain("tr.confirmed_at >= v_day_start");
+    expect(MIGRATION).toContain("t.start_time >= v_day_start");
+    expect(MIGRATION).toContain("t.start_time < v_day_end");
+    expect(MIGRATION).toContain("t.status <> 'cancelled'");
+    expect(MIGRATION).not.toContain("tr.confirmed_at >= v_day_start");
     expect(MIGRATION).toContain("t.status IN ('live', 'break', 'final_table')");
     expect(MIGRATION).toContain("ts.is_active IS TRUE");
     expect(MIGRATION).toContain("ts.status = 'active'");
