@@ -4,7 +4,7 @@ import type { SeriesCopilotProvider } from "./provider";
 import { inputs, validResponse } from "./contracts.test";
 import { AS_OF, CLUB_ID, pulse } from "./serverContext.test";
 
-const ENV = { supabaseUrl: "https://project.supabase.co", supabaseAnonKey: "anon-test", geminiApiKey: "server-test-key", geminiModel: "gemini-test-001" };
+const ENV = { supabaseUrl: "https://project.supabase.co", supabaseAnonKey: "anon-test", geminiApiKey: "server-test-key" };
 const AUTH = { Authorization: "Bearer user-test-token", "Content-Type": "application/json" };
 type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
 interface FetchSpy { mock: { calls: FetchCall[] } }
@@ -83,13 +83,47 @@ describe("series-intelligence-copilot handler", () => {
     expect((await handler(request(body()))).status).toBe(403);
   });
 
-  it("does not call Gemini when approved candidates are unavailable", async () => {
-    const blockedProvider = { ask: vi.fn() } as unknown as SeriesCopilotProvider;
-    const handler = createSeriesCopilotHandlerV1({ env: ENV, fetchImpl: sourceFetch(), providerFactory: () => blockedProvider, scheduleSource: async () => ({ candidateOptions: [], evidence: [], dataGaps: [] }), rateLimitSource: allowedRate });
+  it("allows an evidence-only Gemini summary but no recommendation when approved candidates are unavailable", async () => {
+    const evidenceOnlyProvider: SeriesCopilotProvider = { ask: vi.fn(async ({ context }) => ({
+      response: {
+        version: "series-v-response-v1",
+        summaryVi: "Club Pulse is available but no schedule candidate is approved.",
+        optionAssessments: [],
+        recommendedOptionId: null,
+        missingDataIds: ["gap_approved_schedule_candidates"],
+        evidenceRefs: ["club_pulse_server"],
+        answerStatus: "blocked",
+        humanDecisionRequired: true,
+      },
+      receipt: {
+        provider: "gemini", modelId: "gemini-test-001", contextHash: context.contextHash,
+        promptContractVersion: "series-v-prompt-policy-v1", responseContractVersion: "series-v-response-v1",
+        validatorVersion: "series-v-edge-validator-v1", latencyMs: 1, inputTokens: 1, outputTokens: 1,
+        validationState: "accepted", rateLimitScope: "actor_club_global",
+      },
+    })) };
+    const handler = createSeriesCopilotHandlerV1({
+      env: ENV,
+      fetchImpl: sourceFetch(),
+      providerFactory: () => evidenceOnlyProvider,
+      scheduleSource: async () => ({
+        candidateOptions: [],
+        evidence: [],
+        dataGaps: [{
+          dataGapId: "gap_approved_schedule_candidates",
+          titleVi: "No approved schedule candidate",
+          detailVi: "An owner-approved server-side candidate is required.",
+          severity: "critical",
+          blocksRecommendation: true,
+          requiredSourceVi: "Approved server-side schedule candidate",
+        }],
+      }),
+      rateLimitSource: allowedRate,
+    });
     const response = await handler(request(body([])));
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ reason: "APPROVED_SCHEDULE_CANDIDATES_UNAVAILABLE", response: { answerStatus: "blocked" } });
-    expect(blockedProvider.ask).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ context: { candidateOptions: [] }, response: { answerStatus: "blocked", recommendedOptionId: null } });
+    expect(evidenceOnlyProvider.ask).toHaveBeenCalledTimes(1);
   });
 
   it("rejects browser-supplied metrics and missing auth", async () => {

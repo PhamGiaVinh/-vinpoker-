@@ -1,7 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { askMockSeriesCopilotV1, type MockSeriesCopilotRequestV1 } from "@/lib/series-intelligence/seriesCopilotMockAdapter";
+import { askMockSeriesCopilotV1, createMockSeriesCopilotContextV1 } from "@/lib/series-intelligence/seriesCopilotMockAdapter";
 import { VCopilotPanel } from "./VCopilotPanel";
+
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: { functions: { invoke: vi.fn() } },
+}));
 
 beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
@@ -25,8 +29,9 @@ describe("VCopilotPanel", () => {
   it("shows the solving orb only during the mock request and renders the validated limited response", async () => {
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => { release = resolve; });
-    const ask = vi.fn(async (request: MockSeriesCopilotRequestV1) => {
+    const ask = vi.fn(async (request) => {
       await gate;
+      if (!request.context) throw new Error("missing mock context");
       return askMockSeriesCopilotV1({ ...request, latencyMs: 0 });
     });
     render(<VCopilotPanel ask={ask} />);
@@ -60,7 +65,7 @@ describe("VCopilotPanel", () => {
   });
 
   it("uses a supplied server aggregate without falling back to mock pulse values", async () => {
-    render(<VCopilotPanel contextMode="live" clubPulse={{
+    render(<VCopilotPanel contextMode="live" clubId="11111111-1111-4111-8111-111111111111" clubPulse={{
       version: "series-club-pulse-v1",
       sourceMode: "server_aggregate",
       metrics: [{
@@ -76,10 +81,34 @@ describe("VCopilotPanel", () => {
       }],
     }} />);
 
-    expect(await screen.findByText("Club Pulse đã nối · phương án minh họa")).toBeInTheDocument();
+    expect(await screen.findByText("Club Pulse server · Gemini")).toBeInTheDocument();
     expect(screen.queryByLabelText("Club Pulse minh họa")).toBeNull();
     expect(screen.queryByText("342")).toBeNull();
+    expect(screen.getByText(/V sẽ đọc Club Pulse/)).toBeInTheDocument();
+    expect(screen.queryByText("Sức khỏe lịch")).toBeNull();
+  });
+
+  it("renders the server-returned context and pinned model receipt after a live request", async () => {
+    const serverContext = await createMockSeriesCopilotContextV1();
+    const ask = vi.fn(async () => ({
+      ...(await askMockSeriesCopilotV1({ untrustedQuestion: "Đánh giá lịch", context: serverContext, latencyMs: 0 })),
+      receipt: { modelId: "gemini-3.6-flash" },
+    }));
+    render(<VCopilotPanel
+      contextMode="live"
+      clubId="11111111-1111-4111-8111-111111111111"
+      clubPulse={{ version: "series-club-pulse-v1", sourceMode: "server_aggregate", metrics: [] }}
+      ask={ask}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hỏi V" }));
+    expect(await screen.findByTestId("v-response")).toBeInTheDocument();
     expect(screen.getByText("Sức khỏe lịch")).toBeInTheDocument();
+    expect(screen.getByText("gemini-3.6-flash")).toBeInTheDocument();
+    expect(ask).toHaveBeenCalledWith(expect.objectContaining({
+      clubId: "11111111-1111-4111-8111-111111111111",
+      context: null,
+    }));
   });
 
   it("fails closed when live mode has no Club Pulse", async () => {

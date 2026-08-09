@@ -3,6 +3,8 @@ import type {
   DataGapV1,
   ProviderMetricV1,
   ScheduleCandidateV1,
+  ScheduleHealthDimensionV1,
+  ScheduleHealthStateV1,
   ServerCopilotContextV1,
 } from "./contracts.ts";
 
@@ -185,6 +187,77 @@ async function sha256(value: unknown): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function worstState(states: readonly ScheduleHealthStateV1[]): ScheduleHealthStateV1 {
+  if (states.includes("blocked")) return "blocked";
+  if (states.includes("insufficient_data")) return "insufficient_data";
+  if (states.includes("needs_review")) return "needs_review";
+  return "good";
+}
+
+function buildScheduleHealth(
+  metrics: readonly ProviderMetricV1[],
+  candidateOptions: readonly ScheduleCandidateV1[],
+  dataGaps: readonly DataGapV1[],
+  evidence: readonly CopilotEvidenceV1[],
+): ServerCopilotContextV1["scheduleHealth"] {
+  const refs = Object.freeze([...new Set(candidateOptions.flatMap((option) => option.evidenceRefs))].sort());
+  const noOptions = candidateOptions.length === 0;
+  const hasDemandEvidence = evidence.some((item) => item.metricIds.length > 0 && item.privacyState === "safe");
+  const hasUsablePulse = metrics.some((metric) => metric.privacyState === "safe" && metric.availability !== "unavailable");
+  const hasCriticalGap = dataGaps.some((gap) => gap.severity === "critical");
+  const hasImportantGap = dataGaps.some((gap) => gap.severity === "important");
+  const dimensions: readonly ScheduleHealthDimensionV1[] = Object.freeze([
+    Object.freeze({
+      key: "structure_completeness",
+      labelVi: "Độ đầy đủ cấu trúc",
+      state: noOptions ? "insufficient_data" : candidateOptions.every((option) => option.structureState === "complete") ? "good" : "needs_review",
+      detailVi: noOptions ? "Chưa có phương án lịch để kiểm tra." : "Kiểm tra buy-in, GTD, flight và thời lượng đã khai báo.",
+      evidenceRefs: refs,
+    }),
+    Object.freeze({
+      key: "demand_evidence",
+      labelVi: "Bằng chứng nhu cầu",
+      state: !hasDemandEvidence ? "insufficient_data" : hasUsablePulse ? "good" : "needs_review",
+      detailVi: !hasDemandEvidence ? "Chưa có bằng chứng nhu cầu có thể kiểm tra." : "Chỉ dùng nguồn đã gắn evidence ID.",
+      evidenceRefs: Object.freeze(evidence.filter((item) => item.metricIds.length > 0).map((item) => item.evidenceId).sort()),
+    }),
+    Object.freeze({
+      key: "gtd_stress",
+      labelVi: "Sức ép GTD",
+      state: noOptions ? "insufficient_data" : candidateOptions.every((option) => option.gtdStressState === "blocked") ? "blocked" : candidateOptions.some((option) => option.gtdStressState !== "supported") ? "needs_review" : "good",
+      detailVi: "Đọc trạng thái GTD đã được engine deterministic tính trước; V không tự tạo con số.",
+      evidenceRefs: refs,
+    }),
+    Object.freeze({
+      key: "schedule_collision",
+      labelVi: "Xung đột lịch",
+      state: noOptions ? "insufficient_data" : candidateOptions.some((option) => option.collisionState === "blocked") ? "blocked" : candidateOptions.some((option) => option.collisionState !== "clear") ? "needs_review" : "good",
+      detailVi: "So sánh chồng lịch đã biết; không suy diễn nguyên nhân hay mức ảnh hưởng.",
+      evidenceRefs: refs,
+    }),
+    Object.freeze({
+      key: "operational_feasibility",
+      labelVi: "Khả năng vận hành",
+      state: noOptions ? "insufficient_data" : candidateOptions.every((option) => option.capacityState === "blocked") ? "blocked" : candidateOptions.some((option) => option.capacityState !== "feasible") ? "needs_review" : "good",
+      detailVi: "Đối chiếu sức chứa và thời lượng khi dữ liệu tồn tại.",
+      evidenceRefs: refs,
+    }),
+    Object.freeze({
+      key: "data_readiness",
+      labelVi: "Độ sẵn sàng dữ liệu",
+      state: hasCriticalGap ? "blocked" : hasImportantGap ? "needs_review" : "good",
+      detailVi: dataGaps.length === 0 ? "Không có khoảng trống dữ liệu đã biết." : "Các khoảng trống được liệt kê riêng, không thay bằng số không.",
+      evidenceRefs: Object.freeze([]),
+    }),
+  ]);
+  return Object.freeze({
+    version: "series-schedule-health-v1",
+    overallState: worstState(dimensions.map((dimension) => dimension.state)),
+    dimensions,
+    assessedOptionIds: Object.freeze(candidateOptions.map((item) => item.optionId)),
+  });
+}
+
 export async function buildServerCopilotContextV1(
   rawPulse: unknown,
   expectedClubId: string,
@@ -212,20 +285,12 @@ export async function buildServerCopilotContextV1(
   }
   const candidateOptions = Object.freeze([...scheduleInputs.candidateOptions].sort((a, b) => a.optionId.localeCompare(b.optionId)));
   const dataGaps = Object.freeze([...scheduleInputs.dataGaps].sort((a, b) => a.dataGapId.localeCompare(b.dataGapId)));
-  const overallState = candidateOptions.length === 0
-    ? "insufficient_data" as const
-    : candidateOptions.every((option) => option.capacityState !== "blocked" && option.collisionState !== "blocked" && option.gtdStressState !== "blocked")
-      ? (dataGaps.length === 0 ? "good" as const : "needs_review" as const)
-      : "blocked" as const;
+  const scheduleHealth = buildScheduleHealth(metrics, candidateOptions, dataGaps, evidence);
   const withoutHash = {
     version: "series-copilot-context-v1" as const,
     asOf: pulse.asOf as string,
     clubPulse: { version: "series-club-pulse-v1" as const, sourceMode: "server_aggregate" as const, metrics: Object.freeze(metrics) },
-    scheduleHealth: {
-      version: "series-schedule-health-v1" as const,
-      overallState,
-      assessedOptionIds: Object.freeze(candidateOptions.map((item) => item.optionId)),
-    },
+    scheduleHealth,
     candidateOptions,
     dataGaps,
     evidence,

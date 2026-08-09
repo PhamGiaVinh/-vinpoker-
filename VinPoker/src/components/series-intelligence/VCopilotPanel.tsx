@@ -7,16 +7,28 @@ import { cn } from "@/lib/utils";
 import {
   askMockSeriesCopilotV1,
   createMockSeriesCopilotContextV1,
-  type MockSeriesCopilotRequestV1,
-  type MockSeriesCopilotResultV1,
 } from "@/lib/series-intelligence/seriesCopilotMockAdapter";
+import { askSeriesCopilotEdgeV1 } from "@/lib/series-intelligence/seriesCopilotEdgeClient";
 import { renderValidatedCopilotText } from "@/lib/series-intelligence/seriesCopilotEvidenceValidator";
 import type { ClubPulseV1, SeriesCopilotContextV1 } from "@/lib/series-intelligence/seriesCopilotContextV1";
+import type { VResponseValidationResultV1 } from "@/lib/series-intelligence/seriesCopilotResponseV1";
 import { DataGapPanel } from "./DataGapPanel";
 import { ScheduleHealthPanel } from "./ScheduleHealthPanel";
 import { VThinkingIndicator } from "./VThinkingIndicator";
 
-type AskV = (request: MockSeriesCopilotRequestV1) => Promise<MockSeriesCopilotResultV1>;
+interface AskVRequest {
+  untrustedQuestion: string;
+  context: SeriesCopilotContextV1 | null;
+  clubId: string | null;
+  signal?: AbortSignal;
+}
+interface AskVResult {
+  context: SeriesCopilotContextV1;
+  contextHash: string;
+  validation: VResponseValidationResultV1;
+  receipt?: { modelId: string };
+}
+type AskV = (request: AskVRequest) => Promise<AskVResult>;
 type RequestState = "idle" | "solving" | "success" | "error";
 
 const STATUS_COPY = {
@@ -40,24 +52,26 @@ function formatPulseValue(value: number | string | null): string {
 }
 
 export function VCopilotPanel({
-  ask = askMockSeriesCopilotV1,
+  ask,
   contextMode = "mock",
+  clubId = null,
   clubPulse = null,
 }: {
   ask?: AskV;
   contextMode?: "mock" | "live";
+  clubId?: string | null;
   clubPulse?: ClubPulseV1 | null;
 }) {
   const [context, setContext] = useState<SeriesCopilotContextV1 | null>(null);
   const [question, setQuestion] = useState("Lịch nào cân bằng hơn cho cuối tuần này?");
   const [requestState, setRequestState] = useState<RequestState>("idle");
-  const [result, setResult] = useState<MockSeriesCopilotResultV1 | null>(null);
+  const [result, setResult] = useState<AskVResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let active = true;
-    if (contextMode === "live" && !clubPulse) {
+    if (contextMode === "live" && (!clubPulse || !clubId)) {
       setContext(null);
       setError("Chưa có Club Pulse đủ điều kiện để V sử dụng.");
       return () => {
@@ -66,7 +80,14 @@ export function VCopilotPanel({
       };
     }
     setError(null);
-    createMockSeriesCopilotContextV1(contextMode === "live" ? clubPulse ?? undefined : undefined)
+    if (contextMode === "live") {
+      setContext(null);
+      return () => {
+        active = false;
+        controllerRef.current?.abort();
+      };
+    }
+    createMockSeriesCopilotContextV1()
       .then((next) => {
         if (active) setContext(next);
       })
@@ -77,10 +98,11 @@ export function VCopilotPanel({
       active = false;
       controllerRef.current?.abort();
     };
-  }, [clubPulse, contextMode]);
+  }, [clubId, clubPulse, contextMode]);
 
   const askV = async () => {
-    if (!context || question.trim().length === 0 || requestState === "solving") return;
+    const ready = contextMode === "live" ? Boolean(clubId && clubPulse) : Boolean(context);
+    if (!ready || question.trim().length === 0 || requestState === "solving") return;
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
@@ -88,7 +110,17 @@ export function VCopilotPanel({
     setResult(null);
     setError(null);
     try {
-      const next = await ask({ untrustedQuestion: question, context, signal: controller.signal });
+      const askImplementation: AskV = ask ?? (contextMode === "live"
+        ? async (request) => {
+            if (!request.clubId) throw new Error("CLUB_ID_UNAVAILABLE");
+            return askSeriesCopilotEdgeV1({ untrustedQuestion: request.untrustedQuestion, clubId: request.clubId, signal: request.signal });
+          }
+        : async (request) => {
+            if (!request.context) throw new Error("MOCK_CONTEXT_UNAVAILABLE");
+            return askMockSeriesCopilotV1({ untrustedQuestion: request.untrustedQuestion, context: request.context, signal: request.signal });
+          });
+      const next = await askImplementation({ untrustedQuestion: question, context, clubId, signal: controller.signal });
+      setContext(next.context);
       setResult(next);
       setRequestState("success");
     } catch (caught) {
@@ -118,7 +150,7 @@ export function VCopilotPanel({
             </div>
           </div>
           <Badge variant="outline" className="border-warning/35 bg-warning/10 text-warning">
-            {contextMode === "live" ? "Club Pulse đã nối · phương án minh họa" : "Dữ liệu minh họa"}
+            {contextMode === "live" ? "Club Pulse server · Gemini" : "Dữ liệu minh họa"}
           </Badge>
         </div>
       </div>
@@ -141,6 +173,11 @@ export function VCopilotPanel({
         </div>}
 
         {context && <ScheduleHealthPanel health={context.scheduleHealth} />}
+        {contextMode === "live" && !context && requestState !== "solving" && !error && (
+          <div role="status" className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
+            V sẽ đọc Club Pulse và các phương án lịch đã được owner duyệt khi bạn gửi câu hỏi.
+          </div>
+        )}
 
         <div className="space-y-2 border-t border-border/60 pt-4">
           <label htmlFor="v-owner-question" className="text-sm font-medium text-foreground">Hỏi V về lịch Series</label>
@@ -155,13 +192,14 @@ export function VCopilotPanel({
               className="min-h-20 resize-none"
               placeholder="Ví dụ: Phương án nào cân bằng giữa GTD, sức chứa và xung đột lịch?"
             />
-            <Button onClick={askV} disabled={!context || question.trim().length === 0 || requestState === "solving"} className="h-11 gap-2 sm:w-28">
+            <Button onClick={askV} disabled={(contextMode === "live" ? !clubId || !clubPulse : !context) || question.trim().length === 0 || requestState === "solving"} className="h-11 gap-2 sm:w-28">
               {requestState === "solving" ? <Sparkles className="h-4 w-4" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
               Hỏi V
             </Button>
           </div>
           <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <ShieldCheck className="h-3.5 w-3.5 text-primary" aria-hidden /> Câu hỏi là dữ liệu không tin cậy; mock không dùng nó để tạo facts mới.
+            <ShieldCheck className="h-3.5 w-3.5 text-primary" aria-hidden />
+            {contextMode === "live" ? "Gemini chỉ nhận aggregate và evidence server đã lọc; không nhận dữ liệu player thô." : "Câu hỏi là dữ liệu không tin cậy; mock không dùng nó để tạo facts mới."}
           </p>
         </div>
 
@@ -190,6 +228,7 @@ export function VCopilotPanel({
               >
                 {STATUS_COPY[response.answerStatus]}
               </Badge>
+              {result.receipt?.modelId && <Badge variant="outline" className="border-border text-muted-foreground">{result.receipt.modelId}</Badge>}
             </div>
             <p className="text-sm leading-6 text-foreground">{renderValidatedCopilotText(response.summaryVi, context)}</p>
 

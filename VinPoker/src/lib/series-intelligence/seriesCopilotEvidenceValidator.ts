@@ -90,6 +90,7 @@ function determineAnswerStatus(
   context: SeriesCopilotContextV1,
   textLimited: boolean,
 ): VAnswerStatusV1 {
+  if (context.candidateOptions.length === 0 || response.optionAssessments.length === 0) return "blocked";
   if (
     textLimited ||
     response.recommendedOptionId === null ||

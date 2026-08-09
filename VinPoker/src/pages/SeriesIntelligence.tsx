@@ -159,6 +159,7 @@ export default function SeriesIntelligence() {
       {FEATURES.seriesVCopilotV1 && (
         <VCopilotPanel
           contextMode={FEATURES.seriesClubPulseV1 ? "live" : "mock"}
+          clubId={liveClubPulse?.clubId ?? null}
           clubPulse={liveClubPulse ? mapClubPulseToExternalCopilotContextV1(liveClubPulse) : null}
         />
       )}

@@ -11,7 +11,9 @@ describe("V Copilot Edge source boundary", () => {
     expect(all).not.toMatch(/SUPABASE_SERVICE_ROLE_KEY|VITE_[A-Z_]*GEMINI/);
     expect(source("index.ts")).toContain('Deno.env.get("GEMINI_API_KEY")');
     expect(source("index.ts")).not.toContain('Deno.env.get("SERIES_GEMINI_API_KEY")');
-    expect(source("index.ts")).toContain('Deno.env.get("SERIES_GEMINI_MODEL")');
+    expect(source("geminiProvider.ts")).toContain('SERIES_GEMINI_MODEL_ID = "gemini-3.6-flash"');
+    expect(source("index.ts")).not.toContain("SERIES_GEMINI_MODEL");
+    expect(all).not.toContain("gemini-flash-latest");
   });
 
   it("uses fixed owner-context RPCs and does not query row-level player tables", () => {
@@ -24,8 +26,13 @@ describe("V Copilot Edge source boundary", () => {
     expect(handler).not.toContain("process_local_prototype");
   });
 
-  it("does not wire the browser UI or enable either source flag", () => {
+  it("wires the browser through the reviewed Edge adapter while keeping both source flags off", () => {
     const flags = readFileSync(join(process.cwd(), "src", "lib", "featureFlags.ts"), "utf8");
+    const client = readFileSync(join(process.cwd(), "src", "lib", "series-intelligence", "seriesCopilotEdgeClient.ts"), "utf8");
+    const panel = readFileSync(join(process.cwd(), "src", "components", "series-intelligence", "VCopilotPanel.tsx"), "utf8");
+    expect(client).toContain('const FUNCTION_NAME = "series-intelligence-copilot"');
+    expect(client).toContain("supabase.functions.invoke(FUNCTION_NAME");
+    expect(panel).toContain("askSeriesCopilotEdgeV1");
     expect(flags).toMatch(/seriesClubPulseV1:\s*false/);
     expect(flags).toMatch(/seriesVCopilotV1:\s*false/);
   });

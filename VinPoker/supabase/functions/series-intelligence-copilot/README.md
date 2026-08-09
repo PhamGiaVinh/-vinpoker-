@@ -20,7 +20,9 @@ removed during consumption so the table is not an unbounded request log.
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `GEMINI_API_KEY`
-- `SERIES_GEMINI_MODEL` using one explicit model ID, never a `latest` alias
+
+The provider pins the stable model ID `gemini-3.6-flash` in reviewed source.
+It never uses a moving `latest` alias.
 
 Do not use a browser environment variable or a key previously exposed in chat.
 

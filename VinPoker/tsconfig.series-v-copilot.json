@@ -2,7 +2,7 @@
   "extends": "./tsconfig.app.json",
   "compilerOptions": {
     "composite": false,
-    "types": ["vitest/globals", "@testing-library/jest-dom"]
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
   },
   "include": [
     "src/lib/series-intelligence/seriesCopilotContextV1.ts",
@@ -10,6 +10,8 @@
     "src/lib/series-intelligence/seriesCopilotResponseV1.ts",
     "src/lib/series-intelligence/seriesCopilotEvidenceValidator.ts",
     "src/lib/series-intelligence/seriesCopilotMockAdapter.ts",
+    "src/lib/series-intelligence/seriesCopilotEdgeClient.ts",
+    "src/lib/series-intelligence/seriesCopilotEdgeClient.test.ts",
     "src/lib/series-intelligence/seriesCopilotV1.test.ts",
     "src/lib/series-intelligence/seriesCopilotArchitecture.test.ts",
     "src/components/series-intelligence/VThinkingIndicator.tsx",
