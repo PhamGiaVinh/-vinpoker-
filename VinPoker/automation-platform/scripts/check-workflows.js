@@ -29,6 +29,18 @@ for (const entry of manifest.workflows) {
         finding(entry.file, `HTTP Request URL must be the exact Gateway origin + mapped path: ${node.name}`);
       }
     }
+    if (node.type === "n8n-nodes-base.executeWorkflow") {
+      const selector = node.parameters?.workflowId;
+      if (
+        selector?.value !== "55555555-5555-4555-8555-555555555555" ||
+        selector?.mode !== "list"
+      ) {
+        finding(
+          entry.file,
+          `sub-workflow selector must use the n8n 2.32 workflowSelector format: ${node.name}`,
+        );
+      }
+    }
     for (const credentialType of Object.keys(node.credentials ?? {})) {
       if (!manifest.credential_types.includes(credentialType)) {
         finding(entry.file, `credential type not allowlisted: ${credentialType}`);

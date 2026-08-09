@@ -35,8 +35,6 @@ services:
       AUTOMATION_HMAC_NONCE_TTL_SECONDS: 600
       AUTOMATION_RATE_LIMIT_PER_MINUTE: 120
       AUTOMATION_AUTO_SEED: "true"
-    ports:
-      - "127.0.0.1:8787:8787"
     volumes:
       - gateway_dev:/data
     networks: [automation_dev]
@@ -68,6 +66,7 @@ services:
       N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
       N8N_TEMPLATES_ENABLED: "false"
       N8N_COMMUNITY_PACKAGES_ENABLED: "false"
+      N8N_PUBLIC_API_DISABLED: "true"
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
       N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
       EXECUTIONS_DATA_PRUNE: "true"
@@ -78,11 +77,25 @@ services:
         ["n8n-nodes-base.executeCommand","n8n-nodes-base.ssh","n8n-nodes-base.readWriteFile",
         "n8n-nodes-base.code","n8n-nodes-base.function","n8n-nodes-base.functionItem",
         "n8n-nodes-base.postgres"]
-    ports:
-      - "127.0.0.1:5678:5678"
     volumes:
       - n8n_data_dev:/home/node/.n8n
     networks: [automation_dev]
+
+  loopback-proxy:
+    image: vbacker-automation-dev-gateway
+    restart: unless-stopped
+    depends_on:
+      gateway:
+        condition: service_started
+      n8n:
+        condition: service_started
+    command: ["node", "src/loopback-proxy.js"]
+    ports:
+      - "127.0.0.1:8787:8787"
+      - "127.0.0.1:5678:5678"
+    networks:
+      - automation_dev
+      - loopback_dev
 
 volumes:
   n8n_postgres_dev:
@@ -92,3 +105,5 @@ volumes:
 networks:
   automation_dev:
     internal: true
+  loopback_dev:
+    driver: bridge

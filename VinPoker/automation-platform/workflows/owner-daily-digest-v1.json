@@ -51,7 +51,12 @@
     },
     {
       "parameters": {
-        "workflowId": "55555555-5555-4555-8555-555555555555",
+        "workflowId": {
+          "__rl": true,
+          "value": "55555555-5555-4555-8555-555555555555",
+          "mode": "list",
+          "cachedResultName": "VBacker - Signed Gateway Request V1 (DEV)"
+        },
         "mode": "each",
         "options": {
           "waitForSubWorkflow": true
@@ -114,7 +119,12 @@
     },
     {
       "parameters": {
-        "workflowId": "55555555-5555-4555-8555-555555555555",
+        "workflowId": {
+          "__rl": true,
+          "value": "55555555-5555-4555-8555-555555555555",
+          "mode": "list",
+          "cachedResultName": "VBacker - Signed Gateway Request V1 (DEV)"
+        },
         "mode": "each",
         "options": {
           "waitForSubWorkflow": true
@@ -166,7 +176,12 @@
     },
     {
       "parameters": {
-        "workflowId": "55555555-5555-4555-8555-555555555555",
+        "workflowId": {
+          "__rl": true,
+          "value": "55555555-5555-4555-8555-555555555555",
+          "mode": "list",
+          "cachedResultName": "VBacker - Signed Gateway Request V1 (DEV)"
+        },
         "mode": "each",
         "options": {
           "waitForSubWorkflow": true
@@ -218,7 +233,12 @@
     },
     {
       "parameters": {
-        "workflowId": "55555555-5555-4555-8555-555555555555",
+        "workflowId": {
+          "__rl": true,
+          "value": "55555555-5555-4555-8555-555555555555",
+          "mode": "list",
+          "cachedResultName": "VBacker - Signed Gateway Request V1 (DEV)"
+        },
         "mode": "each",
         "options": {
           "waitForSubWorkflow": true
@@ -270,7 +290,12 @@
     },
     {
       "parameters": {
-        "workflowId": "55555555-5555-4555-8555-555555555555",
+        "workflowId": {
+          "__rl": true,
+          "value": "55555555-5555-4555-8555-555555555555",
+          "mode": "list",
+          "cachedResultName": "VBacker - Signed Gateway Request V1 (DEV)"
+        },
         "mode": "each",
         "options": {
           "waitForSubWorkflow": true

@@ -1,8 +1,8 @@
 # VBacker Automation Platform — local contract slice
 
-Đây là **source implementation cho Đợt 0 và vertical slice Đợt 1 DEV local** của Owner Daily
-Digest. Mock Gateway Node và fixture có thể chạy local; container n8n/PostgreSQL chưa được khởi
-động trong phiên này. Đây không phải backend production và không được kết nối với
+Đây là **source implementation và vertical slice Đợt 1 DEV local đã được kiểm chứng** của Owner
+Daily Digest. Mock Gateway, n8n và PostgreSQL chạy bằng fixture local. Đây không phải backend
+production và không được kết nối với
 Supabase/Vercel/provider thật.
 
 ## Phạm vi đã khóa
@@ -43,8 +43,7 @@ Mở `http://127.0.0.1:8787/dashboard`.
 
 ## n8n local
 
-Đây là runbook cho một lượt triển khai local riêng sau khi Owner cho phép; các lệnh dưới đây chưa
-được chạy trong slice hiện tại.
+Các lệnh sau dựng lại stack DEV local đã được kiểm chứng:
 
 ```powershell
 docker compose config
@@ -58,10 +57,13 @@ Sau khi n8n mở ở `http://127.0.0.1:5678`:
 3. Import helper workflow trước, rồi import Owner Daily Digest.
 4. Không publish sang môi trường khác.
 
-`compose.yaml` bind cả n8n và Gateway vào loopback; network Docker là internal.
+`compose.yaml` giữ n8n và Gateway trong network Docker internal. Một TCP proxy không có secret,
+không có volume và chỉ có hai upstream tĩnh sẽ publish editor/Gateway vào `127.0.0.1`. Cách này
+giữ worker khỏi internet nhưng vẫn cho Owner kiểm tra local qua trình duyệt.
 
-Đợt 1 chỉ được nâng từ **CONDITIONAL** sau khi workflow được import/chạy bằng fixture, `n8n audit`
-được kiểm tra và restore drill đạt PASS.
+Vertical slice Đợt 1 hiện **LOCAL E2E READY**: happy path, crash/lease takeover, persistence,
+security audit và clean-stack restore drill đều đã PASS bằng fixture. Hai workflow luôn được trả
+về inactive sau kiểm thử; external send vẫn tắt.
 
 ## Semantics
 
