@@ -17,6 +17,8 @@ const METRIC_KEYS = [
 ] as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const STABLE_ID = /^[a-z][a-z0-9._:-]*$/;
+const MONEY = /^(0|[1-9]\d{0,15})$/;
 
 export interface ApprovedScheduleInputsV1 {
   candidateOptions: readonly ScheduleCandidateV1[];
@@ -27,6 +29,117 @@ export interface ApprovedScheduleInputsV1 {
 function object(value: unknown, label: string): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object`);
   return value as Record<string, unknown>;
+}
+
+function exactKeys(value: Record<string, unknown>, allowed: readonly string[], label: string): void {
+  const keys = Object.keys(value).sort();
+  const expected = [...allowed].sort();
+  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) {
+    throw new Error(`${label} keys are invalid`);
+  }
+}
+
+function stableIdArray(value: unknown, label: string, max: number): readonly string[] {
+  if (!Array.isArray(value) || value.length > max) throw new Error(`${label} is invalid`);
+  const ids = value.map((item) => {
+    if (typeof item !== "string" || !STABLE_ID.test(item)) throw new Error(`${label} contains an invalid id`);
+    return item;
+  });
+  if (new Set(ids).size !== ids.length) throw new Error(`${label} contains duplicates`);
+  return Object.freeze([...ids].sort());
+}
+
+function boundedText(value: unknown, label: string, max: number): string {
+  if (typeof value !== "string") throw new Error(`${label} is invalid`);
+  const normalized = value.trim().normalize("NFC");
+  if (normalized.length < 1 || normalized.length > max) throw new Error(`${label} is invalid`);
+  return normalized;
+}
+
+function parseEvidence(raw: unknown): CopilotEvidenceV1 {
+  const value = object(raw, "evidence");
+  exactKeys(value, ["evidenceId", "labelVi", "sourceId", "asOf", "quality", "privacyState", "metricIds"], "evidence");
+  if (typeof value.evidenceId !== "string" || !STABLE_ID.test(value.evidenceId)) throw new Error("evidence id is invalid");
+  if (typeof value.sourceId !== "string" || !STABLE_ID.test(value.sourceId)) throw new Error("evidence source is invalid");
+  if (typeof value.asOf !== "string" || !UTC.test(value.asOf) || !Number.isFinite(Date.parse(value.asOf))) throw new Error("evidence time is invalid");
+  if (!['owner_scoped_server_aggregate', 'public_unverified'].includes(String(value.quality)) || value.privacyState !== "safe") throw new Error("evidence trust is invalid");
+  return Object.freeze({
+    evidenceId: value.evidenceId,
+    labelVi: boundedText(value.labelVi, "evidence label", 512),
+    sourceId: value.sourceId,
+    asOf: value.asOf,
+    quality: value.quality as CopilotEvidenceV1["quality"],
+    privacyState: "safe",
+    metricIds: stableIdArray(value.metricIds, "evidence metric ids", 64),
+  });
+}
+
+function parseMoney(raw: unknown, label: string): ScheduleCandidateV1["buyIn"] {
+  const value = object(raw, label);
+  exactKeys(value, ["amountMinor", "currency", "scale"], label);
+  if (typeof value.amountMinor !== "string" || !MONEY.test(value.amountMinor) || BigInt(value.amountMinor) > 9007199254740991n) throw new Error(`${label} amount is invalid`);
+  if (value.currency !== "VND" || value.scale !== 0) throw new Error(`${label} currency is invalid`);
+  return Object.freeze({ amountMinor: value.amountMinor, currency: "VND", scale: 0 });
+}
+
+function parseCandidate(raw: unknown): ScheduleCandidateV1 {
+  const value = object(raw, "candidate");
+  exactKeys(value, ["optionId", "labelVi", "buyIn", "gtd", "flights", "expectedDurationMinutes", "requiredField", "structureState", "capacityState", "collisionState", "gtdStressState", "evidenceRefs"], "candidate");
+  if (typeof value.optionId !== "string" || !STABLE_ID.test(value.optionId)) throw new Error("candidate id is invalid");
+  if (!Number.isSafeInteger(value.flights) || (value.flights as number) < 1) throw new Error("candidate flights are invalid");
+  if (value.expectedDurationMinutes !== null && (!Number.isSafeInteger(value.expectedDurationMinutes) || (value.expectedDurationMinutes as number) < 1)) throw new Error("candidate duration is invalid");
+  if (value.requiredField !== null && (!Number.isSafeInteger(value.requiredField) || (value.requiredField as number) < 0)) throw new Error("candidate required field is invalid");
+  if (!['complete', 'incomplete'].includes(String(value.structureState))) throw new Error("candidate structure state is invalid");
+  if (!['feasible', 'blocked', 'unknown'].includes(String(value.capacityState))) throw new Error("candidate capacity state is invalid");
+  if (!['clear', 'needs_review', 'blocked', 'unknown'].includes(String(value.collisionState))) throw new Error("candidate collision state is invalid");
+  if (!['supported', 'limited', 'blocked', 'unknown'].includes(String(value.gtdStressState))) throw new Error("candidate GTD state is invalid");
+  if (value.requiredField === null && value.gtdStressState === "supported") throw new Error("candidate GTD support is forged");
+  return Object.freeze({
+    optionId: value.optionId,
+    labelVi: boundedText(value.labelVi, "candidate label", 512),
+    buyIn: parseMoney(value.buyIn, "candidate buy-in"),
+    gtd: parseMoney(value.gtd, "candidate GTD"),
+    flights: value.flights as number,
+    expectedDurationMinutes: value.expectedDurationMinutes as number | null,
+    requiredField: value.requiredField as number | null,
+    structureState: value.structureState as ScheduleCandidateV1["structureState"],
+    capacityState: value.capacityState as ScheduleCandidateV1["capacityState"],
+    collisionState: value.collisionState as ScheduleCandidateV1["collisionState"],
+    gtdStressState: value.gtdStressState as ScheduleCandidateV1["gtdStressState"],
+    evidenceRefs: stableIdArray(value.evidenceRefs, "candidate evidence refs", 32),
+  });
+}
+
+function parseDataGap(raw: unknown): DataGapV1 {
+  const value = object(raw, "data gap");
+  exactKeys(value, ["dataGapId", "titleVi", "detailVi", "severity", "blocksRecommendation", "requiredSourceVi"], "data gap");
+  if (typeof value.dataGapId !== "string" || !STABLE_ID.test(value.dataGapId)) throw new Error("data gap id is invalid");
+  if (!['info', 'important', 'critical'].includes(String(value.severity)) || typeof value.blocksRecommendation !== "boolean") throw new Error("data gap state is invalid");
+  return Object.freeze({
+    dataGapId: value.dataGapId,
+    titleVi: boundedText(value.titleVi, "data gap title", 512),
+    detailVi: boundedText(value.detailVi, "data gap detail", 2048),
+    severity: value.severity as DataGapV1["severity"],
+    blocksRecommendation: value.blocksRecommendation,
+    requiredSourceVi: boundedText(value.requiredSourceVi, "data gap source", 512),
+  });
+}
+
+export function parseApprovedScheduleInputsV1(raw: unknown, expectedClubId: string): ApprovedScheduleInputsV1 {
+  const value = object(raw, "approved candidate response");
+  exactKeys(value, ["version", "clubId", "asOf", "candidateOptions", "evidence", "dataGaps"], "approved candidate response");
+  if (value.version !== "series-approved-schedule-candidates-v1" || value.clubId !== expectedClubId) throw new Error("approved candidate identity is invalid");
+  if (typeof value.asOf !== "string" || !UTC.test(value.asOf) || !Number.isFinite(Date.parse(value.asOf))) throw new Error("approved candidate time is invalid");
+  if (!Array.isArray(value.candidateOptions) || value.candidateOptions.length > 12 || !Array.isArray(value.evidence) || !Array.isArray(value.dataGaps)) throw new Error("approved candidate collections are invalid");
+  const candidateOptions = Object.freeze(value.candidateOptions.map(parseCandidate).sort((a, b) => a.optionId.localeCompare(b.optionId)));
+  const evidence = Object.freeze(value.evidence.map(parseEvidence).sort((a, b) => a.evidenceId.localeCompare(b.evidenceId)));
+  const dataGaps = Object.freeze(value.dataGaps.map(parseDataGap).sort((a, b) => a.dataGapId.localeCompare(b.dataGapId)));
+  if (new Set(candidateOptions.map((item) => item.optionId)).size !== candidateOptions.length) throw new Error("approved candidates contain duplicates");
+  if (new Set(evidence.map((item) => item.evidenceId)).size !== evidence.length) throw new Error("approved evidence contains duplicates");
+  if (new Set(dataGaps.map((item) => item.dataGapId)).size !== dataGaps.length) throw new Error("approved data gaps contain duplicates");
+  const evidenceIds = new Set(evidence.map((item) => item.evidenceId));
+  for (const candidate of candidateOptions) for (const ref of candidate.evidenceRefs) if (!evidenceIds.has(ref)) throw new Error("candidate references unknown evidence");
+  return Object.freeze({ candidateOptions, evidence, dataGaps });
 }
 
 function metric(raw: unknown, pulseAsOf: string): ProviderMetricV1 {
