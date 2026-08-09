@@ -11,7 +11,11 @@ function withCatalog(files, callback) {
   const migrations = join(root, "migrations");
   mkdirSync(migrations);
   try {
-    for (const file of files) writeFileSync(join(migrations, file), "-- fixture\n", "utf8");
+    for (const file of files) {
+      const name = typeof file === "string" ? file : file.name;
+      const source = typeof file === "string" ? "-- fixture\n" : file.source;
+      writeFileSync(join(migrations, name), source, "utf8");
+    }
     callback(migrations);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -45,6 +49,92 @@ test("rejects historical never-apply migrations in the active catalog", () => {
   ], (migrations) => {
     assert.deepEqual(findMigrationCatalogProblems(migrations), [
       "forbidden active migration 20270105000002_dealer_pt_wage_global_continuous_accrual.sql: superseded payroll migration belongs in migration-archive/never-apply",
+    ]);
+  });
+});
+
+test("rejects a retired credential-bearing scheduler by filename", () => {
+  withCatalog([
+    "20260428144425_53b3e896-323b-45b5-82e3-921bdaccaa91.sql",
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "forbidden active migration 20260428144425_53b3e896-323b-45b5-82e3-921bdaccaa91.sql: credential-bearing production cron belongs in migration-archive/removed-sensitive",
+    ]);
+  });
+});
+
+test("rejects a retired production-targeted scheduler by filename", () => {
+  withCatalog([
+    "20260607191236_schedule_run_dealer_ready_backup_cron.sql",
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "forbidden active migration 20260607191236_schedule_run_dealer_ready_backup_cron.sql: production-targeted scheduler belongs in migration-archive/removed-sensitive",
+    ]);
+  });
+});
+
+test("rejects a credential-like JWT literal in active migration SQL", () => {
+  const syntheticJwt = `eyJ${"a".repeat(20)}.${"b".repeat(20)}.${"c".repeat(20)}`;
+  withCatalog([
+    {
+      name: "20270101000002_legacy_auth.sql",
+      source: `select '${syntheticJwt}';\n`,
+    },
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "credential-like JWT literal in active migration 20270101000002_legacy_auth.sql",
+    ]);
+  });
+});
+
+test("rejects a direct production function target in active migration SQL", () => {
+  withCatalog([
+    {
+      name: "20270101000003_legacy_target.sql",
+      source: "select 'https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/example';\n",
+    },
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "direct production function target in active migration 20270101000003_legacy_target.sql",
+    ]);
+  });
+});
+
+test("rejects an HTTP side effect in a contained bootstrap migration", () => {
+  withCatalog([
+    {
+      name: "20260516123400_push_notification_dispatch.sql",
+      source: "select net.http_post();\n",
+    },
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "unsafe HTTP side effect in contained bootstrap migration 20260516123400_push_notification_dispatch.sql",
+    ]);
+  });
+});
+
+test("covers every contained bootstrap migration filename", () => {
+  withCatalog([
+    {
+      name: "20260609000018_notify_dealer_ready_v2.sql",
+      source: "select net.http_post();\n",
+    },
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "unsafe HTTP side effect in contained bootstrap migration 20260609000018_notify_dealer_ready_v2.sql",
+    ]);
+  });
+});
+
+test("guards scheduler-free payment containment from HTTP regressions", () => {
+  withCatalog([
+    {
+      name: "20261115000000_sepay_reconcile.sql",
+      source: "select net.http_post();\n",
+    },
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "unsafe HTTP side effect in contained bootstrap migration 20261115000000_sepay_reconcile.sql",
     ]);
   });
 });

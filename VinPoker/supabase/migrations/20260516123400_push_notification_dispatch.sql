@@ -1,4 +1,7 @@
--- ============ 1. Add new notification enum values ============
+-- Source-catalog containment: preserves the original notification schema and
+-- trigger contract but deliberately does not embed a deployment target or client
+-- credential. A later, owner-gated runtime-config migration owns dispatch.
+
 DO $$ BEGIN
   ALTER TYPE public.notification_type ADD VALUE IF NOT EXISTS 'schedule_updated';
 EXCEPTION WHEN duplicate_object THEN NULL;
@@ -14,39 +17,17 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
--- ============ 2. Allow schedule upload tracking on tournaments ============
 ALTER TABLE public.tournaments ADD COLUMN IF NOT EXISTS schedule_upload_id uuid;
 
--- ============ 3. Push dispatch trigger ============
+-- Safe bootstrap implementation. This avoids an HTTP side effect until the
+-- later runtime-config implementation is installed.
 CREATE OR REPLACE FUNCTION public.fn_dispatch_push()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-  _url text;
 BEGIN
-  _url := CASE NEW.type
-    WHEN 'schedule_updated' THEN '/tournaments'
-    WHEN 'registration_confirmed' THEN '/tournaments'
-    WHEN 'chat_message' THEN '/chat/groups/' || COALESCE(NEW.data->>'group_id', '')
-    WHEN 'player_busted_out' THEN '/staking/my-deals'
-    WHEN 'package_purchase_paid' THEN '/packages'
-    WHEN 'profile_updated' THEN '/account'
-    ELSE COALESCE(NEW.data->>'url', '/')
-  END;
-
-  PERFORM net.http_post(
-    url:='https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/send-push-notification',
-    headers:='{"Content-Type":"application/json","apikey":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ybGVzZ2djamFtd3Vrbnh3Y3BrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NTIwMjIsImV4cCI6MjA5NDUyODAyMn0.gz_aeoSFLP6tHzdXbFwFM6xK1Wk32JOfz9ugM_BC91A"}'::jsonb,
-    body:=jsonb_build_object(
-      'user_id', NEW.user_id::text,
-      'heading', NEW.title,
-      'message', NEW.body,
-      'url', _url
-    )::jsonb
-  );
   RETURN NEW;
 END;
 $$;
@@ -57,7 +38,6 @@ CREATE TRIGGER trg_dispatch_push
   FOR EACH ROW
   EXECUTE FUNCTION public.fn_dispatch_push();
 
--- ============ 4. Chat message notification trigger ============
 CREATE OR REPLACE FUNCTION public.fn_chat_message_notify()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -93,7 +73,6 @@ CREATE TRIGGER trg_chat_message_notify
   FOR EACH ROW
   EXECUTE FUNCTION public.fn_chat_message_notify();
 
--- ============ 5. Schedule upload notification trigger ============
 CREATE OR REPLACE FUNCTION public.fn_schedule_updated_notify()
 RETURNS TRIGGER
 LANGUAGE plpgsql
