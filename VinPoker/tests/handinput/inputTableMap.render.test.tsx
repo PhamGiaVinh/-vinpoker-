@@ -45,6 +45,55 @@ describe("InputTableMap (operator table picker)", () => {
     expect(html).toContain("Chưa có bàn nào");
   });
 
+  it("does not present a table-load failure as an empty tournament", () => {
+    const html = renderToStaticMarkup(
+      <InputTableMap
+        tables={[]}
+        activeTableId={null}
+        onSelect={() => {}}
+        loadState="error"
+        loadError="Không thể tải danh sách bàn."
+        onRetry={() => {}}
+      />
+    );
+
+    expect(html).toContain("Không thể tải danh sách bàn.");
+    expect(html).toContain("Thử lại");
+    expect(html).not.toContain("Chưa có bàn nào");
+  });
+
+  it("keeps the loading state distinct from both errors and empty results", () => {
+    const html = renderToStaticMarkup(
+      <InputTableMap tables={[]} activeTableId={null} onSelect={() => {}} loadState="loading" />
+    );
+
+    expect(html).toContain("Đang tải danh sách bàn");
+    expect(html).not.toContain("Chưa có bàn nào");
+  });
+
+  it("explains a routed tournament that is not found without presenting an empty table list", () => {
+    const html = renderToStaticMarkup(
+      <InputTableMap tables={[]} activeTableId={null} onSelect={() => {}} loadState="not_found" />
+    );
+
+    expect(html).toContain("Không tìm thấy giải hoặc bạn không có quyền truy cập.");
+    expect(html).not.toContain("Chưa có bàn nào");
+  });
+
+  it("keeps an invalid routed table visible as a scoped selection notice", () => {
+    const html = renderToStaticMarkup(
+      <InputTableMap
+        tables={tables}
+        activeTableId={null}
+        onSelect={() => {}}
+        selectionNotice="Bàn được yêu cầu không thuộc giải đang mở."
+      />
+    );
+
+    expect(html).toContain("Bàn được yêu cầu không thuộc giải đang mở.");
+    expect(html).toContain("Bàn 1");
+  });
+
   // B3 (trackerMultiTable): lock visibility + stale-lock takeover row.
   it("shows the holder chip when a table is locked by someone else", () => {
     const locked: InputTableSummary[] = [

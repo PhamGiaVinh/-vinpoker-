@@ -80,6 +80,10 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           activeTableId={null}
           onSelect={hook.handlePickTable}
           onTakeover={FEATURES.trackerMultiTable ? hook.handleTakeoverLock : undefined}
+          loadState={hook.tableLoadState}
+          loadError={hook.tableLoadError}
+          onRetry={hook.retryTableLoad}
+          selectionNotice={hook.tableSelectionNotice}
         />
       </div>
     );
