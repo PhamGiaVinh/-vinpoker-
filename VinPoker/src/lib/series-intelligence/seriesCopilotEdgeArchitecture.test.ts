@@ -9,7 +9,8 @@ describe("V Copilot Edge source boundary", () => {
   it("keeps secrets server-side and never uses service role or browser Gemini env", () => {
     const all = readdirSync(ROOT).filter((file) => file.endsWith(".ts")).map(source).join("\n");
     expect(all).not.toMatch(/SUPABASE_SERVICE_ROLE_KEY|VITE_[A-Z_]*GEMINI/);
-    expect(source("index.ts")).toContain('Deno.env.get("SERIES_GEMINI_API_KEY")');
+    expect(source("index.ts")).toContain('Deno.env.get("GEMINI_API_KEY")');
+    expect(source("index.ts")).not.toContain('Deno.env.get("SERIES_GEMINI_API_KEY")');
     expect(source("index.ts")).toContain('Deno.env.get("SERIES_GEMINI_MODEL")');
   });
 
