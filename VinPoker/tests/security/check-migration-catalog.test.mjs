@@ -73,6 +73,66 @@ test("rejects a retired production-targeted scheduler by filename", () => {
   });
 });
 
+test("rejects the archived managed Realtime migration by filename", () => {
+  withCatalog([
+    "20260429060607_237b4d96-a7ca-445d-bfc6-4593e118f887.sql",
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "forbidden active migration 20260429060607_237b4d96-a7ca-445d-bfc6-4593e118f887.sql: replay-unsafe managed Realtime DDL belongs in migration-archive/removed-sensitive",
+    ]);
+  });
+});
+
+test("rejects ownership-requiring RLS DDL on a managed Realtime relation", () => {
+  withCatalog([
+    {
+      name: "20270101000004_realtime_messages.sql",
+      source: "ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY;\n",
+    },
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "managed Realtime ownership DDL in active migration 20270101000004_realtime_messages.sql",
+    ]);
+  });
+});
+
+test("rejects FORCE RLS DDL on a managed Realtime relation", () => {
+  withCatalog([
+    {
+      name: "20270101000007_realtime_force_rls.sql",
+      source: "ALTER TABLE realtime.messages FORCE ROW LEVEL SECURITY;\n",
+    },
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "managed Realtime ownership DDL in active migration 20270101000007_realtime_force_rls.sql",
+    ]);
+  });
+});
+
+test("rejects policy DDL on a managed Realtime relation", () => {
+  withCatalog([
+    {
+      name: "20270101000006_realtime_policy.sql",
+      source: "DROP POLICY IF EXISTS \"read messages\" ON realtime.messages;\n",
+    },
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "managed Realtime ownership DDL in active migration 20270101000006_realtime_policy.sql",
+    ]);
+  });
+});
+
+test("allows normal public-schema RLS migrations", () => {
+  withCatalog([
+    {
+      name: "20270101000005_public_table.sql",
+      source: "ALTER TABLE public.players ENABLE ROW LEVEL SECURITY;\n",
+    },
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), []);
+  });
+});
+
 test("rejects a credential-like JWT literal in active migration SQL", () => {
   const syntheticJwt = `eyJ${"a".repeat(20)}.${"b".repeat(20)}.${"c".repeat(20)}`;
   withCatalog([
