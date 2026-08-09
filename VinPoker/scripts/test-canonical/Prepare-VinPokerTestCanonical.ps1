@@ -45,10 +45,14 @@ foreach ($excluded in @(
 
 $relativeMigrationTarget = $targetMigrations.Substring($repoRoot.Length).TrimStart('\', '/').Replace('\', '/')
 $catalogPatch = Join-Path $compatRoot 'catalog.patch'
-& git -C $repoRoot apply --check --directory=$relativeMigrationTarget $catalogPatch
+$normalizedPatch = Join-Path $targetRoot 'catalog-compat.normalized.patch'
+$patchText = [System.IO.File]::ReadAllText($catalogPatch).Replace("`r`n", "`n")
+[System.IO.File]::WriteAllText($normalizedPatch, $patchText, [System.Text.UTF8Encoding]::new($false))
+& git -C $repoRoot apply --check --directory=$relativeMigrationTarget $normalizedPatch
 if ($LASTEXITCODE -ne 0) { throw 'Compatibility patch check failed; canonical catalog changed.' }
-& git -C $repoRoot apply --directory=$relativeMigrationTarget $catalogPatch
+& git -C $repoRoot apply --directory=$relativeMigrationTarget $normalizedPatch
 if ($LASTEXITCODE -ne 0) { throw 'Compatibility patch apply failed.' }
+Remove-Item -LiteralPath $normalizedPatch -Force
 
 Copy-Item -LiteralPath (Join-Path $compatRoot '20260604999999_test_compat_dealer_assignments_club_id.sql') -Destination $targetMigrations -Force
 Copy-Item -LiteralPath (Join-Path $compatRoot '20260608599999_test_compat_remote_payroll_baseline.sql') -Destination $targetMigrations -Force

@@ -50,6 +50,7 @@ export function buildDeterministicDigestArtifact({
       registrations: snapshot.registrations,
       attendance: snapshot.attendance,
       entries: snapshot.entries,
+      staff: snapshot.staff,
       rake_retained_vnd: snapshot.rake_retained_vnd,
       fnb_net_revenue_vnd: snapshot.fnb_net_revenue_vnd,
       pending_liabilities_vnd: snapshot.pending_liabilities_vnd,

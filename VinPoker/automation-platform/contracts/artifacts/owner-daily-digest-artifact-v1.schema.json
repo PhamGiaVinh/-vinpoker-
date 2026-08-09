@@ -125,6 +125,7 @@
             "registrations",
             "attendance",
             "entries",
+            "staff",
             "rake_retained_vnd",
             "fnb_net_revenue_vnd",
             "pending_liabilities_vnd",
@@ -142,6 +143,11 @@
               "maximum": 1000000
             },
             "entries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "staff": {
               "type": "integer",
               "minimum": 0,
               "maximum": 1000000

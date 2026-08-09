@@ -1073,6 +1073,29 @@ export class SqliteAutomationStore {
     return { trace_id: traceId, events };
   }
 
+  shadowEvidence() {
+    return this.db
+      .prepare(`
+        SELECT e.event_json, e.status AS event_status, e.attempt,
+               a.artifact_json, n.notification_id, d.delivery_json
+        FROM events e
+        LEFT JOIN content_artifacts a ON a.event_id = e.event_id
+        LEFT JOIN notification_requests n ON n.event_id = e.event_id
+        LEFT JOIN notification_deliveries d ON d.event_id = e.event_id
+        WHERE e.event_type = 'owner.daily_digest.due'
+        ORDER BY e.club_id
+      `)
+      .all()
+      .map((row) => ({
+        event: JSON.parse(row.event_json),
+        event_status: row.event_status,
+        attempt: Number(row.attempt),
+        artifact: row.artifact_json ? JSON.parse(row.artifact_json) : null,
+        notification_id: row.notification_id ?? null,
+        delivery: row.delivery_json ? JSON.parse(row.delivery_json) : null,
+      }));
+  }
+
   count(tableName) {
     const allowlist = new Set([
       "clubs",

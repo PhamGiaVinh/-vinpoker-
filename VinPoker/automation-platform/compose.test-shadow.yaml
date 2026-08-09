@@ -1,0 +1,18 @@
+services:
+  gateway:
+    environment:
+      AUTOMATION_AUTO_SEED: "false"
+      VINPOKER_TEST_SOURCE_ID: vinpoker-test-canonical-v1
+      VINPOKER_TEST_DB_HOST: supabase_db_vinpoker-test-canonical-v1
+      VINPOKER_TEST_DB_PORT: 5432
+      VINPOKER_TEST_DB_NAME: postgres
+      VINPOKER_TEST_DB_USER: vinpoker_digest_shadow_reader
+      VINPOKER_TEST_DB_PASSWORD: ${VINPOKER_TEST_DB_PASSWORD:?Set local TEST reader password}
+    networks:
+      - automation_dev
+      - vinpoker_test_canonical
+
+networks:
+  vinpoker_test_canonical:
+    external: true
+    name: ${VINPOKER_TEST_DOCKER_NETWORK:?Set local TEST Docker network}
