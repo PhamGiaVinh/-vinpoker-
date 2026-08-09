@@ -295,6 +295,6 @@ COMMIT;
 -- DROP FUNCTION IF EXISTS public._enter_dealer_pool(uuid, uuid, timestamptz);
 -- DROP FUNCTION IF EXISTS public._dealer_scheduled_pool_enabled();
 -- DROP TABLE IF EXISTS public.dealer_selfcheckin_config;
--- -- Re-apply dealer_check_in(uuid) body from 20260906000000_dealer_self_service_rpcs.sql
+-- -- Re-apply dealer_check_in(uuid) body from 20260906000001_dealer_self_service_rpcs.sql
 -- COMMIT;
 -- ════════════════════════════════════════════════════════════════════════════

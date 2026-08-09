@@ -1,5 +1,5 @@
 // Series Intelligence — hand-written row shapes for the AUTOSYNC objects created by
-// 20261126000000_series_capture_autosync.sql. These are NOT in the generated Supabase types until that
+// 20261126000001_series_capture_autosync.sql. These are NOT in the generated Supabase types until that
 // (owner-gated) migration is applied and types.ts is regenerated; once it is, prefer the generated Row types
 // and delete this file. Kept in sync with the migration column definitions.
 

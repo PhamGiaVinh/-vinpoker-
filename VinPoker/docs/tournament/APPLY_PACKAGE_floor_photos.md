@@ -18,7 +18,7 @@ Apply order: **#514 → #500 → #521.** (HOLD #508 — see the bottom.)
 
 ## STEP 1 — #514 floor role schema
 Run, in order, the full contents of:
-1. `supabase/migrations/20261025000000_app_role_floor.sql`  (`ALTER TYPE … ADD VALUE 'floor'`)
+1. `supabase/migrations/20261025000002_app_role_floor.sql`  (`ALTER TYPE … ADD VALUE 'floor'`)
 2. `supabase/migrations/20261025000001_club_floors.sql`     (table + helpers)
 
 **POST-CHECK**
@@ -49,7 +49,7 @@ SELECT count(*) AS photo_policies FROM pg_policies
 ---
 
 ## STEP 3 — #521 floor-OR-media photo RLS
-Run the full contents of `supabase/migrations/20261026000000_tournament_photos_floor_or_media.sql`.
+Run the full contents of `supabase/migrations/20261026000001_tournament_photos_floor_or_media.sql`.
 
 **POST-CHECK (objects)**
 ```sql
@@ -83,7 +83,7 @@ Anon: the SELECT policy is `USING(true)` (read), and there is **no** anon INSERT
 - #514 → `docs/emergency_rollbacks/PRE_CLUB_FLOORS_20261025000001.sql` (enum value `floor` can't be dropped — harmless).
 
 ## HOLD — #508 public leaderboard
-**Do NOT apply** `20261024000000_leaderboard_public_read.sql` yet. Reason (privacy review): the
+**Do NOT apply** `20261024000001_leaderboard_public_read.sql` yet. Reason (privacy review): the
 current `get_tournament_leaderboard` RPC output includes `player_id`, `table_id`, `seat_number`
 — **not public-safe**. A separate PR will add a **public-safe leaderboard read** (display name,
 rank, stack, finish position, ITM only — no internal ids / no seat) for anon, which the viewer

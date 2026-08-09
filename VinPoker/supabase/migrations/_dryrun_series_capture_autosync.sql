@@ -1,5 +1,5 @@
 -- =====================================================================================================
--- CONTROLLED DRY-RUN for 20261126000000_series_capture_autosync.sql (SOURCE-ONLY — _-prefixed, NOT a migration)
+-- CONTROLLED DRY-RUN for 20261126000001_series_capture_autosync.sql (SOURCE-ONLY — _-prefixed, NOT a migration)
 -- The leading underscore keeps it OUT of the migration sequence (runner never auto-applies it). It applies the
 -- migration body (minus the cron.schedule block) INSIDE a transaction, seeds disposable fixtures, exercises the
 -- sync functions, proves structure + behavior, then ROLLBACKs. NOTHING persists — not even the new objects.
@@ -56,7 +56,7 @@ END
 $preflight$;
 
 -- =====================================================================================================
--- MIGRATION BODY (verbatim from 20261126000000_series_capture_autosync.sql, sections 1-6; cron block omitted)
+-- MIGRATION BODY (verbatim from 20261126000001_series_capture_autosync.sql, sections 1-6; cron block omitted)
 -- =====================================================================================================
 CREATE TABLE IF NOT EXISTS public.series_event_actuals (
   event_id              uuid PRIMARY KEY REFERENCES public.tournaments(id) ON DELETE CASCADE,

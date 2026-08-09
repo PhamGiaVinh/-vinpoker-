@@ -1,4 +1,4 @@
--- Rollback for 20261026000000_tournament_photos_floor_or_media.sql
+-- Rollback for 20261026000001_tournament_photos_floor_or_media.sql
 -- Restores the media-ONLY write policies and drops the floor-OR-media helpers.
 DROP POLICY IF EXISTS "tournament_photos_insert_floor_media" ON public.tournament_photos;
 DROP POLICY IF EXISTS "tournament_photos_delete_floor_media" ON public.tournament_photos;

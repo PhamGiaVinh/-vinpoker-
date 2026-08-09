@@ -1,5 +1,5 @@
 -- ============================================================================================
--- REPAIR WAVE R2 — ROLLBACK for 20261211000000_finance_summary_pt_wage_restore.sql.
+-- REPAIR WAVE R2 — ROLLBACK for 20261211000002_finance_summary_pt_wage_restore.sql.
 -- This is the EXACT live body dumped read-only on 2026-07-02 BEFORE the repair
 -- (pg_get_functiondef, single overload timestamptz,timestamptz,uuid). Running this file restores
 -- the pre-repair state byte-for-byte. Underscore prefix = never picked up as a migration.

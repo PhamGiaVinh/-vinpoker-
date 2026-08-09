@@ -42,7 +42,7 @@ const identityColumnsIntegration = readFileSync(
 const legacyModeSource = readFileSync(
   resolve(
     process.cwd(),
-    "supabase/migrations/20270105000001_floor_table_control_mode.sql",
+    "supabase/migrations/20270105000004_floor_table_control_mode.sql",
   ),
   "utf8",
 );

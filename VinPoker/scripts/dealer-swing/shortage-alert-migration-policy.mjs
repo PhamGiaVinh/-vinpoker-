@@ -10,7 +10,7 @@ export const MIGRATION_NAME = `${MIGRATION_VERSION}_dealer_shortage_alert_lifecy
 export const MIGRATION_SHA256 = "80bb44a66f9341b709821fed7d67208c82c05d6e6125a42a8fe91079de79a549";
 
 export const NEVER_APPLY = Object.freeze([
-  "supabase/migrations/20270104000005_dealer_shortage_alert_lifecycle.sql",
+  "supabase/migration-archive/never-apply/20270104000005_dealer_shortage_alert_lifecycle.sql",
 ]);
 export const FLOOR_OWNED = Object.freeze([
   "supabase/migrations/20270104000005_floor_operator_scope_acl.sql",

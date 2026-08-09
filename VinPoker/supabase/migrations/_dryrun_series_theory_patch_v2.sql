@@ -1,5 +1,5 @@
 -- =====================================================================================================
--- CONTROLLED DRY-RUN for 20261231000000_series_theory_patch_v2.sql  (SOURCE-ONLY — _-prefixed, NOT a migration)
+-- CONTROLLED DRY-RUN for 20261231000001_series_theory_patch_v2.sql  (SOURCE-ONLY — _-prefixed, NOT a migration)
 -- The leading underscore keeps it OUT of the migration sequence (the runner never auto-applies it). It applies
 -- the migration body INSIDE a transaction, proves the 5 new columns + 2 named CHECKs + the is_shadow default +
 -- idempotency, then ROLLBACKs. NOTHING persists.
@@ -48,7 +48,7 @@ END
 $preflight$;
 
 -- =====================================================================================================
--- MIGRATION BODY (verbatim from 20261231000000_series_theory_patch_v2.sql)
+-- MIGRATION BODY (verbatim from 20261231000001_series_theory_patch_v2.sql)
 -- =====================================================================================================
 ALTER TABLE public.series_forecast_snapshots
   ADD COLUMN IF NOT EXISTS rival_major_event_same_day boolean,

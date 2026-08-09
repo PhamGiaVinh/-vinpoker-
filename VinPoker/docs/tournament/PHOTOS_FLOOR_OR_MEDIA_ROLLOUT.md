@@ -1,6 +1,6 @@
 # Photos: floor OR media upload — controlled apply runbook
 
-`20261026000000_tournament_photos_floor_or_media.sql` is **source-only**. Apply via the
+`20261026000001_tournament_photos_floor_or_media.sql` is **source-only**. Apply via the
 controlled Management-API path (NOT `db push`), `schema_migrations` untouched.
 Owner phrase: **"Apply photos floor or media"** + a Management-API token.
 

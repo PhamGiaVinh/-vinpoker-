@@ -1,6 +1,6 @@
 # Runbook — Series Theory Patch v2 (capture-column pre-provision)
 
-**Migration:** `VinPoker/supabase/migrations/20261231000000_series_theory_patch_v2.sql`
+**Migration:** `VinPoker/supabase/migrations/20261231000001_series_theory_patch_v2.sql`
 **Dry-run:** `VinPoker/supabase/migrations/_dryrun_series_theory_patch_v2.sql`
 **Status:** SOURCE-ONLY — committed but **NOT applied**. Apply only via this runbook, in a controlled owner session.
 
@@ -60,7 +60,7 @@ If this returns non-zero, your client did **not** honor ROLLBACK — STOP and re
 
 ### 2. Apply (controlled, only after step 1 is all-PASS + owner phrase)
 ```
-supabase db query --linked --file VinPoker/supabase/migrations/20261231000000_series_theory_patch_v2.sql
+supabase db query --linked --file VinPoker/supabase/migrations/20261231000001_series_theory_patch_v2.sql
 ```
 
 ### 3. Verify (post-apply — columns now persist)

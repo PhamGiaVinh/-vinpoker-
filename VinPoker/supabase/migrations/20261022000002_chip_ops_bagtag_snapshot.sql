@@ -107,5 +107,5 @@ GRANT EXECUTE ON FUNCTION public.get_bag_tag_state(uuid,integer) TO authenticate
 -- ===========================================================================================
 --
 -- ROLLBACK (undo 2D.1 → restore the 2D live-recompute body):
---   Re-apply the get_bag_tag_state definition from 20261021000000_chip_ops_bag_tag.sql.
+--   Re-apply the get_bag_tag_state definition from 20261021000001_chip_ops_bag_tag.sql.
 -- ===========================================================================================

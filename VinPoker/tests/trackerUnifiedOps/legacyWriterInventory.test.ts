@@ -110,7 +110,7 @@ describe("Tracker PR2A legacy-writer inventory", () => {
       (row) => row.writer === "close_tournament_table",
     );
     const mode = readFileSync(
-      resolve(migrationsRoot, "20270105000001_floor_table_control_mode.sql"),
+      resolve(migrationsRoot, "20270105000004_floor_table_control_mode.sql"),
       "utf8",
     );
     const close = readFileSync(

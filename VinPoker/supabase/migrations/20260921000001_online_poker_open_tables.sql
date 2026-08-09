@@ -1,5 +1,5 @@
 -- ============================================================================
--- 20260921000000_online_poker_open_tables.sql
+-- 20260921000001_online_poker_open_tables.sql
 --
 -- Online poker "friends practice" model: OPEN tables with a transferable HOST,
 -- and WALLET-FREE seating. Replaces the buggy daily-chips / preset-table flow.

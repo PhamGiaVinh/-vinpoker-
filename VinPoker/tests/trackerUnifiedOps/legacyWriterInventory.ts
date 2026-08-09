@@ -19,7 +19,7 @@ export const legacyWriterInventory: readonly LegacyWriterInventoryRow[] = [
   {
     writer: "floor_set_table_control_mode",
     signature: "floor_set_table_control_mode(uuid,uuid,text,bigint)",
-    sourceMigration: "20270105000001_floor_table_control_mode.sql",
+    sourceMigration: "20270105000004_floor_table_control_mode.sql",
     contextFields: ["control_mode", "control_revision", "active_hand"],
     lockStrategy: "shared tournament advisory -> table row -> tournament row -> hashtext(tournament, table) advisory lock",
     runtimeStatus: "FIXED_BY_SHARED_TOURNAMENT_LOCK",
@@ -64,7 +64,7 @@ export const legacyWriterInventory: readonly LegacyWriterInventoryRow[] = [
   {
     writer: "floor_bust_player",
     signature: "floor_bust_player(uuid,uuid,integer,text)",
-    sourceMigration: "20270105000001_floor_table_control_mode.sql",
+    sourceMigration: "20270105000004_floor_table_control_mode.sql",
     contextFields: ["active_roster", "seat", "entry", "stack_projection", "active_hand"],
     lockStrategy: "shared tournament advisory -> tournament row -> seat -> table advisory lock -> entry/chip checks",
     runtimeStatus: "FIXED_BY_SHARED_TOURNAMENT_LOCK",
@@ -82,7 +82,7 @@ export const legacyWriterInventory: readonly LegacyWriterInventoryRow[] = [
   {
     writer: "floor_update_tournament_seat_chip",
     signature: "floor_update_tournament_seat_chip(uuid,uuid,integer,integer)",
-    sourceMigration: "20270105000001_floor_table_control_mode.sql",
+    sourceMigration: "20270105000004_floor_table_control_mode.sql",
     contextFields: ["seat_stack", "tracker_stack", "entry_stack"],
     lockStrategy: "shared tournament advisory -> tournament read -> seat row -> table advisory lock -> CAS seat write",
     runtimeStatus: "FIXED_BY_SHARED_TOURNAMENT_LOCK",

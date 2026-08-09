@@ -10,22 +10,22 @@ No writer is changed by PR0.
 
 | Domain | Writer | Final source definition | Known client/Edge caller | V2 disposition |
 |---|---|---|---|---|
-| Floor mode | `floor_set_table_control_mode` | `20270105000001_floor_table_control_mode.sql` | `FloorTableControlMode.tsx` | Join tournament advisory-lock discipline in PR2A |
+| Floor mode | `floor_set_table_control_mode` | `20270105000004_floor_table_control_mode.sql` | `FloorTableControlMode.tsx` | Join tournament advisory-lock discipline in PR2A |
 | Floor seat | `floor_assign_player_to_seat` | `20261240000000_floor_production_hardening.sql` | `AddPlayerDialog.tsx`, `OpsTables.tsx` | Join lock discipline in PR2A |
 | Floor move | `move_player_seat` | `20261240000000_floor_production_hardening.sql` | `MovePlayerDialog.tsx`, `FloorPlayerActions.tsx` | Join lock discipline in PR2A |
 | Floor close | `close_tournament_table` | `20270101000000_close_tournament_table_containment.sql` | `CloseTableDialog.tsx`, `OpsTables.tsx` | Join lock discipline in PR2A |
 | Floor redraw | `redraw_tournament` | `20261240000000_floor_production_hardening.sql` | `RedrawLauncherDialog.tsx`, `OpsTables.tsx` | Join lock discipline in PR2A |
-| Floor bust | `floor_bust_player` | `20270105000001_floor_table_control_mode.sql` | Floor control adapter/Edge path | Join lock discipline in PR2A |
+| Floor bust | `floor_bust_player` | `20270105000004_floor_table_control_mode.sql` | Floor control adapter/Edge path | Join lock discipline in PR2A |
 | Floor restore | `restore_busted_player_to_seat` | `20261240000000_floor_production_hardening.sql` | `OpsTournamentCockpit.tsx` | Join lock discipline in PR2A |
-| Floor stack CAS | `floor_update_tournament_seat_chip` | `20270105000001_floor_table_control_mode.sql` | Floor control adapter/Edge path | Lock-compatible until V2 correction exists; do not remove before PR5 |
+| Floor stack CAS | `floor_update_tournament_seat_chip` | `20270105000004_floor_table_control_mode.sql` | Floor control adapter/Edge path | Lock-compatible until V2 correction exists; do not remove before PR5 |
 | Clock start | `floor_start_tournament_clock` | `20270104000004_floor_clock_control_atomic.sql` | `tournament-live-clock` Edge | Join lock discipline in PR2A |
 | Clock control | `floor_control_tournament_clock` | `20270104000004_floor_clock_control_atomic.sql` | `tournament-live-clock` Edge | Join lock discipline in PR2A |
 | Cashier buy-in/seat | `create_offline_buyin_and_seat` | `20261209000000_player_entry_link.sql` | `OfflineBuyInPanel.tsx` | Compatibility/concurrency dependency for PR2A; no money outcome change |
 | Cashier re-entry | `reenter_tournament_player` | `20261209000000_player_entry_link.sql` | `ReentryPanel.tsx` | Compatibility/concurrency dependency for PR2A; no money outcome change |
 | Legacy roster | `set_tracker_table_roster_seat` | `20261215000000_tracker_seat_setup.sql` | `useStandaloneHandInput.ts` | V2 UI unmounts it; containment only in PR5 |
-| Legacy hand start | `start_hand` | `20270105000001_floor_table_control_mode.sql` | `tournament-live-update` Edge | Never called by V2; retained for rollback until PR5 |
+| Legacy hand start | `start_hand` | `20270105000004_floor_table_control_mode.sql` | `tournament-live-update` Edge | Never called by V2; retained for rollback until PR5 |
 | Legacy void | `void_last_hand` | `20261225000000_edit_completed_hand.sql` | legacy operator path | Replaced only by explicit V2 void in PR2C |
-| Hand completion | `record_hand` | `20261224000000_hand_players_name_avatar_snapshot.sql` | `tournament-live-update` Edge | Settlement/action contract unchanged by Unified Ops V2 |
+| Hand completion | `record_hand` | `20261224000001_hand_players_name_avatar_snapshot.sql` | `tournament-live-update` Edge | Settlement/action contract unchanged by Unified Ops V2 |
 
 ## Proven Legacy Risks
 
