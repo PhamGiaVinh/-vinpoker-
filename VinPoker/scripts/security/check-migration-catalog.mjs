@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const MIGRATION_FILE_PATTERN = /^(\d{14})_.+\.sql$/u;
 const CREDENTIAL_LIKE_JWT_LITERAL = /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b/u;
 const DIRECT_PRODUCTION_FUNCTION_TARGET = /https:\/\/orlesggcjamwuknxwcpk\.supabase\.co\/functions\/v1\//u;
+const MANAGED_REALTIME_OWNERSHIP_DDL = /\b(?:ALTER\s+TABLE\s+realtime\.[A-Za-z_][A-Za-z0-9_]*\s+(?:ENABLE|DISABLE|FORCE|NO\s+FORCE)\s+ROW\s+LEVEL\s+SECURITY|(?:CREATE|DROP|ALTER)\s+POLICY\b[\s\S]{0,512}?\bON\s+realtime\.[A-Za-z_][A-Za-z0-9_]*)/iu;
 const SAFE_BOOTSTRAP_MIGRATIONS = new Set([
   "20260516123400_push_notification_dispatch.sql",
   "20260525000001_schedule_enforce_break_balance.sql",
@@ -14,6 +15,10 @@ const SAFE_BOOTSTRAP_MIGRATIONS = new Set([
   "20261115000000_sepay_reconcile.sql",
 ]);
 const FORBIDDEN_ACTIVE_MIGRATION_FILENAMES = new Map([
+  [
+    "20260429060607_237b4d96-a7ca-445d-bfc6-4593e118f887.sql",
+    "replay-unsafe managed Realtime DDL belongs in migration-archive/removed-sensitive",
+  ],
   [
     "20270104000005_dealer_shortage_alert_lifecycle.sql",
     "superseded shortage-alert migration belongs in migration-archive/never-apply",
@@ -89,6 +94,9 @@ export function findMigrationCatalogProblems(migrationDirectory) {
     const sourceWithoutLineComments = source.replace(/--[^\r\n]*/gu, "");
     if (DIRECT_PRODUCTION_FUNCTION_TARGET.test(sourceWithoutLineComments)) {
       invalidFiles.push(`direct production function target in active migration ${entry.name}`);
+    }
+    if (MANAGED_REALTIME_OWNERSHIP_DDL.test(sourceWithoutLineComments)) {
+      invalidFiles.push(`managed Realtime ownership DDL in active migration ${entry.name}`);
     }
     if (SAFE_BOOTSTRAP_MIGRATIONS.has(entry.name) && /\bnet\.http_post\b/u.test(source)) {
       invalidFiles.push(`unsafe HTTP side effect in contained bootstrap migration ${entry.name}`);
