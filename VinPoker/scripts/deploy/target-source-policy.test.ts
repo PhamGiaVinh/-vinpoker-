@@ -43,4 +43,5 @@ Deno.test("current manifest keeps the approved JWT posture for rollback source",
   assertEquals(manifest.functions["mass-assign"].verifyJwt, true);
   assertEquals(manifest.functions["checkout-dealer"].verifyJwt, true);
   assertEquals(manifest.functions["tournament-live-clock"].verifyJwt, true);
+  assertEquals(manifest.functions["ops-club-accounts"].verifyJwt, true);
 });

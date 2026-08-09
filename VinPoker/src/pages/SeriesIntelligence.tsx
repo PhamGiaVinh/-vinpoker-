@@ -23,6 +23,7 @@ import { StepSection } from "@/components/series-intelligence/StepSection";
 import { SeriesIntelEmptyState } from "@/components/series-intelligence/SeriesIntelEmptyState";
 import { SeriesCaptureConsole } from "@/components/series-intelligence/SeriesCaptureConsole";
 import { SeriesAssistant } from "@/components/series-intelligence/SeriesAssistant";
+import { VCopilotPanel } from "@/components/series-intelligence/VCopilotPanel";
 import { RegistrationPacePanel } from "@/components/series-intelligence/RegistrationPacePanel";
 import { SeriesIntelligenceWorkspaceNav } from "@/components/series-intelligence/SeriesIntelligenceWorkspaceNav";
 import { parseSeriesCsv, SAMPLE_CSV_TEXT } from "@/lib/series-intelligence/csvImport";
@@ -150,6 +151,7 @@ export default function SeriesIntelligence() {
 
       {/* W1 — Trợ lý Series: workflow ring + "hôm nay cần làm gì" (gated; hooks only run when mounted) */}
       {FEATURES.seriesAssistant && <SeriesAssistant csvEvents={lib.activeEvents} onLoadSample={loadSample} />}
+      {FEATURES.seriesVCopilotV1 && <VCopilotPanel />}
 
       {/* start-here CTA when no series is loaded */}
       {!hasData && <SeriesIntelEmptyState onUpload={scrollToLoad} onSample={loadSample} />}

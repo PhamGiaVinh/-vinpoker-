@@ -12,7 +12,7 @@ import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..", "..");
-const MIG = "supabase/migrations/20260917000000_treg_used_free_rake.sql";
+const MIG = "supabase/migrations/20260917000002_treg_used_free_rake.sql";
 const CONFIRM_ENV = "CONFIRM_APPLY_USED_FREE_RAKE", CONFIRM_VAL = "APPLY_USED_FREE_RAKE";
 
 const log = (...a) => console.log("[ufr]", ...a);

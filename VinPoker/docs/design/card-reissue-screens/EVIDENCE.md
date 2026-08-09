@@ -14,7 +14,7 @@ Ported từ bản Lovable của owner + phát triển thêm. Vị trí: Cashier 
 4. Tái dùng hạ tầng có sẵn: `Html5Qrcode` (như ClubQrScanDialog), `club_members` live, RPC cashier scope.
 
 ## Phụ thuộc DB
-- Bảng `card_reissue_log` (audit log) — migration `20261218000000_card_reissue_log.sql` **SOURCE-ONLY**,
+- Bảng `card_reissue_log` (audit log) — migration `20261218000001_card_reissue_log.sql` **SOURCE-ONLY**,
   owner áp dụng trong phiên gated. Trước khi áp: scan/enroll/edit/**in** đều chạy (dùng `club_members` live);
   chỉ lịch sử + ghi log cần bảng này.
 - `club_members` (đã live, đủ cột), RPC `is_club_cashier`/`has_role`/`cashier_club_ids` (đã live).

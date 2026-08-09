@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "..", "..");
 const migrationsDirectory = resolve(repositoryRoot, "supabase/migrations");
+const migrationArchiveDirectory = resolve(repositoryRoot, "supabase/migration-archive/never-apply");
 const targetVersions = ["20270106000001", "20270106000002"];
 const immutableHistoricalMigrations = new Map([
   [
@@ -33,7 +34,7 @@ for (const version of targetVersions) {
 }
 
 for (const [name, expectedChecksum] of immutableHistoricalMigrations) {
-  const normalizedSource = readFileSync(resolve(migrationsDirectory, name), "utf8").replaceAll("\r\n", "\n");
+  const normalizedSource = readFileSync(resolve(migrationArchiveDirectory, name), "utf8").replaceAll("\r\n", "\n");
   const actualChecksum = createHash("sha256").update(normalizedSource).digest("hex");
   if (actualChecksum !== expectedChecksum) {
     throw new Error(`PAYROLL_HISTORICAL_MIGRATION_MUTATED:${name}`);
@@ -44,9 +45,13 @@ const collisions = [...byVersion.entries()]
   .filter(([, files]) => files.length > 1)
   .map(([version, files]) => `${version}:${files.join(",")}`);
 
+if (collisions.length > 0) {
+  throw new Error(`MIGRATION_CATALOG_VERSION_COLLISION:${collisions.join("|")}`);
+}
+
 console.log(JSON.stringify({
   migration_count: entries.length,
-  existing_timestamp_collision_count: collisions.length,
+  existing_timestamp_collision_count: 0,
   payroll_versions_unique: true,
   historical_migrations_immutable: true,
 }));

@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { SeriesEventActuals, SeriesCaptureRun, AutosyncClubResult } from "./captureAutosyncTypes";
 
-// The autosync tables/RPC are created by 20261126000000_series_capture_autosync.sql, applied ONLY in the
+// The autosync tables/RPC are created by 20261126000001_series_capture_autosync.sql, applied ONLY in the
 // owner-gated session where types.ts is regenerated. Until then they are not in the generated schema, so read
 // them through an untyped view of the SAME client — a single, contained boundary (drop it once types regen).
 const db = supabase as unknown as SupabaseClient;

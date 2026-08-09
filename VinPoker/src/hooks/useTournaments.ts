@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import type { Tournament, TournamentWithTables } from "@/types/tournament";
 
 // ─── Query key factory ──────────────────────────────────────────────────────
@@ -16,6 +16,7 @@ const tournamentKeys = {
 // ─── Fetch all tournaments with tables ──────────────────────────────────────
 
 export function useTournaments(clubId: string | undefined) {
+  const supabase = useSupabaseClient();
   return useQuery({
     queryKey: tournamentKeys.all(clubId),
     queryFn: async () => {
@@ -49,6 +50,7 @@ export function useTournaments(clubId: string | undefined) {
 // ─── Fetch active tournaments only ──────────────────────────────────────────
 
 export function useActiveTournaments(clubId: string | undefined) {
+  const supabase = useSupabaseClient();
   return useQuery({
     queryKey: tournamentKeys.active(clubId),
     queryFn: async () => {
@@ -93,6 +95,7 @@ export interface CreateTournamentInput {
 }
 
 export function useCreateTournament() {
+  const supabase = useSupabaseClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -158,6 +161,7 @@ export interface UpdateTournamentInput {
 }
 
 export function useUpdateTournament() {
+  const supabase = useSupabaseClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -218,12 +222,18 @@ export function useUpdateTournament() {
 // ─── Delete tournament ──────────────────────────────────────────────────────
 
 export function useDeleteTournament() {
+  const supabase = useSupabaseClient();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({ id, club_id }: { id: string; club_id: string }) => {
-      const { error } = await supabase.from("tournaments").delete().eq("id", id);
+      const { data, error } = await supabase.rpc("ops_delete_tournament_safe", {
+        p_tournament_id: id,
+        p_reason: "tournament_hook_delete",
+      });
       if (error) throw error;
+      const result = data as { ok?: boolean; error?: string } | null;
+      if (result?.ok === false) throw new Error(result.error ?? "tournament_delete_failed");
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({

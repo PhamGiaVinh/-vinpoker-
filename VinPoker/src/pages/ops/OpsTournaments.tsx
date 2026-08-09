@@ -1,24 +1,30 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
-  ChevronRight, Plus, Play, Activity, Edit, Trophy, History, FlagTriangleRight, Trash2, Image, Minus,
-  Loader2, LogIn, ChevronLeft,
+  ChevronRight, Plus, Play, Activity, Edit, Trophy, History, Minus,
+  Loader2, LogIn, AlertTriangle,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import {
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription,
-} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import { useOperatorClubs } from "@/hooks/useOperatorClubs";
 import { useTournaments } from "@/hooks/useTournaments";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
+import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
+import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
+import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
+import {
+  createTournament,
+  mutationError,
+  updateTournament,
+  updateTournamentLive,
+} from "@/ops/opsMutations";
 import type { Tournament } from "@/types/tournament";
 
 /**
  * Giải đấu (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads danh sách A1).
  * Danh sách giải đọc từ `useTournaments(clubId)` (đúng hook desktop dùng), ngữ cảnh CLB qua `useOperatorClubs()`.
- * ⚠️ Các thao tác trong sheet (cập nhật live / chốt / xoá / tạo) CHƯA nối — bấm chỉ nhắc; gắn RPC/Edge thật
- * (tournament-live-clock/-update, update_tournament_state, update_tournament_prizes…) ở bước sau, owner UAT.
+ * Ghi chú: mọi thao tác ghi ở sheet đi qua RPC/RLS hiện có; không fallback mock và không tự apply migration.
  */
 type StatusKey = "running" | "break" | "upcoming" | "closed";
 const STATUS_CHIP: Record<StatusKey, string> = {
@@ -47,13 +53,34 @@ function toVM(t: Tournament): TVM {
   return { id: t.id, name: t.name, statusKey, statusLabel, time, buyIn, entries, level: t.current_level, blinds: t.current_blinds };
 }
 
-type SubSheet = "none" | "actions" | "create" | "form" | "updateLive" | "close" | "delete";
+type SubSheet = "none" | "actions" | "create" | "form" | "updateLive";
+const LIVE_STATUS_OPTIONS = [
+  { value: "live", label: "Đang chơi" },
+  { value: "break", label: "Giải lao" },
+  { value: "final_table", label: "Final" },
+] as const;
 
 export default function OpsTournaments() {
   const navigate = useNavigate();
-  const { loading: clubsLoading, user, clubs, operatorClubIds, error: clubsError } = useOperatorClubs();
-  const scopedIds = operatorClubIds;
-  const activeClub = scopedIds[0];
+  const client = useSupabaseClient();
+  const queryClient = useQueryClient();
+  const { user } = useOpsAuth();
+  const {
+    loading: clubsLoading,
+    clubs,
+    floorClubIds: scopedIds,
+    scope,
+    isSuperAdmin,
+    scopeError,
+    metadataError,
+  } = useOpsCapabilities();
+  const { selectedClubId } = useOpsWorkspace();
+  const activeClub = selectedClubId && (isSuperAdmin || scopedIds.includes(selectedClubId))
+    ? selectedClubId
+    : undefined;
+  const hasOwnerAccess = isSuperAdmin || scope.some(
+    (row) => row.club_id === activeClub && row.can_owner,
+  );
   const { data: tournaments, isLoading: tourLoading } = useTournaments(activeClub);
 
   const [filter, setFilter] = useState<"live" | "today" | "all">("live");
@@ -61,7 +88,16 @@ export default function OpsTournaments() {
   const [sub, setSub] = useState<SubSheet>("none");
   const [livePlayers, setLivePlayers] = useState(42);
   const [liveLevel, setLiveLevel] = useState(8);
-  const [liveStatus, setLiveStatus] = useState("Đang chơi");
+  const [liveStatus, setLiveStatus] = useState("live");
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({
+    name: "Daily Turbo tối",
+    startTime: "",
+    buyIn: "1000000",
+    startingStack: "30000",
+    minutesPerLevel: "20",
+    lateRegCloseLevel: "6",
+  });
 
   const allVMs = useMemo(() => (tournaments ?? []).map((t) => toVM(t as unknown as Tournament)), [tournaments]);
   const rows = useMemo(() => {
@@ -75,17 +111,112 @@ export default function OpsTournaments() {
   const openActions = (r: TVM) => { setSel(r); setSub("actions"); };
   const go = (next: SubSheet) => { setSub("none"); requestAnimationFrame(() => setSub(next)); };
   const closeAll = () => { setSub("none"); setSel(null); };
-  const done = () => { toast("Nút này đang được nối — sẽ bật sau khi anh xác nhận dữ liệu đúng (UAT)"); closeAll(); };
+  useEffect(() => {
+    if (!sel) return;
+    const source = tournaments?.find((t) => t.id === sel.id) as (Tournament & {
+      start_time?: string | null;
+      buy_in?: number | null;
+      starting_stack?: number | null;
+      minutes_per_level?: number | null;
+      late_reg_close_level?: number | null;
+    }) | undefined;
+    setForm({
+      name: sel.name,
+      startTime: source?.start_time?.slice(0, 16) ?? "",
+      buyIn: String(source?.buy_in ?? 1000000),
+      startingStack: String(source?.starting_stack ?? 30000),
+      minutesPerLevel: String(source?.minutes_per_level ?? 20),
+      lateRegCloseLevel: String(source?.late_reg_close_level ?? 6),
+    });
+    setLivePlayers(sel.entries);
+    setLiveLevel(sel.level ?? 1);
+    const sourceStatus = source?.status ?? "live";
+    setLiveStatus(LIVE_STATUS_OPTIONS.find((option) => option.value === sourceStatus)?.label ?? (sourceStatus === "completed" ? "Final" : sourceStatus));
+  }, [sel, tournaments]);
+
+  const refreshTournaments = () => {
+    void queryClient.invalidateQueries({ queryKey: ["tournaments", activeClub] });
+  };
+
+  const runMutation = async (action: () => Promise<unknown>, success: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await action();
+      toast.success(success);
+      refreshTournaments();
+      closeAll();
+    } catch (error) {
+      toast.error(mutationError(error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitForm = () => {
+    if (sel && !hasOwnerAccess) {
+      toast.error("Chỉ chủ CLB được sửa giải.");
+      return;
+    }
+    const fields = Array.from(document.querySelectorAll<HTMLInputElement>("[data-ops-field]"));
+    const name = (fields[0]?.value ?? form.name).trim();
+    const rawStart = fields[1]?.value ?? form.startTime;
+    const parsedStart = /^\d{2}:\d{2}$/.test(rawStart)
+      ? (() => { const d = new Date(); const [hours, minutes] = rawStart.split(":").map(Number); d.setHours(hours, minutes, 0, 0); return d; })()
+      : new Date(rawStart);
+    const startTime = Number.isNaN(parsedStart.getTime()) ? new Date().toISOString() : parsedStart.toISOString();
+    const numeric = (value: string | undefined, fallback: string) => {
+      const parsed = Number((value ?? fallback).replace(/[^\d-]/g, ""));
+      return Number.isFinite(parsed) ? parsed : Number(fallback);
+    };
+    const buyIn = numeric(fields[3]?.value, form.buyIn);
+    const startingStack = numeric(fields[4]?.value, form.startingStack);
+    const minutesPerLevel = Number(form.minutesPerLevel);
+    const lateRegCloseLevel = Number(form.lateRegCloseLevel);
+    if (!name || !Number.isFinite(buyIn) || buyIn < 0 || !Number.isFinite(startingStack) || startingStack <= 0 || minutesPerLevel <= 0) {
+      toast.error("Kiểm tra tên giải, buy-in, stack và thời lượng blind.");
+      return;
+    }
+    void runMutation(
+      () => sel
+        ? updateTournament(client, sel.id, { name, startTime, buyIn, startingStack, minutesPerLevel, lateRegCloseLevel })
+        : createTournament(client, { clubId: activeClub!, name, startTime, buyIn, startingStack, minutesPerLevel, lateRegCloseLevel }),
+      sel ? "Đã lưu thông tin giải." : "Đã tạo giải.",
+    );
+  };
+
+  const submitLive = () => {
+    if (!sel) return;
+    const normalizedStatus = LIVE_STATUS_OPTIONS.find((option) => option.label === liveStatus)?.value ?? liveStatus;
+    if (!LIVE_STATUS_OPTIONS.some((option) => option.value === normalizedStatus)) {
+      toast.error("Trạng thái live không hợp lệ; dùng Chốt giải để kết thúc.");
+      return;
+    }
+    void runMutation(
+      () => updateTournamentLive(client, {
+        tournamentId: sel.id,
+        status: normalizedStatus,
+        playersRemaining: livePlayers,
+        level: liveLevel,
+        blinds: liveLevel > 0 ? "2.000 / 4.000 · ante 4.000" : null,
+      }),
+      "Đã cập nhật trạng thái live.",
+    );
+  };
+
+  const done = () => {
+    if (sub === "form") return submitForm();
+    if (sub === "updateLive") return submitLive();
+  };
 
   // ---- guards (ordered: auth → login → clubs → permission → data) ----
   if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." />;
   if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập để xem giải đấu của câu lạc bộ." />;
-  if (clubs === null) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Lấy câu lạc bộ." />;
-  if (clubsError) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi CLB" sub="Không dùng dữ liệu thay thế. Hãy tải lại trang." />;
+  if (scopeError) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi CLB" sub="Không dùng dữ liệu thay thế. Hãy tải lại trang." />;
   if (!activeClub) return <Guard icon={<Trophy className="h-8 w-8 text-amber-300" />} title="Chưa có câu lạc bộ" sub="Chưa được phân công CLB nào để xem giải." />;
   if (tourLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải giải…" sub="Lấy danh sách giải đấu." />;
 
-  const clubName = clubs && clubs.length ? clubs[0].name : "CLB";
+  const clubName = clubs.find((club) => club.id === activeClub)?.name ?? "CLB";
 
   return (
     <div className="ios-in space-y-4 pt-2">
@@ -94,13 +225,17 @@ export default function OpsTournaments() {
         <p className="mt-0.5 text-[15px] text-[#9b8e97]">{clubName} · chạm 1 giải để thao tác</p>
       </header>
 
-      <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">
+      {metadataError && <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">{metadataError}</div>}
+      <div className="rounded-xl bg-emerald-400/8 px-3 py-2 text-[12px] text-emerald-300/90">
+        Dữ liệu thật. Máy chủ phải xác nhận mọi thao tác ghi; lỗi quyền hoặc thiếu RPC sẽ giữ nguyên dữ liệu.
+      </div>
+      <div className="hidden rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">
         Danh sách <b>thật</b>. Nút trong sheet (cập nhật live / chốt / xoá) đang được nối — sẽ bật sau UAT.
       </div>
 
       <div className="flex gap-1.5 px-1">
         {FILTERS.map((f) => (
-          <button key={f.key} onClick={() => setFilter(f.key)}
+          <button key={f.key} data-ops-action="floor.tournaments.filter" onClick={() => setFilter(f.key)}
             className={cn("ios-press-sm rounded-full px-3 py-1.5 text-[13px] font-medium", filter === f.key ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
             {f.label}
           </button>
@@ -112,7 +247,7 @@ export default function OpsTournaments() {
       ) : (
         <div className="ios-group">
           {rows.map((r) => (
-            <button key={r.id} onClick={() => openActions(r)} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left">
+            <button key={r.id} data-ops-action="floor.tournaments.open_actions" onClick={() => openActions(r)} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left">
               <span className="min-w-0 flex-1">
                 <span className={cn("block truncate text-[16px] font-semibold", r.statusKey === "closed" ? "text-[#9b8e97]" : "text-[#f2ece6]")}>{r.name}</span>
                 <span className="mt-0.5 block font-mono text-[12px] text-[#9b8e97]">
@@ -126,7 +261,7 @@ export default function OpsTournaments() {
         </div>
       )}
 
-      <button onClick={() => setSub("create")} className="ios-press ios-primary flex w-full items-center justify-center gap-1.5 rounded-2xl py-3.5 text-[16px] font-bold">
+      <button data-ops-action="floor.tournaments.create_open" onClick={() => { setSel(null); setSub("create"); }} disabled={!hasOwnerAccess} title={!hasOwnerAccess ? "Chỉ owner được tạo giải" : undefined} className="ios-press ios-primary flex w-full items-center justify-center gap-1.5 rounded-2xl py-3.5 text-[16px] font-bold disabled:opacity-40">
         <Plus className="h-5 w-5" /> Tạo giải
       </button>
 
@@ -144,17 +279,15 @@ export default function OpsTournaments() {
             {sel?.time} · {sel?.entries ?? 0} người{sel?.level ? ` · L${sel.level} · ${sel.blinds}` : ""}
           </div>
           <div className="mt-4 space-y-1.5">
-            <button onClick={() => { const id = sel?.id; closeAll(); navigate(`/ops/tournaments/${id}`); }}
+            <button data-ops-action="floor.tournaments.enter_workspace" onClick={() => { const id = sel?.id; closeAll(); navigate(`/ops/floor/tournaments/${id}/tables?club=${encodeURIComponent(activeClub!)}`); }}
               className="ios-press ios-primary flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
               <Play className="h-5 w-5 shrink-0" />
               <span className="text-[15px] font-bold">Vào giải (vận hành)</span>
             </button>
             <Row icon={<Activity className="h-5 w-5 text-emerald-300" />} label="Cập nhật live — người / level / blind" onTap={() => go("updateLive")} />
             <Row icon={<Edit className="h-5 w-5 text-[#9b8e97]" />} label="Sửa thông tin giải" onTap={() => go("form")} />
-            <Row icon={<Trophy className="h-5 w-5 text-[#d8bc85]" />} label="Cơ cấu thưởng" onTap={() => { const id = sel?.id; closeAll(); navigate(`/ops/tournaments/${id}?tab=payout`); }} />
-            <Row icon={<History className="h-5 w-5 text-[#9b8e97]" />} label="Lịch sử thao tác" onTap={() => { const id = sel?.id; closeAll(); navigate(`/ops/tournaments/${id}?tab=history`); }} />
-            <Row icon={<FlagTriangleRight className="h-5 w-5 text-amber-300" />} label={<span className="text-amber-300">Chốt giải</span>} onTap={() => go("close")} />
-            <Row icon={<Trash2 className="h-5 w-5 text-rose-300" />} label={<span className="text-rose-300">Xoá giải</span>} onTap={() => go("delete")} />
+            <Row icon={<Trophy className="h-5 w-5 text-[#d8bc85]" />} label="Cơ cấu thưởng" onTap={() => { const id = sel?.id; closeAll(); navigate(`/ops/floor/tournaments/${id}/payout?club=${encodeURIComponent(activeClub!)}`); }} />
+            <Row icon={<History className="h-5 w-5 text-[#9b8e97]" />} label="TV & màn hình" onTap={() => { const id = sel?.id; closeAll(); navigate(`/ops/floor/tournaments/${id}/screens?club=${encodeURIComponent(activeClub!)}`); }} />
           </div>
         </SheetContent>
       </Sheet>
@@ -166,14 +299,13 @@ export default function OpsTournaments() {
           <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Tạo giải</SheetTitle></SheetHeader>
           <div className="mt-3 space-y-1.5">
             <Row icon={<Plus className="h-5 w-5 text-[#d8bc85]" />} label="Tạo mới — điền 5 ô" onTap={() => go("form")} />
-            <Row icon={<Image className="h-5 w-5 text-sky-300" />} label="Tạo từ ảnh lịch — máy tự đọc" onTap={() => { closeAll(); toast("Tạo từ ảnh lịch (bản mẫu) — luồng N2"); }} />
           </div>
         </SheetContent>
       </Sheet>
 
       {/* N1 — form tạo/sửa giải */}
       <Sheet open={sub === "form"} onOpenChange={(v) => { if (!v) closeAll(); }}>
-        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+        <SheetContent key={`form-${sel?.id ?? "new"}`} side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">{sel ? "Sửa thông tin giải" : "Tạo giải mới"}</SheetTitle></SheetHeader>
           <div className="mt-3 space-y-2.5">
@@ -188,7 +320,7 @@ export default function OpsTournaments() {
             </div>
             <Field label="Cấu trúc blind" value="Turbo 20 phút — mẫu có sẵn ▾" muted />
           </div>
-          <button onClick={() => done()} className="ios-press ios-primary mt-4 w-full rounded-2xl py-3 text-[15px] font-bold">
+          <button data-ops-action="floor.tournaments.save" onClick={() => done()} className="ios-press ios-primary mt-4 w-full rounded-2xl py-3 text-[15px] font-bold">
             {sel ? "Lưu thay đổi" : "Tạo giải"}
           </button>
         </SheetContent>
@@ -209,59 +341,26 @@ export default function OpsTournaments() {
           </div>
           <div className="mt-2.5 px-1 text-[12px] text-[#9b8e97]">Trạng thái</div>
           <div className="mt-1 flex flex-wrap gap-1.5 px-1">
-            {["Đang chơi", "Giải lao", "Final", "Kết thúc"].map((st) => (
-              <button key={st} onClick={() => setLiveStatus(st)}
+            {["Đang chơi", "Giải lao", "Final"].map((st) => (
+              <button key={st} data-ops-action="floor.tournaments.select_live_status" onClick={() => setLiveStatus(st)}
                 className={cn("ios-press-sm rounded-full px-3 py-1.5 text-[13px] font-medium", liveStatus === st ? "bg-emerald-400/15 text-emerald-300" : "bg-white/5 text-[#9b8e97]")}>
                 {st}
               </button>
             ))}
           </div>
-          <button onClick={() => done()} className="ios-press ios-primary mt-4 w-full rounded-2xl py-3 text-[15px] font-bold">Lưu cập nhật</button>
+          <button data-ops-action="floor.tournaments.update_live" onClick={() => done()} className="ios-press ios-primary mt-4 w-full rounded-2xl py-3 text-[15px] font-bold">Lưu cập nhật</button>
           <div className="mt-2 text-center text-[12px] text-[#7c7079]">đồng hồ và TV cập nhật theo ngay</div>
         </SheetContent>
       </Sheet>
 
-      {/* chốt giải — amber confirm */}
-      <AlertDialog open={sub === "close"} onOpenChange={(v) => { if (!v) closeAll(); }}>
-        <AlertDialogContent className="max-w-[340px] rounded-[24px] border-none bg-[#0d0913]">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-[#f2ece6]">Chốt giải {sel?.name}?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#9b8e97]">
-              Khoá kết quả và số liệu của giải. Số tiền trả thưởng sẽ chuyển sang trạng thái Đã chốt.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2 sm:gap-2">
-            <button onClick={closeAll} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6]">Huỷ</button>
-            <button onClick={() => done()} className="ios-press flex-1 rounded-2xl bg-amber-400/90 py-3 text-[15px] font-bold text-[#241A08]">Chốt giải</button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* xoá giải — red confirm */}
-      <AlertDialog open={sub === "delete"} onOpenChange={(v) => { if (!v) closeAll(); }}>
-        <AlertDialogContent className="max-w-[340px] rounded-[24px] border-none bg-[#0d0913]">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-[#f2ece6]">Xoá giải {sel?.name}?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#9b8e97]">Không hoàn tác được. Giải có người đăng ký sẽ không xoá được.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2 sm:gap-2">
-            <button onClick={closeAll} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6]">Huỷ</button>
-            <button onClick={() => done()} className="ios-press flex-1 rounded-2xl bg-rose-500/90 py-3 text-[15px] font-bold text-white">Xoá giải</button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
 
 function Guard({ icon, title, sub }: { icon: React.ReactNode; title: string; sub: string }) {
-  const navigate = useNavigate();
   return (
     <div className="ios-in space-y-4 pt-2">
       <header className="px-1">
-        <button onClick={() => navigate("/")} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
-          <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> App chính
-        </button>
         <h1 className="mt-1 text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Giải đấu</h1>
       </header>
       <div className="ios-card flex flex-col items-center gap-2 py-12 text-center">
@@ -275,7 +374,7 @@ function Guard({ icon, title, sub }: { icon: React.ReactNode; title: string; sub
 
 function Row({ icon, label, onTap }: { icon: React.ReactNode; label: React.ReactNode; onTap: () => void }) {
   return (
-    <button onClick={onTap} className="ios-press ios-fill flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
+    <button data-ops-action="floor.tournaments.sheet_navigation" onClick={onTap} className="ios-press ios-fill flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
       {icon}
       <span className="text-[15px] text-[#f2ece6]">{label}</span>
     </button>
@@ -286,7 +385,12 @@ function Field({ label, value, mono, muted }: { label: string; value: string; mo
   return (
     <div>
       <div className="px-1 text-[12px] text-[#9b8e97]">{label}</div>
-      <div className={cn("ios-fill mt-1 rounded-xl px-3 py-2.5 text-[15px]", mono && "font-mono text-center", muted ? "text-[#9b8e97]" : "text-[#f2ece6]")}>{value}</div>
+      <input
+        data-ops-field={label}
+        defaultValue={value}
+        readOnly={muted}
+        className={cn("ios-fill mt-1 w-full rounded-xl px-3 py-2.5 text-[15px] outline-none", mono && "font-mono text-center", muted ? "text-[#9b8e97]" : "text-[#f2ece6]")}
+      />
     </div>
   );
 }
@@ -296,9 +400,9 @@ function Stepper({ label, value, onDec, onInc }: { label: string; value: number;
     <div className="ios-fill rounded-xl px-2 py-2 text-center">
       <div className="text-[11px] text-[#9b8e97]">{label}</div>
       <div className="mt-1 flex items-center justify-center gap-3">
-        <button onClick={onDec} className="ios-press-sm grid h-8 w-8 place-items-center rounded-lg bg-white/6 text-[#f2ece6]"><Minus className="h-4 w-4" /></button>
+        <button data-ops-action="floor.tournaments.stepper" onClick={onDec} className="ios-press-sm grid h-8 w-8 place-items-center rounded-lg bg-white/6 text-[#f2ece6]"><Minus className="h-4 w-4" /></button>
         <span className="min-w-[2.5rem] font-mono text-[20px] font-semibold text-[#f2ece6]">{value}</span>
-        <button onClick={onInc} className="ios-press-sm grid h-8 w-8 place-items-center rounded-lg bg-white/6 text-[#f2ece6]"><Plus className="h-4 w-4" /></button>
+        <button data-ops-action="floor.tournaments.stepper" onClick={onInc} className="ios-press-sm grid h-8 w-8 place-items-center rounded-lg bg-white/6 text-[#f2ece6]"><Plus className="h-4 w-4" /></button>
       </div>
     </div>
   );

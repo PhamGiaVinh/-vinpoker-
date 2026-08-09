@@ -13,7 +13,7 @@
 -- OWNER-GATED APPLY. Do not apply autonomously.
 --
 -- ROLLBACK (owner-gated): recreate both wrapper functions from
--- 20260917000000_online_poker_runner_cron_vault.sql. Cron schedules do not need
+-- 20260917000001_online_poker_runner_cron_vault.sql. Cron schedules do not need
 -- to be changed for either apply or rollback.
 -- ============================================================================
 

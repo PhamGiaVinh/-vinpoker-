@@ -1,9 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: { rpc: vi.fn() },
-}));
+import { SupabaseClientProvider } from "@/integrations/supabase/SupabaseClientContext";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -13,17 +10,20 @@ afterEach(cleanup);
 
 describe("FloorTableControlModeControl", () => {
   it("uses the visual Manual Floor and Live Tracker chooser in an existing table", () => {
+    const client = { rpc: vi.fn() } as never;
     render(
-      <FloorTableControlModeControl
-        tournamentId="tournament-1"
-        table={{
-          tt_id: "table-1",
-          table_name: "Bàn 2",
-          floor_control_mode: "manual",
-          floor_control_revision: 3,
-        }}
-        onChanged={vi.fn()}
-      />,
+      <SupabaseClientProvider client={client}>
+        <FloorTableControlModeControl
+          tournamentId="tournament-1"
+          table={{
+            tt_id: "table-1",
+            table_name: "Bàn 2",
+            floor_control_mode: "manual",
+            floor_control_revision: 3,
+          }}
+          onChanged={vi.fn()}
+        />
+      </SupabaseClientProvider>,
     );
 
     expect(screen.getByTestId("floor-table-control-mode-manual")).toHaveAttribute("aria-checked", "true");

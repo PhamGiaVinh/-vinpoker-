@@ -13,12 +13,12 @@ jobs:
   guard-preview-context:
     if: github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: ops-staging
     env:
       FLOOR_UAT_ENV: preview
       FLOOR_UAT_SUPABASE_URL: ${{ secrets.FLOOR_UAT_SUPABASE_URL }}
       FLOOR_UAT_PROJECT_REF: ${{ secrets.FLOOR_UAT_PROJECT_REF }}
       FLOOR_UAT_PRODUCTION_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-      FLOOR_UAT_BASE_URL: ${{ secrets.FLOOR_UAT_BASE_URL }}
       FLOOR_UAT_PRODUCTION_DOMAIN: ${{ secrets.FLOOR_UAT_PRODUCTION_DOMAIN }}
       FLOOR_UAT_FIXTURE_PREFIX: ${{ inputs.fixture_prefix }}
     steps:
@@ -27,4 +27,99 @@ jobs:
         with:
           node-version: "20"
       - name: Reject production or ambiguous Floor UAT context
-        run: node VinPoker/scripts/security/check-floor-audit-context.mjs
+        run: node VinPoker/scripts/security/check-floor-audit-context.mjs --allow-unresolved-base-url
+
+  verify-preview-app-shells:
+    name: Build and verify source-pinned Preview shells
+    needs: guard-preview-context
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: ops-staging
+    env:
+      FLOOR_UAT_ENV: preview
+      FLOOR_UAT_SUPABASE_URL: ${{ secrets.FLOOR_UAT_SUPABASE_URL }}
+      FLOOR_UAT_PROJECT_REF: ${{ secrets.FLOOR_UAT_PROJECT_REF }}
+      FLOOR_UAT_PRODUCTION_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      FLOOR_UAT_PRODUCTION_DOMAIN: ${{ secrets.FLOOR_UAT_PRODUCTION_DOMAIN }}
+      FLOOR_UAT_FIXTURE_PREFIX: ${{ inputs.fixture_prefix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - name: Recheck Preview boundary and required protected inputs
+        env:
+          FLOOR_UAT_SUPABASE_ANON_KEY: ${{ secrets.FLOOR_UAT_SUPABASE_ANON_KEY }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.USERIDVERRCEL }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
+        run: |
+          set -euo pipefail
+          node VinPoker/scripts/security/check-floor-audit-context.mjs --allow-unresolved-base-url
+          test -n "$FLOOR_UAT_SUPABASE_ANON_KEY"
+          test -n "$VERCEL_TOKEN"
+          test -n "$VERCEL_ORG_ID"
+          test -n "$VERCEL_PROJECT_ID"
+
+      - name: Install exact dependencies and Preview deployment CLI
+        run: |
+          npm ci --ignore-scripts
+          npm install --global vercel@56.4.1
+        working-directory: VinPoker
+
+      - name: Build and verify both application entries locally
+        working-directory: VinPoker
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.FLOOR_UAT_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.FLOOR_UAT_SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          npm run build
+          node scripts/deploy/verify-app-shell-routing.mjs --static-dir dist
+
+      - name: Deploy source-pinned Preview bundle
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.USERIDVERRCEL }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" != "refs/heads/main"
+          mkdir -p .vercel/output/static
+          trap 'rm -f .vercel/project.json' EXIT
+          node -e '
+            const { mkdirSync, writeFileSync } = require("node:fs");
+            mkdirSync(".vercel", { recursive: true });
+            writeFileSync(
+              ".vercel/project.json",
+              JSON.stringify({
+                orgId: process.env.VERCEL_ORG_ID,
+                projectId: process.env.VERCEL_PROJECT_ID,
+              }),
+              { mode: 0o600 },
+            );
+          '
+          cp -r VinPoker/dist/. .vercel/output/static/
+          node VinPoker/scripts/deploy/write-vercel-build-output-config.mjs \
+            --static-dir .vercel/output/static \
+            --output .vercel/output/config.json
+          vercel deploy --prebuilt --yes --token "$VERCEL_TOKEN" \
+            > "${RUNNER_TEMP}/ops-preview-deployment-url.txt"
+
+      - name: Verify deployed Preview remains non-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployment_url="$(tail -n 1 "${RUNNER_TEMP}/ops-preview-deployment-url.txt" | tr -d '\r\n')"
+          test -n "$deployment_url"
+          FLOOR_UAT_BASE_URL="$deployment_url" \
+            node VinPoker/scripts/security/check-floor-audit-context.mjs
+          node VinPoker/scripts/deploy/verify-app-shell-routing.mjs \
+            --base-url "$deployment_url"

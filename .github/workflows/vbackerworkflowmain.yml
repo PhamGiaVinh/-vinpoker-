@@ -30,6 +30,11 @@ on:
         required: true
         default: false
         type: boolean
+      deploy_ops_club_accounts:
+        description: "Deploy critical Edge function ops-club-accounts"
+        required: true
+        default: false
+        type: boolean
       deploy_frontend:
         description: "Deploy the reviewed frontend source at commit_sha"
         required: true
@@ -122,6 +127,7 @@ jobs:
           DEPLOY_MASS_ASSIGN: ${{ inputs.deploy_mass_assign || false }}
           DEPLOY_CHECKOUT_DEALER: ${{ inputs.deploy_checkout_dealer || false }}
           DEPLOY_TOURNAMENT_LIVE_CLOCK: ${{ inputs.deploy_tournament_live_clock || false }}
+          DEPLOY_OPS_CLUB_ACCOUNTS: ${{ inputs.deploy_ops_club_accounts || false }}
           DEPLOY_FRONTEND: ${{ inputs.deploy_frontend || false }}
           FORCE_FRONTEND_REDEPLOY: ${{ inputs.force_frontend_redeploy || false }}
         run: |
@@ -131,6 +137,7 @@ jobs:
           [[ "$DEPLOY_MASS_ASSIGN" == "true" ]] && selected+=("mass-assign")
           [[ "$DEPLOY_CHECKOUT_DEALER" == "true" ]] && selected+=("checkout-dealer")
           [[ "$DEPLOY_TOURNAMENT_LIVE_CLOCK" == "true" ]] && selected+=("tournament-live-clock")
+          [[ "$DEPLOY_OPS_CLUB_ACCOUNTS" == "true" ]] && selected+=("ops-club-accounts")
           selected_csv="$(IFS=,; echo "${selected[*]-}")"
           node control-plane/VinPoker/scripts/deploy/plan-edge-deployment.mjs \
             --event "${{ github.event_name }}" \
@@ -507,7 +514,7 @@ jobs:
       - name: Install deployment CLIs
         run: |
           npm install --global supabase@2.101.0
-          npm install --global vercel@latest
+          npm install --global vercel@56.4.1
 
       - name: Re-probe frontend live contracts
         shell: bash
@@ -562,8 +569,59 @@ jobs:
           vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
           mkdir -p .vercel/output/static
           cp -r VinPoker/dist/. .vercel/output/static/
-          printf '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' > .vercel/output/config.json
-          vercel deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN"
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/verify-app-shell-routing.mjs" \
+            --static-dir .vercel/output/static
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/write-vercel-build-output-config.mjs" \
+            --static-dir .vercel/output/static \
+            --output .vercel/output/config.json
+          vercel deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN" \
+            > "${RUNNER_TEMP}/frontend-deployment-url.txt"
+
+      - name: Verify Player and Ops application shells before receipt
+        shell: bash
+        working-directory: target-source
+        run: |
+          set -euo pipefail
+          deployment_url="$(tail -n 1 "${RUNNER_TEMP}/frontend-deployment-url.txt" | tr -d '\r\n')"
+          test -n "$deployment_url"
+          # Vercel can take longer than two minutes to update its production alias.
+          # Keep the receipt fail-closed, but allow a bounded six-minute convergence window.
+          shell_verify_attempts=72
+          shell_verify_interval_seconds=5
+          verified=false
+          for _ in $(seq 1 "$shell_verify_attempts"); do
+            if node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/verify-app-shell-routing.mjs" \
+              --base-url "$deployment_url"; then
+              verified=true
+              break
+            fi
+            sleep "$shell_verify_interval_seconds"
+          done
+          # Vercel's unique deployment URL is diagnostic only: it can remain on
+          # a different alias while the canonical production URL is converging.
+          # Keep the receipt gate fail-closed on the exact canonical version and
+          # shell checks below, without printing or exposing the deployment URL.
+          if [ "$verified" = true ]; then
+            echo "FRONTEND_DEPLOYMENT_URL_VERIFY=PASS"
+          else
+            echo "FRONTEND_DEPLOYMENT_URL_VERIFY=NOT_CONVERGED"
+          fi
+
+          canonical_version="${RUNNER_TEMP}/canonical-version.json"
+          canonical_verified=false
+          for _ in $(seq 1 "$shell_verify_attempts"); do
+            if curl --silent --show-error --fail \
+              "https://vinpoker.vercel.app/version.json?rollout=${GITHUB_RUN_ID}" \
+              --output "$canonical_version" \
+              && cmp --silent VinPoker/dist/version.json "$canonical_version" \
+              && node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/verify-app-shell-routing.mjs" \
+                --base-url "https://vinpoker.vercel.app"; then
+              canonical_verified=true
+              break
+            fi
+            sleep "$shell_verify_interval_seconds"
+          done
+          test "$canonical_verified" = true
 
       - name: Record receipt only after successful frontend deploy
         run: >-

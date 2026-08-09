@@ -24,6 +24,16 @@
         "allowOtherOverloads": false,
         "acl": { "authenticated": true, "anon": false, "service_role": false },
         "dependencyKind": "transitive_server"
+      },
+      { "type": "relation", "name": "public.club_operator_invites" },
+      {
+        "type": "function",
+        "name": "public.accept_my_club_operator_invites",
+        "arguments": [],
+        "argumentTypes": [],
+        "allowOtherOverloads": false,
+        "acl": { "authenticated": true, "anon": false, "service_role": true },
+        "dependencyKind": "direct_frontend"
       }
     ]
   },
@@ -403,6 +413,41 @@
           "argumentTypes": ["uuid"],
           "allowOtherOverloads": false,
           "acl": { "authenticated": true, "anon": true, "service_role": true }
+        }
+      ]
+    },
+    "ops-club-accounts": {
+      "path": "VinPoker/supabase/functions/ops-club-accounts",
+      "critical": true,
+      "autoDeployOnPush": false,
+      "verifyJwt": true,
+      "receiptEnvironment": "receipt-vinpoker-edge-ops-club-accounts",
+      "quality": {
+        "denoTests": [
+          "VinPoker/supabase/functions/ops-club-accounts/index.test.ts"
+        ]
+      },
+      "contracts": [
+        { "type": "relation", "name": "public.clubs" },
+        { "type": "relation", "name": "public.club_cashiers" },
+        { "type": "relation", "name": "public.club_floors" },
+        { "type": "relation", "name": "public.club_operator_invites" },
+        { "type": "relation", "name": "public.club_operator_invite_events" },
+        {
+          "type": "function",
+          "name": "public.apply_club_operator_invite",
+          "arguments": ["p_actor_id", "p_club_id", "p_auth_user_id", "p_email_normalized", "p_operator_role", "p_invitation_sent", "p_delivery_outcome"],
+          "argumentTypes": ["uuid", "uuid", "uuid", "text", "text", "boolean", "text"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": false, "anon": false, "service_role": true }
+        },
+        {
+          "type": "function",
+          "name": "public.revoke_club_operator_invite",
+          "arguments": ["p_actor_id", "p_invite_id"],
+          "argumentTypes": ["uuid", "uuid"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": false, "anon": false, "service_role": true }
         }
       ]
     },

@@ -9,7 +9,9 @@ export interface CloseTableMove {
 export interface CloseTableResponse {
   ok?: boolean;
   closed?: boolean;
+  already_closed?: boolean;
   error?: string;
+  hand_id?: string;
   need?: number;
   have?: number;
   moved_count?: number;
@@ -77,10 +79,17 @@ export function parseCloseTableResult(value: unknown, sourceActiveSeats: number)
   if (response.moved.length !== movedCount) {
     return { kind: "error", response, code: "invalid_response" };
   }
-  if (sourceActiveSeats > 0 && movedCount === 0) {
+  if (response.already_closed === true && movedCount !== 0) {
+    return { kind: "error", response, code: "invalid_response" };
+  }
+  if (sourceActiveSeats > 0 && movedCount === 0 && response.already_closed !== true) {
     return { kind: "error", response, code: "unexpected_zero_moves" };
   }
-  if (sourceActiveSeats > 0 && movedCount !== sourceActiveSeats) {
+  if (
+    sourceActiveSeats > 0
+    && response.already_closed !== true
+    && movedCount !== sourceActiveSeats
+  ) {
     return { kind: "error", response, code: "move_count_mismatch" };
   }
 
@@ -117,6 +126,10 @@ export function closeTableErrorMessage(response: CloseTableResponse | null, fall
     case "table_already_closed": return "Bàn này đã được đóng bởi thao tác khác. Hãy tải lại sơ đồ bàn.";
     case "UNLINKED_ACTIVE_SEATS":
       return `Không thể đóng bàn: có ${response?.unlinked_active_seats ?? "?"}/${response?.total_active_seats ?? "?"} ghế đang chơi chưa gắn entry. Không có ghế nào bị thay đổi.`;
+    case "seat_entry_mismatch":
+      return "Ghế và entry không khớp. Không có dữ liệu nào bị thay đổi.";
+    case "table_has_active_hand":
+      return "Bàn đang có hand hoạt động. Hãy hoàn tất hoặc xử lý hand trước khi đóng bàn.";
     case "insufficient_capacity":
       return `Không đủ ghế trống (cần ${response?.need ?? "?"}, có ${response?.have ?? "?"}) - mở thêm bàn trước khi đóng.`;
     case "unexpected_zero_moves":

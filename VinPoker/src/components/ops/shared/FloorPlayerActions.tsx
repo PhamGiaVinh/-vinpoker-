@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { PlayerActionSheets } from "@/components/ops/shared/PlayerActionSheets";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
@@ -12,11 +12,6 @@ import { floorOpsErrorMessage, floorOpsFunctionErrorCode } from "@/lib/floorOpsE
 import { findFloorTableControlRow } from "@/lib/floorTableControlMode";
 
 type UnappliedFloorRpcResult = { data: unknown; error: { message?: string; code?: string } | null };
-const untypedFloorRpc = supabase.rpc.bind(supabase) as unknown as (
-  name: string,
-  args: Record<string, unknown>,
-) => Promise<UnappliedFloorRpcResult>;
-
 /**
  * FloorPlayerActions — host DÙNG CHUNG cho luồng thao tác người chơi trên floor (màn Bàn + cockpit).
  * Giữ TOÀN BỘ state ghi + handler money-path (Sửa chip / Loại / Chuyển / Phiếu) + render
@@ -42,6 +37,14 @@ export function FloorPlayerActions({
   target: FloorSeatTarget | null;
   onClose: () => void;
 }) {
+  const supabase = useSupabaseClient();
+  const untypedFloorRpc = useMemo(
+    () => supabase.rpc.bind(supabase) as unknown as (
+      name: string,
+      args: Record<string, unknown>,
+    ) => Promise<UnappliedFloorRpcResult>,
+    [supabase],
+  );
   const real = target?.real ?? null;
   const bustTable = useMemo(
     () => findFloorTableControlRow(floor.tables, real?.table_id),
@@ -73,7 +76,7 @@ export function FloorPlayerActions({
         return false;
       }
       const result = preflightFloorSeatEntry(data);
-      if (!result.ok) {
+      if (result.ok === false) {
         toast.error(floorOpsErrorMessage(result.error, "Không thể xác minh lượt đăng ký của ghế."));
         return false;
       }
@@ -82,7 +85,7 @@ export function FloorPlayerActions({
       toast.error("Không kiểm tra được lượt đăng ký của ghế. Hãy tải lại trước khi thao tác.");
       return false;
     }
-  }, [real, tournamentId]);
+  }, [real, supabase, tournamentId]);
 
   // Sửa chip qua Edge với compare-and-set theo chip hiện tại; không cập nhật lạc hậu ở client.
   const saveChip = useCallback(async (newChip: number): Promise<boolean> => {
@@ -117,7 +120,7 @@ export function FloorPlayerActions({
       toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Sửa chip thất bại");
       return false;
     }
-  }, [real, tournamentId, floor, bustTable]);
+  }, [real, tournamentId, floor, bustTable, supabase]);
 
   // Loại qua Edge/RPC nguyên tử, audit-only: luồng này không gọi payout dù một
   // feature flag khác có thay đổi trong tương lai.
@@ -147,7 +150,7 @@ export function FloorPlayerActions({
       setBustInfo({ loading: false, place: null, prize: null });
       return true;
     }
-  }, [real, tournamentId, bustTable, verifyActiveEntry]);
+  }, [real, tournamentId, bustTable, supabase, verifyActiveEntry]);
   const bustPlayer = useCallback(async (): Promise<boolean> => {
     if (!real || !tournamentId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
     try {
@@ -169,7 +172,7 @@ export function FloorPlayerActions({
       floor.reload();
       return true;
     } catch (e) { toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Loại thất bại"); return false; }
-  }, [real, tournamentId, floor, verifyActiveEntry]);
+  }, [real, tournamentId, floor, supabase, verifyActiveEntry]);
 
   // Chuyển ghế (move_player_seat). Ghế trống mỗi bàn từ get_seats hiện tại; entry_id KHÔNG có trong
   // get_seats → tra tournament_seats theo seat_id (đúng cách desktop MovePlayerDialog).
@@ -195,7 +198,7 @@ export function FloorPlayerActions({
       floor.reload();
       return true;
     } catch (e) { toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Chuyển thất bại"); return false; }
-  }, [real, tournamentId, floor]);
+  }, [real, tournamentId, floor, supabase, untypedFloorRpc]);
 
   // Phiếu (READ-ONLY): tái dùng SeatReceiptDialog desktop. receiptCode/qrValue = entry_id (tra
   // tournament_seats theo seat_id, fallback seat_id). KHÔNG ghi DB.
@@ -218,7 +221,7 @@ export function FloorPlayerActions({
       startingStack: r.chip_count,
       qrValue: code,
     });
-  }, [target, tournamentName, tournamentDate]);
+  }, [supabase, target, tournamentName, tournamentDate]);
 
   return (
     <>

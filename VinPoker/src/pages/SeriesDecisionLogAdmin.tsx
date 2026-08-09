@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { FEATURES } from "@/lib/featureFlags";
 import { SeriesCaptureConsole } from "@/components/series-intelligence/SeriesCaptureConsole";
+import { DecisionRoomV1 } from "@/components/series-intelligence/DecisionRoomV1";
 
 /**
  * Series Intelligence — CAPTURE console (standalone route /club/admin/series-decision-log). Flag- + role-gated
@@ -34,7 +35,7 @@ export default function SeriesDecisionLogAdmin() {
         </div>
       </div>
 
-      <SeriesCaptureConsole />
+      {FEATURES.seriesDecisionPacketV1 ? <DecisionRoomV1 /> : <SeriesCaptureConsole />}
     </div>
   );
 }

@@ -2,14 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
-  Search, Plus, Shuffle, PauseCircle, XCircle, Loader2, LogIn, ChevronLeft, Users, Trophy, RefreshCw, AlertTriangle,
+  Search, Plus, Shuffle, PauseCircle, XCircle, Loader2, LogIn, Users, Trophy, RefreshCw, AlertTriangle,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { FEATURES } from "@/lib/featureFlags";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { useOperatorClubs } from "@/hooks/useOperatorClubs";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
+import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
+import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
+import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
 import { useTournaments } from "@/hooks/useTournaments";
 import { useFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { FloorPlayerActions, type FloorSeatTarget } from "@/components/ops/shared/FloorPlayerActions";
@@ -34,12 +35,11 @@ import { resolveOpsTablesTournamentId } from "@/pages/ops/opsTablesTournamentSel
  * (đúng nguồn desktop FloorTableMapPanel), realtime tournament_seats + tournament_chip_counts.
  *
  * P0 (review owner): KHÔNG BAO GIỜ fallback mock khi live lỗi (error state riêng) · stale-guard
- * requestSeq khi đổi giải nhanh · selector không tự nhảy khỏi giải user đã chọn · mọi nút hành
- * động chỉ toast "đang nối" (không import write-path) · status bàn copy verbatim desktop qua
- * floorAdapter (có vitest). P1: >1 CLB → pill chọn; realtime debounce 200ms; chip 0 ≠ null;
+ * requestSeq khi đổi giải nhanh · selector không tự nhảy khỏi giải user đã chọn · thao tác chưa
+ * đạt runtime gate bị disabled, không toast giả thành công · status bàn copy verbatim desktop qua
+ * floorAdapter (có vitest). P1: >1 CLB → chọn từ Ops Control Deck; realtime debounce 200ms; chip 0 ≠ null;
  * 3 empty state phân biệt; không sửa shared components (adapter lo).
  */
-const PENDING_NOTICE = "Chức năng đang nối dữ liệu — chưa thao tác trên live.";
 
 const LIVEISH_PRIMARY: Tournament["status"][] = ["live", "break", "final_table"];
 const LIVEISH_FALLBACK: Tournament["status"][] = ["registering", "drawing"];
@@ -82,26 +82,32 @@ interface RedrawResult {
   tables_to_close?: { table_number?: number }[];
 }
 
-export default function OpsTables() {
+export default function OpsTables({ tournamentId }: { tournamentId?: string }) {
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
-  const { loading: clubsLoading, user, clubs, operatorClubIds, error: clubsError } = useOperatorClubs();
-  const scopedIds = operatorClubIds;
+  const supabase = useSupabaseClient();
+  const { user } = useOpsAuth();
+  const {
+    loading: clubsLoading,
+    clubs,
+    floorClubIds: scopedIds,
+    isSuperAdmin,
+    scopeError,
+    metadataError,
+  } = useOpsCapabilities();
+  const { selectedClubId } = useOpsWorkspace();
 
-  // P1-1: 1 CLB → auto; >1 → pill chọn. Đổi CLB → reset giải.
-  const [clubId, setClubId] = useState<string | null>(null);
-  useEffect(() => {
-    if (scopedIds.length === 0) return;
-    if (clubId == null || !scopedIds.includes(clubId)) setClubId(scopedIds[0]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopedIds.join(",")]);
+  // Club authority is resolved by OpsModuleGate and remains in the URL. This
+  // page never picks the first Floor club as a fallback.
+  const clubId = selectedClubId && (isSuperAdmin || scopedIds.includes(selectedClubId))
+    ? selectedClubId
+    : null;
 
   const { data: tournaments, isLoading: toursLoading } = useTournaments(clubId ?? undefined);
 
   // Deep-link giải: ?tour=<id> khi vào từ cockpit/Hôm nay ("Mở màn Bàn"). Đọc MỘT LẦN (ref) để
   // URL đổi về sau không tự chọn lại → không đè lựa chọn thủ công của người dùng.
   const [searchParams] = useSearchParams();
-  const deepLinkTourIdRef = useRef<string | null>(searchParams.get("tour"));
+  const deepLinkTourIdRef = useRef<string | null>(tournamentId ?? searchParams.get("tour"));
 
   const tourOptions = useMemo(() => {
     const list = (tournaments ?? []) as unknown as Tournament[];
@@ -118,20 +124,37 @@ export default function OpsTables() {
 
   // P0-3: auto-select CHỈ khi chưa chọn hoặc giải đã chọn biến mất — không clobber lựa chọn user.
   // Seed từ deep-link (nếu có) thay cho null; giải này nằm trong tourOptions nên guard không đè.
-  const [tourId, setTourId] = useState<string | null>(deepLinkTourIdRef.current);
+  // The URL value is an untrusted candidate. Data hooks stay disabled until
+  // the scoped tournament list proves the tournament belongs to this CLB.
+  const [tourId, setTourId] = useState<string | null>(null);
   useEffect(() => {
-    setTourId((currentTournamentId) => resolveOpsTablesTournamentId({
-      currentTournamentId,
-      tournamentOptions: tourOptions,
-      selectedClubId: clubId,
-      operatorClubsLoading: clubsLoading,
-      tournamentsLoading: toursLoading,
-    }));
-  }, [tourOptions, clubId, clubsLoading, toursLoading]);
+    setTourId((currentTournamentId) => {
+      if (tournamentId) {
+        return tourOptions.some((tournament) => tournament.id === tournamentId)
+          ? tournamentId
+          : null;
+      }
+      const candidate = deepLinkTourIdRef.current;
+      if (
+        currentTournamentId == null
+        && candidate
+        && tourOptions.some((tournament) => tournament.id === candidate)
+      ) {
+        return candidate;
+      }
+      return resolveOpsTablesTournamentId({
+        currentTournamentId,
+        tournamentOptions: tourOptions,
+        selectedClubId: clubId,
+        operatorClubsLoading: clubsLoading,
+        tournamentsLoading: toursLoading,
+      });
+    });
+  }, [tourOptions, clubId, clubsLoading, tournamentId, toursLoading]);
 
   const selectedTour = tourOptions.find((t) => t.id === tourId) ?? null;
   const onBreak = selectedTour?.status === "break";
-  const floor = useFloorSeats(tourId);
+  const floor = useFloorSeats(selectedTour?.id ?? null);
 
   const [openNo, setOpenNo] = useState<number | null>(null);
   const [searchOn, setSearchOn] = useState(false);
@@ -152,7 +175,6 @@ export default function OpsTables() {
   const byNo = useMemo(() => new Map(vms.map((v) => [v.mock.tableNo, v])), [vms]);
   const openVM = openNo != null ? byNo.get(openNo) ?? null : null;
 
-  const pending = () => toast(PENDING_NOTICE);
   // Tap 1 ghế → mở luồng thao tác người chơi (Sửa chip/Loại/Chuyển/Phiếu/Thông tin). Logic + sheets
   // dùng CHUNG ở FloorPlayerActions. Chỉ ghế đang ngồi (có MapSeat thật) mới mở.
   const [seatTarget, setSeatTarget] = useState<FloorSeatTarget | null>(null);
@@ -205,7 +227,7 @@ export default function OpsTables() {
     } finally {
       addBusyRef.current = false; setAddBusy(false);
     }
-  }, [addTable, tourId, addSeat, addName, floor]);
+  }, [addTable, tourId, addSeat, addName, floor, supabase]);
 
   // ── Floor-A3: Mở bàn → shared responsive picker + atomic v2 RPC ──
   const [openTableOpen, setOpenTableOpen] = useState(false);
@@ -232,7 +254,7 @@ export default function OpsTables() {
           return;
         }
         const preflight = preflightFloorTableEntries(activeSeats.map((seat) => seat.seat_id), entryRows ?? []);
-        if (!preflight.ok) {
+        if (preflight.ok === false) {
           toast.error(
             `Không thể đóng bàn: ${preflight.blockedSeatCount} ghế đang chơi thiếu hoặc không xác minh được lượt đăng ký. Hãy sửa dữ liệu ghế trước.`,
           );
@@ -260,7 +282,7 @@ export default function OpsTables() {
     } finally {
       closeBusyRef.current = false; setCloseBusy(false);
     }
-  }, [closeTable, closeMode, floor, tourId]);
+  }, [closeTable, closeMode, floor, supabase, tourId]);
 
   // ── Floor-A4: Bốc lại → redraw_tournament, 2 bước preview→confirm (gate floorTableOps) ──
   const [redrawOpen, setRedrawOpen] = useState(false);
@@ -283,7 +305,7 @@ export default function OpsTables() {
     });
     if (error) { toast.error(redrawError(null, error.message)); return null; }
     return (data ?? null) as RedrawResult | null;
-  }, [tourId, redrawMode, redrawTarget, redrawDraw]);
+  }, [supabase, tourId, redrawMode, redrawTarget, redrawDraw]);
   const runRedrawPreview = useCallback(async () => {
     if (redrawMode === "table_count_threshold" && !redrawTarget.trim()) { toast.error("Nhập số bàn đích."); return; }
     if (redrawBusyRef.current) return;
@@ -311,38 +333,28 @@ export default function OpsTables() {
   }, [callRedraw, floor]);
 
   // ---- guards (thứ tự chuẩn: auth → login → clubs → quyền → data) ----
-  if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." onBack={() => navigate("/")} />;
-  if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản floor/cashier để xem sơ đồ bàn thật." onBack={() => navigate("/")} />;
-  if (clubs === null) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Lấy câu lạc bộ." onBack={() => navigate("/")} />;
-  if (clubsError) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi CLB" sub="Không dùng dữ liệu thay thế. Hãy tải lại trang." onBack={() => navigate("/")} />;
-  if (scopedIds.length === 0 && !isAdmin) return <Guard icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền vận hành sàn." onBack={() => navigate("/")} />;
+  if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." />;
+  if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản Floor để xem sơ đồ bàn thật." />;
+  if (scopeError) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi CLB" sub="Không dùng dữ liệu thay thế. Hãy tải lại trang." />;
+  if (!clubId) return <Guard icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa chọn đúng CLB" sub="Quay lại Đổi không gian và chọn CLB thuộc phạm vi Floor." />;
 
-  const clubName = (id: string) => clubs?.find((c) => c.id === id)?.name ?? `CLB ${id.slice(0, 4)}…`;
+  const selectedClubName = clubId
+    ? clubs?.find((club) => club.id === clubId)?.name ?? `CLB ${clubId.slice(0, 4)}…`
+    : "CLB";
 
   return (
     <div className="ios-in space-y-4 pt-2">
       <header className="px-1">
         <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Bàn</h1>
-        <p className="mt-0.5 text-[15px] text-[#9b8e97]">{selectedTour ? selectedTour.name : "Cả phòng trong một màn"} · chạm 1 bàn để thao tác</p>
+        <p className="mt-0.5 text-[15px] text-[#9b8e97]">{selectedTour ? selectedTour.name : selectedClubName} · chạm 1 bàn để thao tác</p>
       </header>
-
-      {/* P1-1: >1 CLB → pill chọn CLB */}
-      {scopedIds.length > 1 && (
-        <div className="flex gap-1.5 overflow-x-auto px-1">
-          {scopedIds.map((id) => (
-            <button key={id} onClick={() => { if (id !== clubId) { setClubId(id); setTourId(null); } }}
-              className={cn("ios-press-sm shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium", clubId === id ? "bg-white/12 text-[#f2ece6]" : "bg-white/5 text-[#9b8e97]")}>
-              {clubName(id)}
-            </button>
-          ))}
-        </div>
-      )}
+      {metadataError && <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">{metadataError}</div>}
 
       {/* P0-3: pill chọn giải (ẩn nếu chỉ 1) */}
-      {tourOptions.length > 1 && (
+      {!tournamentId && tourOptions.length > 1 && (
         <div className="flex gap-1.5 overflow-x-auto px-1">
           {tourOptions.map((t) => (
-            <button key={t.id} onClick={() => setTourId(t.id)}
+            <button key={t.id} data-ops-action="floor.tables.select_tournament" onClick={() => setTourId(t.id)}
               className={cn("ios-press-sm shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium", tourId === t.id ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
               {t.name}
             </button>
@@ -369,7 +381,7 @@ export default function OpsTables() {
           <AlertTriangle className="h-7 w-7 text-rose-300" />
           <div className="text-[15px] font-semibold text-[#f2ece6]">Không tải được sơ đồ bàn</div>
           <div className="max-w-[280px] text-[12px] text-[#9b8e97]">{floor.error}</div>
-          <button onClick={() => floor.reload()} className="ios-press-sm mt-1 flex items-center gap-1.5 rounded-full bg-white/8 px-3.5 py-1.5 text-[13px] text-[#f2ece6]">
+          <button data-ops-action="floor.tables.refresh" onClick={() => floor.reload()} className="ios-press-sm mt-1 flex items-center gap-1.5 rounded-full bg-white/8 px-3.5 py-1.5 text-[13px] text-[#f2ece6]">
             <RefreshCw className="h-3.5 w-3.5" /> Thử lại
           </button>
         </div>
@@ -405,12 +417,12 @@ export default function OpsTables() {
 
       {/* hàng nút đáy — thumb zone (hành động: đang nối) */}
       <div className="grid grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)] gap-2">
-        <button onClick={() => { setSearchOn((v) => !v); if (searchOn) setQuery(""); }} className="ios-press ios-fill grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-[#f2ece6]">
+        <button data-ops-action="floor.tables.toggle_search" onClick={() => { setSearchOn((v) => !v); if (searchOn) setQuery(""); }} className="ios-press ios-fill grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-[#f2ece6]">
           <Search className="h-5 w-5" />
         </button>
         {/* Cờ OFF: giữ NHÃN THẬT + disabled (trước đây 2 nút cạnh nhau cùng chữ "Cần bật cờ"
             → nhìn như UI lỗi/trùng); 1 dòng hint chung bên dưới thay chữ trên từng nút. */}
-        <button onClick={() => (ADD_LIVE ? setOpenTableOpen(true) : undefined)} disabled={!ADD_LIVE}
+        <button data-ops-action="floor.tables.open_table_dialog" onClick={() => (ADD_LIVE ? setOpenTableOpen(true) : undefined)} disabled={!ADD_LIVE}
           data-testid="floor-open-table-dialog"
           aria-disabled={!ADD_LIVE} title={ADD_LIVE ? undefined : "Cần bật cờ floorTableOps"}
           className={cn("ios-press ios-fill flex h-12 flex-1 items-center justify-center gap-1.5 rounded-2xl text-[15px] font-medium text-[#f2ece6]", !ADD_LIVE && "opacity-50")}>
@@ -418,14 +430,15 @@ export default function OpsTables() {
         </button>
         <button
           type="button"
+          data-ops-action="floor.tables.open_players"
           data-testid="floor-open-players"
           disabled={!tourId}
-          onClick={() => { if (tourId) navigate(`/ops/tournaments/${tourId}?tab=players`); }}
+          onClick={() => { if (tourId && clubId) navigate(`/ops/floor/tournaments/${tourId}/players?club=${encodeURIComponent(clubId)}`); }}
           className="ios-press ios-fill flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-2xl px-2 text-[14px] font-medium text-[#f2ece6] disabled:opacity-50"
         >
           <Users className="h-[18px] w-[18px] shrink-0" /> <span className="truncate">Người chơi</span>
         </button>
-        <button onClick={() => (ADD_LIVE ? openRedraw() : pending())} disabled={!ADD_LIVE}
+        <button data-ops-action="floor.tables.open_redraw" onClick={() => { if (ADD_LIVE) openRedraw(); }} disabled={!ADD_LIVE}
           aria-disabled={!ADD_LIVE} title={ADD_LIVE ? undefined : "Cần bật cờ floorTableOps"}
           className={cn("ios-press ios-fill col-span-3 flex h-11 items-center justify-center gap-1.5 rounded-2xl text-[14px] font-medium text-[#f2ece6]", !ADD_LIVE && "opacity-50")}>
           <Shuffle className="h-[18px] w-[18px]" /> Bốc lại
@@ -479,31 +492,32 @@ export default function OpsTables() {
 
           <div className="mt-3 grid grid-cols-3 gap-2">
             {/* Floor-A1: LIVE (floorTableOps). Cờ OFF → disable "Cần bật cờ" y desktop, 0 gọi RPC. */}
-            <button onClick={() => (ADD_LIVE ? openVM && openAdd(openVM) : undefined)} disabled={!ADD_LIVE}
+            <button data-ops-action="floor.tables.open_add_player" onClick={() => (ADD_LIVE ? openVM && openAdd(openVM) : undefined)} disabled={!ADD_LIVE}
               aria-disabled={!ADD_LIVE} title={ADD_LIVE ? undefined : "Cần bật cờ floorTableOps"}
               className={cn("ios-press ios-tinted flex items-center justify-center gap-1 rounded-2xl py-3 text-[13px] font-semibold", !ADD_LIVE && "opacity-50")}>
               <Plus className="h-4 w-4" /> Thêm người
             </button>
             {/* "Tạm dừng" không có ở mức 1 bàn (server chỉ pause CẢ GIẢI) → mở đồng hồ giải ở cockpit
                 (nơi có Tạm dừng/Tiếp tục/chỉnh giờ), không giả lập pause-per-table. */}
-            <button onClick={() => { if (!tourId) { pending(); return; } setOpenNo(null); navigate(`/ops/tournaments/${tourId}?tab=status`); }}
+            <button data-ops-action="floor.tables.open_clock" onClick={() => { if (!tourId || !clubId) return; setOpenNo(null); navigate(`/ops/floor/tournaments/${tourId}/clock?club=${encodeURIComponent(clubId)}`); }}
               className="ios-press ios-fill flex items-center justify-center gap-1 rounded-2xl py-3 text-[13px] font-medium text-amber-300">
               <PauseCircle className="h-4 w-4" /> Đồng hồ
             </button>
-            <button onClick={() => { if (!ADD_LIVE) { pending(); return; } const vm = openVM; setOpenNo(null); setCloseMode("redraw_balanced"); requestAnimationFrame(() => setCloseTable(vm)); }}
-              aria-disabled={!ADD_LIVE} title={ADD_LIVE ? undefined : "Cần bật cờ floorTableOps"}
+            <button data-ops-action="floor.tables.open_close_table" onClick={() => { if (!ADD_LIVE) return; const vm = openVM; setOpenNo(null); setCloseMode("redraw_balanced"); requestAnimationFrame(() => setCloseTable(vm)); }}
+              disabled={!ADD_LIVE} aria-disabled={!ADD_LIVE} title={ADD_LIVE ? undefined : "Cần bật cờ floorTableOps"}
               className={cn("ios-press flex items-center justify-center gap-1 rounded-2xl bg-rose-500/12 py-3 text-[13px] font-semibold text-rose-300", !ADD_LIVE && "opacity-50")}>
               <XCircle className="h-4 w-4" /> Đóng bàn
             </button>
           </div>
           <button
             type="button"
+            data-ops-action="floor.tables.open_players_from_table"
             data-testid="floor-table-open-players"
             disabled={!tourId}
             onClick={() => {
               if (!tourId) return;
               setOpenNo(null);
-              navigate(`/ops/tournaments/${tourId}?tab=players`);
+              if (clubId) navigate(`/ops/floor/tournaments/${tourId}/players?club=${encodeURIComponent(clubId)}`);
             }}
             className="ios-press ios-fill mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[14px] font-semibold text-[#f2ece6] disabled:opacity-50"
           >
@@ -531,7 +545,7 @@ export default function OpsTables() {
             ) : (
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {addFreeSeats.map((n) => (
-                  <button key={n} onClick={() => setAddSeat(n)}
+                  <button key={n} data-ops-action="floor.tables.select_add_seat" onClick={() => setAddSeat(n)}
                     className={cn("ios-press-sm grid h-10 w-11 place-items-center rounded-lg text-[15px] font-semibold",
                       addSeat === n ? "bg-[#c9a86a] text-[#241A08]" : "bg-emerald-400/15 text-emerald-300")}>{n}</button>
                 ))}
@@ -539,6 +553,7 @@ export default function OpsTables() {
             )}
           </div>
           <button
+            data-ops-action="floor.tables.add_player"
             disabled={addBusy || addName.trim().length < 2 || addSeat == null}
             onClick={submitAdd}
             className="ios-press ios-primary mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-bold disabled:opacity-40">
@@ -573,7 +588,7 @@ export default function OpsTables() {
               <div className="px-1 text-[12px] text-[#9b8e97]">Cách chia người</div>
               <div className="mt-1.5 space-y-1.5">
                 {([["redraw_balanced", "Bốc ngẫu nhiên, ưu tiên bàn ít người"], ["fill_lowest_table", "Lấp bàn số nhỏ trước"]] as [CloseDrawMode, string][]).map(([m, label]) => (
-                  <button key={m} onClick={() => setCloseMode(m)}
+                  <button key={m} data-ops-action="floor.tables.select_close_mode" onClick={() => setCloseMode(m)}
                     className={cn("flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[14px]", closeMode === m ? "bg-[#c9a86a]/15 text-[#f2ece6] ring-1 ring-[#c9a86a]/40" : "ios-fill text-[#9b8e97]")}>
                     <span className={cn("grid h-4 w-4 place-items-center rounded-full border", closeMode === m ? "border-[#c9a86a] bg-[#c9a86a]" : "border-white/25")} />
                     {label}
@@ -583,7 +598,7 @@ export default function OpsTables() {
               <div className="mt-2 px-1 text-[11px] text-[#7c7079]">thiếu ghế trống → server chặn, không tự mở bàn (mở thêm bàn trước).</div>
             </div>
           )}
-          <button disabled={closeBusy} onClick={submitCloseTable}
+          <button data-ops-action="floor.tables.close_table" disabled={closeBusy} onClick={submitCloseTable}
             className="ios-press mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-rose-500/90 py-3.5 text-[15px] font-bold text-white disabled:opacity-40">
             {closeBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
             {closeBusy ? "Đang đóng…" : (closeTable?.seats.length ?? 0) > 0 ? `Đóng & chuyển ${closeTable?.seats.length} người` : "Đóng bàn"}
@@ -603,7 +618,7 @@ export default function OpsTables() {
                 <div className="px-1 text-[12px] text-[#9b8e97]">Kiểu bốc lại</div>
                 <div className="mt-1.5 space-y-1.5">
                   {([["final_table", "Bốc bàn chung kết (final table)"], ["itm", "Bốc khi vào tiền (ITM)"], ["table_count_threshold", "Gom về số bàn đích"]] as [RedrawMode, string][]).map(([m, label]) => (
-                    <button key={m} onClick={() => setRedrawMode(m)}
+                    <button key={m} data-ops-action="floor.tables.select_redraw_mode" onClick={() => setRedrawMode(m)}
                       className={cn("flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[14px]", redrawMode === m ? "bg-[#c9a86a]/15 text-[#f2ece6] ring-1 ring-[#c9a86a]/40" : "ios-fill text-[#9b8e97]")}>
                       <span className={cn("grid h-4 w-4 place-items-center rounded-full border", redrawMode === m ? "border-[#c9a86a] bg-[#c9a86a]" : "border-white/25")} />
                       {label}
@@ -622,13 +637,13 @@ export default function OpsTables() {
                 <div className="px-1 text-[12px] text-[#9b8e97]">Cách chia ghế</div>
                 <div className="mt-1.5 grid grid-cols-2 gap-2">
                   {([["redraw_balanced", "Ngẫu nhiên, ưu tiên bàn ít"], ["fill_lowest_table", "Lấp bàn số nhỏ trước"]] as [CloseDrawMode, string][]).map(([m, label]) => (
-                    <button key={m} onClick={() => setRedrawDraw(m)}
+                    <button key={m} data-ops-action="floor.tables.select_draw_mode" onClick={() => setRedrawDraw(m)}
                       className={cn("ios-press-sm rounded-xl px-2 py-2.5 text-center text-[12.5px]", redrawDraw === m ? "bg-[#c9a86a] text-[#241A08] font-semibold" : "ios-fill text-[#9b8e97]")}>{label}</button>
                   ))}
                 </div>
               </div>
               <div className="rounded-xl bg-white/5 px-3 py-2 text-[11px] text-[#7c7079]">Chọn người thủ công (Thủ công) — làm trên máy tính.</div>
-              <button disabled={redrawBusy} onClick={runRedrawPreview}
+              <button data-ops-action="floor.tables.preview_redraw" disabled={redrawBusy} onClick={runRedrawPreview}
                 className="ios-press ios-primary flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-bold disabled:opacity-40">
                 {redrawBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {redrawBusy ? "Đang tính…" : "Xem trước"}
               </button>
@@ -648,8 +663,8 @@ export default function OpsTables() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button disabled={redrawBusy} onClick={() => setRedrawPhase("config")} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6] disabled:opacity-40">Quay lại</button>
-                <button disabled={redrawBusy} onClick={runRedrawConfirm} className="ios-press flex-[2] flex items-center justify-center gap-2 rounded-2xl bg-rose-500/90 py-3 text-[15px] font-bold text-white disabled:opacity-40">
+                <button data-ops-action="floor.tables.back_redraw" disabled={redrawBusy} onClick={() => setRedrawPhase("config")} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6] disabled:opacity-40">Quay lại</button>
+                <button data-ops-action="floor.tables.confirm_redraw" disabled={redrawBusy} onClick={runRedrawConfirm} className="ios-press flex-[2] flex items-center justify-center gap-2 rounded-2xl bg-rose-500/90 py-3 text-[15px] font-bold text-white disabled:opacity-40">
                   {redrawBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shuffle className="h-4 w-4" />} {redrawBusy ? "Đang bốc…" : `Xác nhận bốc lại ${redrawPreview?.moves?.length ?? 0} người`}
                 </button>
               </div>
@@ -671,13 +686,10 @@ export default function OpsTables() {
   );
 }
 
-function Guard({ icon, title, sub, onBack }: { icon: React.ReactNode; title: string; sub: string; onBack: () => void }) {
+function Guard({ icon, title, sub }: { icon: React.ReactNode; title: string; sub: string }) {
   return (
     <div className="ios-in space-y-4 pt-2">
       <header className="px-1">
-        <button onClick={onBack} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
-          <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> App chính
-        </button>
         <h1 className="mt-1 text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Bàn</h1>
       </header>
       <div className="ios-card flex flex-col items-center gap-2 py-12 text-center">

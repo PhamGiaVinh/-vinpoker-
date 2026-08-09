@@ -1,0 +1,208 @@
+import { type FormEvent, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
+import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
+import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
+import { Link } from "react-router-dom";
+import { Layers3 } from "lucide-react";
+import type { OpsClubCapabilityRow } from "@/ops/auth/opsCapabilityContract";
+import type { OpsRpcClient } from "@/ops/auth/opsCapabilityLoader";
+import {
+  clearInvitePasswordSetupRequired,
+  requiresInvitePasswordSetup,
+} from "@/ops/auth/opsInviteCompletion";
+
+function maskedId(value: string): string {
+  return value.length > 10 ? `${value.slice(0, 5)}…${value.slice(-4)}` : value;
+}
+
+function capabilityLabels(row: OpsClubCapabilityRow): string[] {
+  return [
+    row.can_owner && "Owner",
+    row.can_floor && "Floor",
+    row.can_cashier && "Cashier",
+    row.can_tracker && "Tracker",
+    row.can_dealer_control && "Dealer Control",
+    row.can_accountant && "Accountant",
+    row.can_chip_master && "Chip Master",
+    row.can_marketer && "Marketing",
+    row.can_fnb_cashier && "F&B Cashier",
+    row.can_fnb_server && "F&B Server",
+    row.can_fnb_kitchen && "F&B Kitchen",
+  ].filter((label): label is string => Boolean(label));
+}
+
+export default function OpsAccount() {
+  const client = useSupabaseClient();
+  const rpcClient = client as unknown as OpsRpcClient;
+  const { user, signOutLocal } = useOpsAuth();
+  const capabilities = useOpsCapabilities();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const resetMode = params.get("mode") === "reset-password";
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [activationBusy, setActivationBusy] = useState(false);
+  const [passwordUpdated, setPasswordUpdated] = useState(false);
+  const inviteActivationRequired = requiresInvitePasswordSetup();
+
+  const acceptInvitations = async (): Promise<boolean> => {
+    setActivationBusy(true);
+    const { error } = await rpcClient.rpc("accept_my_club_operator_invites");
+    setActivationBusy(false);
+    if (error) {
+      setMessage(
+        "Mật khẩu đã cập nhật nhưng chưa hoàn tất cấp quyền. Vui lòng thử hoàn tất lại.",
+      );
+      return false;
+    }
+    capabilities.refresh();
+    clearInvitePasswordSetupRequired();
+    return true;
+  };
+
+  const updatePassword = async (event: FormEvent) => {
+    event.preventDefault();
+    if (password.length < 8) {
+      setMessage("Mật khẩu cần ít nhất 8 ký tự.");
+      return;
+    }
+    const { error } = await client.auth.updateUser({ password });
+    if (error) {
+      setMessage("Không cập nhật được mật khẩu.");
+      return;
+    }
+    setPassword("");
+    setPasswordUpdated(true);
+    if (inviteActivationRequired && !(await acceptInvitations())) return;
+    setMessage("Đã cập nhật mật khẩu Ops. Đang mở workspace…");
+    window.setTimeout(() => navigate("/ops", { replace: true }), 700);
+  };
+
+  return (
+    <div className="mx-auto w-full max-w-3xl space-y-4 p-4 pb-28 sm:p-6">
+      <header>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
+          VinPoker Ops
+        </p>
+        <h1 className="mt-1 text-2xl font-semibold text-white">
+          Tài khoản vận hành
+        </h1>
+      </header>
+
+      <Card className="border-white/10 bg-white/[0.035] text-white">
+        <CardHeader>
+          <CardTitle className="text-lg">
+            {user?.email ?? "Tài khoản Ops"}
+          </CardTitle>
+          <CardDescription className="text-zinc-400">
+            Phiên này độc lập với app người chơi trên cùng thiết bị.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {capabilities.scope.map((row) => (
+            <div
+              key={row.club_id}
+              className="rounded-xl border border-white/8 bg-black/20 p-3"
+            >
+              <div className="font-medium text-white">
+                {capabilities.clubs.find((club) => club.id === row.club_id)
+                  ?.name ?? `CLB ${maskedId(row.club_id)}`}
+              </div>
+              <div className="mt-1 text-zinc-400">
+                {capabilityLabels(row).join(" · ")}
+              </div>
+            </div>
+          ))}
+          {capabilities.metadataError && (
+            <p className="text-amber-300">{capabilities.metadataError}</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {(resetMode || inviteActivationRequired) && (
+        <Card className="border-amber-300/20 bg-amber-300/5 text-white">
+          <CardHeader>
+            <CardTitle className="text-lg">Đặt mật khẩu mới</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {inviteActivationRequired && passwordUpdated ? (
+              <div className="space-y-3">
+                <p className="text-sm text-zinc-300">
+                  Mật khẩu đã được đặt. Hoàn tất kích hoạt để hệ thống cấp đúng quyền CLB.
+                </p>
+                {message && <p className="text-sm text-rose-200">{message}</p>}
+                <Button
+                  type="button"
+                  className="min-h-11"
+                  disabled={activationBusy}
+                  onClick={() => void acceptInvitations().then((accepted) => {
+                    if (accepted) {
+                      setMessage("Đã kích hoạt quyền Ops. Đang mở workspace…");
+                      window.setTimeout(() => navigate("/ops", { replace: true }), 700);
+                    }
+                  })}
+                >
+                  Hoàn tất kích hoạt tài khoản
+                </Button>
+              </div>
+            ) : (
+              <form onSubmit={updatePassword} className="space-y-3">
+                <Label htmlFor="ops-new-password">Mật khẩu mới</Label>
+                <Input
+                  id="ops-new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="min-h-11 bg-black/20"
+                />
+                {message && <p className="text-sm text-zinc-300">{message}</p>}
+                <Button type="submit" className="min-h-11" disabled={activationBusy}>
+                  Cập nhật mật khẩu
+                </Button>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {capabilities.hasOwnerAccess && (
+        <Button asChild className="min-h-11 w-full">
+          <Link to="/ops/club-admin/accounts">Quản lý tài khoản CLB</Link>
+        </Button>
+      )}
+
+      {capabilities.hasAnyAccess && (
+        <Button asChild variant="outline" className="min-h-11 w-full border-white/10 bg-transparent text-white">
+          <Link to="/ops/select-module">
+            <Layers3 className="mr-2 h-4 w-4" />
+            Đổi không gian làm việc
+          </Link>
+        </Button>
+      )}
+
+      <Button
+        variant="outline"
+        className="min-h-11 w-full border-white/10 bg-transparent text-white"
+        onClick={() => {
+          void signOutLocal().then(setSignOutError);
+        }}
+      >
+        Đăng xuất riêng phiên Ops
+      </Button>
+      {signOutError && <p className="text-sm text-rose-300">{signOutError}</p>}
+    </div>
+  );
+}

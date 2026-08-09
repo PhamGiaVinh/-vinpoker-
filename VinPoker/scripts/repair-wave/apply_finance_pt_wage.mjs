@@ -9,7 +9,7 @@
 //   --preflight   read-only: live def dump, PT-ref count, table existence,
 //                 impersonated BEFORE snapshot + independent pt_sum (saved to out/)
 //   --apply       gated by CONFIRM_APPLY_REPAIR=APPLY_FINANCE_PT_WAGE:
-//                 applies EXACTLY supabase/migrations/20261211000000_finance_summary_pt_wage_restore.sql
+//                 applies EXACTLY supabase/migrations/20261211000002_finance_summary_pt_wage_restore.sql
 //   --verify      read-only: AFTER snapshot, golden diff vs BEFORE:
 //                 payrollNet += pt_sum, net -= pt_sum, ptWagePaid == pt_sum,
 //                 every other field byte-identical (aging warn-only: uses now())
@@ -29,7 +29,7 @@ const REPO_ROOT = resolve(__dirname, "..", ".."); // scripts/repair-wave → Vin
 const OUT_DIR = resolve(REPO_ROOT, "scripts", "repair-wave", "out");
 
 const FILES = {
-  repair: "supabase/migrations/20261211000000_finance_summary_pt_wage_restore.sql",
+  repair: "supabase/migrations/20261211000002_finance_summary_pt_wage_restore.sql",
   rollback: "supabase/migrations/_repair_finance_pt_wage_rollback.sql",
 };
 const MARQUEE = {

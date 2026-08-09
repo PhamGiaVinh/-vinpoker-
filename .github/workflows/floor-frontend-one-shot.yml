@@ -182,6 +182,8 @@ jobs:
             src/pages/FloorDashboard.tsx \
             tests/floorProduction/floorDbEdgeContracts.test.ts
           npm run build
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/verify-app-shell-routing.mjs" \
+            --static-dir dist
 
   deploy:
     name: Deploy exact reviewed Floor frontend
@@ -359,7 +361,11 @@ jobs:
             );
           '
           cp -r VinPoker/dist/. .vercel/output/static/
-          printf '%s' '{"version":3,"routes":[{"src":"/assets/(.*)","headers":{"Cache-Control":"no-cache, must-revalidate"},"continue":true},{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' > .vercel/output/config.json
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/verify-app-shell-routing.mjs" \
+            --static-dir .vercel/output/static
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/write-vercel-build-output-config.mjs" \
+            --static-dir .vercel/output/static \
+            --output .vercel/output/config.json
           vercel deploy --prebuilt --prod --yes > "${RUNNER_TEMP}/floor-frontend-deployment-url.txt"
 
       - name: Verify production serves the exact built version and asset policy
@@ -380,6 +386,8 @@ jobs:
             sleep 5
           done
           test "$matched" = true
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/verify-app-shell-routing.mjs" \
+            --base-url "https://vinpoker.vercel.app"
 
           asset_path="$(node -e '
             const html = require("node:fs").readFileSync("VinPoker/dist/index.html", "utf8");

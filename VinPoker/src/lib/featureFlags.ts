@@ -935,6 +935,18 @@ export const FEATURES = {
    */
   seriesDecisionLog: true,
   /**
+   * Series Intelligence — D2C Decision Room V1. Owner-scoped packet/actual
+   * read model and explicit D2A/D2B RPC actions. Default OFF until the
+   * source-only Preview UAT proves the live contract and mobile states.
+   * Kill-switch: set false to keep the existing CAPTURE console unchanged.
+   */
+  seriesDecisionPacketV1: true,
+  /**
+   * D3A prospective research capture queue. Read-only queue plus explicit owner actions through the existing
+   * CAPTURE hook and D2B native-actual RPC. Default OFF until owner Preview UAT; no migration or new RPC.
+   */
+  seriesProspectiveResearchCohortV1: false,
+  /**
    * Series Intelligence — turnout forecast (transparent ridge log-linear, RESEARCH tier). When ON, step ④
    * of the SI page shows the TurnoutForecastPanel: predicts entries for an upcoming event from the club's
    * OWN past events with a confidence band + tier + walk-forward CV error vs a median baseline. Labeled
@@ -1016,6 +1028,13 @@ export const FEATURES = {
    * on CSV test data too (softer copy). Default **OFF**; kill-switch: set false to hide the assistant.
    */
   seriesAssistant: true,
+  /**
+   * Series Intelligence — V Copilot V1 local vertical slice. When ON, renders the read-only mock flow:
+   * deterministic context + schedule health + precomputed candidate options → mock V response → strict
+   * evidence/number/privacy validation. No Gemini SDK, network, Edge, DB read/write, production data, or money
+   * action. Default OFF until Preview UAT; provider integration remains a separate owner-gated wave.
+   */
+  seriesVCopilotV1: false,
   /**
    * Series Intelligence — TP3 small-field overlay distribution. When ON, overlay simulations whose
    * central field is below 60 entries use a discrete Negative Binomial sampler instead of a continuous

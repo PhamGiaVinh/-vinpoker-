@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, Lock, LayoutGrid, Loader2, LogIn, Monitor, AlertTriangle, Trophy, Play, Pause, SkipForward, SkipBack, Minus, Plus, Users, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { FEATURES } from "@/lib/featureFlags";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { useTournamentTvData } from "@/hooks/useTournamentTvData";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
+import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
+import { useTournamentTvDataCore } from "@/hooks/useTournamentTvDataCore";
 import { groupPayoutRows } from "@/lib/tv/payoutBands";
 import { getDisplayableSatelliteRows } from "@/lib/satellitePayout";
 import { floorOpsErrorMessage, floorOpsResponseErrorCode } from "@/lib/floorOpsErrors";
@@ -22,13 +22,10 @@ import { FloorTableControlModeControl } from "@/components/ops/shared/FloorTable
 import { buildEligibleFloorMoveTargets, toMockTable, toMockSeat, type MapSeat, type MapTable } from "@/components/ops/shared/floorAdapter";
 import type { MockTable } from "@/components/ops/mock/opsData";
 import type { TournamentLeaderboardPlayer } from "@/types/tournament";
+import type { FloorTournamentSection } from "@/ops/floor/floorTournamentSections";
+import { useTournamentOps } from "@/ops/workspace/TournamentOpsProvider";
 
 type UnappliedFloorRpcResult = { data: unknown; error: { message?: string; code?: string } | null };
-const untypedFloorRpc = supabase.rpc.bind(supabase) as unknown as (
-  name: string,
-  args: Record<string, unknown>,
-) => Promise<UnappliedFloorRpcResult>;
-
 /**
  * Cockpit giải (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads S1/S3/S4/S5).
  * S1 Trạng thái + S5 Trả thưởng ← `useTournamentTvData(id)` (clock/level/players/prizes thật).
@@ -36,15 +33,7 @@ const untypedFloorRpc = supabase.rpc.bind(supabase) as unknown as (
  * S2 Bàn → mở màn Bàn (dữ liệu ghế theo giải ở đó). S6 Lịch sử đầy đủ = máy tính.
  * READ-ONLY: sửa clock/blind/cơ cấu = máy tính; thao tác người chơi ở màn Bàn.
  */
-const TABS = [
-  { key: "status", label: "Trạng thái" },
-  { key: "tables", label: "Bàn" },
-  { key: "players", label: "Người chơi" },
-  { key: "levels", label: "Levels" },
-  { key: "payout", label: "Trả thưởng" },
-  { key: "history", label: "Lịch sử" },
-] as const;
-type TabKey = (typeof TABS)[number]["key"];
+type TabKey = "status" | "tables" | "players" | "payout" | "history";
 
 const vnd = (n: number | null | undefined) => (n == null ? "—" : n.toLocaleString("vi-VN"));
 const mmss = (s: number) => {
@@ -58,14 +47,34 @@ interface OpsClock { status: string; is_running: boolean; remaining_seconds: num
 /** Người đã bị loại — từ `tournament_entries` (status='busted') + prize join (không có ghế active). */
 interface BustedRow { entry_id: string; player_id: string; entry_number: number; player_name: string; finished_place: number | null; prize: number | null; last_chip: number | null }
 
-export default function OpsTournamentCockpit() {
+export default function OpsTournamentCockpit({ section }: { section: FloorTournamentSection }) {
   const navigate = useNavigate();
   const { id } = useParams();
-  const [params, setParams] = useSearchParams();
-  const tab = (params.get("tab") as TabKey) || "status";
-  const setTab = (k: TabKey) => { const p = new URLSearchParams(params); p.set("tab", k); setParams(p, { replace: true }); };
+  const tournamentOps = useTournamentOps();
+  const supabase = useSupabaseClient();
+  const { user, loading: authLoading } = useOpsAuth();
+  const untypedFloorRpc = useMemo(
+    () => supabase.rpc.bind(supabase) as unknown as (
+      name: string,
+      args: Record<string, unknown>,
+    ) => Promise<UnappliedFloorRpcResult>,
+    [supabase],
+  );
+  const tab: TabKey = section === "tables"
+    ? "tables"
+    : section === "players"
+      ? "players"
+      : section === "payout"
+        ? "payout"
+        : section === "screens"
+          ? "history"
+          : "status";
 
-  const tv = useTournamentTvData(id, { enabled: !!id });
+  const tv = useTournamentTvDataCore(id, {
+    enabled: !!id,
+    userId: user?.id ?? null,
+    authLoading,
+  });
   const d = tv.data;
 
   // S3 leaderboard cũ (read-only) — CHỈ khi cờ cockpitFloorActions OFF (ON dùng nguồn seats + busted mới).
@@ -84,12 +93,12 @@ export default function OpsTournamentCockpit() {
       } catch (e) { if (alive) setPlayers({ loading: false, error: e instanceof Error ? e.message : "Không tải được bảng người chơi", rows: [] }); }
     })();
     return () => { alive = false; };
-  }, [tab, id]);
+  }, [id, tab, untypedFloorRpc]);
 
   // S4 levels — lazy
   const [levels, setLevels] = useState<{ loading: boolean; error: string | null; rows: LevelRow[] }>({ loading: false, error: null, rows: [] });
   useEffect(() => {
-    if (tab !== "levels" || !id) return;
+    if (section !== "clock" || !id) return;
     let alive = true;
     setLevels({ loading: true, error: null, rows: [] });
     (async () => {
@@ -102,7 +111,7 @@ export default function OpsTournamentCockpit() {
       } catch (e) { if (alive) setLevels({ loading: false, error: e instanceof Error ? e.message : "Không tải được cấu trúc", rows: [] }); }
     })();
     return () => { alive = false; };
-  }, [tab, id]);
+  }, [id, section, supabase, tab]);
 
   // ── Điều khiển đồng hồ (S1) — mirror desktop ClockPanel: Edge `tournament-live-clock`
   //    actions start/pause/resume/previous_level/next_level/adjust_time. Server-authoritative
@@ -120,7 +129,7 @@ export default function OpsTournamentCockpit() {
     const { data, error } = await supabase.rpc("get_tournament_clock", { p_tournament_id: id });
     if (error) return;                       // read best-effort; đồng hồ lớn đã có từ tv.data
     setClk(data as unknown as OpsClock);
-  }, [id]);
+  }, [id, supabase]);
   useEffect(() => { if (tab === "status") loadClk(); }, [tab, loadClk]);
   const clockAct = useCallback(async (action: string, extra?: Record<string, unknown>) => {
     if (!id || clkBusy) return;
@@ -222,7 +231,7 @@ export default function OpsTournamentCockpit() {
       }
     })();
     return () => { alive = false; };
-  }, [cockpitOn, tab, id]);
+  }, [cockpitOn, id, supabase, tab]);
 
   // Restore người bị loại → RPC `restore_busted_player_to_seat` (un-bust + vào ghế trống + chip cũ).
   // ⚠️ SOURCE-ONLY tới khi owner apply → toast "chưa bật" nếu RPC chưa có (42883/PGRST202).
@@ -269,11 +278,11 @@ export default function OpsTournamentCockpit() {
     } finally {
       setRestoreBusy(false);
     }
-  }, [restoreTarget, restoreTtId, restoreSeat, restoreBusy, restoreConfirmed, floor]);
+  }, [restoreTarget, restoreTtId, restoreSeat, restoreBusy, restoreConfirmed, floor, untypedFloorRpc]);
 
   const header = (title: string, badge?: React.ReactNode) => (
     <header className="px-1">
-      <button onClick={() => navigate("/ops/tournaments")} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
+      <button data-ops-action="floor.tournament.exit" onClick={() => navigate(`/ops/floor?club=${encodeURIComponent(tournamentOps.snapshot.clubId)}`)} className="ios-press-sm -ml-1 flex min-h-11 items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
         <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> Giải đấu
       </button>
       <div className="mt-1 flex items-center gap-2">
@@ -289,7 +298,7 @@ export default function OpsTournamentCockpit() {
   if (tv.state === "loading") return <Shell>{header("Đang tải…")}<Center icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải giải…" /></Shell>;
   if (tv.state === "auth_required") return <Shell>{header("Cần đăng nhập")}<Center icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập để xem cockpit giải." /></Shell>;
   if (tv.state === "not_found" || !id) return <Shell>{header("Không tìm thấy")}<Center icon={<Trophy className="h-8 w-8 text-amber-300" />} title="Không tìm thấy giải" sub="Giải không tồn tại hoặc đã bị xoá." /></Shell>;
-  if (tv.state === "error" || !d) return <Shell>{header("Lỗi")}<Center icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được giải" sub="Thử lại sau." action={<button onClick={() => tv.refetch()} className="ios-press-sm mt-1 rounded-full bg-white/8 px-3.5 py-1.5 text-[13px] text-[#f2ece6]">Thử lại</button>} /></Shell>;
+  if (tv.state === "error" || !d) return <Shell>{header("Lỗi")}<Center icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được giải" sub="Thử lại sau." action={<button data-ops-action="floor.tournament.refresh" onClick={() => tv.refetch()} className="ios-press-sm mt-1 rounded-full bg-white/8 px-3.5 py-1.5 text-[13px] text-[#f2ece6]">Thử lại</button>} /></Shell>;
 
   const lv = d.currentLevel;
   // ĐỊNH NGHĨA DUY NHẤT "giải này có satellite để hiển thị" — dùng chung với TvPayoutsScreen
@@ -305,17 +314,6 @@ export default function OpsTournamentCockpit() {
       ) : (
         <span className="shrink-0 rounded-full bg-white/6 px-2 py-0.5 text-[11px] font-semibold text-[#9b8e97]">{d.status}</span>
       ))}
-
-      <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="flex w-max gap-1.5">
-          {TABS.map((tb) => (
-            <button key={tb.key} onClick={() => setTab(tb.key)}
-              className={cn("ios-press-sm whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-medium", tab === tb.key ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
-              {tb.label}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* S1 — Trạng thái */}
       {tab === "status" && (
@@ -340,41 +338,41 @@ export default function OpsTournamentCockpit() {
             <div className="ios-card space-y-2.5 p-3.5">
               <div className="flex items-center gap-2">
                 {primaryClockAction === "start" && (
-                  <button disabled={clkBusy} onClick={() => clockAct("start")}
+                  <button data-ops-action="floor.clock.start" disabled={clkBusy} onClick={() => clockAct("start")}
                     className="ios-press ios-primary flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-bold disabled:opacity-40">
                     <Play className="h-[18px] w-[18px]" /> Bắt đầu
                   </button>
                 )}
                 {primaryClockAction === "pause" && (
-                  <button disabled={clkBusy} onClick={() => clockAct("pause")}
+                  <button data-ops-action="floor.clock.pause" disabled={clkBusy} onClick={() => clockAct("pause")}
                     className="ios-press flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-amber-400/15 py-3 text-[15px] font-bold text-amber-300 disabled:opacity-40">
                     <Pause className="h-[18px] w-[18px]" /> Tạm dừng
                   </button>
                 )}
                 {primaryClockAction === "resume" && (
-                  <button disabled={clkBusy} onClick={() => clockAct("resume")}
+                  <button data-ops-action="floor.clock.resume" disabled={clkBusy} onClick={() => clockAct("resume")}
                     className="ios-press ios-primary flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-bold disabled:opacity-40">
                     <Play className="h-[18px] w-[18px]" /> Tiếp tục
                   </button>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <button disabled={clkBusy || !canUsePostStartControls || (clk.current_level?.level_number ?? 1) <= 1} onClick={() => clockAct("previous_level")}
+                <button data-ops-action="floor.clock.previous_level" disabled={clkBusy || !canUsePostStartControls || (clk.current_level?.level_number ?? 1) <= 1} onClick={() => clockAct("previous_level")}
                   className="ios-press ios-fill flex min-h-11 items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-medium text-[#f2ece6] disabled:opacity-40">
                   <SkipBack className="h-4 w-4" /> Level trước
                 </button>
-                <button disabled={clkBusy || !canUsePostStartControls || !clk.next_level} onClick={() => clockAct("next_level")}
+                <button data-ops-action="floor.clock.next_level" disabled={clkBusy || !canUsePostStartControls || !clk.next_level} onClick={() => clockAct("next_level")}
                   className="ios-press ios-fill flex min-h-11 items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-medium text-[#f2ece6] disabled:opacity-40">
                   <SkipForward className="h-4 w-4" /> Level tiếp
                 </button>
               </div>
               <div className="flex items-center justify-center gap-2">
                 <span className="text-[12px] text-[#9b8e97]">Chỉnh giờ:</span>
-                <button disabled={clkBusy || !canUsePostStartControls} onClick={() => clockAct("adjust_time", { delta_seconds: -60 })}
+                <button data-ops-action="floor.clock.adjust_minus" disabled={clkBusy || !canUsePostStartControls} onClick={() => clockAct("adjust_time", { delta_seconds: -60 })}
                   className="ios-press-sm ios-fill flex min-h-11 items-center gap-1 rounded-xl px-3 py-2 text-[13px] text-[#f2ece6] disabled:opacity-40">
                   <Minus className="h-3.5 w-3.5" /> 1 phút
                 </button>
-                <button disabled={clkBusy || !canUsePostStartControls} onClick={() => clockAct("adjust_time", { delta_seconds: 60 })}
+                <button data-ops-action="floor.clock.adjust_plus" disabled={clkBusy || !canUsePostStartControls} onClick={() => clockAct("adjust_time", { delta_seconds: 60 })}
                   className="ios-press-sm ios-fill flex min-h-11 items-center gap-1 rounded-xl px-3 py-2 text-[13px] text-[#f2ece6] disabled:opacity-40">
                   <Plus className="h-3.5 w-3.5" /> 1 phút
                 </button>
@@ -382,7 +380,7 @@ export default function OpsTournamentCockpit() {
               {clkBusy && <div className="flex items-center justify-center gap-1.5 text-[12px] text-[#9b8e97]"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Đang cập nhật…</div>}
             </div>
           )}
-          <button onClick={() => navigate(`/ops/tables?tour=${id}`)} className="ios-press ios-tinted flex w-full items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-semibold">
+          <button data-ops-action="floor.clock.open_tables" onClick={() => navigate(`/ops/floor/tournaments/${id}/tables?club=${encodeURIComponent(tournamentOps.snapshot.clubId)}`)} className="ios-press ios-tinted flex w-full items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-semibold">
             <LayoutGrid className="h-[18px] w-[18px]" /> Sơ đồ bàn
           </button>
           <DesktopNote text="Sửa cấu trúc blind — trên máy tính." />
@@ -399,14 +397,14 @@ export default function OpsTournamentCockpit() {
               <AlertTriangle className="h-7 w-7 text-rose-300" />
               <div className="text-[14px] font-semibold text-[#f2ece6]">Không tải được sơ đồ bàn</div>
               <div className="max-w-[280px] text-[12px] text-[#9b8e97]">{floor.error}</div>
-              <button onClick={() => floor.reload()} className="ios-press-sm mt-1 flex items-center gap-1.5 rounded-full bg-white/8 px-3.5 py-1.5 text-[13px] text-[#f2ece6]"><RefreshCw className="h-3.5 w-3.5" /> Thử lại</button>
+              <button data-ops-action="floor.tables.refresh" onClick={() => floor.reload()} className="ios-press-sm mt-1 flex items-center gap-1.5 rounded-full bg-white/8 px-3.5 py-1.5 text-[13px] text-[#f2ece6]"><RefreshCw className="h-3.5 w-3.5" /> Thử lại</button>
             </div>
           ) : cockVms.length === 0 ? (
             <CenterCard icon={<Users className="h-7 w-7 text-[#9b8e97]" />} title="Giải này chưa có bàn/ghế" />
           ) : (
             <RoomGrid tables={cockVms.map((v) => v.mock)} onTap={(m) => setTableSheet(cockVms.find((v) => v.mock.tableNo === m.tableNo)?.raw.table_id ?? null)} />
           )}
-          <button onClick={() => navigate(`/ops/tables?tour=${id}`)} className="ios-press ios-fill flex w-full items-center justify-center gap-1.5 rounded-2xl py-3 text-[14px] font-medium text-[#f2ece6]">
+          <button data-ops-action="floor.tables.open_full" onClick={() => navigate(`/ops/floor/tournaments/${id}/tables?club=${encodeURIComponent(tournamentOps.snapshot.clubId)}`)} className="ios-press ios-fill flex w-full items-center justify-center gap-1.5 rounded-2xl py-3 text-[14px] font-medium text-[#f2ece6]">
             <LayoutGrid className="h-[18px] w-[18px]" /> Mở màn Bàn (thêm/đóng bàn · bốc lại)
           </button>
         </div>
@@ -415,7 +413,7 @@ export default function OpsTournamentCockpit() {
           <LayoutGrid className="h-8 w-8 text-[#c9a86a]" />
           <div className="text-[15px] font-semibold text-[#f2ece6]">Sơ đồ bàn theo giải</div>
           <div className="max-w-[260px] text-[12px] text-[#9b8e97]">Xem ghế/người/chip thật + thao tác ở màn Bàn.</div>
-          <button onClick={() => navigate(`/ops/tables?tour=${id}`)} className="ios-press ios-primary rounded-2xl px-5 py-2.5 text-[14px] font-bold">Mở màn Bàn</button>
+          <button data-ops-action="floor.tables.open_full" onClick={() => navigate(`/ops/floor/tournaments/${id}/tables?club=${encodeURIComponent(tournamentOps.snapshot.clubId)}`)} className="ios-press ios-primary rounded-2xl px-5 py-2.5 text-[14px] font-bold">Mở màn Bàn</button>
         </div>
       ))}
 
@@ -431,7 +429,7 @@ export default function OpsTournamentCockpit() {
           <div className="space-y-2">
             <div className="flex gap-1.5">
               {([["all", "Tất cả"], ["playing", "Đang chơi"], ["busted", "Đã loại"]] as ["all" | "playing" | "busted", string][]).map(([k, label]) => (
-                <button key={k} onClick={() => setPtab(k)}
+                <button key={k} data-ops-action="floor.players.filter" onClick={() => setPtab(k)}
                   className={cn("ios-press-sm flex-1 rounded-full px-2 py-1.5 text-[12px] font-medium", ptab === k ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
                   {label} <span className="opacity-70">{counts[k]}</span>
                 </button>
@@ -446,7 +444,7 @@ export default function OpsTournamentCockpit() {
             ) : (
               <div className="ios-group">
                 {showPlaying && playing.map((s) => (
-                  <button key={`p-${s.seat_id}`} onClick={() => openSeat(s)} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
+                  <button key={`p-${s.seat_id}`} data-ops-action="floor.players.open_player" onClick={() => openSeat(s)} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[15px] text-[#f2ece6]">{s.player_name || s.player_id.slice(0, 8)}</span>
                       <span className="block font-mono text-[12px] text-[#9b8e97]">Bàn {tableNoById.get(s.table_id) ?? "?"} · ghế {s.seat_number}</span>
@@ -461,7 +459,7 @@ export default function OpsTournamentCockpit() {
                       <span className="block truncate text-[15px] text-[#9b8e97] line-through">{b.player_name}</span>
                       <span className="block text-[12px] text-[#7c7079]">Đã loại{b.prize ? ` · thưởng ${vnd(b.prize)}` : ""}</span>
                     </span>
-                    <button onClick={() => openRestore(b)} disabled={restoreTargets.length === 0}
+                    <button data-ops-action="floor.players.open_restore" onClick={() => openRestore(b)} disabled={restoreTargets.length === 0}
                       className="ios-press-sm min-h-11 shrink-0 rounded-full bg-emerald-400/12 px-3 py-1.5 text-[12px] font-semibold text-emerald-300 disabled:opacity-40">
                       Cho vào lại
                     </button>
@@ -495,7 +493,7 @@ export default function OpsTournamentCockpit() {
       ))}
 
       {/* S4 — Levels (thật) */}
-      {tab === "levels" && (
+      {section === "clock" && (
         levels.loading ? <CenterCard icon={<Loader2 className="h-7 w-7 animate-spin text-[#c9a86a]" />} title="Đang tải…" />
           : levels.error ? <CenterCard icon={<AlertTriangle className="h-7 w-7 text-rose-300" />} title="Không tải được" sub={levels.error} />
           : levels.rows.length === 0 ? <CenterCard icon={<Trophy className="h-7 w-7 text-[#9b8e97]" />} title="Chưa có cấu trúc blind" />
@@ -582,12 +580,38 @@ export default function OpsTournamentCockpit() {
         </div>
       )}
 
-      {/* S6 — Lịch sử → máy tính */}
+      {/* S6 — TV/public viewer. Full-document links deliberately leave OpsApp. */}
       {tab === "history" && (
-        <div className="ios-card flex flex-col items-center gap-2 py-10 text-center">
-          <Monitor className="h-7 w-7 text-[#9b8e97]" />
-          <div className="text-[15px] font-semibold text-[#f2ece6]">Lịch sử chi tiết trên máy tính</div>
-          <div className="max-w-[260px] text-[12px] text-[#9b8e97]">Nhật ký loại/chuyển/level/chip đầy đủ (ai · lúc nào) xem trên bản máy tính.</div>
+        <div className="space-y-3">
+          <div className="ios-card p-5">
+            <Monitor className="h-7 w-7 text-sky-300" />
+            <div className="mt-3 text-[17px] font-semibold text-[#f2ece6]">TV & màn hình công khai</div>
+            <div className="mt-1 text-[13px] leading-5 text-[#9b8e97]">
+              Mở màn hình đồng hồ của giải ở tab riêng. Ops không truyền phiên đăng nhập hoặc secret sang đường dẫn TV.
+            </div>
+            <a
+              data-ops-action="floor.screens.open_public_tv"
+              href={`/tv/${id}`}
+              target="_blank"
+              rel="noreferrer"
+              className="ios-press ios-primary mt-4 flex min-h-11 w-full items-center justify-center rounded-2xl px-4 text-[14px] font-bold"
+            >
+              Mở TV của giải
+            </a>
+          </div>
+          <div className="ios-card p-5">
+            <div className="text-[15px] font-semibold text-[#f2ece6]">Ghép màn hình mới</div>
+            <div className="mt-1 text-[12px] leading-5 text-[#9b8e97]">Dùng mã ghép trên màn hình đích; không nhập token vào URL.</div>
+            <a
+              data-ops-action="floor.screens.open_pairing"
+              href="/tv/pair"
+              target="_blank"
+              rel="noreferrer"
+              className="ios-press ios-fill mt-4 flex min-h-11 w-full items-center justify-center rounded-2xl px-4 text-[14px] font-semibold text-[#f2ece6]"
+            >
+              Mở màn ghép TV
+            </a>
+          </div>
         </div>
       )}
 
@@ -612,7 +636,7 @@ export default function OpsTournamentCockpit() {
             ) : (
               <div className="ios-group mt-3">
                 {seats.map((s) => (
-                  <button key={s.seat_id} onClick={() => { setTableSheet(null); requestAnimationFrame(() => openSeat(s)); }} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
+                  <button key={s.seat_id} data-ops-action="floor.tables.open_seat" onClick={() => { setTableSheet(null); requestAnimationFrame(() => openSeat(s)); }} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
                     <span className="w-5 font-mono text-[13px] text-[#9b8e97]">{s.seat_number}</span>
                     <span className="flex-1 truncate text-[15px] text-[#f2ece6]">{s.player_name || s.player_id.slice(0, 8)}</span>
                     <span className="font-mono text-[13px] text-[#c9a86a]">{vnd(s.chip_count)}</span>
@@ -641,7 +665,7 @@ export default function OpsTournamentCockpit() {
           {restoreTargets.length === 0 ? (
             <div className="ios-card mt-3 flex flex-col items-center gap-2 py-8 text-center">
               <div className="text-[14px] text-[#9b8e97]">Không còn ghế trống — mở thêm bàn ở màn Bàn trước.</div>
-              <button onClick={() => setRestoreTarget(null)} className="ios-press-sm mt-1 rounded-full bg-white/8 px-4 py-1.5 text-[13px] text-[#f2ece6]">Đóng</button>
+              <button data-ops-action="floor.players.close_restore" onClick={() => setRestoreTarget(null)} className="ios-press-sm mt-1 rounded-full bg-white/8 px-4 py-1.5 text-[13px] text-[#f2ece6]">Đóng</button>
             </div>
           ) : (
             <>
@@ -649,7 +673,7 @@ export default function OpsTournamentCockpit() {
                 <div className="text-[12px] text-[#9b8e97]">Chọn bàn (còn ghế trống)</div>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {restoreTargets.map((tb) => (
-                    <button key={tb.tt_id} onClick={() => { setRestoreTtId(tb.tt_id); setRestoreSeat(tb.freeSeats[0] ?? null); }}
+                    <button key={tb.tt_id} data-ops-action="floor.players.select_restore_table" onClick={() => { setRestoreTtId(tb.tt_id); setRestoreSeat(tb.freeSeats[0] ?? null); }}
                       className={cn("ios-press-sm grid h-8 min-w-9 place-items-center rounded-lg px-2 text-[13px] font-semibold", restoreTtId === tb.tt_id ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
                       {tb.table_number ?? "?"}
                     </button>
@@ -658,7 +682,7 @@ export default function OpsTournamentCockpit() {
                 <div className="mt-3 text-[12px] text-[#9b8e97]">Ghế trống — chạm để chọn</div>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {(restoreTargets.find((x) => x.tt_id === restoreTtId)?.freeSeats ?? []).map((seatNo) => (
-                    <button key={seatNo} onClick={() => setRestoreSeat(seatNo)}
+                    <button key={seatNo} data-ops-action="floor.players.select_restore_seat" onClick={() => setRestoreSeat(seatNo)}
                       className={cn("ios-press-sm grid h-8 w-9 place-items-center rounded-lg text-[13px] font-semibold", restoreSeat === seatNo ? "bg-[#c9a86a] text-[#241A08]" : "bg-emerald-400/15 text-emerald-300")}>
                       {seatNo}
                     </button>
@@ -669,7 +693,7 @@ export default function OpsTournamentCockpit() {
                 <input type="checkbox" checked={restoreConfirmed} onChange={(event) => setRestoreConfirmed(event.target.checked)} className="mt-0.5 h-4 w-4 accent-[#c9a86a]" />
                 <span>Tôi đã kiểm tra: giải chưa chốt, thưởng chưa chi, đây đúng là lượt vào vừa bị loại nhầm.</span>
               </label>
-              <button disabled={restoreBusy || restoreTtId === null || restoreSeat === null || !restoreConfirmed} onClick={doRestore}
+              <button data-ops-action="floor.players.restore" disabled={restoreBusy || restoreTtId === null || restoreSeat === null || !restoreConfirmed} onClick={doRestore}
                 className="ios-press ios-primary mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-bold disabled:opacity-40">
                 {restoreBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {restoreBusy ? "Đang khôi phục…" : `Cho vào Bàn ${restoreTargets.find((x) => x.tt_id === restoreTtId)?.table_number ?? "?"} · ghế ${restoreSeat ?? "—"}`}

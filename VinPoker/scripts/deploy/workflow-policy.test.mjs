@@ -54,6 +54,16 @@ test("frontend deployment is manual-only", () => {
   assert.match(frontendDeploy, /github\.event_name == 'workflow_dispatch'/);
 });
 
+test("frontend receipt verification has a bounded Vercel alias convergence window", () => {
+  const frontendDeploy = workflow.slice(workflow.indexOf("deploy-frontend:"));
+  assert.match(frontendDeploy, /shell_verify_attempts=72/);
+  assert.match(frontendDeploy, /shell_verify_interval_seconds=5/);
+  assert.equal((frontendDeploy.match(/\$\(seq 1 "\$shell_verify_attempts"\)/gu) ?? []).length, 2);
+  assert.match(frontendDeploy, /FRONTEND_DEPLOYMENT_URL_VERIFY=NOT_CONVERGED/);
+  assert.doesNotMatch(frontendDeploy, /test "\$verified" = true/);
+  assert.match(frontendDeploy, /test "\$canonical_verified" = true/);
+});
+
 test("Floor clock deploy remains an explicit protected critical selection", () => {
   const criticalJob = workflow.slice(
     workflow.indexOf("deploy-critical-edge:"),
@@ -66,6 +76,17 @@ test("Floor clock deploy remains an explicit protected critical selection", () =
     criticalJob,
     /needs:\s*\n\s*- plan\s*\n\s*- target-preflight\s*\n\s*- validate-critical-environment/,
   );
+});
+
+test("Ops club-account deploy remains an explicit protected critical selection", () => {
+  const criticalJob = workflow.slice(
+    workflow.indexOf("deploy-critical-edge:"),
+    workflow.indexOf("deploy-frontend:"),
+  );
+  assert.match(workflow, /deploy_ops_club_accounts:/);
+  assert.match(workflow, /selected\+=\("ops-club-accounts"\)/);
+  assert.match(workflow, /validate-critical-environment:/);
+  assert.match(criticalJob, /environment:\s*\n\s*name: dealer-swing-production-critical/);
 });
 
 test("every live probe derives its profile from the exact target checkout", () => {

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { floorOpsErrorMessage } from "@/lib/floorOpsErrors";
 import type { FloorTableControlMode } from "@/lib/floorTableControlMode";
 import { FloorTableModePicker } from "@/components/ops/shared/FloorTableModePicker";
@@ -12,11 +12,6 @@ type UntypedFloorRpcResult = {
   data: unknown;
   error: { message?: string; code?: string } | null;
 };
-
-const callUntypedFloorRpc = supabase.rpc.bind(supabase) as unknown as (
-  name: string,
-  args: Record<string, unknown>,
-) => Promise<UntypedFloorRpcResult>;
 
 type ControlTable = {
   tt_id: string;
@@ -34,6 +29,14 @@ export function FloorTableControlModeControl({
   table: ControlTable;
   onChanged: () => void;
 }) {
+  const supabase = useSupabaseClient();
+  const callUntypedFloorRpc = useMemo(
+    () => supabase.rpc.bind(supabase) as unknown as (
+      name: string,
+      args: Record<string, unknown>,
+    ) => Promise<UntypedFloorRpcResult>,
+    [supabase],
+  );
   const [selected, setSelected] = useState<FloorTableControlMode>(table.floor_control_mode);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -98,6 +101,7 @@ export function FloorTableControlModeControl({
       </div>
 
       <Button
+        data-ops-action="floor.tables.open_control_mode_confirm"
         data-testid="floor-table-control-mode-save"
         type="button"
         className="mt-3 w-full"
@@ -114,8 +118,8 @@ export function FloorTableControlModeControl({
             <AlertDialogDescription>{selectedSummary} Ván đang chạy luôn bị chặn.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2 sm:gap-2">
-            <AlertDialogCancel disabled={busy}>Huỷ</AlertDialogCancel>
-            <AlertDialogAction data-testid="floor-table-control-mode-confirm" disabled={busy} onClick={(event) => { event.preventDefault(); void save(); }}>
+            <AlertDialogCancel data-ops-action="floor.tables.cancel_control_mode" disabled={busy}>Huỷ</AlertDialogCancel>
+            <AlertDialogAction data-ops-action="floor.tables.save_control_mode" data-testid="floor-table-control-mode-confirm" disabled={busy} onClick={(event) => { event.preventDefault(); void save(); }}>
               {busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Đang lưu</> : "Xác nhận đổi chế độ"}
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -8,7 +8,7 @@
 -- Finance Dashboard must recognise; today it is absent from the P&L. This adds it as ONE new cost
 -- leg, exactly parallel to the existing [PT] pt_pay leg — additive, minimal, reversible.
 --
--- BASE OF THIS BODY: the canonical live body from 20261211000000_finance_summary_pt_wage_restore.sql
+-- BASE OF THIS BODY: the canonical live body from 20261211000002_finance_summary_pt_wage_restore.sql
 -- (the [PT]-restored lineage), copied VERBATIM. CHANGES vs base (golden diff, marked [EXP]):
 --   1. empty-state cost object          + 'clubExpenses',0
 --   2. new CTE club_exp                 (public.club_expenses, signed amount_vnd, by incurred_at)
@@ -23,7 +23,7 @@
 -- `cost.clubExpenses: 0` key. Months WITH expenses reduce `net` by exactly Σ amount_vnd (intended;
 -- amount_vnd is signed so adjustment rows net out).
 --
--- ROLLBACK: re-apply 20261211000000_finance_summary_pt_wage_restore.sql (the exact base body).
+-- ROLLBACK: re-apply 20261211000002_finance_summary_pt_wage_restore.sql (the exact base body).
 -- ============================================================================================
 
 CREATE OR REPLACE FUNCTION public.get_club_finance_summary(p_from timestamp with time zone, p_to timestamp with time zone, p_club_id uuid DEFAULT NULL::uuid)

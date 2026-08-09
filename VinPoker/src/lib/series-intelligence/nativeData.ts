@@ -37,6 +37,8 @@ export interface SeriesEvent {
   total_entries: number | null;
   unique_entries: number | null;
   reentries: number | null;
+  /** Exact publication/availability instant for outcome fields, when supplied by a trusted source. */
+  outcome_available_at?: string | null;
   capacity?: number | null; // TP6 — venue/seat capacity (CSV optional column; native has no source → null)
   source: EventSource;
   clubId: string;

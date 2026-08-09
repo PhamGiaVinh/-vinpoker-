@@ -11,36 +11,16 @@ import {
 } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import {
+  closeDealerTablesPhone,
+  type DealerPhoneCloseResponse,
+  type DealerPhoneCloseSnapshot,
+} from "./dealerPhoneCloseRpc";
 
 export interface DealerPhoneCloseTable {
   id: string;
   name: string;
   dealer: string | null;
-}
-
-interface CloseSnapshot {
-  state_hash: string;
-  tables: Array<{
-    table_id: string;
-    table_name: string;
-    state_hash: string;
-  }>;
-}
-
-interface CloseResponse {
-  outcome: "dry_run" | "completed" | "conflict" | "rollout_disabled" | "invalid_request" | "idempotency_conflict" | "batch_too_large";
-  operation_id?: string;
-  state_hash?: string;
-  tables?: CloseSnapshot["tables"];
-  tables_closed?: number;
-  dealers_released?: number;
-  results?: Array<{ table_id: string; code: string }>;
-  reason?: string;
-}
-
-interface RpcResult {
-  data: unknown;
-  error: { message: string } | null;
 }
 
 interface Props {
@@ -53,11 +33,6 @@ interface Props {
   onRolloutDisabled: () => void;
 }
 
-const rpcClose = supabase.rpc.bind(supabase) as unknown as (
-  name: string,
-  args: Record<string, unknown>,
-) => PromiseLike<RpcResult>;
-
 export function DealerPhoneCloseTablesSheet({
   open,
   activeClubId,
@@ -68,8 +43,8 @@ export function DealerPhoneCloseTablesSheet({
   onRolloutDisabled,
 }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [snapshot, setSnapshot] = useState<CloseSnapshot | null>(null);
-  const [response, setResponse] = useState<CloseResponse | null>(null);
+  const [snapshot, setSnapshot] = useState<DealerPhoneCloseSnapshot | null>(null);
+  const [response, setResponse] = useState<DealerPhoneCloseResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const operationIdRef = useRef<string | null>(null);
 
@@ -102,7 +77,7 @@ export function DealerPhoneCloseTablesSheet({
     resetConfirmation();
   };
 
-  const handleGateOutcome = (result: CloseResponse): boolean => {
+  const handleGateOutcome = (result: DealerPhoneCloseResponse): boolean => {
     if (result.outcome !== "rollout_disabled") return false;
     onRolloutDisabled();
     changeOpen(false);
@@ -117,7 +92,7 @@ export function DealerPhoneCloseTablesSheet({
     setBusy(true);
     setResponse(null);
     try {
-      const result = await rpcClose("close_dealer_tables", {
+      const data = await closeDealerTablesPhone({
         p_request_id: operationId,
         p_expected_club_id: activeClubId,
         p_shift_id: null,
@@ -125,8 +100,6 @@ export function DealerPhoneCloseTablesSheet({
         p_expected_state: null,
         p_dry_run: true,
       });
-      if (result.error) throw result.error;
-      const data = result.data as CloseResponse;
       if (handleGateOutcome(data)) return;
       if (data.outcome !== "dry_run" || !data.state_hash || !data.tables) {
         setResponse(data);
@@ -145,7 +118,7 @@ export function DealerPhoneCloseTablesSheet({
     if (!operationId || !snapshot || busy) return;
     setBusy(true);
     try {
-      const result = await rpcClose("close_dealer_tables", {
+      const data = await closeDealerTablesPhone({
         p_request_id: operationId,
         p_expected_club_id: activeClubId,
         p_shift_id: null,
@@ -153,8 +126,6 @@ export function DealerPhoneCloseTablesSheet({
         p_expected_state: snapshot,
         p_dry_run: false,
       });
-      if (result.error) throw result.error;
-      const data = result.data as CloseResponse;
       if (handleGateOutcome(data)) return;
       setResponse(data);
 
