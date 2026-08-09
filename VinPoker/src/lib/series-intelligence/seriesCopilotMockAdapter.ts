@@ -20,6 +20,7 @@ export interface MockSeriesCopilotRequestV1 {
 }
 export interface MockSeriesCopilotResultV1 {
   adapterVersion: typeof SERIES_COPILOT_MOCK_ADAPTER_VERSION;
+  context: SeriesCopilotContextV1;
   contextHash: string;
   validation: VResponseValidationResultV1;
 }
@@ -240,6 +241,7 @@ export async function askMockSeriesCopilotV1(request: MockSeriesCopilotRequestV1
 
   return Object.freeze({
     adapterVersion: SERIES_COPILOT_MOCK_ADAPTER_VERSION,
+    context: request.context,
     contextHash: request.context.contextHash,
     validation: validateVResponseV1(rawResponse, request.context),
   });

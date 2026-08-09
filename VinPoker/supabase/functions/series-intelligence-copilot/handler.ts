@@ -1,5 +1,5 @@
-import { blockedVResponseV1, parseSeriesVRequestV1, type SafeProviderReceiptV1 } from "./contracts.ts";
-import { GeminiSeriesCopilotProvider } from "./geminiProvider.ts";
+import { parseSeriesVRequestV1, type SafeProviderReceiptV1 } from "./contracts.ts";
+import { GeminiSeriesCopilotProvider, SERIES_GEMINI_MODEL_ID } from "./geminiProvider.ts";
 import { SeriesCopilotProviderError, type SeriesCopilotProvider } from "./provider.ts";
 import { buildServerCopilotContextV1, parseApprovedScheduleInputsV1, type ApprovedScheduleInputsV1 } from "./serverContext.ts";
 
@@ -13,7 +13,6 @@ export interface SeriesCopilotEnvironmentV1 {
   supabaseUrl: string;
   supabaseAnonKey: string;
   geminiApiKey: string;
-  geminiModel: string;
 }
 
 export interface CreateSeriesCopilotHandlerV1Options {
@@ -142,20 +141,17 @@ export function createSeriesCopilotHandlerV1(options: CreateSeriesCopilotHandler
       for (const selected of parsed.selectedOptionIds) {
         if (!context.candidateOptions.some((option) => option.optionId === selected)) return json({ error: "UNKNOWN_SELECTED_OPTION" }, 400);
       }
-      if (context.candidateOptions.length === 0) {
-        return json({ response: blockedVResponseV1(), contextHash: context.contextHash, reason: "APPROVED_SCHEDULE_CANDIDATES_UNAVAILABLE" }, 200);
-      }
     } catch {
       return json({ error: "COPILOT_CONTEXT_REJECTED" }, 503);
     }
     try {
       const provider = options.providerFactory
         ? options.providerFactory(options.env, fetchImpl)
-        : new GeminiSeriesCopilotProvider({ apiKey: options.env.geminiApiKey, modelId: options.env.geminiModel, fetchImpl });
+        : new GeminiSeriesCopilotProvider({ apiKey: options.env.geminiApiKey, modelId: SERIES_GEMINI_MODEL_ID, fetchImpl });
       const result = await provider.ask({ question: parsed.question, context, selectedOptionIds: parsed.selectedOptionIds, signal: request.signal });
       const receipt: SafeProviderReceiptV1 = result.receipt;
       console.info(JSON.stringify({ event: "series_v_provider_receipt", ...receipt }));
-      return json({ response: result.response, receipt });
+      return json({ context, response: result.response, receipt });
     } catch (error) {
       if (error instanceof SeriesCopilotProviderError) {
         return json({ error: error.code }, providerStatus(error));

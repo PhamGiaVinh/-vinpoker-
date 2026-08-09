@@ -62,6 +62,23 @@ export interface CopilotEvidenceV1 {
   metricIds: readonly string[];
 }
 
+export type ScheduleHealthStateV1 = "good" | "needs_review" | "blocked" | "insufficient_data";
+export type ScheduleHealthDimensionKeyV1 =
+  | "structure_completeness"
+  | "demand_evidence"
+  | "gtd_stress"
+  | "schedule_collision"
+  | "operational_feasibility"
+  | "data_readiness";
+
+export interface ScheduleHealthDimensionV1 {
+  key: ScheduleHealthDimensionKeyV1;
+  labelVi: string;
+  state: ScheduleHealthStateV1;
+  detailVi: string;
+  evidenceRefs: readonly string[];
+}
+
 export interface ServerCopilotContextV1 {
   version: "series-copilot-context-v1";
   contextHash: string;
@@ -73,7 +90,8 @@ export interface ServerCopilotContextV1 {
   };
   scheduleHealth: {
     version: "series-schedule-health-v1";
-    overallState: "good" | "needs_review" | "blocked" | "insufficient_data";
+    overallState: ScheduleHealthStateV1;
+    dimensions: readonly ScheduleHealthDimensionV1[];
     assessedOptionIds: readonly string[];
   };
   candidateOptions: readonly ScheduleCandidateV1[];
