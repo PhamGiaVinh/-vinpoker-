@@ -13,11 +13,14 @@ describe("V Copilot Edge source boundary", () => {
     expect(source("index.ts")).toContain('Deno.env.get("SERIES_GEMINI_MODEL")');
   });
 
-  it("uses only the fixed Club Pulse RPC and does not query row-level player tables", () => {
+  it("uses fixed owner-context RPCs and does not query row-level player tables", () => {
     const handler = source("handler.ts");
     expect(handler).toContain("get_series_club_live_pulse_v1");
+    expect(handler).toContain("series_consume_copilot_rate_limit_v1");
+    expect(handler).toContain("series_get_approved_schedule_candidates_v1");
     expect(handler).not.toMatch(/from\(["'](?:profiles|players|club_members|tournament_entries|tournament_seats)["']\)/);
     expect(handler).not.toContain("SERVICE_ROLE");
+    expect(handler).not.toContain("process_local_prototype");
   });
 
   it("does not wire the browser UI or enable either source flag", () => {

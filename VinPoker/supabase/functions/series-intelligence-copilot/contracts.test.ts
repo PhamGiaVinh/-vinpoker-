@@ -25,8 +25,9 @@ function validResponse() {
 
 describe("V request and response trust boundary", () => {
   it("accepts only the minimal browser request", () => {
-    expect(parseSeriesVRequestV1({ version: "series-v-request-v1", clubId: CLUB_ID, question: "Nên chọn lịch nào?", selectedOptionIds: ["option_a"] }).question).toBe("Nên chọn lịch nào?");
-    expect(() => parseSeriesVRequestV1({ version: "series-v-request-v1", clubId: CLUB_ID, question: "x", entriesToday: 99 })).toThrow("not allowed");
+    expect(parseSeriesVRequestV1({ version: "series-v-request-v1", requestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", clubId: CLUB_ID, question: "Nên chọn lịch nào?", selectedOptionIds: ["option_a"] }).question).toBe("Nên chọn lịch nào?");
+    expect(() => parseSeriesVRequestV1({ version: "series-v-request-v1", requestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", clubId: CLUB_ID, question: "x", entriesToday: 99 })).toThrow("not allowed");
+    expect(() => parseSeriesVRequestV1({ version: "series-v-request-v1", requestId: "not-a-uuid", clubId: CLUB_ID, question: "x" })).toThrow("requestId");
   });
 
   it("derives answer status and accepts approved tokens", async () => {

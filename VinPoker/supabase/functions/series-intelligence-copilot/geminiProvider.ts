@@ -132,7 +132,7 @@ export class GeminiSeriesCopilotProvider implements SeriesCopilotProvider {
         inputTokens: parsed.inputTokens,
         outputTokens: parsed.outputTokens,
         validationState: "accepted",
-        rateLimitScope: "process_local_prototype",
+        rateLimitScope: "actor_club_global",
       });
       return Object.freeze({ response: validated, receipt });
     } catch (error) {

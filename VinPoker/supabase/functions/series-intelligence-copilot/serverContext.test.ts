@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildServerCopilotContextV1, unavailableScheduleInputsV1 } from "./serverContext";
+import { buildServerCopilotContextV1, parseApprovedScheduleInputsV1, unavailableScheduleInputsV1 } from "./serverContext";
 
 const CLUB_ID = "11111111-1111-4111-8111-111111111111";
 const AS_OF = "2026-08-09T03:00:00.000Z";
@@ -34,6 +34,58 @@ describe("server Club Pulse context", () => {
 
   it("fails on forged club identity", async () => {
     await expect(buildServerCopilotContextV1(pulse(), "22222222-2222-4222-8222-222222222222", unavailableScheduleInputsV1())).rejects.toThrow("identity");
+  });
+
+  it("strictly parses approved server candidates and rejects unknown evidence", () => {
+    const raw = {
+      version: "series-approved-schedule-candidates-v1",
+      clubId: CLUB_ID,
+      asOf: AS_OF,
+      candidateOptions: [{
+        optionId: "option_a", labelVi: "Phương án A",
+        buyIn: { amountMinor: "2000000", currency: "VND", scale: 0 },
+        gtd: { amountMinor: "200000000", currency: "VND", scale: 0 },
+        flights: 2, expectedDurationMinutes: null, requiredField: 100,
+        structureState: "complete", capacityState: "unknown", collisionState: "unknown",
+        gtdStressState: "supported", evidenceRefs: ["schedule_review"],
+      }],
+      evidence: [{ evidenceId: "schedule_review", labelVi: "Owner duyệt", sourceId: "series_schedule_candidates_v1", asOf: AS_OF, quality: "owner_scoped_server_aggregate", privacyState: "safe", metricIds: [] }],
+      dataGaps: [],
+    };
+    expect(parseApprovedScheduleInputsV1(raw, CLUB_ID).candidateOptions[0].requiredField).toBe(100);
+    raw.candidateOptions[0].evidenceRefs = ["unknown_evidence"];
+    expect(() => parseApprovedScheduleInputsV1(raw, CLUB_ID)).toThrow("unknown evidence");
+  });
+
+  type MutableBoundaryFixture = {
+    candidateOptions: Array<{
+      gtd: { amountMinor: string; currency: string; scale: number };
+      flights: number;
+      requiredField: number | null;
+    }>;
+  };
+
+  it.each([
+    ["non-VND money", (raw: MutableBoundaryFixture) => { raw.candidateOptions[0].gtd.currency = "USD"; }],
+    ["negative money", (raw: MutableBoundaryFixture) => { raw.candidateOptions[0].gtd.amountMinor = "-1"; }],
+    ["fractional count", (raw: MutableBoundaryFixture) => { raw.candidateOptions[0].flights = 1.5; }],
+    ["forged GTD support", (raw: MutableBoundaryFixture) => { raw.candidateOptions[0].requiredField = null; }],
+  ])("rejects %s from the server boundary", (_label, mutate) => {
+    const raw = {
+      version: "series-approved-schedule-candidates-v1", clubId: CLUB_ID, asOf: AS_OF,
+      candidateOptions: [{
+        optionId: "option_a", labelVi: "Phương án A",
+        buyIn: { amountMinor: "2000000", currency: "VND", scale: 0 },
+        gtd: { amountMinor: "200000000", currency: "VND", scale: 0 },
+        flights: 2, expectedDurationMinutes: null, requiredField: 100,
+        structureState: "complete", capacityState: "unknown", collisionState: "unknown",
+        gtdStressState: "supported", evidenceRefs: ["schedule_review"],
+      }],
+      evidence: [{ evidenceId: "schedule_review", labelVi: "Owner duyệt", sourceId: "series_schedule_candidates_v1", asOf: AS_OF, quality: "owner_scoped_server_aggregate", privacyState: "safe", metricIds: [] }],
+      dataGaps: [],
+    };
+    mutate(raw);
+    expect(() => parseApprovedScheduleInputsV1(raw, CLUB_ID)).toThrow();
   });
 });
 
