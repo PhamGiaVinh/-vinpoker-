@@ -15,13 +15,19 @@ describe("Series Club Pulse V1 architecture boundary", () => {
     expect(adapter).not.toMatch(/\.from\s*\(/);
   });
 
-  it("does not wire the live adapter into UI or enable either Copilot flag", () => {
+  it("wires the fixed adapter through one hook while keeping both runtime flags off", () => {
     const panel = source("src/components/series-intelligence/VCopilotPanel.tsx");
+    const pulsePanel = source("src/components/series-intelligence/ClubPulsePanel.tsx");
+    const hook = source("src/lib/series-intelligence/useSeriesClubLivePulseV1.ts");
     const page = source("src/pages/SeriesIntelligence.tsx");
     const flags = source("src/lib/featureFlags.ts");
     expect(panel).not.toMatch(/seriesClubLivePulseRpc|getSeriesClubLivePulseV1/);
     expect(page).not.toMatch(/seriesClubLivePulseRpc|getSeriesClubLivePulseV1/);
+    expect(pulsePanel).not.toMatch(/supabase|\.from\s*\(|\.rpc\s*\(/i);
+    expect(hook).toContain('from "./seriesClubLivePulseRpc"');
+    expect(hook).not.toMatch(/supabase|\.from\s*\(|\.rpc\s*\(/i);
+    expect(page).toContain("FEATURES.seriesClubPulseV1 && <ClubPulsePanel");
     expect(flags).toMatch(/seriesVCopilotV1:\s*false/);
-    expect(flags).not.toMatch(/seriesClubPulseV1:\s*true/);
+    expect(flags).toMatch(/seriesClubPulseV1:\s*false/);
   });
 });
