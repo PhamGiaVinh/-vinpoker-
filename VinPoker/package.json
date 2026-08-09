@@ -9,6 +9,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "check:credential-context": "node scripts/security/check-sensitive-credential-context.mjs",
+    "check:migration-catalog": "node scripts/security/check-migration-catalog.mjs",
     "check:ops-boundary": "node scripts/security/check-ops-app-boundary.mjs",
     "check:ops-money-boundary": "node scripts/security/check-ops-money-boundary.mjs",
     "check:ops-v3-shell-text": "node scripts/security/check-ops-v3-shell-text.mjs",

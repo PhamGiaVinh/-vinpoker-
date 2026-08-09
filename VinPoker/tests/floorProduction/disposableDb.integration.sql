@@ -327,7 +327,7 @@ $$;
 -- only because the disposable database started stricter than production.
 GRANT EXECUTE ON FUNCTION public.get_my_floor_operator_scope() TO service_role;
 \ir ../../supabase/migrations/20270104000005_floor_operator_scope_acl.sql
-\ir ../../supabase/migrations/20270105000001_floor_table_control_mode.sql
+\ir ../../supabase/migrations/20270105000004_floor_table_control_mode.sql
 \ir ../../supabase/migrations/20270106000000_floor_open_table_picker_mode_v2.sql
 
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);

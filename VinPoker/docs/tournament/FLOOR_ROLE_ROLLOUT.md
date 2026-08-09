@@ -1,6 +1,6 @@
 # Floor role (schema) — controlled apply runbook
 
-`20261025000000_app_role_floor.sql` + `20261025000001_club_floors.sql` are **source-only**.
+`20261025000002_app_role_floor.sql` + `20261025000001_club_floors.sql` are **source-only**.
 Apply via the controlled **Management-API** path (NOT `db push`), `schema_migrations` untouched.
 Owner phrase to start: **"Apply floor role schema"** + a Management-API token.
 

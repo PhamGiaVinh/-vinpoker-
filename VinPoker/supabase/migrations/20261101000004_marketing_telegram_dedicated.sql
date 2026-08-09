@@ -5,7 +5,7 @@
 -- dealer-swing/shift-schedule/webhook). This gives marketing its OWN Telegram destination:
 --   - chat id (required) stored in club_channel_integrations(channel='telegram').target_ref
 --   - bot token (OPTIONAL) stored ENCRYPTED in Supabase Vault; NULL = use the global TELEGRAM_BOT_TOKEN.
--- Vault precedent: 20260917000000_online_poker_runner_cron_vault.sql.
+-- Vault precedent: 20260917000001_online_poker_runner_cron_vault.sql.
 --
 -- WHAT (additive, idempotent):
 --   1. club_channel_integrations.bot_token_vault_key (nullable) — Vault secret NAME, never the token.

@@ -1,5 +1,5 @@
 -- ============================================================================
--- 20261022000000_online_poker_buyin_log.sql
+-- 20261022000001_online_poker_buyin_log.sql
 --
 -- Online-poker FRIENDS-PRACTICE buy-in HISTORY (source-only; NOT applied by this PR).
 --
