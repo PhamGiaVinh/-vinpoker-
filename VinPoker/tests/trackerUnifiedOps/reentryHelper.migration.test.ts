@@ -12,16 +12,14 @@ const sourceEntryMigration = readFileSync(
 );
 
 describe("Tracker PR2A re-entry helper migration contract", () => {
-  it("uses one unique version after the repository maximum", () => {
+  it("uses one unique version after its required predecessor", () => {
     const versions = readdirSync(migrationsDir)
       .map((name) => /^([0-9]{14})_/.exec(name)?.[1])
       .filter((version): version is string => Boolean(version));
     const version = migrationName.slice(0, 14);
 
     expect(versions.filter((candidate) => candidate === version)).toHaveLength(1);
-    expect(Number(version)).toBeGreaterThan(
-      Math.max(...versions.filter((candidate) => candidate !== version).map(Number)),
-    );
+    expect(Number(version)).toBeGreaterThan(Number("20270109000000"));
   });
 
   it("owns the helper and preserves the wrapper boundary", () => {

@@ -6,6 +6,7 @@ on:
       - ".github/workflows/tracker-pr2a-disposable-db.yml"
       - "VinPoker/supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql"
       - "VinPoker/supabase/migrations/20270108000004_tracker_unified_ops_writer_lock_containment.sql"
+      - "VinPoker/supabase/migrations/20270110000002_hand_players_identity_columns_forward_fix.sql"
       - "VinPoker/tests/trackerUnifiedOps/**"
   workflow_dispatch:
 
@@ -120,6 +121,14 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a_close \
             -f tests/trackerUnifiedOps/legacyWriterClose.integration.sql
 
+      - name: Prove hand-player identity forward repair against runtime drift
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          createdb tracker_hand_player_identity
+          psql -X -v ON_ERROR_STOP=1 -d tracker_hand_player_identity \
+            -f tests/trackerUnifiedOps/handPlayerIdentityColumns.integration.sql
+
       - name: Prove migration transaction rollback on injected failure
         working-directory: VinPoker
         run: |
@@ -151,6 +160,7 @@ jobs:
             tests/trackerUnifiedOps/pr2a.migration.test.ts \
             tests/trackerUnifiedOps/contracts.test.ts \
             tests/trackerUnifiedOps/disposableDb.contract.test.ts \
+            tests/trackerUnifiedOps/handPlayerIdentityColumns.migration.test.ts \
             tests/trackerUnifiedOps/legacyWriterInventory.test.ts
           npm run check:credential-context
           git diff --check

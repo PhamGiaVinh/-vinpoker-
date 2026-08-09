@@ -32,6 +32,13 @@ const legacyCloseIntegration = readFileSync(
   ),
   "utf8",
 );
+const identityColumnsIntegration = readFileSync(
+  resolve(
+    process.cwd(),
+    "tests/trackerUnifiedOps/handPlayerIdentityColumns.integration.sql",
+  ),
+  "utf8",
+);
 const legacyModeSource = readFileSync(
   resolve(
     process.cwd(),
@@ -70,6 +77,25 @@ describe("Tracker PR2A disposable database contract", () => {
     expect(workflow).toContain("createdb tracker_pr2a_rollback -T tracker_pr2a");
     expect(workflow).toContain("tracker_pr2a_injected_failure");
     expect(workflow).toContain("PR2A_ROLLBACK_PROOF=PASS");
+  });
+
+  it("runs the identity-column forward repair against the runtime drift shape", () => {
+    expect(workflow).toContain(
+      "supabase/migrations/20270110000002_hand_players_identity_columns_forward_fix.sql",
+    );
+    expect(workflow).toContain("createdb tracker_hand_player_identity");
+    expect(workflow).toContain(
+      "tests/trackerUnifiedOps/handPlayerIdentityColumns.integration.sql",
+    );
+    expect(identityColumnsIntegration).toContain(
+      "PRE_MIGRATION_UNDEFINED_COLUMN_REPRODUCED",
+    );
+    expect(identityColumnsIntegration).toContain(
+      "POST_MIGRATION_FUNCTION_RUNTIME_PASS",
+    );
+    expect(identityColumnsIntegration).toContain(
+      "HAND_PLAYER_IDENTITY_FORWARD_REPAIR_PASS",
+    );
   });
 
   it("keeps the Deno check bounded to a non-PR2A syntax target", () => {
