@@ -18,6 +18,7 @@ export interface CopilotMetricV1 {
   sourceId: string;
   grain: string;
   definitionVersion: string;
+  unavailableReason?: string;
 }
 
 export interface ClubPulseV1 {
@@ -140,6 +141,12 @@ function normalizeMetric(metric: CopilotMetricV1): CopilotMetricV1 {
   if (metric.availability !== "unavailable" && metric.value === null) {
     throw new Error(`${metricId} must carry a value when available`);
   }
+  if (metric.availability === "unavailable" && !metric.unavailableReason?.trim()) {
+    throw new Error(`${metricId} must explain why it is unavailable`);
+  }
+  if (metric.availability !== "unavailable" && metric.unavailableReason !== undefined) {
+    throw new Error(`${metricId}.unavailableReason is only valid when unavailable`);
+  }
   if (typeof metric.value === "number" && (!Number.isFinite(metric.value) || metric.value < 0)) {
     throw new Error(`${metricId} must be a finite non-negative value`);
   }
@@ -153,6 +160,7 @@ function normalizeMetric(metric: CopilotMetricV1): CopilotMetricV1 {
     sourceId: normalizeId(metric.sourceId, `${metricId}.sourceId`),
     grain: metric.grain.trim().normalize("NFC"),
     definitionVersion: normalizeId(metric.definitionVersion, `${metricId}.definitionVersion`),
+    ...(metric.unavailableReason ? { unavailableReason: metric.unavailableReason.trim().normalize("NFC") } : {}),
   };
 }
 
