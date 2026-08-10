@@ -6,6 +6,7 @@ import {
   SERIES_CLUB_PULSE_METRIC_DEFINITIONS,
   type SeriesClubPulseMetricKey,
 } from "@/lib/series-intelligence/seriesClubLivePulseV1";
+import { SERIES_CLUB_PULSE_DEMO_CLUB_ID } from "@/lib/series-intelligence/seriesClubPulseDemoV1";
 import { ClubPulsePanel } from "./ClubPulsePanel";
 
 vi.mock("@/lib/series-intelligence/seriesClubLivePulseRpc", () => ({ getSeriesClubLivePulseV1: vi.fn() }));
@@ -13,8 +14,8 @@ vi.mock("@/lib/series-intelligence/seriesClubLivePulseRpc", () => ({ getSeriesCl
 vi.mock("@/hooks/useOperatorClubs", () => ({
   useOperatorClubs: () => ({
     loading: false,
-    clubs: [{ id: "11111111-1111-4111-8111-111111111111", name: "VinPoker Test" }],
-    scope: [{ club_id: "11111111-1111-4111-8111-111111111111", can_owner: true, can_cashier: false, can_floor: false }],
+    clubs: [{ id: "legacy-hsop", name: "VinPoker Test" }],
+    scope: [{ club_id: "legacy-hsop", can_owner: true, can_cashier: false, can_floor: false }],
   }),
 }));
 
@@ -126,7 +127,7 @@ describe("ClubPulsePanel", () => {
     expect(within(screen.getByTestId("club-pulse-club_member_profiles")).getByText("1.248")).toBeInTheDocument();
     expect(within(screen.getByTestId("club-pulse-players_playing_now")).getByText("52")).toBeInTheDocument();
     expect(onPulseChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      clubId: CLUB_ID,
+      clubId: SERIES_CLUB_PULSE_DEMO_CLUB_ID,
       entriesToday: expect.objectContaining({ value: 143 }),
     }));
 

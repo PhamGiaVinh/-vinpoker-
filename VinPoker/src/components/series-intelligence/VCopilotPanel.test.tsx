@@ -29,10 +29,7 @@ describe("VCopilotPanel", () => {
   });
 
   it("uses the supplied demo Club Pulse instead of the default fixture", async () => {
-    const pulse = createSeriesClubPulseDemoV1(
-      "11111111-1111-4111-8111-111111111111",
-      "2026-08-11T12:34:56.789Z",
-    );
+    const pulse = createSeriesClubPulseDemoV1("2026-08-11T12:34:56.789Z");
     render(<VCopilotPanel clubPulse={mapSeriesClubPulseDemoToCopilotContextV1(pulse)} />);
 
     expect(await screen.findByText("52")).toBeInTheDocument();

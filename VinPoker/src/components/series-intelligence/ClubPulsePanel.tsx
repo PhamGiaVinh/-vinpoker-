@@ -79,7 +79,7 @@ export function ClubPulsePanel({ enabled, load, demoMode = false, onDemoModeChan
 
   const runtime = useSeriesClubLivePulseV1({ enabled: enabled && !demoMode, clubId, ...(load ? { load } : {}) });
   const demoPulse = useMemo(
-    () => demoMode && clubId && demoAsOf ? createSeriesClubPulseDemoV1(clubId, demoAsOf) : null,
+    () => demoMode && clubId && demoAsOf ? createSeriesClubPulseDemoV1(demoAsOf) : null,
     [clubId, demoAsOf, demoMode],
   );
   const displayedPulse = demoMode ? demoPulse : runtime.pulse;
