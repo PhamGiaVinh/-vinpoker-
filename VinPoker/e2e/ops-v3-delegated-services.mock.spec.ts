@@ -32,7 +32,7 @@ const viewports = [
 
 async function installMockOpsSession(page: Page, observedRequests: string[]) {
   await page.addInitScript(({ token, expiry, actor }) => {
-    localStorage.setItem("sb-127-ops-auth-token", JSON.stringify({
+    localStorage.setItem("sb-127-auth-token", JSON.stringify({
       access_token: token,
       refresh_token: "mock-refresh-token",
       expires_in: expiry - Math.floor(Date.now() / 1000),
