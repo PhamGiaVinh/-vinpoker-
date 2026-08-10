@@ -4,7 +4,12 @@ import { Clock, Lock, Info, History, Wallet } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useDealerLink } from "@/hooks/dealer/useDealerLink";
 import { formatVND } from "@/lib/format";
-import { getPtWageAccrualPresentation } from "@/lib/dealerPtWagePresentation";
+import { mockDealerPtWage } from "@/lib/dealerApp/mockDealerData";
+import {
+  getPtWageAccrualPresentation,
+  projectPtWageBalanceVnd,
+  ptWageRatePerSecondVnd,
+} from "@/lib/dealerPtWagePresentation";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
@@ -62,7 +67,7 @@ interface FtPayslip {
 
 export function DealerSalaryScreen() {
   const { t } = useTranslation();
-  const { dealer, isDealer, loading: linkLoading } = useDealerLink();
+  const { dealer, isDealer, loading: linkLoading, source } = useDealerLink();
   const dealerId = dealer?.dealerId ?? null;
 
   const [loading, setLoading] = useState(true);
@@ -79,6 +84,14 @@ export function DealerSalaryScreen() {
     setLoading(true);
     setError(null);
     try {
+      if (source === "mock") {
+        setEmpType("part_time");
+        setPt(mockDealerPtWage());
+        ptFetchedAt.current = Date.now();
+        setFt(null);
+        return;
+      }
+
       const { data: ptw, error: e1 } = await db.rpc("get_my_pt_wage", { p_dealer_id: dealerId });
       if (e1) throw e1;
       const et = (ptw?.employment_type as string) ?? null;
@@ -98,7 +111,7 @@ export function DealerSalaryScreen() {
     } finally {
       setLoading(false);
     }
-  }, [dealerId]);
+  }, [dealerId, source]);
 
   useEffect(() => { load(); }, [load]);
   // tick the display every 1s; resync PT from the server every 60s
@@ -143,12 +156,24 @@ export function DealerSalaryScreen() {
     const open = !!pt.current_shift_open;
     const accrual = getPtWageAccrualPresentation(pt);
     const liveDeltaMs = accrual.isLiveAccruing ? nowMs - ptFetchedAt.current : 0;
-    const liveBalance = (pt.balance_vnd ?? 0) + Math.floor((liveDeltaMs / 3_600_000) * rate);
+    const liveBalance = projectPtWageBalanceVnd(
+      pt.balance_vnd ?? 0,
+      rate,
+      liveDeltaMs,
+      accrual.isLiveAccruing,
+    );
+    const ratePerSecond = ptWageRatePerSecondVnd(rate);
     const shiftMs = open && pt.current_shift_start ? nowMs - new Date(pt.current_shift_start).getTime() : 0;
     const accruedH = (((pt.accrued_minutes ?? 0) * 60_000) + liveDeltaMs) / 3_600_000;
     const history = pt.recent_payments ?? [];
     return (
       <div>{Header}
+        {source === "mock" && (
+          <div className="mb-3 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-[12px] text-primary">
+            <div className="font-bold">Bản xem trước khách hàng</div>
+            <div className="mt-0.5 text-muted-foreground">Dữ liệu mẫu · chỉ xem · không phát sinh thanh toán.</div>
+          </div>
+        )}
         <div className="rounded-2xl border border-border bg-card p-4 mb-3">
           <div className="flex items-center justify-between">
             {open ? (
@@ -162,7 +187,13 @@ export function DealerSalaryScreen() {
           </div>
           <div className="text-center my-4">
             <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{t("dealer.salary.unpaidBalance", "Số dư chưa thanh toán")}</div>
-            <div className="font-mono font-bold mt-1" style={{ color: GOLD, fontSize: 34 }}>{formatVND(liveBalance)}</div>
+            <div
+              className="font-mono font-bold mt-1"
+              style={{ color: GOLD, fontSize: 34 }}
+              data-testid="dealer-live-wage-balance"
+            >
+              {formatVND(liveBalance)}
+            </div>
           </div>
           <div className="flex items-center justify-center gap-5 text-[12px] text-muted-foreground">
             {open && (
@@ -178,6 +209,14 @@ export function DealerSalaryScreen() {
           <div className="text-center text-[11px] font-medium text-muted-foreground mt-1">
             {accrual.label}
           </div>
+          {accrual.isLiveAccruing && ratePerSecond > 0 && (
+            <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-primary">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" aria-hidden="true" />
+              {t("dealer.salary.liveRate", "Đang tăng khoảng {{amount}}/giây", {
+                amount: formatVND(Math.round(ratePerSecond)),
+              })}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 rounded-2xl border border-dashed border-border bg-card/60 px-3 py-2.5 mb-3">

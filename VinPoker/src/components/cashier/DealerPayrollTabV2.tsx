@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CalendarRange, Clock } from "lucide-react";
+import { CalendarRange, Clock, Eye } from "lucide-react";
 import DealerPayrollTab from "@/components/cashier/DealerPayrollTab";
 import DealerPtWageTab from "@/components/cashier/DealerPtWageTab";
 
@@ -22,7 +22,7 @@ interface Props {
 }
 
 export default function DealerPayrollTabV2({ clubIds, clubs }: Props) {
-  const [sub, setSub] = useState("month");
+  const [sub, setSub] = useState("hourly");
   return (
     <Tabs value={sub} onValueChange={setSub} className="w-full">
       <TabsList className="grid w-full grid-cols-2 h-auto mb-3">
@@ -33,7 +33,16 @@ export default function DealerPayrollTabV2({ clubIds, clubs }: Props) {
         <DealerPayrollTab clubIds={clubIds} clubs={clubs} />
       </TabsContent>
       <TabsContent value="hourly">
-        <DealerPtWageTab clubIds={clubIds} clubs={clubs} />
+        <div className="mb-3 flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+          <Eye className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+          <div>
+            <div className="font-semibold">Bản xem trước chỉ đọc</div>
+            <div className="mt-0.5 text-emerald-100/75">
+              Số tiền đang hiển thị là tạm tính theo dữ liệu máy chủ, chưa phải phiếu lương đã chốt.
+            </div>
+          </div>
+        </div>
+        <DealerPtWageTab clubIds={clubIds} clubs={clubs} readOnly />
       </TabsContent>
     </Tabs>
   );

@@ -1195,7 +1195,7 @@ export const FEATURES = {
    * DealerPayrollTab directly (byte-identical) and the V2 wrapper never mounts. Flip to true ONLY
    * after the B1 migrations (20261028000000/01) are applied live + types regenerated.
    */
-  salaryTabV2: false,
+  salaryTabV2: true,
   /**
    * Chip Ops — read-only Issued-Chip-Inventory screen (/chip-ops) + the Chip-Master role.
    * The screen shows server-computed per-denomination chip counts + a reconciliation badge for

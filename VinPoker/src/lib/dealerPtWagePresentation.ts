@@ -16,6 +16,28 @@ export interface PtWageAccrualPresentation {
 }
 
 /**
+ * Projects the read-only display between server refreshes. The persisted balance
+ * remains server-owned; elapsed time is clamped so clock drift cannot subtract pay.
+ */
+export function projectPtWageBalanceVnd(
+  serverBalanceVnd: number,
+  hourlyRateVnd: number,
+  elapsedMs: number,
+  isLiveAccruing: boolean,
+): number {
+  const balance = Math.max(0, Math.floor(serverBalanceVnd));
+  if (!isLiveAccruing) return balance;
+
+  const safeElapsedMs = Math.max(0, elapsedMs);
+  const safeHourlyRate = Math.max(0, hourlyRateVnd);
+  return balance + Math.floor((safeElapsedMs / 3_600_000) * safeHourlyRate);
+}
+
+export function ptWageRatePerSecondVnd(hourlyRateVnd: number): number {
+  return Math.max(0, hourlyRateVnd) / 3_600;
+}
+
+/**
  * The amount remains server-authoritative. This helper only decides whether a
  * one-second display estimate may advance between server refreshes.
  */

@@ -14,7 +14,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { formatVND } from "@/lib/format";
-import { getPtWageAccrualPresentation } from "@/lib/dealerPtWagePresentation";
+import {
+  getPtWageAccrualPresentation,
+  projectPtWageBalanceVnd,
+} from "@/lib/dealerPtWagePresentation";
 import {
   buildDealerPtWageGlobalPolicyRequest,
   buildDealerPtWagePolicyRequest,
@@ -68,6 +71,7 @@ interface PtWageGlobalPolicyResponse {
 interface Props {
   clubIds: string[];
   clubs: ClubRow[];
+  readOnly?: boolean;
 }
 
 type RpcError = { message?: string } | null;
@@ -92,7 +96,7 @@ function fmtHMS(ms: number): string {
   return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-export default function DealerPtWageTab({ clubIds, clubs }: Props) {
+export default function DealerPtWageTab({ clubIds, clubs, readOnly = false }: Props) {
   const { isAdmin, isClubAdmin, isClubOwner } = useAuth();
   const [clubFilter, setClubFilter] = useState<string>(clubIds[0] ?? "");
   const activeClubId = clubFilter || clubIds[0] || "";
@@ -126,7 +130,7 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
   const [policyAcknowledged, setPolicyAcknowledged] = useState(false);
   const [savingPolicy, setSavingPolicy] = useState(false);
   const policySubmitRef = useRef(false);
-  const canManagePolicy = isAdmin || isClubAdmin || isClubOwner;
+  const canManagePolicy = !readOnly && (isAdmin || isClubAdmin || isClubOwner);
   const activeClub = clubs.find((club) => club.id === activeClubId) ?? null;
 
   useEffect(() => { activeClubIdRef.current = activeClubId; }, [activeClubId]);
@@ -197,9 +201,12 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
   // The server owns the balance. This only presents a bounded estimate until the next refresh.
   const liveBalance = (d: PtDealer): number => {
     const accrual = getPtWageAccrualPresentation(d);
-    return d.balance_vnd + (accrual.isLiveAccruing
-      ? Math.floor(((nowMs - fetchedAtRef.current) / 3_600_000) * d.hourly_rate_vnd)
-      : 0);
+    return projectPtWageBalanceVnd(
+      d.balance_vnd,
+      d.hourly_rate_vnd,
+      nowMs - fetchedAtRef.current,
+      accrual.isLiveAccruing,
+    );
   };
 
   const totalUnpaid = dealers.reduce((s, d) => s + liveBalance(d), 0);
@@ -240,7 +247,7 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
     setSavingPolicy(true);
     try {
       const request = buildDealerPtWagePolicyRequest(targetClubId, nextEnabled, policyReason);
-      const { error: rpcError } = await db.rpc("set_dealer_pt_wage_accrual_policy", request);
+      const { error: rpcError } = await db.rpc("set_dealer_pt_wage_accrual_policy", { ...request });
       if (rpcError) throw rpcError;
 
       setPolicyOpen(false);
@@ -259,7 +266,7 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
   const handleGlobalPolicySave = useCallback(async (nextEnabled: boolean, reason: string) => {
     try {
       const request = buildDealerPtWageGlobalPolicyRequest(nextEnabled, reason);
-      const { error: rpcError } = await db.rpc("set_all_approved_dealer_pt_wage_accrual", request);
+      const { error: rpcError } = await db.rpc("set_all_approved_dealer_pt_wage_accrual", { ...request });
       if (rpcError) throw rpcError;
 
       toast.success(nextEnabled
@@ -331,7 +338,7 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
             {standbyAccrualEnabled ? "Dừng tích lũy liên tục" : "Bật tích lũy liên tục"}
           </Button>
         )}
-        {isAdmin && globalPolicyReady && (
+        {!readOnly && isAdmin && globalPolicyReady && (
           <DealerPtWageGlobalPolicyControl
             futureClubEnabled={globalFutureClubEnabled}
             loading={loading || globalPolicyLoading || savingPolicy}
@@ -420,14 +427,16 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
                         : "Chưa có lịch sử thanh toán"}
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white"
-                    onClick={() => openPay(d)}
-                    disabled={bal < 1}
-                  >
-                    <Wallet className="w-3.5 h-3.5 mr-1" /> Thanh toán
-                  </Button>
+                  {!readOnly && (
+                    <Button
+                      size="sm"
+                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white"
+                      onClick={() => openPay(d)}
+                      disabled={bal < 1}
+                    >
+                      <Wallet className="w-3.5 h-3.5 mr-1" /> Thanh toán
+                    </Button>
+                  )}
                 </div>
               </div>
             );
@@ -436,7 +445,7 @@ export default function DealerPtWageTab({ clubIds, clubs }: Props) {
       )}
 
       {/* Pay confirm */}
-      <Dialog open={payOpen} onOpenChange={setPayOpen}>
+      <Dialog open={!readOnly && payOpen} onOpenChange={setPayOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Thanh toán lương part-time</DialogTitle>
