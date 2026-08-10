@@ -339,7 +339,8 @@ describe("Floor V2 DB and Edge contracts", () => {
     expect(operatorClubsHook).not.toContain('supabase.rpc("cashier_club_ids"');
     expect(operatorClubsHook).not.toContain('supabase.rpc("floor_club_ids"');
     expect(opsCapabilityLoader).toContain('client.rpc("get_my_floor_operator_scope")');
-    expect(opsCapabilityLoader).toContain('scopeResult.error?.code === "42883"');
+    expect(opsCapabilityLoader).toContain('function isMissingUnifiedScopeRpc');
+    expect(opsCapabilityLoader).toContain('error?.code === "42883" || error?.code === "PGRST202"');
     expect(opsCapabilityProvider).toContain('getModuleClubIds(getOpsModule("floor"), scope)');
     expect(opsCapabilityProvider).toContain('getModuleClubIds(getOpsModule("cashier"), scope)');
     expect(opsApp).toContain('<OpsModuleGate capability="floor">');
