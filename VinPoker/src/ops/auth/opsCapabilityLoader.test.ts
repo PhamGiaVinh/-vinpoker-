@@ -45,9 +45,9 @@ describe("Ops V3 capability loader", () => {
     ]);
   });
 
-  it("falls back only when the unified scope RPC is missing", async () => {
+  it.each(["42883", "PGRST202"])("falls back only when the unified scope RPC is missing (%s)", async (code) => {
     const { client, rpc } = clientWith([
-      { data: null, error: { code: "42883" } },
+      { data: null, error: { code } },
       { data: [{ club_id: clubId, can_owner: false, can_cashier: true, can_floor: false }], error: null },
     ]);
     const loaded = await loadOpsCapabilities(client);
