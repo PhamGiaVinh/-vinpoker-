@@ -7,8 +7,8 @@ const panel = readFileSync(resolve(process.cwd(), "src/components/cashier/tourna
 const control = readFileSync(resolve(process.cwd(), "src/components/cashier/tournament-live/HistoricalSettlementDisplayControl.tsx"), "utf8");
 
 describe("historical settlement display capability", () => {
-  it("defaults off and does not mount the historical Edge caller in the legacy path", () => {
-    expect(FEATURES.trackerHistoricalSettlementDisplay).toBe(false);
+  it("enables the historical Edge caller only outside the legacy edit path", () => {
+    expect(FEATURES.trackerHistoricalSettlementDisplay).toBe(true);
     expect(panel).toContain("FEATURES.trackerHistoricalSettlementDisplay && !editMode");
   });
 

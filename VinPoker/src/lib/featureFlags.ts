@@ -645,10 +645,10 @@ export const FEATURES = {
   /**
    * Owner-only verification for completed historical hands. The control asks
    * the server to prove existing rows before it creates a display outcome for
-   * replay; it never repairs stacks or settles from the browser. Keep OFF until
-   * the migration, Edge path, and controlled TEST UAT are all verified.
+   * replay; it never repairs stacks or settles from the browser. Enabled after
+   * the migration and Edge path passed the owner-authorized rollout gate.
    */
-  trackerHistoricalSettlementDisplay: false,
+  trackerHistoricalSettlementDisplay: true,
   /**
    * Viewer Felt V2 — responsive, CoinPoker-style public spectator poker table.
    * Fixes the mobile bug where hole cards overlap each other / the central board by
