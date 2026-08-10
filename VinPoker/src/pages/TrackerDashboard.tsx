@@ -31,7 +31,7 @@ export default function TrackerDashboard() {
         setClubsError(idsError.message);
         return;
       }
-      const idArr = (ids ?? []).map((r: any) => (typeof r === "string" ? r : r.tracker_club_ids ?? r));
+      const idArr = (ids ?? []).filter((clubId): clubId is string => typeof clubId === "string");
       if (!idArr.length) { setClubsError(null); setClubs([]); return; }
       const { data: cs, error: clubsErr } = await supabase.from("clubs").select("id, name").in("id", idArr);
       if (clubsErr) {
