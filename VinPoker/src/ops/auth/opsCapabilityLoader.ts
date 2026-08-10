@@ -73,6 +73,14 @@ function isFreshJwtClockSkew(error: OpsRpcError | null): boolean {
     && /jwt issued at future/iu.test(error.message);
 }
 
+function isMissingUnifiedScopeRpc(error: OpsRpcError | null): boolean {
+  // PostgreSQL returns 42883 when the function is absent. Through Supabase's
+  // Data API, the same compatibility state (or a stale function cache) is
+  // reported as PGRST202. Both may use the deliberately narrower legacy
+  // caller-bound Floor/Cashier scope; all other failures remain fail-closed.
+  return error?.code === "42883" || error?.code === "PGRST202";
+}
+
 async function loadUnifiedScopeWithOneClockSkewRetry(client: OpsRpcClient) {
   const first = await client.rpc("get_my_ops_capability_scope");
   if (!isFreshJwtClockSkew(first.error)) return first;
@@ -86,7 +94,7 @@ async function loadUnifiedScopeWithOneClockSkewRetry(client: OpsRpcClient) {
 
 export async function loadOpsCapabilities(client: OpsRpcClient): Promise<LoadedOpsCapabilities> {
   const scopeResult = await loadUnifiedScopeWithOneClockSkewRetry(client);
-  if (scopeResult.error?.code === "42883") {
+  if (isMissingUnifiedScopeRpc(scopeResult.error)) {
     const legacyResult = await client.rpc("get_my_floor_operator_scope");
     if (legacyResult.error) throw rpcError("legacy capability", legacyResult.error);
     return {
