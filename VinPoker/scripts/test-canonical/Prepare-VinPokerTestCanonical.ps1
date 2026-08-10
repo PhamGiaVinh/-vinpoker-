@@ -48,9 +48,11 @@ $catalogPatch = Join-Path $compatRoot 'catalog.patch'
 $normalizedPatch = Join-Path $targetRoot 'catalog-compat.normalized.patch'
 $patchText = [System.IO.File]::ReadAllText($catalogPatch).Replace("`r`n", "`n")
 [System.IO.File]::WriteAllText($normalizedPatch, $patchText, [System.Text.UTF8Encoding]::new($false))
-& git -C $repoRoot apply --check --directory=$relativeMigrationTarget $normalizedPatch
+# Catalog migrations are SQL text. Preserve the TEST-only semantic transforms while
+# allowing harmless CRLF/final-newline normalization in the canonical catalog.
+& git -C $repoRoot apply --check --ignore-space-change --directory=$relativeMigrationTarget $normalizedPatch
 if ($LASTEXITCODE -ne 0) { throw 'Compatibility patch check failed; canonical catalog changed.' }
-& git -C $repoRoot apply --directory=$relativeMigrationTarget $normalizedPatch
+& git -C $repoRoot apply --ignore-space-change --directory=$relativeMigrationTarget $normalizedPatch
 if ($LASTEXITCODE -ne 0) { throw 'Compatibility patch apply failed.' }
 Remove-Item -LiteralPath $normalizedPatch -Force
 

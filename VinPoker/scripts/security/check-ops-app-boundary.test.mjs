@@ -72,5 +72,9 @@ test("enforces explicit Ops callback, local sign-out and scoped tournament prefl
   assert.match(clientSource, /detectSessionInUrl:\s*false/u);
   assert.match(authSource, /signOut\(\{\s*scope:\s*"local"\s*\}\)/u);
   assert.match(callbackSource, /callbackAttempt/u);
-  assert.match(gateSource, /\.in\("club_id",\s*floorClubIds\)/u);
+  assert.match(
+    gateSource,
+    /selectedClubId\s*&&\s*\(isSuperAdmin\s*\|\|\s*floorClubIds\.includes\(selectedClubId\)\)/u,
+  );
+  assert.match(gateSource, /\.eq\("club_id",\s*selectedClubId\)/u);
 });
