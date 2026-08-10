@@ -15,7 +15,7 @@ describe("Series Club Pulse V1 architecture boundary", () => {
     expect(adapter).not.toMatch(/\.from\s*\(/);
   });
 
-  it("wires the fixed adapter through one hook while keeping both runtime flags off", () => {
+  it("wires the fixed adapter through one hook with both rollout flags active", () => {
     const panel = source("src/components/series-intelligence/VCopilotPanel.tsx");
     const pulsePanel = source("src/components/series-intelligence/ClubPulsePanel.tsx");
     const hook = source("src/lib/series-intelligence/useSeriesClubLivePulseV1.ts");
@@ -27,7 +27,7 @@ describe("Series Club Pulse V1 architecture boundary", () => {
     expect(hook).toContain('from "./seriesClubLivePulseRpc"');
     expect(hook).not.toMatch(/supabase|\.from\s*\(|\.rpc\s*\(/i);
     expect(page).toContain("FEATURES.seriesClubPulseV1 && <ClubPulsePanel");
-    expect(flags).toMatch(/seriesVCopilotV1:\s*false/);
-    expect(flags).toMatch(/seriesClubPulseV1:\s*false/);
+    expect(flags).toMatch(/seriesVCopilotV1:\s*true/);
+    expect(flags).toMatch(/seriesClubPulseV1:\s*true/);
   });
 });

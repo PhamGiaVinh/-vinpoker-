@@ -26,10 +26,10 @@ describe("Series Copilot PR1 architecture boundary", () => {
     }
   });
 
-  it("keeps the UI behind one default-off flag and mounts only the local panel", () => {
+  it("keeps the UI behind one active rollout flag and mounts only the reviewed panel", () => {
     const flags = source("src/lib/featureFlags.ts");
     const page = source("src/pages/SeriesIntelligence.tsx");
-    expect(flags).toMatch(/seriesVCopilotV1:\s*false/);
+    expect(flags).toMatch(/seriesVCopilotV1:\s*true/);
     expect(page).toMatch(/FEATURES\.seriesVCopilotV1\s*&&\s*\(\s*<VCopilotPanel\b/);
     expect(page).not.toMatch(/GeminiSeriesCopilotProvider|series-intelligence-copilot/);
   });

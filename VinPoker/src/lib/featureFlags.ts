@@ -1031,17 +1031,16 @@ export const FEATURES = {
   /**
    * Series Intelligence — owner-scoped Club Pulse V1. When ON, the operations page reads the fixed
    * get_series_club_live_pulse_v1 RPC and shows seven aggregate metrics with explicit freshness and
-   * unavailable states. No client-side counting, polling, realtime claim, or write path. Default OFF
-   * until the corrected migration is applied and authenticated Preview UAT passes.
+   * unavailable states. No client-side counting, polling, realtime claim, or write path. Active for
+   * owner rollout; kill-switch: set false to hide the live pulse surface.
    */
-  seriesClubPulseV1: false,
+  seriesClubPulseV1: true,
   /**
-   * Series Intelligence — V Copilot V1 local vertical slice. When ON, renders the read-only mock flow:
-   * deterministic context + schedule health + precomputed candidate options → mock V response → strict
-   * evidence/number/privacy validation. No Gemini SDK, network, Edge, DB read/write, production data, or money
-   * action. Default OFF until Preview UAT; provider integration remains a separate owner-gated wave.
+   * Series Intelligence — V Copilot V1. When ON, sends a minimal owner question to the authenticated
+   * series-intelligence-copilot Edge function and renders only evidence-validated output. No browser secret,
+   * direct Gemini call, editable money action, or autonomous decision. Kill-switch: set false.
    */
-  seriesVCopilotV1: false,
+  seriesVCopilotV1: true,
   /**
    * Series Intelligence — TP3 small-field overlay distribution. When ON, overlay simulations whose
    * central field is below 60 entries use a discrete Negative Binomial sampler instead of a continuous
