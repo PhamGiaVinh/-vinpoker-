@@ -118,11 +118,13 @@ export function VCopilotPanel({
   const [result, setResult] = useState<AskVResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  const mockBaseContextRef = useRef<SeriesCopilotContextV1 | null>(null);
   const [thinkingMode, setThinkingMode] = useState<"general" | "tomorrow-attendance">("general");
 
   useEffect(() => {
     let active = true;
     if (contextMode === "live" && (!clubPulse || !clubId)) {
+      mockBaseContextRef.current = null;
       setContext(null);
       setError("Chưa có Club Pulse đủ điều kiện để V sử dụng.");
       return () => {
@@ -132,6 +134,7 @@ export function VCopilotPanel({
     }
     setError(null);
     if (contextMode === "live") {
+      mockBaseContextRef.current = null;
       setContext(null);
       return () => {
         active = false;
@@ -140,10 +143,16 @@ export function VCopilotPanel({
     }
     createMockSeriesCopilotContextV1(clubPulse ?? undefined)
       .then((next) => {
-        if (active) setContext(next);
+        if (active) {
+          mockBaseContextRef.current = next;
+          setContext(next);
+        }
       })
       .catch(() => {
-        if (active) setError("Không thể chuẩn bị context minh họa.");
+        if (active) {
+          mockBaseContextRef.current = null;
+          setError("Không thể chuẩn bị context minh họa.");
+        }
       });
     return () => {
       active = false;
@@ -172,7 +181,8 @@ export function VCopilotPanel({
             if (!request.context) throw new Error("MOCK_CONTEXT_UNAVAILABLE");
             return askMockSeriesCopilotV1({ untrustedQuestion: request.untrustedQuestion, context: request.context, signal: request.signal });
           });
-      const request = askImplementation({ untrustedQuestion: question, context, clubId, signal: controller.signal });
+      const requestContext = contextMode === "mock" ? mockBaseContextRef.current ?? context : context;
+      const request = askImplementation({ untrustedQuestion: question, context: requestContext, clubId, signal: controller.signal });
       const minimumThinking = isTomorrowAttendanceForecast
         ? waitForMinimumThinkingWindow(TOMORROW_ATTENDANCE_MINIMUM_THINKING_MS, controller.signal)
         : Promise.resolve();
@@ -268,7 +278,9 @@ export function VCopilotPanel({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Bot className="h-4 w-4 text-primary" aria-hidden />
-                <h3 className="text-sm font-semibold">V đã tổng hợp các phương án</h3>
+                <h3 className="text-sm font-semibold">
+                  {response.optionAssessments.length > 0 ? "V đã tổng hợp các phương án" : "V đã kiểm tra câu hỏi"}
+                </h3>
               </div>
               <Badge
                 variant="outline"
