@@ -55,6 +55,8 @@ export interface SeatInfo {
   payout_award?: number | null;
   /** Verified uncalled amount returned to this seat. Refund never implies a winner. */
   refund_award?: number | null;
+  /** Public display-only rank from a fresh verified settlement. */
+  hand_rank?: { category: string; best_five: string[]; kickers: string[] } | null;
   /** UAT wave 2 (compact viewer only): whole-hand chips committed by an ALL-IN seat —
    * keeps the ALL-IN pill's amount visible after the street sweeps current_bet to 0.
    * Absent → the pill falls back to current_bet (today's behavior). */
@@ -900,6 +902,16 @@ export function LiveFelt({
                         {formatBB(payoutAward) ? <span className="font-bold opacity-80"> ({formatBB(payoutAward)})</span> : null}
                       </>
                     )}
+                  </div>
+                )}
+                {isWinner && seat.hand_rank && (
+                  <div
+                    data-testid="seat-hand-rank"
+                    className="mt-0.5 max-w-[108px] truncate text-[8px] font-bold leading-tight text-[hsl(var(--poker-gold))] sm:max-w-[132px] sm:text-[9px]"
+                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.95)" }}
+                  >
+                    {t(`liveHub.replay.rank.${seat.hand_rank.category}`, seat.hand_rank.category.replace(/_/g, " "))}
+                    {seat.hand_rank.kickers.length > 0 ? ` · ${seat.hand_rank.kickers.join("-")}` : ""}
                   </div>
                 )}
                 {tableFx && refundAward > 0 && (

@@ -90,7 +90,46 @@ function showdown(seats: number): ReplayHand {
         ? { ...p, hole_cards: HOLES.fx2, ending_stack: p.starting_stack - (3 * BB + 800_000 + 2_000_000) }
         : p
   );
-  return { hand_number: 102, button_seat: 1, community_cards: BOARD, big_blind: BB, players: withCards, actions: acts };
+  return {
+    hand_number: 102,
+    button_seat: 1,
+    community_cards: BOARD,
+    big_blind: BB,
+    players: withCards,
+    actions: acts,
+    publicSettlement: {
+      schemaVersion: "settlement-outcome-v1",
+      status: "verified",
+      players: ps.map((player, index) => ({
+        playerId: player.player_id,
+        potAward: index === 0 ? pot : 0,
+        refund: 0,
+        netDelta: index === 0 ? pot - 3_400_000 : index === 1 ? -3_400_000 : index === 2 ? -BB : 0,
+      })),
+      pots: [{
+        potId: "main-0",
+        kind: "main",
+        amount: pot,
+        winnerIds: [hero.player_id],
+        allocations: [{ potId: "main-0", winnerId: hero.player_id, amount: pot }],
+      }],
+      refunds: [],
+      handRanks: [
+        {
+          playerId: hero.player_id,
+          category: "full_house",
+          bestFive: ["Ah", "Ad", "As", "7c", "7h"],
+          kickers: [],
+        },
+        {
+          playerId: vill.player_id,
+          category: "full_house",
+          bestFive: ["Kc", "Kh", "Kd", "7c", "7h"],
+          kickers: [],
+        },
+      ],
+    },
+  };
 }
 
 /** Multi-way all-in with layered side pots: at 9-max, 5 ascending all-in stacks

@@ -48,6 +48,59 @@ const chopHand: ReplayHand = {
   ],
 };
 
+const verifiedHand: ReplayHand = {
+  ...hand,
+  publicSettlement: {
+    schemaVersion: "settlement-outcome-v1",
+    status: "verified",
+    players: [
+      { playerId: "a", potAward: 0, refund: 0, netDelta: -2_100_000 },
+      { playerId: "b", potAward: 4_200_000, refund: 300_000, netDelta: 2_100_000 },
+    ],
+    pots: [{
+      potId: "main-0",
+      kind: "main",
+      amount: 4_200_000,
+      winnerIds: ["b"],
+      allocations: [{ potId: "main-0", winnerId: "b", amount: 4_200_000 }],
+    }],
+    refunds: [{ playerId: "b", amount: 300_000, sourceActionId: "refund-b" }],
+    handRanks: [{
+      playerId: "b",
+      category: "two_pair",
+      bestFive: ["Kh", "Kc", "7c", "7s", "Ah"],
+      kickers: ["A"],
+    }],
+  },
+};
+
+const verifiedChopHand: ReplayHand = {
+  ...chopHand,
+  publicSettlement: {
+    schemaVersion: "settlement-outcome-v1",
+    status: "verified",
+    players: [
+      { playerId: "a", potAward: 1_000, refund: 0, netDelta: 0 },
+      { playerId: "b", potAward: 1_000, refund: 0, netDelta: 0 },
+    ],
+    pots: [{
+      potId: "main-0",
+      kind: "main",
+      amount: 2_000,
+      winnerIds: ["a", "b"],
+      allocations: [
+        { potId: "main-0", winnerId: "a", amount: 1_000 },
+        { potId: "main-0", winnerId: "b", amount: 1_000 },
+      ],
+    }],
+    refunds: [],
+    handRanks: [
+      { playerId: "a", category: "straight", bestFive: ["As", "Kd", "Qc", "Jh", "Ts"], kickers: [] },
+      { playerId: "b", category: "straight", bestFive: ["As", "Kd", "Qc", "Jh", "Ts"], kickers: [] },
+    ],
+  },
+};
+
 afterEach(() => cleanup());
 
 describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
@@ -110,6 +163,35 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
     fireEvent.click(getByText("Showdown"));
     expect(queryByTestId("replay-hud-chop")).toBeNull();
     expect(getByTestId("replay-hud-summary").textContent).toMatch(/Chưa có kết quả|No result yet/);
+  });
+
+  it("reveals verified winner ranking, best five, pot award and refund only at settlement", () => {
+    const { getByTestId, getByTitle, queryByTestId } = render(
+      <ReplayScrubber hand={verifiedHand} onFrame={() => {}} hud />,
+    );
+    expect(queryByTestId("replay-hud-winner-b")).toBeNull();
+
+    fireEvent.click(getByTitle("Tới cuối (showdown)"));
+    const winner = getByTestId("replay-hud-winner-b");
+    expect(winner.textContent).toContain("KIÊN");
+    expect(winner.textContent).toContain("Thắng pot +4.2M");
+    expect(winner.textContent).toContain("Hoàn +300k");
+    expect(getByTestId("replay-hand-rank-b").textContent).toMatch(/Hai đôi|Two pair/);
+    expect(getByTestId("replay-best-five-b").querySelectorAll('[data-testid="replay-best-five-card"]')).toHaveLength(5);
+
+    fireEvent.click(getByTitle("Lùi 1 bước"));
+    expect(queryByTestId("replay-hud-winner-b")).toBeNull();
+    expect(getByTestId("replay-hud-summary").textContent).toMatch(/Chưa có kết quả|No result yet/);
+  });
+
+  it("shows both verified chop winners and each player's own pot share", () => {
+    const { getByTestId, getByTitle } = render(
+      <ReplayScrubber hand={verifiedChopHand} onFrame={() => {}} hud />,
+    );
+    fireEvent.click(getByTitle("Tới cuối (showdown)"));
+    expect(getByTestId("replay-hud-chop")).toBeTruthy();
+    expect(getByTestId("replay-hud-winner-a").textContent).toContain("+1k");
+    expect(getByTestId("replay-hud-winner-b").textContent).toContain("+1k");
   });
 
   it("a keyed hand switch emits the new hand's initial frame before any settlement", () => {

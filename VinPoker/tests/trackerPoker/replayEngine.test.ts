@@ -387,6 +387,99 @@ describe("buildReplayFrames — settlement containment", () => {
     expect(final.potAwards).toEqual([]);
     expect(final.seats.every((seat) => seat.net_won == null && seat.payout_award == null && seat.refund_award == null)).toBe(true);
   });
+
+  it("projects a verified public settlement only on the final action frame", () => {
+    const h = withEnd();
+    h.publicSettlement = {
+      schemaVersion: "settlement-outcome-v1",
+      status: "verified",
+      players: [
+        { playerId: "W", potAward: 20_000, refund: 0, netDelta: 10_000 },
+        { playerId: "L", potAward: 0, refund: 0, netDelta: -10_000 },
+      ],
+      pots: [{
+        potId: "main-0",
+        kind: "main",
+        amount: 20_000,
+        winnerIds: ["W"],
+        allocations: [{ potId: "main-0", winnerId: "W", amount: 20_000 }],
+      }],
+      refunds: [],
+      handRanks: [{
+        playerId: "W",
+        category: "three_of_a_kind",
+        bestFive: ["Ah", "Ad", "As", "Kd", "9s"],
+        kickers: ["K", "9"],
+      }],
+    };
+
+    const frames = buildReplayFrames(h);
+    expect(frames.slice(0, -1).every((frame) => frame.payoutVerified === false)).toBe(true);
+    expect(frames.slice(0, -1).every((frame) => frame.seats.every((seat) => seat.pot_winner !== true))).toBe(true);
+
+    const final = frames.at(-1)!;
+    expect(final.payoutVerified).toBe(true);
+    expect(final.showdownResult).toBe("winner");
+    expect(final.showdownWinnerIds).toEqual(["W"]);
+    expect(final.potAwards).toEqual([{ potIndex: 0, amount: 20_000, winnerPlayerIds: ["W"] }]);
+    expect(final.seats.find((seat) => seat.player_id === "W")).toMatchObject({
+      pot_winner: true,
+      payout_award: 20_000,
+      refund_award: 0,
+      hand_rank: {
+        category: "three_of_a_kind",
+        best_five: ["Ah", "Ad", "As", "Kd", "9s"],
+        kickers: ["K", "9"],
+      },
+    });
+  });
+
+  it("keeps chop awards and an uncalled refund separate at settlement", () => {
+    const h: ReplayHand = {
+      hand_number: 8,
+      button_seat: 1,
+      community_cards: ["As", "Kd", "Qc", "Jh", "Ts"],
+      players: [
+        { player_id: "A", seat_number: 1, display_name: "A", starting_stack: 1_000, hole_cards: ["2c", "3c"] },
+        { player_id: "B", seat_number: 2, display_name: "B", starting_stack: 1_500, hole_cards: ["4d", "5d"] },
+      ],
+      actions: [
+        { player_id: "A", action_type: "all_in", action_amount: 1_000, street: "preflop", action_order: 1 },
+        { player_id: "B", action_type: "call", action_amount: 1_500, street: "preflop", action_order: 2 },
+      ],
+      publicSettlement: {
+        schemaVersion: "settlement-outcome-v1",
+        status: "verified",
+        players: [
+          { playerId: "A", potAward: 1_000, refund: 0, netDelta: 0 },
+          { playerId: "B", potAward: 1_000, refund: 500, netDelta: 0 },
+        ],
+        pots: [{
+          potId: "main-0",
+          kind: "main",
+          amount: 2_000,
+          winnerIds: ["A", "B"],
+          allocations: [
+            { potId: "main-0", winnerId: "A", amount: 1_000 },
+            { potId: "main-0", winnerId: "B", amount: 1_000 },
+          ],
+        }],
+        refunds: [{ playerId: "B", amount: 500, sourceActionId: "a2" }],
+        handRanks: [
+          { playerId: "A", category: "straight", bestFive: ["As", "Kd", "Qc", "Jh", "Ts"], kickers: [] },
+          { playerId: "B", category: "straight", bestFive: ["As", "Kd", "Qc", "Jh", "Ts"], kickers: [] },
+        ],
+      },
+    };
+
+    const final = buildReplayFrames(h).at(-1)!;
+    expect(final.showdownResult).toBe("chop");
+    expect(final.seats.filter((seat) => seat.pot_winner)).toHaveLength(2);
+    expect(final.seats.find((seat) => seat.player_id === "B")).toMatchObject({
+      payout_award: 1_000,
+      refund_award: 500,
+    });
+  });
 });
 
 describe("streetFrameIndex", () => {

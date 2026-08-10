@@ -3024,7 +3024,21 @@
       "allInSummary": "{{name}} all-in {{amount}}{{bb}}",
       "winnerSummary": "{{name}} +{{amount}}{{bb}}",
       "potAward": "Thắng pot",
-      "refund": "Hoàn"
+      "refund": "Hoàn",
+      "bestFive": "Bộ 5 lá mạnh nhất",
+      "kicker": "Kicker",
+      "rank": {
+        "high_card": "Mậu thầu",
+        "one_pair": "Một đôi",
+        "two_pair": "Hai đôi",
+        "three_of_a_kind": "Bộ ba",
+        "straight": "Sảnh",
+        "flush": "Thùng",
+        "full_house": "Cù lũ",
+        "four_of_a_kind": "Tứ quý",
+        "straight_flush": "Thùng phá sảnh",
+        "royal_flush": "Sảnh chúa"
+      }
     },
     "felt": {
       "pot": "Pot",

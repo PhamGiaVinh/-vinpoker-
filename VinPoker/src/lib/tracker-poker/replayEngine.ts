@@ -20,6 +20,7 @@ import {
   type ActionLog,
 } from "@/components/cashier/tournament-live/LiveFelt";
 import { settleShowdown } from "./trackerShowdown";
+import type { ReplayPublicSettlement } from "./replaySettlement";
 
 export interface ReplayHandPlayer {
   player_id: string;
@@ -52,6 +53,8 @@ export interface ReplayHand {
   big_blind?: number;
   players: ReplayHandPlayer[];
   actions: ReplayHandAction[];
+  /** Fresh, public-safe settlement returned by get_public_tournament_settlement. */
+  publicSettlement?: ReplayPublicSettlement | null;
 }
 
 export interface ReplayFrame {
@@ -247,21 +250,34 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
     const reveal =
       isFinal && players.some((p) => p.hole_cards && p.hole_cards.length > 0);
     const streetIndex = reveal ? 4 : maxStreetIdx;
-    const showdown = isFinal && reveal
+    const verifiedSettlement = isFinal && hand.publicSettlement?.status === "verified"
+      ? hand.publicSettlement
+      : null;
+    const showdown = isFinal && reveal && !verifiedSettlement
       ? deriveShowdownResult(players, runtime, actions, community)
       : null;
 
     // Client reconstruction may detect a mismatch, but it is not a settlement
     // proof. Until a revision/hash-matched public outcome is supplied by the
     // server, legacy hands must not emit winners, awards, refunds or winner FX.
+    const verifiedPot = verifiedSettlement
+      ? verifiedSettlement.pots.reduce((sum, settledPot) => sum + settledPot.amount, 0)
+      : null;
     const pot = isFinal
-      ? breakdown.totalCommitted > 0 ? breakdown.totalPot : clampChips(hand.stored_pot_size)
+      ? verifiedPot ?? (breakdown.totalCommitted > 0 ? breakdown.totalPot : clampChips(hand.stored_pot_size))
       : breakdown.totalCommitted;
-    const legacySettlementMismatch = !!showdown && !showdown.payoutMatches;
-    const payoutVerified = false;
+    const legacySettlementMismatch = !verifiedSettlement && !!showdown && !showdown.payoutMatches;
+    const payoutVerified = verifiedSettlement !== null;
+    const settledPlayers = new Map(verifiedSettlement?.players.map((player) => [player.playerId, player]) ?? []);
+    const settledRanks = new Map(verifiedSettlement?.handRanks.map((rank) => [rank.playerId, rank]) ?? []);
+    const settledWinnerIds = verifiedSettlement
+      ? [...new Set(verifiedSettlement.pots.flatMap((settledPot) => settledPot.winnerIds))]
+      : [];
 
     const seats: SeatInfo[] = players.map((p) => {
       const st = runtime.get(p.player_id)!;
+      const settledPlayer = settledPlayers.get(p.player_id);
+      const settledRank = settledRanks.get(p.player_id);
       return {
         player_id: p.player_id,
         display_name: p.display_name,
@@ -275,8 +291,13 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
         is_folded: st.folded,
         is_all_in: st.allIn,
         hole_cards: reveal ? p.hole_cards : undefined,
-        net_won: null,
-        pot_winner: undefined,
+        net_won: settledPlayer?.netDelta ?? null,
+        pot_winner: settledPlayer ? settledPlayer.potAward > 0 : undefined,
+        payout_award: settledPlayer?.potAward,
+        refund_award: settledPlayer?.refund,
+        hand_rank: settledRank
+          ? { category: settledRank.category, best_five: [...settledRank.bestFive], kickers: [...settledRank.kickers] }
+          : undefined,
         // trackBets only — absent keys keep flag-off frames deep-equal to today's.
         ...(trackBets ? { current_bet: st.streetBet } : {}),
         ...(trackBets && st.allIn ? { total_committed: st.totalBet } : {}),
@@ -306,9 +327,17 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
       lastActorId: latestAction?.player_id ?? null,
       latestAction,
       revealHoleCards: reveal,
-      showdownResult: legacySettlementMismatch ? "needs_resettle" : null,
-      showdownWinnerIds: [],
-      potAwards: [],
+      showdownResult: verifiedSettlement
+        ? verifiedSettlement.pots.length > 0 && verifiedSettlement.pots.every((settledPot) => settledPot.winnerIds.length > 1)
+          ? "chop"
+          : "winner"
+        : legacySettlementMismatch ? "needs_resettle" : null,
+      showdownWinnerIds: settledWinnerIds,
+      potAwards: verifiedSettlement?.pots.map((settledPot, potIndex) => ({
+        potIndex,
+        amount: settledPot.amount,
+        winnerPlayerIds: [...settledPot.winnerIds],
+      })) ?? [],
       payoutVerified,
     };
   };

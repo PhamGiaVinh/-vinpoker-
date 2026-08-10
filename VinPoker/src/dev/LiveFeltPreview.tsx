@@ -87,6 +87,7 @@ export default function LiveFeltPreview() {
       multiTableUnresolved={false}
       handNumber={hand.hand_number}
       latestAction={frame.latestAction}
+      showdownResult={frame.showdownResult}
       formatBB={formatBB}
       portrait={orientation === "portrait"}
       buttonSeat={hand.button_seat}
