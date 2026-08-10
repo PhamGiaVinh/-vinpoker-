@@ -3,6 +3,7 @@ import {
   Activity,
   BadgeCheck,
   CalendarClock,
+  DatabaseZap,
   RefreshCw,
   Table2,
   TicketCheck,
@@ -16,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useOperatorClubs } from "@/hooks/useOperatorClubs";
 import { cn } from "@/lib/utils";
 import type { SeriesClubLivePulseV1, SeriesClubPulseMetricKey } from "@/lib/series-intelligence/seriesClubLivePulseV1";
+import { createSeriesClubPulseDemoV1 } from "@/lib/series-intelligence/seriesClubPulseDemoV1";
 import {
   useSeriesClubLivePulseV1,
   type SeriesClubLivePulseLoader,
@@ -55,14 +57,17 @@ function formatAsOf(asOf: string | null): string {
 export interface ClubPulsePanelProps {
   enabled: boolean;
   load?: SeriesClubLivePulseLoader;
+  demoMode?: boolean;
+  onDemoModeChange?: (enabled: boolean) => void;
   onPulseChange?: (pulse: SeriesClubLivePulseV1 | null) => void;
 }
 
-export function ClubPulsePanel({ enabled, load, onPulseChange }: ClubPulsePanelProps) {
+export function ClubPulsePanel({ enabled, load, demoMode = false, onDemoModeChange, onPulseChange }: ClubPulsePanelProps) {
   const operator = useOperatorClubs();
   const ownerClubIds = useMemo(() => new Set(operator.scope.filter((row) => row.can_owner).map((row) => row.club_id)), [operator.scope]);
   const ownerClubs = useMemo(() => (operator.clubs ?? []).filter((club) => ownerClubIds.has(club.id)), [operator.clubs, ownerClubIds]);
   const [clubId, setClubId] = useState<string | null>(null);
+  const [demoAsOf, setDemoAsOf] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ownerClubs.length) {
@@ -72,16 +77,33 @@ export function ClubPulsePanel({ enabled, load, onPulseChange }: ClubPulsePanelP
     setClubId((current) => current && ownerClubs.some((club) => club.id === current) ? current : ownerClubs[0].id);
   }, [ownerClubs]);
 
-  const runtime = useSeriesClubLivePulseV1({ enabled, clubId, ...(load ? { load } : {}) });
+  const runtime = useSeriesClubLivePulseV1({ enabled: enabled && !demoMode, clubId, ...(load ? { load } : {}) });
+  const demoPulse = useMemo(
+    () => demoMode && clubId && demoAsOf ? createSeriesClubPulseDemoV1(clubId, demoAsOf) : null,
+    [clubId, demoAsOf, demoMode],
+  );
+  const displayedPulse = demoMode ? demoPulse : runtime.pulse;
   useEffect(() => {
-    onPulseChange?.(runtime.state === "ready" ? runtime.pulse : null);
-  }, [onPulseChange, runtime.pulse, runtime.state]);
+    onPulseChange?.(demoMode ? demoPulse : runtime.state === "ready" ? runtime.pulse : null);
+  }, [demoMode, demoPulse, onPulseChange, runtime.pulse, runtime.state]);
 
   if (!enabled) return null;
 
-  const isLoading = operator.loading || runtime.state === "loading";
+  const isLoading = operator.loading || (!demoMode && runtime.state === "loading");
   const isRefreshing = runtime.state === "refreshing";
   const selectedClub = ownerClubs.find((club) => club.id === clubId);
+  const toggleDemo = () => {
+    const next = !demoMode;
+    if (next) setDemoAsOf(new Date().toISOString());
+    onDemoModeChange?.(next);
+  };
+  const refresh = () => {
+    if (demoMode) {
+      setDemoAsOf(new Date().toISOString());
+      return;
+    }
+    runtime.refresh();
+  };
 
   return (
     <section data-testid="club-pulse-panel" aria-labelledby="club-pulse-title" className="overflow-hidden rounded-md border border-primary/40 bg-card/50">
@@ -91,10 +113,10 @@ export function ClubPulsePanel({ enabled, load, onPulseChange }: ClubPulsePanelP
             <CalendarClock className="h-4 w-4 text-primary" aria-hidden /> Tình hình CLB hôm nay
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {selectedClub ? `${selectedClub.name} · ${formatAsOf(runtime.pulse?.asOf ?? null)}` : "Số tổng hợp read-only theo CLB của owner."}
+            {selectedClub ? `${selectedClub.name} · ${demoMode ? "Dữ liệu mẫu · " : ""}${formatAsOf(displayedPulse?.asOf ?? null)}` : "Số tổng hợp read-only theo CLB của owner."}
           </p>
         </div>
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           {ownerClubs.length > 1 && (
             <Select value={clubId ?? undefined} onValueChange={setClubId}>
               <SelectTrigger className="h-9 min-w-0 flex-1 sm:w-48" aria-label="Chọn CLB">
@@ -105,7 +127,11 @@ export function ClubPulsePanel({ enabled, load, onPulseChange }: ClubPulsePanelP
               </SelectContent>
             </Select>
           )}
-          <Button type="button" variant="outline" size="sm" className="shrink-0 gap-2" onClick={runtime.refresh} disabled={!clubId || isLoading || isRefreshing}>
+          <Button type="button" variant={demoMode ? "secondary" : "outline"} size="sm" className="shrink-0 gap-2" onClick={toggleDemo} disabled={!clubId || operator.loading}>
+            <DatabaseZap className="h-4 w-4" aria-hidden />
+            {demoMode ? "Về dữ liệu thật" : "Dùng dữ liệu mẫu"}
+          </Button>
+          <Button type="button" variant="outline" size="sm" className="shrink-0 gap-2" onClick={refresh} disabled={!clubId || isLoading || isRefreshing}>
             <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin motion-reduce:animate-none")} aria-hidden />
             Làm mới
           </Button>
@@ -113,19 +139,25 @@ export function ClubPulsePanel({ enabled, load, onPulseChange }: ClubPulsePanelP
       </div>
 
       <div className="p-4">
+        {demoMode && (
+          <div role="status" className="mb-3 rounded-md border border-warning/35 bg-warning/10 px-3 py-2 text-xs text-foreground">
+            <span className="font-medium">Đang trình diễn dữ liệu mẫu.</span>{" "}
+            Các số bên dưới và context của V không phải dữ liệu vận hành thật của CLB.
+          </div>
+        )}
         {isLoading ? (
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Đang tải tình hình CLB">
             {METRICS.map(({ key }) => <Skeleton key={key} className="h-28 rounded-md" />)}
           </div>
-        ) : runtime.state === "unavailable" ? (
+        ) : !demoMode && runtime.state === "unavailable" ? (
           <div role="status" className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
             <p className="font-medium text-foreground">Chưa đọc được tình hình CLB</p>
             <p className="mt-1 text-xs">Không thay dữ liệu thiếu bằng số 0. Hãy kiểm tra quyền owner hoặc thử làm mới sau khi nguồn Club Pulse sẵn sàng.</p>
           </div>
-        ) : runtime.pulse ? (
+        ) : displayedPulse ? (
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Số liệu tình hình CLB">
             {METRICS.map(({ key, label, definition, icon: Icon }) => {
-              const metric = runtime.pulse?.[key];
+              const metric = displayedPulse[key];
               if (!metric) return null;
               return (
                 <article key={key} data-testid={`club-pulse-${metric.metricId}`} className="min-h-28 rounded-md border border-border/70 bg-background/25 p-3" title={definition}>

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -105,5 +106,34 @@ describe("ClubPulsePanel", () => {
     render(<ClubPulsePanel enabled load={load} />);
     expect(await screen.findByText("Chưa đọc được tình hình CLB")).toBeInTheDocument();
     expect(screen.queryByTestId(/^club-pulse-(?!panel$)/)).toBeNull();
+  });
+
+  it("shows a clearly labelled seven-metric demo pulse and returns to live data", async () => {
+    const load = vi.fn().mockResolvedValue({ ok: true, value: pulse() });
+    const onPulseChange = vi.fn();
+    function Harness() {
+      const [demoMode, setDemoMode] = useState(false);
+      return <ClubPulsePanel enabled load={load} demoMode={demoMode} onDemoModeChange={setDemoMode} onPulseChange={onPulseChange} />;
+    }
+    render(<Harness />);
+    await screen.findByTestId("club-pulse-entries_today");
+
+    fireEvent.click(screen.getByRole("button", { name: "Dùng dữ liệu mẫu" }));
+
+    expect(await screen.findByText("Đang trình diễn dữ liệu mẫu.")).toBeInTheDocument();
+    expect(screen.getByText(/VinPoker Test · Dữ liệu mẫu · Cập nhật/)).toBeInTheDocument();
+    expect(screen.getAllByTestId(/^club-pulse-(?!panel$)/)).toHaveLength(7);
+    expect(within(screen.getByTestId("club-pulse-club_member_profiles")).getByText("1.248")).toBeInTheDocument();
+    expect(within(screen.getByTestId("club-pulse-players_playing_now")).getByText("52")).toBeInTheDocument();
+    expect(onPulseChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      clubId: CLUB_ID,
+      entriesToday: expect.objectContaining({ value: 143 }),
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Về dữ liệu thật" }));
+    await waitFor(() => expect(screen.queryByText("Đang trình diễn dữ liệu mẫu.")).toBeNull());
+    await waitFor(() => expect(onPulseChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      entriesToday: expect.objectContaining({ value: 7 }),
+    })));
   });
 });

@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { askMockSeriesCopilotV1, createMockSeriesCopilotContextV1 } from "@/lib/series-intelligence/seriesCopilotMockAdapter";
+import { createSeriesClubPulseDemoV1, mapSeriesClubPulseDemoToCopilotContextV1 } from "@/lib/series-intelligence/seriesClubPulseDemoV1";
 import { VCopilotPanel } from "./VCopilotPanel";
 
 vi.mock("@/integrations/supabase/client", () => ({
@@ -24,6 +25,19 @@ describe("VCopilotPanel", () => {
     expect(screen.getByText("Sức khỏe lịch")).toBeInTheDocument();
     expect(screen.getByText("Dữ liệu còn thiếu")).toBeInTheDocument();
     expect(screen.getByText("Số người đang chơi chưa đủ mới")).toBeInTheDocument();
+    expect(screen.getByText("Dữ liệu minh họa")).toBeInTheDocument();
+  });
+
+  it("uses the supplied demo Club Pulse instead of the default fixture", async () => {
+    const pulse = createSeriesClubPulseDemoV1(
+      "11111111-1111-4111-8111-111111111111",
+      "2026-08-11T12:34:56.789Z",
+    );
+    render(<VCopilotPanel clubPulse={mapSeriesClubPulseDemoToCopilotContextV1(pulse)} />);
+
+    expect(await screen.findByText("52")).toBeInTheDocument();
+    expect(screen.getByText("Đang chơi")).toBeInTheDocument();
+    expect(screen.queryByText("342")).toBeNull();
     expect(screen.getByText("Dữ liệu minh họa")).toBeInTheDocument();
   });
 

@@ -160,30 +160,37 @@ const MOCK_DATA_GAPS: readonly DataGapV1[] = [
 
 export async function createMockSeriesCopilotContextV1(clubPulse: ClubPulseV1 = MOCK_PULSE): Promise<SeriesCopilotContextV1> {
   const livePulse = clubPulse.sourceMode === "server_aggregate";
+  const pulseAsOf = clubPulse.metrics[0]?.asOf ?? MOCK_AS_OF;
+  const pulseMetricIds = new Set(clubPulse.metrics.map((metric) => metric.metricId));
   const evidence: readonly CopilotEvidenceV1[] = MOCK_EVIDENCE.map((item) => {
     if (item.evidenceId === "mock_club_pulse") {
       return {
         ...item,
+        asOf: pulseAsOf,
         labelVi: livePulse ? "Club Pulse của CLB" : item.labelVi,
         sourceId: livePulse ? "series_club_live_pulse_v1" : item.sourceId,
         quality: livePulse ? "owner_scoped_server_aggregate" : item.quality,
         metricIds: clubPulse.metrics.map((metric) => metric.metricId),
       };
     }
-    return livePulse ? { ...item, metricIds: [] } : item;
+    return { ...item, metricIds: item.metricIds.filter((metricId) => pulseMetricIds.has(metricId)) };
   });
+  const activePlayerMetric = clubPulse.metrics.find((metric) => metric.metricId === "club_active_players" || metric.metricId === "players_playing_now");
+  const dataGaps = activePlayerMetric?.availability === "stale"
+    ? MOCK_DATA_GAPS
+    : MOCK_DATA_GAPS.filter((gap) => gap.dataGapId !== "gap_active_seat_freshness");
   const scheduleHealth = buildScheduleHealthV1({
     clubPulse,
     candidateOptions: MOCK_CANDIDATES,
-    dataGaps: MOCK_DATA_GAPS,
+    dataGaps,
     evidence,
   });
   return createSeriesCopilotContextV1({
-    asOf: MOCK_AS_OF,
+    asOf: pulseAsOf,
     clubPulse,
     scheduleHealth,
     candidateOptions: MOCK_CANDIDATES,
-    dataGaps: MOCK_DATA_GAPS,
+    dataGaps,
     evidence,
   });
 }
@@ -233,7 +240,7 @@ export async function askMockSeriesCopilotV1(request: MockSeriesCopilotRequestV1
       },
     ],
     recommendedOptionId: "option_balanced",
-    missingDataIds: ["gap_active_seat_freshness", "gap_satellite_conversion"],
+    missingDataIds: request.context.dataGaps.map((gap) => gap.dataGapId),
     evidenceRefs: ["mock_club_pulse", "mock_schedule_supply", "mock_series_history"],
     answerStatus: "supported",
     humanDecisionRequired: true,

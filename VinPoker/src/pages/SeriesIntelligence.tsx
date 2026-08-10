@@ -32,6 +32,7 @@ import type { ScheduleEvent } from "@/lib/series-intelligence/scheduleGenerator"
 import { useSeriesLibrary } from "@/lib/series-intelligence/useSeriesLibrary";
 import { useGroupingOverrides } from "@/lib/series-intelligence/useGroupingOverrides";
 import { mapClubPulseToExternalCopilotContextV1, type SeriesClubLivePulseV1 } from "@/lib/series-intelligence/seriesClubLivePulseV1";
+import { mapSeriesClubPulseDemoToCopilotContextV1 } from "@/lib/series-intelligence/seriesClubPulseDemoV1";
 
 /**
  * Club Admin → Series Intelligence — Owner Command Center (Phase 9).
@@ -69,6 +70,7 @@ export default function SeriesIntelligence() {
   // CTA "Xem rủi ro overlay với dự đoán này": bump the signal → the simulator switches source + we scroll to it.
   const [forecastSignal, setForecastSignal] = useState(0);
   const [liveClubPulse, setLiveClubPulse] = useState<SeriesClubLivePulseV1 | null>(null);
+  const [clubPulseDemoMode, setClubPulseDemoMode] = useState(false);
   const viewOverlayWithForecast = () => {
     setForecastSignal((s) => s + 1);
     // scroll after the state flush so the panel has re-rendered in forecast mode
@@ -126,7 +128,7 @@ export default function SeriesIntelligence() {
 
       <SeriesIntelligenceWorkspaceNav active="operations" />
 
-      {FEATURES.seriesClubPulseV1 && <ClubPulsePanel enabled onPulseChange={setLiveClubPulse} />}
+      {FEATURES.seriesClubPulseV1 && <ClubPulsePanel enabled demoMode={clubPulseDemoMode} onDemoModeChange={setClubPulseDemoMode} onPulseChange={setLiveClubPulse} />}
 
       {/* transparency badge + report entry */}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -158,9 +160,13 @@ export default function SeriesIntelligence() {
       {FEATURES.seriesAssistant && <SeriesAssistant csvEvents={lib.activeEvents} onLoadSample={loadSample} />}
       {FEATURES.seriesVCopilotV1 && (
         <VCopilotPanel
-          contextMode={FEATURES.seriesClubPulseV1 ? "live" : "mock"}
+          contextMode={clubPulseDemoMode ? "mock" : FEATURES.seriesClubPulseV1 ? "live" : "mock"}
           clubId={liveClubPulse?.clubId ?? null}
-          clubPulse={liveClubPulse ? mapClubPulseToExternalCopilotContextV1(liveClubPulse) : null}
+          clubPulse={liveClubPulse
+            ? clubPulseDemoMode
+              ? mapSeriesClubPulseDemoToCopilotContextV1(liveClubPulse)
+              : mapClubPulseToExternalCopilotContextV1(liveClubPulse)
+            : null}
         />
       )}
 

@@ -80,6 +80,20 @@ const VERDICT_COPY = {
   insufficient_data: "Thiếu dữ liệu",
 } as const;
 
+const PULSE_METRIC_COPY: Readonly<Record<string, string>> = Object.freeze({
+  club_membership_records: "Hồ sơ trong CLB",
+  club_member_profiles: "Hồ sơ trong CLB",
+  club_entries_today: "Entry hôm nay",
+  entries_today: "Entry hôm nay",
+  club_unique_players_today: "Player unique hôm nay",
+  unique_players_today: "Player unique hôm nay",
+  club_active_players: "Đang chơi",
+  players_playing_now: "Đang chơi",
+  running_events: "Giải đang chạy",
+  open_tables: "Bàn đang mở",
+  dealers_on_duty: "Dealer đang trực",
+});
+
 function formatPulseValue(value: number | string | null): string {
   if (value === null) return "Chưa có";
   if (typeof value === "number") return new Intl.NumberFormat("vi-VN").format(value);
@@ -124,7 +138,7 @@ export function VCopilotPanel({
         controllerRef.current?.abort();
       };
     }
-    createMockSeriesCopilotContextV1()
+    createMockSeriesCopilotContextV1(clubPulse ?? undefined)
       .then((next) => {
         if (active) setContext(next);
       })
@@ -199,15 +213,10 @@ export function VCopilotPanel({
       </div>
 
       <div className="space-y-5 p-4">
-        {contextMode === "mock" && <div className="grid gap-2 sm:grid-cols-4" aria-label="Club Pulse minh họa">
+        {contextMode === "mock" && <div className="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Club Pulse minh họa">
           {(context?.clubPulse.metrics ?? []).map((metric) => (
             <div key={metric.metricId} className="min-h-20 rounded-md border border-border/70 bg-background/30 p-3">
-              <p className="text-[10px] uppercase text-muted-foreground">
-                {metric.metricId === "club_membership_records" && "Hồ sơ trong CLB"}
-                {metric.metricId === "club_entries_today" && "Entry hôm nay"}
-                {metric.metricId === "club_unique_players_today" && "Player unique hôm nay"}
-                {metric.metricId === "club_active_players" && "Đang chơi"}
-              </p>
+              <p className="text-[10px] uppercase text-muted-foreground">{PULSE_METRIC_COPY[metric.metricId] ?? metric.metricId}</p>
               <p className="mt-1 text-lg font-semibold text-foreground">{formatPulseValue(metric.value)}</p>
               <p className="text-[10px] text-muted-foreground">{metric.availability}</p>
             </div>
