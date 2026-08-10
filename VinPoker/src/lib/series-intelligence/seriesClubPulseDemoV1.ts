@@ -17,6 +17,8 @@ export const SERIES_CLUB_PULSE_DEMO_VALUES = Object.freeze({
   dealersOnDuty: 24,
 } satisfies Readonly<Record<SeriesClubPulseMetricKey, number>>);
 
+export const SERIES_CLUB_PULSE_DEMO_CLUB_ID = "00000000-0000-4000-8000-000000000001";
+
 function localDateAt(asOf: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Ho_Chi_Minh",
@@ -39,11 +41,11 @@ function demoMetric(key: SeriesClubPulseMetricKey, asOf: string) {
   };
 }
 
-export function createSeriesClubPulseDemoV1(clubId: string, explicitAsOf: string): SeriesClubLivePulseV1 {
+export function createSeriesClubPulseDemoV1(explicitAsOf: string): SeriesClubLivePulseV1 {
   const asOf = new Date(explicitAsOf).toISOString();
   return parseSeriesClubLivePulseV1({
     version: "series-club-live-pulse-v1",
-    clubId,
+    clubId: SERIES_CLUB_PULSE_DEMO_CLUB_ID,
     asOf,
     clubLocalDate: localDateAt(asOf),
     timezone: "Asia/Ho_Chi_Minh",
