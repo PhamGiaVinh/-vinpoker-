@@ -8,6 +8,6 @@ export function projectRefFromSupabaseUrl(url: string): string {
     return "local";
   }
 }
-export function opsAuthStorageKey(url: string): string {
-  return `sb-${projectRefFromSupabaseUrl(url)}-ops-auth-token`;
+export function sharedAuthStorageKey(url: string): string {
+  return `sb-${projectRefFromSupabaseUrl(url)}-auth-token`;
 }

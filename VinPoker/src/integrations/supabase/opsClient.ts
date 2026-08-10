@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import { opsAuthStorageKey } from "@/integrations/supabase/opsClientConfig";
+import { sharedAuthStorageKey } from "@/integrations/supabase/opsClientConfig";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabasePublishableKey =
@@ -12,7 +12,10 @@ if (!supabaseUrl || !supabasePublishableKey) {
 
 export const opsClient = createClient<Database>(supabaseUrl, supabasePublishableKey, {
   auth: {
-    storageKey: opsAuthStorageKey(supabaseUrl),
+    // Ops is a route of the primary app for now, so it deliberately shares
+    // the browser session with the player shell. Authorization remains
+    // caller-bound at every RPC; this only removes a duplicate login.
+    storageKey: sharedAuthStorageKey(supabaseUrl),
     persistSession: true,
     autoRefreshToken: true,
     // OpsAuthCallback is the sole PKCE/OTP callback owner. Letting auth-js

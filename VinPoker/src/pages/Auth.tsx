@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, Navigate, Link } from "react-router-dom";
+import { useState, type Dispatch, type HTMLInputTypeAttribute, type SetStateAction } from "react";
+import { useNavigate, Navigate, Link, useSearchParams } from "react-router-dom";
 import { useTranslation, Trans } from "react-i18next";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,10 +16,13 @@ import { toast } from "sonner";
 import TosAgreementModal from "@/components/TosAgreementModal";
 import { BackButton } from "@/components/BackButton";
 import { playSuccess, playError } from "@/lib/sound";
+import { DocumentRedirect } from "@/components/DocumentRedirect";
+import { safeOpsDocumentTarget } from "@/ops/auth/opsSharedSessionNavigation";
 
 const Auth = () => {
   const { t } = useTranslation();
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, loading } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [email, setEmail] = useState(""); const [password, setPassword] = useState (""); const [displayName, setDisplayName] = useState("");
@@ -32,8 +35,12 @@ const Auth = () => {
     displayName: z.string().trim().min(1).max(60).optional(),
   });
 
+  const opsReturnTarget = safeOpsDocumentTarget(searchParams.get("next"));
+
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
-  if (user) return <Navigate to="/account" replace />;
+  if (user) {
+    return opsReturnTarget ? <DocumentRedirect to={opsReturnTarget} /> : <Navigate to="/account" replace />;
+  }
 
   const signIn = async () => {
     const r = schema.safeParse({ email, password });
@@ -41,7 +48,18 @@ const Auth = () => {
     setSubmitting(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setSubmitting(false);
-    if (error) { playError(); toast.error(error.message); } else { playSuccess(); toast.success(t("auth.signedInOk")); nav("/"); }
+    if (error) {
+      playError();
+      toast.error(error.message);
+      return;
+    }
+    playSuccess();
+    toast.success(t("auth.signedInOk"));
+    if (opsReturnTarget) {
+      window.location.assign(opsReturnTarget);
+      return;
+    }
+    nav("/");
   };
 
   const signUp = async () => {
@@ -146,7 +164,14 @@ const Auth = () => {
   );
 };
 
-const Field = ({ label, v, set, type = "text" }: any) => (
+type FieldProps = {
+  label: string;
+  v: string;
+  set: Dispatch<SetStateAction<string>>;
+  type?: HTMLInputTypeAttribute;
+};
+
+const Field = ({ label, v, set, type = "text" }: FieldProps) => (
   <div className="space-y-1">
     <Label className="text-xs">{label}</Label>
     <Input value={v} onChange={(e) => set(e.target.value)} type={type} />

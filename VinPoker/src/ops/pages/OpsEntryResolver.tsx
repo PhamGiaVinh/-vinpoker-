@@ -219,21 +219,14 @@ export function OpsModuleStatus({ module }: { module: OpsModuleDefinition }) {
 }
 
 export function OpsAccessDenied({ message }: { message: string }) {
-  const { signOutLocal } = useOpsAuth();
-  const [signOutError, setSignOutError] = useState<string | null>(null);
   return (
     <main className="flex min-h-[70dvh] items-center justify-center px-4 text-white">
       <div className="w-full max-w-md rounded-3xl border border-rose-300/15 bg-[#0d1512] p-6 text-center">
         <ShieldX className="mx-auto h-8 w-8 text-rose-300" />
         <h1 className="mt-4 text-xl font-semibold">Không có quyền vận hành</h1>
         <p className="mt-2 text-sm leading-6 text-zinc-400">{message}</p>
-        {signOutError && <p className="mt-3 text-sm text-rose-300">{signOutError}</p>}
-        <Button
-          variant="outline"
-          className="mt-5 min-h-11 w-full"
-          onClick={() => void signOutLocal().then(setSignOutError)}
-        >
-          Đăng xuất Ops
+        <Button asChild variant="outline" className="mt-5 min-h-11 w-full">
+          <a href="/">Về ứng dụng chính</a>
         </Button>
       </div>
     </main>

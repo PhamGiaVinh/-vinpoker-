@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  opsAuthStorageKey,
+  sharedAuthStorageKey,
   projectRefFromSupabaseUrl,
 } from "@/integrations/supabase/opsClientConfig";
 import { resolveOpsEntry } from "@/ops/auth/opsCapabilityRouting";
@@ -10,19 +10,18 @@ import {
   type VerifiedTournamentScope,
 } from "@/ops/auth/opsTournamentScope";
 
-describe("Ops authentication boundary", () => {
-  it("derives an environment-specific storage key that differs from the player key", () => {
-    const production = opsAuthStorageKey("https://productionref.supabase.co");
-    const preview = opsAuthStorageKey("https://previewref.supabase.co");
-    expect(production).toBe("sb-productionref-ops-auth-token");
-    expect(preview).toBe("sb-previewref-ops-auth-token");
-    expect(production).not.toBe("sb-productionref-auth-token");
+describe("Ops shared-session boundary", () => {
+  it("derives the primary app storage key without crossing environments", () => {
+    const production = sharedAuthStorageKey("https://productionref.supabase.co");
+    const preview = sharedAuthStorageKey("https://previewref.supabase.co");
+    expect(production).toBe("sb-productionref-auth-token");
+    expect(preview).toBe("sb-previewref-auth-token");
     expect(production).not.toBe(preview);
   });
 
   it("falls back to a local-only key segment for malformed URLs", () => {
     expect(projectRefFromSupabaseUrl("not-a-url")).toBe("local");
-    expect(opsAuthStorageKey("not-a-url")).toBe("sb-local-ops-auth-token");
+    expect(sharedAuthStorageKey("not-a-url")).toBe("sb-local-auth-token");
   });
 
 });
