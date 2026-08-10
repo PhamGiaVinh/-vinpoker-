@@ -31,6 +31,7 @@ const OpsTrackerWorkspace = lazy(() => import("@/ops/tracker/OpsTrackerWorkspace
 const OpsDealerControlWorkspace = lazy(() => import("@/ops/dealer-control/OpsDealerControlWorkspace"));
 const OpsChipOpsWorkspace = lazy(() => import("@/ops/chip-ops/OpsChipOpsWorkspace"));
 const OpsFinanceWorkspace = lazy(() => import("@/ops/finance/OpsFinanceWorkspace"));
+const OpsOwnerDailyDigest = lazy(() => import("@/ops/digest/OpsOwnerDailyDigest"));
 const OpsSeriesWorkspace = lazy(() => import("@/ops/series/OpsSeriesWorkspace"));
 
 const opsQueryClient = new QueryClient({
@@ -134,6 +135,7 @@ export default function OpsApp() {
                       <Route path="/ops/fnb/admin" element={<OpsModuleGate capability="fnb" />} />
                       <Route path="/ops/marketing" element={<OpsModuleGate capability="marketing" />} />
                       <Route path="/ops/chip-ops" element={<OpsModuleGate capability="chip-ops"><OpsChipOpsWorkspace /></OpsModuleGate>} />
+                      <Route path="/ops/daily-digest" element={<OpsModuleGate capability="daily-digest"><OpsOwnerDailyDigest /></OpsModuleGate>} />
                       <Route path="/ops/finance" element={<OpsModuleGate capability="finance"><OpsFinanceWorkspace /></OpsModuleGate>} />
                       <Route path="/ops/accountant" element={<OpsModuleGate capability="accountant" />} />
                       <Route path="/ops/series" element={<OpsModuleGate capability="series"><OpsSeriesWorkspace /></OpsModuleGate>} />

@@ -1,4 +1,5 @@
 import type { OpsClubCapabilityRow, OpsGlobalCapability } from "@/ops/auth/opsCapabilityContract";
+import { FEATURES } from "@/lib/featureFlags";
 
 export type OpsRuntimeState = "LIVE" | "READ_ONLY" | "DISABLED" | "BLOCKED";
 
@@ -20,6 +21,7 @@ export type OpsModuleId =
   | "fnb"
   | "marketing"
   | "chip-ops"
+  | "daily-digest"
   | "finance"
   | "accountant"
   | "series";
@@ -165,6 +167,23 @@ export const OPS_MODULE_REGISTRY = [
     defaultState: "READ_ONLY",
   },
   {
+    id: "daily-digest",
+    title: "Báo cáo ngày",
+    description: "Owner Daily Digest: một snapshot vận hành đã tạo sẵn, không tính lại trên web.",
+    route: "/ops/daily-digest",
+    group: "CONTROL",
+    capabilityPredicate: anyClub(owner),
+    clubCapabilityPredicate: owner,
+    featureFlag: "ownerDailyDigestWebReport",
+    requiredContracts: [
+      "owner-daily-digest-artifact-v1",
+      "owner-scoped read boundary",
+      "no client aggregation fallback",
+    ],
+    sideEffectClass: "READ",
+    defaultState: "READ_ONLY",
+  },
+  {
     id: "finance",
     title: "Tài chính & Đối soát",
     description: "Số liệu server-authoritative, không tổng hợp fallback ở client.",
@@ -221,7 +240,22 @@ export function getOpsModuleByPath(pathname: string): OpsModuleDefinition | null
 }
 
 export function getAvailableOpsModules(scope: OpsScopeSnapshot): OpsModuleDefinition[] {
-  return OPS_MODULE_REGISTRY.filter((module) => module.capabilityPredicate(scope));
+  return OPS_MODULE_REGISTRY.filter((module) => (
+    isOpsModuleFeatureEnabled(module) && module.capabilityPredicate(scope)
+  ));
+}
+
+export function isOpsModuleFeatureEnabled(
+  module: OpsModuleDefinition,
+  options: { development?: boolean; features?: typeof FEATURES } = {},
+): boolean {
+  if (!module.featureFlag) return true;
+  // The Digest's canonical TEST fixture is intentionally available only to the local
+  // development server. Production builds remain governed by the default-OFF flag.
+  const development = options.development ?? import.meta.env.DEV;
+  const features = options.features ?? FEATURES;
+  if (development && module.id === "daily-digest") return true;
+  return features[module.featureFlag] === true;
 }
 
 export function getAvailableOpsModulesForSource(

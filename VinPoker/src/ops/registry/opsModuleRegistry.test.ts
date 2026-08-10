@@ -6,6 +6,7 @@ import {
   getModuleClubIds,
   getOpsModule,
   getOpsModuleByPath,
+  isOpsModuleFeatureEnabled,
   type OpsScopeSnapshot,
 } from "@/ops/registry/opsModuleRegistry";
 import type { OpsClubCapabilityRow } from "@/ops/auth/opsCapabilityContract";
@@ -87,5 +88,16 @@ describe("Ops module runtime registry", () => {
   it("matches child paths to their single module definition", () => {
     expect(getOpsModuleByPath("/ops/floor/tournaments/id")?.id).toBe("floor");
     expect(getOpsModuleByPath("/ops/select-module")).toBeNull();
+  });
+
+  it("keeps Owner Daily Digest owner-only and production-off", () => {
+    const digest = getOpsModule("daily-digest");
+    const owner = { ...emptyRow("10000000-0000-4000-8000-000000000001"), can_owner: true };
+    expect(digest.sideEffectClass).toBe("READ");
+    expect(digest.defaultState).toBe("READ_ONLY");
+    expect(digest.clubCapabilityPredicate(owner)).toBe(true);
+    expect(digest.clubCapabilityPredicate(emptyRow(owner.club_id))).toBe(false);
+    expect(isOpsModuleFeatureEnabled(digest, { development: false })).toBe(false);
+    expect(isOpsModuleFeatureEnabled(digest, { development: true })).toBe(true);
   });
 });
