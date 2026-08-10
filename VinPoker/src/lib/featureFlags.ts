@@ -4,11 +4,11 @@
 export const FEATURES = {
   /**
    * Owner Daily Digest web report — owner-only, read-only surface in VinPoker Ops.
-   * Source and DEV fixture UI may ship while this remains OFF. Production activation
-   * requires a separately approved, server-authorized read boundary for the persisted
-   * Digest artifact; the browser never recalculates rake/F&B/payout/payroll.
+   * ON 2026-08-10 at the owner's explicit request so club Owners can open the read-only
+   * report from VẬN HÀNH. The server-authorized RPC remains the data boundary; the
+   * browser never recalculates rake/F&B/payout/payroll and fails closed if it is absent.
    */
-  ownerDailyDigestWebReport: false,
+  ownerDailyDigestWebReport: true,
   /**
    * Cashier "Đăng ký giải" tab — confirm a PENDING online registration → auto-draw
    * seat → receipt (via the live confirm_registration_and_assign_seat RPC).
