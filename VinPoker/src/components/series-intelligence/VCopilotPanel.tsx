@@ -31,6 +31,42 @@ interface AskVResult {
 type AskV = (request: AskVRequest) => Promise<AskVResult>;
 type RequestState = "idle" | "solving" | "success" | "error";
 
+const TOMORROW_ATTENDANCE_MINIMUM_THINKING_MS = 10_000;
+
+function normalizeQuestionForIntent(question: string): string {
+  return question
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function isTomorrowAttendanceForecastQuestion(question: string): boolean {
+  const normalized = normalizeQuestionForIntent(question);
+  const asksAboutTomorrow = normalized.includes("ngay mai") || normalized.includes("tomorrow");
+  const asksAboutAttendance = /khach|nguoi choi|player|entry|entries|luot choi/.test(normalized);
+  return asksAboutTomorrow && asksAboutAttendance;
+}
+
+function waitForMinimumThinkingWindow(delayMs: number, signal: AbortSignal): Promise<void> {
+  if (delayMs <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(finish, delayMs);
+
+    function finish() {
+      signal.removeEventListener("abort", cancel);
+      resolve();
+    }
+
+    function cancel() {
+      window.clearTimeout(timer);
+      signal.removeEventListener("abort", cancel);
+      reject(new DOMException("Request aborted", "AbortError"));
+    }
+
+    signal.addEventListener("abort", cancel, { once: true });
+  });
+}
+
 const STATUS_COPY = {
   supported: "Có đủ bằng chứng trong context",
   limited: "Kết luận có giới hạn",
@@ -68,6 +104,7 @@ export function VCopilotPanel({
   const [result, setResult] = useState<AskVResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  const [thinkingMode, setThinkingMode] = useState<"general" | "tomorrow-attendance">("general");
 
   useEffect(() => {
     let active = true;
@@ -106,6 +143,8 @@ export function VCopilotPanel({
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
+    const isTomorrowAttendanceForecast = isTomorrowAttendanceForecastQuestion(question);
+    setThinkingMode(isTomorrowAttendanceForecast ? "tomorrow-attendance" : "general");
     setRequestState("solving");
     setResult(null);
     setError(null);
@@ -119,7 +158,11 @@ export function VCopilotPanel({
             if (!request.context) throw new Error("MOCK_CONTEXT_UNAVAILABLE");
             return askMockSeriesCopilotV1({ untrustedQuestion: request.untrustedQuestion, context: request.context, signal: request.signal });
           });
-      const next = await askImplementation({ untrustedQuestion: question, context, clubId, signal: controller.signal });
+      const request = askImplementation({ untrustedQuestion: question, context, clubId, signal: controller.signal });
+      const minimumThinking = isTomorrowAttendanceForecast
+        ? waitForMinimumThinkingWindow(TOMORROW_ATTENDANCE_MINIMUM_THINKING_MS, controller.signal)
+        : Promise.resolve();
+      const [next] = await Promise.all([request, minimumThinking]);
       setContext(next.context);
       setResult(next);
       setRequestState("success");
@@ -203,7 +246,7 @@ export function VCopilotPanel({
           </p>
         </div>
 
-        {requestState === "solving" && <VThinkingIndicator />}
+        {requestState === "solving" && <VThinkingIndicator mode={thinkingMode} />}
 
         {error && (
           <div role="alert" className="flex items-center gap-2 rounded-md border border-destructive/35 bg-destructive/10 p-3 text-xs text-destructive">
