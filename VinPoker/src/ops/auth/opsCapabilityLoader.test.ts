@@ -22,7 +22,7 @@ const unifiedRow = {
   can_fnb_kitchen: false,
 };
 
-function clientWith(results: Array<{ data: unknown; error: { code?: string } | null }>) {
+function clientWith(results: Array<{ data: unknown; error: { code?: string; message?: string } | null }>) {
   const rpc = vi.fn();
   for (const result of results) rpc.mockResolvedValueOnce(result);
   return { client: { rpc } as OpsRpcClient, rpc };
@@ -59,6 +59,27 @@ describe("Ops V3 capability loader", () => {
       can_fnb_kitchen: false,
     });
     expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries one fresh-token clock-skew response without falling back", async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, rpc } = clientWith([
+        { data: null, error: { code: "PGRST303", message: "JWT issued at future" } },
+        { data: [unifiedRow], error: null },
+        { data: [{ is_super_admin: false }], error: null },
+      ]);
+      const loaded = loadOpsCapabilities(client);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(loaded).resolves.toMatchObject({ source: "unified", scope: [unifiedRow] });
+      expect(rpc.mock.calls.map(([name]) => name)).toEqual([
+        "get_my_ops_capability_scope",
+        "get_my_ops_capability_scope",
+        "get_my_ops_global_capability",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each(["42501", "500", "PGRST301"])("fails closed for %s without legacy fallback", async (code) => {
