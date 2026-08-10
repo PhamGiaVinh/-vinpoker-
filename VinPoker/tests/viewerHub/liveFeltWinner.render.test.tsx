@@ -85,4 +85,19 @@ describe("LiveFelt showdown winner — under tableFx", () => {
     expect((html.match(/CHOP POT/g) || []).length).toBe(2);
     expect((html.match(/\+1k/g) || []).length).toBe(2);
   });
+
+  it("shows the public hand rank next to a verified winner", () => {
+    const rankedWinner = seat({
+      ...winner,
+      hand_rank: {
+        category: "two_pair",
+        best_five: ["Kh", "Kc", "7c", "7s", "Ah"],
+        kickers: ["A"],
+      },
+    });
+    const html = renderToStaticMarkup(<LiveFelt seats={[rankedWinner, loser]} {...baseProps} tableFx />);
+    expect(html).toContain('data-testid="seat-hand-rank"');
+    expect(html).toMatch(/Hai đôi|Two pair/);
+    expect(html).toContain("· A");
+  });
 });

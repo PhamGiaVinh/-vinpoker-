@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Loader2, History } from "lucide-react";
 import type { ReplayHand } from "@/lib/tracker-poker/replayEngine";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
+import { parseReplayPublicSettlement } from "@/lib/tracker-poker/replaySettlement";
 import { replayTargetForHand, type ReplayTarget, type ReplayTargetState } from "./viewer-hub/replayTarget";
 
 interface HandRow {
@@ -108,13 +109,18 @@ export function HandSelector({
         const hpCols = snap
           ? "player_id, seat_number, starting_stack, ending_stack, hole_cards, player_name, avatar_url"
           : "player_id, seat_number, starting_stack, ending_stack, hole_cards";
-        const [{ data: actionData, error: actionError }, { data: handPlayers, error: handPlayersError }] = await Promise.all([
+        const [
+          { data: actionData, error: actionError },
+          { data: handPlayers, error: handPlayersError },
+          { data: publicSettlementData, error: publicSettlementError },
+        ] = await Promise.all([
           supabase
             .from("hand_actions")
             .select("id, player_id, street, action_type, action_amount, action_order")
             .eq("hand_id", row.id)
             .order("action_order"),
           supabase.from("hand_players").select(hpCols).eq("hand_id", row.id),
+          supabase.rpc("get_public_tournament_settlement" as never, { p_hand_id: row.id } as never),
         ]);
         if (!isCurrentLoad()) return;
         if (actionError || handPlayersError) {
@@ -155,6 +161,11 @@ export function HandSelector({
             action_amount: a.action_amount ?? 0,
             action_order: a.action_order,
           })),
+          // Missing RPC, empty payload and malformed/private payload all degrade
+          // to a normal replay with no winner treatment.
+          publicSettlement: publicSettlementError
+            ? null
+            : parseReplayPublicSettlement(publicSettlementData),
         };
         onSelectHand(row.id, hand);
       } catch (cause) {

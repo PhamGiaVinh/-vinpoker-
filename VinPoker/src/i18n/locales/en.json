@@ -3024,7 +3024,21 @@
       "allInSummary": "{{name}} all-in {{amount}}{{bb}}",
       "winnerSummary": "{{name}} +{{amount}}{{bb}}",
       "potAward": "Pot award",
-      "refund": "Refund"
+      "refund": "Refund",
+      "bestFive": "Best five cards",
+      "kicker": "Kicker",
+      "rank": {
+        "high_card": "High card",
+        "one_pair": "One pair",
+        "two_pair": "Two pair",
+        "three_of_a_kind": "Three of a kind",
+        "straight": "Straight",
+        "flush": "Flush",
+        "full_house": "Full house",
+        "four_of_a_kind": "Four of a kind",
+        "straight_flush": "Straight flush",
+        "royal_flush": "Royal flush"
+      }
     },
     "felt": {
       "pot": "Pot",

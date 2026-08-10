@@ -15,6 +15,7 @@ import {
   type ReplayHand,
 } from "@/lib/tracker-poker/replayEngine";
 import { formatActionLabel, formatStack, type ActionLog } from "./LiveFelt";
+import { PokerCard } from "./PokerVisuals";
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
 const STREET_LABELS: Record<string, string> = {
@@ -148,6 +149,7 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
         ...seat,
         payoutAward: Math.max(0, seat.payout_award ?? 0),
         refundAward: Math.max(0, seat.refund_award ?? 0),
+        rank: seat.hand_rank ?? null,
       }))
       .filter((seat) => seat.payoutAward > 0 || seat.refundAward > 0)
       .sort((a, b) => b.payoutAward - a.payoutAward || b.refundAward - a.refundAward);
@@ -325,40 +327,73 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
       )}
 
       {hud && hudTab === "summary" && (
-        <div data-testid="replay-hud-summary" className="space-y-2">
-          {current?.showdownResult === "chop" ? (
+        <div data-testid="replay-hud-summary" aria-live="polite" className="space-y-2">
+          {current?.showdownResult === "chop" && (
             <div data-testid="replay-hud-chop" className="rounded-xl border border-[hsl(var(--viewer-neon)_/_0.35)] bg-[hsl(var(--viewer-neon)_/_0.08)] px-3 py-2 text-xs font-semibold text-[hsl(var(--viewer-neon))]">
               {t("liveHub.felt.chopPot", "Chop pot")} · {t("liveHub.replay.splitPot", "Pot được chia đều")}
             </div>
-          ) : current?.showdownResult === "needs_resettle" ? (
+          )}
+          {current?.showdownResult === "needs_resettle" && (
             <div data-testid="replay-hud-needs-resettle" className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200">
               {t("liveHub.felt.needsResettle", "Cần tính lại kết quả")}
             </div>
-          ) : settlementRows.length > 0 ? (
+          )}
+          {settlementRows.length > 0 && (
             <div className="space-y-1">
               {settlementRows.map((p) => (
-                <div key={p.player_id} className="flex min-h-11 items-center justify-between rounded-xl bg-background/35 px-3 py-2 text-xs">
-                  <span className="truncate">
-                    <span className="font-semibold text-foreground">{publicName(p.display_name, p.player_id)}</span>
-                    {p.seat_number > 0 && <span className="ml-1.5 text-[10px] text-muted-foreground">{t("liveHub.seat", "Ghế {{n}}", { n: p.seat_number })}</span>}
-                  </span>
-                  <span className="tracker-num flex flex-col items-end font-bold">
-                    {p.payoutAward > 0 && (
-                      <span className="text-[hsl(var(--viewer-neon-bright))]">
-                        {t("liveHub.replay.potAward", "Thắng pot")} +{formatStack(p.payoutAward)}
-                        {inBB(p.payoutAward) ? <span className="ml-1 font-normal opacity-70">(+{inBB(p.payoutAward)})</span> : null}
-                      </span>
-                    )}
-                    {p.refundAward > 0 && (
-                      <span className="text-[10px] text-amber-200/90">
-                        {t("liveHub.replay.refund", "Hoàn")} +{formatStack(p.refundAward)}
-                      </span>
-                    )}
-                  </span>
+                <div
+                  key={p.player_id}
+                  data-testid={p.payoutAward > 0 ? `replay-hud-winner-${p.player_id}` : `replay-hud-refund-${p.player_id}`}
+                  className="tracker-showdown-result rounded-xl border border-[hsl(var(--viewer-neon)_/_0.18)] bg-[linear-gradient(135deg,hsl(var(--viewer-neon)_/_0.08),hsl(var(--background)_/_0.58))] px-3 py-2.5 text-xs"
+                >
+                  <div className="flex min-h-8 items-start justify-between gap-3">
+                    <span className="min-w-0 truncate">
+                      <span className="font-semibold text-foreground">{publicName(p.display_name, p.player_id)}</span>
+                      {p.seat_number > 0 && <span className="ml-1.5 text-[10px] text-muted-foreground">{t("liveHub.seat", "Ghế {{n}}", { n: p.seat_number })}</span>}
+                    </span>
+                    <span className="tracker-num flex shrink-0 flex-col items-end font-bold">
+                      {p.payoutAward > 0 && (
+                        <span className="text-[hsl(var(--viewer-neon-bright))]">
+                          {t("liveHub.replay.potAward", "Thắng pot")} +{formatStack(p.payoutAward)}
+                          {inBB(p.payoutAward) ? <span className="ml-1 font-normal opacity-70">(+{inBB(p.payoutAward)})</span> : null}
+                        </span>
+                      )}
+                      {p.refundAward > 0 && (
+                        <span className="text-[10px] text-amber-200/90">
+                          {t("liveHub.replay.refund", "Hoàn")} +{formatStack(p.refundAward)}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  {p.payoutAward > 0 && p.rank && (
+                    <div data-testid={`replay-hand-rank-${p.player_id}`} className="mt-2 border-t border-white/10 pt-2">
+                      <div className="flex flex-wrap items-baseline justify-between gap-1.5">
+                        <span className="font-bold text-[hsl(var(--poker-gold))]">
+                          {t(`liveHub.replay.rank.${p.rank.category}`, p.rank.category.replace(/_/g, " "))}
+                        </span>
+                        {p.rank.kickers.length > 0 && (
+                          <span className="text-[10px] text-muted-foreground">
+                            {t("liveHub.replay.kicker", "Kicker")} {p.rank.kickers.join("-")}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                        {t("liveHub.replay.bestFive", "Bộ 5 lá mạnh nhất")}
+                      </div>
+                      <div data-testid={`replay-best-five-${p.player_id}`} className="mt-1 flex flex-wrap gap-1">
+                        {p.rank.best_five.map((card, index) => (
+                          <span key={`${card}-${index}`} data-testid="replay-best-five-card">
+                            <PokerCard card={card} size="sm" />
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
-          ) : (
+          )}
+          {current?.showdownResult !== "needs_resettle" && settlementRows.length === 0 && (
             <div className="text-[11px] text-muted-foreground">{t("liveHub.replay.noResult", "Chưa có kết quả — xem tab Hành động.")}</div>
           )}
           {bullets.length > 0 && (

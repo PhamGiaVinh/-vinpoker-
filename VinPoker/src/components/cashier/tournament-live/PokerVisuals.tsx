@@ -477,7 +477,11 @@ export function TrackerVisualStyles() {
            reduced-motion keeps the glow without the entrance. */
         @keyframes tracker-win-glow {
           from { box-shadow: 0 0 0 0 hsl(var(--poker-gold) / 0); }
-          to   { box-shadow: 0 0 16px 1px hsl(var(--poker-gold) / 0.5), 0 0 0 2px hsl(var(--poker-gold) / 0.6); }
+          to   { box-shadow: 0 0 24px 3px hsl(var(--poker-gold) / 0.58), 0 0 0 2px hsl(var(--poker-gold) / 0.78); }
+        }
+        @keyframes tracker-showdown-result {
+          from { transform: translateY(6px) scale(.985); opacity: 0; }
+          to { transform: translateY(0) scale(1); opacity: 1; }
         }
         @keyframes tracker-motion-deal {
           from { transform: translate(0, 0) rotate(-5deg) scale(.82); opacity: 0; }
@@ -517,9 +521,10 @@ export function TrackerVisualStyles() {
           pointer-events: none;
         }
         .tracker-win-glow {
-          box-shadow: 0 0 16px 1px hsl(var(--poker-gold) / 0.5), 0 0 0 2px hsl(var(--poker-gold) / 0.6);
-          animation: tracker-win-glow .45s ease-out both;
+          box-shadow: 0 0 24px 3px hsl(var(--poker-gold) / 0.58), 0 0 0 2px hsl(var(--poker-gold) / 0.78);
+          animation: tracker-win-glow .26s cubic-bezier(.22,1,.36,1) both;
         }
+        .tracker-showdown-result { animation: tracker-showdown-result .24s cubic-bezier(.22,1,.36,1) both; }
         .tracker-motion-card {
           position: absolute;
           left: 50%; top: 50%;
@@ -578,6 +583,7 @@ export function TrackerVisualStyles() {
           .tracker-bet-pulse,
           .tracker-chip-push,
           .tracker-win-glow,
+          .tracker-showdown-result,
           .tracker-motion-card,
           .tracker-motion-showdown,
           .tracker-motion-chip,
