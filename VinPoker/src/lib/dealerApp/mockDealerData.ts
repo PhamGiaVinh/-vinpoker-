@@ -18,6 +18,38 @@ import { addDays } from "./clock";
 const MOCK_DEALER_ID = "mock-dealer-001";
 const MOCK_DEALER_ID_2 = "mock-dealer-002";
 
+export interface MockDealerPtWage {
+  employment_type: "part_time";
+  hourly_rate_vnd: number;
+  accrued_minutes: number;
+  balance_vnd: number;
+  current_shift_open: true;
+  current_shift_start: string;
+  accrual_mode: "continuous_standby";
+  standby_accrual_enabled: true;
+  live_accrual_active: true;
+  recent_payments: Array<{ amount_vnd: number; paid_at: string; payment_method: string }>;
+}
+
+export function mockDealerPtWage(): MockDealerPtWage {
+  return {
+    employment_type: "part_time",
+    hourly_rate_vnd: 100_000,
+    accrued_minutes: 1_470,
+    balance_vnd: 2_450_000,
+    current_shift_open: true,
+    current_shift_start: new Date(Date.now() - 90 * 60_000).toISOString(),
+    accrual_mode: "continuous_standby",
+    standby_accrual_enabled: true,
+    live_accrual_active: true,
+    recent_payments: [{
+      amount_vnd: 1_800_000,
+      paid_at: new Date(Date.now() - 7 * 86_400_000).toISOString(),
+      payment_method: "bank_transfer",
+    }],
+  };
+}
+
 function iso(date: string, time: string): string {
   return `${date}T${time}:00+07:00`;
 }

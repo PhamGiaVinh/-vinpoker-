@@ -116,4 +116,42 @@ describe("DealerPtWageTab policy control", () => {
       expect(screen.queryByRole("button", { name: "Bật toàn bộ CLB" })).not.toBeInTheDocument();
     });
   });
+
+  it("keeps the customer preview read-only", async () => {
+    testState.rpc.mockImplementation((fn: string) => {
+      if (fn === "get_club_pt_wages") {
+        return Promise.resolve({
+          data: {
+            dealers: [{
+              dealer_id: "dealer-1",
+              full_name: "Dealer Demo",
+              hourly_rate_vnd: 100_000,
+              accrued_minutes: 60,
+              balance_vnd: 100_000,
+              last_reset_at: null,
+              current_shift_open: true,
+              current_shift_start: new Date().toISOString(),
+              live_accrual_active: true,
+              last_payment: null,
+            }],
+            accrual_mode: "continuous_standby",
+            standby_accrual_enabled: true,
+          },
+          error: null,
+        });
+      }
+      if (fn === "get_dealer_pt_wage_global_accrual_policy") {
+        return Promise.resolve({ data: { future_club_enabled: true }, error: null });
+      }
+      return Promise.resolve({ data: {}, error: null });
+    });
+
+    render(<DealerPtWageTab clubIds={["club-1"]} clubs={clubs} readOnly />);
+
+    await screen.findByText("Dealer Demo");
+    expect(screen.queryByRole("button", { name: "Thanh toán" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dừng tích lũy liên tục" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Tắt toàn bộ CLB" })).not.toBeInTheDocument();
+    expect(testState.rpc).not.toHaveBeenCalledWith("pay_part_time_balance", expect.anything());
+  });
 });

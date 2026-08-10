@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getPtWageAccrualPresentation } from "./dealerPtWagePresentation";
+import {
+  getPtWageAccrualPresentation,
+  projectPtWageBalanceVnd,
+  ptWageRatePerSecondVnd,
+} from "./dealerPtWagePresentation";
 
 describe("getPtWageAccrualPresentation", () => {
   it("shows continuous standby accrual only when the server policy enables it", () => {
@@ -43,5 +47,19 @@ describe("getPtWageAccrualPresentation", () => {
     });
 
     expect(result.isLiveAccruing).toBe(false);
+  });
+
+  it("advances a 100K hourly wage on every displayed second", () => {
+    const base = 100_000;
+
+    expect(projectPtWageBalanceVnd(base, 100_000, 0, true)).toBe(100_000);
+    expect(projectPtWageBalanceVnd(base, 100_000, 1_000, true)).toBe(100_027);
+    expect(projectPtWageBalanceVnd(base, 100_000, 2_000, true)).toBe(100_055);
+    expect(ptWageRatePerSecondVnd(100_000)).toBeCloseTo(27.7778, 4);
+  });
+
+  it("never projects money when the server says accrual is inactive", () => {
+    expect(projectPtWageBalanceVnd(100_000, 100_000, 60_000, false)).toBe(100_000);
+    expect(projectPtWageBalanceVnd(100_000, 100_000, -1_000, true)).toBe(100_000);
   });
 });
