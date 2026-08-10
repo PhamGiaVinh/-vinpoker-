@@ -1,7 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { ShowdownInputPanel, type ShowdownPlayer } from "@/components/cashier/tournament-live/handinput/ShowdownInputPanel";
 import type { Card } from "@/components/shared/CardSlotPicker";
+
+vi.mock("@/components/shared/CardSlotPicker", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/shared/CardSlotPicker")>();
+  return {
+    ...actual,
+    CardSlotPicker: () => <button type="button" aria-label="card slot" />,
+  };
+});
 
 const players: ShowdownPlayer[] = [
   { player_id: "p1", seat_number: 1, display_name: "An", is_folded: false },
@@ -48,9 +57,6 @@ describe("ShowdownInputPanel", () => {
 
 // ── UAT wave 2 (trackerCoverCallRunout): skip-reveal escape on the runout panel ──
 // Needs interactivity (2-tap confirm) → testing-library, not static markup.
-import { render, cleanup, fireEvent } from "@testing-library/react";
-import { vi, afterEach } from "vitest";
-
 afterEach(() => cleanup());
 
 describe("ShowdownInputPanel — revealOnly skip escape (UAT wave 2)", () => {
@@ -74,9 +80,22 @@ describe("ShowdownInputPanel — revealOnly skip escape (UAT wave 2)", () => {
     const btn = getByText("Tiếp tục không lật (không có thông tin bài)");
     fireEvent.click(btn);
     expect(onSkip).not.toHaveBeenCalled();
-    expect(getByText("Bấm lần nữa để xác nhận")).toBeTruthy();
-    fireEvent.click(getByText("Bấm lần nữa để xác nhận"));
+    expect(getByText("Xác nhận: tiếp tục không lật")).toBeTruthy();
+    expect(getByText("Bấm Xác nhận trong 8 giây để chạy board mà không hiện bài tẩy.")).toHaveAttribute("aria-live", "polite");
+    fireEvent.click(getByText("Xác nhận: tiếp tục không lật"));
     expect(onSkip).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the second-tap confirmation armed for 8 seconds", () => {
+    vi.useFakeTimers();
+    const { getByText, queryByText } = render(<ShowdownInputPanel {...revealCommon} onSkipReveal={noop} />);
+    fireEvent.click(getByText("Tiếp tục không lật (không có thông tin bài)"));
+    act(() => vi.advanceTimersByTime(7999));
+    expect(getByText("Xác nhận: tiếp tục không lật")).toBeTruthy();
+    act(() => vi.advanceTimersByTime(1));
+    expect(queryByText("Xác nhận: tiếp tục không lật")).toBeNull();
+    expect(getByText("Tiếp tục không lật (không có thông tin bài)")).toBeTruthy();
+    vi.useRealTimers();
   });
 
   it("disabled while submitting", () => {

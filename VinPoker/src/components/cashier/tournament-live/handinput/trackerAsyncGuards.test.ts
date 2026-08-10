@@ -5,7 +5,9 @@ import {
   createActionWriteGuard,
   createTableLoadGuard,
   isConfirmedActionWrite,
+  resolveTableHandIdentity,
 } from "./trackerAsyncGuards";
+import { createSingleFlightGuard } from "@/lib/singleFlight";
 
 describe("tracker async guards", () => {
   it("keeps only the latest table load eligible to commit and invalidates on unmount", () => {
@@ -37,6 +39,46 @@ describe("tracker async guards", () => {
       p_tournament_id: "tournament-1",
       p_table_id: "table-b",
     });
+  });
+
+  it("resumes Hand #4 without ever requesting the next Hand #5 identity", async () => {
+    let nextCalls = 0;
+    const result = await resolveTableHandIdentity({
+      loadOrphan: async () => ({ id: "hand-4-id", hand_number: 4 }),
+      loadNextHandNumber: async () => {
+        nextCalls += 1;
+        return 5;
+      },
+      isCurrent: () => true,
+    });
+
+    expect(result).toEqual({ kind: "resume", hand: { id: "hand-4-id", hand_number: 4 } });
+    expect(nextCalls).toBe(0);
+  });
+
+  it("drops a late next-hand response after the table load becomes stale", async () => {
+    let current = true;
+    let releaseNext!: (value: number) => void;
+    const next = new Promise<number>((resolve) => { releaseNext = resolve; });
+    const pending = resolveTableHandIdentity({
+      loadOrphan: async () => null,
+      loadNextHandNumber: () => next,
+      isCurrent: () => current,
+    });
+
+    await Promise.resolve();
+    current = false;
+    releaseNext(5);
+    await expect(pending).resolves.toEqual({ kind: "stale" });
+  });
+
+  it("allows only one completion or re-entry submit until the first finishes", () => {
+    const guard = createSingleFlightGuard();
+    expect(guard.begin()).toBe(true);
+    expect(guard.begin()).toBe(false);
+    expect(guard.isBusy()).toBe(true);
+    guard.finish();
+    expect(guard.begin()).toBe(true);
   });
 
   it("permits only one action write and stale completion cannot unlock a newer scope", () => {

@@ -28,17 +28,15 @@ export const FEATURES = {
    */
   offlineBuyIn: true,
   /**
-   * Registration extensions for cashiers: VOID (cancel a confirmed registration →
-   * free seat + refund + revenue auto-reverse, via `void_registration`) and
-   * RE-ENTRY (re-buy a busted player → new entry + seat + receipt, via
-   * `reenter_tournament_player`). Default **OFF** because both need their RPCs
-   * applied live first (`20260901000000` + `20260901000001`). While false: the
-   * Void buttons are hidden in the registration lists, and the "Re-entry" panel —
-   * shown to admins/club owners for UAT — keeps its action button disabled
-   * ("Cần bật RPC") and never calls a missing RPC. Flip to true ONLY after the two
-   * RPCs are applied live in a controlled DB session.
+   * Registration VOID (cancel + refund/revenue reversal). This high-risk path
+   * remains independent from cashier re-entry and defaults OFF.
    */
   registrationExtensions: false,
+  /**
+   * Cashier re-entry for a busted player. Kept separate so enabling re-entry
+   * can never expose the registration VOID/refund path by accident.
+   */
+  cashierReentry: false,
   /**
    * SePay reconciliation — Cashier "Đối soát SePay" tab. Surfaces the reconcile worklist
    * (SePay-API-verified transfers) via the read-only `sepay_cashier_settlement_worklist` RPC, so a

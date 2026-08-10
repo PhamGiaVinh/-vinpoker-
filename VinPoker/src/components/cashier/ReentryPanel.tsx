@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,11 @@ import type { Tournament } from "@/types/tournament";
 import { ConfirmPaymentDialog, type DrawMode, type ConfirmPaymentInfo } from "@/components/cashier/registrations/ConfirmPaymentDialog";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
+import { createSingleFlightGuard } from "@/lib/singleFlight";
 
 // RPC gate: while false the Re-entry button is disabled "Cần bật RPC" and the
 // handler refuses to call the (not-yet-applied) RPC. Flip after live apply.
-const REENTRY_LIVE = FEATURES.registrationExtensions;
+const REENTRY_LIVE = FEATURES.cashierReentry;
 
 const ACTIVE_STATUSES = ["upcoming", "registering", "drawing", "active", "live", "break", "final_table"];
 
@@ -59,6 +60,7 @@ export function ReentryPanel({ clubIds }: { clubIds: string[] }) {
   const [fee, setFee] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const submitGuardRef = useRef(createSingleFlightGuard());
   const [receipt, setReceipt] = useState<SeatReceiptData | null>(null);
 
   const loadTours = useCallback(async () => {
@@ -128,6 +130,7 @@ export function ReentryPanel({ clubIds }: { clubIds: string[] }) {
 
   const submit = async (drawMode: DrawMode) => {
     if (!REENTRY_LIVE || !target || !selected) return; // defence-in-depth: never call a missing RPC
+    if (!submitGuardRef.current.begin()) return;
     setBusy(true);
     try {
       const { data, error } = await supabase.rpc("reenter_tournament_player", {
@@ -155,6 +158,7 @@ export function ReentryPanel({ clubIds }: { clubIds: string[] }) {
     } catch (e: any) {
       toast.error(e.message || "Lỗi");
     } finally {
+      submitGuardRef.current.finish();
       setBusy(false);
     }
   };

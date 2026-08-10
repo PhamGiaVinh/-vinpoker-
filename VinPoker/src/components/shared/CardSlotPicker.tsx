@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export type Card = string;
 
@@ -50,45 +51,51 @@ export function CardSlotPicker({
     setRank("");
   };
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={cn(
-          "h-14 w-11 sm:h-16 sm:w-12 rounded-lg border-2 border-dashed border-border bg-muted/40 hover:bg-muted/70 hover:border-primary/50 transition flex items-center justify-center font-bold",
-          value && "border-solid border-border bg-card"
-        )}
-      >
-        {value ? (
-          <span className={cn("text-base sm:text-lg flex flex-col items-center leading-tight", SUIT_COLOR[value[1]])}>
-            <span>{value[0]}</span>
-            <span className="text-sm">{SUIT_SYMBOL[value[1]]}</span>
-          </span>
-        ) : (
-          <Plus className="w-4 h-4 text-muted-foreground" />
-        )}
-      </button>
-    );
-  }
-
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => { setOpen(false); setRank(""); }}
-        className="h-14 w-11 sm:h-16 sm:w-12 rounded-lg border-2 border-primary bg-card flex items-center justify-center"
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setRank("");
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={value ? `Đổi lá ${displayCard(value)}` : "Chọn lá bài"}
+          className={cn(
+            "flex h-14 w-11 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/40 font-bold transition hover:border-primary/50 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-16 sm:w-12",
+            value && "border-solid border-border bg-card",
+            open && "border-primary bg-card",
+          )}
+        >
+          {open ? (
+            <X className="h-4 w-4 text-muted-foreground" />
+          ) : value ? (
+            <span className={cn("flex flex-col items-center text-base leading-tight sm:text-lg", SUIT_COLOR[value[1]])}>
+              <span>{value[0]}</span>
+              <span className="text-sm">{SUIT_SYMBOL[value[1]]}</span>
+            </span>
+          ) : (
+            <Plus className="h-4 w-4 text-muted-foreground" />
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="center"
+        sideOffset={8}
+        collisionPadding={12}
+        className="w-[min(17rem,calc(100vw-1.5rem))] p-2"
       >
-        <X className="w-4 h-4 text-muted-foreground" />
-      </button>
-      <div className="absolute z-50 top-full left-0 mt-1 p-2 rounded-lg border border-border bg-popover shadow-xl min-w-[200px]">
         {!rank ? (
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-1" aria-label="Chọn hạng bài">
             {RANKS.map((r) => (
               <button
                 key={r}
+                type="button"
+                aria-label={`Chọn hạng ${r}`}
                 onClick={() => setRank(r)}
-                className="h-8 w-8 rounded text-xs font-bold bg-muted hover:bg-primary/20"
+                className="min-h-11 min-w-0 rounded bg-muted text-sm font-bold hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 {r}
               </button>
@@ -104,10 +111,12 @@ export function CardSlotPicker({
                 return (
                   <button
                     key={s}
+                    type="button"
+                    aria-label={`Chọn ${rank}${SUIT_SYMBOL[s]}`}
                     disabled={taken}
                     onClick={() => pick(rank, s)}
                     className={cn(
-                      "h-10 rounded font-bold text-base bg-muted hover:bg-primary/20 disabled:opacity-30 disabled:cursor-not-allowed",
+                      "min-h-11 rounded bg-muted text-base font-bold hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-30",
                       SUIT_COLOR[s]
                     )}
                   >
@@ -116,15 +125,15 @@ export function CardSlotPicker({
                 );
               })}
             </div>
-            <Button size="sm" variant="ghost" className="w-full h-7 text-xs" onClick={() => setRank("")}>{t("equityCalc.changeRank")}</Button>
+            <Button size="sm" variant="ghost" className="min-h-11 w-full text-xs" onClick={() => setRank("")}>{t("equityCalc.changeRank")}</Button>
             {value && (
-              <Button size="sm" variant="ghost" className="w-full h-7 text-xs text-rose-500" onClick={() => { onChange(null); setOpen(false); setRank(""); }}>
+              <Button size="sm" variant="ghost" className="min-h-11 w-full text-xs text-rose-500" onClick={() => { onChange(null); setOpen(false); setRank(""); }}>
                 {t("equityCalc.removeCard")}
               </Button>
             )}
           </div>
         )}
-      </div>
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
