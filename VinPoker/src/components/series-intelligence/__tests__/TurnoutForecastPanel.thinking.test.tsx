@@ -90,4 +90,21 @@ describe("TurnoutForecastPanel tomorrow thinking state", () => {
     act(() => vi.advanceTimersByTime(1));
     expect(screen.queryByTestId("v-thinking-indicator")).toBeNull();
   });
+
+  it("lets the owner explicitly rerun a completed tomorrow forecast", () => {
+    render(<TurnoutForecastPanel csvEvents={history} />);
+    fillTomorrowForecast();
+
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(screen.getByRole("button", { name: "Dự báo lại ngày mai" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dự báo lại ngày mai" }));
+    expect(screen.getByTestId("v-thinking-indicator")).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(9_999));
+    expect(screen.getByTestId("v-thinking-indicator")).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByTestId("v-thinking-indicator")).toBeNull();
+  });
 });
