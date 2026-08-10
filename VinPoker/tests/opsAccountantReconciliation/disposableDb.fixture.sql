@@ -283,10 +283,6 @@ INSERT INTO public.payroll_periods (id, club_id, status) VALUES
   ('30000000-0000-4000-8000-000000000011', '10000000-0000-4000-8000-000000000002', 'submitted'),
   ('30000000-0000-4000-8000-000000000012', '10000000-0000-4000-8000-000000000001', 'submitted');
 
--- Dedicated row for the two-session compare-and-swap proof.
-INSERT INTO public.payroll_periods (id, club_id, status) VALUES
-  ('40000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'submitted');
-
 CREATE FUNCTION public.test_assert(p_ok boolean, p_message text)
 RETURNS void
 LANGUAGE plpgsql
