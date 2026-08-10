@@ -54,13 +54,14 @@ const FnbHub = lazy(() => import("./pages/FnbHub"));
 // F&B public DEMO (/fnb/demo) — self-contained static showcase; no supabase/RPC. Gated by FEATURES.fnbDemo.
 const FnbDemo = lazy(() => import("./pages/FnbDemo"));
 const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
+const CashierDashboard = lazy(() => import("./pages/CashierDashboard"));
 const DealerControlBoard = lazy(() => import("./pages/DealerControlBoard"));
 const TrackerDashboard = lazy(() => import("./pages/TrackerDashboard"));
 const TrackerHandInputConsole = lazy(() => import("./pages/TrackerHandInputConsole"));
+const FloorDashboard = lazy(() => import("./pages/FloorDashboard"));
 const DealerSwingDashboard = lazy(() => import("./pages/DealerSwingDashboard"));
 // Accountant workspace (/accountant) — dedicated role-gated area (club_accountants/owner/admin).
 const AccountantDashboard = lazy(() => import("./pages/AccountantDashboard"));
-import { DocumentRedirect } from "./components/DocumentRedirect";
 const MediaCenter = lazy(() => import("./pages/MediaCenter"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminLeaderboard = lazy(() => import("./pages/AdminLeaderboard"));
@@ -341,12 +342,12 @@ const App = () => {
                 {/* GE-2D online-poker LOBBY — keeps Layout chrome. The TABLE route is
                     chrome-less above (full-screen). Pages self-gate on FEATURES.onlinePoker. */}
                 <Route path="/poker" element={<OnlinePoker />} />
-                <Route path="/cashier" element={<DocumentRedirect to="/ops/cashier" />} />
+                <Route path="/cashier" element={<CashierDashboard />} />
                 <Route path="/dealer-board" element={<DealerControlBoard />} />
                 <Route path="/tracker" element={<TrackerDashboard />} />
                 <Route path="/accountant" element={<AccountantDashboard />} />
                 <Route path="/tracker/hand-input" element={<TrackerHandInputConsole />} />
-                <Route path="/floor" element={<DocumentRedirect to="/ops/floor" />} />
+                <Route path="/floor" element={<FloorDashboard />} />
                 <Route path="/dealer-swing" element={<DealerSwingDashboard />} />
                 <Route path="/admin" element={<SuperAdmin />} />
                 <Route path="/admin/users" element={<AdminUsers />} />

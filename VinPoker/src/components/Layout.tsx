@@ -272,19 +272,15 @@ export const Layout = () => {
                     </DropdownMenuItem>
                   )}
                   {(isCashier || isClubOwner || isAdmin) && (
-                    <DropdownMenuItem asChild className="gap-2.5 cursor-pointer">
-                      <a href="/ops/cashier">
-                        <Wallet className="w-4 h-4" />
-                        Cashier
-                      </a>
+                    <DropdownMenuItem onClick={() => nav("/cashier")} className="gap-2.5 cursor-pointer">
+                      <Wallet className="w-4 h-4" />
+                      Cashier
                     </DropdownMenuItem>
                   )}
                   {(isFloor || isCashier || isClubOwner || isAdmin) && (
-                    <DropdownMenuItem asChild className="gap-2.5 cursor-pointer">
-                      <a href="/ops/floor">
-                        <LayoutGrid className="w-4 h-4" />
-                        Floor
-                      </a>
+                    <DropdownMenuItem onClick={() => nav("/floor")} className="gap-2.5 cursor-pointer">
+                      <LayoutGrid className="w-4 h-4" />
+                      Floor
                     </DropdownMenuItem>
                   )}
                   {(isCashier || isAdmin) && (
