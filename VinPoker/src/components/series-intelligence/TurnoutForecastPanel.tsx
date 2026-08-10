@@ -23,6 +23,7 @@ import { HonestForecastView } from "./HonestForecastView";
 import { ExplainHint } from "./ExplainHint";
 import { EmptyExplainer } from "./EmptyExplainer";
 import { RegimeNotice } from "./RegimeNotice";
+import { VThinkingIndicator } from "./VThinkingIndicator";
 
 /** What this panel emits upward so the group-history overlay simulator can offer a forecast center. */
 export type ForecastFeedWithFee = ForecastOverlayFeed & { fee: number };
@@ -33,6 +34,20 @@ const CONF: Record<ForecastConfidence, { label: string; cls: string }> = {
   high: { label: "Cao", cls: "border-primary/50 bg-primary/10 text-primary" },
 };
 const numOrNull = (s: string): number | null => (s.trim() === "" ? null : Number(s));
+const TOMORROW_FORECAST_THINKING_MS = 10_000;
+
+function isTomorrowLocalDate(date: string, now = new Date()): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return false;
+
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  return (
+    Number(match[1]) === tomorrow.getFullYear()
+    && Number(match[2]) === tomorrow.getMonth() + 1
+    && Number(match[3]) === tomorrow.getDate()
+  );
+}
+
 const median = (v: Array<number | null>): number | null => {
   const s = v.filter((x): x is number => x !== null && Number.isFinite(x)).sort((a, b) => a - b);
   if (!s.length) return null;
@@ -78,6 +93,7 @@ export function TurnoutForecastPanel({
   // learned this factor); it only surfaces a caution + records context. Fields appear when seriesRivalClash is on.
   const [rival, setRival] = useState(false);
   const [rivalGtd, setRivalGtd] = useState<number | null>(null);
+  const [settledTomorrowForecastKey, setSettledTomorrowForecastKey] = useState<string | null>(null);
 
   const ready = date.trim() !== "" && buyIn !== null && buyIn > 0;
   // Local datetime (never date-only) so the hour-slot feature matches the training rows' bucketing.
@@ -138,6 +154,22 @@ export function TurnoutForecastPanel({
     () => (FEATURES.seriesInsufficientDataUx && ready && fc ? toHonestForecastResult(fc, battery) : null),
     [fc, battery, ready],
   );
+
+  const tomorrowForecastKey = useMemo(() => {
+    if (!fc?.available || !isTomorrowLocalDate(date)) return null;
+    return [date, startTime, buyIn, gtd, typeKeyword, seriesName, capacity, rival, rivalGtd].join("|");
+  }, [fc?.available, date, startTime, buyIn, gtd, typeKeyword, seriesName, capacity, rival, rivalGtd]);
+  const isThinkingAboutTomorrow = tomorrowForecastKey !== null && settledTomorrowForecastKey !== tomorrowForecastKey;
+
+  useEffect(() => {
+    if (!tomorrowForecastKey) {
+      setSettledTomorrowForecastKey(null);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setSettledTomorrowForecastKey(tomorrowForecastKey), TOMORROW_FORECAST_THINKING_MS);
+    return () => window.clearTimeout(timeout);
+  }, [tomorrowForecastKey]);
 
   return (
     <section className="space-y-3">
@@ -232,6 +264,10 @@ export function TurnoutForecastPanel({
                 <span><AlertTriangle className="mr-1 inline h-3.5 w-3.5" /> Cần thêm dữ liệu — {fc?.missingDataNotes[0] ?? "chưa đủ giải trước đó để dự báo."}</span>
               </Card>
             )
+          ) : isThinkingAboutTomorrow ? (
+            <Card className="flex h-full min-h-[220px] items-center justify-center border-primary/40 p-4">
+              <VThinkingIndicator mode="tomorrow-attendance" />
+            </Card>
           ) : (
             <Card className="gradient-card space-y-3 border-primary/40 p-4">
               <div className="text-center">
