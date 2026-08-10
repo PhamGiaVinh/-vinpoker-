@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { TrendingUp, FlaskConical, AlertTriangle, ChevronRight } from "lucide-react";
+import { TrendingUp, FlaskConical, AlertTriangle, ChevronRight, RefreshCw } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,6 +94,7 @@ export function TurnoutForecastPanel({
   const [rival, setRival] = useState(false);
   const [rivalGtd, setRivalGtd] = useState<number | null>(null);
   const [settledTomorrowForecastKey, setSettledTomorrowForecastKey] = useState<string | null>(null);
+  const [tomorrowForecastRunRevision, setTomorrowForecastRunRevision] = useState(0);
 
   const ready = date.trim() !== "" && buyIn !== null && buyIn > 0;
   // Local datetime (never date-only) so the hour-slot feature matches the training rows' bucketing.
@@ -157,8 +158,8 @@ export function TurnoutForecastPanel({
 
   const tomorrowForecastKey = useMemo(() => {
     if (!fc?.available || !isTomorrowLocalDate(date)) return null;
-    return [date, startTime, buyIn, gtd, typeKeyword, seriesName, capacity, rival, rivalGtd].join("|");
-  }, [fc?.available, date, startTime, buyIn, gtd, typeKeyword, seriesName, capacity, rival, rivalGtd]);
+    return [date, startTime, buyIn, gtd, typeKeyword, seriesName, capacity, rival, rivalGtd, tomorrowForecastRunRevision].join("|");
+  }, [fc?.available, date, startTime, buyIn, gtd, typeKeyword, seriesName, capacity, rival, rivalGtd, tomorrowForecastRunRevision]);
   const isThinkingAboutTomorrow = tomorrowForecastKey !== null && settledTomorrowForecastKey !== tomorrowForecastKey;
 
   useEffect(() => {
@@ -282,6 +283,20 @@ export function TurnoutForecastPanel({
                 <span className={cn("mt-1 inline-block rounded-full border px-2 py-0.5 text-[10px]", CONF[fc.confidence].cls)}>
                   Độ tin: {CONF[fc.confidence].label} · N={fc.sampleSize} giải
                 </span>
+                {tomorrowForecastKey !== null && (
+                  <div className="mt-3 flex justify-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5 text-xs"
+                      onClick={() => setTomorrowForecastRunRevision((revision) => revision + 1)}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                      Dự báo lại ngày mai
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {/* TP5 — rival clash caution. The forecast number is NOT changed; this is a manual reminder that
