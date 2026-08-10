@@ -260,7 +260,7 @@ test("frontend matcher excludes deployment tooling", () => {
   assert.equal(isFrontendPath("VinPoker/scripts/deploy/validate-control-plane.mjs"), false);
 });
 
-test("full receipt-to-target diff catches a change hidden behind a later commit", () => {
+test("receipt-to-target shared diff is scoped to the target import closure", () => {
   const root = mkdtempSync(join(tmpdir(), "vinpoker-plan-"));
   const runGit = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
   const put = (path, content) => {
@@ -273,14 +273,26 @@ test("full receipt-to-target diff catches a change hidden behind a later commit"
     runGit("config", "user.email", "control-plane@example.invalid");
     runGit("config", "user.name", "Control Plane Test");
     put("VinPoker/src/App.tsx", "baseline");
-    put("VinPoker/supabase/functions/process-swing/index.ts", "baseline");
-    put("VinPoker/supabase/functions/mass-assign/index.ts", "baseline");
-    put("VinPoker/supabase/functions/checkout-dealer/index.ts", "baseline");
-    put("VinPoker/supabase/functions/_shared/shared.ts", "baseline");
+    put("VinPoker/supabase/functions/process-swing/index.ts", "import './bridge.ts';");
+    put("VinPoker/supabase/functions/process-swing/bridge.ts", "export * from '../_shared/process-shared.ts';");
+    put("VinPoker/supabase/functions/mass-assign/index.ts", "import { \"string-name\" as localName } from '../_shared/string-shared.ts';");
+    put("VinPoker/supabase/functions/checkout-dealer/index.ts", "import /* static comment */ '../_shared/comment-shared.ts';");
+    put("VinPoker/supabase/functions/tournament-live-clock/index.ts", "import '../_shared/clock-shared.ts';");
+    put("VinPoker/supabase/functions/ops-club-accounts/index.ts", "await import('../_shared/dynamic-shared.ts');");
+    put("VinPoker/supabase/functions/_shared/process-shared.ts", "baseline");
+    put("VinPoker/supabase/functions/_shared/string-shared.ts", "baseline");
+    put("VinPoker/supabase/functions/_shared/comment-shared.ts", "baseline");
+    put("VinPoker/supabase/functions/_shared/clock-shared.ts", "baseline");
+    put("VinPoker/supabase/functions/_shared/dynamic-shared.ts", "baseline");
+    put("VinPoker/supabase/functions/_shared/tracker-only.ts", "baseline");
     runGit("add", "."); runGit("commit", "-m", "baseline");
     const baseline = runGit("rev-parse", "HEAD");
-    put("VinPoker/supabase/functions/process-swing/index.ts", "critical change");
-    put("VinPoker/supabase/functions/_shared/shared.ts", "shared critical change");
+    put("VinPoker/supabase/functions/process-swing/index.ts", "import './bridge.ts';\n// critical change");
+    put("VinPoker/supabase/functions/_shared/process-shared.ts", "shared process change");
+    put("VinPoker/supabase/functions/_shared/string-shared.ts", "shared string-name change");
+    put("VinPoker/supabase/functions/_shared/comment-shared.ts", "shared comment change");
+    put("VinPoker/supabase/functions/_shared/dynamic-shared.ts", "shared dynamic change");
+    put("VinPoker/supabase/functions/_shared/tracker-only.ts", "unrelated tracker display change");
     runGit("add", "."); runGit("commit", "-m", "critical A");
     put("README.md", "later unrelated commit");
     runGit("add", "."); runGit("commit", "-m", "unrelated B");
@@ -292,8 +304,227 @@ test("full receipt-to-target diff catches a change hidden behind a later commit"
     const diffs = buildComponentDiffs({ repositoryRoot: root, targetSha: target, baselines, manifest, mainRef: "main" });
     assert.equal(diffs.functions["process-swing"].changed, true);
     assert.deepEqual(diffs.functions["process-swing"].directFiles, ["VinPoker/supabase/functions/process-swing/index.ts"]);
-    assert.deepEqual(diffs.functions["mass-assign"].sharedFiles, ["VinPoker/supabase/functions/_shared/shared.ts"]);
+    assert.deepEqual(diffs.functions["process-swing"].sharedFiles, ["VinPoker/supabase/functions/_shared/process-shared.ts"]);
+    assert.deepEqual(diffs.functions["mass-assign"].sharedFiles, ["VinPoker/supabase/functions/_shared/string-shared.ts"]);
+    assert.deepEqual(diffs.functions["checkout-dealer"].sharedFiles, ["VinPoker/supabase/functions/_shared/comment-shared.ts"]);
+    assert.deepEqual(diffs.functions["ops-club-accounts"].sharedFiles, ["VinPoker/supabase/functions/_shared/dynamic-shared.ts"]);
+    for (const name of ["mass-assign", "checkout-dealer", "ops-club-accounts"]) {
+      assert.equal(diffs.functions[name].changed, true);
+      assert.equal(diffs.functions[name].sharedImportClosure.status, "complete");
+    }
+    for (const name of ["tournament-live-clock"]) {
+      assert.deepEqual(diffs.functions[name].sharedFiles, []);
+      assert.equal(diffs.functions[name].changed, false);
+      assert.equal(diffs.functions[name].sharedImportClosure.status, "complete");
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("non-literal local imports keep shared receipt changes fail-closed", () => {
+  const root = mkdtempSync(join(tmpdir(), "vinpoker-plan-import-unknown-"));
+  const runGit = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+  const put = (path, content) => {
+    const full = join(root, path);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, content);
+  };
+  try {
+    runGit("init", "-b", "main");
+    runGit("config", "user.email", "control-plane@example.invalid");
+    runGit("config", "user.name", "Control Plane Test");
+    put("VinPoker/src/App.tsx", "baseline");
+    put(
+      "VinPoker/supabase/functions/checkout-dealer/index.ts",
+      "const suffix = '.ts'; await import('../_shared/runtime-selected' + suffix);",
+    );
+    put("VinPoker/supabase/functions/_shared/tracker-only.ts", "baseline");
+    runGit("add", "."); runGit("commit", "-m", "baseline");
+    const baseline = runGit("rev-parse", "HEAD");
+    put("VinPoker/supabase/functions/_shared/tracker-only.ts", "changed");
+    runGit("add", "."); runGit("commit", "-m", "shared change");
+    const target = runGit("rev-parse", "HEAD");
+    const baselines = {
+      frontend: { sha: baseline, source: "github_deployment_receipt" },
+      functions: Object.fromEntries(Object.keys(manifest.functions).map((name) => [name, {
+        sha: baseline,
+        source: "github_deployment_receipt",
+      }])),
+    };
+    const diffs = buildComponentDiffs({ repositoryRoot: root, targetSha: target, baselines, manifest, mainRef: "main" });
     assert.equal(diffs.functions["checkout-dealer"].changed, true);
+    assert.deepEqual(diffs.functions["checkout-dealer"].sharedFiles, ["VinPoker/supabase/functions/_shared/tracker-only.ts"]);
+    assert.equal(diffs.functions["checkout-dealer"].sharedImportClosure.status, "conservative");
+    assert.match(diffs.functions["checkout-dealer"].sharedImportClosure.reason, /non-literal dynamic import/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("unresolved local imports keep shared receipt changes fail-closed", () => {
+  const root = mkdtempSync(join(tmpdir(), "vinpoker-plan-import-missing-"));
+  const runGit = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+  const put = (path, content) => {
+    const full = join(root, path);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, content);
+  };
+  try {
+    runGit("init", "-b", "main");
+    runGit("config", "user.email", "control-plane@example.invalid");
+    runGit("config", "user.name", "Control Plane Test");
+    put("VinPoker/src/App.tsx", "baseline");
+    put("VinPoker/supabase/functions/checkout-dealer/index.ts", "import '../_shared/missing.ts';");
+    put("VinPoker/supabase/functions/_shared/tracker-only.ts", "baseline");
+    runGit("add", "."); runGit("commit", "-m", "baseline");
+    const baseline = runGit("rev-parse", "HEAD");
+    put("VinPoker/supabase/functions/_shared/tracker-only.ts", "changed");
+    runGit("add", "."); runGit("commit", "-m", "shared change");
+    const target = runGit("rev-parse", "HEAD");
+    const baselines = {
+      frontend: { sha: baseline, source: "github_deployment_receipt" },
+      functions: Object.fromEntries(Object.keys(manifest.functions).map((name) => [name, {
+        sha: baseline,
+        source: "github_deployment_receipt",
+      }])),
+    };
+    const diffs = buildComponentDiffs({ repositoryRoot: root, targetSha: target, baselines, manifest, mainRef: "main" });
+    assert.equal(diffs.functions["checkout-dealer"].changed, true);
+    assert.deepEqual(diffs.functions["checkout-dealer"].sharedFiles, ["VinPoker/supabase/functions/_shared/tracker-only.ts"]);
+    assert.equal(diffs.functions["checkout-dealer"].sharedImportClosure.status, "conservative");
+    assert.match(diffs.functions["checkout-dealer"].sharedImportClosure.reason, /unresolved local import/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("path traversal and ambiguous local resolutions keep shared receipt changes fail-closed", () => {
+  const cases = [
+    {
+      label: "path traversal",
+      entrypoint: "import '../../../../outside.ts';",
+      reason: /escapes target source root/,
+      extraFiles: {},
+    },
+    {
+      label: "ambiguous extension",
+      entrypoint: "import '../_shared/ambiguous';",
+      reason: /ambiguous local import/,
+      extraFiles: {
+        "VinPoker/supabase/functions/_shared/ambiguous.ts": "baseline",
+        "VinPoker/supabase/functions/_shared/ambiguous/index.ts": "baseline",
+      },
+    },
+  ];
+  for (const fixture of cases) {
+    const root = mkdtempSync(join(tmpdir(), "vinpoker-plan-import-boundary-"));
+    const runGit = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+    const put = (path, content) => {
+      const full = join(root, path);
+      mkdirSync(dirname(full), { recursive: true });
+      writeFileSync(full, content);
+    };
+    try {
+      runGit("init", "-b", "main");
+      runGit("config", "user.email", "control-plane@example.invalid");
+      runGit("config", "user.name", "Control Plane Test");
+      put("VinPoker/src/App.tsx", "baseline");
+      put("VinPoker/supabase/functions/checkout-dealer/index.ts", fixture.entrypoint);
+      for (const [path, source] of Object.entries(fixture.extraFiles)) put(path, source);
+      put("VinPoker/supabase/functions/_shared/tracker-only.ts", "baseline");
+      runGit("add", "."); runGit("commit", "-m", `baseline ${fixture.label}`);
+      const baseline = runGit("rev-parse", "HEAD");
+      put("VinPoker/supabase/functions/_shared/tracker-only.ts", "changed");
+      runGit("add", "."); runGit("commit", "-m", `shared ${fixture.label}`);
+      const target = runGit("rev-parse", "HEAD");
+      const baselines = {
+        frontend: { sha: baseline, source: "github_deployment_receipt" },
+        functions: Object.fromEntries(Object.keys(manifest.functions).map((name) => [name, {
+          sha: baseline,
+          source: "github_deployment_receipt",
+        }])),
+      };
+      const diffs = buildComponentDiffs({ repositoryRoot: root, targetSha: target, baselines, manifest, mainRef: "main" });
+      assert.equal(diffs.functions["checkout-dealer"].changed, true, fixture.label);
+      assert.deepEqual(diffs.functions["checkout-dealer"].sharedFiles, ["VinPoker/supabase/functions/_shared/tracker-only.ts"], fixture.label);
+      assert.equal(diffs.functions["checkout-dealer"].sharedImportClosure.status, "conservative", fixture.label);
+      assert.match(diffs.functions["checkout-dealer"].sharedImportClosure.reason, fixture.reason, fixture.label);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("shared closure is derived from the target commit, not the current worktree", () => {
+  const root = mkdtempSync(join(tmpdir(), "vinpoker-plan-target-sha-"));
+  const runGit = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+  const put = (path, content) => {
+    const full = join(root, path);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, content);
+  };
+  try {
+    runGit("init", "-b", "main");
+    runGit("config", "user.email", "control-plane@example.invalid");
+    runGit("config", "user.name", "Control Plane Test");
+    put("VinPoker/src/App.tsx", "baseline");
+    put("VinPoker/supabase/functions/checkout-dealer/index.ts", "import '../_shared/target-shared.ts';");
+    put("VinPoker/supabase/functions/_shared/target-shared.ts", "baseline");
+    put("VinPoker/supabase/functions/_shared/worktree-only.ts", "baseline");
+    runGit("add", "."); runGit("commit", "-m", "baseline");
+    const baseline = runGit("rev-parse", "HEAD");
+    put("VinPoker/supabase/functions/_shared/target-shared.ts", "target change");
+    runGit("add", "."); runGit("commit", "-m", "target change");
+    const target = runGit("rev-parse", "HEAD");
+    put("VinPoker/supabase/functions/checkout-dealer/index.ts", "import '../_shared/worktree-only.ts';");
+    const baselines = {
+      frontend: { sha: baseline, source: "github_deployment_receipt" },
+      functions: Object.fromEntries(Object.keys(manifest.functions).map((name) => [name, {
+        sha: baseline,
+        source: "github_deployment_receipt",
+      }])),
+    };
+    const diffs = buildComponentDiffs({ repositoryRoot: root, targetSha: target, baselines, manifest, mainRef: "main" });
+    assert.deepEqual(diffs.functions["checkout-dealer"].sharedFiles, ["VinPoker/supabase/functions/_shared/target-shared.ts"]);
+    assert.equal(diffs.functions["checkout-dealer"].sharedImportClosure.status, "complete");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("target-local dependencies outside the legacy shared prefixes require a receipt refresh", () => {
+  const root = mkdtempSync(join(tmpdir(), "vinpoker-plan-local-dependency-"));
+  const runGit = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+  const put = (path, content) => {
+    const full = join(root, path);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, content);
+  };
+  try {
+    runGit("init", "-b", "main");
+    runGit("config", "user.email", "control-plane@example.invalid");
+    runGit("config", "user.name", "Control Plane Test");
+    put("VinPoker/src/App.tsx", "baseline");
+    put("VinPoker/supabase/functions/checkout-dealer/index.ts", "import '../runtime-common.ts';");
+    put("VinPoker/supabase/functions/runtime-common.ts", "baseline");
+    runGit("add", "."); runGit("commit", "-m", "baseline");
+    const baseline = runGit("rev-parse", "HEAD");
+    put("VinPoker/supabase/functions/runtime-common.ts", "changed");
+    runGit("add", "."); runGit("commit", "-m", "target local dependency change");
+    const target = runGit("rev-parse", "HEAD");
+    const baselines = {
+      frontend: { sha: baseline, source: "github_deployment_receipt" },
+      functions: Object.fromEntries(Object.keys(manifest.functions).map((name) => [name, {
+        sha: baseline,
+        source: "github_deployment_receipt",
+      }])),
+    };
+    const diffs = buildComponentDiffs({ repositoryRoot: root, targetSha: target, baselines, manifest, mainRef: "main" });
+    assert.equal(diffs.functions["checkout-dealer"].changed, true);
+    assert.deepEqual(diffs.functions["checkout-dealer"].sharedFiles, []);
+    assert.deepEqual(diffs.functions["checkout-dealer"].dependencyFiles, ["VinPoker/supabase/functions/runtime-common.ts"]);
+    assert.equal(diffs.functions["checkout-dealer"].sharedImportClosure.status, "complete");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
