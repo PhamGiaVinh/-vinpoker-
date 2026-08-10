@@ -158,6 +158,72 @@ const MOCK_DATA_GAPS: readonly DataGapV1[] = [
   },
 ];
 
+const MOCK_OWNER_SCENARIO_DATA_GAPS: readonly DataGapV1[] = Object.freeze([
+  Object.freeze({
+    dataGapId: "gap_owner_scenario_prize_contribution",
+    titleVi: "Prize contribution và fee chưa rõ",
+    detailVi: "Buy-in tổng không cho biết mỗi entry thực sự đóng bao nhiêu vào prize pool, nên chưa thể tính required field.",
+    severity: "critical",
+    blocksRecommendation: true,
+    requiredSourceVi: "Prize contribution và organizer fee tách riêng cho từng entry",
+  }),
+  Object.freeze({
+    dataGapId: "gap_owner_scenario_turnout",
+    titleVi: "Thiếu khoảng turnout có kiểm định",
+    detailVi: "Chưa có forecast hoặc comparable range đã kiểm định cho đúng event, thời điểm và cấu trúc đang hỏi.",
+    severity: "critical",
+    blocksRecommendation: true,
+    requiredSourceVi: "Turnout range từ model hoặc comparable artifact cùng forecast origin",
+  }),
+  Object.freeze({
+    dataGapId: "gap_owner_scenario_costs",
+    titleVi: "Thiếu chi phí vận hành",
+    detailVi: "Chưa có dealer, venue, marketing, staff và các chi phí liên quan để tính lãi hoặc lỗ.",
+    severity: "critical",
+    blocksRecommendation: true,
+    requiredSourceVi: "Cost model hoặc Accounting Control output đã chốt phạm vi",
+  }),
+  Object.freeze({
+    dataGapId: "gap_owner_scenario_capacity",
+    titleVi: "Thiếu cấu trúc và sức chứa",
+    detailVi: "Chưa có flight, bàn, dealer và thời lượng để kiểm tra khả năng phục vụ required field.",
+    severity: "important",
+    blocksRecommendation: true,
+    requiredSourceVi: "Cấu trúc event và capacity plan đã xác nhận",
+  }),
+]);
+
+function isOwnerDraftEconomicsQuestion(question: string): boolean {
+  const normalized = question
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const mentionsGtd = /\bgtd\b/.test(normalized);
+  const asksEconomics = /\blai\b|\blo\b|profit|loss|range|khoang/.test(normalized);
+  return mentionsGtd && (asksEconomics || /\d/.test(normalized));
+}
+
+async function createOwnerScenarioUnavailableContextV1(
+  context: SeriesCopilotContextV1,
+): Promise<SeriesCopilotContextV1> {
+  const evidence = context.evidence.filter((item) => item.metricIds.length > 0);
+  const candidateOptions: readonly SeriesScheduleCandidateV1[] = Object.freeze([]);
+  const scheduleHealth = buildScheduleHealthV1({
+    clubPulse: context.clubPulse,
+    candidateOptions,
+    dataGaps: MOCK_OWNER_SCENARIO_DATA_GAPS,
+    evidence,
+  });
+  return createSeriesCopilotContextV1({
+    asOf: context.asOf,
+    clubPulse: context.clubPulse,
+    scheduleHealth,
+    candidateOptions,
+    dataGaps: MOCK_OWNER_SCENARIO_DATA_GAPS,
+    evidence,
+  });
+}
+
 export async function createMockSeriesCopilotContextV1(clubPulse: ClubPulseV1 = MOCK_PULSE): Promise<SeriesCopilotContextV1> {
   const livePulse = clubPulse.sourceMode === "server_aggregate";
   const pulseAsOf = clubPulse.metrics[0]?.asOf ?? MOCK_AS_OF;
@@ -214,8 +280,28 @@ export async function askMockSeriesCopilotV1(request: MockSeriesCopilotRequestV1
   if (question.length === 0 || question.length > 1_000) throw new Error("Owner question must contain between one and one thousand characters");
   await waitForMockLatency(request.latencyMs ?? 650, request.signal);
 
-  // The untrusted question is intentionally not interpolated into facts or policy. This local adapter proves the
-  // response/validation/UI seam only; a future server provider owns prompt construction and authorization.
+  if (isOwnerDraftEconomicsQuestion(question)) {
+    const context = await createOwnerScenarioUnavailableContextV1(request.context);
+    const rawResponse = {
+      version: "series-v-response-v1",
+      summaryVi: "V nhận ra đây là một phương án mới do chủ CLB nêu trong câu hỏi. Dữ liệu minh họa không có đủ cấu trúc, turnout và chi phí để kết luận lãi, lỗ hoặc khoảng kết quả; V không thay bằng phương án mẫu.",
+      optionAssessments: [],
+      recommendedOptionId: null,
+      missingDataIds: context.dataGaps.map((gap) => gap.dataGapId),
+      evidenceRefs: [],
+      answerStatus: "blocked",
+      humanDecisionRequired: true,
+    };
+    return Object.freeze({
+      adapterVersion: SERIES_COPILOT_MOCK_ADAPTER_VERSION,
+      context,
+      contextHash: context.contextHash,
+      validation: validateVResponseV1(rawResponse, context),
+    });
+  }
+
+  // The untrusted question can select a fail-closed response shape, but is never interpolated into facts or policy.
+  // This local adapter proves the response/validation/UI seam only; the server provider owns live synthesis.
   const rawResponse = {
     version: "series-v-response-v1",
     summaryVi: "V nghiêng về phương án cân bằng, nhưng dữ liệu hiện tại vẫn cần chủ CLB xác nhận trước khi chốt.",

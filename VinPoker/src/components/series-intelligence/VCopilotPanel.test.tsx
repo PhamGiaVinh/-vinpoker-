@@ -65,6 +65,34 @@ describe("VCopilotPanel", () => {
     expect(ask).toHaveBeenCalledTimes(1);
   });
 
+  it("does not answer an owner draft economics question with unrelated canned options", async () => {
+    render(<VCopilotPanel />);
+
+    const question = await screen.findByRole("textbox", { name: "Hỏi V về lịch Series" });
+    fireEvent.change(question, {
+      target: {
+        value: "tôi làm 2.3m gtd 2 billion vietnamdong thì dự đoán lỗ or lãi, khoảng range bao nhiêu",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Hỏi V" }));
+
+    expect(await screen.findByTestId("v-response")).toBeInTheDocument();
+    expect(screen.getByText("V đã kiểm tra câu hỏi")).toBeInTheDocument();
+    expect(screen.getByText(/phương án mới/i)).toBeInTheDocument();
+    expect(screen.getByText("Prize contribution và fee chưa rõ")).toBeInTheDocument();
+    expect(screen.getByText("Thiếu khoảng turnout có kiểm định")).toBeInTheDocument();
+    expect(screen.getByText("Thiếu chi phí vận hành")).toBeInTheDocument();
+    expect(screen.getByText("Thiếu cấu trúc và sức chứa")).toBeInTheDocument();
+    expect(screen.queryByText("Phương án cân bằng cuối tuần")).toBeNull();
+    expect(screen.queryByText("Phương án tăng trưởng")).toBeNull();
+    expect(screen.queryByText("6.000.000.000 ₫", { exact: false })).toBeNull();
+    expect(screen.queryByText("9.000.000.000 ₫", { exact: false })).toBeNull();
+
+    fireEvent.change(question, { target: { value: "Lịch nào cân bằng hơn cho cuối tuần này?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Hỏi V" }));
+    expect(await screen.findByText("Phương án cân bằng cuối tuần")).toBeInTheDocument();
+  });
+
   it("keeps the solving orb visible for ten seconds for a tomorrow attendance forecast", async () => {
     const ask = vi.fn(async (request) => {
       if (!request.context) throw new Error("missing mock context");
