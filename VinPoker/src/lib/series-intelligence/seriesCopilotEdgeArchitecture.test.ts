@@ -26,14 +26,14 @@ describe("V Copilot Edge source boundary", () => {
     expect(handler).not.toContain("process_local_prototype");
   });
 
-  it("wires the browser through the reviewed Edge adapter while keeping both source flags off", () => {
+  it("wires the browser through the reviewed Edge adapter with both rollout flags active", () => {
     const flags = readFileSync(join(process.cwd(), "src", "lib", "featureFlags.ts"), "utf8");
     const client = readFileSync(join(process.cwd(), "src", "lib", "series-intelligence", "seriesCopilotEdgeClient.ts"), "utf8");
     const panel = readFileSync(join(process.cwd(), "src", "components", "series-intelligence", "VCopilotPanel.tsx"), "utf8");
     expect(client).toContain('const FUNCTION_NAME = "series-intelligence-copilot"');
     expect(client).toContain("supabase.functions.invoke(FUNCTION_NAME");
     expect(panel).toContain("askSeriesCopilotEdgeV1");
-    expect(flags).toMatch(/seriesClubPulseV1:\s*false/);
-    expect(flags).toMatch(/seriesVCopilotV1:\s*false/);
+    expect(flags).toMatch(/seriesClubPulseV1:\s*true/);
+    expect(flags).toMatch(/seriesVCopilotV1:\s*true/);
   });
 });
