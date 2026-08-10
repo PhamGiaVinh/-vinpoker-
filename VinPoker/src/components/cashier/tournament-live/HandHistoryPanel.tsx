@@ -7,6 +7,7 @@ import { isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
 import { toast } from "sonner";
 import { FEATURES, isTrackerAtomicResettleAvailable } from "@/lib/featureFlags";
 import { HandEditPanel } from "./HandEditPanel";
+import { HistoricalSettlementDisplayControl } from "./HistoricalSettlementDisplayControl";
 import { buildEditCompletedHandArgs, type HandEditPatch } from "./handEditDiff";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
 import { createHandHistoryLoadGuard } from "./handHistoryLoadGuard";
@@ -676,6 +677,16 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
                 </div>
               </div>
             </div>
+
+            {FEATURES.trackerHistoricalSettlementDisplay && !editMode &&
+              selectedHand.status === "completed" && !selectedHand.is_voided && (
+                <HistoricalSettlementDisplayControl
+                  tournamentId={tournamentId}
+                  handId={selectedHand.id}
+                  handNumber={selectedHand.hand_number}
+                  onVerified={() => { void loadHands(); }}
+                />
+              )}
 
             {editMode ? (
               <>

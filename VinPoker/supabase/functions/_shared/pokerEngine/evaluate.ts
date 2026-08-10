@@ -21,6 +21,11 @@ export interface EvaluatedHand {
   categoryName: HandCategoryName;
 }
 
+/** A deterministic best-five projection for verified replay/display output. */
+export interface EvaluatedBestHand extends EvaluatedHand {
+  bestFive: Card[];
+}
+
 /** Lexicographic compare of two rank vectors. >0 if a beats b, <0 if b beats a, 0 tie. */
 export function compareRankVec(a: number[], b: number[]): number {
   const n = Math.max(a.length, b.length);
@@ -116,6 +121,45 @@ export function evaluateBest(cards: Card[]): EvaluatedHand {
   }
   const rankVec = best!;
   return { rankVec, category: rankVec[0], categoryName: CAT_TO_NAME(rankVec[0]) };
+}
+
+function canonicalFiveKey(cards: readonly Card[]): string {
+  const suitOrder: Record<string, number> = { s: 0, h: 1, d: 2, c: 3 };
+  return [...cards]
+    .sort((left, right) => {
+      const leftCard = parseCard(left);
+      const rightCard = parseCard(right);
+      return rightCard.value - leftCard.value
+        || (suitOrder[leftCard.suit] ?? 99) - (suitOrder[rightCard.suit] ?? 99)
+        || left.localeCompare(right);
+    })
+    .join(",");
+}
+
+/**
+ * Evaluates 5-7 cards and returns the exact five cards used for a public
+ * verified result. Rank ties use a canonical card key so the display does not
+ * depend on the persisted row or action ordering.
+ */
+export function evaluateBestWithCards(cards: Card[]): EvaluatedBestHand {
+  if (cards.length < 5) throw new Error(`evaluateBestWithCards needs >=5 cards, got ${cards.length}`);
+  const fives = cards.length === 5 ? [cards] : combinations(cards, 5);
+  let best: { rankVec: number[]; cards: Card[]; key: string } | null = null;
+  for (const five of fives) {
+    const rankVec = evaluate5(five);
+    const key = canonicalFiveKey(five);
+    if (best === null || compareRankVec(rankVec, best.rankVec) > 0
+      || (compareRankVec(rankVec, best.rankVec) === 0 && key < best.key)) {
+      best = { rankVec, cards: [...five], key };
+    }
+  }
+  const rankVec = best!.rankVec;
+  return {
+    rankVec,
+    category: rankVec[0],
+    categoryName: CAT_TO_NAME(rankVec[0]),
+    bestFive: best!.key.split(",") as Card[],
+  };
 }
 
 /** Convenience: positive if handA beats handB given a shared board. */

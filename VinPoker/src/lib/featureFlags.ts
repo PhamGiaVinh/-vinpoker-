@@ -643,6 +643,13 @@ export const FEATURES = {
    */
   trackerAtomicResettle: false,
   /**
+   * Owner-only verification for completed historical hands. The control asks
+   * the server to prove existing rows before it creates a display outcome for
+   * replay; it never repairs stacks or settles from the browser. Keep OFF until
+   * the migration, Edge path, and controlled TEST UAT are all verified.
+   */
+  trackerHistoricalSettlementDisplay: false,
+  /**
    * Viewer Felt V2 — responsive, CoinPoker-style public spectator poker table.
    * Fixes the mobile bug where hole cards overlap each other / the central board by
    * sizing every card with the felt's own width (CSS container query + clamp), and

@@ -67,6 +67,7 @@ describe("authoritative settlement computation", () => {
       ["trips", "A", "Q"],
       ["trips", "A", "Q"],
     ]);
+    expect(result.publicOutcome.handRanks.every((rank) => rank.bestFive.length === 5)).toBe(true);
     expect(result.publicOutcome).not.toHaveProperty("privateEvidence");
   });
 

@@ -15,6 +15,7 @@ import {
 import {
   compareRankVec,
   evaluateBest,
+  evaluateBestWithCards,
   type HandCategoryName,
 } from "../pokerEngine/evaluate.ts";
 import type { Card } from "../pokerEngine/types.ts";
@@ -173,12 +174,12 @@ function clockwise<T extends { seat_number: number }>(players: readonly T[], but
 function handRank(player: SettlementDbPlayer, board: string[]): PrivateHandRankV1 | null {
   const holeCards = player.hole_cards ?? [];
   if (holeCards.length !== 2 || board.length !== 5) return null;
-  const evaluated = evaluateBest([...holeCards, ...board] as Card[]);
+  const evaluated = evaluateBestWithCards([...holeCards, ...board] as Card[]);
   const kickers = evaluated.rankVec.slice(2).map((value) => RANK_NAME[value] ?? String(value));
   return {
     playerId: player.player_id,
     category: evaluated.categoryName as HandCategoryName,
-    bestFive: [],
+    bestFive: [...evaluated.bestFive],
     kickers,
     isPublic: true,
     holeCards: [...holeCards],
