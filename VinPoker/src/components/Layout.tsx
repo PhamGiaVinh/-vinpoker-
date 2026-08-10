@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade, Coins, Megaphone, UtensilsCrossed, ChefHat, Settings2, Landmark, Calculator, ClipboardList } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade, Coins, Megaphone, UtensilsCrossed, ChefHat, Settings2, Landmark, Calculator, ClipboardList, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
@@ -266,10 +266,16 @@ export const Layout = () => {
                     </DropdownMenuItem>
                   )}
                   {(isTracker || isAdmin || isClubOwner) && (
-                    <DropdownMenuItem onClick={() => nav("/tracker")} className="gap-2.5 cursor-pointer">
-                      <Radio className="w-4 h-4" />
-                      Tracker
-                    </DropdownMenuItem>
+                    <>
+                      <DropdownMenuItem onClick={() => nav("/tracker")} className="gap-2.5 cursor-pointer">
+                        <Radio className="w-4 h-4" />
+                        Tracker
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => nav("/tracker/history")} className="gap-2.5 cursor-pointer">
+                        <History className="w-4 h-4" />
+                        Lịch sử & sửa hand
+                      </DropdownMenuItem>
+                    </>
                   )}
                   {(isCashier || isClubOwner || isAdmin) && (
                     <DropdownMenuItem onClick={() => nav("/cashier")} className="gap-2.5 cursor-pointer">

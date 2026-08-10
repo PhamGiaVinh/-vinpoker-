@@ -650,6 +650,12 @@ export const FEATURES = {
    */
   trackerHistoricalSettlementDisplay: true,
   /**
+   * Batch commit for independently verified historical display outcomes. The
+   * workspace may always run a read-only preview scan, but this write CTA stays
+   * OFF until owner UAT proves the full tournament/table/hand workflow.
+   */
+  trackerHistoricalSettlementBulk: false,
+  /**
    * Viewer Felt V2 — responsive, CoinPoker-style public spectator poker table.
    * Fixes the mobile bug where hole cards overlap each other / the central board by
    * sizing every card with the felt's own width (CSS container query + clamp), and

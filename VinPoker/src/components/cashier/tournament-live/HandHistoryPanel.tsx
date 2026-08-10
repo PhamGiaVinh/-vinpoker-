@@ -2,12 +2,15 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ExternalLink, History, RefreshCw, Wrench } from "lucide-react";
+import { Link } from "react-router-dom";
 import { isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
 import { toast } from "sonner";
 import { FEATURES, isTrackerAtomicResettleAvailable } from "@/lib/featureFlags";
 import { HandEditPanel } from "./HandEditPanel";
 import { HistoricalSettlementDisplayControl } from "./HistoricalSettlementDisplayControl";
+import { HistoricalSettlementBatchControl } from "./HistoricalSettlementBatchControl";
+import type { HistoricalSettlementBatchCandidate } from "@/lib/tracker-poker/historicalSettlementBatch";
 import { buildEditCompletedHandArgs, type HandEditPatch } from "./handEditDiff";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
 import { createHandHistoryLoadGuard } from "./handHistoryLoadGuard";
@@ -22,9 +25,16 @@ import type { EditedTargetHand, ResettleBlock, ResettleForwardResult, ResettleOk
 /** Read ALL rows of a query in pages (PostgREST caps a single select, commonly at 1000).
  *  A money-path replay must NEVER run on a silently-truncated chain, so callers page with a
  *  UNIQUE total order (else a non-unique order can skip/dupe rows at page boundaries). */
-async function pageAll<T = any>(
-  makeQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>,
-): Promise<{ data: T[]; error: any }> {
+type PagedError = { message: string };
+type PagedQuery<T> = PromiseLike<{ data: T[] | null; error: PagedError | null }>;
+
+function asPagedQuery<T>(query: unknown): PagedQuery<T> {
+  return query as PagedQuery<T>;
+}
+
+async function pageAll<T>(
+  makeQuery: (from: number, to: number) => PagedQuery<T>,
+): Promise<{ data: T[]; error: PagedError | null }> {
   const PAGE = 1000;
   let from = 0;
   const acc: T[] = [];
@@ -39,8 +49,19 @@ async function pageAll<T = any>(
   return { data: acc, error: null };
 }
 
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function chunkArray<T>(items: readonly T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size));
+  return chunks;
+}
+
 interface HandRecord {
   id: string;
+  table_id: string | null;
   hand_number: number;
   hand_time: string;
   community_cards: string[];
@@ -69,6 +90,73 @@ interface HandRecord {
     player_id: string;
     entry_number: number;
   }[];
+}
+
+type HandQueryRow = {
+  id: string;
+  hand_number: number;
+  hand_time: string | null;
+  community_cards: unknown;
+  pot_size: number | null;
+  status: string | null;
+  is_voided: boolean | null;
+  created_at: string;
+  table_id: string | null;
+  button_seat: number | null;
+};
+
+type HandPlayerQueryRow = {
+  id: string;
+  hand_id: string;
+  player_id: string;
+  entry_number: number | null;
+  seat_number: number;
+  starting_stack: number;
+  ending_stack: number | null;
+  is_eliminated: boolean | null;
+  hole_cards: unknown;
+  player_name?: string | null;
+};
+
+type HandActionQueryRow = {
+  id: string;
+  hand_id: string;
+  player_id: string;
+  entry_number: number | null;
+  street: string | null;
+  action_type: string;
+  action_amount: number | null;
+  action_order: number;
+};
+
+export type HandHistorySelection = {
+  tableId: string | null;
+  handId: string | null;
+};
+
+type HandHistoryPanelProps = {
+  tournamentId: string;
+  initialTableId?: string | null;
+  initialHandId?: string | null;
+  onSelectionChange?: (selection: HandHistorySelection) => void;
+  workspaceMode?: boolean;
+  enableHistoricalBatchControls?: boolean;
+};
+
+type TrackerTableOption = {
+  id: string;
+  physicalId: string | null;
+  name: string;
+};
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function textValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
 const STREET_ORDER = ["preflop", "flop", "turn", "river", "showdown"];
@@ -100,9 +188,16 @@ function formatActionLabel(a: HandRecord["actions"][0]): string {
   return `${t} ${formatStack(a.action_amount)}`;
 }
 
-export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
+export function HandHistoryPanel({
+  tournamentId,
+  initialTableId = null,
+  initialHandId = null,
+  onSelectionChange,
+  workspaceMode = false,
+  enableHistoricalBatchControls = false,
+}: HandHistoryPanelProps) {
   const [hands, setHands] = useState<HandRecord[]>([]);
-  const [selectedHandId, setSelectedHandId] = useState<string | null>(null);
+  const [selectedHandId, setSelectedHandId] = useState<string | null>(initialHandId);
   const [loading, setLoading] = useState(false);
   // F2 — completed-hand editor (flag trackerHandHistoryEdit). editSupported degrades to
   // false on a 42883 (RPC not applied) so the button hides honestly.
@@ -110,8 +205,8 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
   const [editSupported, setEditSupported] = useState(true);
   const [savingEdit, setSavingEdit] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedTableId, setSelectedTableId] = useState<string>("all");
-  const [tables, setTables] = useState<{ id: string; name: string }[]>([]);
+  const [selectedTableId, setSelectedTableId] = useState<string>(initialTableId || "all");
+  const [tables, setTables] = useState<TrackerTableOption[]>([]);
   const loadGuardRef = useRef<ReturnType<typeof createHandHistoryLoadGuard> | null>(null);
   if (!loadGuardRef.current) loadGuardRef.current = createHandHistoryLoadGuard();
   // Đợt G3 — resettle-forward (chips). resettleSupported degrades to false on a 42883
@@ -132,19 +227,50 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
   } | null>(null);
 
   useEffect(() => {
+    setSelectedTableId(initialTableId || "all");
+    setSelectedHandId(initialHandId);
+    setEditMode(false);
+    setResettleView(null);
+  }, [initialHandId, initialTableId, tournamentId]);
+
+  useEffect(() => {
     if (!tournamentId) return;
-    supabase
-      .rpc("get_tournament_tables", { p_tournament_id: tournamentId })
-      .then(({ data }) => {
-        if (data) {
-          setTables(
-            (Array.isArray(data) ? data : []).map((t: any) => ({
-              id: t.table_id,
-              name: t.table_name || t.table_id.slice(0, 8),
-            }))
-          );
-        }
+    let cancelled = false;
+    void (async () => {
+      const { data: v2Data, error: v2Error } = await supabase.rpc(
+        "list_tracker_tables_v2" as never,
+        { p_tournament_id: tournamentId } as never,
+      );
+      if (cancelled) return;
+      const v2 = record(v2Data as unknown);
+      if (!v2Error && v2?.ok === true && Array.isArray(v2.tables)) {
+        const options = v2.tables.flatMap((item): TrackerTableOption[] => {
+          const row = record(item);
+          const id = textValue(row?.tournament_table_id);
+          if (!id) return [];
+          return [{
+            id,
+            physicalId: textValue(row?.physical_table_id),
+            name: textValue(row?.table_name) ?? "Bàn chưa đặt tên",
+          }];
+        });
+        setTables(options);
+        setSelectedTableId((current) => options.find((table) => table.physicalId === current)?.id ?? current);
+        return;
+      }
+
+      // Environments without Unified Ops V2 still have the legacy read-only table RPC.
+      const { data: legacyData } = await supabase.rpc("get_tournament_tables", { p_tournament_id: tournamentId });
+      if (cancelled) return;
+      const options = (Array.isArray(legacyData) ? legacyData : []).flatMap((item): TrackerTableOption[] => {
+        const row = record(item);
+        const physicalId = textValue(row?.table_id);
+        if (!physicalId) return [];
+        return [{ id: physicalId, physicalId, name: textValue(row?.table_name) ?? "Bàn chưa đặt tên" }];
       });
+      setTables(options);
+    })();
+    return () => { cancelled = true; };
   }, [tournamentId]);
 
   const loadHands = useCallback(async () => {
@@ -154,18 +280,21 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
     setLoading(true);
     setLoadError(null);
 
-    let query = supabase
-      .from("tournament_hands")
-      .select("id, hand_number, hand_time, community_cards, pot_size, status, is_voided, created_at, table_id, button_seat")
-      .eq("tournament_id", tournamentId)
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (selectedTableId !== "all") {
-      query = query.eq("table_id", selectedTableId);
-    }
-
-    const { data: handRows, error } = await query;
+    const { data: handRows, error } = await pageAll<HandQueryRow>((from, to) => {
+      let query = supabase
+        .from("tournament_hands")
+        .select("id, hand_number, hand_time, community_cards, pot_size, status, is_voided, created_at, table_id, button_seat")
+        .eq("tournament_id", tournamentId)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to);
+      if (selectedTableId !== "all") {
+        const selectedTable = tables.find((table) => table.id === selectedTableId || table.physicalId === selectedTableId);
+        const tableIds = [...new Set([selectedTableId, selectedTable?.id, selectedTable?.physicalId].filter((id): id is string => !!id))];
+        query = tableIds.length === 1 ? query.eq("table_id", tableIds[0]) : query.in("table_id", tableIds);
+      }
+      return asPagedQuery<HandQueryRow>(query);
+    });
     if (!isCurrentLoad()) return;
     if (error || !handRows) {
       setLoadError(error?.message ?? "Không tải được dữ liệu");
@@ -174,7 +303,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
       return;
     }
 
-    const handIds = handRows.map((h: any) => h.id);
+    const handIds = handRows.map((hand) => hand.id);
     if (handIds.length === 0) {
       setHands([]);
       setLoading(false);
@@ -186,82 +315,105 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
     // tournament_seats roster only for old rows the snapshot didn't capture.
     const snap = await handPlayersHasSnapshot();
     if (!isCurrentLoad()) return;
-    const baseHpCols = "hand_id, player_id, entry_number, seat_number, starting_stack, ending_stack, is_eliminated, hole_cards";
-    const [playersRes, actionsRes] = await Promise.all([
-      supabase
-        .from("hand_players")
-        .select(snap ? `${baseHpCols}, player_name` : baseHpCols)
-        .in("hand_id", handIds),
-      supabase
-        .from("hand_actions")
-        .select("hand_id, player_id, entry_number, street, action_type, action_amount, action_order")
-        .in("hand_id", handIds)
-        .order("action_order"),
-    ]);
-    if (!isCurrentLoad()) return;
-    const historyError = playersRes.error || actionsRes.error;
-    if (historyError) {
-      setLoadError(historyError.message || "Không tải được chi tiết hand");
-      setHands([]);
-      setLoading(false);
-      return;
+    const baseHpCols = "id, hand_id, player_id, entry_number, seat_number, starting_stack, ending_stack, is_eliminated, hole_cards";
+    const playerRows: HandPlayerQueryRow[] = [];
+    const actionRows: HandActionQueryRow[] = [];
+    for (const handIdBatch of chunkArray(handIds, 80)) {
+      const [playersRes, actionsRes] = await Promise.all([
+        pageAll<HandPlayerQueryRow>((from, to) => asPagedQuery<HandPlayerQueryRow>(supabase
+          .from("hand_players")
+          .select(snap ? `${baseHpCols}, player_name` : baseHpCols)
+          .in("hand_id", handIdBatch)
+          .order("hand_id", { ascending: true })
+          .order("player_id", { ascending: true })
+          .order("entry_number", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to))),
+        pageAll<HandActionQueryRow>((from, to) => asPagedQuery<HandActionQueryRow>(supabase
+          .from("hand_actions")
+          .select("id, hand_id, player_id, entry_number, street, action_type, action_amount, action_order")
+          .in("hand_id", handIdBatch)
+          .order("hand_id", { ascending: true })
+          .order("action_order", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to))),
+      ]);
+      if (!isCurrentLoad()) return;
+      const historyError = playersRes.error || actionsRes.error;
+      if (historyError) {
+        setLoadError(historyError.message || "Không tải được chi tiết hand");
+        setHands([]);
+        setLoading(false);
+        return;
+      }
+      playerRows.push(...playersRes.data);
+      actionRows.push(...actionsRes.data);
     }
 
-    const needIds = (playersRes.data || []).filter((p: any) => !p.player_name).map((p: any) => p.player_id);
+    const needIds = playerRows.filter((player) => !player.player_name).map((player) => player.player_id);
     const display = await fetchHandPlayerDisplay(tournamentId, needIds);
     if (!isCurrentLoad()) return;
-    const nameMap = new Map<string, string>();
-    (playersRes.data || []).forEach((p: any) => {
-      nameMap.set(p.player_id, p.player_name || display.get(p.player_id)?.name || p.player_id.slice(0, 6));
-    });
-
-    const playerMap = new Map<string, any[]>();
-    (playersRes.data || []).forEach((p: any) => {
-      if (!playerMap.has(p.hand_id)) playerMap.set(p.hand_id, []);
-      playerMap.get(p.hand_id)!.push({
-        player_id: p.player_id,
-        display_name: nameMap.get(p.player_id) || p.player_id.slice(0, 6),
-        seat_number: p.seat_number,
-        starting_stack: p.starting_stack,
-        ending_stack: p.ending_stack,
-        is_eliminated: p.is_eliminated,
-        hole_cards: p.hole_cards || [],
-        entry_number: p.entry_number,
+    const identityMap = new Map<string, { name: string; seat: number }>();
+    const playerIdentityKey = (handId: string, playerId: string, entryNumber: number | null | undefined) => `${handId}:${playerId}:${entryNumber ?? 1}`;
+    playerRows.forEach((player) => {
+      identityMap.set(playerIdentityKey(player.hand_id, player.player_id, player.entry_number), {
+        name: player.player_name || display.get(player.player_id)?.name || `Người chơi ghế ${player.seat_number}`,
+        seat: player.seat_number,
       });
     });
 
-    const actionMap = new Map<string, any[]>();
-    (actionsRes.data || []).forEach((a: any) => {
-      if (!actionMap.has(a.hand_id)) actionMap.set(a.hand_id, []);
-      actionMap.get(a.hand_id)!.push({
-        street: a.street || "preflop",
-        display_name: nameMap.get(a.player_id) || a.player_id.slice(0, 6),
-        seat_number: 0,
-        action_type: a.action_type,
-        action_amount: a.action_amount,
-        action_order: a.action_order,
-        player_id: a.player_id,
-        entry_number: a.entry_number ?? 1,
+    const playerMap = new Map<string, HandRecord["players"]>();
+    playerRows.forEach((player) => {
+      if (!playerMap.has(player.hand_id)) playerMap.set(player.hand_id, []);
+      const identity = identityMap.get(playerIdentityKey(player.hand_id, player.player_id, player.entry_number));
+      playerMap.get(player.hand_id)!.push({
+        player_id: player.player_id,
+        display_name: identity?.name || `Người chơi ghế ${player.seat_number}`,
+        seat_number: player.seat_number,
+        starting_stack: player.starting_stack,
+        ending_stack: player.ending_stack ?? 0,
+        is_eliminated: !!player.is_eliminated,
+        hole_cards: stringArray(player.hole_cards),
+        entry_number: player.entry_number ?? 1,
       });
     });
 
-    const handRecords: HandRecord[] = handRows.map((h: any) => ({
-      id: h.id,
-      hand_number: h.hand_number,
-      hand_time: h.hand_time,
-      community_cards: h.community_cards || [],
-      pot_size: h.pot_size || 0,
-      status: h.status || "completed",
-      is_voided: h.is_voided || false,
-      created_at: h.created_at,
-      button_seat: h.button_seat,
-      players: playerMap.get(h.id) || [],
-      actions: actionMap.get(h.id) || [],
+    const actionMap = new Map<string, HandRecord["actions"]>();
+    actionRows.forEach((action) => {
+      if (!actionMap.has(action.hand_id)) actionMap.set(action.hand_id, []);
+      const identity = identityMap.get(playerIdentityKey(action.hand_id, action.player_id, action.entry_number))
+        ?? [...identityMap.entries()].find(([key]) => key.startsWith(`${action.hand_id}:${action.player_id}:`))?.[1];
+      actionMap.get(action.hand_id)!.push({
+        street: action.street || "preflop",
+        display_name: identity?.name || "Người chơi",
+        seat_number: identity?.seat ?? 0,
+        action_type: action.action_type,
+        action_amount: action.action_amount ?? 0,
+        action_order: action.action_order,
+        player_id: action.player_id,
+        entry_number: action.entry_number ?? 1,
+      });
+    });
+
+    const handRecords: HandRecord[] = handRows.map((hand) => ({
+      id: hand.id,
+      table_id: hand.table_id ?? null,
+      hand_number: hand.hand_number,
+      hand_time: hand.hand_time ?? hand.created_at,
+      community_cards: stringArray(hand.community_cards),
+      pot_size: hand.pot_size || 0,
+      status: hand.status || "completed",
+      is_voided: hand.is_voided || false,
+      created_at: hand.created_at,
+      button_seat: hand.button_seat ?? undefined,
+      players: playerMap.get(hand.id) || [],
+      actions: actionMap.get(hand.id) || [],
     }));
 
     setHands(handRecords);
+    setSelectedHandId((current) => current && handRecords.some((hand) => hand.id === current) ? current : null);
     setLoading(false);
-  }, [tournamentId, selectedTableId]);
+  }, [selectedTableId, tables, tournamentId]);
 
   useEffect(() => {
     void loadHands();
@@ -553,23 +705,63 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
   };
 
   const selectedHand = hands.find((h) => h.id === selectedHandId);
+  const tableNameById = new Map(tables.flatMap((table) => [
+    [table.id, table.name] as const,
+    ...(table.physicalId ? [[table.physicalId, table.name] as const] : []),
+  ]));
+  const settlementCandidates: HistoricalSettlementBatchCandidate[] = hands
+    .filter((hand) => hand.status === "completed" && !hand.is_voided)
+    .map((hand) => ({
+      handId: hand.id,
+      handNumber: hand.hand_number,
+      tableId: hand.table_id,
+      tableName: hand.table_id ? tableNameById.get(hand.table_id) ?? null : null,
+    }));
+
+  const selectHand = (handId: string) => {
+    setSelectedHandId(handId);
+    setEditMode(false);
+    setResettleView(null);
+    onSelectionChange?.({
+      tableId: selectedTableId === "all" ? null : selectedTableId,
+      handId,
+    });
+  };
+
+  const selectTable = (tableId: string) => {
+    setSelectedTableId(tableId);
+    setSelectedHandId(null);
+    onSelectionChange?.({ tableId: tableId === "all" ? null : tableId, handId: null });
+  };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3">
+    <div className="space-y-3">
+      {FEATURES.trackerHistoricalSettlementDisplay && enableHistoricalBatchControls && settlementCandidates.length > 0 && (
+        <HistoricalSettlementBatchControl
+          tournamentId={tournamentId}
+          candidates={settlementCandidates}
+          onSelectHand={selectHand}
+          onCommitted={() => { void loadHands(); }}
+        />
+      )}
+
+      <div className={`grid grid-cols-1 gap-3 ${workspaceMode ? "xl:grid-cols-[320px_minmax(0,1fr)]" : "lg:grid-cols-[280px_1fr]"}`}>
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold">Hand History</div>
-          <Button size="sm" variant="outline" onClick={loadHands} disabled={loading} className="h-7 text-xs">
-            {loading ? "..." : "Refresh"}
+          <div className="flex items-center gap-2 text-sm font-semibold"><History className="h-4 w-4 text-emerald-300" /> Lịch sử hand</div>
+          <Button size="sm" variant="outline" onClick={loadHands} disabled={loading} className="min-h-11 text-xs">
+            <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            {loading ? "Đang tải" : "Làm mới"}
           </Button>
         </div>
 
         <select
-          className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs"
+          className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
           value={selectedTableId}
-          onChange={(e) => setSelectedTableId(e.target.value)}
+          onChange={(event) => selectTable(event.target.value)}
+          aria-label="Lọc lịch sử theo bàn"
         >
-          <option value="all">All Tables</option>
+          <option value="all">Tất cả bàn</option>
           {tables.map((t) => (
             <option key={t.id} value={t.id}>{t.name}</option>
           ))}
@@ -587,13 +779,13 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
 
         <div className="space-y-1 max-h-[600px] overflow-y-auto pr-1">
           {hands.length === 0 && !loading && !loadError && (
-            <div className="text-xs text-muted-foreground text-center py-8 italic">No hands recorded yet</div>
+            <div className="py-8 text-center text-xs italic text-muted-foreground">Chưa có hand nào được ghi</div>
           )}
           {hands.map((hand) => (
             <button
               key={hand.id}
-              onClick={() => setSelectedHandId(hand.id)}
-              className={`w-full text-left p-2 rounded-lg border text-xs transition-all ${
+              onClick={() => selectHand(hand.id)}
+              className={`min-h-14 w-full rounded-lg border p-2.5 text-left text-xs transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
                 selectedHandId === hand.id
                   ? "border-emerald-500/50 bg-emerald-950/20"
                   : "border-border/30 bg-card hover:border-border/60"
@@ -612,7 +804,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
                     hand.status === "in_progress" ? "bg-amber-500/20 text-amber-400" :
                     "bg-red-500/20 text-red-400"
                   }`}>
-                    {hand.status}
+                    {hand.status === "completed" ? "Hoàn tất" : hand.status === "in_progress" ? "Đang nhập" : hand.status}
                   </span>
                 </div>
               </div>
@@ -625,10 +817,10 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
               <div className="text-[10px] text-muted-foreground mt-0.5">
                 {new Date(hand.hand_time || hand.created_at).toLocaleTimeString()}
                 {" · "}
-                {hand.players.length} players
+                {hand.players.length} người chơi
                 {hand.players.filter((p) => p.is_eliminated).length > 0 && (
                   <span className="text-red-400 ml-1">
-                    · {hand.players.filter((p) => p.is_eliminated).length} elim
+                    · {hand.players.filter((p) => p.is_eliminated).length} bị loại
                   </span>
                 )}
               </div>
@@ -640,8 +832,8 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
       <div className="space-y-3">
         {selectedHand ? (
           <>
-            <div className="flex items-center justify-between p-3 bg-card border border-border/30 rounded-lg">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-3 rounded-lg border border-border/30 bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-3">
                 <div className="text-base font-bold">
                   Hand #{selectedHand.hand_number}
                 </div>
@@ -653,7 +845,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
                   selectedHand.status === "in_progress" ? "bg-amber-500/20 text-amber-400" :
                   "bg-red-500/20 text-red-400"
                 }`}>
-                  {selectedHand.status}
+                  {selectedHand.status === "completed" ? "Hoàn tất" : selectedHand.status === "in_progress" ? "Đang nhập" : selectedHand.status}
                 </span>
                 {selectedHand.button_seat && (
                   <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-amber-500/20 text-amber-400">
@@ -661,18 +853,23 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button asChild type="button" variant="outline" size="sm" className="min-h-11">
+                  <Link to={`/live/${tournamentId}?tab=hands&handId=${selectedHand.id}${selectedHand.table_id ? `&tableId=${selectedHand.table_id}` : ""}`}>
+                    <ExternalLink className="mr-2 h-4 w-4" /> Xem replay
+                  </Link>
+                </Button>
                 {FEATURES.trackerHandHistoryEdit && editSupported && !editMode &&
                   selectedHand.status === "completed" && !selectedHand.is_voided && (
-                    <button
+                    <Button
                       type="button"
                       onClick={() => setEditMode(true)}
-                      className="text-[11px] font-medium text-emerald-300 border border-emerald-500/50 rounded px-2 py-1 hover:bg-emerald-500/10"
+                      className="min-h-11 bg-emerald-400 font-semibold text-emerald-950 hover:bg-emerald-300"
                     >
-                      Sửa hand
-                    </button>
+                      <Wrench className="mr-2 h-4 w-4" /> Sửa dữ liệu hand
+                    </Button>
                   )}
-                <div className="text-xs text-muted-foreground">
+                <div className="w-full text-xs text-muted-foreground sm:w-auto">
                   {new Date(selectedHand.hand_time || selectedHand.created_at).toLocaleString()}
                 </div>
               </div>
@@ -807,9 +1004,10 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
           </>
         ) : (
           <Card className="p-10 text-center">
-            <div className="text-muted-foreground text-sm">Select a hand to view details</div>
+            <div className="text-sm text-muted-foreground">Chọn một hand để xem chi tiết hoặc chỉnh sửa</div>
           </Card>
         )}
+      </div>
       </div>
     </div>
   );
@@ -831,7 +1029,7 @@ export function ResettlePreview({
   onConfirm: () => void;
   onClose: () => void;
 }) {
-  const nameOf = (pid: string) => players.find((p) => p.player_id === pid)?.display_name ?? pid.slice(0, 6);
+  const nameOf = (pid: string) => players.find((p) => p.player_id === pid)?.display_name ?? "Người chơi";
   const result = view.result;
   const blocked = !result.ok ? result as ResettleBlock : null;
   const needsManual = blocked?.reason === "needs_manual_winner";
