@@ -1,5 +1,6 @@
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { posix as path } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadDeploymentManifest, resolveTargetContracts } from "./deployment-manifest.mjs";
 import { selectTargetContractProfile } from "./target-contract-profile.mjs";
@@ -8,6 +9,9 @@ const SHARED_PREFIXES = [
   "VinPoker/supabase/functions/_shared/",
   "VinPoker/supabase/functions/_staking_shared/",
 ];
+
+const LOCAL_IMPORT_EXTENSIONS = [".ts", ".tsx", ".js", ".mjs", ".json"];
+const TARGET_SOURCE_PREFIX = "VinPoker/";
 
 const FRONTEND_PREFIXES = ["VinPoker/src/", "VinPoker/public/"];
 const FRONTEND_FILES = new Set([
@@ -82,6 +86,231 @@ function sourceAtCommit(repositoryRoot, sha, path) {
   }
 }
 
+function isIdentifierStart(char) {
+  const code = char.charCodeAt(0);
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || char === "_" || char === "$";
+}
+
+function isIdentifierPart(char) {
+  const code = char.charCodeAt(0);
+  return isIdentifierStart(char) || (code >= 48 && code <= 57);
+}
+
+function readQuotedModuleString(source, start) {
+  const quote = source[start];
+  let index = start + 1;
+  let value = "";
+  let escaped = false;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === quote) return { index: index + 1, token: { type: "string", value, escaped } };
+    if (char === "\\") {
+      escaped = true;
+      if (index + 1 >= source.length) return { error: "unterminated escape in string literal" };
+      index += 2;
+      continue;
+    }
+    if (char === "\r" || char === "\n") return { error: "unterminated string literal" };
+    value += char;
+    index += 1;
+  }
+  return { error: "unterminated string literal" };
+}
+
+function readTemplateLiteral(source, start) {
+  let index = start + 1;
+  while (index < source.length) {
+    if (source[index] === "\\") {
+      index += 2;
+      continue;
+    }
+    if (source[index] === "`") {
+      return {
+        index: index + 1,
+        hasModuleKeyword: /\b(?:import|export)\b/.test(source.slice(start + 1, index)),
+      };
+    }
+    index += 1;
+  }
+  return { error: "unterminated template literal" };
+}
+
+function lexModuleTokens(source) {
+  const tokens = [];
+  let index = 0;
+  while (index < source.length) {
+    const char = source[index];
+    if (/\s/.test(char)) {
+      index += 1;
+      continue;
+    }
+    if (char === "/" && source[index + 1] === "/") {
+      index = source.indexOf("\n", index + 2);
+      if (index === -1) break;
+      continue;
+    }
+    if (char === "/" && source[index + 1] === "*") {
+      const end = source.indexOf("*/", index + 2);
+      if (end === -1) return { error: "unterminated block comment" };
+      index = end + 2;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      const string = readQuotedModuleString(source, index);
+      if (string.error) return string;
+      tokens.push(string.token);
+      index = string.index;
+      continue;
+    }
+    if (char === "`") {
+      const template = readTemplateLiteral(source, index);
+      if (template.error) return template;
+      if (template.hasModuleKeyword) return { error: "template literal may contain a module expression" };
+      index = template.index;
+      continue;
+    }
+    if (isIdentifierStart(char)) {
+      const start = index;
+      index += 1;
+      while (index < source.length && isIdentifierPart(source[index])) index += 1;
+      tokens.push({ type: "identifier", value: source.slice(start, index) });
+      continue;
+    }
+    tokens.push({ type: "punctuation", value: char });
+    index += 1;
+  }
+  return { tokens };
+}
+
+function addModuleSpecifier({ token, localSpecifiers }) {
+  if (token.escaped) return { error: "escaped module specifier cannot be resolved safely" };
+  if (token.value.startsWith(".")) localSpecifiers.add(token.value);
+  return null;
+}
+
+function findFromModuleSpecifier(tokens, start) {
+  for (let index = start; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token.type === "punctuation" && token.value === ";") return null;
+    if (token.type === "identifier" && (token.value === "import" || token.value === "export")) return null;
+    if (token.type === "identifier" && token.value === "from" && tokens[index + 1]?.type === "string") {
+      return tokens[index + 1];
+    }
+  }
+  return null;
+}
+
+function collectLocalModuleSpecifiers(source) {
+  const lexed = lexModuleTokens(source);
+  if (lexed.error) return { complete: false, localSpecifiers: [], reason: lexed.error };
+  const localSpecifiers = new Set();
+  for (let index = 0; index < lexed.tokens.length; index += 1) {
+    const token = lexed.tokens[index];
+    if (token.type !== "identifier") continue;
+    if (token.value === "import") {
+      const next = lexed.tokens[index + 1];
+      if (!next || (next.type === "punctuation" && next.value === ".")) continue;
+      if (next.type === "punctuation" && next.value === "(") {
+        const specifier = lexed.tokens[index + 2];
+        if (specifier?.type !== "string") {
+          return { complete: false, localSpecifiers: [...localSpecifiers], reason: "non-literal dynamic import" };
+        }
+        const afterSpecifier = lexed.tokens[index + 3];
+        if (afterSpecifier?.type !== "punctuation" || afterSpecifier.value !== ")") {
+          return { complete: false, localSpecifiers: [...localSpecifiers], reason: "non-literal dynamic import" };
+        }
+        const error = addModuleSpecifier({ token: specifier, localSpecifiers });
+        if (error) return { complete: false, localSpecifiers: [...localSpecifiers], reason: error.error };
+        continue;
+      }
+      if (next.type === "string") {
+        const error = addModuleSpecifier({ token: next, localSpecifiers });
+        if (error) return { complete: false, localSpecifiers: [...localSpecifiers], reason: error.error };
+        continue;
+      }
+      const specifier = findFromModuleSpecifier(lexed.tokens, index + 1);
+      if (!specifier) {
+        return { complete: false, localSpecifiers: [...localSpecifiers], reason: "unrecognized static import" };
+      }
+      const error = addModuleSpecifier({ token: specifier, localSpecifiers });
+      if (error) return { complete: false, localSpecifiers: [...localSpecifiers], reason: error.error };
+      continue;
+    }
+    if (token.value === "export") {
+      const specifier = findFromModuleSpecifier(lexed.tokens, index + 1);
+      if (!specifier) continue;
+      const error = addModuleSpecifier({ token: specifier, localSpecifiers });
+      if (error) return { complete: false, localSpecifiers: [...localSpecifiers], reason: error.error };
+    }
+  }
+  return { complete: true, localSpecifiers: [...localSpecifiers] };
+}
+
+function createTargetSourceReader(repositoryRoot, targetSha) {
+  const files = new Set(git(repositoryRoot, ["ls-tree", "-r", "--name-only", targetSha])
+    .split(/\r?\n/)
+    .map(normalizePath)
+    .filter(Boolean));
+  const sourceCache = new Map();
+  return {
+    has(path) {
+      return files.has(normalizePath(path));
+    },
+    source(path) {
+      const normalized = normalizePath(path);
+      if (!files.has(normalized)) return null;
+      if (!sourceCache.has(normalized)) sourceCache.set(normalized, sourceAtCommit(repositoryRoot, targetSha, normalized));
+      return sourceCache.get(normalized);
+    },
+  };
+}
+
+function resolveLocalImportAtCommit({ sourceReader, importerPath, specifier }) {
+  const candidate = path.normalize(path.join(path.dirname(importerPath), specifier));
+  if (!candidate.startsWith(TARGET_SOURCE_PREFIX)) {
+    return { error: `local import escapes target source root: ${specifier} from ${importerPath}` };
+  }
+  const candidates = path.extname(candidate)
+    ? [candidate]
+    : [candidate, ...LOCAL_IMPORT_EXTENSIONS.map((extension) => `${candidate}${extension}`), path.join(candidate, "index.ts")];
+  const matches = candidates.filter((candidatePath) => sourceReader.has(candidatePath));
+  if (matches.length !== 1) {
+    return {
+      error: matches.length === 0
+        ? `unresolved local import ${specifier} from ${importerPath}`
+        : `ambiguous local import ${specifier} from ${importerPath}`,
+    };
+  }
+  return { path: matches[0] };
+}
+
+function inspectTargetImportClosure({ sourceReader, entrypoint }) {
+  const pending = [entrypoint];
+  const visited = new Set();
+  while (pending.length > 0) {
+    const importerPath = pending.pop();
+    if (visited.has(importerPath)) continue;
+    const source = sourceReader.source(importerPath);
+    if (source === null) return { complete: false, files: [...visited].sort(), reason: `missing source ${importerPath}` };
+    visited.add(importerPath);
+
+    const imports = collectLocalModuleSpecifiers(source);
+    if (!imports.complete) {
+      return {
+        complete: false,
+        files: [...visited].sort(),
+        reason: `${imports.reason} in ${importerPath}`,
+      };
+    }
+    for (const specifier of imports.localSpecifiers) {
+      const imported = resolveLocalImportAtCommit({ sourceReader, importerPath, specifier });
+      if (imported.error) return { complete: false, files: [...visited].sort(), reason: imported.error };
+      pending.push(imported.path);
+    }
+  }
+  return { complete: true, files: [...visited].sort(), reason: null };
+}
+
 function inspectRetainedCompatibility(repositoryRoot, receiptSha, gate) {
   const evidenceFiles = [];
   const missingEvidenceFiles = [];
@@ -105,6 +334,7 @@ function inspectRetainedCompatibility(repositoryRoot, receiptSha, gate) {
 export function buildComponentDiffs({ repositoryRoot, targetSha, baselines, manifest, mainRef = "origin/main" }) {
   verifyCommitOnMain(repositoryRoot, targetSha, mainRef);
   const result = { frontend: null, functions: {} };
+  const targetSource = createTargetSourceReader(repositoryRoot, targetSha);
 
   const frontendReceipt = receiptFor(baselines, "frontend");
   if (frontendReceipt?.sha) verifyCommitOnMain(repositoryRoot, frontendReceipt.sha, mainRef);
@@ -121,12 +351,28 @@ export function buildComponentDiffs({ repositoryRoot, targetSha, baselines, mani
   for (const [name, config] of Object.entries(manifest.functions)) {
     const receipt = receiptFor(baselines, name);
     if (receipt?.sha) verifyCommitOnMain(repositoryRoot, receipt.sha, mainRef);
-    const targetHasEntrypoint = sourceAtCommit(repositoryRoot, targetSha, `${config.path}/index.ts`) !== null;
+    const targetHasEntrypoint = targetSource.source(`${config.path}/index.ts`) !== null;
+    const importClosure = targetHasEntrypoint && receipt?.sha
+      ? inspectTargetImportClosure({ sourceReader: targetSource, entrypoint: `${config.path}/index.ts` })
+      : { complete: true, files: [], reason: "not_needed" };
+    // Keep the complete direct function tree in scope (including tests and
+    // configuration) and add the exact target-SHA local import closure. An
+    // unknown closure cannot safely narrow the receipt diff, so all VinPoker
+    // source is retained for that function until its imports are explicit.
+    const diffScope = importClosure.complete
+      ? [...new Set([config.path, ...importClosure.files])]
+      : [TARGET_SOURCE_PREFIX];
     const files = targetHasEntrypoint && receipt?.sha
-      ? diffFiles(repositoryRoot, receipt.sha, targetSha, [config.path, ...SHARED_PREFIXES])
+      ? diffFiles(repositoryRoot, receipt.sha, targetSha, diffScope)
       : [];
     const directFiles = files.filter((path) => path === config.path || path.startsWith(`${config.path}/`));
     const sharedFiles = files.filter((path) => SHARED_PREFIXES.some((prefix) => path.startsWith(prefix)));
+    // A direct function diff is always relevant. Shared diffs are relevant only
+    // when the target entrypoint imports them; arbitrary local dependencies
+    // outside the historical shared prefixes are also tracked through the same
+    // target-SHA closure. If that proof cannot be built, the full source diff
+    // is retained so the deployment gate fails closed.
+    const dependencyFiles = files.filter((path) => !directFiles.includes(path) && !sharedFiles.includes(path));
     result.functions[name] = {
       baselineSha: receipt?.sha ?? null,
       baselineSource: receipt?.source ?? "missing",
@@ -134,9 +380,15 @@ export function buildComponentDiffs({ repositoryRoot, targetSha, baselines, mani
       // A target predating this function must retain the existing receipt rather
       // than being forced to deploy source it does not contain. A present target
       // without a receipt remains changed and therefore manual-only.
-      changed: targetHasEntrypoint && (receipt?.sha ? directFiles.length > 0 || sharedFiles.length > 0 : true),
+      changed: targetHasEntrypoint && (receipt?.sha ? directFiles.length > 0 || sharedFiles.length > 0 || dependencyFiles.length > 0 : true),
       directFiles,
       sharedFiles,
+      dependencyFiles,
+      sharedImportClosure: {
+        status: importClosure.complete ? "complete" : "conservative",
+        reachableFiles: importClosure.files,
+        reason: importClosure.reason,
+      },
       retainedCompatibility: config.retainedFrontendCompatibility
         ? inspectRetainedCompatibility(repositoryRoot, receipt?.sha ?? null, config.retainedFrontendCompatibility)
         : null,
@@ -325,12 +577,12 @@ function enrichPlan(plan) {
 export function renderPlanSummary(plan) {
   const rows = Object.entries(plan.components.functions)
     .filter(([, item]) => item.changed || item.selected)
-    .map(([name, item]) => `| Edge ${name} | ${item.baselineSha ?? "MISSING"} | ${item.directFiles.length} | ${item.sharedFiles.length} | ${item.selected ? "selected" : "held"} | ${item.verifyJwt ? "verify" : "no-verify"} | ${item.contractCount} |`);
+    .map(([name, item]) => `| Edge ${name} | ${item.baselineSha ?? "MISSING"} | ${item.directFiles.length} | ${item.sharedFiles.length} | ${(item.dependencyFiles ?? []).length} | ${item.selected ? "selected" : "held"} | ${item.verifyJwt ? "verify" : "no-verify"} | ${item.contractCount} |`);
   const fullDiffs = [
     ["Frontend", plan.components.frontend.baselineSha, plan.components.frontend.files],
     ...Object.entries(plan.components.functions)
       .filter(([, item]) => item.changed || item.selected)
-      .map(([name, item]) => [`Edge ${name}`, item.baselineSha, [...item.directFiles, ...item.sharedFiles]]),
+      .map(([name, item]) => [`Edge ${name}`, item.baselineSha, [...item.directFiles, ...item.sharedFiles, ...(item.dependencyFiles ?? [])]]),
   ].flatMap(([label, baselineSha, files]) => [
     `<details><summary>${label} full diff</summary>`,
     "",
@@ -371,8 +623,8 @@ export function renderPlanSummary(plan) {
       .map(([name, files]) => `${name}=${files.join("|")}`)
       .join("; ")}\``,
     "",
-    "| Component | Receipt baseline | Direct diff | Shared diff | Decision | JWT | Contracts |",
-    "|---|---:|---:|---:|---|---|---:|",
+    "| Component | Receipt baseline | Direct diff | Shared diff | Imported dependency diff | Decision | JWT | Contracts |",
+    "|---|---:|---:|---:|---:|---|---|---:|",
     ...rows,
     "",
     "### Full receipt-to-target diffs",
