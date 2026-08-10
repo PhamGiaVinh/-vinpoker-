@@ -99,5 +99,6 @@ describe("Ops module runtime registry", () => {
     expect(digest.clubCapabilityPredicate(emptyRow(owner.club_id))).toBe(false);
     expect(isOpsModuleFeatureEnabled(digest, { development: false })).toBe(false);
     expect(isOpsModuleFeatureEnabled(digest, { development: true })).toBe(true);
+    expect(isOpsModuleFeatureEnabled(digest, { development: false, superAdmin: true })).toBe(true);
   });
 });
