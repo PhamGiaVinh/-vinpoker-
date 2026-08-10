@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { askMockSeriesCopilotV1, createMockSeriesCopilotContextV1 } from "@/lib/series-intelligence/seriesCopilotMockAdapter";
 import { VCopilotPanel } from "./VCopilotPanel";
@@ -12,6 +12,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -51,6 +52,34 @@ describe("VCopilotPanel", () => {
     expect(screen.getByText("V đang nghiêng về")).toBeInTheDocument();
     expect(screen.queryByText(/optimal GTD|chance of overlay|probability/i)).toBeNull();
     expect(ask).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the solving orb visible for ten seconds for a tomorrow attendance forecast", async () => {
+    const ask = vi.fn(async (request) => {
+      if (!request.context) throw new Error("missing mock context");
+      return askMockSeriesCopilotV1({ ...request, latencyMs: 0 });
+    });
+    render(<VCopilotPanel ask={ask} />);
+
+    const question = await screen.findByRole("textbox", { name: "Hỏi V về lịch Series" });
+    vi.useFakeTimers();
+    fireEvent.change(question, { target: { value: "Ngày mai có bao nhiêu khách tới chơi?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Hỏi V" }));
+
+    expect(screen.getByTestId("v-thinking-indicator")).toBeInTheDocument();
+    expect(screen.getByText("V đang chuẩn bị dự báo khách ngày mai…")).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(9_999);
+    });
+    expect(screen.getByTestId("v-thinking-indicator")).toBeInTheDocument();
+    expect(screen.queryByTestId("v-response")).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByTestId("v-response")).toBeInTheDocument();
+    expect(screen.queryByTestId("v-thinking-indicator")).toBeNull();
   });
 
   it("has an accessible live status and no editable money field", async () => {

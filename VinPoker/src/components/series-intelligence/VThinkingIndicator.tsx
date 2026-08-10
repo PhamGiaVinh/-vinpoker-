@@ -1,6 +1,8 @@
 import { ThinkingOrb } from "thinking-orbs";
 
-export function VThinkingIndicator() {
+export function VThinkingIndicator({ mode = "general" }: { mode?: "general" | "tomorrow-attendance" }) {
+  const isTomorrowAttendance = mode === "tomorrow-attendance";
+
   return (
     <div
       role="status"
@@ -12,8 +14,12 @@ export function VThinkingIndicator() {
         <div className="absolute inset-1 rounded-full border border-primary/20" />
         <ThinkingOrb state="solving" size={64} speed={3} theme="dark" aria-label="V is thinking" />
       </div>
-      <p className="text-sm font-medium text-foreground" aria-hidden="true">V is thinking…</p>
-      <span className="sr-only">V đang tổng hợp bằng chứng…</span>
+      <p className="text-sm font-medium text-foreground" aria-hidden="true">
+        {isTomorrowAttendance ? "V đang chuẩn bị dự báo khách ngày mai…" : "V is thinking…"}
+      </p>
+      <span className="sr-only">
+        {isTomorrowAttendance ? "V đang chuẩn bị kết quả dự báo khách ngày mai." : "V đang tổng hợp bằng chứng…"}
+      </span>
     </div>
   );
 }
