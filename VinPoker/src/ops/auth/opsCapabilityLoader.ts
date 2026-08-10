@@ -67,8 +67,25 @@ function rpcError(label: string, error: OpsRpcError): Error {
   return result;
 }
 
+function isFreshJwtClockSkew(error: OpsRpcError | null): boolean {
+  return error?.code === "PGRST303"
+    && typeof error.message === "string"
+    && /jwt issued at future/iu.test(error.message);
+}
+
+async function loadUnifiedScopeWithOneClockSkewRetry(client: OpsRpcClient) {
+  const first = await client.rpc("get_my_ops_capability_scope");
+  if (!isFreshJwtClockSkew(first.error)) return first;
+
+  // A freshly-issued browser token can briefly precede the REST gateway clock
+  // in a local/disposable stack. Retry only this identified, non-authority
+  // error once; every other error remains fail-closed below.
+  await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+  return client.rpc("get_my_ops_capability_scope");
+}
+
 export async function loadOpsCapabilities(client: OpsRpcClient): Promise<LoadedOpsCapabilities> {
-  const scopeResult = await client.rpc("get_my_ops_capability_scope");
+  const scopeResult = await loadUnifiedScopeWithOneClockSkewRetry(client);
   if (scopeResult.error?.code === "42883") {
     const legacyResult = await client.rpc("get_my_floor_operator_scope");
     if (legacyResult.error) throw rpcError("legacy capability", legacyResult.error);

@@ -45,9 +45,11 @@ foreach ($excluded in @(
 
 $relativeMigrationTarget = $targetMigrations.Substring($repoRoot.Length).TrimStart('\', '/').Replace('\', '/')
 $catalogPatch = Join-Path $compatRoot 'catalog.patch'
-& git -C $repoRoot apply --check --directory=$relativeMigrationTarget $catalogPatch
+# Catalog migrations are SQL text. Preserve the TEST-only semantic transforms while
+# allowing harmless CRLF/final-newline normalization in the canonical catalog.
+& git -C $repoRoot apply --check --ignore-space-change --directory=$relativeMigrationTarget $catalogPatch
 if ($LASTEXITCODE -ne 0) { throw 'Compatibility patch check failed; canonical catalog changed.' }
-& git -C $repoRoot apply --directory=$relativeMigrationTarget $catalogPatch
+& git -C $repoRoot apply --ignore-space-change --directory=$relativeMigrationTarget $catalogPatch
 if ($LASTEXITCODE -ne 0) { throw 'Compatibility patch apply failed.' }
 
 Copy-Item -LiteralPath (Join-Path $compatRoot '20260604999999_test_compat_dealer_assignments_club_id.sql') -Destination $targetMigrations -Force
