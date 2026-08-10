@@ -14379,6 +14379,10 @@ export type Database = {
         Args: { p_club_id?: string; p_from: string; p_to: string }
         Returns: Json
       }
+      get_latest_owner_daily_digest_artifact: {
+        Args: { p_business_date?: string; p_club_id: string }
+        Returns: Json
+      }
       get_club_payout_liability: {
         Args: { p_club_id?: string; p_from: string; p_to: string }
         Returns: Json

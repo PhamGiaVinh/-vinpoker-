@@ -4,7 +4,6 @@ import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { OwnerDailyDigestView, type OwnerDigestViewState } from "@/ops/digest/OwnerDailyDigestView";
 import {
   loadOwnerDailyDigestReport,
-  unavailableOwnerDailyDigestSource,
   type OwnerDailyDigestReadSource,
 } from "@/ops/digest/ownerDailyDigestReadAdapter";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
@@ -68,7 +67,8 @@ async function resolveReadSource(): Promise<OwnerDailyDigestReadSource> {
     const fixture = await import("@/ops/digest/ownerDailyDigestFixtures");
     return fixture.ownerDailyDigestFixtureSource;
   }
-  return unavailableOwnerDailyDigestSource;
+  const source = await import("@/ops/digest/ownerDailyDigestSupabaseRuntimeSource");
+  return source.ownerDailyDigestSupabaseSource;
 }
 
 function safeErrorCode(error: unknown): string {
