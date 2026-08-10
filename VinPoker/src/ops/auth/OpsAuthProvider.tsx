@@ -15,8 +15,7 @@ type OpsAuthContextValue = {
   session: Session | null;
   user: User | null;
   loading: boolean;
-  signInWithPassword: (email: string, password: string) => Promise<string | null>;
-  signOutLocal: () => Promise<string | null>;
+  signOutCurrentSession: () => Promise<string | null>;
 };
 
 const OpsAuthContext = createContext<OpsAuthContextValue | null>(null);
@@ -48,22 +47,14 @@ export function OpsAuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signInWithPassword = useCallback(async (email: string, password: string) => {
-    const { error } = await opsClient.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    return error?.message ?? null;
-  }, []);
-
-  const signOutLocal = useCallback(async () => {
+  const signOutCurrentSession = useCallback(async () => {
     try {
       const { error } = await opsClient.auth.signOut({ scope: "local" });
-      if (error) return "Không thể đăng xuất phiên Ops. Vui lòng thử lại.";
+      if (error) return "Không thể đăng xuất phiên hiện tại. Vui lòng thử lại.";
       setSession(null);
       return null;
     } catch {
-      return "Không thể đăng xuất phiên Ops. Vui lòng thử lại.";
+      return "Không thể đăng xuất phiên hiện tại. Vui lòng thử lại.";
     }
   }, []);
 
@@ -72,10 +63,9 @@ export function OpsAuthProvider({ children }: { children: ReactNode }) {
       session,
       user: session?.user ?? null,
       loading,
-      signInWithPassword,
-      signOutLocal,
+      signOutCurrentSession,
     }),
-    [loading, session, signInWithPassword, signOutLocal],
+    [loading, session, signOutCurrentSession],
   );
 
   return (

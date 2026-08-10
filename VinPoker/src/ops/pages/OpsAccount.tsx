@@ -45,7 +45,7 @@ function capabilityLabels(row: OpsClubCapabilityRow): string[] {
 export default function OpsAccount() {
   const client = useSupabaseClient();
   const rpcClient = client as unknown as OpsRpcClient;
-  const { user, signOutLocal } = useOpsAuth();
+  const { user, signOutCurrentSession } = useOpsAuth();
   const capabilities = useOpsCapabilities();
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -104,10 +104,10 @@ export default function OpsAccount() {
       <Card className="border-white/10 bg-white/[0.035] text-white">
         <CardHeader>
           <CardTitle className="text-lg">
-            {user?.email ?? "Tài khoản Ops"}
+            {user?.email ?? "Tài khoản"}
           </CardTitle>
           <CardDescription className="text-zinc-400">
-            Phiên này độc lập với app người chơi trên cùng thiết bị.
+            Ops dùng chung phiên đăng nhập với ứng dụng chính trên cùng thiết bị.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
@@ -197,10 +197,10 @@ export default function OpsAccount() {
         variant="outline"
         className="min-h-11 w-full border-white/10 bg-transparent text-white"
         onClick={() => {
-          void signOutLocal().then(setSignOutError);
+          void signOutCurrentSession().then(setSignOutError);
         }}
       >
-        Đăng xuất riêng phiên Ops
+        Đăng xuất tài khoản trên thiết bị này
       </Button>
       {signOutError && <p className="text-sm text-rose-300">{signOutError}</p>}
     </div>
