@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade, Coins, Megaphone, UtensilsCrossed, ChefHat, Settings2, Landmark, Calculator } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade, Coins, Megaphone, UtensilsCrossed, ChefHat, Settings2, Landmark, Calculator, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
@@ -26,6 +26,7 @@ import { MyQrSheet } from "@/components/MyQrSheet";
 import { LogoFanButton } from "@/components/LogoFanButton";
 import { RegisteredBadge } from "@/components/RegisteredBadge";
 import { FEATURES } from "@/lib/featureFlags";
+import { canShowOwnerDailyDigestMenu } from "@/ops/digest/ownerDailyDigestMenuGate";
 import appLogo from "@/assets/app-logo.png";
 
 const tabsData = [
@@ -252,6 +253,18 @@ export const Layout = () => {
                 <DropdownMenuContent align="end" className="w-52">
                   <DropdownMenuLabel>{t("layout.operations")}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  {canShowOwnerDailyDigestMenu({
+                    isAdmin,
+                    isClubOwner,
+                    featureEnabled: FEATURES.ownerDailyDigestWebReport,
+                  }) && (
+                    <DropdownMenuItem asChild className="gap-2.5 cursor-pointer">
+                      <a href="/ops/daily-digest">
+                        <ClipboardList className="w-4 h-4" />
+                        Báo cáo ngày
+                      </a>
+                    </DropdownMenuItem>
+                  )}
                   {(isTracker || isAdmin || isClubOwner) && (
                     <DropdownMenuItem onClick={() => nav("/tracker")} className="gap-2.5 cursor-pointer">
                       <Radio className="w-4 h-4" />

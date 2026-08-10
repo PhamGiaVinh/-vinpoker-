@@ -241,20 +241,21 @@ export function getOpsModuleByPath(pathname: string): OpsModuleDefinition | null
 
 export function getAvailableOpsModules(scope: OpsScopeSnapshot): OpsModuleDefinition[] {
   return OPS_MODULE_REGISTRY.filter((module) => (
-    isOpsModuleFeatureEnabled(module) && module.capabilityPredicate(scope)
+    isOpsModuleFeatureEnabled(module, { superAdmin: scope.global.is_super_admin })
+    && module.capabilityPredicate(scope)
   ));
 }
 
 export function isOpsModuleFeatureEnabled(
   module: OpsModuleDefinition,
-  options: { development?: boolean; features?: typeof FEATURES } = {},
+  options: { development?: boolean; superAdmin?: boolean; features?: typeof FEATURES } = {},
 ): boolean {
   if (!module.featureFlag) return true;
-  // The Digest's canonical TEST fixture is intentionally available only to the local
-  // development server. Production builds remain governed by the default-OFF flag.
+  // Local development and authenticated Super Admins may preview the Digest while
+  // ordinary club Owners remain governed by the default-OFF production flag.
   const development = options.development ?? import.meta.env.DEV;
   const features = options.features ?? FEATURES;
-  if (development && module.id === "daily-digest") return true;
+  if ((development || options.superAdmin === true) && module.id === "daily-digest") return true;
   return features[module.featureFlag] === true;
 }
 
