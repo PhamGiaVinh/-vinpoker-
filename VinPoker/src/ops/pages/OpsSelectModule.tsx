@@ -3,6 +3,7 @@ import {
   Banknote,
   Boxes,
   CalendarRange,
+  ClipboardList,
   ChefHat,
   CircleDollarSign,
   Grid3X3,
@@ -37,6 +38,7 @@ const ICONS: Record<OpsModuleId, LucideIcon> = {
   fnb: ChefHat,
   marketing: Megaphone,
   "chip-ops": Boxes,
+  "daily-digest": ClipboardList,
   finance: CircleDollarSign,
   accountant: CircleDollarSign,
   series: CalendarRange,
@@ -161,5 +163,12 @@ function StatusLabel({ state, label }: { state: OpsModuleDefinition["defaultStat
     : state === "READ_ONLY"
       ? "border-sky-300/20 bg-sky-300/8 text-sky-200"
       : "border-amber-300/20 bg-amber-300/8 text-amber-200";
-  return <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold tracking-wide ${color}`}>{label ?? state}</span>;
+  const friendlyLabel = state === "LIVE"
+    ? "Đang dùng"
+    : state === "READ_ONLY"
+      ? "Chỉ đọc"
+      : state === "DISABLED"
+        ? "Đang tắt"
+        : "Chưa đủ contract";
+  return <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold tracking-wide ${color}`}>{label ?? friendlyLabel}</span>;
 }

@@ -68,7 +68,7 @@ test("Ops Control Deck renders the conservative registry without horizontal over
   await expect(page.getByRole("heading", { name: "Một lối vào cho mọi công việc vận hành" })).toBeVisible();
   await expect(page.getByText("Kế toán vận hành", { exact: true })).toBeVisible();
   await expect(page.getByText("ACCOUNTANT_PAYROLL_GUARD_NOT_LIVE", { exact: true })).toBeHidden();
-  await expect(page.getByRole("button", { name: "Mở" })).toHaveCount(8);
+  await expect(page.getByRole("button", { name: "Mở" })).toHaveCount(9);
   for (const viewport of [
     { width: 360, height: 800 },
     { width: 390, height: 844 },

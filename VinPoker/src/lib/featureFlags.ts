@@ -3,6 +3,13 @@
 // owner's production UAT passes (plan: Seat Floor Cashier UX, 2026-06-13).
 export const FEATURES = {
   /**
+   * Owner Daily Digest web report — owner-only, read-only surface in VinPoker Ops.
+   * Source and DEV fixture UI may ship while this remains OFF. Production activation
+   * requires a separately approved, server-authorized read boundary for the persisted
+   * Digest artifact; the browser never recalculates rake/F&B/payout/payroll.
+   */
+  ownerDailyDigestWebReport: false,
+  /**
    * Cashier "Đăng ký giải" tab — confirm a PENDING online registration → auto-draw
    * seat → receipt (via the live confirm_registration_and_assign_seat RPC).
    * ENABLED in production 2026-06-14 after preview UAT passed (#148). Visible to all
