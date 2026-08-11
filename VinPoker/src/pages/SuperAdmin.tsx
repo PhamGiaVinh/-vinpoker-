@@ -21,6 +21,7 @@ import { SpreadPnL } from "@/components/admin/SpreadPnL";
 import { AdminSupportTab } from "@/components/admin/AdminSupportTab";
 import { AdminStreamManager } from "@/components/admin/AdminStreamManager";
 import { PokerIqQuestionsEditor } from "@/components/admin/PokerIqQuestionsEditor";
+import { withTournamentCreateLiveStatus } from "@/lib/tournamentCreateCompatibility";
 import { cn } from "@/lib/utils";
 
 const REGIONS = ["TP.HCM", "Hanoi", "Da Nang", "Hai Phong", "Can Tho"];
@@ -622,11 +623,11 @@ const NewTournamentDialog = ({ clubs, onCreated }: { clubs: any[]; onCreated: ()
   const [f, setF] = useState({ club_id: "", name: "", start_time: "", buy_in: 1000000, starting_stack: 20000, location: "", description: "", game_type: "nlh" });
   const submit = async () => {
     if (!f.club_id || !f.name || !f.start_time) return toast.error("Please fill all required fields");
-    const { error } = await supabase.from("tournaments").insert({
+    const { error } = await supabase.from("tournaments").insert(withTournamentCreateLiveStatus({
       club_id: f.club_id, name: f.name, start_time: new Date(f.start_time).toISOString(),
       buy_in: Number(f.buy_in), starting_stack: Number(f.starting_stack),
       location: f.location, description: f.description, game_type: f.game_type,
-    });
+    }));
     if (error) toast.error(error.message); else { toast.success("Tournament created"); setOpen(false); onCreated(); }
   };
   return (

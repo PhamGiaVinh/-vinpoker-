@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Trash2, ImagePlus, Wand2, CheckCircle2, AlertCircle, Images } from "lucide-react";
+import { withTournamentCreateLiveStatus } from "@/lib/tournamentCreateCompatibility";
 import type { ClubRow } from "./TournamentManagerShared";
 
 // Bulk-create regular tournaments from a schedule IMAGE (by day / by week) on the Floor.
@@ -113,7 +114,7 @@ export function BulkScheduleDialog({ clubs, defaultClubId, multiClub, onCreated 
       // tournaments.schedule_upload_id — is NOT applied to the live DB, so sending it made the whole
       // insert fail with "Could not find the 'schedule_upload_id' column ... in the schema cache".
       // Nothing reads this column in the app. Re-add it once that migration is applied (owner-gated).
-      const payload = rows.map((r) => ({
+      const payload = rows.map((r) => withTournamentCreateLiveStatus({
         name: r.name.trim(),
         start_time: new Date(r.start_time).toISOString(),
         buy_in: r.buy_in,

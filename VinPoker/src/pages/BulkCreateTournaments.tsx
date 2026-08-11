@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, Upload, Trash2, ImagePlus, Wand2, CheckCircle2, AlertCircle, ArrowLeft } from "lucide-react";
+import { withTournamentCreateLiveStatus } from "@/lib/tournamentCreateCompatibility";
 
 type Status = "pending" | "processing" | "done" | "error";
 
@@ -153,7 +154,7 @@ export default function BulkCreateTournaments() {
     // tournaments.schedule_upload_id for push-notification grouping) is NOT applied to the live DB,
     // so sending it fails the insert with "column not found in schema cache". Nothing reads it in the
     // app. Re-add once that migration is applied (owner-gated). Same fix as BulkScheduleDialog.tsx.
-    const payload = rows.map(r => ({
+    const payload = rows.map(r => withTournamentCreateLiveStatus({
       name: r.name.trim(),
       start_time: new Date(r.start_time).toISOString(),
       buy_in: r.buy_in,

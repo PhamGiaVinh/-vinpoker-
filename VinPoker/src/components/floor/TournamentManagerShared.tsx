@@ -16,6 +16,7 @@ import { LiveStateEditor } from "@/components/LiveStateEditor";
 import { BlindEditorPanel } from "@/components/cashier/tournament-live/BlindEditorPanel";
 import { formatDateTime, formatVND } from "@/lib/format";
 import { BLIND_PRESETS, type BlindLevel, type BlindTemplate } from "@/lib/blindPresets";
+import { withTournamentCreateLiveStatus } from "@/lib/tournamentCreateCompatibility";
 import { useAuth } from "@/hooks/useAuth";
 
 // Shared building blocks for the Floor tournament boards (Daily + Multi-day) and the
@@ -391,7 +392,7 @@ export const NewTournamentDialog = ({
     if (!clubId) return toast.error("Chọn câu lạc bộ");
     setBusy(true);
     try {
-      const { data: created, error } = await supabase.from("tournaments").insert({
+      const { data: created, error } = await supabase.from("tournaments").insert(withTournamentCreateLiveStatus({
         club_id: clubId, name: f.name, start_time: new Date(f.start_time).toISOString(),
         buy_in: Number(f.buy_in), rake_amount: Number(f.rake_amount) || 0,
         ...(FEATURES.tournamentServiceFee ? { service_fee_amount: Number(f.service_fee_amount) || 0 } : {}),
@@ -399,7 +400,7 @@ export const NewTournamentDialog = ({
         starting_stack: Number(f.starting_stack),
         location: f.location, description: f.description, game_type: f.game_type,
         minutes_per_level: Number(f.minutes_per_level), late_reg_close_level: Number(f.late_reg_close_level),
-      }).select("id").single();
+      })).select("id").single();
       if (error) { toast.error(error.message); return; }
       if (FEATURES.blindTemplates && blindChoice !== "none" && created?.id) {
         const levels = resolveLevels(blindChoice);

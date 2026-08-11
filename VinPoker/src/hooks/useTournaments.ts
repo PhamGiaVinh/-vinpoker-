@@ -4,6 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
+import { withTournamentCreateLiveStatus } from "@/lib/tournamentCreateCompatibility";
 import type { Tournament, TournamentWithTables } from "@/types/tournament";
 
 // ─── Query key factory ──────────────────────────────────────────────────────
@@ -105,11 +106,11 @@ export function useCreateTournament() {
       // 1. Create tournament
       const { data: tournament, error: tournamentError } = await supabase
         .from("tournaments")
-        .insert({
+        .insert(withTournamentCreateLiveStatus({
           ...tournamentData,
           warn_at_minutes: input.warn_at_minutes ?? 5,
           crit_at_minutes: input.crit_at_minutes ?? 2,
-        })
+        }))
         .select()
         .single();
 
