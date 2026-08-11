@@ -31,7 +31,7 @@ export function OwnerDailyDigestView({
   refreshing: boolean;
   environmentLabel?: string;
   onRefresh: () => void;
-  onChangeClub: () => void;
+  onChangeClub?: () => void;
 }) {
   const report = state.kind === "ready" ? state.report : null;
   return (
@@ -51,10 +51,12 @@ export function OwnerDailyDigestView({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={onChangeClub}
-              className="flex min-h-11 items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-[#d7e3dc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">
-              <Repeat2 className="h-4 w-4" aria-hidden="true" /> Đổi CLB
-            </button>
+            {onChangeClub && (
+              <button type="button" onClick={onChangeClub}
+                className="flex min-h-11 items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-[#d7e3dc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">
+                <Repeat2 className="h-4 w-4" aria-hidden="true" /> Đổi CLB
+              </button>
+            )}
             <button type="button" onClick={onRefresh} disabled={refreshing}
               data-ops-action="daily-digest.refresh"
               className="flex min-h-11 items-center gap-2 rounded-2xl border border-emerald-300/20 bg-emerald-300/8 px-4 text-sm font-semibold text-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:opacity-50">

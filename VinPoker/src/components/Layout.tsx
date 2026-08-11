@@ -259,10 +259,10 @@ export const Layout = () => {
                     featureEnabled: FEATURES.ownerDailyDigestWebReport,
                   }) && (
                     <DropdownMenuItem asChild className="gap-2.5 cursor-pointer">
-                      <a href="/ops/daily-digest">
+                      <NavLink to="/club/admin/daily-digest">
                         <ClipboardList className="w-4 h-4" />
                         Báo cáo ngày
-                      </a>
+                      </NavLink>
                     </DropdownMenuItem>
                   )}
                   {(isTracker || isAdmin || isClubOwner) && (
