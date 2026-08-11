@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, Radio, RefreshCw } from "lucide-react";
+import { AlertTriangle, History, Radio, RefreshCw } from "lucide-react";
 import TournamentLivePanel from "@/components/cashier/TournamentLivePanel";
 
 type ClubRow = { id: string; name: string };
@@ -31,7 +31,7 @@ export default function TrackerDashboard() {
         setClubsError(idsError.message);
         return;
       }
-      const idArr = (ids ?? []).map((r: any) => (typeof r === "string" ? r : r.tracker_club_ids ?? r));
+      const idArr = (ids ?? []).filter((clubId): clubId is string => typeof clubId === "string");
       if (!idArr.length) { setClubsError(null); setClubs([]); return; }
       const { data: cs, error: clubsErr } = await supabase.from("clubs").select("id, name").in("id", idArr);
       if (clubsErr) {
@@ -85,13 +85,18 @@ export default function TrackerDashboard() {
 
   return (
     <div className="container mx-auto p-3 md:p-6">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 text-emerald-400 rounded-md text-xs font-bold border border-emerald-500/30">
-          <Radio className="w-3.5 h-3.5" /> LIVE TRACKER
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 text-emerald-400 rounded-md text-xs font-bold border border-emerald-500/30">
+            <Radio className="w-3.5 h-3.5" /> LIVE TRACKER
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {clubs.length === 1 ? clubs[0].name : `${clubs.length} CLB`}
+          </div>
         </div>
-        <div className="text-sm text-muted-foreground">
-          {clubs.length === 1 ? clubs[0].name : `${clubs.length} CLB`}
-        </div>
+        <Button type="button" variant="outline" className="min-h-11 border-amber-500/35 text-amber-200" onClick={() => nav("/tracker/history")}>
+          <History className="mr-2 h-4 w-4" /> Lịch sử & sửa hand
+        </Button>
       </div>
       <TournamentLivePanel mode="tracker" clubIds={clubIds} clubs={clubs} />
     </div>

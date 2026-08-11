@@ -5,10 +5,12 @@ import { FEATURES } from "@/lib/featureFlags";
 
 const panel = readFileSync(resolve(process.cwd(), "src/components/cashier/tournament-live/HandHistoryPanel.tsx"), "utf8");
 const control = readFileSync(resolve(process.cwd(), "src/components/cashier/tournament-live/HistoricalSettlementDisplayControl.tsx"), "utf8");
+const batchControl = readFileSync(resolve(process.cwd(), "src/components/cashier/tournament-live/HistoricalSettlementBatchControl.tsx"), "utf8");
 
 describe("historical settlement display capability", () => {
   it("enables the historical Edge caller only outside the legacy edit path", () => {
     expect(FEATURES.trackerHistoricalSettlementDisplay).toBe(true);
+    expect(FEATURES.trackerHistoricalSettlementBulk).toBe(false);
     expect(panel).toContain("FEATURES.trackerHistoricalSettlementDisplay && !editMode");
   });
 
@@ -20,5 +22,7 @@ describe("historical settlement display capability", () => {
     expect(control).toContain("idempotency_key: preview.idempotencyKey");
     expect(control).not.toMatch(/\bwinner_id\s*:/);
     expect(control).not.toMatch(/\bending_stack\s*:/);
+    expect(batchControl).not.toMatch(/\bwinner_id\s*:/);
+    expect(batchControl).not.toMatch(/\bending_stack\s*:/);
   });
 });
