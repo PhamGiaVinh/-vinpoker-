@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
@@ -22,6 +22,8 @@ interface Stream {
 
 interface Tour { id: string; name: string; }
 
+const changedExactlyOneStream = (data: { id: string }[] | null) => data?.length === 1;
+
 export const StreamLinkManager = ({ clubId }: { clubId: string }) => {
   const { user } = useAuth();
   const [tours, setTours] = useState<Tour[]>([]);
@@ -33,51 +35,50 @@ export const StreamLinkManager = ({ clubId }: { clubId: string }) => {
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     const { data: t } = await supabase.from("tournaments").select("id,name").eq("club_id", clubId).order("start_time", { ascending: false });
     setTours((t ?? []) as Tour[]);
-    const ids = (t ?? []).map((x: any) => x.id);
+    const ids = (t ?? []).map((tournament) => tournament.id);
     if (ids.length) {
       const { data: s } = await supabase.from("tournament_streams").select("*").in("tournament_id", ids).order("created_at", { ascending: false });
       setStreams((s ?? []) as Stream[]);
     } else setStreams([]);
     setLoading(false);
-  };
+  }, [clubId]);
 
-  useEffect(() => { load(); }, [clubId]);
+  useEffect(() => { void load(); }, [load]);
 
   const add = async () => {
     if (!user || !tourId) { toast.error("Hãy chọn giải đấu"); return; }
     const v = validateStreamUrl(platform, url);
     if (!v.ok) { toast.error(v.error!); return; }
     setSaving(true);
-    const { error } = await supabase.from("tournament_streams").insert({
+    const { data, error } = await supabase.from("tournament_streams").insert({
       tournament_id: tourId,
       platform,
       stream_url: url.trim(),
       embed_id: v.embedId ?? null,
       title: title.trim() || null,
       is_live: true,
-      created_by: user.id,
-    });
+    }).select("id");
     setSaving(false);
-    if (error) { toast.error("Không thể lưu: " + error.message); return; }
+    if (error || !changedExactlyOneStream(data)) { toast.error(error?.message ?? "Không thể lưu stream: không có quyền hoặc dữ liệu đã thay đổi."); return; }
     toast.success("Đã thêm stream");
     setUrl(""); setTitle("");
     load();
   };
 
   const toggleLive = async (s: Stream) => {
-    const { error } = await supabase.from("tournament_streams").update({ is_live: !s.is_live }).eq("id", s.id);
-    if (error) { toast.error(error.message); return; }
+    const { data, error } = await supabase.from("tournament_streams").update({ is_live: !s.is_live }).eq("id", s.id).select("id");
+    if (error || !changedExactlyOneStream(data)) { toast.error(error?.message ?? "Không thể cập nhật stream: không có quyền hoặc stream không còn tồn tại."); return; }
     setStreams((prev) => prev.map((x) => x.id === s.id ? { ...x, is_live: !s.is_live } : x));
   };
 
   const remove = async (s: Stream) => {
     if (!confirm("Xoá stream này?")) return;
-    const { error } = await supabase.from("tournament_streams").delete().eq("id", s.id);
-    if (error) { toast.error(error.message); return; }
+    const { data, error } = await supabase.from("tournament_streams").delete().eq("id", s.id).select("id");
+    if (error || !changedExactlyOneStream(data)) { toast.error(error?.message ?? "Không thể xóa stream: không có quyền hoặc stream không còn tồn tại."); return; }
     setStreams((prev) => prev.filter((x) => x.id !== s.id));
   };
 
