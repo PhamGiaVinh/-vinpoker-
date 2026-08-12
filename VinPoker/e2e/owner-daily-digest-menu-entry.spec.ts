@@ -22,6 +22,7 @@ async function installClubOwnerSession(page: Page) {
         user_metadata: {},
         identities: [],
         created_at: "2026-08-10T00:00:00.000Z",
+        email_confirmed_at: "2026-08-10T00:00:00.000Z",
       },
     }));
   }, { token: mockJwt, expiry: futureExpiry, actor: userId });
@@ -35,7 +36,7 @@ async function installClubOwnerSession(page: Page) {
   });
 }
 
-test("Club Owner sees Báo cáo ngày in the existing Vận hành CLB menu", async ({ page }, testInfo) => {
+test("Club Owner opens Báo cáo ngày inside the primary VinPoker session", async ({ page }, testInfo) => {
   await installClubOwnerSession(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
@@ -43,6 +44,16 @@ test("Club Owner sees Báo cáo ngày in the existing Vận hành CLB menu", asy
   await page.getByRole("button", { name: /Vận hành|Club Operations/u }).click();
   const entry = page.getByRole("menuitem", { name: /Báo cáo ngày|Daily report/u });
   await expect(entry).toBeVisible();
-  await expect(entry).toHaveAttribute("href", "/ops/daily-digest");
-  await page.screenshot({ path: testInfo.outputPath("owner-digest-legacy-operations-menu.png"), fullPage: true });
+  await expect(entry).toHaveAttribute("href", "/club/admin/daily-digest");
+  await entry.click();
+  await expect(page).toHaveURL(/\/club\/admin\/daily-digest$/u);
+  await expect(page).not.toHaveURL(/\/ops\/login/u);
+  await expect(page.getByRole("heading", { name: "Một ngày vận hành, nhìn trong 60 giây" })).toBeVisible();
+  await expect(page.getByText(/1\.200\.000/u)).toBeVisible();
+
+  for (const width of [320, 768, 1440]) {
+    await page.setViewportSize({ width, height: width === 320 ? 760 : 900 });
+    await expect(page.locator("[data-owner-digest-report]")).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`owner-digest-primary-${width}.png`), fullPage: true });
+  }
 });

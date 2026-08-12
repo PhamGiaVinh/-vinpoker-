@@ -39,6 +39,7 @@ const ClubFinanceDashboard = lazy(() => import("./pages/ClubFinanceDashboard"));
 const AccountingControl = lazy(() => import("./pages/AccountingControl"));
 const DealerInsuranceProfiles = lazy(() => import("./pages/DealerInsuranceProfiles"));
 const SeriesIntelligence = lazy(() => import("./pages/SeriesIntelligence"));
+const OwnerDailyDigest = lazy(() => import("./pages/OwnerDailyDigest"));
 const VerifiedMarketJeju = lazy(() => import("./pages/VerifiedMarketJeju"));
 const SeriesDecisionLogAdmin = lazy(() => import("./pages/SeriesDecisionLogAdmin"));
 const ChipOpsInventory = lazy(() => import("./pages/ChipOpsInventory"));
@@ -323,6 +324,7 @@ const App = () => {
                 <Route path="/club/admin/insurance" element={<DealerInsuranceProfiles />} />
                 {/* Trí tuệ Series device-aware: phones get the read-only mobile /ops/series view. */}
                 <Route path="/club/admin/series-intelligence" element={<SeriesIntelligence />} />
+                <Route path="/club/admin/daily-digest" element={<OwnerDailyDigest />} />
                 <Route path="/club/admin/market-intelligence" element={<VerifiedMarketJeju />} />
                 {/* CAPTURE v0 Decision Log — page self-gates on FEATURES.seriesDecisionLog (default OFF). */}
                 <Route path="/club/admin/series-decision-log" element={<SeriesDecisionLogAdmin />} />
