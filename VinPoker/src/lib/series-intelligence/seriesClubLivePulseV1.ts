@@ -115,7 +115,8 @@ const UNAVAILABLE_REASONS = new Set<SeriesClubPulseUnavailableReason>([
   "SOURCE_READ_FAILED",
   "COUNT_EXCEEDS_JS_SAFE_INTEGER",
 ]);
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Club identities can predate RFC-versioned UUID generation but remain valid PostgreSQL uuid values.
+const POSTGRES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UTC_MILLISECOND_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIMEZONE = /^[A-Za-z0-9_+.-]+(?:\/[A-Za-z0-9_+.-]+)*$/;
@@ -220,7 +221,7 @@ export function parseSeriesClubLivePulseV1(value: unknown): SeriesClubLivePulseV
     "dataQuality",
   ]);
   if (record.version !== SERIES_CLUB_LIVE_PULSE_VERSION) throw new Error("pulse.version is invalid");
-  if (typeof record.clubId !== "string" || !UUID.test(record.clubId)) throw new Error("pulse.clubId is invalid");
+  if (typeof record.clubId !== "string" || !POSTGRES_UUID.test(record.clubId)) throw new Error("pulse.clubId is invalid");
   const asOf = parseAsOf(record.asOf, "pulse.asOf");
 
   let timezone: string | null = null;

@@ -140,7 +140,7 @@ export async function askSeriesCopilotEdgeV1(
 ): Promise<SeriesCopilotEdgeResultV1> {
   const question = request.untrustedQuestion.trim().normalize("NFC");
   if (question.length < 1 || question.length > 1_000) throw new Error("OWNER_QUESTION_INVALID");
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(request.clubId)) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(request.clubId)) {
     throw new Error("CLUB_ID_INVALID");
   }
   const selectedOptionIds = [...(request.selectedOptionIds ?? [])].sort();

@@ -132,7 +132,8 @@ export interface SafeProviderReceiptV1 {
   rateLimitScope: "actor_club_global";
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const RFC_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const POSTGRES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STABLE_ID = /^[a-z][a-z0-9._:-]*$/;
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -160,8 +161,8 @@ export function parseSeriesVRequestV1(value: unknown): SeriesVRequestV1 {
   const input = record(value, "request");
   exactKeys(input, ["version", "requestId", "clubId", "question", "selectedOptionIds"], ["version", "requestId", "clubId", "question"], "request");
   if (input.version !== SERIES_V_REQUEST_VERSION) throw new Error("request.version is invalid");
-  if (typeof input.requestId !== "string" || !UUID.test(input.requestId)) throw new Error("request.requestId is invalid");
-  if (typeof input.clubId !== "string" || !UUID.test(input.clubId)) throw new Error("request.clubId is invalid");
+  if (typeof input.requestId !== "string" || !RFC_UUID.test(input.requestId)) throw new Error("request.requestId is invalid");
+  if (typeof input.clubId !== "string" || !POSTGRES_UUID.test(input.clubId)) throw new Error("request.clubId is invalid");
   if (typeof input.question !== "string") throw new Error("request.question is invalid");
   const question = input.question.trim().normalize("NFC");
   if (question.length < 1 || question.length > 1_000) throw new Error("request.question must contain 1-1000 characters");
