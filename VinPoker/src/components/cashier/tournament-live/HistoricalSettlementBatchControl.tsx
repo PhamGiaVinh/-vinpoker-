@@ -15,6 +15,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { FEATURES } from "@/lib/featureFlags";
 import { parseHistoricalSettlementDisplayPreview } from "@/lib/tracker-poker/historicalSettlementDisplay";
+import { diagnoseHistoricalSettlementInvocation } from "@/lib/tracker-poker/historicalSettlementDiagnostics";
 import { parseReplayPublicSettlement } from "@/lib/tracker-poker/replaySettlement";
 import {
   commitHistoricalSettlementBatch,
@@ -32,15 +33,22 @@ type Props = {
   onCommitted: () => void;
 };
 
-function responseCode(data: unknown, fallback: string): string {
-  if (data && typeof data === "object" && "code" in data && typeof data.code === "string") return data.code;
-  return fallback;
-}
-
 function resultLabel(result: HistoricalSettlementPreviewResult | HistoricalSettlementCommitResult): string {
   if (result.kind === "ready") return "Đủ dữ liệu";
   if (result.kind === "verified") return "Đã xác minh";
   const labels: Record<string, string> = {
+    historical_preview_transport_failed: "Lỗi kết nối khi gọi máy chủ",
+    historical_preview_unauthorized: "Phiên đăng nhập không hợp lệ",
+    historical_preview_forbidden: "Không có quyền xác minh hand này",
+    historical_preview_not_found: "Không tìm thấy hand trên máy chủ",
+    historical_preview_verification_blocked: "Máy chủ chặn xác minh dữ liệu hand",
+    historical_preview_server_failed: "Máy chủ xác minh tạm thời lỗi",
+    historical_commit_transport_failed: "Lỗi kết nối khi lưu outcome",
+    historical_commit_unauthorized: "Phiên đăng nhập không hợp lệ",
+    historical_commit_forbidden: "Không có quyền lưu outcome",
+    historical_commit_not_found: "Không tìm thấy hand trên máy chủ",
+    historical_commit_verification_blocked: "Máy chủ chặn lưu outcome",
+    historical_commit_server_failed: "Máy chủ lưu outcome tạm thời lỗi",
     stored_ending_stack_mismatch: "Stack đã lưu không khớp",
     incomplete_showdown_cards: "Thiếu bài showdown",
     invalid_historical_hand: "Dữ liệu hand không hợp lệ",
@@ -50,7 +58,7 @@ function resultLabel(result: HistoricalSettlementPreviewResult | HistoricalSettl
     preview_request_failed: "Không gọi được máy chủ",
     commit_request_failed: "Không lưu được outcome",
   };
-  return labels[result.code] ?? "Cần sửa hand";
+  return labels[result.code] ?? `Cần sửa hand (${result.code})`;
 }
 
 export function HistoricalSettlementBatchControl({ tournamentId, candidates, onSelectHand, onCommitted }: Props) {
@@ -85,9 +93,15 @@ export function HistoricalSettlementBatchControl({ tournamentId, candidates, onS
         body: { mode: "preview", tournament_id: tournamentId, hand_id: candidate.handId },
       });
       if (error || (data as { ok?: boolean } | null)?.ok !== true) {
-        const code = responseCode(data, "preview_request_failed");
+        const diagnostic = await diagnoseHistoricalSettlementInvocation({
+          data,
+          error,
+          mode: "preview",
+          handId: candidate.handId,
+        });
+        const code = diagnostic.code;
         if (code === "historical_settlement_already_exists") return { kind: "verified", candidate };
-        return { kind: "blocked", candidate, code };
+        return { kind: "blocked", candidate, code, diagnostic };
       }
       const parsed = parseHistoricalSettlementDisplayPreview(data, crypto.randomUUID());
       if (!parsed || parsed.handId !== candidate.handId) {
@@ -109,7 +123,13 @@ export function HistoricalSettlementBatchControl({ tournamentId, candidates, onS
         },
       });
       if (error || (data as { ok?: boolean } | null)?.ok !== true) {
-        return { kind: "blocked", candidate, code: responseCode(data, "commit_request_failed") };
+        const diagnostic = await diagnoseHistoricalSettlementInvocation({
+          data,
+          error,
+          mode: "commit",
+          handId: candidate.handId,
+        });
+        return { kind: "blocked", candidate, code: diagnostic.code, diagnostic };
       }
       return { kind: "verified", candidate };
     },
@@ -155,7 +175,7 @@ export function HistoricalSettlementBatchControl({ tournamentId, candidates, onS
         const commit = commitByHandId.get(result.candidate.handId);
         if (!commit) return result;
         if (commit.kind === "verified") return { kind: "verified", candidate: result.candidate };
-        return { kind: "blocked", candidate: result.candidate, code: commit.code };
+        return { kind: "blocked", candidate: result.candidate, code: commit.code, diagnostic: commit.diagnostic };
       }));
       if (blocked > 0) toast.warning(`Đã xác minh ${verified} hand; ${blocked} hand bị chặn an toàn.`);
       else toast.success(`Đã xác minh ${verified} hand. Replay sẽ hiện ranking và winner glow.`);
@@ -207,7 +227,12 @@ export function HistoricalSettlementBatchControl({ tournamentId, candidates, onS
                 <span className="min-w-0 truncate font-medium">
                   {result.candidate.tableName ? `${result.candidate.tableName} · ` : ""}Hand #{result.candidate.handNumber}
                 </span>
-                <span className={result.kind === "blocked" ? "text-amber-300" : result.kind === "ready" ? "text-emerald-300" : "text-sky-300"}>
+                <span
+                  className={result.kind === "blocked" ? "text-right text-amber-300" : result.kind === "ready" ? "text-emerald-300" : "text-sky-300"}
+                  data-historical-diagnostic={result.kind === "blocked" && result.diagnostic
+                    ? `${result.diagnostic.httpStatus ?? "no-http"}:${result.diagnostic.code}`
+                    : undefined}
+                >
                   {result.kind === "blocked" ? <AlertTriangle className="mr-1 inline h-3.5 w-3.5" /> : <CheckCircle2 className="mr-1 inline h-3.5 w-3.5" />}
                   {resultLabel(result)}
                 </span>

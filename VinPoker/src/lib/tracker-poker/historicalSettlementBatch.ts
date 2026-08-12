@@ -1,4 +1,5 @@
 import type { HistoricalSettlementDisplayPreview } from "./historicalSettlementDisplay";
+import type { HistoricalSettlementDiagnostic } from "./historicalSettlementDiagnostics";
 
 export interface HistoricalSettlementBatchCandidate {
   handId: string;
@@ -10,11 +11,11 @@ export interface HistoricalSettlementBatchCandidate {
 export type HistoricalSettlementPreviewResult =
   | { kind: "ready"; candidate: HistoricalSettlementBatchCandidate; preview: HistoricalSettlementDisplayPreview }
   | { kind: "verified"; candidate: HistoricalSettlementBatchCandidate }
-  | { kind: "blocked"; candidate: HistoricalSettlementBatchCandidate; code: string };
+  | { kind: "blocked"; candidate: HistoricalSettlementBatchCandidate; code: string; diagnostic?: HistoricalSettlementDiagnostic };
 
 export type HistoricalSettlementCommitResult =
   | { kind: "verified"; candidate: HistoricalSettlementBatchCandidate }
-  | { kind: "blocked"; candidate: HistoricalSettlementBatchCandidate; code: string };
+  | { kind: "blocked"; candidate: HistoricalSettlementBatchCandidate; code: string; diagnostic?: HistoricalSettlementDiagnostic };
 
 export interface HistoricalSettlementBatchGateway {
   preview(candidate: HistoricalSettlementBatchCandidate): Promise<HistoricalSettlementPreviewResult>;

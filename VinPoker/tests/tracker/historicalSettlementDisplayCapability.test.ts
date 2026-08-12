@@ -25,4 +25,11 @@ describe("historical settlement display capability", () => {
     expect(batchControl).not.toMatch(/\bwinner_id\s*:/);
     expect(batchControl).not.toMatch(/\bending_stack\s*:/);
   });
+
+  it("uses the safe diagnostic boundary instead of exposing the raw function error", () => {
+    expect(control).toContain("diagnoseHistoricalSettlementInvocation");
+    expect(batchControl).toContain("diagnoseHistoricalSettlementInvocation");
+    expect(batchControl).toContain("data-historical-diagnostic");
+    expect(batchControl).not.toContain("responseCode(");
+  });
 });

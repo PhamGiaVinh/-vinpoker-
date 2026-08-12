@@ -17,6 +17,7 @@ import {
   parseHistoricalSettlementDisplayPreview,
   type HistoricalSettlementDisplayPreview,
 } from "@/lib/tracker-poker/historicalSettlementDisplay";
+import { diagnoseHistoricalSettlementInvocation } from "@/lib/tracker-poker/historicalSettlementDiagnostics";
 
 type HistoricalSettlementDisplayControlProps = {
   tournamentId: string;
@@ -44,6 +45,25 @@ function failureMessage(data: unknown): string {
     return "Hand này đã có outcome đã xác minh. Hãy mở Replay để xem.";
   }
   return "Không thể xác minh hand cũ trên máy chủ.";
+}
+
+function diagnosticFailureMessage(code: string): string {
+  const messages: Record<string, string> = {
+    historical_preview_transport_failed: "Lỗi kết nối khi gọi máy chủ xác minh.",
+    historical_preview_unauthorized: "Phiên đăng nhập không hợp lệ.",
+    historical_preview_forbidden: "Không có quyền xác minh hand này.",
+    historical_preview_not_found: "Không tìm thấy hand trên máy chủ.",
+    historical_preview_verification_blocked: "Máy chủ chặn xác minh vì dữ liệu hand không hợp lệ.",
+    historical_preview_server_failed: "Máy chủ xác minh tạm thời lỗi. Chưa ghi dữ liệu nào.",
+    historical_commit_transport_failed: "Lỗi kết nối khi lưu outcome.",
+    historical_commit_unauthorized: "Phiên đăng nhập không hợp lệ.",
+    historical_commit_forbidden: "Không có quyền lưu outcome.",
+    historical_commit_not_found: "Không tìm thấy hand trên máy chủ.",
+    historical_commit_verification_blocked: "Máy chủ chặn lưu outcome.",
+    historical_commit_server_failed: "Máy chủ lưu outcome tạm thời lỗi. Chưa ghi dữ liệu nào.",
+  };
+  const message = messages[code] ?? failureMessage({ code });
+  return messages[code] ? message : `${message} (Mã: ${code})`;
 }
 
 /**
@@ -74,7 +94,8 @@ export function HistoricalSettlementDisplayControl({
         body: { mode: "preview", tournament_id: tournamentId, hand_id: handId },
       });
       if (error || (data as { ok?: boolean } | null)?.ok !== true) {
-        toast.error(failureMessage(data));
+        const diagnostic = await diagnoseHistoricalSettlementInvocation({ data, error, mode: "preview", handId });
+        toast.error(diagnosticFailureMessage(diagnostic.code));
         return;
       }
       const parsed = parseHistoricalSettlementDisplayPreview(data, crypto.randomUUID());
@@ -104,7 +125,8 @@ export function HistoricalSettlementDisplayControl({
         },
       });
       if (error || (data as { ok?: boolean } | null)?.ok !== true) {
-        toast.error(failureMessage(data));
+        const diagnostic = await diagnoseHistoricalSettlementInvocation({ data, error, mode: "commit", handId });
+        toast.error(diagnosticFailureMessage(diagnostic.code));
         return;
       }
       setConfirmOpen(false);
