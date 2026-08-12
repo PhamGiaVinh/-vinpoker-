@@ -428,7 +428,7 @@ export function FloorTableMapPanel({
       </div>
 
       {tables === null ? (
-        <div className={`grid ${cellCols} gap-2`}>{Array.from({ length: 18 }).map((_, i) => <Skeleton key={i} className="h-14" />)}</div>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 18 }).map((_, i) => <Skeleton key={i} className="h-[132px] rounded-2xl" />)}</div>
       ) : visible.length === 0 ? (
         <div className="py-10 text-center text-sm text-muted-foreground">Không có bàn khớp bộ lọc.</div>
       ) : (
