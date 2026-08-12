@@ -2,21 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { Building2, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import type { OwnerDailyDigestClubScopeSource } from "@/ops/digest/ownerDailyDigestClubScopeSource";
 import { OwnerDailyDigestView, type OwnerDigestViewState } from "@/ops/digest/OwnerDailyDigestView";
 import {
   loadOwnerDailyDigestReport,
   type OwnerDailyDigestReadSource,
 } from "@/ops/digest/ownerDailyDigestReadAdapter";
 
-type ClubOption = { id: string; name: string };
-
 export default function OwnerDailyDigest() {
-  const { user, isAdmin, isClubOwner, loading } = useAuth();
+  const { user, isAdmin, isClubAdmin, isClubOwner, loading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const authorized = isAdmin || isClubOwner;
+  const authorized = isAdmin || isClubOwner || isClubAdmin;
   const [redirectReady, setRedirectReady] = useState(false);
-  const [clubs, setClubs] = useState<ClubOption[]>([]);
+  const [clubs, setClubs] = useState<Array<{ id: string; name: string }>>([]);
   const [clubsLoading, setClubsLoading] = useState(true);
   const [clubsError, setClubsError] = useState(false);
   const [state, setState] = useState<OwnerDigestViewState>({ kind: "loading" });
@@ -38,25 +36,21 @@ export default function OwnerDailyDigest() {
     setClubsLoading(true);
     setClubsError(false);
 
-    const query = isAdmin
-      ? supabase.from("clubs").select("id, name").order("name").limit(100)
-      : supabase.from("clubs").select("id, name").eq("owner_id", user.id).order("name");
-
-    void query.then(({ data, error }) => {
+    void resolveClubScopeSource().then((source) => source.listClubs()).then((data) => {
       if (!current) return;
-      if (error) {
-        setClubs([]);
-        setClubsError(true);
-      } else {
-        setClubs((data ?? []).map((club) => ({ id: club.id, name: club.name })));
-      }
+      setClubs(data);
+      setClubsLoading(false);
+    }).catch(() => {
+      if (!current) return;
+      setClubs([]);
+      setClubsError(true);
       setClubsLoading(false);
     });
 
     return () => {
       current = false;
     };
-  }, [authorized, isAdmin, user]);
+  }, [authorized, user]);
 
   const requestedClubId = searchParams.get("club");
   const selectedClub = useMemo(
@@ -120,7 +114,7 @@ export default function OwnerDailyDigest() {
       ) : clubsError ? (
         <PageMessage title="Không tải được CLB" body="Phiên đăng nhập vẫn được giữ nguyên. Hãy thử tải lại trang sau ít phút." />
       ) : !selectedClub ? (
-        <PageMessage title="Chưa có CLB để xem" body="Tài khoản này chưa sở hữu CLB nào có Báo cáo ngày." />
+        <PageMessage title="Chưa được gán CLB" body="Tài khoản này chưa có quyền xem Báo cáo ngày của CLB nào." />
       ) : (
         <OwnerDailyDigestView
           clubName={selectedClub.name}
@@ -151,6 +145,15 @@ async function resolveReadSource(): Promise<OwnerDailyDigestReadSource> {
   }
   const source = await import("@/ops/digest/ownerDailyDigestPrimaryRuntimeSource");
   return source.ownerDailyDigestPrimarySupabaseSource;
+}
+
+async function resolveClubScopeSource(): Promise<OwnerDailyDigestClubScopeSource> {
+  if (import.meta.env.DEV) {
+    const fixture = await import("@/ops/digest/ownerDailyDigestFixtures");
+    return fixture.ownerDailyDigestFixtureClubScopeSource;
+  }
+  const runtime = await import("@/ops/digest/ownerDailyDigestClubScopeRuntimeSource");
+  return runtime.ownerDailyDigestClubScopeRuntimeSource;
 }
 
 function safeErrorCode(error: unknown): string {

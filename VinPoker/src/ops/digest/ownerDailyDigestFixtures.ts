@@ -1,3 +1,4 @@
+import type { OwnerDailyDigestClubScopeSource } from "@/ops/digest/ownerDailyDigestClubScopeSource";
 import type { OwnerDailyDigestReadSource } from "@/ops/digest/ownerDailyDigestReadAdapter";
 
 export const OWNER_DIGEST_TEST_CLUB_A = "10000000-0000-4000-8000-000000000001";
@@ -34,6 +35,15 @@ export const ownerDailyDigestFixtureSource: OwnerDailyDigestReadSource = {
   async getLatest({ clubId }) {
     await new Promise((resolve) => window.setTimeout(resolve, 120));
     return TEST_ARTIFACTS.get(clubId) ?? null;
+  },
+};
+
+export const ownerDailyDigestFixtureClubScopeSource: OwnerDailyDigestClubScopeSource = {
+  async listClubs() {
+    return [
+      { id: OWNER_DIGEST_TEST_CLUB_A, name: "CLB thử nghiệm A" },
+      { id: OWNER_DIGEST_TEST_CLUB_B, name: "CLB thử nghiệm B" },
+    ];
   },
 };
 
