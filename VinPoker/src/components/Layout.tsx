@@ -255,6 +255,7 @@ export const Layout = () => {
                   <DropdownMenuSeparator />
                   {canShowOwnerDailyDigestMenu({
                     isAdmin,
+                    isClubAdmin,
                     isClubOwner,
                     featureEnabled: FEATURES.ownerDailyDigestWebReport,
                   }) && (

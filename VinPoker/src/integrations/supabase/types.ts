@@ -14383,6 +14383,13 @@ export type Database = {
         Args: { p_business_date?: string; p_club_id: string }
         Returns: Json
       }
+      list_owner_daily_digest_clubs: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          club_id: string
+          club_name: string
+        }[]
+      }
       get_club_payout_liability: {
         Args: { p_club_id?: string; p_from: string; p_to: string }
         Returns: Json
