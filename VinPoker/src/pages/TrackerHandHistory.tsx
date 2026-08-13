@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { archiveTournamentClubScope } from "@/lib/tracker-poker/trackerHistoryAccess";
 
 type TournamentSummary = {
   id: string;
@@ -73,12 +74,13 @@ export default function TrackerHandHistory() {
         return;
       }
       const clubIds = (ids ?? []).filter((clubId): clubId is string => typeof clubId === "string");
+      const archiveClubScope = archiveTournamentClubScope({ isAdmin, trackerClubIds: clubIds });
       let query = supabase
         .from("tournaments")
         .select("id, club_id, name, status, created_at")
         .order("created_at", { ascending: false });
-      if (clubIds.length > 0) query = query.in("club_id", clubIds);
-      else if (!isAdmin) {
+      if (archiveClubScope && archiveClubScope.length > 0) query = query.in("club_id", archiveClubScope);
+      else if (archiveClubScope && archiveClubScope.length === 0) {
         setTournaments([]);
         return;
       }
@@ -112,11 +114,14 @@ export default function TrackerHandHistory() {
     setSearchParams(next, { replace: true });
   }, [selectedTournamentId, setSearchParams]);
 
-  if (authLoading || (user && tournaments === null)) {
+  if (authLoading) {
     return <div className="container mx-auto space-y-4 p-3 md:p-6"><Skeleton className="h-24 rounded-2xl" /><Skeleton className="h-[620px] rounded-2xl" /></div>;
   }
   if (!user) return <Navigate to="/auth" replace />;
   if (!authorized) return <Navigate to="/" replace />;
+  if (tournaments === null) {
+    return <div className="container mx-auto space-y-4 p-3 md:p-6"><Skeleton className="h-24 rounded-2xl" /><Skeleton className="h-[620px] rounded-2xl" /></div>;
+  }
 
   const visibleTournaments = (tournaments ?? []).filter((tournament) =>
     !deferredSearch || tournament.name.toLocaleLowerCase("vi").includes(deferredSearch),
