@@ -30,6 +30,22 @@ describe("V request and response trust boundary", () => {
     expect(() => parseSeriesVRequestV1({ version: "series-v-request-v1", requestId: "not-a-uuid", clubId: CLUB_ID, question: "x" })).toThrow("requestId");
   });
 
+  it("accepts a legacy PostgreSQL club UUID while keeping request IDs RFC-versioned", () => {
+    const parsed = parseSeriesVRequestV1({
+      version: "series-v-request-v1",
+      requestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      clubId: "22222222-2222-2222-2222-222222222222",
+      question: "Kiá»ƒm tra lá»‹ch",
+    });
+    expect(parsed.clubId).toBe("22222222-2222-2222-2222-222222222222");
+    expect(() => parseSeriesVRequestV1({
+      version: "series-v-request-v1",
+      requestId: "aaaaaaaa-aaaa-2aaa-2aaa-aaaaaaaaaaaa",
+      clubId: parsed.clubId,
+      question: "Kiá»ƒm tra lá»‹ch",
+    })).toThrow("requestId");
+  });
+
   it("derives answer status and accepts approved tokens", async () => {
     const result = validateProviderResponseV1(validResponse(), await context());
     expect(result.answerStatus).toBe("limited");

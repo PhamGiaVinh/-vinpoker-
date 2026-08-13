@@ -12,6 +12,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 
 const CLUB_ID = "11111111-1111-4111-8111-111111111111";
+const LEGACY_CLUB_ID = "22222222-2222-2222-2222-222222222222";
 const REQUEST_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const AS_OF = "2026-08-09T03:00:00.000Z";
 
@@ -157,6 +158,16 @@ describe("Series Copilot Edge client", () => {
     expect(result.contextHash).toBe(envelope.context.contextHash);
     expect(result.validation).toMatchObject({ accepted: true, response: { answerStatus: "blocked", recommendedOptionId: null } });
     expect(result.receipt.modelId).toBe("gemini-3.6-flash");
+  });
+
+  it("sends a legacy PostgreSQL club UUID to the owner-scoped Edge boundary", async () => {
+    const envelope = await trustedEnvelope();
+    const invoke = vi.fn(async () => ({ data: envelope, error: null }));
+    await expect(askSeriesCopilotEdgeV1({
+      clubId: LEGACY_CLUB_ID,
+      untrustedQuestion: "Kiá»ƒm tra dá»¯ liá»‡u lá»‹ch",
+    }, { invoke, requestId: () => REQUEST_ID })).resolves.toMatchObject({ contextHash: envelope.context.contextHash });
+    expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ clubId: LEGACY_CLUB_ID }), undefined);
   });
 
   it("fails closed on a forged context identity", async () => {

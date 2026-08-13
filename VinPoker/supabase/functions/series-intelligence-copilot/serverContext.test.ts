@@ -36,6 +36,14 @@ describe("server Club Pulse context", () => {
     await expect(buildServerCopilotContextV1(pulse(), "22222222-2222-4222-8222-222222222222", unavailableScheduleInputsV1())).rejects.toThrow("identity");
   });
 
+  it("accepts matching legacy PostgreSQL club identities", async () => {
+    const legacyClubId = "22222222-2222-2222-2222-222222222222";
+    const legacyPulse = { ...pulse(), clubId: legacyClubId };
+    await expect(buildServerCopilotContextV1(legacyPulse, legacyClubId, unavailableScheduleInputsV1())).resolves.toMatchObject({
+      clubPulse: { sourceMode: "server_aggregate" },
+    });
+  });
+
   it("strictly parses approved server candidates and rejects unknown evidence", () => {
     const raw = {
       version: "series-approved-schedule-candidates-v1",

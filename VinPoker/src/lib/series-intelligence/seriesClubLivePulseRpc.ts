@@ -4,7 +4,8 @@ import { parseSeriesClubLivePulseV1, type SeriesClubLivePulseV1 } from "./series
 
 const pulseClient = supabase as unknown as SupabaseClient;
 const CLUB_PULSE_RPC = "get_series_club_live_pulse_v1" as const;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// PostgreSQL accepts legacy UUID values without RFC version/variant bits.
+const POSTGRES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type SeriesClubLivePulseRpcError = "invalid_club_id" | "backend_unavailable" | "forbidden" | "rpc_error" | "malformed_response";
 export type SeriesClubLivePulseRpcResult =
@@ -23,7 +24,7 @@ function classifyError(error: { code?: string; message?: string; status?: number
 }
 
 export async function getSeriesClubLivePulseV1(clubId: string): Promise<SeriesClubLivePulseRpcResult> {
-  if (!UUID.test(clubId)) return { ok: false, error: "invalid_club_id", retryable: false };
+  if (!POSTGRES_UUID.test(clubId)) return { ok: false, error: "invalid_club_id", retryable: false };
   try {
     const { data, error } = await pulseClient.rpc(CLUB_PULSE_RPC, { p_club_id: clubId });
     if (error) return classifyError(error);

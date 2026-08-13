@@ -17,7 +17,7 @@ const METRIC_KEYS = [
   "openTables",
   "dealersOnDuty",
 ] as const;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const POSTGRES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const STABLE_ID = /^[a-z][a-z0-9._:-]*$/;
 const MONEY = /^(0|[1-9]\d{0,15})$/;
@@ -264,7 +264,7 @@ export async function buildServerCopilotContextV1(
   scheduleInputs: ApprovedScheduleInputsV1,
 ): Promise<ServerCopilotContextV1> {
   const pulse = object(rawPulse, "pulse");
-  if (pulse.version !== "series-club-live-pulse-v1" || typeof pulse.clubId !== "string" || !UUID.test(pulse.clubId) || pulse.clubId.toLowerCase() !== expectedClubId) {
+  if (pulse.version !== "series-club-live-pulse-v1" || typeof pulse.clubId !== "string" || !POSTGRES_UUID.test(pulse.clubId) || pulse.clubId.toLowerCase() !== expectedClubId) {
     throw new Error("Club Pulse identity is invalid");
   }
   if (typeof pulse.asOf !== "string" || !UTC.test(pulse.asOf) || !Number.isFinite(Date.parse(pulse.asOf))) throw new Error("Club Pulse asOf is invalid");

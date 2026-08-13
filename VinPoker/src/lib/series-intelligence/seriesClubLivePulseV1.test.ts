@@ -12,6 +12,7 @@ import {
 
 const AS_OF = "2026-08-09T12:34:56.789Z";
 const CLUB_ID = "11111111-1111-4111-8111-111111111111";
+const LEGACY_CLUB_ID = "22222222-2222-2222-2222-222222222222";
 
 function metric(key: SeriesClubPulseMetricKey, value: number, availability: "exact" | "partial" = "exact") {
   const definition = SERIES_CLUB_PULSE_METRIC_DEFINITIONS[key];
@@ -54,6 +55,12 @@ describe("SeriesClubLivePulseV1", () => {
     expect(pulse.uniquePlayersToday.availability).toBe("partial");
     expect(Object.isFrozen(pulse)).toBe(true);
     expect(Object.isFrozen(pulse.dataQuality.partialMetricIds)).toBe(true);
+  });
+
+  it("accepts an existing PostgreSQL UUID without RFC version bits", () => {
+    const payload = validPayload();
+    payload.clubId = LEGACY_CLUB_ID;
+    expect(parseSeriesClubLivePulseV1(payload).clubId).toBe(LEGACY_CLUB_ID);
   });
 
   it.each([

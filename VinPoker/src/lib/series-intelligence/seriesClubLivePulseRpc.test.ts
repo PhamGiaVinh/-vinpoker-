@@ -8,6 +8,7 @@ import { getSeriesClubLivePulseV1 } from "./seriesClubLivePulseRpc";
 
 const AS_OF = "2026-08-09T12:34:56.789Z";
 const CLUB_ID = "11111111-1111-4111-8111-111111111111";
+const LEGACY_CLUB_ID = "22222222-2222-2222-2222-222222222222";
 
 function metric(key: SeriesClubPulseMetricKey, value: number) {
   return {
@@ -20,10 +21,10 @@ function metric(key: SeriesClubPulseMetricKey, value: number) {
   };
 }
 
-function payload() {
+function payload(clubId = CLUB_ID) {
   return {
     version: "series-club-live-pulse-v1",
-    clubId: CLUB_ID,
+    clubId,
     asOf: AS_OF,
     clubLocalDate: "2026-08-09",
     timezone: "Asia/Ho_Chi_Minh",
@@ -51,6 +52,15 @@ describe("Series Club Pulse fixed RPC adapter", () => {
   it("rejects a malformed club id before touching the network", async () => {
     await expect(getSeriesClubLivePulseV1("not-a-club")).resolves.toEqual({ ok: false, error: "invalid_club_id", retryable: false });
     expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("accepts a legacy PostgreSQL UUID without RFC version bits", async () => {
+    rpc.mockResolvedValue({ data: payload(LEGACY_CLUB_ID), error: null });
+    await expect(getSeriesClubLivePulseV1(LEGACY_CLUB_ID)).resolves.toMatchObject({
+      ok: true,
+      value: { clubId: LEGACY_CLUB_ID },
+    });
+    expect(rpc).toHaveBeenCalledWith("get_series_club_live_pulse_v1", { p_club_id: LEGACY_CLUB_ID });
   });
 
   it("fails closed on malformed aggregate payloads", async () => {
