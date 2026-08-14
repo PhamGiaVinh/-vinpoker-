@@ -22,6 +22,10 @@ import { TableMotionLayer } from "./TableMotionLayer";
 import { useCountUp } from "@/hooks/useCountUp";
 import type { PotBreakdown } from "@/lib/tracker-poker/potEngine";
 import type { TableMotionEvent } from "@/lib/tracker-poker/tableMotion";
+import {
+  normalizeReplayCardCode,
+  type BestFiveFocus,
+} from "@/lib/tracker-poker/replayBestFiveFocus";
 
 /** Count-up text (Phase 3, tableFx only): tweens a numeric display toward its target.
  *  First render / enabled-off / reduced-motion emit the target directly, so static
@@ -306,6 +310,8 @@ export interface LiveFeltProps {
   runout?: boolean;
   /** Replay-only display state; never changes chip calculations. */
   showdownResult?: "winner" | "chop" | "needs_resettle" | null;
+  /** Verified final-frame card emphasis, derived by the replay parent on every render. */
+  bestFiveFocus?: BestFiveFocus | null;
   /**
    * trackerShowdownRevealOrder (viewer) — ADDITIVE; absent → simultaneous reveal
    * (byte-identical). player_ids in the order they should table their cards at
@@ -347,6 +353,7 @@ export function LiveFelt({
   blinds = null,
   runout = false,
   showdownResult = null,
+  bestFiveFocus = null,
   revealOrder,
   revealStaggerMs = 500,
   motionEvents = [],
@@ -366,6 +373,13 @@ export function LiveFelt({
   // (module constants → stable identity for the chips-effect dependency).
   const seatMap = viewerLayout && !portrait ? LANDSCAPE_SEATS_V3 : geo.seats;
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
+  const bestFiveFocusActive = tableFx && bestFiveFocus?.enabled === true;
+  const cardFocusClass = (card: string, selectedCards: ReadonlySet<string> | undefined): string => {
+    if (!bestFiveFocusActive) return "";
+    const code = normalizeReplayCardCode(card);
+    if (!code) return "";
+    return selectedCards?.has(code) ? "tracker-best-five-card" : "tracker-non-best-five-card";
+  };
   // Phase 3 (tableFx only): the POT display counts up toward its target instead of
   // jumping (~260ms ease-out). tableFx off / reduced-motion → displayPot === potSize
   // on every render, so operator/TV and static renders are byte-identical. Display
@@ -515,7 +529,7 @@ export function LiveFelt({
   }, [viewerLayout, portrait]);
 
   return (
-    <div className="w-full" ref={feltWrapRef}>
+    <div className={`w-full${bestFiveFocusActive ? " tracker-best-five-focus-active" : ""}`} ref={feltWrapRef}>
       {/* Felt oval — scales with container; seats may straddle the rim so the
           container is overflow-visible (never clips a seat). When `fit` is set
           (narrow landscape) a height-reserver clips the oversized design-width box
@@ -647,15 +661,19 @@ export function LiveFelt({
               face-down placeholders sat in front of the top-center seats, covering their
               pods/stacks/bet chips preflop). Operator/TV keep the V-logo backs → byte-identical. */}
           <div data-testid="board-cards" className="flex items-center justify-center gap-1.5">
-            {displayCards.map((card, i) =>
-              card ? (
+            {displayCards.map((card, i) => {
+              if (!card) {
+                return viewerLayout ? null : <CardBack key={`${i}-back`} size="md" className={boardCardCls} style={boardStyle} />;
+              }
+              const focusClass = cardFocusClass(card, bestFiveFocus?.boardCardCodes);
+              return (
                 <PokerCard
                   // tableFx → value-stable key (entrance fires once); else the current key
                   // (runtime byte-identical for operator/TV/replay). Keys aren't in the DOM.
                   key={tableFx ? card : `${i}-${card}`}
                   card={card}
                   size="md"
-                  className={boardCardCls}
+                  className={[boardCardCls, focusClass].filter(Boolean).join(" ")}
                   // V2 boardStyle (clamp) merges with the FX stagger delay; both absent → undefined.
                   style={
                     boardStyle || (tableFx && i < 3)
@@ -663,10 +681,8 @@ export function LiveFelt({
                       : undefined
                   }
                 />
-              ) : viewerLayout ? null : (
-                <CardBack key={`${i}-back`} size="md" className={boardCardCls} style={boardStyle} />
-              )
-            )}
+              );
+            })}
           </div>
           {/* Compact portrait: the pot lives in the STATUS BAR below (RPT pattern) — the
               short felt keeps only the board centered, so 9-max pods never collide. */}
@@ -756,12 +772,10 @@ export function LiveFelt({
               ? "ring-1 ring-[hsl(var(--poker-gold)/0.4)]"
               : "";
           const nameShadow = { textShadow: "0 1px 3px rgba(0,0,0,0.95)" };
-          // Showdown winner (replay final frame, viewer FX only): gold glow plus
-          // verified pot award. A refund is rendered separately and never glows.
+          // Winner identity remains server-proven; payout/rank/refund copy is kept
+          // out of the felt so the verified best-five cards carry the result.
           const payoutAward = seat.payout_award ?? 0;
-          const refundAward = seat.refund_award ?? 0;
           const isWinner = tableFx && seat.pot_winner === true && payoutAward > 0;
-          const isVerifiedChop = isWinner && showdownResult === "chop";
 
           // ADDITIVE operator-console hooks. Both fragments are "" and the spread
           // is {} when the props are absent, so the default (viewer/replay) render
@@ -884,45 +898,6 @@ export function LiveFelt({
                     </div>
                   </>
                 )}
-                {isWinner && (
-                  <div
-                    data-testid="seat-net-won"
-                    className="tracker-win-amount tracker-num mt-0.5 text-[9px] font-extrabold leading-tight sm:text-[10px]"
-                    style={{ color: "hsl(var(--success))", textShadow: "0 1px 3px rgba(0,0,0,0.95)" }}
-                  >
-                    {isVerifiedChop ? (
-                      <>
-                        <span data-testid="seat-pot-award">{t("liveHub.felt.chopPotShort", "CHOP POT")}</span>
-                        <span className="ml-1 font-bold opacity-90">+{formatStack(payoutAward)}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span data-testid="seat-pot-award">{t("liveHub.felt.potAwardShort", "THẮNG POT")}</span>
-                        <span className="ml-1 font-bold opacity-90">+{formatStack(payoutAward)}</span>
-                        {formatBB(payoutAward) ? <span className="font-bold opacity-80"> ({formatBB(payoutAward)})</span> : null}
-                      </>
-                    )}
-                  </div>
-                )}
-                {isWinner && seat.hand_rank && (
-                  <div
-                    data-testid="seat-hand-rank"
-                    className="mt-0.5 max-w-[108px] truncate text-[8px] font-bold leading-tight text-[hsl(var(--poker-gold))] sm:max-w-[132px] sm:text-[9px]"
-                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.95)" }}
-                  >
-                    {t(`liveHub.replay.rank.${seat.hand_rank.category}`, seat.hand_rank.category.replace(/_/g, " "))}
-                    {seat.hand_rank.kickers.length > 0 ? ` · ${seat.hand_rank.kickers.join("-")}` : ""}
-                  </div>
-                )}
-                {tableFx && refundAward > 0 && (
-                  <div
-                    data-testid="seat-refund-award"
-                    className="tracker-num mt-0.5 text-[8px] font-bold leading-tight text-amber-200/90 sm:text-[9px]"
-                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.95)" }}
-                  >
-                    {t("liveHub.felt.refundShort", "Hoàn")} +{formatStack(refundAward)}
-                  </div>
-                )}
                 {/* Committed-bet indicator. viewerLayout → an RPT-style chip STACK rendered
                     ON THE FELT (in the placement layer below the seats map), NOT a pill here.
                     Operator/TV (viewerLayout off) keep the standalone ALL IN label as today,
@@ -940,7 +915,7 @@ export function LiveFelt({
                 {(!compactActive || (seat.hole_cards && seat.hole_cards.length === 2)) && (
                 <div
                   data-testid="seat-holecards"
-                  className={`mt-0.5 flex justify-center gap-0.5${isWinner ? " tracker-win-glow rounded-md p-0.5" : ""}`}
+                  className="mt-0.5 flex justify-center gap-0.5"
                 >
                   {seat.hole_cards && seat.hole_cards.length === 2 ? (
                     // trackerShowdownRevealOrder: stagger the flip by this seat's place
@@ -948,16 +923,20 @@ export function LiveFelt({
                     // tracker-card-reveal pop). revealOrder absent → delay undefined →
                     // today's simultaneous reveal (byte-identical). Reduced-motion kills
                     // the animation entirely (CSS), so the delay is moot for a11y.
-                    seat.hole_cards.map((card, ci) => (
-                      <PokerCard
-                        key={ci}
-                        card={card}
-                        size="xs"
-                        className={viewerLayout ? "ring-1 ring-white/20 drop-shadow-[0_2px_5px_rgba(0,0,0,0.65)]" : undefined}
-                        muted={seat.is_folded}
-                        style={{ ...holeStyle, ...fanFor(ci), ...revealDelayStyle(seat.player_id) }}
-                      />
-                    ))
+                    seat.hole_cards.map((card, ci) => {
+                      const focusClass = cardFocusClass(card, bestFiveFocus?.holeCardCodesByPlayerId.get(seat.player_id));
+                      const viewerClass = viewerLayout ? "ring-1 ring-white/20 drop-shadow-[0_2px_5px_rgba(0,0,0,0.65)]" : "";
+                      return (
+                        <PokerCard
+                          key={ci}
+                          card={card}
+                          size="xs"
+                          className={[viewerClass, focusClass].filter(Boolean).join(" ") || undefined}
+                          muted={seat.is_folded}
+                          style={{ ...holeStyle, ...fanFor(ci), ...revealDelayStyle(seat.player_id) }}
+                        />
+                      );
+                    })
                   ) : (
                     [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} style={{ ...holeStyle, ...fanFor(ci) }} />)
                   )}

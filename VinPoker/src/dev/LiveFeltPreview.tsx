@@ -5,7 +5,8 @@
 // auth, no real tournament/player data.
 //
 // URL params:
-//   fixture      = fold-walk | showdown | allin-sidepots   (default allin-sidepots)
+//   fixture      = fold-walk | showdown | allin-sidepots | best-five-quads |
+//                  board-plays | chop                       (default allin-sidepots)
 //   seats        = 3 | 6 | 9                               (default 9)
 //   step         = <frame index>                           (default: final frame)
 //   play         = 0 | 1  (mount ReplayScrubber, auto-play) (default 0)
@@ -23,12 +24,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { LiveFelt } from "@/components/cashier/tournament-live/LiveFelt";
+import { TrackerVisualStyles } from "@/components/cashier/tournament-live/PokerVisuals";
 import { ReplayScrubber } from "@/components/cashier/tournament-live/ReplayScrubber";
 import { buildReplayFrames, detectBigBlind, type ReplayFrame } from "@/lib/tracker-poker/replayEngine";
+import { resolveVerifiedBestFiveFocus } from "@/lib/tracker-poker/replayBestFiveFocus";
 import { deriveReplayPlaybackFx } from "@/lib/tracker-poker/replayFx";
 import { buildFixtureHand, type LiveFeltFixtureName } from "./livefeltFixtures";
 
-const FIXTURES: LiveFeltFixtureName[] = ["fold-walk", "showdown", "allin-sidepots"];
+const FIXTURES: LiveFeltFixtureName[] = [
+  "fold-walk",
+  "showdown",
+  "allin-sidepots",
+  "best-five-quads",
+  "board-plays",
+  "chop",
+];
 
 export default function LiveFeltPreview() {
   const [params] = useSearchParams();
@@ -76,6 +86,12 @@ export default function LiveFeltPreview() {
   const bb = detectBigBlind(hand);
   const formatBB = (n: number): string | null => (bb > 0 ? `${(n / bb).toFixed(1).replace(/\.0$/, "")} BB` : null);
   const blinds = bb > 0 ? { sb: bb / 2, bb, ante: 0 } : null;
+  const bestFiveFocus = useMemo(() => resolveVerifiedBestFiveFocus({
+    handId: hand.hand_id ?? `fixture-${fixture}-${hand.hand_number}`,
+    frame,
+    finalFrameIndex: frames.length - 1,
+    settlement: hand.publicSettlement,
+  }), [fixture, frame, frames.length, hand]);
 
   const felt = (
     <LiveFelt
@@ -94,6 +110,7 @@ export default function LiveFeltPreview() {
       viewerLayout={viewerLayout}
       compact={compact}
       tableFx={tableFx}
+      bestFiveFocus={bestFiveFocus}
       chipPush={chipPush}
       blinds={blinds}
     />
@@ -114,7 +131,13 @@ export default function LiveFeltPreview() {
     );
 
   return (
-    <div data-dev-livefelt-preview className="min-h-screen bg-background p-3" style={widthPx > 0 ? { width: widthPx, marginInline: "auto" } : undefined}>
+    <div
+      data-dev-livefelt-preview
+      data-viewer-shell="rpt"
+      className="min-h-screen bg-background p-3"
+      style={widthPx > 0 ? { width: widthPx, marginInline: "auto" } : undefined}
+    >
+      <TrackerVisualStyles />
       <div className="mb-2 text-[10px] text-muted-foreground">
         /__dev/livefelt · {fixture} · seats={seats} · step={play ? "play" : step}/{frames.length - 1} · {orientation} · vL={viewerLayout ? 1 : 0} compact={compact ? 1 : 0} fx={tableFx ? 1 : 0} · wrap={wrap}
       </div>

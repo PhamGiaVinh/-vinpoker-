@@ -36,6 +36,7 @@ import {
   type ReplayFrame,
 } from "@/lib/tracker-poker/replayEngine";
 import { deriveReplayPlaybackFx } from "@/lib/tracker-poker/replayFx";
+import { resolveVerifiedBestFiveFocus } from "@/lib/tracker-poker/replayBestFiveFocus";
 import { deriveLiveHandDisplay } from "@/lib/tracker-poker/liveDisplay";
 import {
   appendTableMotionEvents,
@@ -170,7 +171,10 @@ export function TournamentLiveView({
   const [mode, setMode] = useState<"live" | "replay">("live");
   const [replayHandId, setReplayHandId] = useState<string | null>(null);
   const [replayHand, setReplayHand] = useState<ReplayHand | null>(null);
-  const [replayFrame, setReplayFrame] = useState<ReplayFrame | null>(null);
+  const [replayFrameState, setReplayFrameState] = useState<{
+    handKey: string;
+    frame: ReplayFrame;
+  } | null>(null);
   const [replayFrameSource, setReplayFrameSource] = useState<ReplayFrameSource>("jump");
   const [replayMotionEpoch, setReplayMotionEpoch] = useState(0);
   const [replayTargetState, setReplayTargetState] = useState<ReplayTargetState>({ kind: "idle" });
@@ -203,8 +207,14 @@ export function TournamentLiveView({
     if (events.length > 0) setTableMotionEvents((current) => appendTableMotionEvents(current, events));
   }, []);
 
-  const handleReplayFrame = useCallback((frame: ReplayFrame, source: ReplayFrameSource) => {
-    setReplayFrame(frame);
+  const loadedReplayHandKey = replayHand
+    ? replayHand.hand_id ?? `hand-${replayHand.hand_number}`
+    : null;
+  const replayFrame = loadedReplayHandKey && replayFrameState?.handKey === loadedReplayHandKey
+    ? replayFrameState.frame
+    : null;
+  const handleReplayFrame = useCallback((handKey: string, frame: ReplayFrame, source: ReplayFrameSource) => {
+    setReplayFrameState({ handKey, frame });
     setReplayFrameSource(source);
     if (source !== "playback") setReplayMotionEpoch((current) => current + 1);
   }, []);
@@ -628,7 +638,7 @@ export function TournamentLiveView({
     setMode("live");
     setReplayHandId(null);
     setReplayHand(null);
-    setReplayFrame(null);
+    setReplayFrameState(null);
     setReplayFrameSource("jump");
     setReplayMotionEpoch(0);
     setLiveBaseline(null);
@@ -905,7 +915,25 @@ export function TournamentLiveView({
       ? replayHand
       : null;
   }, [replayHand, replayTargetState, requestedReplayTarget]);
-  const selectedReplayFrame = selectedReplayHand ? replayFrame : null;
+  const selectedReplayHandKey = selectedReplayHand
+    ? selectedReplayHand.hand_id ?? `hand-${selectedReplayHand.hand_number}`
+    : null;
+  const selectedReplayFrame = selectedReplayHandKey && replayFrameState?.handKey === selectedReplayHandKey
+    ? replayFrameState.frame
+    : null;
+  const handleSelectedReplayFrame = useCallback((frame: ReplayFrame, source: ReplayFrameSource) => {
+    if (!selectedReplayHandKey) return;
+    handleReplayFrame(selectedReplayHandKey, frame, source);
+  }, [handleReplayFrame, selectedReplayHandKey]);
+  const replayBestFiveFocus = useMemo(() => {
+    if (!selectedReplayHand?.hand_id || !selectedReplayFrame) return null;
+    return resolveVerifiedBestFiveFocus({
+      handId: selectedReplayHand.hand_id,
+      frame: selectedReplayFrame,
+      finalFrameIndex: selectedReplayHand.actions.length,
+      settlement: selectedReplayHand.publicSettlement,
+    });
+  }, [selectedReplayFrame, selectedReplayHand]);
 
   // Replay uses the historical hand's own big blind (the live clock may have moved on).
   const replayBigBlind = selectedReplayHand ? detectBigBlind(selectedReplayHand) : 0;
@@ -1015,7 +1043,7 @@ export function TournamentLiveView({
     // resolved. A missing or ambiguous target must not look like a fallback.
     setReplayHandId(null);
     setReplayHand(null);
-    setReplayFrame(null);
+    setReplayFrameState(null);
     setReplayFrameSource("jump");
     setReplayMotionEpoch((epoch) => epoch + 1);
     setReplayTargetState({ kind: "loading" });
@@ -1458,7 +1486,7 @@ export function TournamentLiveView({
             onLoadStart={(id) => {
               setReplayHandId(id);
               setReplayHand(null);
-              setReplayFrame(null);
+              setReplayFrameState(null);
               setReplayFrameSource("jump");
               replayMotionFrameRef.current = null;
               setTableMotionEvents([]);
@@ -1506,13 +1534,14 @@ export function TournamentLiveView({
               motionEnabled={spectator && FEATURES.liveTableMotionV2}
               motionEvents={tableMotionEvents}
               motionSpeed={isReplay ? replayMotionSpeed : 1}
+              bestFiveFocus={spectator && isReplay ? replayBestFiveFocus : null}
             />
           )}
           {isReplay && selectedReplayHand && !(spectator && FEATURES.liveReplayHud) && (
             <ReplayScrubber
               key={selectedReplayHand.hand_id ?? `hand-${selectedReplayHand.hand_number}`}
               hand={selectedReplayHand}
-              onFrame={handleReplayFrame}
+              onFrame={handleSelectedReplayFrame}
               hud={spectator && FEATURES.liveReplayHud}
               trackBets={spectator && FEATURES.liveFeltCompact}
               onSpeedChange={setReplayMotionSpeed}
@@ -1551,7 +1580,7 @@ export function TournamentLiveView({
             <ReplayScrubber
               key={selectedReplayHand.hand_id ?? `hand-${selectedReplayHand.hand_number}`}
               hand={selectedReplayHand}
-              onFrame={handleReplayFrame}
+              onFrame={handleSelectedReplayFrame}
               hud
               trackBets={FEATURES.liveFeltCompact}
               onSpeedChange={setReplayMotionSpeed}
