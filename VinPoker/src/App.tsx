@@ -132,6 +132,9 @@ const DevTrackerPreview = import.meta.env.DEV ? lazy(() => import("./components/
 // DEV-ONLY visual harness for the member-card design (cashier → Cấp lại thẻ). Fixture-rendered — no
 // Supabase. Same import.meta.env.DEV gate → route + chunk stripped from production. Reached only at /__dev/card.
 const DevCardPreview = import.meta.env.DEV ? lazy(() => import("./dev/CardPreview")) : null;
+const DevOwnerDailyDigestV2Preview = import.meta.env.DEV
+  ? lazy(() => import("./dev/OwnerDailyDigestV2Preview"))
+  : null;
 const DevSeriesMarketPreview = import.meta.env.DEV
   ? lazy(() => import("./components/series-market/VerifiedMarketDevPreview"))
   : null;
@@ -259,6 +262,9 @@ const App = () => {
               )}
               {import.meta.env.DEV && DevCardPreview && (
                 <Route path="/__dev/card" element={<DevCardPreview />} />
+              )}
+              {import.meta.env.DEV && DevOwnerDailyDigestV2Preview && (
+                <Route path="/__dev/owner-daily-digest-v2" element={<DevOwnerDailyDigestV2Preview />} />
               )}
               {import.meta.env.DEV && DevSeriesMarketPreview && (
                 <Route path="/__dev/series-market" element={<DevSeriesMarketPreview />} />

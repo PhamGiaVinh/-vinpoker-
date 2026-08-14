@@ -2,20 +2,28 @@ export type OwnerDigestMoneyState = "NONE" | "PROVISIONAL" | "CLOSED";
 export type OwnerDigestFreshnessState = "FRESH" | "PARTIAL" | "STALE";
 
 export type OwnerDailyDigestReport = {
+  schemaVersion: 1 | 2;
   digestId: string;
   clubId: string;
   reportDate: string;
   generatedAt: string;
+  sourceAsOf: string | null;
+  snapshotVersion: number | null;
+  calculationVersion: string | null;
+  effectiveTimezone: string | null;
+  windowStartUtc: string | null;
+  windowEndUtc: string | null;
   moneyState: OwnerDigestMoneyState;
   freshnessState: OwnerDigestFreshnessState;
   registrations: number;
   attendance: number;
   entries: number;
   staffCount: number;
-  rakeAmount: number;
-  fnbAmount: number;
-  outstandingPayoutAmount: number;
-  provisionalPayrollAmount: number;
+  rakeAmount: number | null;
+  serviceFeeAmount: number | null;
+  fnbAmount: number | null;
+  outstandingPayoutAmount: number | null;
+  provisionalPayrollAmount: number | null;
   warningCodes: string[];
   actionCodes: string[];
 };
@@ -54,19 +62,28 @@ export async function loadOwnerDailyDigestReport(
 
 export function parseOwnerDailyDigestArtifact(value: unknown): OwnerDailyDigestReport {
   const artifact = asRecord(value, "OWNER_DIGEST_ARTIFACT_MALFORMED");
-  if (artifact.artifact_type !== "OWNER_DAILY_DIGEST" || artifact.schema_version !== 1) {
+  if (artifact.artifact_type !== "OWNER_DAILY_DIGEST") {
     throw new OwnerDailyDigestReadError("OWNER_DIGEST_SCHEMA_UNSUPPORTED");
   }
+  if (artifact.schema_version === 2) return parseV2Artifact(artifact);
+  if (artifact.schema_version !== 1) throw new OwnerDailyDigestReadError("OWNER_DIGEST_SCHEMA_UNSUPPORTED");
   const payload = asRecord(artifact.content_payload, "OWNER_DIGEST_PAYLOAD_MALFORMED");
   const metrics = asRecord(payload.metrics, "OWNER_DIGEST_METRICS_MALFORMED");
   const moneyState = enumValue(payload.money_state, ["NONE", "PROVISIONAL", "CLOSED"] as const);
   const freshnessState = enumValue(payload.freshness_state, ["FRESH", "PARTIAL", "STALE"] as const);
 
   return {
+    schemaVersion: 1,
     digestId: uuid(artifact.artifact_id, "OWNER_DIGEST_ID_MALFORMED"),
     clubId: uuid(artifact.club_id, "OWNER_DIGEST_CLUB_ID_MALFORMED"),
     reportDate: dateOnly(payload.business_date, "OWNER_DIGEST_DATE_MALFORMED"),
     generatedAt: dateTime(artifact.generated_at, "OWNER_DIGEST_GENERATED_AT_MALFORMED"),
+    sourceAsOf: null,
+    snapshotVersion: null,
+    calculationVersion: null,
+    effectiveTimezone: null,
+    windowStartUtc: null,
+    windowEndUtc: null,
     moneyState,
     freshnessState,
     registrations: nonNegativeInteger(metrics.registrations),
@@ -74,9 +91,48 @@ export function parseOwnerDailyDigestArtifact(value: unknown): OwnerDailyDigestR
     entries: nonNegativeInteger(metrics.entries),
     staffCount: nonNegativeInteger(metrics.staff),
     rakeAmount: nonNegativeInteger(metrics.rake_retained_vnd),
+    serviceFeeAmount: null,
     fnbAmount: nonNegativeInteger(metrics.fnb_net_revenue_vnd),
     outstandingPayoutAmount: nonNegativeInteger(metrics.pending_liabilities_vnd),
     provisionalPayrollAmount: nonNegativeInteger(metrics.payroll_provisional_vnd),
+    warningCodes: codeList(payload.warning_codes),
+    actionCodes: codeList(payload.action_codes),
+  };
+}
+
+function parseV2Artifact(artifact: Record<string, unknown>): OwnerDailyDigestReport {
+  const payload = asRecord(artifact.content_payload, "OWNER_DIGEST_PAYLOAD_MALFORMED");
+  const metrics = asRecord(payload.metrics, "OWNER_DIGEST_METRICS_MALFORMED");
+  const moneyState = enumValue(payload.money_state, ["PROVISIONAL"] as const);
+  const freshnessState = enumValue(payload.freshness_state, ["FRESH", "PARTIAL"] as const);
+  const registered = countMetric(metrics.registered_players);
+  const attendance = countMetric(metrics.attendance_players);
+  const entries = countMetric(metrics.entries_count);
+  const staff = countMetric(metrics.staff_count);
+
+  return {
+    schemaVersion: 2,
+    digestId: uuid(artifact.artifact_id, "OWNER_DIGEST_ID_MALFORMED"),
+    clubId: uuid(artifact.club_id, "OWNER_DIGEST_CLUB_ID_MALFORMED"),
+    reportDate: dateOnly(payload.business_date, "OWNER_DIGEST_DATE_MALFORMED"),
+    generatedAt: dateTime(artifact.generated_at, "OWNER_DIGEST_GENERATED_AT_MALFORMED"),
+    sourceAsOf: dateTime(artifact.source_as_of, "OWNER_DIGEST_SOURCE_AS_OF_MALFORMED"),
+    snapshotVersion: positiveInteger(artifact.snapshot_version),
+    calculationVersion: calculationVersion(artifact.calculation_version),
+    effectiveTimezone: timezone(payload.effective_timezone),
+    windowStartUtc: dateTime(payload.window_start_utc, "OWNER_DIGEST_WINDOW_MALFORMED"),
+    windowEndUtc: dateTime(payload.window_end_utc, "OWNER_DIGEST_WINDOW_MALFORMED"),
+    moneyState,
+    freshnessState,
+    registrations: registered,
+    attendance,
+    entries,
+    staffCount: staff,
+    rakeAmount: moneyMetric(metrics.rake_paid_vnd),
+    serviceFeeAmount: moneyMetric(metrics.service_fee_paid_vnd),
+    fnbAmount: signedMoneyMetric(metrics.fnb_net_revenue_vnd),
+    outstandingPayoutAmount: moneyMetric(metrics.payout_outstanding_vnd),
+    provisionalPayrollAmount: moneyMetric(metrics.dealer_payroll_outstanding_vnd),
     warningCodes: codeList(payload.warning_codes),
     actionCodes: codeList(payload.action_codes),
   };
@@ -105,6 +161,55 @@ function enumValue<const T extends readonly string[]>(value: unknown, allowed: T
 function nonNegativeInteger(value: unknown): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
     throw new OwnerDailyDigestReadError("OWNER_DIGEST_AMOUNT_MALFORMED");
+  }
+  return value;
+}
+
+function positiveInteger(value: unknown): number {
+  const result = nonNegativeInteger(value);
+  if (result === 0) throw new OwnerDailyDigestReadError("OWNER_DIGEST_VERSION_MALFORMED");
+  return result;
+}
+
+function countMetric(value: unknown): number {
+  const metric = asRecord(value, "OWNER_DIGEST_METRIC_MALFORMED");
+  if (metric.state !== "AVAILABLE") throw new OwnerDailyDigestReadError("OWNER_DIGEST_METRIC_MALFORMED");
+  return nonNegativeInteger(metric.value);
+}
+
+function moneyMetric(value: unknown): number | null {
+  const metric = asRecord(value, "OWNER_DIGEST_METRIC_MALFORMED");
+  const state = enumValue(metric.state, ["AVAILABLE", "UNAVAILABLE"] as const);
+  if (state === "UNAVAILABLE") {
+    if (metric.value !== null) throw new OwnerDailyDigestReadError("OWNER_DIGEST_METRIC_MALFORMED");
+    return null;
+  }
+  return nonNegativeInteger(metric.value);
+}
+
+function signedMoneyMetric(value: unknown): number | null {
+  const metric = asRecord(value, "OWNER_DIGEST_METRIC_MALFORMED");
+  const state = enumValue(metric.state, ["AVAILABLE", "UNAVAILABLE"] as const);
+  if (state === "UNAVAILABLE") {
+    if (metric.value !== null) throw new OwnerDailyDigestReadError("OWNER_DIGEST_METRIC_MALFORMED");
+    return null;
+  }
+  if (typeof metric.value !== "number" || !Number.isSafeInteger(metric.value)) {
+    throw new OwnerDailyDigestReadError("OWNER_DIGEST_AMOUNT_MALFORMED");
+  }
+  return metric.value;
+}
+
+function calculationVersion(value: unknown): string {
+  if (typeof value !== "string" || !/^owner-daily-digest-v\d+\.\d+\.\d+$/u.test(value)) {
+    throw new OwnerDailyDigestReadError("OWNER_DIGEST_VERSION_MALFORMED");
+  }
+  return value;
+}
+
+function timezone(value: unknown): string {
+  if (typeof value !== "string" || value.length < 3 || value.length > 64 || !/^[A-Za-z0-9_+\-/]+$/u.test(value)) {
+    throw new OwnerDailyDigestReadError("OWNER_DIGEST_TIMEZONE_MALFORMED");
   }
   return value;
 }

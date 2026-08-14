@@ -7,6 +7,8 @@ import {
   type OwnerDailyDigestReadSource,
 } from "@/ops/digest/ownerDailyDigestReadAdapter";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
+import { FEATURES } from "@/lib/featureFlags";
+import type { OwnerDailyDigestV2Source } from "@/ops/digest/ownerDailyDigestV2Source";
 
 export default function OpsOwnerDailyDigest() {
   const navigate = useNavigate();
@@ -27,8 +29,11 @@ export default function OpsOwnerDailyDigest() {
     setRefreshing(true);
     setState({ kind: "loading" });
 
-    void resolveReadSource()
-      .then((source) => loadOwnerDailyDigestReport(source, { clubId }))
+    const request = FEATURES.ownerDailyDigestSnapshotV2
+      ? resolveV2Source().then((source) => source.loadSnapshot({ clubId })).then((result) => result.report)
+      : resolveReadSource().then((source) => loadOwnerDailyDigestReport(source, { clubId }));
+
+    void request
       .then((report) => {
         if (current) setState(report ? { kind: "ready", report } : { kind: "empty" });
       })
@@ -69,6 +74,15 @@ async function resolveReadSource(): Promise<OwnerDailyDigestReadSource> {
   }
   const source = await import("@/ops/digest/ownerDailyDigestSupabaseRuntimeSource");
   return source.ownerDailyDigestSupabaseSource;
+}
+
+async function resolveV2Source(): Promise<OwnerDailyDigestV2Source> {
+  if (import.meta.env.DEV) {
+    const fixture = await import("@/ops/digest/ownerDailyDigestV2Fixtures");
+    return fixture.ownerDailyDigestV2FixtureSource;
+  }
+  const source = await import("@/ops/digest/ownerDailyDigestV2OpsRuntimeSource");
+  return source.ownerDailyDigestV2OpsRuntimeSource;
 }
 
 function safeErrorCode(error: unknown): string {

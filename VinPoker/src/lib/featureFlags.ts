@@ -10,6 +10,15 @@ export const FEATURES = {
    */
   ownerDailyDigestWebReport: true,
   /**
+   * Canonical Owner Daily Digest Snapshot V2 + scoped Manager UX. Default OFF so a
+   * frontend deploy can safely precede the source-only V2 migrations. While OFF,
+   * the existing V1 report and RPC remain byte-for-byte the active path.
+   * Enable only after migrations 20270110000011/12 are applied through the DB
+   * runbook, authenticated Owner/Manager cross-club UAT passes, and the Owner
+   * explicitly approves the Club pilot. Kill-switch: set false.
+   */
+  ownerDailyDigestSnapshotV2: false,
+  /**
    * Cashier "Đăng ký giải" tab — confirm a PENDING online registration → auto-draw
    * seat → receipt (via the live confirm_registration_and_assign_seat RPC).
    * ENABLED in production 2026-06-14 after preview UAT passed (#148). Visible to all
