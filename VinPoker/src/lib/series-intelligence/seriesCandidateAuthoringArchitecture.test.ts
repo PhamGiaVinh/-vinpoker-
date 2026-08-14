@@ -1,0 +1,63 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const ROOT = process.cwd();
+const source = (path: string) => readFileSync(join(ROOT, path), "utf8");
+const MIGRATION = source("supabase/migrations/20270111000000_series_v_candidate_authoring_v1.sql");
+const ADAPTER = source("src/lib/series-intelligence/seriesCandidateAuthoringRpc.ts");
+const PANEL = source("src/components/series-intelligence/SeriesCandidateAuthoringPanel.tsx");
+const PAGE = source("src/pages/SeriesIntelligence.tsx");
+const FLAGS = source("src/lib/featureFlags.ts");
+
+describe("Series V Candidate Authoring V1 boundaries", () => {
+  it("keeps the owner workflow flag-off and outside demo Pulse mode", () => {
+    expect(FLAGS).toMatch(/seriesVCandidateAuthoringV1:\s*false/);
+    expect(PAGE).toContain("FEATURES.seriesVCandidateAuthoringV1 && !clubPulseDemoMode");
+    expect(PAGE).toContain("<SeriesCandidateAuthoringPanel clubId={liveClubPulse?.clubId ?? null} />");
+  });
+
+  it("uses server-anchored preview and approval RPCs without direct candidate table writes", () => {
+    expect(ADAPTER).toContain('approveFromTournament: "series_approve_schedule_candidate_from_tournament_v1"');
+    expect(ADAPTER).toContain('preview: "series_preview_schedule_candidate_v1"');
+    expect(ADAPTER).toContain('approvedReadback: "series_get_approved_schedule_candidates_v1"');
+    expect(ADAPTER).not.toContain('series_approve_schedule_candidate_v1"');
+    expect(ADAPTER).not.toMatch(/\.from\(["']series_schedule_candidates_v1["']\)/);
+    expect(PANEL).not.toContain("askSeriesCopilotEdgeV1");
+    expect(PANEL).toContain("candidate versioned");
+  });
+
+  it("requires owner scope, a scheduled future tournament and a server-built evidence manifest", () => {
+    expect(MIGRATION).toContain("public.is_club_owner(v_actor, p_club_id)");
+    expect(MIGRATION).toContain("t.status = 'scheduled'");
+    expect(MIGRATION).toContain("t.start_time > v_as_of");
+    expect(MIGRATION).toContain("v_tournament.start_time <= v_now");
+    expect(MIGRATION).toContain("FROM public.tournaments AS t");
+    expect(MIGRATION).toContain("'sourceId', 'tournaments'");
+    expect(MIGRATION).toContain("'sourceId', 'series_v_candidate_authoring'");
+    expect(MIGRATION).toContain("'tournament:' || v_tournament.id::text");
+  });
+
+  it("bounds the source query before aggregation and keeps an idempotent source timestamp", () => {
+    expect(MIGRATION).toContain("FROM (\n    SELECT t.id, t.name, t.start_time");
+    expect(MIGRATION).toContain("LIMIT 50\n  ) AS t;");
+    expect(MIGRATION).toContain("COALESCE(v_tournament.updated_at, v_tournament.created_at)");
+    expect(MIGRATION).not.toContain("'asOf', pg_catalog.to_char(v_now");
+  });
+
+  it("does not infer prize contribution or expose unaudited privileges", () => {
+    expect(MIGRATION).not.toMatch(/buy_in\s*[-+*/]\s*(?:rake_amount|service_fee_amount)/i);
+    expect(MIGRATION).not.toMatch(/GRANT\s+(?:INSERT|UPDATE|DELETE|ALL)\s+ON\s+TABLE\s+public\.series_schedule_candidates_v1/i);
+    expect(MIGRATION).toContain("p_prize_contribution_per_entry_vnd");
+    expect(MIGRATION.match(/SECURITY DEFINER\r?\nSET search_path = ''/g)?.length).toBe(3);
+    expect(MIGRATION).toContain("REVOKE ALL ON FUNCTION public.series_approve_schedule_candidate_from_tournament_v1");
+    expect(MIGRATION).toContain("FROM PUBLIC, anon, service_role");
+  });
+
+  it("binds a pre-existing schedule GTD and verifies exactly one current candidate after approval", () => {
+    expect(MIGRATION).toContain("series_v_candidate_gtd_mismatch");
+    expect(ADAPTER).toContain("matching.length !== 1");
+    expect(ADAPTER).toContain("readback_mismatch");
+    expect(PANEL).toContain("Server đã xác nhận phương án đã duyệt");
+  });
+});

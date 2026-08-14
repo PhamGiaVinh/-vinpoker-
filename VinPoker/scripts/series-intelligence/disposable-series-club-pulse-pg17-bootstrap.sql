@@ -36,7 +36,14 @@ CREATE TABLE public.tournaments (
   club_id uuid NOT NULL,
   status text NOT NULL,
   start_time timestamptz,
-  deleted_at timestamptz
+  deleted_at timestamptz,
+  name text NOT NULL DEFAULT 'Scheduled tournament',
+  buy_in bigint NOT NULL DEFAULT 0,
+  guarantee_amount bigint,
+  rake_amount bigint,
+  service_fee_amount bigint,
+  created_at timestamptz NOT NULL DEFAULT pg_catalog.clock_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT pg_catalog.clock_timestamp()
 );
 
 CREATE TABLE public.tournament_registrations (

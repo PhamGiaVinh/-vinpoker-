@@ -8,7 +8,10 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = resolve(HERE, "../..");
-const MIGRATION = join(APP_ROOT, "supabase/migrations/20270110000004_series_v_candidate_and_rate_limit_v1.sql");
+const MIGRATIONS = [
+  join(APP_ROOT, "supabase/migrations/20270110000004_series_v_candidate_and_rate_limit_v1.sql"),
+  join(APP_ROOT, "supabase/migrations/20270111000000_series_v_candidate_authoring_v1.sql"),
+];
 const BOOTSTRAP = join(HERE, "disposable-series-club-pulse-pg17-bootstrap.sql");
 const CONTAINER = process.env.SERIES_V_PG17_DOCKER_CONTAINER ?? "supabase_db_vinpoker-test-canonical-v1";
 const OWNER = "11111111-1111-4111-8111-111111111111";
@@ -42,7 +45,7 @@ function assert(value, message) { if (!value) throw new Error(message); }
 async function main() {
   if (process.env.SERIES_V_PG17_ALLOW_DISPOSABLE !== "1") throw new Error("SERIES_V_PG17_ALLOW_DISPOSABLE=1 is required");
   const database = `series_v_probe_${process.pid}_${Date.now()}`;
-  const [bootstrap, migration] = await Promise.all([readFile(BOOTSTRAP, "utf8"), readFile(MIGRATION, "utf8")]);
+  const [bootstrap, ...migrations] = await Promise.all([readFile(BOOTSTRAP, "utf8"), ...MIGRATIONS.map((migration) => readFile(migration, "utf8"))]);
   try {
     run("postgres", `CREATE DATABASE ${database};`);
     run(database, bootstrap);
@@ -54,7 +57,7 @@ async function main() {
       $$;
       REVOKE ALL ON FUNCTION public._series_sha256_jsonb_v1(jsonb) FROM PUBLIC, anon, authenticated, service_role;
     `);
-    run(database, migration);
+    for (const migration of migrations) run(database, migration);
     run(database, `INSERT INTO public.clubs(id, owner_id) VALUES (${quote(CLUB)}::uuid, ${quote(OWNER)}::uuid);`);
 
     const evidence = JSON.stringify([{
@@ -84,6 +87,37 @@ async function main() {
     try { run(database, `SELECT public.series_get_approved_schedule_candidates_v1(${quote(CLUB)}::uuid, NULL);`, OTHER); } catch (error) { crossClubDenied = String(error).includes("series_v_candidate_forbidden"); }
     assert(crossClubDenied, "cross-club candidate read was not denied");
 
+    const scheduledTournament = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    run(database, `INSERT INTO public.tournaments(
+      id, club_id, status, start_time, name, buy_in, guarantee_amount, rake_amount, service_fee_amount
+    ) VALUES (
+      ${quote(scheduledTournament)}::uuid, ${quote(CLUB)}::uuid, 'scheduled',
+      pg_catalog.clock_timestamp() + interval '7 days', 'Production candidate canary',
+      3000000, 200000000, 300000, 0
+    );`);
+    const sourceList = JSON.parse(run(database, `SELECT public.series_list_schedule_candidate_sources_v1(${quote(CLUB)}::uuid)::text;`, OWNER));
+    assert(sourceList.sources.length === 1 && sourceList.sources[0].tournamentId === scheduledTournament, "authoring source list did not return the exact scheduled tournament");
+    const preview = JSON.parse(run(database, `SELECT public.series_preview_schedule_candidate_v1(${quote(CLUB)}::uuid, ${quote(scheduledTournament)}::uuid)::text;`, OWNER));
+    assert(preview.state === "ready" && preview.optionId === `tournament:${scheduledTournament}`, "authoring preview was not ready for the exact scheduled tournament");
+    assert(preview.fields.buyInVnd.value === "3000000" && preview.fields.scheduleGtdVnd.value === "200000000", "authoring preview did not preserve schedule money facts");
+    assert(preview.fields.prizeContributionPerEntryVnd.value === null, "authoring preview inferred prize contribution from buy-in");
+
+    const approveFromTournament = (gtd = 200000000, prizeContribution = 2000000) => `SELECT public.series_approve_schedule_candidate_from_tournament_v1(
+      ${quote(CLUB)}::uuid, ${quote(scheduledTournament)}::uuid, ${gtd}, ${prizeContribution}, 1, NULL
+    )::text;`;
+    const authoredFirst = JSON.parse(run(database, approveFromTournament(), OWNER));
+    const authoredRetry = JSON.parse(run(database, approveFromTournament(), OWNER));
+    assert(authoredFirst.candidateId === authoredRetry.candidateId && authoredFirst.revision === 1, "authoring approval was not idempotent");
+    const authoredOptionId = `tournament:${scheduledTournament}`;
+    const authoredReadback = JSON.parse(run(database, `SELECT public.series_get_approved_schedule_candidates_v1(${quote(CLUB)}::uuid, ARRAY[${quote(authoredOptionId)}])::text;`, OWNER));
+    assert(authoredReadback.candidateOptions.length === 1 && authoredReadback.candidateOptions[0].requiredField === 100, "authoring approval did not produce one verified readback candidate");
+    let gtdMismatchRejected = false;
+    try { run(database, approveFromTournament(200000001), OWNER); } catch (error) { gtdMismatchRejected = String(error).includes("series_v_candidate_gtd_mismatch"); }
+    assert(gtdMismatchRejected, "authoring approval accepted a GTD that mismatched the current schedule");
+    let authoringCrossClubDenied = false;
+    try { run(database, `SELECT public.series_preview_schedule_candidate_v1(${quote(CLUB)}::uuid, ${quote(scheduledTournament)}::uuid);`, OTHER); } catch (error) { authoringCrossClubDenied = String(error).includes("series_v_candidate_preview_forbidden"); }
+    assert(authoringCrossClubDenied, "authoring preview allowed another club owner");
+
     const sameRequest = "30000000-0000-4000-8000-000000000001";
     const consume = (id) => `SELECT public.series_consume_copilot_rate_limit_v1(${quote(CLUB)}::uuid, ${quote(id)}::uuid)::text;`;
     const one = JSON.parse(run(database, consume(sameRequest), OWNER));
@@ -102,7 +136,7 @@ async function main() {
     assert(run(database, "SELECT count(*) FROM public.series_copilot_rate_limit_requests_v1;") === "5", "denied requests created unbounded rows");
 
     assert(run(database, "SHOW server_version_num;").startsWith("17"), "PostgreSQL major is not 17");
-    process.stdout.write("14/14 Series V PostgreSQL 17 checks passed\n");
+    process.stdout.write("22/22 Series V PostgreSQL 17 checks passed\n");
   } finally {
     run("postgres", `DROP DATABASE IF EXISTS ${database} WITH (FORCE);`);
   }
