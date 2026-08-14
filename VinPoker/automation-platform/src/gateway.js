@@ -9,7 +9,7 @@ import {
   validateEventSemantics,
   validateNotificationSemantics,
 } from "./contracts/validator.js";
-import { buildDeterministicDigestArtifact } from "./domain/digest.js";
+import { buildDigestArtifactFromCanonicalSnapshot } from "./domain/digest.js";
 import { seedTwoClubFixtures } from "./fixtures.js";
 import { sha256 } from "./lib/stable-json.js";
 
@@ -134,10 +134,9 @@ export class AutomationGateway {
       return summarizeArtifact(existing, false);
     }
     const club = this.store.getClubFixture(envelope.event.scope.club_id);
-    const rawArtifact = buildDeterministicDigestArtifact({
+    const rawArtifact = buildDigestArtifactFromCanonicalSnapshot({
       event: envelope.event,
       club,
-      nowMs: this.now(),
       simulateAiOutage,
     });
     const { fallback: _fallback, ...artifact } = rawArtifact;

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import {
-  cloneScheduledEvent,
+  cloneDigestEvent,
   createHarness,
   START_MS,
 } from "./helpers.js";
@@ -13,7 +13,7 @@ test("canonical state and outbox commit or rollback together", () => {
     const base = harness.store.getEvent(
       "31111111-1111-4111-8111-111111111111",
     ).event;
-    const committedEvent = cloneScheduledEvent(base);
+    const committedEvent = cloneDigestEvent(base);
     harness.store.simulateCanonicalWrite({
       entityId: "fixture:committed",
       state: { status: "UPDATED" },
@@ -24,7 +24,7 @@ test("canonical state and outbox commit or rollback together", () => {
     });
     assert.ok(harness.store.getEvent(committedEvent.event_id));
 
-    const failedEvent = cloneScheduledEvent(base);
+    const failedEvent = cloneDigestEvent(base);
     assert.throws(
       () =>
         harness.store.simulateCanonicalWrite({
@@ -65,13 +65,13 @@ test("producer retries are idempotent and conflicting reuse is rejected", () => 
   }
 });
 
-test("24-hour n8n outage skips expired events but reclaims valid RECOMPUTE event", () => {
+test("24-hour n8n outage skips expired events but reclaims a still-valid snapshot event", () => {
   const harness = createHarness();
   try {
     const base = harness.store.getEvent(
       "31111111-1111-4111-8111-111111111111",
     ).event;
-    const longLived = cloneScheduledEvent(base, {
+    const longLived = cloneDigestEvent(base, {
       expiresAt: new Date(START_MS + 30 * 60 * 60 * 1000).toISOString(),
     });
     harness.store.insertScheduledEvent(longLived);
@@ -84,7 +84,7 @@ test("24-hour n8n outage skips expired events but reclaims valid RECOMPUTE event
     });
     assert.equal(claim.events.length, 1);
     assert.equal(claim.events[0].event.event_id, longLived.event_id);
-    assert.equal(claim.events[0].event.catch_up_policy, "RECOMPUTE");
+    assert.equal(claim.events[0].event.catch_up_policy, "SKIP_IF_LATE");
     assert.equal(harness.gateway.status().counts.SKIPPED, 2);
   } finally {
     harness.close();
@@ -98,7 +98,7 @@ test("fair claim gives each club a slot before a second slot", () => {
       "31111111-1111-4111-8111-111111111111",
     ).event;
     for (let index = 0; index < 8; index += 1) {
-      harness.store.insertScheduledEvent(cloneScheduledEvent(alpha));
+      harness.store.insertScheduledEvent(cloneDigestEvent(alpha));
     }
     const claim = harness.gateway.claim({
       workflow_key: "owner.daily_digest.v1",
@@ -118,7 +118,7 @@ test("LATEST_ONLY skips superseded event versions before a worker receives them"
     const base = harness.store.getEvent(
       "31111111-1111-4111-8111-111111111111",
     ).event;
-    const older = cloneScheduledEvent(base, {
+    const older = cloneDigestEvent(base, {
       availableAt: new Date(START_MS + 1_000).toISOString(),
     });
     older.subject = {
@@ -126,7 +126,7 @@ test("LATEST_ONLY skips superseded event versions before a worker receives them"
       entity_id: "digest:alpha:current",
       entity_version: 1,
     };
-    const newer = cloneScheduledEvent(base, {
+    const newer = cloneDigestEvent(base, {
       availableAt: new Date(START_MS + 2_000).toISOString(),
     });
     newer.subject = {
@@ -167,7 +167,7 @@ test("poison event is dead-lettered without blocking valid event in same batch",
     const base = harness.store.getEvent(
       "31111111-1111-4111-8111-111111111111",
     ).event;
-    const poison = cloneScheduledEvent(base);
+    const poison = cloneDigestEvent(base);
     poison.payload.unexpected = "schema violation";
     harness.store.insertScheduledEvent(poison);
 
@@ -253,7 +253,7 @@ test("Gateway dead-letters event from a different environment before orchestrati
     const base = harness.store.getEvent(
       "31111111-1111-4111-8111-111111111111",
     ).event;
-    const foreignEnvironment = cloneScheduledEvent(base);
+    const foreignEnvironment = cloneDigestEvent(base);
     foreignEnvironment.producer.environment = "TEST";
     harness.store.insertScheduledEvent(foreignEnvironment);
     harness.gateway.claim({

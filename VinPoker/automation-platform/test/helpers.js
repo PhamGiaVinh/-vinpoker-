@@ -63,13 +63,12 @@ export function processClaimedDigest({ gateway, store, envelope, nowMs }) {
   return { summary, artifact, request, enqueue };
 }
 
-export function cloneScheduledEvent(baseEvent, {
+export function cloneDigestEvent(baseEvent, {
   clubId = baseEvent.scope.club_id,
   eventId = randomUUID(),
   correlationId = randomUUID(),
   dedupeSuffix = randomUUID(),
   availableAt = baseEvent.available_at,
-  scheduledFor = baseEvent.scheduled_for,
   expiresAt = baseEvent.expires_at,
   priority = baseEvent.priority,
 } = {}) {
@@ -79,13 +78,14 @@ export function cloneScheduledEvent(baseEvent, {
   event.event_id = eventId;
   event.correlation_id = correlationId;
   event.scope.club_id = clubId;
-  event.subject.entity_id = `digest:${clubId}:${dedupeSuffix}`;
-  event.dedupe_key = `digest.${clubId}.${dedupeSuffix}.v1`;
+  event.subject.entity_id = eventId;
+  event.content_artifact_id = eventId;
+  event.dedupe_key = `owner-digest:${clubId}:${dedupeSuffix}`;
   event.available_at = availableAt;
-  event.scheduled_for = scheduledFor;
   event.expires_at = expiresAt;
   event.priority = priority;
   event.payload.business_date = businessDate;
-  event.payload.schedule_key = `owner_daily_digest:${clubId}:${businessDate}`;
+  event.payload.snapshot_id = eventId;
+  event.payload.club_id = clubId;
   return event;
 }

@@ -65,7 +65,7 @@ try {
   validateDeliverySemantics(delivery);
 
   process.stdout.write(
-    "PASS: all V1 schemas compile and validate the Owner Daily Digest fixture.\n",
+    "PASS: V1 event/delivery contracts and the canonical V2 Digest artifact compile and validate.\n",
   );
 } finally {
   store.close();

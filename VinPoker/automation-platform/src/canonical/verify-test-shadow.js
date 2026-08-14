@@ -1,12 +1,13 @@
 const METRIC_KEYS = [
-  "registrations",
-  "attendance",
-  "entries",
-  "staff",
-  "rake_retained_vnd",
+  "registered_players",
+  "attendance_players",
+  "entries_count",
+  "staff_count",
+  "rake_paid_vnd",
+  "service_fee_paid_vnd",
   "fnb_net_revenue_vnd",
-  "pending_liabilities_vnd",
-  "payroll_provisional_vnd",
+  "payout_outstanding_vnd",
+  "dealer_payroll_outstanding_vnd",
 ];
 
 export function verifyShadowEvidence({ clubs, evidence, status }) {
@@ -24,9 +25,9 @@ export function verifyShadowEvidence({ clubs, evidence, status }) {
     const digestMetrics = item.artifact?.content_payload?.metrics ?? {};
     const fields = {};
     for (const key of METRIC_KEYS) {
-      const canonical = club.snapshot[key];
+      const canonical = club.canonical_snapshot.content_payload.metrics[key];
       const digest = digestMetrics[key];
-      const result = canonical === digest ? "PASS" : "FAIL";
+      const result = JSON.stringify(canonical) === JSON.stringify(digest) ? "PASS" : "FAIL";
       fields[key] = { canonical, digest, result };
       if (result === "FAIL") failures.push(`METRIC_MISMATCH:${club.display_code}:${key}`);
     }
@@ -41,9 +42,15 @@ export function verifyShadowEvidence({ clubs, evidence, status }) {
     if (item.delivery?.recipient_endpoint_id !== club.mock_owner_endpoint_id) {
       failures.push(`OWNER_ENDPOINT_SCOPE:${club.display_code}`);
     }
+    if (
+      item.event.event_type !== "owner.daily_digest.snapshot_created" ||
+      item.event.event_id !== club.canonical_event?.event_id
+    ) {
+      failures.push(`CANONICAL_OUTBOX_EVENT_MISMATCH:${club.display_code}`);
+    }
     if (item.event_status !== "COMPLETED") failures.push(`EVENT_NOT_COMPLETED:${club.display_code}`);
     if (item.delivery?.status !== "SENT") failures.push(`MOCK_DELIVERY_NOT_SENT:${club.display_code}`);
-    const expectedMoneyState = club.snapshot.payroll_provisional_vnd > 0 ? "PROVISIONAL" : "CLOSED";
+    const expectedMoneyState = "PROVISIONAL";
     if (item.artifact?.content_payload?.money_state !== expectedMoneyState) {
       failures.push(`MONEY_STATE_MISMATCH:${club.display_code}`);
     }
@@ -51,8 +58,9 @@ export function verifyShadowEvidence({ clubs, evidence, status }) {
       club_id: club.club_id,
       display_code: club.display_code,
       event_id: item.event.event_id,
+      event_type: item.event.event_type,
       correlation_id: item.event.correlation_id,
-      scheduled_for: item.event.scheduled_for,
+      event_occurred_at: item.event.occurred_at,
       artifact_id: item.artifact?.artifact_id ?? null,
       artifact_version: item.artifact?.schema_version ?? null,
       notification_id: item.notification_id,

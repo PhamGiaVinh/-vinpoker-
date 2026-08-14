@@ -2,11 +2,11 @@
   "catalog_version": 1,
   "events": [
     {
-      "event_type": "owner.daily_digest.due",
-      "producer": "SUPABASE_CRON_RPC_FUTURE",
-      "phase_1_producer": "LOCAL_FIXTURE",
-      "payload_schema_key": "owner.daily_digest.due.v1",
-      "catch_up_policy": "RECOMPUTE",
+      "event_type": "owner.daily_digest.snapshot_created",
+      "producer": "VINPOKER_DB",
+      "phase_1_producer": "CANONICAL_SNAPSHOT_OUTBOX",
+      "payload_schema_key": "owner.daily_digest.snapshot_created.v2",
+      "catch_up_policy": "SKIP_IF_LATE",
       "expires_after_seconds": 28800,
       "owner": "N8N_ORCHESTRATION",
       "external_send": false

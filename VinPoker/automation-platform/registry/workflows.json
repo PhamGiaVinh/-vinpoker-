@@ -6,11 +6,11 @@
       "workflow_key": "owner.daily_digest.v1",
       "workflow_version": 1,
       "business_owner": "N8N_ORCHESTRATION_GATEWAY_DELIVERY",
-      "current_owner": "LOCAL_FIXTURE",
+      "current_owner": "CANONICAL_SNAPSHOT_OUTBOX",
       "future_owner": "N8N_ORCHESTRATION_GATEWAY_DELIVERY",
       "enabled": true,
       "allowed_event_types": [
-        "owner.daily_digest.due"
+        "owner.daily_digest.snapshot_created"
       ],
       "allowed_producer_environments": [
         "DEV"

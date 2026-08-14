@@ -1,5 +1,5 @@
 {
-  "fixture_version": 1,
+  "fixture_version": 2,
   "clubs": [
     {
       "club_id": "11111111-1111-4111-8111-111111111111",
@@ -8,17 +8,24 @@
       "operating_day_cutoff": "06:00",
       "digest_send_time": "09:00",
       "mock_owner_endpoint_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      "snapshot": {
+      "canonical_snapshot_template": {
+        "snapshot_id": "51111111-1111-4111-8111-111111111111",
+        "snapshot_version": 1,
+        "calculation_version": "owner-daily-digest-v2.0.0",
         "freshness_state": "FRESH",
-        "money_state": "PROVISIONAL",
-        "registrations": 128,
-        "attendance": 117,
-        "entries": 154,
-        "staff": 24,
-        "rake_retained_vnd": 18480000,
-        "fnb_net_revenue_vnd": 7250000,
-        "pending_liabilities_vnd": 96000000,
-        "payroll_provisional_vnd": 12800000
+        "metrics": {
+          "registered_players": { "value": 128, "state": "AVAILABLE" },
+          "attendance_players": { "value": 117, "state": "AVAILABLE" },
+          "entries_count": { "value": 154, "state": "AVAILABLE" },
+          "staff_count": { "value": 24, "state": "AVAILABLE" },
+          "rake_paid_vnd": { "value": 14280000, "state": "AVAILABLE" },
+          "service_fee_paid_vnd": { "value": 4200000, "state": "AVAILABLE" },
+          "fnb_net_revenue_vnd": { "value": 7250000, "state": "AVAILABLE" },
+          "payout_outstanding_vnd": { "value": 96000000, "state": "AVAILABLE" },
+          "dealer_payroll_outstanding_vnd": { "value": 12800000, "state": "AVAILABLE" }
+        },
+        "warning_codes": ["PAYOUT_OUTSTANDING", "ATTENDANCE_BELOW_REGISTRATION"],
+        "action_codes": ["REVIEW_PAYOUT_OUTSTANDING", "REVIEW_ATTENDANCE_GAP"]
       }
     },
     {
@@ -28,17 +35,24 @@
       "operating_day_cutoff": "06:00",
       "digest_send_time": "09:15",
       "mock_owner_endpoint_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-      "snapshot": {
+      "canonical_snapshot_template": {
+        "snapshot_id": "52222222-2222-4222-8222-222222222222",
+        "snapshot_version": 2,
+        "calculation_version": "owner-daily-digest-v2.0.0",
         "freshness_state": "PARTIAL",
-        "money_state": "CLOSED",
-        "registrations": 76,
-        "attendance": 69,
-        "entries": 91,
-        "staff": 15,
-        "rake_retained_vnd": 10920000,
-        "fnb_net_revenue_vnd": 4380000,
-        "pending_liabilities_vnd": 42000000,
-        "payroll_provisional_vnd": 7600000
+        "metrics": {
+          "registered_players": { "value": 76, "state": "AVAILABLE" },
+          "attendance_players": { "value": 69, "state": "AVAILABLE" },
+          "entries_count": { "value": 91, "state": "AVAILABLE" },
+          "staff_count": { "value": 15, "state": "AVAILABLE" },
+          "rake_paid_vnd": { "value": null, "state": "UNAVAILABLE" },
+          "service_fee_paid_vnd": { "value": null, "state": "UNAVAILABLE" },
+          "fnb_net_revenue_vnd": { "value": 4380000, "state": "AVAILABLE" },
+          "payout_outstanding_vnd": { "value": 42000000, "state": "AVAILABLE" },
+          "dealer_payroll_outstanding_vnd": { "value": 7600000, "state": "AVAILABLE" }
+        },
+        "warning_codes": ["REGISTRATION_FEE_SPLIT_UNAVAILABLE", "PAYOUT_OUTSTANDING", "ATTENDANCE_BELOW_REGISTRATION"],
+        "action_codes": ["REVIEW_LEGACY_REGISTRATIONS", "REVIEW_PAYOUT_OUTSTANDING", "REVIEW_ATTENDANCE_GAP"]
       }
     }
   ],

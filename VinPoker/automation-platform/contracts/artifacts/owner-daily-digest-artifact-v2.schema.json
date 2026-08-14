@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.vbacker.internal/automation/artifacts/owner-daily-digest-artifact-v2.schema.json",
+  "title": "OwnerDailyDigestArtifactV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_id",
+    "club_id",
+    "artifact_type",
+    "schema_version",
+    "snapshot_version",
+    "calculation_version",
+    "privacy_class",
+    "sensitivity",
+    "source_data_hash",
+    "generation_mode",
+    "input_hash",
+    "output_hash",
+    "source_as_of",
+    "generated_at",
+    "approval_status",
+    "content_payload",
+    "content_sha256",
+    "expires_at"
+  ],
+  "properties": {
+    "artifact_id": { "type": "string", "format": "uuid" },
+    "club_id": { "type": "string", "format": "uuid" },
+    "artifact_type": { "const": "OWNER_DAILY_DIGEST" },
+    "schema_version": { "type": "integer", "const": 2 },
+    "snapshot_version": { "type": "integer", "minimum": 1 },
+    "calculation_version": {
+      "type": "string",
+      "pattern": "^owner-daily-digest-v[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "maxLength": 64
+    },
+    "privacy_class": { "const": "NO_PII" },
+    "sensitivity": { "const": "CLUB_CONFIDENTIAL" },
+    "source_data_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "generation_mode": { "const": "DETERMINISTIC" },
+    "input_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "output_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "source_as_of": { "type": "string", "format": "date-time" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "approval_status": { "const": "NOT_REQUIRED" },
+    "content_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "business_date",
+        "calculation_version",
+        "effective_timezone",
+        "window_start_utc",
+        "window_end_utc",
+        "freshness_state",
+        "money_state",
+        "metrics",
+        "warning_codes",
+        "action_codes"
+      ],
+      "properties": {
+        "business_date": { "type": "string", "format": "date" },
+        "calculation_version": {
+          "type": "string",
+          "pattern": "^owner-daily-digest-v[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "maxLength": 64
+        },
+        "effective_timezone": { "type": "string", "maxLength": 64 },
+        "window_start_utc": { "type": "string", "format": "date-time" },
+        "window_end_utc": { "type": "string", "format": "date-time" },
+        "freshness_state": { "enum": ["FRESH", "PARTIAL"] },
+        "money_state": { "const": "PROVISIONAL" },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "registered_players",
+            "attendance_players",
+            "entries_count",
+            "staff_count",
+            "rake_paid_vnd",
+            "service_fee_paid_vnd",
+            "fnb_net_revenue_vnd",
+            "payout_outstanding_vnd",
+            "dealer_payroll_outstanding_vnd"
+          ],
+          "properties": {
+            "registered_players": { "$ref": "#/$defs/countMetric" },
+            "attendance_players": { "$ref": "#/$defs/countMetric" },
+            "entries_count": { "$ref": "#/$defs/countMetric" },
+            "staff_count": { "$ref": "#/$defs/countMetric" },
+            "rake_paid_vnd": { "$ref": "#/$defs/moneyMetric" },
+            "service_fee_paid_vnd": { "$ref": "#/$defs/moneyMetric" },
+            "fnb_net_revenue_vnd": { "$ref": "#/$defs/signedMoneyMetric" },
+            "payout_outstanding_vnd": { "$ref": "#/$defs/moneyMetric" },
+            "dealer_payroll_outstanding_vnd": { "$ref": "#/$defs/moneyMetric" }
+          }
+        },
+        "warning_codes": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "REGISTRATION_FEE_SPLIT_UNAVAILABLE",
+              "FNB_SOURCE_UNAVAILABLE",
+              "PAYROLL_AMOUNT_UNAVAILABLE",
+              "PAYOUT_OUTSTANDING",
+              "ATTENDANCE_BELOW_REGISTRATION"
+            ]
+          }
+        },
+        "action_codes": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "REVIEW_LEGACY_REGISTRATIONS",
+              "REVIEW_FNB_CONFIGURATION",
+              "REVIEW_PAYROLL_DATA",
+              "REVIEW_PAYOUT_OUTSTANDING",
+              "REVIEW_ATTENDANCE_GAP"
+            ]
+          }
+        }
+      }
+    },
+    "content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "expires_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "countMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "state"],
+      "properties": {
+        "value": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "state": { "const": "AVAILABLE" }
+      }
+    },
+    "moneyMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "state"],
+      "properties": {
+        "value": { "type": ["integer", "null"], "minimum": 0, "maximum": 1000000000000 },
+        "state": { "enum": ["AVAILABLE", "UNAVAILABLE"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "AVAILABLE" } }, "required": ["state"] },
+          "then": { "properties": { "value": { "type": "integer" } } },
+          "else": { "properties": { "value": { "type": "null" } } }
+        }
+      ]
+    },
+    "signedMoneyMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "state"],
+      "properties": {
+        "value": { "type": ["integer", "null"], "minimum": -1000000000000, "maximum": 1000000000000 },
+        "state": { "enum": ["AVAILABLE", "UNAVAILABLE"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "AVAILABLE" } }, "required": ["state"] },
+          "then": { "properties": { "value": { "type": "integer" } } },
+          "else": { "properties": { "value": { "type": "null" } } }
+        }
+      ]
+    }
+  }
+}

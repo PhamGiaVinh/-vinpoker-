@@ -4,6 +4,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { projectRoot } from "../config.js";
 import { sha256, stableStringify } from "../lib/stable-json.js";
+import { digestCanonicalSnapshotContentV2 } from "../lib/digest-snapshot-hash.js";
 
 const MAX_PAYLOAD_BYTES = 32 * 1024;
 const forbiddenKeys = /(^|_)(email|phone|full_name|chat_id|telegram_user_id|bank_account|account_number|raw_html|raw_url|recipient_(?:email|phone|chat|address)|metadata)(_|$)/i;
@@ -43,7 +44,7 @@ export function createContractValidator(contractsDir = path.join(projectRoot, "c
       "https://schemas.vbacker.internal/automation/notification-delivery-v1.schema.json",
     ),
     digestArtifact: ajv.getSchema(
-      "https://schemas.vbacker.internal/automation/artifacts/owner-daily-digest-artifact-v1.schema.json",
+      "https://schemas.vbacker.internal/automation/artifacts/owner-daily-digest-artifact-v2.schema.json",
     ),
   };
 
@@ -62,7 +63,7 @@ export function createContractValidator(contractsDir = path.join(projectRoot, "c
       const artifact = assertSchema(
         validators.digestArtifact,
         value,
-        "OwnerDailyDigestArtifactV1",
+        "OwnerDailyDigestArtifactV2",
       );
       return validateDigestArtifactSemantics(artifact);
     },
@@ -131,7 +132,7 @@ export function validateNotificationSemantics(request, event, artifact) {
         "artifact must remain valid for the request lifetime",
       );
     }
-    if (artifact.content_sha256 !== sha256(artifact.content_payload)) {
+    if (artifact.content_sha256 !== digestCanonicalSnapshotContentV2(artifact.content_payload)) {
       throw contractError("ARTIFACT_CHECKSUM_MISMATCH", "artifact checksum is invalid");
     }
     if (
@@ -148,11 +149,21 @@ export function validateNotificationSemantics(request, event, artifact) {
 }
 
 export function validateDigestArtifactSemantics(artifact) {
-  const contentHash = sha256(artifact.content_payload);
+  const contentHash = digestCanonicalSnapshotContentV2(artifact.content_payload);
   if (artifact.content_sha256 !== contentHash || artifact.output_hash !== contentHash) {
     throw contractError(
       "ARTIFACT_CHECKSUM_MISMATCH",
       "Artifact output_hash and content_sha256 must equal content_payload hash",
+    );
+  }
+  if (
+    artifact.source_data_hash !== contentHash ||
+    artifact.input_hash !== contentHash ||
+    artifact.calculation_version !== artifact.content_payload.calculation_version
+  ) {
+    throw contractError(
+      "ARTIFACT_SOURCE_HASH_MISMATCH",
+      "Artifact source hashes and calculation version must match the canonical snapshot",
     );
   }
   if (Date.parse(artifact.expires_at) <= Date.parse(artifact.generated_at)) {
