@@ -104,6 +104,9 @@ export function HistoricalSettlementDisplayControl({
         return;
       }
       setPreview(parsed);
+    } catch (error) {
+      const diagnostic = await diagnoseHistoricalSettlementInvocation({ data: null, error, mode: "preview", handId });
+      toast.error(diagnosticFailureMessage(diagnostic.code));
     } finally {
       setBusy(false);
     }

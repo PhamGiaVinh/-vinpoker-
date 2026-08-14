@@ -32,4 +32,9 @@ describe("historical settlement display capability", () => {
     expect(batchControl).toContain("data-historical-diagnostic");
     expect(batchControl).not.toContain("responseCode(");
   });
+
+  it("fails closed with a safe preview diagnostic when the Edge invocation throws", () => {
+    expect(control).toContain("catch (error)");
+    expect(control).toContain('diagnoseHistoricalSettlementInvocation({ data: null, error, mode: "preview", handId })');
+  });
 });
