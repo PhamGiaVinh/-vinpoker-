@@ -8,20 +8,10 @@ import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Loader2, Radio, PlayCircle } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
 import { buildEmbedSrc, type StreamPlatform } from "@/lib/streamUrl";
+import { attachLivestreamMetadata, type PublicStreamItem, type PublicStreamRow } from "@/lib/livestreamCatalog";
 import { useTranslation } from "react-i18next";
 
-interface StreamItem {
-  id: string;
-  platform: "youtube" | "facebook";
-  stream_url: string;
-  title: string | null;
-  match_title: string | null;
-  scheduled_at: string | null;
-  thumbnail_url: string | null;
-  custom_tournament_name: string | null;
-  is_live: boolean;
-  tournament: { id: string; name: string; start_time: string; club: { name: string } | null } | null;
-}
+type StreamItem = PublicStreamItem;
 
 type GroupKey = string;
 
@@ -29,22 +19,68 @@ export const LivestreamSection = () => {
   const { t } = useTranslation();
   const [items, setItems] = useState<StreamItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [playing, setPlaying] = useState<{ title: string; streams: StreamItem[]; activeId: string } | null>(null);
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
+      setLoading(true);
+      setLoadError(null);
+      const { data: streams, error: streamsError } = await supabase
         .from("tournament_streams")
-        .select("id,platform,stream_url,title,match_title,scheduled_at,thumbnail_url,custom_tournament_name,is_live,tournament:tournaments(id,name,start_time,club:clubs(name))")
+        .select("id,platform,stream_url,title,match_title,scheduled_at,thumbnail_url,custom_tournament_name,is_live,tournament_id")
         .order("is_live", { ascending: false })
         .order("created_at", { ascending: false });
-      setItems((data ?? []) as any);
+
+      if (streamsError) {
+        setItems([]);
+        setLoadError("Không tải được danh sách livestream. Hãy thử lại.");
+        setLoading(false);
+        return;
+      }
+
+      const streamRows = (streams ?? []) as PublicStreamRow[];
+      const tournamentIds = [...new Set(streamRows.flatMap((stream) => stream.tournament_id ? [stream.tournament_id] : []))];
+      let tournaments: { id: string; name: string; start_time: string; club_id: string }[] = [];
+      let clubs: { id: string; name: string }[] = [];
+
+      if (tournamentIds.length > 0) {
+        const { data: tournamentRows } = await supabase
+          .from("tournaments")
+          .select("id,name,start_time,club_id")
+          .in("id", tournamentIds);
+        tournaments = tournamentRows ?? [];
+
+        const clubIds = [...new Set(tournaments.map((tournament) => tournament.club_id))];
+        if (clubIds.length > 0) {
+          const { data: clubRows } = await supabase
+            .from("clubs")
+            .select("id,name")
+            .in("id", clubIds);
+          clubs = clubRows ?? [];
+        }
+      }
+
+      setItems(attachLivestreamMetadata(streamRows, tournaments, clubs));
       setLoading(false);
     })();
-  }, []);
+  }, [reloadKey]);
 
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+  }
+
+  if (loadError) {
+    return (
+      <Card className="p-12 text-center" role="alert">
+        <Radio className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+        <p className="text-sm text-muted-foreground">{loadError}</p>
+        <Button className="mt-4" variant="outline" onClick={() => setReloadKey((value) => value + 1)}>
+          Thử lại
+        </Button>
+      </Card>
+    );
   }
 
   if (items.length === 0) {
