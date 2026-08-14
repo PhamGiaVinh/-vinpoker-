@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { Building2, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  selectOwnerDailyDigestClub,
+  type OwnerDailyDigestAccessibleClub,
+} from "@/ops/digest/ownerDailyDigestClubSelection";
 import type { OwnerDailyDigestClubScopeSource } from "@/ops/digest/ownerDailyDigestClubScopeSource";
 import { OwnerDailyDigestView, type OwnerDigestViewState } from "@/ops/digest/OwnerDailyDigestView";
 import {
@@ -14,7 +18,7 @@ export default function OwnerDailyDigest() {
   const [searchParams, setSearchParams] = useSearchParams();
   const authorized = isAdmin || isClubOwner || isClubAdmin;
   const [redirectReady, setRedirectReady] = useState(false);
-  const [clubs, setClubs] = useState<Array<{ id: string; name: string }>>([]);
+  const [clubs, setClubs] = useState<OwnerDailyDigestAccessibleClub[]>([]);
   const [clubsLoading, setClubsLoading] = useState(true);
   const [clubsError, setClubsError] = useState(false);
   const [state, setState] = useState<OwnerDigestViewState>({ kind: "loading" });
@@ -54,7 +58,7 @@ export default function OwnerDailyDigest() {
 
   const requestedClubId = searchParams.get("club");
   const selectedClub = useMemo(
-    () => clubs.find((club) => club.id === requestedClubId) ?? clubs[0] ?? null,
+    () => selectOwnerDailyDigestClub(clubs, requestedClubId),
     [clubs, requestedClubId],
   );
 
@@ -113,6 +117,11 @@ export default function OwnerDailyDigest() {
         <div className="h-80 animate-pulse rounded-3xl border border-white/7 bg-[#07100c]" aria-label="Đang tải danh sách CLB" />
       ) : clubsError ? (
         <PageMessage title="Không tải được CLB" body="Phiên đăng nhập vẫn được giữ nguyên. Hãy thử tải lại trang sau ít phút." />
+      ) : requestedClubId !== null && !selectedClub ? (
+        <PageMessage
+          title="Bạn không có quyền xem CLB này"
+          body="Liên kết này không thuộc phạm vi được phân quyền của bạn. Hãy chọn một CLB trong danh sách."
+        />
       ) : !selectedClub ? (
         <PageMessage title="Chưa được gán CLB" body="Tài khoản này chưa có quyền xem Báo cáo ngày của CLB nào." />
       ) : (
