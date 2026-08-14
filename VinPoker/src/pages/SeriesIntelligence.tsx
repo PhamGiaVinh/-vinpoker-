@@ -25,6 +25,7 @@ import { SeriesCaptureConsole } from "@/components/series-intelligence/SeriesCap
 import { SeriesAssistant } from "@/components/series-intelligence/SeriesAssistant";
 import { VCopilotPanel } from "@/components/series-intelligence/VCopilotPanel";
 import { ClubPulsePanel } from "@/components/series-intelligence/ClubPulsePanel";
+import { SeriesCandidateAuthoringPanel } from "@/components/series-intelligence/SeriesCandidateAuthoringPanel";
 import { RegistrationPacePanel } from "@/components/series-intelligence/RegistrationPacePanel";
 import { SeriesIntelligenceWorkspaceNav } from "@/components/series-intelligence/SeriesIntelligenceWorkspaceNav";
 import { parseSeriesCsv, SAMPLE_CSV_TEXT } from "@/lib/series-intelligence/csvImport";
@@ -158,6 +159,9 @@ export default function SeriesIntelligence() {
 
       {/* W1 — Trợ lý Series: workflow ring + "hôm nay cần làm gì" (gated; hooks only run when mounted) */}
       {FEATURES.seriesAssistant && <SeriesAssistant csvEvents={lib.activeEvents} onLoadSample={loadSample} />}
+      {FEATURES.seriesVCandidateAuthoringV1 && !clubPulseDemoMode && (
+        <SeriesCandidateAuthoringPanel clubId={liveClubPulse?.clubId ?? null} />
+      )}
       {FEATURES.seriesVCopilotV1 && (
         <VCopilotPanel
           contextMode={clubPulseDemoMode ? "mock" : FEATURES.seriesClubPulseV1 ? "live" : "mock"}

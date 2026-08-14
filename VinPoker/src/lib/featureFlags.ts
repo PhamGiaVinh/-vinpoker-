@@ -1060,6 +1060,13 @@ export const FEATURES = {
    */
   seriesVCopilotV1: true,
   /**
+   * Series Intelligence — V Candidate Authoring V1. When ON, owners can choose
+   * a real scheduled tournament and explicitly promote one server-verified
+   * candidate for V to read. Default OFF until the additive database contract,
+   * authenticated Preview UAT and a narrow flag-on gate are complete.
+   */
+  seriesVCandidateAuthoringV1: false,
+  /**
    * Series Intelligence — TP3 small-field overlay distribution. When ON, overlay simulations whose
    * central field is below 60 entries use a discrete Negative Binomial sampler instead of a continuous
    * log-normal draw, so tiny fields keep realistic integer count mass. Fields at/above 60 stay on the
