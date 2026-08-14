@@ -110,7 +110,9 @@ function nonNegativeInteger(value: unknown): number {
 }
 
 function uuid(value: unknown, code: string): string {
-  if (typeof value !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value)) {
+  // Preserve the same PostgreSQL uuid contract as club scope loading. Legacy
+  // club identifiers can be canonical in Postgres without RFC version bits.
+  if (typeof value !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(value)) {
     throw new OwnerDailyDigestReadError(code);
   }
   return value;
