@@ -1,83 +1,76 @@
-import { randomUUID } from "node:crypto";
 import { contractError } from "../contracts/validator.js";
-import { sha256 } from "../lib/stable-json.js";
+import { digestCanonicalSnapshotContentV2 } from "../lib/digest-snapshot-hash.js";
 
-export function buildDeterministicDigestArtifact({
+/**
+ * Convert one canonical server-produced snapshot into the notification artifact contract.
+ * This adapter deliberately contains no metric formula, warning rule or money calculation.
+ */
+export function buildDigestArtifactFromCanonicalSnapshot({
   event,
   club,
-  nowMs,
   simulateAiOutage = false,
 }) {
-  if (event.event_type !== "owner.daily_digest.due") {
-    throw contractError("UNSUPPORTED_EVENT_TYPE", "Digest builder only accepts due events");
+  if (event.event_type !== "owner.daily_digest.snapshot_created") {
+    throw contractError(
+      "UNSUPPORTED_EVENT_TYPE",
+      "Digest adapter only accepts canonical snapshot-created events",
+    );
   }
   if (!club || club.club_id !== event.scope.club_id) {
     throw contractError("CROSS_SCOPE_REFERENCE", "Digest snapshot club does not match event");
   }
 
-  const snapshot = club.snapshot;
-  const warningCodes = [];
-  const actionCodes = [];
+  const snapshot = club.canonical_snapshot;
+  if (!snapshot || snapshot.club_id !== club.club_id) {
+    throw contractError("CANONICAL_SNAPSHOT_REQUIRED", "Canonical Digest snapshot is missing");
+  }
+  const payload = snapshot.content_payload;
+  const eventPayload = event.payload;
+  if (
+    event.content_artifact_id !== snapshot.snapshot_id ||
+    event.subject.entity_id !== snapshot.snapshot_id ||
+    event.subject.entity_version !== snapshot.snapshot_version ||
+    eventPayload.snapshot_id !== snapshot.snapshot_id ||
+    eventPayload.club_id !== snapshot.club_id ||
+    eventPayload.business_date !== payload.business_date ||
+    eventPayload.snapshot_version !== snapshot.snapshot_version ||
+    eventPayload.calculation_version !== snapshot.calculation_version ||
+    eventPayload.content_hash !== snapshot.content_hash ||
+    eventPayload.schema_version !== 2
+  ) {
+    throw contractError(
+      "CANONICAL_SNAPSHOT_EVENT_MISMATCH",
+      "Canonical snapshot does not match the claimed outbox event",
+    );
+  }
 
-  if (snapshot.freshness_state === "PARTIAL") {
-    warningCodes.push("DATA_PARTIAL");
-    actionCodes.push("REVIEW_DATA_FRESHNESS");
-  } else if (snapshot.freshness_state === "STALE") {
-    warningCodes.push("DATA_STALE");
-    actionCodes.push("REVIEW_DATA_FRESHNESS");
+  const contentHash = digestCanonicalSnapshotContentV2(payload);
+  if (snapshot.content_hash !== contentHash || snapshot.source_hash !== contentHash) {
+    throw contractError(
+      "CANONICAL_SNAPSHOT_CHECKSUM_MISMATCH",
+      "Canonical snapshot checksum is invalid",
+    );
   }
-  if (snapshot.money_state === "PROVISIONAL") {
-    warningCodes.push("MONEY_PROVISIONAL");
-    actionCodes.push("REVIEW_DAILY_CLOSE");
-  }
-  if (snapshot.pending_liabilities_vnd > 0) {
-    warningCodes.push("LIABILITY_PENDING");
-    actionCodes.push("REVIEW_PENDING_LIABILITIES");
-  }
-  if (snapshot.attendance < snapshot.registrations) {
-    warningCodes.push("ATTENDANCE_BELOW_REGISTRATION");
-    actionCodes.push("REVIEW_ATTENDANCE_GAP");
-  }
-
-  const contentPayload = {
-    business_date: event.payload.business_date,
-    timezone: event.payload.timezone,
-    window_start: event.payload.window_start,
-    window_end: event.payload.window_end,
-    freshness_state: snapshot.freshness_state,
-    money_state: snapshot.money_state,
-    metrics: {
-      registrations: snapshot.registrations,
-      attendance: snapshot.attendance,
-      entries: snapshot.entries,
-      staff: snapshot.staff,
-      rake_retained_vnd: snapshot.rake_retained_vnd,
-      fnb_net_revenue_vnd: snapshot.fnb_net_revenue_vnd,
-      pending_liabilities_vnd: snapshot.pending_liabilities_vnd,
-      payroll_provisional_vnd: snapshot.payroll_provisional_vnd,
-    },
-    warning_codes: warningCodes,
-    action_codes: [...new Set(actionCodes)],
-  };
-  const generatedAt = new Date(nowMs).toISOString();
-  const contentHash = sha256(contentPayload);
 
   return {
-    artifact_id: randomUUID(),
-    club_id: club.club_id,
+    artifact_id: snapshot.snapshot_id,
+    club_id: snapshot.club_id,
     artifact_type: "OWNER_DAILY_DIGEST",
-    schema_version: 1,
+    schema_version: 2,
+    snapshot_version: snapshot.snapshot_version,
+    calculation_version: snapshot.calculation_version,
     privacy_class: "NO_PII",
     sensitivity: "CLUB_CONFIDENTIAL",
-    source_data_hash: sha256(snapshot),
+    source_data_hash: snapshot.source_hash,
     generation_mode: "DETERMINISTIC",
-    input_hash: sha256({ event: event.payload, snapshot }),
+    input_hash: snapshot.source_hash,
     output_hash: contentHash,
-    generated_at: generatedAt,
+    source_as_of: snapshot.source_as_of,
+    generated_at: snapshot.generated_at,
     approval_status: "NOT_REQUIRED",
-    content_payload: contentPayload,
+    content_payload: payload,
     content_sha256: contentHash,
-    expires_at: event.expires_at,
-    fallback: simulateAiOutage ? "AI_UNAVAILABLE_DETERMINISTIC_USED" : undefined,
+    expires_at: snapshot.notification_expires_at,
+    fallback: simulateAiOutage ? "AI_UNAVAILABLE_CANONICAL_SNAPSHOT_USED" : undefined,
   };
 }

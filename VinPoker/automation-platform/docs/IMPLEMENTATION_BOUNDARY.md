@@ -28,7 +28,8 @@
 Transactional outbox được test bằng SQLite transaction trong mock store. Đây không phải
 migration production và không chứng minh Supabase live đã có outbox.
 
-Server-side schedule được biểu diễn bằng fixture `owner.daily_digest.due`; n8n không tạo lịch.
+Server-side generator tạo snapshot bất biến và event outbox
+`owner.daily_digest.snapshot_created`; n8n chỉ claim event đó, không tạo lịch hoặc tính lại metric.
 Cron/RPC production vẫn là Đợt 2 source-only và cần cổng RED riêng.
 
 ## P0

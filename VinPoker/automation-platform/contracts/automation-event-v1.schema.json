@@ -37,6 +37,7 @@
     "event_type": {
       "enum": [
         "owner.daily_digest.due",
+        "owner.daily_digest.snapshot_created",
         "owner.daily_digest.ready",
         "owner.daily_digest.skipped",
         "owner.daily_digest.generation_failed",
@@ -149,6 +150,38 @@
     }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "owner.daily_digest.snapshot_created"
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "trigger_kind": {
+            "const": "DOMAIN"
+          },
+          "automation_policy": {
+            "const": "NOTIFY_ONLY"
+          },
+          "severity": {
+            "const": "P2"
+          },
+          "catch_up_policy": {
+            "const": "SKIP_IF_LATE"
+          },
+          "payload_schema_key": {
+            "const": "owner.daily_digest.snapshot_created.v2"
+          },
+          "payload": {
+            "$ref": "./payloads/owner-daily-digest-snapshot-created-v2.schema.json"
+          }
+        }
+      }
+    },
     {
       "if": {
         "properties": {

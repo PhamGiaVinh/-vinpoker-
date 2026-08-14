@@ -15,6 +15,7 @@
     "dispatch:test-shadow": "node --env-file-if-exists=.env src/cli.js dispatch-test-shadow",
     "report:test-shadow": "node --env-file-if-exists=.env src/cli.js report-test-shadow",
     "verify:test-shadow": "node --env-file-if-exists=.env src/cli.js verify-test-shadow",
+    "verify:canonical-snapshot-e2e": "node --env-file-if-exists=.env scripts/verify-canonical-snapshot-e2e.js",
     "test": "node --test --test-reporter=spec test/*.test.js",
     "check:schemas": "node scripts/validate-schemas.js",
     "check:workflow": "node scripts/check-workflows.js",

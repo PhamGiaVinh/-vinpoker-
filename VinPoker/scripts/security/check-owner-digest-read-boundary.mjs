@@ -32,7 +32,12 @@ const assertions = [
   [clubAdminScopeMigration.includes("public.has_role(p_user_id, 'club_admin'::public.app_role)"), "Club Admin scope predicate must require the global role and explicit Club scope"],
   [clubAdminScopeMigration.includes("public.can_read_owner_daily_digest((SELECT auth.uid()), owner_daily_digest_reports.club_id)"), "digest RLS must use the scoped Club Admin predicate"],
   [clubAdminScopeMigration.includes("CREATE OR REPLACE FUNCTION public.list_owner_daily_digest_clubs()"), "server-scoped Club list RPC is required"],
-  [clubAdminScopeMigration.includes("REVOKE ALL ON FUNCTION public.list_owner_daily_digest_clubs()\n  FROM PUBLIC, anon"), "Club list RPC must not be public"],
+  [
+    /REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.list_owner_daily_digest_clubs\(\)\s+FROM\s+PUBLIC,\s*anon/iu.test(
+      clubAdminScopeMigration,
+    ),
+    "Club list RPC must not be public",
+  ],
   [source.includes('rpc("get_latest_owner_daily_digest_artifact"'), "web must use the snapshot RPC"],
   [!source.match(/\.from\s*\(/u), "web must not read domain tables directly"],
   [runtimeSource.includes("opsClient"), "runtime source must use the authenticated Ops client"],

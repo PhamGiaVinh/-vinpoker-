@@ -218,7 +218,7 @@ export class SqliteAutomationStore {
         club.display_code,
         club.timezone,
         club.mock_owner_endpoint_id,
-        stableStringify(club.snapshot),
+        stableStringify(club.canonical_snapshot),
         now,
       );
   }
@@ -228,7 +228,7 @@ export class SqliteAutomationStore {
       .prepare("SELECT * FROM clubs WHERE club_id = ?")
       .get(clubId);
     if (!row) return null;
-    return { ...row, snapshot: JSON.parse(row.snapshot_json) };
+    return { ...row, canonical_snapshot: JSON.parse(row.snapshot_json) };
   }
 
   insertScheduledEvent(event, workflowKey = "owner.daily_digest.v1") {
@@ -1082,7 +1082,7 @@ export class SqliteAutomationStore {
         LEFT JOIN content_artifacts a ON a.event_id = e.event_id
         LEFT JOIN notification_requests n ON n.event_id = e.event_id
         LEFT JOIN notification_deliveries d ON d.event_id = e.event_id
-        WHERE e.event_type = 'owner.daily_digest.due'
+        WHERE e.event_type = 'owner.daily_digest.snapshot_created'
         ORDER BY e.club_id
       `)
       .all()

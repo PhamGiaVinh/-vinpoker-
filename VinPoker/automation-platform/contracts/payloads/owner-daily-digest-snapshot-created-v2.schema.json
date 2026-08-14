@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.vbacker.internal/automation/payloads/owner-daily-digest-snapshot-created-v2.schema.json",
+  "title": "OwnerDailyDigestSnapshotCreatedPayloadV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "snapshot_id",
+    "club_id",
+    "business_date",
+    "snapshot_version",
+    "calculation_version",
+    "content_hash",
+    "schema_version"
+  ],
+  "properties": {
+    "snapshot_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "club_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "business_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "snapshot_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "calculation_version": {
+      "type": "string",
+      "pattern": "^owner-daily-digest-v[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "maxLength": 64
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "schema_version": {
+      "type": "integer",
+      "const": 2
+    }
+  }
+}
