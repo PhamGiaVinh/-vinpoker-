@@ -1,103 +1,131 @@
-// liveTableFx showdown winner treatment. At a replay's final frame a verified
-// pot winner gets a gold glow + a pot-award badge — but ONLY when
-// the viewer passes `tableFx`. Operator / TV / live (no tableFx, or no net_won)
-// render byte-identical. These pin both the presence and the prop-gating.
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LiveFelt, type SeatInfo } from "@/components/cashier/tournament-live/LiveFelt";
+import type { BestFiveFocus } from "@/lib/tracker-poker/replayBestFiveFocus";
 
-function seat(over: Partial<SeatInfo>): SeatInfo {
+function seat(overrides: Partial<SeatInfo>): SeatInfo {
   return {
-    player_id: over.player_id ?? "p",
-    display_name: over.display_name ?? "Player",
-    seat_number: over.seat_number ?? 1,
-    chip_count: over.chip_count ?? 41900000,
+    player_id: overrides.player_id ?? "player",
+    display_name: overrides.display_name ?? "Player",
+    seat_number: overrides.seat_number ?? 1,
+    chip_count: overrides.chip_count ?? 20_000,
     is_active: true,
-    table_id: "t",
+    table_id: "table-1",
     position: "",
-    ...over,
+    ...overrides,
   };
 }
 
+const winner = seat({
+  player_id: "tom",
+  display_name: "Tom Dwan",
+  seat_number: 1,
+  hole_cards: ["Jd", "Jh"],
+  pot_winner: true,
+  payout_award: 20_000,
+  net_won: 10_000,
+  hand_rank: {
+    category: "quads",
+    best_five: ["Jd", "Jh", "Jc", "Js", "Ah"],
+    kickers: ["A"],
+  },
+});
+const refundOnly = seat({
+  player_id: "phil",
+  display_name: "Phil Ivey",
+  seat_number: 2,
+  chip_count: 0,
+  hole_cards: ["Qd", "As"],
+  pot_winner: false,
+  payout_award: 0,
+  refund_award: 5_000,
+});
+
+const focus: BestFiveFocus = {
+  enabled: true,
+  winnerPlayerIds: new Set(["tom"]),
+  boardCardCodes: new Set(["Jc", "Js", "Ah"]),
+  holeCardCodesByPlayerId: new Map([["tom", new Set(["Jd", "Jh"])]]),
+};
+
 const baseProps = {
+  seats: [winner, refundOnly],
   lastActorId: null,
   toActId: null,
-  displayCards: ["5d", "6d", "Ks", "Tc", "Ad"],
-  potSize: 38300000,
+  displayCards: ["Kh", "Jc", "Qh", "Ah", "Js"],
+  potSize: 20_000,
   potBreakdown: null,
   multiTableUnresolved: false,
   handNumber: 1,
   latestAction: null,
-  formatBB: (n: number) => `${(n / 500000).toFixed(1)} BB`,
+  formatBB: (amount: number) => `${(amount / 200).toFixed(0)} BB`,
 };
 
-const winner = seat({ player_id: "w", seat_number: 1, hole_cards: ["Kh", "3h"], pot_winner: true, payout_award: 19400000, net_won: 19400000 });
-const loser = seat({ player_id: "l", seat_number: 2, hole_cards: ["7s", "4s"], net_won: -19400000 });
+function cardClass(html: string, code: string): string {
+  const match = html.match(new RegExp(`<[^>]+data-card-code="${code}"[^>]+class="([^"]*)"`));
+  return match?.[1] ?? "";
+}
 
-describe("LiveFelt showdown winner — under tableFx", () => {
-  it("glows the winner + shows the green net-won badge with chips and BB", () => {
-    const html = renderToStaticMarkup(<LiveFelt seats={[winner, loser]} {...baseProps} tableFx />);
-    expect(html).toContain("tracker-win-glow"); // gold glow (avatar + cards)
-    expect(html).toContain('data-testid="seat-net-won"');
-    expect(html).toContain("+19.4M"); // formatStack of net_won
-    expect(html).toContain("38.8 BB"); // formatBB(19.4M) = 19.4M/500k
-  });
-
-  it("only a verified pot winner is decorated — never the loser", () => {
-    const html = renderToStaticMarkup(<LiveFelt seats={[winner, loser]} {...baseProps} tableFx />);
-    // exactly one net-won badge and one card-glow + one avatar-glow → 2 glow uses, 1 badge
-    expect((html.match(/seat-net-won/g) || []).length).toBe(1);
-    expect((html.match(/tracker-win-glow/g) || []).length).toBe(2); // avatar + hole cards of the single winner
-    expect(html).not.toContain("-19.4M"); // loser net is never rendered
-  });
-
-  it("WITHOUT tableFx (operator/TV/live path) nothing is decorated — byte-identical", () => {
-    const html = renderToStaticMarkup(<LiveFelt seats={[winner, loser]} {...baseProps} />);
-    expect(html).not.toContain("tracker-win-glow");
-    expect(html).not.toContain("seat-net-won");
-    expect(html).not.toContain("+19.4M");
-  });
-
-  it("a positive stack delta without a pot allocation never triggers the treatment", () => {
-    const broke = seat({ player_id: "b", seat_number: 3, net_won: 5000 });
-    const html = renderToStaticMarkup(<LiveFelt seats={[broke, loser]} {...baseProps} tableFx />);
-    expect(html).not.toContain("tracker-win-glow");
-    expect(html).not.toContain("seat-net-won");
-  });
-
-  it("shows an uncalled refund separately without winner glow", () => {
-    const refunded = seat({ player_id: "r", seat_number: 3, refund_award: 38700000, net_won: 0 });
-    const html = renderToStaticMarkup(<LiveFelt seats={[refunded, loser]} {...baseProps} tableFx />);
-    expect(html).toContain('data-testid="seat-refund-award"');
-    expect(html).toContain("+38.7M");
-    expect(html).not.toContain("tracker-win-glow");
-    expect(html).not.toContain('data-testid="seat-pot-award"');
-  });
-
-  it("verified chop glows both winners and shows each credited pot share", () => {
-    const chopA = seat({ player_id: "a", seat_number: 1, hole_cards: ["Ah", "Kd"], pot_winner: true, payout_award: 1000, net_won: 0 });
-    const chopB = seat({ player_id: "b", seat_number: 2, hole_cards: ["As", "Kc"], pot_winner: true, payout_award: 1000, net_won: 0 });
+describe("LiveFelt verified best-five focus", () => {
+  it("focuses the exact Hand #1 five cards and dims every other face-up card", () => {
     const html = renderToStaticMarkup(
-      <LiveFelt seats={[chopA, chopB]} {...baseProps} tableFx showdownResult="chop" />,
+      <LiveFelt {...baseProps} tableFx bestFiveFocus={focus} showdownResult="winner" />,
     );
-    expect((html.match(/tracker-win-glow/g) || []).length).toBe(4);
-    expect((html.match(/seat-pot-award/g) || []).length).toBe(2);
-    expect((html.match(/CHOP POT/g) || []).length).toBe(2);
-    expect((html.match(/\+1k/g) || []).length).toBe(2);
+
+    expect(html).toContain("tracker-best-five-focus-active");
+    expect((html.match(/tracker-best-five-card/g) ?? []).length).toBe(5);
+    for (const code of ["Jd", "Jh", "Jc", "Js", "Ah"]) {
+      expect(cardClass(html, code)).toContain("tracker-best-five-card");
+    }
+    for (const code of ["Kh", "Qh", "Qd", "As"]) {
+      expect(cardClass(html, code)).toContain("tracker-non-best-five-card");
+    }
   });
 
-  it("shows the public hand rank next to a verified winner", () => {
-    const rankedWinner = seat({
-      ...winner,
-      hand_rank: {
-        category: "two_pair",
-        best_five: ["Kh", "Kc", "7c", "7s", "Ah"],
-        kickers: ["A"],
-      },
-    });
-    const html = renderToStaticMarkup(<LiveFelt seats={[rankedWinner, loser]} {...baseProps} tableFx />);
-    expect(html).toContain('data-testid="seat-hand-rank"');
-    expect(html).toMatch(/Hai đôi|Two pair/);
-    expect(html).toContain("· A");
+  it("keeps only the winner avatar glow and removes payout, rank, refund, and duplicate best-five text", () => {
+    const html = renderToStaticMarkup(
+      <LiveFelt {...baseProps} tableFx bestFiveFocus={focus} showdownResult="winner" />,
+    );
+
+    expect((html.match(/tracker-win-glow/g) ?? []).length).toBe(1);
+    expect(html).not.toContain('data-testid="seat-net-won"');
+    expect(html).not.toContain('data-testid="seat-pot-award"');
+    expect(html).not.toContain('data-testid="seat-hand-rank"');
+    expect(html).not.toContain('data-testid="seat-refund-award"');
+    expect(html).not.toMatch(/Thắng pot|Hoàn \+5k|quads|Kicker|Bộ 5 lá mạnh nhất/i);
+    expect(html).toContain("20k");
+    expect(html).toContain("100 BB");
+  });
+
+  it("does not apply card focus when the derived focus is disabled", () => {
+    const html = renderToStaticMarkup(
+      <LiveFelt {...baseProps} tableFx bestFiveFocus={{ ...focus, enabled: false }} />,
+    );
+
+    expect(html).not.toContain("tracker-best-five-focus-active");
+    expect(html).not.toContain("tracker-best-five-card");
+    expect(html).not.toContain("tracker-non-best-five-card");
+  });
+
+  it("keeps operator and TV rendering free of viewer-only focus treatment", () => {
+    const html = renderToStaticMarkup(<LiveFelt {...baseProps} bestFiveFocus={focus} />);
+    expect(html).not.toContain("tracker-best-five-focus-active");
+    expect(html).not.toContain("tracker-best-five-card");
+    expect(html).not.toContain("tracker-non-best-five-card");
+    expect(html).not.toContain("tracker-win-glow");
+  });
+
+  it("never promotes a refund-only player to winner glow or result text", () => {
+    const html = renderToStaticMarkup(
+      <LiveFelt
+        {...baseProps}
+        seats={[refundOnly]}
+        tableFx
+        bestFiveFocus={null}
+      />,
+    );
+    expect(html).not.toContain("tracker-win-glow");
+    expect(html).not.toContain("Hoàn");
+    expect(html).not.toContain("+5k");
   });
 });
