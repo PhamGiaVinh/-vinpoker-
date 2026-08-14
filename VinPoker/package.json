@@ -14,6 +14,7 @@
     "check:ops-money-boundary": "node scripts/security/check-ops-money-boundary.mjs",
     "check:owner-digest-read-boundary": "node scripts/security/check-owner-digest-read-boundary.mjs",
     "check:owner-digest-snapshot-engine": "node scripts/security/check-owner-digest-snapshot-engine-v2.mjs",
+    "check:owner-digest-access-v2": "node scripts/security/check-owner-digest-access-v2.mjs",
     "check:ops-v3-shell-text": "node scripts/security/check-ops-v3-shell-text.mjs",
     "check:floor-audit-context": "node scripts/security/check-floor-audit-context.mjs",
     "preview": "vite preview",
