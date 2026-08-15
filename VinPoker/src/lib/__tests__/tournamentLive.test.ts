@@ -4,6 +4,8 @@ import {
   getLateRegCloseTime,
   getCurrentLevel,
   isLateRegClosed,
+  getTournamentPreStartState,
+  formatStartCountdown,
 } from "@/lib/tournamentLive";
 
 // Regression for: a tournament started later than its planned start_time vanished
@@ -63,5 +65,31 @@ describe("tournamentLive — clock_started_at anchoring", () => {
         plannedMs,
       ),
     ).toBe(true);
+  });
+
+  it("shows registration countdown before the planned start even if status was set live early", () => {
+    const now = plannedMs;
+
+    expect(
+      getTournamentPreStartState(
+        { start_time: new Date(now + 26 * 60 * MIN).toISOString(), status: "live" },
+        now,
+      ),
+    ).toBe("registration");
+    expect(formatStartCountdown(26 * 60 * MIN)).toBe("1d 02:00:00");
+  });
+
+  it("waits for the Floor after the planned time until the clock is started", () => {
+    expect(
+      getTournamentPreStartState({ start_time: planned, status: "live" }, plannedMs + MIN),
+    ).toBe("awaiting_floor");
+    expect(
+      getTournamentPreStartState({
+        start_time: planned,
+        status: "live",
+        clock_started_at: new Date(plannedMs + MIN).toISOString(),
+      }),
+    ).toBeNull();
+    expect(getTournamentPreStartState({ start_time: planned, status: "cancelled" })).toBeNull();
   });
 });

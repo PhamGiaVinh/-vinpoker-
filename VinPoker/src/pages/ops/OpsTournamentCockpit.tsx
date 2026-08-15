@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, Lock, LayoutGrid, Loader2, LogIn, Monitor, AlertTriangle, Trophy, Play, Pause, SkipForward, SkipBack, Minus, Plus, Users, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -48,6 +48,7 @@ interface OpsClock { status: string; is_running: boolean; remaining_seconds: num
 interface BustedRow { entry_id: string; player_id: string; entry_number: number; player_name: string; finished_place: number | null; prize: number | null; last_chip: number | null }
 
 export default function OpsTournamentCockpit({ section }: { section: FloorTournamentSection }) {
+  const location = useLocation();
   const navigate = useNavigate();
   const { id } = useParams();
   const tournamentOps = useTournamentOps();
@@ -580,18 +581,18 @@ export default function OpsTournamentCockpit({ section }: { section: FloorTourna
         </div>
       )}
 
-      {/* S6 — TV/public viewer. Full-document links deliberately leave OpsApp. */}
+      {/* S6 — TV projection remains in the Ops session; paired public display stays separate. */}
       {tab === "history" && (
         <div className="space-y-3">
           <div className="ios-card p-5">
             <Monitor className="h-7 w-7 text-sky-300" />
             <div className="mt-3 text-[17px] font-semibold text-[#f2ece6]">TV & màn hình công khai</div>
             <div className="mt-1 text-[13px] leading-5 text-[#9b8e97]">
-              Mở màn hình đồng hồ của giải ở tab riêng. Ops không truyền phiên đăng nhập hoặc secret sang đường dẫn TV.
+              Mở đồng hồ của giải trong tab Ops riêng; phiên Ops hiện tại được giữ tại trình duyệt này.
             </div>
             <a
               data-ops-action="floor.screens.open_public_tv"
-              href={`/tv/${id}`}
+              href={`/ops/floor/tournaments/${id}/tv${location.search}`}
               target="_blank"
               rel="noreferrer"
               className="ios-press ios-primary mt-4 flex min-h-11 w-full items-center justify-center rounded-2xl px-4 text-[14px] font-bold"

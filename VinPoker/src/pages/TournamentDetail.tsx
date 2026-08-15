@@ -10,6 +10,8 @@ import { BackButton } from "@/components/BackButton";
 import { formatVND, formatStack, formatDateTime } from "@/lib/format";
 import { FomoPrice } from "@/components/FomoPrice";
 import { getTournamentPrice } from "@/lib/tournament";
+import { formatStartCountdown, getTournamentPreStartState } from "@/lib/tournamentLive";
+import { useLiveClock } from "@/hooks/useLiveClock";
 import { LiveStateBanner } from "@/components/LiveStateBanner";
 import { TournamentRegisterModal } from "@/components/TournamentRegisterModal";
 import { LivestreamPlayer } from "@/components/LivestreamPlayer";
@@ -33,6 +35,7 @@ const TournamentDetail = () => {
   const [myReentry, setMyReentry] = useState<any>(null);   // pending re-entry reg (flag-gated)
   const [myEliminated, setMyEliminated] = useState(false); // latest entry busted + no active seat
   const [registerMode, setRegisterMode] = useState<"register" | "reentry">("register");
+  const now = useLiveClock();
 
   const load = async () => {
     setLoading(true);
@@ -106,6 +109,20 @@ const TournamentDetail = () => {
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
   if (!t) return <p className="text-center py-20 text-muted-foreground">{tr("tournamentDetail.notFound")}</p>;
 
+  const preStartState = getTournamentPreStartState(
+    {
+      status: t.status,
+      start_time: t.start_time,
+      clock_started_at: t.clock_started_at,
+    },
+    now,
+  );
+  const isLiveState = ["live", "break", "final_table", "registering"].includes(t.status) && !preStartState;
+  const shouldShowTournamentState = Boolean(preStartState) || isLiveState;
+  const startCountdown = preStartState === "registration" && t.start_time
+    ? formatStartCountdown(new Date(t.start_time).getTime() - now)
+    : null;
+
   return (
     <div className={livestreamMode ? "space-y-4 pb-32 md:pb-4" : "space-y-4 pb-40 md:pb-4"}>
       <BackButton label={tr("tournamentDetail.back")} />
@@ -124,29 +141,48 @@ const TournamentDetail = () => {
         </div>
       </Card>
 
-      {["live", "break", "final_table", "registering"].includes(t.status) && (
+      {shouldShowTournamentState && (
         <div className="rounded-xl border border-success/30 bg-gradient-to-r from-success/40 to-success/10 p-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-success/15 text-success rounded-md text-xs font-bold border border-success/30 animate-pulse">
-                <Radio className="w-3.5 h-3.5" /> LIVE
+              <div className={`flex items-center gap-1.5 px-3 py-1.5 text-success rounded-md text-xs font-bold border border-success/30 ${isLiveState ? "bg-success/15 animate-pulse" : "bg-background/20"}`}>
+                {isLiveState ? <Radio className="w-3.5 h-3.5" /> : <Calendar className="w-3.5 h-3.5" />}
+                {isLiveState ? "LIVE" : preStartState === "registration" ? tr("tournamentDetailPage.statusRegistering") : tr("tournamentDetailPage.statusAwaitingStart")}
               </div>
               <div>
                 <div className="text-sm font-bold text-success">
-                  {t.status === "registering" ? tr("tournamentDetailPage.statusRegistering") : t.status === "break" ? tr("tournamentDetailPage.statusBreak") : t.status === "final_table" ? tr("tournamentDetailPage.statusFinalTable") : tr("tournamentDetailPage.statusPlaying")}
+                  {preStartState === "registration"
+                    ? tr("tournamentDetailPage.statusRegistering")
+                    : preStartState === "awaiting_floor"
+                      ? tr("tournamentDetailPage.statusAwaitingStart")
+                      : t.status === "registering"
+                        ? tr("tournamentDetailPage.statusRegistering")
+                        : t.status === "break"
+                          ? tr("tournamentDetailPage.statusBreak")
+                          : t.status === "final_table"
+                            ? tr("tournamentDetailPage.statusFinalTable")
+                            : tr("tournamentDetailPage.statusPlaying")}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {t.players_remaining != null && tr("tournamentDetailPage.playersRemaining", { n: t.players_remaining })}
-                  {t.current_level != null && ` · Lv ${t.current_level}`}
-                  {t.current_blinds && ` · ${t.current_blinds}`}
+                  {preStartState === "registration" && startCountdown
+                    ? tr("tournamentDetailPage.startsIn", { time: startCountdown })
+                    : preStartState === "awaiting_floor"
+                      ? tr("tournamentDetailPage.awaitingFloorStart")
+                      : <>
+                          {t.players_remaining != null && tr("tournamentDetailPage.playersRemaining", { n: t.players_remaining })}
+                          {t.current_level != null && ` · Lv ${t.current_level}`}
+                          {t.current_blinds && ` · ${t.current_blinds}`}
+                        </>}
                 </div>
               </div>
             </div>
-            <Link to={`/live/${t.id}`}>
-              <Button size="sm" className="bg-success/15 text-success border border-success/40 hover:bg-success/25 font-bold tracking-wider rounded-full px-4 h-9" variant="ghost">
-                <Radio className="w-4 h-4 mr-1.5" /> {tr("tournamentDetailPage.watchLive")}
-              </Button>
-            </Link>
+            {isLiveState ? (
+              <Link to={`/live/${t.id}`}>
+                <Button size="sm" className="bg-success/15 text-success border border-success/40 hover:bg-success/25 font-bold tracking-wider rounded-full px-4 h-9" variant="ghost">
+                  <Radio className="w-4 h-4 mr-1.5" /> {tr("tournamentDetailPage.watchLive")}
+                </Button>
+              </Link>
+            ) : null}
           </div>
         </div>
       )}
