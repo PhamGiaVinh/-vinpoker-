@@ -92,9 +92,14 @@ test("Preview workflow deploys and verifies a source-pinned non-production bundl
 });
 
 test("production receipt waits for canonical version and both live shells", () => {
+  const deploy = productionWorkflow.indexOf("vercel deploy --prebuilt --prod");
+  const promote = productionWorkflow.indexOf('vercel promote "$deployment_url" --yes --token "$VERCEL_TOKEN"');
   const canonicalCheck = productionWorkflow.indexOf("canonical_verified=true");
   const receipt = productionWorkflow.indexOf("Record receipt only after successful frontend deploy");
+  assert.ok(deploy > 0);
+  assert.ok(promote > deploy);
   assert.ok(canonicalCheck > 0);
+  assert.ok(canonicalCheck > promote);
   assert.ok(receipt > canonicalCheck);
   assert.match(productionWorkflow, /cmp --silent VinPoker\/dist\/version\.json "\$canonical_version"/u);
   assert.match(productionWorkflow, /--base-url "https:\/\/vinpoker\.vercel\.app"/u);
