@@ -62,6 +62,7 @@ try {
     '/tmp/bootstrap.sql' = Join-Path $scriptRoot 'disposable-public-schema-bootstrap.sql'
     '/tmp/live-public.sql' = (Resolve-Path -LiteralPath $preparedSchemaPath)
     '/tmp/support.sql' = Join-Path $scriptRoot 'disposable-public-schema-support.sql'
+    '/tmp/payroll-baseline.sql' = Join-Path $vinPokerRoot 'supabase\tests\disposable-payroll-baseline.sql'
     '/tmp/v2.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270106000001_dealer_pt_wage_global_continuous_accrual_v2.sql'
     '/tmp/readiness-acl-repair.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270106000002_dealer_pt_wage_readiness_acl.sql'
     '/tmp/activation-gap.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual_activation_gap.sql'
@@ -79,6 +80,7 @@ try {
   Invoke-ContainerPsql '/tmp/bootstrap.sql'
   Invoke-ContainerPsql '/tmp/live-public.sql'
   Invoke-ContainerPsql '/tmp/support.sql'
+  Invoke-ContainerPsql '/tmp/payroll-baseline.sql'
 
   # Prove the pre-v2 baseline has no global writer, then install the complete
   # v2 contract and prove the exact request succeeds. Reapplying v2 verifies
