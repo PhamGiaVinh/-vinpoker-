@@ -44,6 +44,14 @@ describe("pokerLiveSound — FX safety contract", () => {
     }
   });
 
+  it("normalizes the quiet recorded Tracker clips to an audible replay level", () => {
+    expect(pokerSoundVolumeFor("check", "tracker")).toBe(1);
+    expect(pokerSoundVolumeFor("deal_flop", "tracker")).toBe(1);
+    expect(pokerSoundVolumeFor("deal_turn", "tracker")).toBe(1);
+    expect(pokerSoundVolumeFor("deal_river", "tracker")).toBe(1);
+    expect(pokerSoundVolumeFor("pot_collect", "tracker")).toBe(0.95);
+  });
+
   it("leaves the legacy Online Poker source levels unchanged", () => {
     expect(pokerSoundVolumeFor("deal")).toBe(0.32);
     expect(pokerSoundVolumeFor("all_in")).toBe(0.4);

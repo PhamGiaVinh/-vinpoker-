@@ -68,13 +68,15 @@ describe("viewer replay all-in runout timeline", () => {
     expect(replayRunoutPhaseDuration("river", 99)).toBe(Math.round(850 / 8));
   });
 
-  it("keeps ranking hidden until its explicit delay and restores static focus on direct jump", () => {
+  it("shows only the active verified pot result while that three-second award is presented", () => {
     expect(replayRunoutFocusPhase("hole_hold")).toBe("hidden");
     expect(replayRunoutFocusPhase("dim")).toBe("dim");
     expect(replayRunoutFocusPhase("glow")).toBe("glow");
+    expect(replayRunoutFocusPhase("pot_award")).toBe("glow");
     expect(replayRunoutFocusPhase("static")).toBe("static");
     expect(replayRunoutShowsSummary("glow")).toBe(false);
     expect(replayRunoutShowsSummary("summary")).toBe(true);
+    expect(replayRunoutShowsSummary("pot_award")).toBe(true);
     expect(replayRunoutShowsSummary("static")).toBe(true);
   });
 
@@ -92,11 +94,7 @@ describe("viewer replay all-in runout timeline", () => {
       { phase: "pot_award", potAwardIndex: 0 },
       { phase: "pot_award", potAwardIndex: 1 },
       { phase: "pot_award", potAwardIndex: 2 },
-      { phase: "dim", potAwardIndex: null },
-      { phase: "glow", potAwardIndex: null },
-      { phase: "summary_delay", potAwardIndex: null },
-      { phase: "summary", potAwardIndex: null },
-      { phase: "static", potAwardIndex: null },
+      { phase: "static", potAwardIndex: 2 },
     ]);
     expect(replayRunoutPhaseDuration("pot_collect", 1)).toBe(POT_COLLECT_MS);
     expect(replayRunoutPhaseDuration("pot_award", 1)).toBe(POT_AWARD_MS);

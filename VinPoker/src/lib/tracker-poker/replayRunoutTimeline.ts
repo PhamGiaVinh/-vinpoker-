@@ -69,6 +69,7 @@ export function nextReplayRunoutPhase(phase: ReplayRunoutPhase, potLayerCount = 
   if (phase === "river" && potLayerCount <= 0) return "dim";
   if (phase === "pot_collect" && potLayerCount <= 0) return "dim";
   if (phase === "pot_award" && (potAwardIndex ?? 0) + 1 < potLayerCount) return "pot_award";
+  if (phase === "pot_award" && potLayerCount > 0) return "static";
   return NEXT_PHASE[phase];
 }
 
@@ -83,6 +84,8 @@ export function nextReplayRunoutPresentation(
     ? presentation.phase === "pot_award"
       ? (presentation.potAwardIndex ?? 0) + 1
       : 0
+    : nextPhase === "static" && presentation.phase === "pot_award"
+      ? presentation.potAwardIndex
     : null;
   return createReplayRunoutPresentation(presentation.key, nextPhase, nextPotAwardIndex);
 }
@@ -115,10 +118,10 @@ export function replayRunoutPhaseDuration(phase: ReplayRunoutPhase, speed: numbe
 
 export function replayRunoutFocusPhase(phase: ReplayRunoutPhase | null): "hidden" | "dim" | "glow" | "static" {
   if (phase === "dim") return "dim";
-  if (phase === "glow" || phase === "summary_delay" || phase === "summary") return "glow";
+  if (phase === "pot_award" || phase === "glow" || phase === "summary_delay" || phase === "summary") return "glow";
   return phase === "static" ? "static" : "hidden";
 }
 
 export function replayRunoutShowsSummary(phase: ReplayRunoutPhase | null): boolean {
-  return phase === "summary" || phase === "static";
+  return phase === "pot_award" || phase === "summary" || phase === "static";
 }

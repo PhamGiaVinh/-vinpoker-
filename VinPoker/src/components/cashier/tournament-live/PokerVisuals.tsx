@@ -525,6 +525,11 @@ export function TrackerVisualStyles() {
           18% { opacity: 1; }
           to { transform: translate(-50%, -50%) translate(var(--sp-dx), var(--sp-dy)) scale(.96); opacity: 0; }
         }
+        @keyframes tracker-settlement-stack-collect {
+          from { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+          70% { opacity: 1; }
+          to { transform: translate(-50%, -50%) translate(var(--sp-dx), var(--sp-dy)) scale(.82); opacity: 0; }
+        }
         @keyframes tracker-settlement-award-label {
           from { transform: translate(-50%, -32%) scale(.86); opacity: 0; }
           to { transform: translate(-50%, -90%) scale(1); opacity: 1; }
@@ -558,14 +563,14 @@ export function TrackerVisualStyles() {
         }
         .tracker-best-five-focus-glow .tracker-best-five-card,
         .tracker-best-five-focus-static .tracker-best-five-card {
-          outline: 2px solid hsl(var(--viewer-neon) / .92);
+          outline: 2px solid hsl(var(--poker-gold) / .96);
           outline-offset: 1px;
           box-shadow: 0 0 0 2px rgba(255, 210, 80, .95), 0 0 12px rgba(255, 190, 50, .85), 0 0 24px rgba(255, 160, 20, .45);
           filter: saturate(1.15) brightness(1.08) !important;
         }
         .tracker-best-five-focus-active .tracker-non-best-five-card {
-          opacity: .42 !important;
-          filter: grayscale(.42) saturate(.35) brightness(.72) !important;
+          opacity: .64 !important;
+          filter: grayscale(.24) saturate(.58) brightness(.88) !important;
           transition: opacity 180ms ease-out, filter 180ms ease-out;
         }
         .tracker-runout-board-card {
@@ -619,6 +624,10 @@ export function TrackerVisualStyles() {
         }
         .tracker-settlement-chip-collect { animation-name: tracker-settlement-collect; animation-duration: 420ms; }
         .tracker-settlement-chip-award { animation-name: tracker-settlement-award; animation-duration: 560ms; }
+        .tracker-settlement-stack-collect {
+          animation: tracker-settlement-stack-collect 420ms cubic-bezier(.22,.82,.28,1) both;
+          pointer-events: none;
+        }
         .tracker-settlement-award-label {
           border: 1px solid hsl(var(--viewer-neon) / .75);
           border-radius: 9999px;
@@ -704,6 +713,7 @@ export function TrackerVisualStyles() {
           .tracker-motion-showdown,
           .tracker-motion-chip,
           .tracker-settlement-chip,
+          .tracker-settlement-stack-collect,
           .tracker-settlement-award-label,
           .tracker-settlement-award-announcement,
           .tracker-shine::before {

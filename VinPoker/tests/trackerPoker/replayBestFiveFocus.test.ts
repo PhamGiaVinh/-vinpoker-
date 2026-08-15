@@ -4,6 +4,7 @@ import {
   normalizeReplayCardCode,
   resolveVerifiedBestFiveFocus,
   resolveVerifiedShowdownPresentation,
+  selectVerifiedPotLayerPresentation,
 } from "@/lib/tracker-poker/replayBestFiveFocus";
 import type { ReplayFrame } from "@/lib/tracker-poker/replayEngine";
 import type { ReplayPublicSettlement } from "@/lib/tracker-poker/replaySettlement";
@@ -272,6 +273,57 @@ describe("resolveVerifiedBestFiveFocus", () => {
     );
     expect(result.enabled).toBe(true);
     expect(result.winners.map((winner) => winner.playerId)).toEqual(["tom"]);
+  });
+
+  it("projects one pot at a time so Main and Side winners never share focus or ranking", () => {
+    const whole = presentation();
+    const sideWinner = {
+      playerId: "phil",
+      playerName: "Phil Ivey",
+      seatNumber: 2,
+      category: "flush",
+      bestFive: ["Qd", "As", "Jc", "Ah", "Js"],
+      kickers: ["J", "Q"],
+      rankingText: "Thùng A cao",
+      holeBestFive: new Set(["Qd", "As"]),
+    };
+    const layered = {
+      ...whole,
+      winners: [...whole.winners, sideWinner],
+      potLayers: [
+        whole.potLayers[0],
+        {
+          potId: "side-1",
+          kind: "side" as const,
+          amount: 5_000,
+          winnerPlayerIds: ["phil"],
+          allocations: [{ playerId: "phil", amount: 5_000 }],
+        },
+      ],
+      focus: {
+        enabled: true,
+        winnerPlayerIds: new Set(["tom", "phil"]),
+        boardCardCodes: new Set(["Jc", "Js", "Ah"]),
+        holeCardCodesByPlayerId: new Map([
+          ["tom", new Set(["Jd", "Jh"])],
+          ["phil", new Set(["Qd", "As"])],
+        ]),
+      },
+    };
+
+    const main = selectVerifiedPotLayerPresentation(layered, 0);
+    expect(main.enabled).toBe(true);
+    expect(main.winners.map((winner) => winner.playerId)).toEqual(["tom"]);
+    expect([...main.focus.winnerPlayerIds]).toEqual(["tom"]);
+    expect(main.focus.boardCardCodes.size + (main.focus.holeCardCodesByPlayerId.get("tom")?.size ?? 0)).toBe(5);
+
+    const side = selectVerifiedPotLayerPresentation(layered, 1);
+    expect(side.enabled).toBe(true);
+    expect(side.winners.map((winner) => winner.playerId)).toEqual(["phil"]);
+    expect([...side.focus.winnerPlayerIds]).toEqual(["phil"]);
+    expect(side.focus.holeCardCodesByPlayerId.has("tom")).toBe(false);
+
+    expect(selectVerifiedPotLayerPresentation(layered, 2).enabled).toBe(false);
   });
 
   it("fails closed on duplicate visible cards across board and hole cards", () => {

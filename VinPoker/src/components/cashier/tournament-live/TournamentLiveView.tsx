@@ -35,8 +35,11 @@ import {
   type ReplayHand,
   type ReplayFrame,
 } from "@/lib/tracker-poker/replayEngine";
-import { deriveReplayPlaybackFx } from "@/lib/tracker-poker/replayFx";
-import { resolveVerifiedShowdownPresentation } from "@/lib/tracker-poker/replayBestFiveFocus";
+import { deriveReplayPlaybackFx, replayActionSoundDelayMs } from "@/lib/tracker-poker/replayFx";
+import {
+  resolveVerifiedShowdownPresentation,
+  selectVerifiedPotLayerPresentation,
+} from "@/lib/tracker-poker/replayBestFiveFocus";
 import {
   replayRunoutFocusPhase,
   type ReplayRunoutPresentation,
@@ -843,19 +846,30 @@ export function TournamentLiveView({
       seatNumber: la?.seat_number ?? 0,
     });
 
-    if (!soundMuted) {
-      if (fx.deal) playPokerLiveSound(fx.deal, { bypassStoredMute: true, profile: "tracker" });
-      if (fx.action) playPokerLiveSound(fx.action, { bypassStoredMute: true, profile: "tracker" });
-      if (fx.chipClink) playPokerLiveSound("chip", { bypassStoredMute: true, profile: "tracker" });
+    if (!soundMuted && fx.deal) {
+      playPokerLiveSound(fx.deal, { bypassStoredMute: true, profile: "tracker" });
     }
-    // Chip-push is visual + viewer-only (spectator); a monotonic seq keeps the nonce
-    // unique even when the same hand is replayed twice.
-    if (fx.chipPush && spectator && la) {
-      replayChipSeqRef.current += 1;
-      setChipPush({ seatNumber: la.seat_number, nonce: 1_000_000 + replayChipSeqRef.current, kind: la.action_type });
+    const playActionFx = () => {
+      if (!soundMuted) {
+        if (fx.action) playPokerLiveSound(fx.action, { bypassStoredMute: true, profile: "tracker" });
+        if (fx.chipClink) playPokerLiveSound("chip", { bypassStoredMute: true, profile: "tracker" });
+      }
+      // Chip-push is visual + viewer-only (spectator); a monotonic seq keeps the
+      // nonce unique even when the same hand is replayed twice.
+      if (fx.chipPush && spectator && la) {
+        replayChipSeqRef.current += 1;
+        setChipPush({ seatNumber: la.seat_number, nonce: 1_000_000 + replayChipSeqRef.current, kind: la.action_type });
+      }
+    };
+    const actionDelay = replayActionSoundDelayMs(fx.deal, replayMotionSpeed);
+    if (actionDelay === 0) {
+      playActionFx();
+      return;
     }
+    const actionTimer = window.setTimeout(playActionFx, actionDelay);
+    return () => window.clearTimeout(actionTimer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [replayFrame, replayFrameSource, mode, soundMuted, spectator]);
+  }, [replayFrame, replayFrameSource, replayMotionSpeed, mode, soundMuted, spectator]);
 
   useEffect(() => {
     if (mode !== "replay" || !FEATURES.liveTableMotionV2 || !replayFrame || !replayHand) {
@@ -961,6 +975,21 @@ export function TournamentLiveView({
     && replayRunoutPresentation?.key.startsWith(`${selectedReplayHandKey}:${selectedReplayHand.actions.length}:`)
     ? replayRunoutPresentation
     : null;
+  const replayHasVerifiedPotSequence = replayShowdownPresentation?.enabled === true
+    && replayShowdownPresentation.potLayers.length > 0;
+  const replayVisibleShowdownPresentation = useMemo(() => {
+    if (!replayShowdownPresentation?.enabled) return null;
+    if (replayRunoutForSelectedHand?.potAwardIndex != null) {
+      const scoped = selectVerifiedPotLayerPresentation(
+        replayShowdownPresentation,
+        replayRunoutForSelectedHand.potAwardIndex,
+      );
+      return scoped.enabled ? scoped : null;
+    }
+    // A cinematic all-in must never flash the union of every Main/Side winner
+    // while its keyed pot sequence is collecting chips or switching layers.
+    return replayHasVerifiedPotSequence ? null : replayShowdownPresentation;
+  }, [replayHasVerifiedPotSequence, replayRunoutForSelectedHand?.potAwardIndex, replayShowdownPresentation]);
   // The HUD owns the verified payout cadence. One key per phase/layer prevents
   // polling, rerenders, and a fast scrub from replaying the collect/award sound.
   useEffect(() => {
@@ -986,7 +1015,7 @@ export function TournamentLiveView({
     }
   }, [mode, replayRunoutForSelectedHand, soundMuted, spectator]);
   const replayFocusPhase = replayRunoutFocusPhase(replayRunoutForSelectedHand?.phase ?? (
-    replayShowdownPresentation?.enabled ? "static" : null
+    replayVisibleShowdownPresentation?.enabled ? "static" : null
   ));
   const replayDisplayCards = selectedReplayFrame
     ? replayRunoutForSelectedHand
@@ -1598,10 +1627,10 @@ export function TournamentLiveView({
               motionEvents={tableMotionEvents}
               motionSpeed={isReplay ? (spectator && FEATURES.liveReplayHud ? replayMotionSpeed : 2) : 1}
               bestFiveFocus={spectator && isReplay && FEATURES.liveReplayHud && replayFocusPhase !== "hidden"
-                ? replayShowdownPresentation?.focus ?? null
+                ? replayVisibleShowdownPresentation?.focus ?? null
                 : null}
               showdownPresentation={spectator && isReplay && FEATURES.liveReplayHud
-                ? replayShowdownPresentation
+                ? replayVisibleShowdownPresentation
                 : null}
               bestFiveFocusPhase={replayFocusPhase}
               replayRunoutPhase={spectator && isReplay && FEATURES.liveReplayHud

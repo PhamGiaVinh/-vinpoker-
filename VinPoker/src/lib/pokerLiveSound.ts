@@ -136,13 +136,13 @@ export function pokerSoundVolumeFor(kind: PokerLiveSound, profile: PokerLiveSoun
     case "post_sb":
     case "post_bb":
     case "post_ante": return 0.29;
-    case "check": return 0.7;
+    case "check": return 1;
     case "fold":
-    case "fold_muck": return 0.56;
-    case "deal_flop": return 0.82;
+    case "fold_muck": return 0.9;
+    case "deal_flop": return 1;
     case "deal_turn":
-    case "deal_river": return 0.9;
-    case "pot_collect": return 0.65;
+    case "deal_river": return 1;
+    case "pot_collect": return 0.95;
     default: return 0.4;
   }
 }

@@ -4,7 +4,7 @@
 // seat guard. The audio/visual side effects live in TournamentLiveView; this is the
 // decision they dispatch on.
 import { describe, it, expect } from "vitest";
-import { deriveReplayPlaybackFx } from "@/lib/tracker-poker/replayFx";
+import { deriveReplayPlaybackFx, replayActionSoundDelayMs } from "@/lib/tracker-poker/replayFx";
 
 const base = { prevIndex: 0, prevBoard: 0, index: 1, board: 0, actionType: null as string | null, seatNumber: 0 };
 
@@ -70,5 +70,12 @@ describe("deriveReplayPlaybackFx — board reveals (deal swoosh)", () => {
   it("a flop bet fires BOTH the deal swoosh and the action (same boundary frame)", () => {
     expect(deriveReplayPlaybackFx({ ...base, prevBoard: 0, board: 3, actionType: "bet", seatNumber: 4 }))
       .toEqual({ deal: "deal_flop", action: "bet", chipClink: true, chipPush: true });
+  });
+
+  it("delays the action until the board-deal clip has finished", () => {
+    expect(replayActionSoundDelayMs("deal_flop")).toBe(520);
+    expect(replayActionSoundDelayMs("deal_turn")).toBe(500);
+    expect(replayActionSoundDelayMs("deal_river")).toBe(500);
+    expect(replayActionSoundDelayMs(null)).toBe(0);
   });
 });

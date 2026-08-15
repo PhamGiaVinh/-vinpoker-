@@ -66,3 +66,17 @@ export function deriveReplayPlaybackFx(args: {
     chipPush: isChip && args.seatNumber > 0,
   };
 }
+
+/**
+ * Board and action data share one replay frame, but their sounds should not play
+ * on top of each other. Keep this timing decision pure so playback can cancel a
+ * pending action when the user scrubs or switches hands.
+ */
+export function replayActionSoundDelayMs(
+  deal: PokerLiveSound | null,
+  speed = 1,
+): number {
+  const baseDelay = deal === "deal_flop" ? 520 : deal === "deal_turn" || deal === "deal_river" ? 500 : 0;
+  const normalizedSpeed = Number.isFinite(speed) ? Math.min(8, Math.max(0.5, speed)) : 1;
+  return Math.round(baseDelay / normalizedSpeed);
+}
