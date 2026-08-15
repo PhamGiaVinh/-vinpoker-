@@ -98,6 +98,9 @@ test("production receipt waits for canonical version and both live shells", () =
   const receipt = productionWorkflow.indexOf("Record receipt only after successful frontend deploy");
   assert.ok(deploy > 0);
   assert.ok(promote > deploy);
+  assert.match(productionWorkflow, /already the current production deployment\. \(409\)/u);
+  assert.match(productionWorkflow, /FRONTEND_PROMOTION_ALREADY_CURRENT=true/u);
+  assert.doesNotMatch(productionWorkflow, /vercel promote[^\n]*\|\|\s*true/u);
   assert.ok(canonicalCheck > 0);
   assert.ok(canonicalCheck > promote);
   assert.ok(receipt > canonicalCheck);
