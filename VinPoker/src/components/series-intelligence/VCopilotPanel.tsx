@@ -8,7 +8,10 @@ import {
   askMockSeriesCopilotV1,
   createMockSeriesCopilotContextV1,
 } from "@/lib/series-intelligence/seriesCopilotMockAdapter";
-import { askSeriesCopilotEdgeV1 } from "@/lib/series-intelligence/seriesCopilotEdgeClient";
+import {
+  askSeriesCopilotEdgeV1,
+  SeriesCopilotEdgeFailure,
+} from "@/lib/series-intelligence/seriesCopilotEdgeClient";
 import { renderValidatedCopilotText } from "@/lib/series-intelligence/seriesCopilotEvidenceValidator";
 import type { ClubPulseV1, SeriesCopilotContextV1 } from "@/lib/series-intelligence/seriesCopilotContextV1";
 import type { VResponseValidationResultV1 } from "@/lib/series-intelligence/seriesCopilotResponseV1";
@@ -65,6 +68,34 @@ function waitForMinimumThinkingWindow(delayMs: number, signal: AbortSignal): Pro
 
     signal.addEventListener("abort", cancel, { once: true });
   });
+}
+
+function liveCopilotErrorMessage(caught: unknown): string {
+  if (!(caught instanceof SeriesCopilotEdgeFailure)) return "V tạm thời chưa thể phản hồi.";
+  switch (caught.code) {
+    case "RATE_LIMITED":
+    case "PROVIDER_RATE_LIMITED":
+      return "V đang nhận quá nhiều yêu cầu. Hãy thử lại sau ít phút.";
+    case "CLUB_PULSE_UNAVAILABLE":
+      return "Club Pulse chưa sẵn sàng, nên V chưa thể đánh giá lịch một cách an toàn.";
+    case "COPILOT_CONTEXT_REJECTED":
+      return "V chưa dựng được context lịch đã kiểm định. Hãy kiểm tra lại Club Pulse và phương án đã duyệt.";
+    case "PROVIDER_NOT_CONFIGURED":
+      return "Gemini chưa được cấu hình hoàn tất trên máy chủ V.";
+    case "PROVIDER_RESPONSE_REJECTED":
+      return "V đã nhận phản hồi nhưng không hiển thị vì phản hồi đó không qua kiểm tra evidence.";
+    case "PROVIDER_TIMEOUT":
+      return "Gemini chưa phản hồi kịp trong giới hạn an toàn. Hãy thử lại.";
+    case "PROVIDER_UNAVAILABLE":
+      return "Gemini hiện chưa sẵn sàng. Dữ liệu lịch và Club Pulse không bị thay đổi.";
+    case "RATE_LIMIT_UNAVAILABLE":
+      return "V chưa xác minh được giới hạn yêu cầu an toàn. Hãy thử lại sau.";
+    case "UNAUTHORIZED":
+    case "FORBIDDEN":
+      return "Phiên owner hiện không có quyền gọi V. Hãy đăng nhập lại và thử lại.";
+    case "UNKNOWN_SELECTED_OPTION":
+      return "Phương án lịch đã chọn không còn hợp lệ. Hãy tải lại trang và chọn lại.";
+  }
 }
 
 const STATUS_COPY = {
@@ -192,7 +223,7 @@ export function VCopilotPanel({
       setRequestState("success");
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") return;
-      setError("V tạm thời chưa thể phản hồi.");
+      setError(liveCopilotErrorMessage(caught));
       setRequestState("error");
     }
   };
