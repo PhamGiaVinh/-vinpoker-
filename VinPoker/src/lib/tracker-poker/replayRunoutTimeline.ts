@@ -7,7 +7,9 @@ export const TURN_READ_HOLD_MS = 800;
 export const RIVER_REVEAL_MS = 500;
 export const RIVER_RESULT_HOLD_MS = 350;
 export const POT_COLLECT_MS = 420;
-export const POT_AWARD_MS = 680;
+// Keep every verified pot result readable before moving to the next side pot.
+// The replay only uses this for server-projected settlement allocations.
+export const POT_AWARD_MS = 3_000;
 export const BEST_FIVE_DIM_MS = 180;
 export const BEST_FIVE_GLOW_MS = 320;
 export const SUMMARY_RANKING_DELAY_MS = 120;
