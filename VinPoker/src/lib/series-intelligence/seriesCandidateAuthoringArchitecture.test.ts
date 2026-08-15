@@ -6,6 +6,7 @@ const ROOT = process.cwd();
 const source = (path: string) => readFileSync(join(ROOT, path), "utf8");
 const MIGRATION = source("supabase/migrations/20270111000000_series_v_candidate_authoring_v1.sql");
 const STATUS_COMPATIBILITY_MIGRATION = source("supabase/migrations/20270112000001_series_v_candidate_authoring_source_state_compatibility.sql");
+const LIVE_REGISTRATION_COMPATIBILITY_MIGRATION = source("supabase/migrations/20270112000002_series_v_candidate_authoring_live_registration_compatibility.sql");
 const ADAPTER = source("src/lib/series-intelligence/seriesCandidateAuthoringRpc.ts");
 const PANEL = source("src/components/series-intelligence/SeriesCandidateAuthoringPanel.tsx");
 const PAGE = source("src/pages/SeriesIntelligence.tsx");
@@ -45,6 +46,27 @@ describe("Series V Candidate Authoring V1 boundaries", () => {
     expect(STATUS_COMPATIBILITY_MIGRATION.match(/v_tournament\.status = ANY \(ARRAY\['active'::text, 'upcoming'::text, 'registering'::text\]\)/g)?.length).toBe(2);
     expect(STATUS_COMPATIBILITY_MIGRATION).not.toContain("t.status = 'scheduled'");
     expect(STATUS_COMPATIBILITY_MIGRATION).not.toMatch(/['"]live['"]/);
+  });
+
+  it("admits only pre-start live tournaments whose registration is still open", () => {
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION).toContain("t.status = 'live'");
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION).toContain("t.live_status = 'registering'");
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION).toContain("t.clock_started_at IS NULL");
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION).toContain("t.registration_closed_at IS NULL");
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION.match(/v_tournament\.status = 'live'/g)?.length).toBe(2);
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION.match(/v_tournament\.live_status = 'registering'/g)?.length).toBe(2);
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION.match(/v_tournament\.clock_started_at IS NULL/g)?.length).toBe(2);
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION.match(/v_tournament\.registration_closed_at IS NULL/g)?.length).toBe(2);
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION).toContain("t.start_time > v_as_of");
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION).toContain("v_tournament.start_time <= v_now");
+  });
+
+  it("preserves owner authorization and hardened definer grants in the live-registration replacement", () => {
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION.match(/CREATE OR REPLACE FUNCTION public\.series_(?:list_schedule_candidate_sources|preview_schedule_candidate|approve_schedule_candidate_from_tournament)_v1/g)?.length).toBe(3);
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION.match(/SECURITY DEFINER\r?\nSET search_path = ''/g)?.length).toBe(3);
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION).toContain("public.is_club_owner(v_actor, p_club_id)");
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION).toContain("REVOKE ALL ON FUNCTION public.series_approve_schedule_candidate_from_tournament_v1");
+    expect(LIVE_REGISTRATION_COMPATIBILITY_MIGRATION).toContain("FROM PUBLIC, anon, service_role");
   });
 
   it("preserves the authoring security and source-evidence boundary while replacing the RPC bodies", () => {

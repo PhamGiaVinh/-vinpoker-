@@ -12,6 +12,7 @@ const MIGRATIONS = [
   join(APP_ROOT, "supabase/migrations/20270110000004_series_v_candidate_and_rate_limit_v1.sql"),
   join(APP_ROOT, "supabase/migrations/20270111000000_series_v_candidate_authoring_v1.sql"),
   join(APP_ROOT, "supabase/migrations/20270112000001_series_v_candidate_authoring_source_state_compatibility.sql"),
+  join(APP_ROOT, "supabase/migrations/20270112000002_series_v_candidate_authoring_live_registration_compatibility.sql"),
 ];
 const BOOTSTRAP = join(HERE, "disposable-series-club-pulse-pg17-bootstrap.sql");
 const CONTAINER = process.env.SERIES_V_PG17_DOCKER_CONTAINER ?? "supabase_db_vinpoker-test-canonical-v1";
@@ -89,7 +90,10 @@ async function main() {
     assert(crossClubDenied, "cross-club candidate read was not denied");
 
     const eligibleTournament = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
-    const excludedLiveTournament = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const preStartLiveTournament = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const playingTournament = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+    const clockStartedTournament = "abababab-abab-4bab-8bab-abababababab";
+    const registrationClosedTournament = "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd";
     run(database, `INSERT INTO public.tournaments(
       id, club_id, status, start_time, name, buy_in, guarantee_amount, rake_amount, service_fee_amount
     ) VALUES (
@@ -98,30 +102,44 @@ async function main() {
       3000000, 200000000, 300000, 0
     );`);
     run(database, `INSERT INTO public.tournaments(
-      id, club_id, status, start_time, name, buy_in
+      id, club_id, status, live_status, start_time, name, buy_in
     ) VALUES (
-      ${quote(excludedLiveTournament)}::uuid, ${quote(CLUB)}::uuid, 'live',
-      pg_catalog.clock_timestamp() + interval '7 days', 'Already live status must remain excluded',
+      ${quote(preStartLiveTournament)}::uuid, ${quote(CLUB)}::uuid, 'live', 'registering',
+      pg_catalog.clock_timestamp() + interval '7 days', 'Pre-start registration is open',
       3000000
     );`);
+    run(database, `INSERT INTO public.tournaments(
+      id, club_id, status, live_status, start_time, name, buy_in, clock_started_at, registration_closed_at
+    ) VALUES
+      (${quote(playingTournament)}::uuid, ${quote(CLUB)}::uuid, 'live', 'playing', pg_catalog.clock_timestamp() + interval '7 days', 'Playing must remain excluded', 3000000, NULL, NULL),
+      (${quote(clockStartedTournament)}::uuid, ${quote(CLUB)}::uuid, 'live', 'registering', pg_catalog.clock_timestamp() + interval '7 days', 'Started clock must remain excluded', 3000000, pg_catalog.clock_timestamp(), NULL),
+      (${quote(registrationClosedTournament)}::uuid, ${quote(CLUB)}::uuid, 'live', 'registering', pg_catalog.clock_timestamp() + interval '7 days', 'Closed registration must remain excluded', 3000000, NULL, pg_catalog.clock_timestamp());`);
     const sourceList = JSON.parse(run(database, `SELECT public.series_list_schedule_candidate_sources_v1(${quote(CLUB)}::uuid)::text;`, OWNER));
-    assert(sourceList.sources.length === 1 && sourceList.sources[0].tournamentId === eligibleTournament, "authoring source list did not return the exact eligible tournament");
-    assert(!sourceList.sources.some((source) => source.tournamentId === excludedLiveTournament), "authoring source list included a live tournament");
+    assert(sourceList.sources.length === 2, "authoring source list did not return the two eligible future tournaments");
+    assert(sourceList.sources.some((source) => source.tournamentId === eligibleTournament), "authoring source list omitted the active future tournament");
+    assert(sourceList.sources.some((source) => source.tournamentId === preStartLiveTournament), "authoring source list omitted the pre-start live/registering tournament");
+    assert(!sourceList.sources.some((source) => source.tournamentId === playingTournament), "authoring source list included a playing tournament");
+    assert(!sourceList.sources.some((source) => source.tournamentId === clockStartedTournament), "authoring source list included a tournament whose clock started");
+    assert(!sourceList.sources.some((source) => source.tournamentId === registrationClosedTournament), "authoring source list included a tournament whose registration closed");
     const preview = JSON.parse(run(database, `SELECT public.series_preview_schedule_candidate_v1(${quote(CLUB)}::uuid, ${quote(eligibleTournament)}::uuid)::text;`, OWNER));
     assert(preview.state === "ready" && preview.optionId === `tournament:${eligibleTournament}`, "authoring preview was not ready for the exact eligible tournament");
     assert(preview.fields.buyInVnd.value === "3000000" && preview.fields.scheduleGtdVnd.value === "200000000", "authoring preview did not preserve schedule money facts");
     assert(preview.fields.prizeContributionPerEntryVnd.value === null, "authoring preview inferred prize contribution from buy-in");
-    const livePreview = JSON.parse(run(database, `SELECT public.series_preview_schedule_candidate_v1(${quote(CLUB)}::uuid, ${quote(excludedLiveTournament)}::uuid)::text;`, OWNER));
-    assert(livePreview.state === "blocked" && livePreview.blockers.includes("scheduled_tournament_required"), "authoring preview did not block a live tournament");
-    let liveApprovalRejected = false;
-    try {
-      run(database, `SELECT public.series_approve_schedule_candidate_from_tournament_v1(
-        ${quote(CLUB)}::uuid, ${quote(excludedLiveTournament)}::uuid, 200000000, 2000000, 1, NULL
-      )::text;`, OWNER);
-    } catch (error) {
-      liveApprovalRejected = String(error).includes("series_v_candidate_scheduled_future_tournament_required");
+    const preStartLivePreview = JSON.parse(run(database, `SELECT public.series_preview_schedule_candidate_v1(${quote(CLUB)}::uuid, ${quote(preStartLiveTournament)}::uuid)::text;`, OWNER));
+    assert(preStartLivePreview.state === "ready", "authoring preview blocked a pre-start live/registering tournament");
+    for (const blockedTournament of [playingTournament, clockStartedTournament, registrationClosedTournament]) {
+      const blockedPreview = JSON.parse(run(database, `SELECT public.series_preview_schedule_candidate_v1(${quote(CLUB)}::uuid, ${quote(blockedTournament)}::uuid)::text;`, OWNER));
+      assert(blockedPreview.state === "blocked" && blockedPreview.blockers.includes("scheduled_tournament_required"), `authoring preview accepted blocked tournament ${blockedTournament}`);
+      let blockedApprovalRejected = false;
+      try {
+        run(database, `SELECT public.series_approve_schedule_candidate_from_tournament_v1(
+          ${quote(CLUB)}::uuid, ${quote(blockedTournament)}::uuid, 200000000, 2000000, 1, NULL
+        )::text;`, OWNER);
+      } catch (error) {
+        blockedApprovalRejected = String(error).includes("series_v_candidate_scheduled_future_tournament_required");
+      }
+      assert(blockedApprovalRejected, `authoring approval accepted blocked tournament ${blockedTournament}`);
     }
-    assert(liveApprovalRejected, "authoring approval accepted a live tournament");
 
     const approveFromTournament = (gtd = 200000000, prizeContribution = 2000000) => `SELECT public.series_approve_schedule_candidate_from_tournament_v1(
       ${quote(CLUB)}::uuid, ${quote(eligibleTournament)}::uuid, ${gtd}, ${prizeContribution}, 1, NULL
@@ -132,11 +150,15 @@ async function main() {
     const authoredOptionId = `tournament:${eligibleTournament}`;
     const authoredReadback = JSON.parse(run(database, `SELECT public.series_get_approved_schedule_candidates_v1(${quote(CLUB)}::uuid, ARRAY[${quote(authoredOptionId)}])::text;`, OWNER));
     assert(authoredReadback.candidateOptions.length === 1 && authoredReadback.candidateOptions[0].requiredField === 100, "authoring approval did not produce one verified readback candidate");
+    const preStartLiveAuthored = JSON.parse(run(database, `SELECT public.series_approve_schedule_candidate_from_tournament_v1(
+      ${quote(CLUB)}::uuid, ${quote(preStartLiveTournament)}::uuid, 200000000, 2000000, 1, NULL
+    )::text;`, OWNER));
+    assert(preStartLiveAuthored.optionId === `tournament:${preStartLiveTournament}`, "authoring approval did not preserve the pre-start live tournament identity");
     let gtdMismatchRejected = false;
     try { run(database, approveFromTournament(200000001), OWNER); } catch (error) { gtdMismatchRejected = String(error).includes("series_v_candidate_gtd_mismatch"); }
     assert(gtdMismatchRejected, "authoring approval accepted a GTD that mismatched the current schedule");
     let authoringCrossClubDenied = false;
-    try { run(database, `SELECT public.series_preview_schedule_candidate_v1(${quote(CLUB)}::uuid, ${quote(scheduledTournament)}::uuid);`, OTHER); } catch (error) { authoringCrossClubDenied = String(error).includes("series_v_candidate_preview_forbidden"); }
+    try { run(database, `SELECT public.series_preview_schedule_candidate_v1(${quote(CLUB)}::uuid, ${quote(eligibleTournament)}::uuid);`, OTHER); } catch (error) { authoringCrossClubDenied = String(error).includes("series_v_candidate_preview_forbidden"); }
     assert(authoringCrossClubDenied, "authoring preview allowed another club owner");
 
     const sameRequest = "30000000-0000-4000-8000-000000000001";
@@ -157,7 +179,7 @@ async function main() {
     assert(run(database, "SELECT count(*) FROM public.series_copilot_rate_limit_requests_v1;") === "5", "denied requests created unbounded rows");
 
     assert(run(database, "SHOW server_version_num;").startsWith("17"), "PostgreSQL major is not 17");
-    process.stdout.write("24/24 Series V PostgreSQL 17 checks passed\n");
+    process.stdout.write("Series V PostgreSQL 17 checks passed\n");
   } finally {
     run("postgres", `DROP DATABASE IF EXISTS ${database} WITH (FORCE);`);
   }

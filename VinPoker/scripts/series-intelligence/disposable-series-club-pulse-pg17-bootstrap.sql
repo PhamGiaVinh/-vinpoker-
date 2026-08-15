@@ -42,6 +42,9 @@ CREATE TABLE public.tournaments (
   guarantee_amount bigint,
   rake_amount bigint,
   service_fee_amount bigint,
+  live_status text NOT NULL DEFAULT 'registering',
+  clock_started_at timestamptz,
+  registration_closed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT pg_catalog.clock_timestamp(),
   updated_at timestamptz NOT NULL DEFAULT pg_catalog.clock_timestamp()
 );
