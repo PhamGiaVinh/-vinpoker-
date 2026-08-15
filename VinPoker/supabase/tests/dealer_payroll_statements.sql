@@ -240,7 +240,7 @@ begin
   update public.dealer_payroll_statements
   set state = 'pdf_rendered'
   where id = (v_ft->>'statement_id')::uuid;
-  select set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000002', true);
+  perform set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000002', true);
   set role authenticated;
 
   begin
@@ -328,7 +328,7 @@ begin
   update public.dealer_payroll_statements
   set state = 'pdf_rendered'
   where id = v_statement_id;
-  select set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000002', true);
+  perform set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000002', true);
   set role authenticated;
 
   v_payment := public.pay_finalized_part_time_payroll_statement(
@@ -365,7 +365,7 @@ begin
     raise exception 'paid statement mutation unexpectedly succeeded';
   exception when object_not_in_prerequisite_state then null;
   end;
-  select set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000002', true);
+  perform set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000002', true);
   set role authenticated;
   begin
     perform public.void_dealer_payroll_statement(v_statement_id, 'paid statement must not void');
