@@ -121,7 +121,7 @@ values
 
 select set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000003', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
-set local role authenticated;
+set role authenticated;
 
 do $$
 begin
@@ -180,7 +180,7 @@ begin
   set state = 'pdf_rendered'
   where id = (v_ft->>'statement_id')::uuid;
   select set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000002', true);
-  set local role authenticated;
+  set role authenticated;
 
   begin
     perform public.finalize_full_time_payroll_statement(
@@ -270,7 +270,7 @@ begin
   set state = 'pdf_rendered'
   where id = v_statement_id;
   select set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000002', true);
-  set local role authenticated;
+  set role authenticated;
 
   v_payment := public.pay_finalized_part_time_payroll_statement(
     v_statement_id, 'cash', 'PT-STMT-1', 'pt-statement-payment-1', 'exact frozen snapshot payment'
@@ -278,6 +278,7 @@ begin
   v_payment_replay := public.pay_finalized_part_time_payroll_statement(
     v_statement_id, 'cash', 'PT-STMT-1', 'pt-statement-payment-1', 'retry'
   );
+  reset role;
   perform pg_temp.assert_eq(v_payment->>'amount_vnd', '60000', 'PT payment uses statement amount without a new calculation');
   perform pg_temp.assert_eq(v_payment_replay->>'idempotent', 'true', 'PT statement payment replay cannot create a second receipt');
   perform pg_temp.assert_true(
@@ -304,7 +305,7 @@ begin
   exception when object_not_in_prerequisite_state then null;
   end;
   select set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000002', true);
-  set local role authenticated;
+  set role authenticated;
   begin
     perform public.void_dealer_payroll_statement(v_statement_id, 'paid statement must not void');
     raise exception 'paid statement void unexpectedly succeeded';
@@ -315,7 +316,7 @@ end;
 $$;
 
 select set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000005', true);
-set local role authenticated;
+reset role;
 select pg_temp.assert_true(
   (public.get_dealer_payroll_statement((
     select id from public.dealer_payroll_statements
@@ -326,7 +327,7 @@ select pg_temp.assert_true(
 );
 
 select set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000003', true);
-set local role authenticated;
+reset role;
 do $$
 begin
   perform public.get_dealer_payroll_statement((
