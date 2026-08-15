@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const ROOT = process.cwd();
 const source = (path: string) => readFileSync(join(ROOT, path), "utf8");
 const MIGRATION = source("supabase/migrations/20270111000000_series_v_candidate_authoring_v1.sql");
+const STATUS_COMPATIBILITY_MIGRATION = source("supabase/migrations/20270112000001_series_v_candidate_authoring_source_state_compatibility.sql");
 const ADAPTER = source("src/lib/series-intelligence/seriesCandidateAuthoringRpc.ts");
 const PANEL = source("src/components/series-intelligence/SeriesCandidateAuthoringPanel.tsx");
 const PAGE = source("src/pages/SeriesIntelligence.tsx");
@@ -27,7 +28,7 @@ describe("Series V Candidate Authoring V1 boundaries", () => {
     expect(PANEL).toContain("candidate versioned");
   });
 
-  it("requires owner scope, a scheduled future tournament and a server-built evidence manifest", () => {
+  it("keeps the original owner-scoped source contract and a server-built evidence manifest", () => {
     expect(MIGRATION).toContain("public.is_club_owner(v_actor, p_club_id)");
     expect(MIGRATION).toContain("t.status = 'scheduled'");
     expect(MIGRATION).toContain("t.start_time > v_as_of");
@@ -36,6 +37,24 @@ describe("Series V Candidate Authoring V1 boundaries", () => {
     expect(MIGRATION).toContain("'sourceId', 'tournaments'");
     expect(MIGRATION).toContain("'sourceId', 'series_v_candidate_authoring'");
     expect(MIGRATION).toContain("'tournament:' || v_tournament.id::text");
+  });
+
+  it("accepts only future pre-live statuses supported by the tournament state machine", () => {
+    expect(STATUS_COMPATIBILITY_MIGRATION).toContain("t.status IN ('active', 'upcoming', 'registering')");
+    expect(STATUS_COMPATIBILITY_MIGRATION).toContain("t.start_time > v_as_of");
+    expect(STATUS_COMPATIBILITY_MIGRATION.match(/v_tournament\.status = ANY \(ARRAY\['active'::text, 'upcoming'::text, 'registering'::text\]\)/g)?.length).toBe(2);
+    expect(STATUS_COMPATIBILITY_MIGRATION).not.toContain("t.status = 'scheduled'");
+    expect(STATUS_COMPATIBILITY_MIGRATION).not.toMatch(/['"]live['"]/);
+  });
+
+  it("preserves the authoring security and source-evidence boundary while replacing the RPC bodies", () => {
+    expect(STATUS_COMPATIBILITY_MIGRATION.match(/CREATE OR REPLACE FUNCTION public\.series_(?:list_schedule_candidate_sources|preview_schedule_candidate|approve_schedule_candidate_from_tournament)_v1/g)?.length).toBe(3);
+    expect(STATUS_COMPATIBILITY_MIGRATION.match(/SECURITY DEFINER\r?\nSET search_path = ''/g)?.length).toBe(3);
+    expect(STATUS_COMPATIBILITY_MIGRATION).toContain("public.is_club_owner(v_actor, p_club_id)");
+    expect(STATUS_COMPATIBILITY_MIGRATION).toContain("'sourceId', 'tournaments'");
+    expect(STATUS_COMPATIBILITY_MIGRATION).toContain("'sourceId', 'series_v_candidate_authoring'");
+    expect(STATUS_COMPATIBILITY_MIGRATION).toContain("REVOKE ALL ON FUNCTION public.series_approve_schedule_candidate_from_tournament_v1");
+    expect(STATUS_COMPATIBILITY_MIGRATION).toContain("FROM PUBLIC, anon, service_role");
   });
 
   it("bounds the source query before aggregation and keeps an idempotent source timestamp", () => {

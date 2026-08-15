@@ -261,7 +261,7 @@ export function SeriesCandidateAuthoringPanel({
           </select>
           {state === "ready" && clubId && sources.length === 0 && (
             <p role="status" className="rounded-md border border-dashed border-border p-3 text-xs leading-5 text-muted-foreground">
-              Chưa có lịch CLB ở trạng thái scheduled, thời điểm tương lai và buy-in hợp lệ để duyệt cho V.
+              Chưa có lịch CLB tương lai ở trạng thái chuẩn bị hoặc đang mở đăng ký, với buy-in hợp lệ để duyệt cho V.
             </p>
           )}
           {selectedSource && <p className="text-[11px] text-muted-foreground">Mã phương án: <span className="font-mono">{selectedSource.optionId}</span></p>}
