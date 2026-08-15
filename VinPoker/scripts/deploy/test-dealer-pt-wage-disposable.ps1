@@ -70,6 +70,9 @@ try {
     '/tmp/readiness-acl.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual_readiness_acl.sql'
     '/tmp/lifecycle.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual.sql'
     '/tmp/concurrency.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual_concurrency.sql'
+    '/tmp/payroll-statements-v1.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270112000000_dealer_payroll_statements_v1.sql'
+    '/tmp/payroll-statements.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_payroll_statements.sql'
+    '/tmp/payroll-statements-concurrency.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_payroll_statements_concurrency.sql'
   }
   foreach ($destination in $files.Keys) { Invoke-Docker cp $files[$destination] "${containerName}:$destination" }
 
@@ -90,8 +93,12 @@ try {
   Invoke-ContainerPsql '/tmp/readiness-acl.sql'
   Invoke-ContainerPsql '/tmp/lifecycle.sql'
   Invoke-ContainerPsql '/tmp/concurrency.sql'
+  Invoke-ContainerPsql '/tmp/payroll-statements-v1.sql'
+  Invoke-ContainerPsql '/tmp/payroll-statements-v1.sql'
+  Invoke-ContainerPsql '/tmp/payroll-statements.sql'
+  Invoke-ContainerPsql '/tmp/payroll-statements-concurrency.sql'
 
-  Write-Host "Dealer PT wage PG$PostgresMajor current-schema restore, ordered migration apply/reapply, ACL, lifecycle, immutability, and concurrency suites passed."
+  Write-Host "Dealer PT wage PG$PostgresMajor current-schema restore, ordered migration apply/reapply, ACL, lifecycle, immutable payroll statement, PT reservation, payout bridge, and concurrency suites passed."
 } finally {
   if (Test-Path -LiteralPath $preparedSchemaPath) { Remove-Item -LiteralPath $preparedSchemaPath -Force }
   $existing = & docker ps -a --format '{{.Names}}' | Where-Object { $_ -eq $containerName }

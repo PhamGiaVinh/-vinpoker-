@@ -8,6 +8,7 @@ const script = readFileSync(resolve(root, "scripts/deploy/verify-dealer-pt-wage-
 
 test("payroll migration inventory fails closed on any active catalog collision", () => {
   assert.match(script, /20270106000001/);
+  assert.match(script, /20270112000000/);
   assert.match(script, /20270105000002_dealer_pt_wage_global_continuous_accrual\.sql/);
   assert.match(script, /20270105000003_dealer_pt_wage_rate_history\.sql/);
   assert.match(script, /PAYROLL_MIGRATION_VERSION_COLLISION/);
