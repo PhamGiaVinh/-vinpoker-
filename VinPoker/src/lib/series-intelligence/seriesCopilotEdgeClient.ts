@@ -10,6 +10,33 @@ import type { VResponseValidationResultV1 } from "./seriesCopilotResponseV1";
 export const SERIES_COPILOT_EDGE_ADAPTER_VERSION = "series-copilot-edge-adapter-v1" as const;
 const FUNCTION_NAME = "series-intelligence-copilot";
 
+const EDGE_FAILURE_CODES = [
+  "UNAUTHORIZED",
+  "FORBIDDEN",
+  "RATE_LIMIT_UNAVAILABLE",
+  "RATE_LIMITED",
+  "CLUB_PULSE_UNAVAILABLE",
+  "UNKNOWN_SELECTED_OPTION",
+  "COPILOT_CONTEXT_REJECTED",
+  "PROVIDER_NOT_CONFIGURED",
+  "PROVIDER_RATE_LIMITED",
+  "PROVIDER_RESPONSE_REJECTED",
+  "PROVIDER_TIMEOUT",
+  "PROVIDER_UNAVAILABLE",
+] as const;
+
+export type SeriesCopilotEdgeFailureCode = (typeof EDGE_FAILURE_CODES)[number];
+
+export class SeriesCopilotEdgeFailure extends Error {
+  readonly code: SeriesCopilotEdgeFailureCode;
+
+  constructor(code: SeriesCopilotEdgeFailureCode) {
+    super(code);
+    this.name = "SeriesCopilotEdgeFailure";
+    this.code = code;
+  }
+}
+
 const stableId = z.string().regex(/^[a-z][a-z0-9._:-]*$/);
 const utc = z.string().datetime({ offset: false });
 const money = z.object({ amountMinor: z.string().regex(/^\d+$/), currency: z.literal("VND"), scale: z.literal(0) }).strict();
@@ -134,6 +161,34 @@ function defaultInvoker(body: unknown, signal?: AbortSignal): Promise<{ data: un
   return supabase.functions.invoke(FUNCTION_NAME, { body, signal, timeout: 15_000 });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function knownEdgeFailureCode(value: unknown): SeriesCopilotEdgeFailureCode | null {
+  if (typeof value !== "string") return null;
+  return (EDGE_FAILURE_CODES as readonly string[]).includes(value)
+    ? value as SeriesCopilotEdgeFailureCode
+    : null;
+}
+
+async function readKnownEdgeFailureCode(data: unknown, error: unknown): Promise<SeriesCopilotEdgeFailureCode | null> {
+  if (isRecord(data)) {
+    const code = knownEdgeFailureCode(data.error);
+    if (code) return code;
+  }
+  if (!isRecord(error) || !isRecord(error.context)) return null;
+  const context = error.context;
+  if (typeof context.json !== "function") return null;
+  try {
+    const response = typeof context.clone === "function" ? context.clone() : context;
+    const body = await response.json();
+    return isRecord(body) ? knownEdgeFailureCode(body.error) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function askSeriesCopilotEdgeV1(
   request: SeriesCopilotEdgeRequestV1,
   options: { invoke?: SeriesCopilotInvokerV1; requestId?: () => string } = {},
@@ -155,7 +210,11 @@ export async function askSeriesCopilotEdgeV1(
     question,
     selectedOptionIds,
   }, request.signal);
-  if (error) throw new Error("COPILOT_EDGE_UNAVAILABLE");
+  if (error) {
+    const code = await readKnownEdgeFailureCode(data, error);
+    if (code) throw new SeriesCopilotEdgeFailure(code);
+    throw new Error("COPILOT_EDGE_UNAVAILABLE");
+  }
   const parsed = envelopeSchema.safeParse(data);
   if (!parsed.success) throw new Error("COPILOT_EDGE_RESPONSE_INVALID");
   const envelope = parsed.data as {

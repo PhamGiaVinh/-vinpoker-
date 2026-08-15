@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { askMockSeriesCopilotV1, createMockSeriesCopilotContextV1 } from "@/lib/series-intelligence/seriesCopilotMockAdapter";
 import { createSeriesClubPulseDemoV1, mapSeriesClubPulseDemoToCopilotContextV1 } from "@/lib/series-intelligence/seriesClubPulseDemoV1";
+import { SeriesCopilotEdgeFailure } from "@/lib/series-intelligence/seriesCopilotEdgeClient";
 import { VCopilotPanel } from "./VCopilotPanel";
 
 vi.mock("@/integrations/supabase/client", () => ({
@@ -183,5 +184,20 @@ describe("VCopilotPanel", () => {
     render(<VCopilotPanel contextMode="live" clubPulse={null} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Chưa có Club Pulse đủ điều kiện để V sử dụng.");
     expect(screen.getByRole("button", { name: "Hỏi V" })).toBeDisabled();
+  });
+
+  it("shows the reviewed Gemini timeout state instead of a generic failure", async () => {
+    const ask = vi.fn(async () => {
+      throw new SeriesCopilotEdgeFailure("PROVIDER_TIMEOUT");
+    });
+    render(<VCopilotPanel
+      contextMode="live"
+      clubId="11111111-1111-4111-8111-111111111111"
+      clubPulse={{ version: "series-club-pulse-v1", sourceMode: "server_aggregate", metrics: [] }}
+      ask={ask}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hỏi V" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Gemini chưa phản hồi kịp trong giới hạn an toàn. Hãy thử lại.");
   });
 });

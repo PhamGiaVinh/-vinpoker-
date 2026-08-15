@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSeriesCopilotContextV1 } from "./seriesCopilotContextV1";
-import { askSeriesCopilotEdgeV1 } from "./seriesCopilotEdgeClient";
+import {
+  askSeriesCopilotEdgeV1,
+  SeriesCopilotEdgeFailure,
+} from "./seriesCopilotEdgeClient";
 import { buildScheduleHealthV1 } from "./scheduleHealthV1";
 import {
   buildServerCopilotContextV1,
@@ -188,6 +191,29 @@ describe("Series Copilot Edge client", () => {
     })).rejects.toThrow("COPILOT_EDGE_RESPONSE_INVALID");
     await expect(askSeriesCopilotEdgeV1({ clubId: CLUB_ID, untrustedQuestion: "Đánh giá lịch" }, {
       invoke: async () => ({ data: null, error: new Error("network detail") }),
+      requestId: () => REQUEST_ID,
+    })).rejects.toThrow("COPILOT_EDGE_UNAVAILABLE");
+  });
+
+  it("surfaces only allowlisted Edge failure codes from the failed response", async () => {
+    const timeout = new Response(JSON.stringify({ error: "PROVIDER_TIMEOUT" }), {
+      status: 504,
+      headers: { "Content-Type": "application/json" },
+    });
+    await expect(askSeriesCopilotEdgeV1({ clubId: CLUB_ID, untrustedQuestion: "Đánh giá lịch" }, {
+      invoke: async () => ({ data: null, error: { context: timeout } }),
+      requestId: () => REQUEST_ID,
+    })).rejects.toMatchObject({
+      name: "SeriesCopilotEdgeFailure",
+      code: "PROVIDER_TIMEOUT",
+    } satisfies Partial<SeriesCopilotEdgeFailure>);
+
+    const unknown = new Response(JSON.stringify({ error: "INTERNAL_PROVIDER_DETAIL" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+    await expect(askSeriesCopilotEdgeV1({ clubId: CLUB_ID, untrustedQuestion: "Đánh giá lịch" }, {
+      invoke: async () => ({ data: null, error: { context: unknown } }),
       requestId: () => REQUEST_ID,
     })).rejects.toThrow("COPILOT_EDGE_UNAVAILABLE");
   });
