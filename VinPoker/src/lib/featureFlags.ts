@@ -633,6 +633,12 @@ export const FEATURES = {
    */
   liveViewerPulseV2: true,
   /**
+   * Public Tournament Live Viewer V2: sticky tournament rail, authoritative
+   * 9-seat table directory and chrome-less public route. Source lands dark;
+   * Production must remain OFF until the sanitized public contract and UAT pass.
+   */
+  publicTournamentRailV1: false,
+  /**
    * Floor bust + payout confirmation through the server-authoritative atomic RPC.
    * OFF preserves the current Floor workflow and makes no new write call.
    */
