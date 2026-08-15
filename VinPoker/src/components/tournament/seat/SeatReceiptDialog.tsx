@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Printer, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { SeatReceipt, type SeatReceiptData } from "./SeatReceipt";
+import { fetchBuyinReceipt, toSeatReceiptData } from "./buyinReceipt";
 
 interface Props {
   open: boolean;
@@ -30,7 +31,24 @@ const PX_TO_MM = 25.4 / 96;
 export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
+  const receiptRef = useRef<SeatReceiptData | null>(null);
   const [busy, setBusy] = useState(false);
+  const [hydratedReceipt, setHydratedReceipt] = useState<SeatReceiptData | null>(null);
+  receiptRef.current = receipt;
+
+  useEffect(() => {
+    let current = true;
+    setHydratedReceipt(null);
+    const receiptCode = receiptRef.current?.receiptCode;
+    if (!open || !receiptCode) return () => { current = false; };
+
+    void fetchBuyinReceipt({ receiptCode }).then((snapshot) => {
+      if (current && snapshot) setHydratedReceipt(toSeatReceiptData(snapshot, receiptRef.current));
+    });
+    return () => { current = false; };
+  }, [open, receipt?.receiptCode]);
+
+  const displayReceipt = useMemo(() => hydratedReceipt ?? receipt, [hydratedReceipt, receipt]);
 
   const printReceipt = () => {
     if (!ref.current) return;
@@ -40,8 +58,8 @@ export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
       return;
     }
     win.document.write(
-      `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${receipt?.receiptCode ?? "Receipt"}</title>` +
-        `<style>html,body{margin:0;padding:0;background:#fff;}body{display:flex;justify-content:center;padding:16px;}</style>` +
+      `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${displayReceipt?.confirmationCode ?? displayReceipt?.receiptCode ?? "Receipt"}</title>` +
+        `<style>@page{size:80mm auto;margin:0}html,body{width:80mm;margin:0;padding:0;background:#fff}body{display:block}section{margin:0!important;border:0!important;border-radius:0!important;max-width:80mm!important;break-inside:avoid}</style>` +
         `</head><body>${ref.current.outerHTML}</body></html>`,
     );
     win.document.close();
@@ -51,7 +69,7 @@ export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
   };
 
   const downloadPdf = async () => {
-    if (!ref.current || !receipt) return;
+    if (!ref.current || !displayReceipt) return;
     setBusy(true);
     try {
       const html2canvasMod = await import("html2canvas").catch(() => null);
@@ -70,7 +88,7 @@ export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
       const hMm = (canvas.height / 2) * PX_TO_MM;
       const pdf = new jsPDF({ orientation: wMm > hMm ? "l" : "p", unit: "mm", format: [wMm, hMm] });
       pdf.addImage(imgData, "PNG", 0, 0, wMm, hMm);
-      pdf.save(`receipt-${receipt.receiptCode}.pdf`);
+      pdf.save(`receipt-${displayReceipt.confirmationCode ?? displayReceipt.receiptCode ?? "buyin"}.pdf`);
     } catch {
       // Fall back to the print window if the PDF libs are unavailable.
       printReceipt();
@@ -81,7 +99,7 @@ export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="mb-[env(safe-area-inset-bottom)] grid max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] max-w-[420px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-4 sm:max-h-[90vh] sm:p-6">
         <DialogHeader>
           <DialogTitle>{t("seatReceipt.title")}</DialogTitle>
           <DialogDescription className="text-xs">
@@ -89,17 +107,19 @@ export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
           </DialogDescription>
         </DialogHeader>
 
-        {receipt ? (
-          <div className="flex justify-center py-2">
-            <SeatReceipt ref={ref} {...receipt} />
+        {displayReceipt ? (
+          <div className="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain py-2">
+            <div className="flex justify-center">
+              <SeatReceipt ref={ref} {...displayReceipt} />
+            </div>
           </div>
         ) : null}
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={printReceipt} disabled={!receipt}>
+          <Button variant="outline" onClick={printReceipt} disabled={!displayReceipt}>
             <Printer className="w-4 h-4 mr-1" /> {t("seatReceipt.print")}
           </Button>
-          <Button onClick={downloadPdf} disabled={!receipt || busy}>
+          <Button onClick={downloadPdf} disabled={!displayReceipt || busy}>
             {busy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />} {t("seatReceipt.downloadPdf")}
           </Button>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
