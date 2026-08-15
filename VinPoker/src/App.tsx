@@ -125,6 +125,10 @@ const DevClockPreview = import.meta.env.DEV ? lazy(() => import("./dev/ClockPrev
 const DevLiveFeltPreview = import.meta.env.DEV ? lazy(() => import("./dev/LiveFeltPreview")) : null;
 // DEV-ONLY fixture for responsive Viewer RPT shell screenshots and interaction QA.
 const DevViewerRPTPreview = import.meta.env.DEV ? lazy(() => import("./dev/ViewerRPTPreview")) : null;
+// DEV-ONLY fixture for Public Tournament Live Viewer V2. No Supabase/auth/network.
+const DevPublicTournamentEventPreview = import.meta.env.DEV
+  ? lazy(() => import("./dev/PublicTournamentEventPreview"))
+  : null;
 // DEV-ONLY visual harness for the operator TrackerRacetrack felt (mock data — no Supabase),
 // with rich + betChips toggles. Same import.meta.env.DEV gate → route + lazy chunk stripped
 // from production. Reached only at /__dev/tracker; not linked anywhere.
@@ -253,6 +257,9 @@ const App = () => {
               )}
               {import.meta.env.DEV && DevViewerRPTPreview && (
                 <Route path="/__dev/viewer-rpt" element={<DevViewerRPTPreview />} />
+              )}
+              {import.meta.env.DEV && DevPublicTournamentEventPreview && (
+                <Route path="/__dev/public-live-v2" element={<DevPublicTournamentEventPreview />} />
               )}
               {import.meta.env.DEV && DevTrackerPreview && (
                 <Route path="/__dev/tracker" element={<DevTrackerPreview />} />
