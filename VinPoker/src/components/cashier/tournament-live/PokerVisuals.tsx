@@ -26,6 +26,7 @@ function xcardsFaceFile(card: string): string | null {
  *  survives re-render; the whole card box's rounding/size/mute come from the caller. */
 function XCardImageFace({
   file,
+  cardCode,
   muted,
   sizeClass,
   className,
@@ -33,6 +34,7 @@ function XCardImageFace({
   fallback,
 }: {
   file: string;
+  cardCode: string;
   muted: boolean;
   sizeClass: string;
   className?: string;
@@ -50,6 +52,7 @@ function XCardImageFace({
   // drop-shadow hugs the card's alpha shape so it still lifts off the felt.
   return (
     <div
+      data-card-code={cardCode}
       className={cn(
         "tracker-card-reveal relative shrink-0",
         muted && "opacity-55 grayscale",
@@ -184,6 +187,7 @@ export function PokerCard({
   // Today's built-in text face — also the fallback when an xCards asset fails to load.
   const textFace = (
     <div
+      data-card-code={card}
       className={cn(
         "tracker-card-reveal relative shrink-0 overflow-hidden border border-amber-200/70 bg-[#f7f0df] font-serif font-black leading-none shadow-xl shadow-black/35",
         red ? "text-[#b51324]" : "text-[#111827]",
@@ -209,6 +213,7 @@ export function PokerCard({
     return (
       <XCardImageFace
         file={faceFile}
+        cardCode={card}
         muted={muted}
         sizeClass={sizeClass}
         className={className}
@@ -443,6 +448,10 @@ export function TrackerVisualStyles() {
           from { opacity: 0; transform: translateY(-12px) rotate(-3deg) scale(.92); }
           to { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
         }
+        @keyframes tracker-runout-board-reveal {
+          from { opacity: 0; transform: translateY(-5px) scale(1.1); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
         @keyframes tracker-seat-pop {
           0% { transform: translate(-50%, -50%) scale(.94); opacity: .7; }
           100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
@@ -524,6 +533,34 @@ export function TrackerVisualStyles() {
           box-shadow: 0 0 24px 3px hsl(var(--poker-gold) / 0.58), 0 0 0 2px hsl(var(--poker-gold) / 0.78);
           animation: tracker-win-glow .26s cubic-bezier(.22,1,.36,1) both;
         }
+        .tracker-best-five-focus-active .tracker-best-five-card {
+          opacity: 1 !important;
+          filter: none !important;
+          transition: opacity 180ms ease-out, filter 180ms ease-out, box-shadow 180ms ease-out, outline-color 180ms ease-out;
+        }
+        .tracker-best-five-focus-dim .tracker-best-five-card {
+          outline: 0 solid transparent;
+          box-shadow: none;
+        }
+        .tracker-best-five-focus-glow .tracker-best-five-card,
+        .tracker-best-five-focus-static .tracker-best-five-card {
+          outline: 2px solid hsl(var(--viewer-neon) / .92);
+          outline-offset: 1px;
+          box-shadow: 0 0 0 2px rgba(255, 210, 80, .95), 0 0 12px rgba(255, 190, 50, .85), 0 0 24px rgba(255, 160, 20, .45);
+          filter: saturate(1.15) brightness(1.08) !important;
+        }
+        .tracker-best-five-focus-active .tracker-non-best-five-card {
+          opacity: .42 !important;
+          filter: grayscale(.42) saturate(.35) brightness(.72) !important;
+          transition: opacity 180ms ease-out, filter 180ms ease-out;
+        }
+        .tracker-runout-board-card {
+          animation-name: tracker-runout-board-reveal;
+          animation-timing-function: cubic-bezier(.22,1,.36,1);
+        }
+        .tracker-runout-board-flop { animation-duration: .27s; }
+        .tracker-runout-board-turn { animation-duration: .3s; }
+        .tracker-runout-board-river { animation-duration: .5s; }
         .tracker-showdown-result { animation: tracker-showdown-result .24s cubic-bezier(.22,1,.36,1) both; }
         .tracker-motion-card {
           position: absolute;
@@ -583,12 +620,16 @@ export function TrackerVisualStyles() {
           .tracker-bet-pulse,
           .tracker-chip-push,
           .tracker-win-glow,
+          .tracker-best-five-card,
+          .tracker-non-best-five-card,
+          .tracker-runout-board-card,
           .tracker-showdown-result,
           .tracker-motion-card,
           .tracker-motion-showdown,
           .tracker-motion-chip,
           .tracker-shine::before {
             animation: none !important;
+            transition: none !important;
           }
         }
       `}

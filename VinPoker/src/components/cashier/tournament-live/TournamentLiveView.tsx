@@ -36,6 +36,11 @@ import {
   type ReplayFrame,
 } from "@/lib/tracker-poker/replayEngine";
 import { deriveReplayPlaybackFx } from "@/lib/tracker-poker/replayFx";
+import { resolveVerifiedShowdownPresentation } from "@/lib/tracker-poker/replayBestFiveFocus";
+import {
+  replayRunoutFocusPhase,
+  type ReplayRunoutPresentation,
+} from "@/lib/tracker-poker/replayRunoutTimeline";
 import { deriveLiveHandDisplay } from "@/lib/tracker-poker/liveDisplay";
 import {
   appendTableMotionEvents,
@@ -106,7 +111,7 @@ export function TournamentLiveView({
   initialReplayHandNumber?: number | null;
   onReplayTargetChange?: (target: ReplayTarget) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { isStaffOps, isClubAdmin } = useAuth();
   const requestedReplayTarget = useMemo<ReplayTarget | null>(() => {
     if (initialReplayTarget) return initialReplayTarget;
@@ -130,7 +135,7 @@ export function TournamentLiveView({
   const [buttonSeat, setButtonSeat] = useState(1);
   const [actions, setActions] = useState<ActionLog[]>([]);
   const [tableMotionEvents, setTableMotionEvents] = useState<TableMotionEvent[]>([]);
-  const [replayMotionSpeed, setReplayMotionSpeed] = useState(2);
+  const [replayMotionSpeed, setReplayMotionSpeed] = useState(1);
   const [clockData, setClockData] = useState<{
     is_running: boolean;
     remaining_seconds: number;
@@ -170,8 +175,12 @@ export function TournamentLiveView({
   const [mode, setMode] = useState<"live" | "replay">("live");
   const [replayHandId, setReplayHandId] = useState<string | null>(null);
   const [replayHand, setReplayHand] = useState<ReplayHand | null>(null);
-  const [replayFrame, setReplayFrame] = useState<ReplayFrame | null>(null);
+  const [replayFrameState, setReplayFrameState] = useState<{
+    handKey: string;
+    frame: ReplayFrame;
+  } | null>(null);
   const [replayFrameSource, setReplayFrameSource] = useState<ReplayFrameSource>("jump");
+  const [replayRunoutPresentation, setReplayRunoutPresentation] = useState<ReplayRunoutPresentation | null>(null);
   const [replayMotionEpoch, setReplayMotionEpoch] = useState(0);
   const [replayTargetState, setReplayTargetState] = useState<ReplayTargetState>({ kind: "idle" });
   // Snapshot of the LIVE table the moment replay was entered. The live machinery
@@ -203,8 +212,14 @@ export function TournamentLiveView({
     if (events.length > 0) setTableMotionEvents((current) => appendTableMotionEvents(current, events));
   }, []);
 
-  const handleReplayFrame = useCallback((frame: ReplayFrame, source: ReplayFrameSource) => {
-    setReplayFrame(frame);
+  const loadedReplayHandKey = replayHand
+    ? replayHand.hand_id ?? `hand-${replayHand.hand_number}`
+    : null;
+  const replayFrame = loadedReplayHandKey && replayFrameState?.handKey === loadedReplayHandKey
+    ? replayFrameState.frame
+    : null;
+  const handleReplayFrame = useCallback((handKey: string, frame: ReplayFrame, source: ReplayFrameSource) => {
+    setReplayFrameState({ handKey, frame });
     setReplayFrameSource(source);
     if (source !== "playback") setReplayMotionEpoch((current) => current + 1);
   }, []);
@@ -628,8 +643,9 @@ export function TournamentLiveView({
     setMode("live");
     setReplayHandId(null);
     setReplayHand(null);
-    setReplayFrame(null);
+    setReplayFrameState(null);
     setReplayFrameSource("jump");
+    setReplayRunoutPresentation(null);
     setReplayMotionEpoch(0);
     setLiveBaseline(null);
     setLoading(true);
@@ -848,13 +864,24 @@ export function TournamentLiveView({
     const previous = replayMotionFrameRef.current;
     replayMotionFrameRef.current = replayFrame;
     if (replayFrameSource !== "playback") return;
+    // The HUD owns the persisted all-in final-board cadence. Suppress only this
+    // duplicate table-motion overlay; operator/TV and ordinary replay frames keep
+    // the existing shared motion stream unchanged.
+    const hudOwnsFinalRunout = spectator
+      && FEATURES.liveReplayHud
+      && replayFrame.index === replayHand.actions.length
+      && replayHand.actions.some((action) => action.action_type === "all_in")
+      && replayRunoutPresentation?.key.startsWith(
+        `${replayHand.hand_id ?? `hand-${replayHand.hand_number}`}:${replayHand.actions.length}:`,
+      );
+    if (hudOwnsFinalRunout) return;
     const motionHandId = `${replayHand.hand_id ?? `hand-${replayHand.hand_number}`}:run-${replayMotionEpoch}`;
     enqueueTableMotion(deriveReplayTableMotionEvents({
       handId: motionHandId,
       previous,
       current: replayFrame,
     }));
-  }, [enqueueTableMotion, mode, replayFrame, replayFrameSource, replayHand, replayMotionEpoch]);
+  }, [enqueueTableMotion, mode, replayFrame, replayFrameSource, replayHand, replayMotionEpoch, replayRunoutPresentation, spectator]);
 
   const toggleSoundMuted = useCallback(() => {
     setSoundMuted((m) => {
@@ -905,7 +932,44 @@ export function TournamentLiveView({
       ? replayHand
       : null;
   }, [replayHand, replayTargetState, requestedReplayTarget]);
-  const selectedReplayFrame = selectedReplayHand ? replayFrame : null;
+  const selectedReplayHandKey = selectedReplayHand
+    ? selectedReplayHand.hand_id ?? `hand-${selectedReplayHand.hand_number}`
+    : null;
+  const selectedReplayFrame = selectedReplayHandKey && replayFrameState?.handKey === selectedReplayHandKey
+    ? replayFrameState.frame
+    : null;
+  const handleSelectedReplayFrame = useCallback((frame: ReplayFrame, source: ReplayFrameSource) => {
+    if (!selectedReplayHandKey) return;
+    handleReplayFrame(selectedReplayHandKey, frame, source);
+  }, [handleReplayFrame, selectedReplayHandKey]);
+  const handleSelectedReplayRunoutPresentation = useCallback((presentation: ReplayRunoutPresentation | null) => {
+    setReplayRunoutPresentation(presentation);
+  }, []);
+  const replayShowdownPresentation = useMemo(() => {
+    if (!selectedReplayHand?.hand_id || !selectedReplayFrame) return null;
+    return resolveVerifiedShowdownPresentation({
+      handId: selectedReplayHand.hand_id,
+      frame: selectedReplayFrame,
+      finalFrameIndex: selectedReplayHand.actions.length,
+      settlement: selectedReplayHand.publicSettlement,
+      locale: i18n.language,
+    });
+  }, [i18n.language, selectedReplayFrame, selectedReplayHand]);
+  const replayRunoutForSelectedHand = selectedReplayHandKey
+    && selectedReplayFrame?.index === selectedReplayHand?.actions.length
+    && replayRunoutPresentation?.key.startsWith(`${selectedReplayHandKey}:${selectedReplayHand.actions.length}:`)
+    ? replayRunoutPresentation
+    : null;
+  const replayFocusPhase = replayRunoutFocusPhase(replayRunoutForSelectedHand?.phase ?? (
+    replayShowdownPresentation?.enabled ? "static" : null
+  ));
+  const replayDisplayCards = selectedReplayFrame
+    ? replayRunoutForSelectedHand
+      ? selectedReplayFrame.displayCards.map((card, index) => (
+          index < replayRunoutForSelectedHand.visibleBoardCount ? card : ""
+        ))
+      : selectedReplayFrame.displayCards
+    : null;
 
   // Replay uses the historical hand's own big blind (the live clock may have moved on).
   const replayBigBlind = selectedReplayHand ? detectBigBlind(selectedReplayHand) : 0;
@@ -1015,8 +1079,9 @@ export function TournamentLiveView({
     // resolved. A missing or ambiguous target must not look like a fallback.
     setReplayHandId(null);
     setReplayHand(null);
-    setReplayFrame(null);
+    setReplayFrameState(null);
     setReplayFrameSource("jump");
+    setReplayRunoutPresentation(null);
     setReplayMotionEpoch((epoch) => epoch + 1);
     setReplayTargetState({ kind: "loading" });
     const resolve = async () => {
@@ -1210,7 +1275,7 @@ export function TournamentLiveView({
           seats: selectedReplayFrame.seats,
           lastActorId: selectedReplayFrame.lastActorId,
           toActId: null,
-          displayCards: selectedReplayFrame.displayCards,
+          displayCards: replayDisplayCards ?? selectedReplayFrame.displayCards,
           potSize: selectedReplayFrame.potSize,
           potBreakdown: selectedReplayFrame.potBreakdown,
           multiTableUnresolved: false,
@@ -1458,8 +1523,9 @@ export function TournamentLiveView({
             onLoadStart={(id) => {
               setReplayHandId(id);
               setReplayHand(null);
-              setReplayFrame(null);
+              setReplayFrameState(null);
               setReplayFrameSource("jump");
+              setReplayRunoutPresentation(null);
               replayMotionFrameRef.current = null;
               setTableMotionEvents([]);
               setReplayMotionEpoch((current) => current + 1);
@@ -1505,14 +1571,21 @@ export function TournamentLiveView({
               revealOrder={revealOrder}
               motionEnabled={spectator && FEATURES.liveTableMotionV2}
               motionEvents={tableMotionEvents}
-              motionSpeed={isReplay ? replayMotionSpeed : 1}
+              motionSpeed={isReplay ? (spectator && FEATURES.liveReplayHud ? replayMotionSpeed : 2) : 1}
+              bestFiveFocus={spectator && isReplay && FEATURES.liveReplayHud && replayFocusPhase !== "hidden"
+                ? replayShowdownPresentation?.focus ?? null
+                : null}
+              bestFiveFocusPhase={replayFocusPhase}
+              replayRunoutPhase={spectator && isReplay && FEATURES.liveReplayHud
+                ? replayRunoutForSelectedHand?.phase ?? null
+                : null}
             />
           )}
           {isReplay && selectedReplayHand && !(spectator && FEATURES.liveReplayHud) && (
             <ReplayScrubber
               key={selectedReplayHand.hand_id ?? `hand-${selectedReplayHand.hand_number}`}
               hand={selectedReplayHand}
-              onFrame={handleReplayFrame}
+              onFrame={handleSelectedReplayFrame}
               hud={spectator && FEATURES.liveReplayHud}
               trackBets={spectator && FEATURES.liveFeltCompact}
               onSpeedChange={setReplayMotionSpeed}
@@ -1551,10 +1624,12 @@ export function TournamentLiveView({
             <ReplayScrubber
               key={selectedReplayHand.hand_id ?? `hand-${selectedReplayHand.hand_number}`}
               hand={selectedReplayHand}
-              onFrame={handleReplayFrame}
+              onFrame={handleSelectedReplayFrame}
               hud
               trackBets={FEATURES.liveFeltCompact}
               onSpeedChange={setReplayMotionSpeed}
+              showdownPresentation={replayShowdownPresentation}
+              onRunoutPresentation={handleSelectedReplayRunoutPresentation}
             />
           </aside>
         )}
