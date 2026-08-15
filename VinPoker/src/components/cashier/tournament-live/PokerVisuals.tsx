@@ -633,6 +633,41 @@ export function TrackerVisualStyles() {
           white-space: nowrap;
           animation: tracker-settlement-award-label 220ms cubic-bezier(.22,1,.36,1) 130ms both;
         }
+        .tracker-settlement-award-announcement {
+          width: min(82cqi, 260px);
+          border: 1px solid hsl(var(--poker-gold) / .7);
+          border-radius: 12px;
+          background: linear-gradient(145deg, rgba(30, 23, 7, .96), rgba(3, 19, 12, .94));
+          box-shadow: 0 0 0 1px rgba(0,0,0,.44), 0 0 22px hsl(var(--poker-gold) / .28), inset 0 1px rgba(255,255,255,.1);
+          color: hsl(var(--viewer-neon));
+          font-family: var(--font-display, ui-monospace, monospace);
+          padding: 7px 9px;
+          text-align: center;
+          animation: tracker-settlement-award-label 220ms cubic-bezier(.22,1,.36,1) both;
+        }
+        .tracker-settlement-award-title {
+          color: hsl(var(--poker-gold));
+          font-size: clamp(8px, 1.45cqi, 11px);
+          font-weight: 900;
+          letter-spacing: .1em;
+          line-height: 1.1;
+          text-transform: uppercase;
+        }
+        .tracker-settlement-award-recipients {
+          display: grid;
+          gap: 3px;
+          margin-top: 4px;
+        }
+        .tracker-settlement-award-recipient {
+          align-items: center;
+          display: flex;
+          font-size: clamp(9px, 1.7cqi, 13px);
+          font-weight: 900;
+          gap: 7px;
+          justify-content: space-between;
+          line-height: 1.15;
+          min-width: 0;
+        }
         .tracker-felt {
           background:
             radial-gradient(circle at 50% 38%, rgba(88, 23, 35, .96), rgba(43, 11, 19, .98) 58%, rgba(12, 13, 16, .98) 100%),
@@ -670,6 +705,7 @@ export function TrackerVisualStyles() {
           .tracker-motion-chip,
           .tracker-settlement-chip,
           .tracker-settlement-award-label,
+          .tracker-settlement-award-announcement,
           .tracker-shine::before {
             animation: none !important;
             transition: none !important;

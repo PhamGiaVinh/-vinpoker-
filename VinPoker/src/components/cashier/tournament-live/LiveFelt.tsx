@@ -512,7 +512,23 @@ export function LiveFelt({
     ? replayRunoutPresentation?.potAwardIndex ?? -1
     : -1;
   const activePotLayer = activePotLayerIndex >= 0 ? showdownPresentation?.potLayers[activePotLayerIndex] ?? null : null;
-  const activePotWinnerIds = new Set(activePotLayer?.winnerPlayerIds ?? []);
+  const verifiedWinnersByPlayerId = new Map(
+    showdownPresentation?.winners.map((winner) => [winner.playerId, winner]) ?? [],
+  );
+  const activePotAwardRows = activePotLayer
+    ? activePotLayer.allocations.flatMap((allocation) => {
+      const seat = seats.find((candidate) => candidate.player_id === allocation.playerId);
+      const winner = verifiedWinnersByPlayerId.get(allocation.playerId);
+      return seat && winner ? [{ allocation, seat, winner }] : [];
+    })
+    : [];
+  // Never present an incomplete payout as a winner result. The settlement
+  // resolver has already verified every allocation; this is a final UI guard.
+  const activePotAwardsComplete = activePotLayer !== null
+    && activePotAwardRows.length === activePotLayer.allocations.length;
+  const activePotWinnerIds = new Set(
+    activePotAwardsComplete ? activePotLayer?.winnerPlayerIds ?? [] : [],
+  );
   const visibleSettlementPotLayers = settlementPayoutActive && showdownPresentation
     ? settlementPayoutPhase === "pot_award"
       ? showdownPresentation.potLayers.slice(Math.max(0, activePotLayerIndex))
@@ -1098,10 +1114,8 @@ export function LiveFelt({
                     label={`${pot.kind === "main" ? t("liveHub.felt.main", "Main") : t("liveHub.felt.side", "Side")} ${formatStack(pot.amount)}`}
                     sizeStyle={stackStyle}
                   />
-                  {isAwardingPot && pot.allocations.flatMap((allocation, allocationIndex) => {
-                    const winner = seats.find((seat) => seat.player_id === allocation.playerId);
-                    if (!winner) return [];
-                    const slot = ((winner.seat_number - 1) % 9) + 1;
+                  {isAwardingPot && activePotAwardsComplete && activePotAwardRows.flatMap(({ allocation, seat }, allocationIndex) => {
+                    const slot = ((seat.seat_number - 1) % 9) + 1;
                     const target = stackPt(seatMap[slot] || seatMap[1]);
                     return [0, 1, 2].map((chip) => (
                       <span
@@ -1122,11 +1136,10 @@ export function LiveFelt({
               );
             })}
 
-            {settlementPayoutPhase === "pot_award" && activePotLayer?.allocations.map((allocation) => {
-              const winner = seats.find((seat) => seat.player_id === allocation.playerId);
-              if (!winner) return null;
-              const slot = ((winner.seat_number - 1) % 9) + 1;
+            {settlementPayoutPhase === "pot_award" && activePotAwardsComplete && activePotLayer && activePotAwardRows.map(({ allocation, seat }) => {
+              const slot = ((seat.seat_number - 1) % 9) + 1;
               const target = stackPt(seatMap[slot] || seatMap[1]);
+              const awardBB = formatBB(allocation.amount);
               return (
                 <span
                   key={`award-label-${activePotLayer.potId}-${allocation.playerId}`}
@@ -1134,11 +1147,42 @@ export function LiveFelt({
                   className="tracker-settlement-award-label absolute -translate-x-1/2 -translate-y-1/2"
                   style={{ left: `${target.l}%`, top: `${target.t}%` }}
                 >
-                  +{formatStack(allocation.amount)}
+                  +{formatStack(allocation.amount)}{awardBB ? ` (${awardBB})` : ""}
                 </span>
               );
             })}
           </div>
+        )}
+
+        {settlementPayoutPhase === "pot_award" && activePotAwardsComplete && activePotLayer && (
+          <section
+            data-testid="felt-settlement-award-announcement"
+            className="tracker-settlement-award-announcement pointer-events-none absolute z-[25] -translate-x-1/2 -translate-y-1/2"
+            style={{ left: "50%", top: `${Math.max(13, potCenterT - (portrait ? 19 : 17))}%` }}
+            role="status"
+            aria-live="polite"
+          >
+            <div className="tracker-settlement-award-title">
+              {activePotLayer.kind === "main"
+                ? t("liveHub.felt.mainPot", "Main Pot")
+                : t("liveHub.felt.sidePot", "Side Pot")}
+            </div>
+            <div className="tracker-settlement-award-recipients">
+              {activePotAwardRows.map(({ allocation, winner }) => {
+                const awardBB = formatBB(allocation.amount);
+                return (
+                  <div
+                    key={`award-announcement-${activePotLayer.potId}-${allocation.playerId}`}
+                    data-testid={`felt-settlement-award-recipient-${allocation.playerId}`}
+                    className="tracker-settlement-award-recipient"
+                  >
+                    <span className="truncate">{winner.playerName}</span>
+                    <span className="tracker-num whitespace-nowrap">+{formatStack(allocation.amount)}{awardBB ? ` (${awardBB})` : ""}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {/* Committed-bet CHIP STACKS on the felt (viewerLayout only). A pointer-events-none

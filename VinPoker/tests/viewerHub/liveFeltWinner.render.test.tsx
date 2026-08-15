@@ -194,6 +194,19 @@ describe("LiveFelt verified best-five focus", () => {
     });
     const layeredPresentation: VerifiedShowdownPresentation = {
       ...showdownPresentation,
+      winners: [
+        ...showdownPresentation.winners,
+        {
+          playerId: "side",
+          playerName: "Side winner",
+          seatNumber: 3,
+          category: "one_pair",
+          bestFive: ["Ks", "Qs", "Jc", "Js", "Ah"],
+          kickers: ["A", "Q", "J"],
+          rankingText: "Pair of Jacks - Ace-Q king kickers",
+          holeBestFive: new Set(["Ks", "Qs"]),
+        },
+      ],
       potLayers: [
         showdownPresentation.potLayers[0],
         {
@@ -236,6 +249,11 @@ describe("LiveFelt verified best-five focus", () => {
     expect((mainAward.match(/data-testid="felt-settlement-award-tom"/g) ?? []).length).toBe(3);
     expect(mainAward).not.toContain('data-testid="felt-settlement-award-side"');
     expect((mainAward.match(/tracker-win-glow/g) ?? []).length).toBe(1);
+    expect(mainAward).toContain('data-testid="felt-settlement-award-announcement"');
+    expect(mainAward).toContain('data-testid="felt-settlement-award-recipient-tom"');
+    expect(mainAward).toContain("Main Pot");
+    expect(mainAward).toContain("Tom Dwan");
+    expect(mainAward).toContain("+20k (100 BB)");
 
     const sideAward = renderToStaticMarkup(
       <LiveFelt
@@ -252,5 +270,10 @@ describe("LiveFelt verified best-five focus", () => {
     expect((sideAward.match(/data-testid="felt-settlement-award-side"/g) ?? []).length).toBe(3);
     expect(sideAward).not.toContain('data-testid="felt-settlement-award-tom"');
     expect((sideAward.match(/tracker-win-glow/g) ?? []).length).toBe(1);
+    expect(sideAward).toContain('data-testid="felt-settlement-award-recipient-side"');
+    expect(sideAward).not.toContain('data-testid="felt-settlement-award-recipient-tom"');
+    expect(sideAward).toContain("Side Pot");
+    expect(sideAward).toContain("Side winner");
+    expect(sideAward).toContain("+8k (40 BB)");
   });
 });
