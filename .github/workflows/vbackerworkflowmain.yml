@@ -576,6 +576,10 @@ jobs:
             --output .vercel/output/config.json
           vercel deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN" \
             > "${RUNNER_TEMP}/frontend-deployment-url.txt"
+          deployment_url="$(tail -n 1 "${RUNNER_TEMP}/frontend-deployment-url.txt" | tr -d '\r\n')"
+          test -n "$deployment_url"
+          vercel promote "$deployment_url" --yes --token "$VERCEL_TOKEN" \
+            > "${RUNNER_TEMP}/frontend-promotion.txt"
 
       - name: Verify Player and Ops application shells before receipt
         shell: bash
