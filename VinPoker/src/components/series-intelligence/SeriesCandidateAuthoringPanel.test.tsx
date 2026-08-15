@@ -138,7 +138,7 @@ describe("SeriesCandidateAuthoringPanel", () => {
     const api = createApi({ listSources: vi.fn().mockResolvedValue({ ok: true, value: [] }) });
     render(<SeriesCandidateAuthoringPanel clubId={CLUB_ID} api={api} />);
 
-    expect(await screen.findByText(/Chưa có lịch CLB ở trạng thái scheduled/)).toBeInTheDocument();
+    expect(await screen.findByText(/Chưa có lịch CLB tương lai ở trạng thái chuẩn bị hoặc đang mở đăng ký/)).toBeInTheDocument();
     expect(screen.queryByDisplayValue("0")).toBeNull();
     expect(api.getPreview).not.toHaveBeenCalled();
   });

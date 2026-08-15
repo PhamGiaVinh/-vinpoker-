@@ -11,6 +11,7 @@ const APP_ROOT = resolve(HERE, "../..");
 const MIGRATIONS = [
   join(APP_ROOT, "supabase/migrations/20270110000004_series_v_candidate_and_rate_limit_v1.sql"),
   join(APP_ROOT, "supabase/migrations/20270111000000_series_v_candidate_authoring_v1.sql"),
+  join(APP_ROOT, "supabase/migrations/20270112000001_series_v_candidate_authoring_source_state_compatibility.sql"),
 ];
 const BOOTSTRAP = join(HERE, "disposable-series-club-pulse-pg17-bootstrap.sql");
 const CONTAINER = process.env.SERIES_V_PG17_DOCKER_CONTAINER ?? "supabase_db_vinpoker-test-canonical-v1";
@@ -87,28 +88,48 @@ async function main() {
     try { run(database, `SELECT public.series_get_approved_schedule_candidates_v1(${quote(CLUB)}::uuid, NULL);`, OTHER); } catch (error) { crossClubDenied = String(error).includes("series_v_candidate_forbidden"); }
     assert(crossClubDenied, "cross-club candidate read was not denied");
 
-    const scheduledTournament = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const eligibleTournament = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const excludedLiveTournament = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
     run(database, `INSERT INTO public.tournaments(
       id, club_id, status, start_time, name, buy_in, guarantee_amount, rake_amount, service_fee_amount
     ) VALUES (
-      ${quote(scheduledTournament)}::uuid, ${quote(CLUB)}::uuid, 'scheduled',
+      ${quote(eligibleTournament)}::uuid, ${quote(CLUB)}::uuid, 'active',
       pg_catalog.clock_timestamp() + interval '7 days', 'Production candidate canary',
       3000000, 200000000, 300000, 0
     );`);
+    run(database, `INSERT INTO public.tournaments(
+      id, club_id, status, start_time, name, buy_in
+    ) VALUES (
+      ${quote(excludedLiveTournament)}::uuid, ${quote(CLUB)}::uuid, 'live',
+      pg_catalog.clock_timestamp() + interval '7 days', 'Already live status must remain excluded',
+      3000000
+    );`);
     const sourceList = JSON.parse(run(database, `SELECT public.series_list_schedule_candidate_sources_v1(${quote(CLUB)}::uuid)::text;`, OWNER));
-    assert(sourceList.sources.length === 1 && sourceList.sources[0].tournamentId === scheduledTournament, "authoring source list did not return the exact scheduled tournament");
-    const preview = JSON.parse(run(database, `SELECT public.series_preview_schedule_candidate_v1(${quote(CLUB)}::uuid, ${quote(scheduledTournament)}::uuid)::text;`, OWNER));
-    assert(preview.state === "ready" && preview.optionId === `tournament:${scheduledTournament}`, "authoring preview was not ready for the exact scheduled tournament");
+    assert(sourceList.sources.length === 1 && sourceList.sources[0].tournamentId === eligibleTournament, "authoring source list did not return the exact eligible tournament");
+    assert(!sourceList.sources.some((source) => source.tournamentId === excludedLiveTournament), "authoring source list included a live tournament");
+    const preview = JSON.parse(run(database, `SELECT public.series_preview_schedule_candidate_v1(${quote(CLUB)}::uuid, ${quote(eligibleTournament)}::uuid)::text;`, OWNER));
+    assert(preview.state === "ready" && preview.optionId === `tournament:${eligibleTournament}`, "authoring preview was not ready for the exact eligible tournament");
     assert(preview.fields.buyInVnd.value === "3000000" && preview.fields.scheduleGtdVnd.value === "200000000", "authoring preview did not preserve schedule money facts");
     assert(preview.fields.prizeContributionPerEntryVnd.value === null, "authoring preview inferred prize contribution from buy-in");
+    const livePreview = JSON.parse(run(database, `SELECT public.series_preview_schedule_candidate_v1(${quote(CLUB)}::uuid, ${quote(excludedLiveTournament)}::uuid)::text;`, OWNER));
+    assert(livePreview.state === "blocked" && livePreview.blockers.includes("scheduled_tournament_required"), "authoring preview did not block a live tournament");
+    let liveApprovalRejected = false;
+    try {
+      run(database, `SELECT public.series_approve_schedule_candidate_from_tournament_v1(
+        ${quote(CLUB)}::uuid, ${quote(excludedLiveTournament)}::uuid, 200000000, 2000000, 1, NULL
+      )::text;`, OWNER);
+    } catch (error) {
+      liveApprovalRejected = String(error).includes("series_v_candidate_scheduled_future_tournament_required");
+    }
+    assert(liveApprovalRejected, "authoring approval accepted a live tournament");
 
     const approveFromTournament = (gtd = 200000000, prizeContribution = 2000000) => `SELECT public.series_approve_schedule_candidate_from_tournament_v1(
-      ${quote(CLUB)}::uuid, ${quote(scheduledTournament)}::uuid, ${gtd}, ${prizeContribution}, 1, NULL
+      ${quote(CLUB)}::uuid, ${quote(eligibleTournament)}::uuid, ${gtd}, ${prizeContribution}, 1, NULL
     )::text;`;
     const authoredFirst = JSON.parse(run(database, approveFromTournament(), OWNER));
     const authoredRetry = JSON.parse(run(database, approveFromTournament(), OWNER));
     assert(authoredFirst.candidateId === authoredRetry.candidateId && authoredFirst.revision === 1, "authoring approval was not idempotent");
-    const authoredOptionId = `tournament:${scheduledTournament}`;
+    const authoredOptionId = `tournament:${eligibleTournament}`;
     const authoredReadback = JSON.parse(run(database, `SELECT public.series_get_approved_schedule_candidates_v1(${quote(CLUB)}::uuid, ARRAY[${quote(authoredOptionId)}])::text;`, OWNER));
     assert(authoredReadback.candidateOptions.length === 1 && authoredReadback.candidateOptions[0].requiredField === 100, "authoring approval did not produce one verified readback candidate");
     let gtdMismatchRejected = false;
@@ -136,7 +157,7 @@ async function main() {
     assert(run(database, "SELECT count(*) FROM public.series_copilot_rate_limit_requests_v1;") === "5", "denied requests created unbounded rows");
 
     assert(run(database, "SHOW server_version_num;").startsWith("17"), "PostgreSQL major is not 17");
-    process.stdout.write("22/22 Series V PostgreSQL 17 checks passed\n");
+    process.stdout.write("24/24 Series V PostgreSQL 17 checks passed\n");
   } finally {
     run("postgres", `DROP DATABASE IF EXISTS ${database} WITH (FORCE);`);
   }
