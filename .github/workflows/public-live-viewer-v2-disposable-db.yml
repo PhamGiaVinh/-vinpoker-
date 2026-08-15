@@ -1,0 +1,56 @@
+name: Public Live Viewer V2 disposable PostgreSQL 17
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/public-live-viewer-v2-disposable-db.yml"
+      - "VinPoker/supabase/migrations/20270111000002_public_tournament_event_snapshot.sql"
+      - "VinPoker/tests/publicLiveViewer/**"
+
+permissions:
+  contents: read
+
+jobs:
+  public-live-viewer-disposable-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create isolated public viewer baseline
+        working-directory: VinPoker
+        run: >-
+          psql -v ON_ERROR_STOP=1
+          -f tests/publicLiveViewer/disposableDb.fixture.sql
+
+      - name: Apply exact source migration to disposable PostgreSQL only
+        working-directory: VinPoker
+        run: >-
+          psql -v ON_ERROR_STOP=1
+          -f supabase/migrations/20270111000002_public_tournament_event_snapshot.sql
+
+      - name: Verify sanitized anonymous contract and clock phases
+        working-directory: VinPoker
+        run: >-
+          psql -v ON_ERROR_STOP=1
+          -f tests/publicLiveViewer/disposableDb.integration.sql
