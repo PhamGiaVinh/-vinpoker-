@@ -3084,5 +3084,42 @@
       "loadError": "メンバーをまだ読み込めません。",
       "assignedCount": "{{count}}名に付与済み"
     }
+  },
+  "feed": {
+    "title": "フィード",
+    "yourStory": "あなたのストーリー",
+    "addStory": "ストーリーを追加",
+    "anonymousPlayer": "匿名プレイヤー",
+    "sharePrompt": "何をシェアしますか？",
+    "empty": "まだ投稿がありません。最初にシェアしましょう。",
+    "loadError": "フィードを読み込めませんでした。もう一度お試しください。",
+    "retry": "再試行",
+    "loginRequired": "この操作を行うにはログインしてください。",
+    "like": "投稿にいいね",
+    "likeFailed": "いいねを更新できませんでした。もう一度お試しください。",
+    "ago": "前",
+    "comment": {
+      "placeholder": "コメントを書く...",
+      "send": "送信",
+      "failed": "コメントを送信できませんでした。もう一度お試しください。"
+    },
+    "create": {
+      "title": "投稿を作成",
+      "placeholder": "今どうしていますか？",
+      "mediaBtn": "写真または動画を追加",
+      "submit": "投稿",
+      "ok": "投稿しました。",
+      "fail": "投稿できませんでした。もう一度お試しください。",
+      "errEmpty": "内容を入力するか、写真・動画を選択してください。",
+      "errMediaType": "{{name}} は対応している写真または動画形式ではありません。",
+      "errSize": "{{name}} は {{limit}} の上限を超えています。",
+      "addHand": "ハンドレビューを追加",
+      "heroCards": "自分のカード",
+      "board": "ボード",
+      "gamePlaceholder": "ゲーム種別",
+      "potPlaceholder": "ポット",
+      "win": "勝ち",
+      "loss": "負け"
+    }
   }
 }

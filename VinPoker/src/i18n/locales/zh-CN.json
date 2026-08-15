@@ -3084,5 +3084,42 @@
       "loadError": "暂时无法加载成员。",
       "assignedCount": "已分配 {{count}} 名营销人员"
     }
+  },
+  "feed": {
+    "title": "动态",
+    "yourStory": "你的故事",
+    "addStory": "添加故事",
+    "anonymousPlayer": "匿名玩家",
+    "sharePrompt": "想分享点什么？",
+    "empty": "还没有动态，来成为第一个分享的人吧。",
+    "loadError": "无法加载动态，请重试。",
+    "retry": "重试",
+    "loginRequired": "请先登录再执行此操作。",
+    "like": "赞这条动态",
+    "likeFailed": "无法更新点赞，请重试。",
+    "ago": "前",
+    "comment": {
+      "placeholder": "写评论...",
+      "send": "发送",
+      "failed": "无法发送评论，请重试。"
+    },
+    "create": {
+      "title": "创建动态",
+      "placeholder": "在想些什么？",
+      "mediaBtn": "添加照片或视频",
+      "submit": "发布",
+      "ok": "动态已发布。",
+      "fail": "无法发布动态，请重试。",
+      "errEmpty": "请输入内容或选择照片/视频。",
+      "errMediaType": "{{name}} 不是受支持的照片或视频格式。",
+      "errSize": "{{name}} 超过 {{limit}} 限制。",
+      "addHand": "添加牌局复盘",
+      "heroCards": "你的手牌",
+      "board": "公共牌",
+      "gamePlaceholder": "游戏类型",
+      "potPlaceholder": "底池",
+      "win": "赢",
+      "loss": "输"
+    }
   }
 }

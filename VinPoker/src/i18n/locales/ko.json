@@ -3080,5 +3080,42 @@
       "loadError": "아직 멤버를 불러올 수 없습니다.",
       "assignedCount": "{{count}}명에게 권한 부여됨"
     }
+  },
+  "feed": {
+    "title": "피드",
+    "yourStory": "내 스토리",
+    "addStory": "스토리 추가",
+    "anonymousPlayer": "익명 플레이어",
+    "sharePrompt": "무엇을 공유하고 싶으신가요?",
+    "empty": "아직 게시물이 없습니다. 첫 게시물을 공유해 보세요.",
+    "loadError": "피드를 불러올 수 없습니다. 다시 시도해 주세요.",
+    "retry": "다시 시도",
+    "loginRequired": "이 작업을 하려면 로그인해 주세요.",
+    "like": "게시물 좋아요",
+    "likeFailed": "좋아요를 업데이트할 수 없습니다. 다시 시도해 주세요.",
+    "ago": "전",
+    "comment": {
+      "placeholder": "댓글 작성...",
+      "send": "보내기",
+      "failed": "댓글을 보낼 수 없습니다. 다시 시도해 주세요."
+    },
+    "create": {
+      "title": "게시물 만들기",
+      "placeholder": "무슨 생각을 하고 있나요?",
+      "mediaBtn": "사진 또는 동영상 추가",
+      "submit": "게시",
+      "ok": "게시물을 올렸습니다.",
+      "fail": "게시물을 올릴 수 없습니다. 다시 시도해 주세요.",
+      "errEmpty": "내용을 입력하거나 사진/동영상을 선택해 주세요.",
+      "errMediaType": "{{name}}은(는) 지원되는 사진 또는 동영상 형식이 아닙니다.",
+      "errSize": "{{name}}이(가) {{limit}} 제한을 초과했습니다.",
+      "addHand": "핸드 리뷰 추가",
+      "heroCards": "내 카드",
+      "board": "보드",
+      "gamePlaceholder": "게임 종류",
+      "potPlaceholder": "팟",
+      "win": "승리",
+      "loss": "패배"
+    }
   }
 }

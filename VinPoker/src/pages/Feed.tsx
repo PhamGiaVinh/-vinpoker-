@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { CardSlot, cardToSymbol, type CardCode } from "@/components/poker/CardSlot";
 import { CreateStoryMultiDialog } from "@/components/feed/CreateStoryMultiDialog";
 import { StoryViewersDialog } from "@/components/feed/StoryViewersDialog";
-import { StoryMusicSticker, type StickerMusic } from "@/components/feed/StoryMusicSticker";
+import { FEED_MEDIA_ACCEPT, getFeedMediaKind, validateFeedMediaFile } from "@/lib/feedMedia";
 
 type PostType = "general" | "hand_review" | "achievement";
 
@@ -38,13 +38,6 @@ interface FeedStory {
   media_type: "image" | "video";
   caption: string | null;
   created_at: string;
-  music_source: "library" | "soundcloud" | null;
-  music_url: string | null;
-  music_name: string | null;
-  music_artist: string | null;
-  music_thumbnail_url: string | null;
-  music_soundcloud_url: string | null;
-  music_html: string | null;
   author?: { display_name: string | null; avatar_url: string | null };
   is_viewed?: boolean;
 }
@@ -65,86 +58,141 @@ export default function Feed() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [stories, setStories] = useState<FeedStory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [likingPostIds, setLikingPostIds] = useState<string[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [storyOpen, setStoryOpen] = useState<FeedStory | null>(null);
   const [createStoryOpen, setCreateStoryOpen] = useState(false);
 
-  const loadPosts = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("feed_posts")
-      .select("id,author_id,content,post_type,poker_hand,media_urls,like_count,comment_count,created_at")
-      .eq("is_deleted", false)
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (error) { console.error(error); return; }
-    const list = (data ?? []) as FeedPost[];
-    const authorIds = Array.from(new Set(list.map(p => p.author_id)));
-    const [{ data: profiles }, { data: liked }] = await Promise.all([
-      supabase.from("profiles").select("user_id,display_name,avatar_url").in("user_id", authorIds.length ? authorIds : ["00000000-0000-0000-0000-000000000000"]),
-      user
-        ? supabase.from("feed_post_likes").select("post_id").eq("user_id", user.id).in("post_id", list.map(p => p.id).length ? list.map(p => p.id) : ["00000000-0000-0000-0000-000000000000"])
-        : Promise.resolve({ data: [] as any[] } as any),
-    ]);
-    const pMap = new Map((profiles ?? []).map((p: any) => [p.user_id, p]));
-    const likedSet = new Set((liked ?? []).map((l: any) => l.post_id));
-    setPosts(list.map(p => ({
-      ...p,
-      author: pMap.get(p.author_id) as any,
-      is_liked: likedSet.has(p.id),
-    })));
-    setLoading(false);
-  }, [user]);
+  const loadPosts = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    setLoadError(false);
+    try {
+      const { data, error } = await supabase
+        .from("feed_posts")
+        .select("id,author_id,content,post_type,poker_hand,media_urls,like_count,comment_count,created_at")
+        .eq("is_deleted", false)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+
+      const list = (data ?? []) as FeedPost[];
+      const authorIds = Array.from(new Set(list.map(p => p.author_id)));
+      const postIds = list.map(p => p.id);
+      const [profileResult, likeResult] = await Promise.allSettled([
+        supabase.from("profiles").select("user_id,display_name,avatar_url").in("user_id", authorIds.length ? authorIds : ["00000000-0000-0000-0000-000000000000"]),
+        user
+          ? supabase.from("feed_post_likes").select("post_id").eq("user_id", user.id).in("post_id", postIds.length ? postIds : ["00000000-0000-0000-0000-000000000000"])
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+      const profiles = profileResult.status === "fulfilled" && !(profileResult.value as any).error
+        ? ((profileResult.value as any).data ?? [])
+        : [];
+      const liked = likeResult.status === "fulfilled" && !(likeResult.value as any).error
+        ? ((likeResult.value as any).data ?? [])
+        : [];
+
+      if (profileResult.status === "rejected" || (profileResult.status === "fulfilled" && (profileResult.value as any).error)) {
+        console.warn("Feed profile fallback", profileResult);
+      }
+      if (likeResult.status === "rejected" || (likeResult.status === "fulfilled" && (likeResult.value as any).error)) {
+        console.warn("Feed like fallback", likeResult);
+      }
+
+      const pMap = new Map(profiles.map((p: any) => [p.user_id, p]));
+      const likedSet = new Set(liked.map((l: any) => l.post_id));
+      setPosts(list.map(p => ({
+        ...p,
+        author: pMap.get(p.author_id) as any,
+        is_liked: likedSet.has(p.id),
+      })));
+    } catch (error) {
+      console.error("Feed post load failed", error);
+      setLoadError(true);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  }, [user?.id]);
 
   const loadStories = useCallback(async () => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data } = await supabase
-      .from("feed_stories")
-      .select("id,author_id,media_url,media_type,caption,created_at,music_source,music_url,music_name,music_artist,music_thumbnail_url,music_soundcloud_url,music_html")
-      .gte("created_at", since)
-      .order("created_at", { ascending: false });
-    const list = (data ?? []) as FeedStory[];
-    const authorIds = Array.from(new Set(list.map(s => s.author_id)));
-    const [{ data: profiles }, { data: views }] = await Promise.all([
-      supabase.from("profiles").select("user_id,display_name,avatar_url").in("user_id", authorIds.length ? authorIds : ["00000000-0000-0000-0000-000000000000"]),
-      user
-        ? supabase.from("feed_story_views").select("story_id").eq("viewer_id", user.id).in("story_id", list.map(s => s.id).length ? list.map(s => s.id) : ["00000000-0000-0000-0000-000000000000"])
-        : Promise.resolve({ data: [] as any[] } as any),
-    ]);
-    const pMap = new Map((profiles ?? []).map((p: any) => [p.user_id, p]));
-    const viewedSet = new Set((views ?? []).map((v: any) => v.story_id));
-    setStories(list.map(s => ({ ...s, author: pMap.get(s.author_id) as any, is_viewed: viewedSet.has(s.id) })));
-  }, [user]);
+    try {
+      const { data, error } = await supabase
+        .from("feed_stories")
+        .select("id,author_id,media_url,media_type,caption,created_at")
+        .gte("created_at", since)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+
+      const list = (data ?? []) as FeedStory[];
+      const authorIds = Array.from(new Set(list.map(s => s.author_id)));
+      const storyIds = list.map(s => s.id);
+      const [profileResult, viewResult] = await Promise.allSettled([
+        supabase.from("profiles").select("user_id,display_name,avatar_url").in("user_id", authorIds.length ? authorIds : ["00000000-0000-0000-0000-000000000000"]),
+        user
+          ? supabase.from("feed_story_views").select("story_id").eq("viewer_id", user.id).in("story_id", storyIds.length ? storyIds : ["00000000-0000-0000-0000-000000000000"])
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+      const profiles = profileResult.status === "fulfilled" && !(profileResult.value as any).error
+        ? ((profileResult.value as any).data ?? [])
+        : [];
+      const views = viewResult.status === "fulfilled" && !(viewResult.value as any).error
+        ? ((viewResult.value as any).data ?? [])
+        : [];
+      const pMap = new Map(profiles.map((p: any) => [p.user_id, p]));
+      const viewedSet = new Set(views.map((v: any) => v.story_id));
+      setStories(list.map(s => ({ ...s, author: pMap.get(s.author_id) as any, is_viewed: viewedSet.has(s.id) })));
+    } catch (error) {
+      console.error("Feed story load failed", error);
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     if (authLoading) return;
-    loadPosts(); loadStories();
+    void loadPosts();
+    void loadStories();
     const ch = supabase
       .channel("feed-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "feed_posts" }, () => loadPosts())
-      .on("postgres_changes", { event: "*", schema: "public", table: "feed_post_likes" }, () => loadPosts())
-      .on("postgres_changes", { event: "*", schema: "public", table: "feed_post_comments" }, () => loadPosts())
-      .on("postgres_changes", { event: "*", schema: "public", table: "feed_stories" }, () => loadStories())
+      .on("postgres_changes", { event: "*", schema: "public", table: "feed_posts" }, () => void loadPosts(false))
+      .on("postgres_changes", { event: "*", schema: "public", table: "feed_post_likes" }, () => void loadPosts(false))
+      .on("postgres_changes", { event: "*", schema: "public", table: "feed_post_comments" }, () => void loadPosts(false))
+      .on("postgres_changes", { event: "*", schema: "public", table: "feed_stories" }, () => void loadStories())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [authLoading, loadPosts, loadStories]);
 
   const toggleLike = async (post: FeedPost) => {
     if (!user) { toast.error(t("feed.loginRequired")); return; }
-    if (post.is_liked) {
-      await supabase.from("feed_post_likes").delete().eq("post_id", post.id).eq("user_id", user.id);
-    } else {
-      await supabase.from("feed_post_likes").insert({ post_id: post.id, user_id: user.id });
+    if (likingPostIds.includes(post.id)) return;
+
+    setLikingPostIds(prev => [...prev, post.id]);
+    try {
+      const { error } = post.is_liked
+        ? await supabase.from("feed_post_likes").delete().eq("post_id", post.id).eq("user_id", user.id)
+        : await supabase.from("feed_post_likes").insert({ post_id: post.id, user_id: user.id });
+      if (error) throw error;
+
+      setPosts(prev => prev.map(p => p.id === post.id ? {
+        ...p, is_liked: !post.is_liked, like_count: p.like_count + (post.is_liked ? -1 : 1),
+      } : p));
+    } catch (error) {
+      console.error("Feed like failed", error);
+      toast.error(t("feed.likeFailed"));
+    } finally {
+      setLikingPostIds(prev => prev.filter(id => id !== post.id));
     }
-    // optimistic
-    setPosts(prev => prev.map(p => p.id === post.id ? {
-      ...p, is_liked: !post.is_liked, like_count: p.like_count + (post.is_liked ? -1 : 1),
-    } : p));
   };
 
   const openStory = async (s: FeedStory) => {
     setStoryOpen(s);
     if (user && !s.is_viewed) {
-      await supabase.from("feed_story_views").insert({ story_id: s.id, viewer_id: user.id });
+      const { error } = await supabase
+        .from("feed_story_views")
+        .upsert({ story_id: s.id, viewer_id: user.id }, { onConflict: "story_id,viewer_id", ignoreDuplicates: true });
+      if (error) {
+        console.error("Feed story view failed", error);
+        return;
+      }
       setStories(prev => prev.map(x => x.id === s.id ? { ...x, is_viewed: true } : x));
     }
   };
@@ -204,13 +252,20 @@ export default function Feed() {
       </button>
 
       {/* Posts */}
-      {loading ? (
+      {loadError ? (
+        <section role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-5 text-center space-y-3">
+          <p className="text-sm text-foreground">{t("feed.loadError")}</p>
+          <Button size="sm" variant="outline" onClick={() => void loadPosts()} disabled={loading}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : t("feed.retry")}
+          </Button>
+        </section>
+      ) : loading ? (
         <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
       ) : posts.length === 0 ? (
         <div className="text-center text-muted-foreground py-12">{t("feed.empty")}</div>
       ) : (
         posts.map(p => (
-          <PostCard key={p.id} post={p} onLike={() => toggleLike(p)} currentUserId={user.id} />
+          <PostCard key={p.id} post={p} onLike={() => toggleLike(p)} likePending={likingPostIds.includes(p.id)} currentUserId={user.id} />
         ))
       )}
 
@@ -256,7 +311,7 @@ function StoryBubble({ name, avatarUrl, viewed, isOwn, onClick, onAdd }: { name:
   );
 }
 
-function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: () => void; currentUserId: string }) {
+function PostCard({ post, onLike, likePending, currentUserId }: { post: FeedPost; onLike: () => void; likePending: boolean; currentUserId: string }) {
   const { t } = useTranslation();
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState<any[]>([]);
@@ -283,7 +338,7 @@ function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: () 
     setPosting(true);
     const { error } = await supabase.from("feed_post_comments").insert({ post_id: post.id, user_id: currentUserId, content: t });
     setPosting(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) { toast.error(t("feed.comment.failed")); return; }
     setText("");
     loadComments();
   };
@@ -344,7 +399,7 @@ function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: () 
       )}
 
       <div className="px-3 py-2 flex items-center gap-1 border-t border-border">
-        <Button variant="ghost" size="sm" onClick={onLike} className={cn("flex-1", post.is_liked && "text-primary")}>
+        <Button variant="ghost" size="sm" onClick={onLike} disabled={likePending} className={cn("flex-1", post.is_liked && "text-primary")} aria-label={t("feed.like")}>
           <Heart className={cn("w-4 h-4", post.is_liked && "fill-primary")} />
           <span>{post.like_count}</span>
         </Button>
@@ -401,9 +456,16 @@ function CreatePostDialog({ onClose, onCreated, userId }: { onClose: () => void;
     try {
       const urls: string[] = [];
       for (const f of files) {
-        const isVideo = f.type.startsWith("video/");
-        const max = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
-        if (f.size > max) { toast.error(t("feed.create.errSize", { name: f.name, limit: isVideo ? "50MB" : "10MB" })); continue; }
+        const validationError = validateFeedMediaFile(f);
+        const kind = getFeedMediaKind(f);
+        if (validationError === "unsupported_type" || !kind) {
+          toast.error(t("feed.create.errMediaType", { name: f.name }));
+          return;
+        }
+        if (validationError === "too_large") {
+          toast.error(t("feed.create.errSize", { name: f.name, limit: kind === "video" ? "50MB" : "10MB" }));
+          return;
+        }
         const ext = f.name.split(".").pop() ?? "bin";
         const path = `${userId}/posts/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
         const { error: upErr } = await supabase.storage.from("feed-media").upload(path, f);
@@ -432,8 +494,9 @@ function CreatePostDialog({ onClose, onCreated, userId }: { onClose: () => void;
       if (error) throw error;
       toast.success(t("feed.create.ok"));
       onCreated();
-    } catch (e: any) {
-      toast.error(e.message ?? t("feed.create.fail"));
+    } catch (error) {
+      console.error("Feed post creation failed", error);
+      toast.error(t("feed.create.fail"));
     } finally { setPosting(false); }
   };
 
@@ -510,7 +573,7 @@ function CreatePostDialog({ onClose, onCreated, userId }: { onClose: () => void;
             <Button variant="ghost" size="sm" onClick={() => fileRef.current?.click()} disabled={posting}>
               <ImageIcon className="w-4 h-4" /> {t("feed.create.mediaBtn")}
             </Button>
-            <input ref={fileRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime" multiple hidden onChange={e => setFiles([...files, ...Array.from(e.target.files ?? [])])} />
+            <input ref={fileRef} type="file" accept={FEED_MEDIA_ACCEPT} multiple hidden onChange={e => setFiles([...files, ...Array.from(e.target.files ?? [])])} />
             <Button onClick={submit} disabled={posting}>{posting ? <Loader2 className="w-4 h-4 animate-spin" /> : t("feed.create.submit")}</Button>
           </div>
         </div>
@@ -540,30 +603,6 @@ function StoryViewer({ story, currentUserId, onClose }: { story: FeedStory; curr
       setViewsCount(count ?? 0);
     })();
   }, [isMine, story.id]);
-
-  // Build sticker music from story fields
-  const stickerMusic: StickerMusic | null = (() => {
-    if (story.music_source === "soundcloud" && story.music_html && story.music_name) {
-      return {
-        source: "soundcloud",
-        name: story.music_name,
-        artist: story.music_artist,
-        thumbnail_url: story.music_thumbnail_url,
-        iframe_src: story.music_html,
-        soundcloud_url: story.music_soundcloud_url,
-      };
-    }
-    if (story.music_url && story.music_name) {
-      return {
-        source: "library",
-        name: story.music_name,
-        artist: story.music_artist,
-        thumbnail_url: story.music_thumbnail_url,
-        file_url: story.music_url,
-      };
-    }
-    return null;
-  })();
 
   const durationMs = story.media_type === "video" ? 15000 : 8000;
 
@@ -601,8 +640,6 @@ function StoryViewer({ story, currentUserId, onClose }: { story: FeedStory; curr
             ) : (
               <img src={story.media_url} alt="" className="w-full h-full object-contain bg-black" />
             )}
-
-            {stickerMusic && <StoryMusicSticker music={stickerMusic} />}
 
             {story.caption && (
               <div className="absolute bottom-16 left-4 right-4 z-10 text-white text-sm bg-black/50 backdrop-blur-sm p-2.5 rounded-lg">

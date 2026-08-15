@@ -3431,5 +3431,42 @@
       "loadError": "Can't load members yet.",
       "assignedCount": "{{count}} marketer(s) assigned"
     }
+  },
+  "feed": {
+    "title": "News Feed",
+    "yourStory": "Your story",
+    "addStory": "Add story",
+    "anonymousPlayer": "Anonymous player",
+    "sharePrompt": "What would you like to share?",
+    "empty": "No posts yet. Be the first to share.",
+    "loadError": "We couldn't load the News Feed. Please try again.",
+    "retry": "Try again",
+    "loginRequired": "Please sign in to do that.",
+    "like": "Like post",
+    "likeFailed": "We couldn't update your like. Please try again.",
+    "ago": "ago",
+    "comment": {
+      "placeholder": "Write a comment...",
+      "send": "Send",
+      "failed": "We couldn't send your comment. Please try again."
+    },
+    "create": {
+      "title": "Create post",
+      "placeholder": "What's on your mind?",
+      "mediaBtn": "Add photo or video",
+      "submit": "Post",
+      "ok": "Post published.",
+      "fail": "We couldn't publish your post. Please try again.",
+      "errEmpty": "Write something or choose a photo/video.",
+      "errMediaType": "{{name}} is not a supported photo or video format.",
+      "errSize": "{{name}} is larger than the {{limit}} limit.",
+      "addHand": "Add a hand review",
+      "heroCards": "Your cards",
+      "board": "Board",
+      "gamePlaceholder": "Game type",
+      "potPlaceholder": "Pot",
+      "win": "Win",
+      "loss": "Loss"
+    }
   }
 }
