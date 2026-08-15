@@ -28,6 +28,68 @@ begin
 end;
 $$;
 
+create or replace function pg_temp.statement_probe(p_statement_id uuid)
+returns jsonb
+language sql
+security definer
+set search_path = public, pg_temp
+as $$
+  select jsonb_build_object(
+    'state', s.state,
+    'club_snapshot', s.club_snapshot,
+    'source_snapshot', s.source_snapshot,
+    'financial_snapshot', s.financial_snapshot,
+    'replaces_statement_id', s.replaces_statement_id,
+    'pt_wage_payment_id', s.pt_wage_payment_id
+  )
+  from public.dealer_payroll_statements s
+  where s.id = p_statement_id;
+$$;
+
+create or replace function pg_temp.statement_id_by_request(p_request_id uuid)
+returns uuid
+language sql
+security definer
+set search_path = public, pg_temp
+as $$
+  select id from public.dealer_payroll_statements where request_id = p_request_id;
+$$;
+
+create or replace function pg_temp.latest_finalized_statement_id()
+returns uuid
+language sql
+security definer
+set search_path = public, pg_temp
+as $$
+  select id
+  from public.dealer_payroll_statements
+  where statement_kind = 'full_time_period' and state = 'finalized'
+  order by finalized_at desc
+  limit 1;
+$$;
+
+create or replace function pg_temp.payment_probe(p_payment_id uuid)
+returns jsonb
+language sql
+security definer
+set search_path = public, pg_temp
+as $$
+  select jsonb_build_object('accrual_policy_snapshot', p.accrual_policy_snapshot)
+  from public.dealer_pt_wage_payments p
+  where p.id = p_payment_id;
+$$;
+
+create or replace function pg_temp.settlement_probe(p_statement_id uuid)
+returns jsonb
+language sql
+security definer
+set search_path = public, pg_temp
+as $$
+  select jsonb_build_object('payment_id', s.payment_id)
+  from public.dealer_pt_wage_settlements s
+  where s.statement_id = p_statement_id;
+$$;
+
 select pg_temp.assert_true(
   has_function_privilege('authenticated', 'public.finalize_full_time_payroll_statement(uuid,uuid,uuid,uuid,text,uuid)', 'EXECUTE')
   and has_function_privilege('authenticated', 'public.finalize_part_time_payroll_statement(uuid,uuid,uuid,text,uuid)', 'EXECUTE')
@@ -160,18 +222,17 @@ begin
   perform pg_temp.assert_eq(v_replay->>'idempotent', 'true', 'FT request replay returns the same immutable statement');
   perform pg_temp.assert_true(length(v_ft->>'statement_hash') = 64, 'FT statement stores a sha256 hash');
   perform pg_temp.assert_eq(
-    (select club_snapshot->>'club_name' from public.dealer_payroll_statements where id = (v_ft->>'statement_id')::uuid),
+    pg_temp.statement_probe((v_ft->>'statement_id')::uuid)->'club_snapshot'->>'club_name',
     'STATEMENT CLUB A',
     'statement stores the server club-name snapshot used by the later renderer'
   );
 
-  select source_snapshot::text into v_snapshot_before
-  from public.dealer_payroll_statements
-  where id = (v_ft->>'statement_id')::uuid;
+  select pg_temp.statement_probe((v_ft->>'statement_id')::uuid)->>'source_snapshot'
+  into v_snapshot_before;
   reset role;
   update public.dealer_payroll set net_pay_after_tax_vnd = 1 where id = 'ff120000-0000-4000-8000-000000000001';
   perform pg_temp.assert_eq(
-    (select source_snapshot::text from public.dealer_payroll_statements where id = (v_ft->>'statement_id')::uuid),
+    pg_temp.statement_probe((v_ft->>'statement_id')::uuid)->>'source_snapshot',
     v_snapshot_before,
     'later source-row mutation cannot recalculate an existing statement'
   );
@@ -203,12 +264,10 @@ declare
   v_ft_id uuid;
   v_replacement jsonb;
 begin
-  select id into v_ft_id
-  from public.dealer_payroll_statements
-  where request_id = 'aa120000-0000-4000-8000-000000000002';
+  select pg_temp.statement_id_by_request('aa120000-0000-4000-8000-000000000002') into v_ft_id;
   perform public.void_dealer_payroll_statement(v_ft_id, 'fixture correction before payment');
   perform pg_temp.assert_eq(
-    (select state from public.dealer_payroll_statements where id = v_ft_id),
+    pg_temp.statement_probe(v_ft_id)->>'state',
     'voided',
     'an unpaid PDF-rendered statement remains voidable through the audited server path'
   );
@@ -219,12 +278,12 @@ begin
     'fe120000-0000-4000-8000-000000000001', 'replacement fixture', v_ft_id
   );
   perform pg_temp.assert_eq(
-    (select state from public.dealer_payroll_statements where id = v_ft_id),
+    pg_temp.statement_probe(v_ft_id)->>'state',
     'replaced',
     'voided FT statement links to its replacement instead of being edited or deleted'
   );
   perform pg_temp.assert_true(
-    (select replaces_statement_id = v_ft_id from public.dealer_payroll_statements where id = (v_replacement->>'statement_id')::uuid),
+    (pg_temp.statement_probe((v_replacement->>'statement_id')::uuid)->>'replaces_statement_id')::uuid = v_ft_id,
     'replacement has immutable lineage to the voided statement'
   );
 end;
@@ -282,20 +341,22 @@ begin
   perform pg_temp.assert_eq(v_payment->>'amount_vnd', '60000', 'PT payment uses statement amount without a new calculation');
   perform pg_temp.assert_eq(v_payment_replay->>'idempotent', 'true', 'PT statement payment replay cannot create a second receipt');
   perform pg_temp.assert_true(
-    (select payment_id = (v_payment->>'payment_id')::uuid from public.dealer_pt_wage_settlements where statement_id = v_statement_id)
-    and (select pt_wage_payment_id = (v_payment->>'payment_id')::uuid from public.dealer_payroll_statements where id = v_statement_id),
+    (pg_temp.settlement_probe(v_statement_id)->>'payment_id')::uuid = (v_payment->>'payment_id')::uuid
+    and (pg_temp.statement_probe(v_statement_id)->>'pt_wage_payment_id')::uuid = (v_payment->>'payment_id')::uuid,
     'PT settlement and statement link to exactly one immutable payment'
   );
-  select accrual_policy_snapshot::text into v_payment_snapshot
-  from public.dealer_pt_wage_payments where id = (v_payment->>'payment_id')::uuid;
+  select pg_temp.payment_probe((v_payment->>'payment_id')::uuid)->>'accrual_policy_snapshot'
+  into v_payment_snapshot;
   select floor(sum((segment->>'amount_vnd')::numeric)) into v_segment_amount
-  from jsonb_array_elements((select financial_snapshot->'accrual_policy_snapshot'->'rate_segments' from public.dealer_payroll_statements where id = v_statement_id)) segment;
+  from jsonb_array_elements(
+    pg_temp.statement_probe(v_statement_id)->'financial_snapshot'->'accrual_policy_snapshot'->'rate_segments'
+  ) segment;
   perform pg_temp.assert_eq(v_segment_amount::text, '60000', 'exact rate segments reconstruct the frozen statement amount');
 
   reset role;
   update public.dealers set hourly_rate_vnd = 90000 where id = 'fc120000-0000-4000-8000-000000000002';
   perform pg_temp.assert_eq(
-    (select accrual_policy_snapshot::text from public.dealer_pt_wage_payments where id = (v_payment->>'payment_id')::uuid),
+    pg_temp.payment_probe((v_payment->>'payment_id')::uuid)->>'accrual_policy_snapshot',
     v_payment_snapshot,
     'later rate changes cannot mutate an existing PT payment snapshot'
   );
@@ -318,11 +379,7 @@ $$;
 select set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000005', true);
 reset role;
 select pg_temp.assert_true(
-  (public.get_dealer_payroll_statement((
-    select id from public.dealer_payroll_statements
-    where statement_kind = 'full_time_period' and state = 'finalized'
-    order by finalized_at desc limit 1
-  ))->'dealer_snapshot'->>'full_name') = 'Statement FT',
+  (public.get_dealer_payroll_statement(pg_temp.latest_finalized_statement_id())->'dealer_snapshot'->>'full_name') = 'Statement FT',
   'linked dealer can read only the server-authorized own statement via RPC'
 );
 
@@ -330,11 +387,7 @@ select set_config('request.jwt.claim.sub', 'fa120000-0000-4000-8000-000000000003
 reset role;
 do $$
 begin
-  perform public.get_dealer_payroll_statement((
-    select id from public.dealer_payroll_statements
-    where statement_kind = 'full_time_period' and state = 'finalized'
-    order by finalized_at desc limit 1
-  ));
+  perform public.get_dealer_payroll_statement(pg_temp.latest_finalized_statement_id());
   raise exception 'foreign owner read unexpectedly succeeded';
 exception when insufficient_privilege then null;
 end;
