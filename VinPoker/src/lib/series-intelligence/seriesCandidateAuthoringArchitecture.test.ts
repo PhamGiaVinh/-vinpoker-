@@ -11,8 +11,8 @@ const PAGE = source("src/pages/SeriesIntelligence.tsx");
 const FLAGS = source("src/lib/featureFlags.ts");
 
 describe("Series V Candidate Authoring V1 boundaries", () => {
-  it("keeps the owner workflow flag-off and outside demo Pulse mode", () => {
-    expect(FLAGS).toMatch(/seriesVCandidateAuthoringV1:\s*false/);
+  it("enables the owner workflow for Preview UAT and keeps it outside demo Pulse mode", () => {
+    expect(FLAGS).toMatch(/seriesVCandidateAuthoringV1:\s*true/);
     expect(PAGE).toContain("FEATURES.seriesVCandidateAuthoringV1 && !clubPulseDemoMode");
     expect(PAGE).toContain("<SeriesCandidateAuthoringPanel clubId={liveClubPulse?.clubId ?? null} />");
   });
@@ -39,8 +39,8 @@ describe("Series V Candidate Authoring V1 boundaries", () => {
   });
 
   it("bounds the source query before aggregation and keeps an idempotent source timestamp", () => {
-    expect(MIGRATION).toContain("FROM (\n    SELECT t.id, t.name, t.start_time");
-    expect(MIGRATION).toContain("LIMIT 50\n  ) AS t;");
+    expect(MIGRATION).toMatch(/FROM \(\r?\n {4}SELECT t\.id, t\.name, t\.start_time/);
+    expect(MIGRATION).toMatch(/LIMIT 50\r?\n {2}\) AS t;/);
     expect(MIGRATION).toContain("COALESCE(v_tournament.updated_at, v_tournament.created_at)");
     expect(MIGRATION).not.toContain("'asOf', pg_catalog.to_char(v_now");
   });

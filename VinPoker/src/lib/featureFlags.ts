@@ -1065,7 +1065,7 @@ export const FEATURES = {
    * candidate for V to read. Default OFF until the additive database contract,
    * authenticated Preview UAT and a narrow flag-on gate are complete.
    */
-  seriesVCandidateAuthoringV1: false,
+  seriesVCandidateAuthoringV1: true,
   /**
    * Series Intelligence — TP3 small-field overlay distribution. When ON, overlay simulations whose
    * central field is below 60 entries use a discrete Negative Binomial sampler instead of a continuous
