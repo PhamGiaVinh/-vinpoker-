@@ -641,6 +641,7 @@
     "unverified": "Chưa xác minh",
     "soldFraction": "Đã hợp tác",
     "remaining": "Còn {{n}}%",
+    "remainingLabel": "Còn",
     "confirmedCount": "{{n}} đã xác nhận",
     "pendingCount": "{{n}} chờ thanh toán",
     "minPurchaseHint": "Mua tối thiểu {{min}}% · {{price}} khởi điểm",

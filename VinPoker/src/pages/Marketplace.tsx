@@ -526,15 +526,15 @@ const DealCard = ({
 
       {/* Markup tag */}
       <div className="inline-flex self-start items-center gap-1 rounded-full border border-success/25 bg-success/10 px-3 py-1">
-        <span className="font-jetbrains text-sm text-success">{Number(deal.markup).toFixed(2)}x</span>
+        <span className="font-jetbrains text-sm font-semibold tabular-nums text-success">{Number(deal.markup).toFixed(2)}x</span>
         <span className="text-[10px] text-success/70 font-display">{t("marketplace.markupLabel")}</span>
       </div>
 
       {/* Progress bar */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-xs font-display text-muted-foreground">
-          <span>{t("marketplace.sold")}: <span className="font-jetbrains text-foreground font-semibold">{filledPct}%</span></span>
-          <span className="text-success">{t("marketplace.remaining")}: <span className="font-jetbrains">{remaining}%</span></span>
+          <span>{t("marketplace.sold")}: <span className="font-jetbrains font-semibold tabular-nums text-foreground">{filledPct}%</span></span>
+          <span className="text-success">{t("marketplace.remainingLabel")} <span className="font-jetbrains font-semibold tabular-nums">{remaining}%</span></span>
         </div>
         <div className="flex h-1.5 overflow-hidden rounded-full bg-muted">
           <div className="h-full bg-success transition-all" style={{ width: `${fundedW}%` }} />
@@ -545,15 +545,15 @@ const DealCard = ({
       {/* Key metrics */}
       <div className="grid grid-cols-3 gap-2 border-t border-border/70 pt-2">
         <div className="text-center">
-          <div className="font-jetbrains text-xs text-foreground">{filledPct}%</div>
+          <div className="font-jetbrains text-xs font-semibold tabular-nums text-foreground">{filledPct}%</div>
           <div className="text-[10px] text-muted-foreground font-display">{t("marketplace.sold")}</div>
         </div>
         <div className="text-center">
-          <div className="font-jetbrains text-xs text-foreground">{remaining}%</div>
-          <div className="text-[10px] text-muted-foreground font-display">{t("marketplace.remaining")}</div>
+          <div className="font-jetbrains text-xs font-semibold tabular-nums text-foreground">{remaining}%</div>
+          <div className="text-[10px] text-muted-foreground font-display">{t("marketplace.remainingLabel")}</div>
         </div>
         <div className="text-center">
-          <div className="font-jetbrains text-xs text-success">{formatVND(Math.round(pricePer1Pct))}</div>
+          <div className="font-jetbrains text-xs font-semibold tabular-nums text-success">{formatVND(Math.round(pricePer1Pct))}</div>
           <div className="text-[10px] text-muted-foreground font-display">{t("marketplace.pricePer1")}</div>
         </div>
       </div>
@@ -562,7 +562,7 @@ const DealCard = ({
       {showCountdown && (
         <div className={`rounded-xl border py-1.5 text-center font-display text-xs ${isCritical ? "bg-destructive/10 border-destructive/20 text-destructive" : isUrgent ? "bg-warning/10 border-warning/20 text-warning" : "border-border/70 bg-muted/25 text-muted-foreground"}`}>
           <Clock className="w-3 h-3 inline mr-1 -mt-0.5" />
-          {t("marketplace.regClosesIn")} <span className="font-jetbrains">{String(hrs).padStart(2, "0")}:{String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}</span>
+          {t("marketplace.regClosesIn")} <span className="font-jetbrains font-semibold tabular-nums">{String(hrs).padStart(2, "0")}:{String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}</span>
         </div>
       )}
 
@@ -706,15 +706,15 @@ const DealDetailDialog = ({
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="rounded-xl border border-white/10 bg-background/30 p-2">
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-display">ITM</div>
-                    <div className="font-semibold font-jetbrains">{Number(stats.itm_rate).toFixed(1)}%</div>
+                    <div className="font-semibold font-jetbrains tabular-nums">{Number(stats.itm_rate).toFixed(1)}%</div>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-background/30 p-2">
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-display">ROI</div>
-                    <div className="font-semibold font-jetbrains">{Number(stats.roi_percentage).toFixed(1)}%</div>
+                    <div className="font-semibold font-jetbrains tabular-nums">{Number(stats.roi_percentage).toFixed(1)}%</div>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-background/30 p-2">
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-display">{t("marketplace.tournamentCount")}</div>
-                    <div className="font-semibold font-jetbrains">{stats.tournaments_played}</div>
+                    <div className="font-semibold font-jetbrains tabular-nums">{stats.tournaments_played}</div>
                   </div>
                 </div>
               ) : (
@@ -726,8 +726,8 @@ const DealDetailDialog = ({
               {/* Deal breakdown */}
               <div className="space-y-3 rounded-xl border border-white/10 bg-background/25 p-4">
                 <div className="flex justify-between text-xs text-muted-foreground font-display">
-                  <span>{t("marketplace.soldFraction")} <strong className="text-foreground font-jetbrains">{filled}%</strong> / <span className="font-jetbrains">{sold}%</span></span>
-                  <span className="text-success font-semibold">{t("marketplace.remaining", { n: remaining })}</span>
+                  <span>{t("marketplace.soldFraction")} <strong className="font-jetbrains font-semibold tabular-nums text-foreground">{filled}%</strong> / <span className="font-jetbrains font-semibold tabular-nums">{sold}%</span></span>
+                  <span className="text-success font-semibold">{t("marketplace.remainingLabel")} <span className="font-jetbrains font-semibold tabular-nums">{remaining}%</span></span>
                 </div>
                 <div className="flex h-1.5 overflow-hidden rounded-full bg-muted">
                   <div className="h-full bg-success" style={{ width: `${fundedW}%` }} />
@@ -735,15 +735,15 @@ const DealDetailDialog = ({
                 </div>
                 <div className="flex items-center justify-between text-xs font-display">
                   <span className="text-muted-foreground">{t("marketplace.markupLabel")}</span>
-                  <span className="font-jetbrains font-semibold text-success">{Number(deal.markup).toFixed(2)}x</span>
+                  <span className="font-jetbrains font-semibold tabular-nums text-success">{Number(deal.markup).toFixed(2)}x</span>
                 </div>
                 <div className="flex items-center justify-between text-xs font-display">
                   <span className="text-muted-foreground">{t("marketplace.pricePer1")}</span>
-                  <span className="font-jetbrains font-semibold">{formatVND(Math.round(pricePer1Pct))}</span>
+                  <span className="font-jetbrains font-semibold tabular-nums">{formatVND(Math.round(pricePer1Pct))}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs font-display">
                   <span className="text-muted-foreground">{t("marketplace.buyIn")}</span>
-                  <span className="font-jetbrains font-semibold">{formatVND(deal.buy_in_amount_vnd)}</span>
+                  <span className="font-jetbrains font-semibold tabular-nums">{formatVND(deal.buy_in_amount_vnd)}</span>
                 </div>
               </div>
 
@@ -764,10 +764,10 @@ const DealDetailDialog = ({
                           const v = Math.floor(Number(e.target.value));
                           if (Number.isFinite(v)) setPercent(Math.max(effectiveMin, Math.min(remaining, v)));
                         }}
-                        className="h-9 w-20 rounded-lg border-success/30 bg-background/35 text-right font-jetbrains text-sm font-bold focus-visible:border-success"
+                        className="h-9 w-20 rounded-lg border-success/30 bg-background/35 text-right font-jetbrains text-sm font-bold tabular-nums focus-visible:border-success"
                         disabled={isLastSlice}
                       />
-                      <span className="text-sm font-semibold font-jetbrains">%</span>
+                      <span className="text-sm font-semibold font-jetbrains tabular-nums">%</span>
                     </div>
                   </div>
                   {!isLastSlice && (
@@ -781,7 +781,7 @@ const DealDetailDialog = ({
                   )}
                   <div className="flex items-center justify-between border-t border-success/20 pt-2">
                     <span className="text-xs text-muted-foreground font-display">{t("marketplace.youPay")}</span>
-                    <span className="text-xl font-bold font-jetbrains text-success">{formatVND(totalToPay)}</span>
+                    <span className="text-xl font-bold font-jetbrains tabular-nums text-success">{formatVND(totalToPay)}</span>
                   </div>
                   {deal.description && (
                     <div className="rounded-lg bg-background/30 p-3 font-display text-xs italic text-muted-foreground">

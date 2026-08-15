@@ -517,6 +517,7 @@
     "unverified": "未核实",
     "soldFraction": "已售",
     "remaining": "剩余 {{n}}%",
+    "remainingLabel": "剩余",
     "confirmedCount": "{{n}} 已确认",
     "pendingCount": "{{n}} 待付款",
     "minPurchaseHint": "最低 {{min}}% · 起价 {{price}}",
