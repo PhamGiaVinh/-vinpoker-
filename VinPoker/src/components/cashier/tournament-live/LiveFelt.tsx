@@ -26,6 +26,7 @@ import {
   normalizeReplayCardCode,
   type BestFiveFocus,
 } from "@/lib/tracker-poker/replayBestFiveFocus";
+import type { ReplayRunoutPhase } from "@/lib/tracker-poker/replayRunoutTimeline";
 
 /** Count-up text (Phase 3, tableFx only): tweens a numeric display toward its target.
  *  First render / enabled-off / reduced-motion emit the target directly, so static
@@ -312,6 +313,10 @@ export interface LiveFeltProps {
   showdownResult?: "winner" | "chop" | "needs_resettle" | null;
   /** Verified final-frame card emphasis, derived by the replay parent on every render. */
   bestFiveFocus?: BestFiveFocus | null;
+  /** Presentation-only phase for the verified best-five result. */
+  bestFiveFocusPhase?: "hidden" | "dim" | "glow" | "static";
+  /** Sequential all-in board presentation; only viewer replay supplies this. */
+  replayRunoutPhase?: ReplayRunoutPhase | null;
   /**
    * trackerShowdownRevealOrder (viewer) — ADDITIVE; absent → simultaneous reveal
    * (byte-identical). player_ids in the order they should table their cards at
@@ -354,6 +359,8 @@ export function LiveFelt({
   runout = false,
   showdownResult = null,
   bestFiveFocus = null,
+  bestFiveFocusPhase = "static",
+  replayRunoutPhase = null,
   revealOrder,
   revealStaggerMs = 500,
   motionEvents = [],
@@ -373,7 +380,9 @@ export function LiveFelt({
   // (module constants → stable identity for the chips-effect dependency).
   const seatMap = viewerLayout && !portrait ? LANDSCAPE_SEATS_V3 : geo.seats;
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
-  const bestFiveFocusActive = tableFx && bestFiveFocus?.enabled === true;
+  const bestFiveFocusActive = tableFx && bestFiveFocus?.enabled === true && bestFiveFocusPhase !== "hidden";
+  const bestFiveGlowActive = bestFiveFocusActive && (bestFiveFocusPhase === "glow" || bestFiveFocusPhase === "static");
+  const runoutBoardReveal = replayRunoutPhase === "flop" || replayRunoutPhase === "turn" || replayRunoutPhase === "river";
   const cardFocusClass = (card: string, selectedCards: ReadonlySet<string> | undefined): string => {
     if (!bestFiveFocusActive) return "";
     const code = normalizeReplayCardCode(card);
@@ -529,7 +538,7 @@ export function LiveFelt({
   }, [viewerLayout, portrait]);
 
   return (
-    <div className={`w-full${bestFiveFocusActive ? " tracker-best-five-focus-active" : ""}`} ref={feltWrapRef}>
+    <div className={`w-full${bestFiveFocusActive ? ` tracker-best-five-focus-active tracker-best-five-focus-${bestFiveFocusPhase}` : ""}`} ref={feltWrapRef}>
       {/* Felt oval — scales with container; seats may straddle the rim so the
           container is overflow-visible (never clips a seat). When `fit` is set
           (narrow landscape) a height-reserver clips the oversized design-width box
@@ -663,9 +672,21 @@ export function LiveFelt({
           <div data-testid="board-cards" className="flex items-center justify-center gap-1.5">
             {displayCards.map((card, i) => {
               if (!card) {
+                // Preserve the five-card board footprint during the viewer-only
+                // all-in runout without rendering a card back or exposing a card.
+                if (viewerLayout && replayRunoutPhase) {
+                  return <div key={`${i}-runout-slot`} aria-hidden="true" className={`${boardCardCls} invisible`} />;
+                }
                 return viewerLayout ? null : <CardBack key={`${i}-back`} size="md" className={boardCardCls} style={boardStyle} />;
               }
               const focusClass = cardFocusClass(card, bestFiveFocus?.boardCardCodes);
+              const runoutDelay = replayRunoutPhase === "flop"
+                ? i * 90
+                : replayRunoutPhase === "turn" && i === 3
+                  ? 0
+                  : replayRunoutPhase === "river" && i === 4
+                    ? 0
+                    : null;
               return (
                 <PokerCard
                   // tableFx → value-stable key (entrance fires once); else the current key
@@ -673,11 +694,23 @@ export function LiveFelt({
                   key={tableFx ? card : `${i}-${card}`}
                   card={card}
                   size="md"
-                  className={[boardCardCls, focusClass].filter(Boolean).join(" ")}
+                  className={[
+                    boardCardCls,
+                    focusClass,
+                    runoutBoardReveal ? "tracker-runout-board-card" : "",
+                    runoutBoardReveal ? `tracker-runout-board-${replayRunoutPhase}` : "",
+                  ].filter(Boolean).join(" ")}
                   // V2 boardStyle (clamp) merges with the FX stagger delay; both absent → undefined.
                   style={
-                    boardStyle || (tableFx && i < 3)
-                      ? { ...boardStyle, ...(tableFx && i < 3 ? { animationDelay: `${i * 45}ms` } : {}) }
+                    boardStyle || runoutDelay !== null || (tableFx && i < 3)
+                      ? {
+                          ...boardStyle,
+                          ...(runoutDelay !== null
+                            ? { animationDelay: `${runoutDelay}ms` }
+                            : tableFx && i < 3
+                              ? { animationDelay: `${i * 45}ms` }
+                              : {}),
+                        }
                       : undefined
                   }
                 />
@@ -774,8 +807,7 @@ export function LiveFelt({
           const nameShadow = { textShadow: "0 1px 3px rgba(0,0,0,0.95)" };
           // Winner identity remains server-proven; payout/rank/refund copy is kept
           // out of the felt so the verified best-five cards carry the result.
-          const payoutAward = seat.payout_award ?? 0;
-          const isWinner = tableFx && seat.pot_winner === true && payoutAward > 0;
+          const isWinner = bestFiveGlowActive && bestFiveFocus?.winnerPlayerIds.has(seat.player_id) === true;
 
           // ADDITIVE operator-console hooks. Both fragments are "" and the spread
           // is {} when the props are absent, so the default (viewer/replay) render

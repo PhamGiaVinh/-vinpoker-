@@ -448,6 +448,10 @@ export function TrackerVisualStyles() {
           from { opacity: 0; transform: translateY(-12px) rotate(-3deg) scale(.92); }
           to { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
         }
+        @keyframes tracker-runout-board-reveal {
+          from { opacity: 0; transform: translateY(-5px) scale(1.1); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
         @keyframes tracker-seat-pop {
           0% { transform: translate(-50%, -50%) scale(.94); opacity: .7; }
           100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
@@ -532,16 +536,31 @@ export function TrackerVisualStyles() {
         .tracker-best-five-focus-active .tracker-best-five-card {
           opacity: 1 !important;
           filter: none !important;
-          outline: 2px solid hsl(var(--viewer-neon) / .92);
-          outline-offset: 1px;
-          box-shadow: 0 0 18px 3px hsl(var(--viewer-neon) / .48), 0 0 0 1px hsl(var(--poker-gold) / .86);
           transition: opacity 180ms ease-out, filter 180ms ease-out, box-shadow 180ms ease-out, outline-color 180ms ease-out;
         }
+        .tracker-best-five-focus-dim .tracker-best-five-card {
+          outline: 0 solid transparent;
+          box-shadow: none;
+        }
+        .tracker-best-five-focus-glow .tracker-best-five-card,
+        .tracker-best-five-focus-static .tracker-best-five-card {
+          outline: 2px solid hsl(var(--viewer-neon) / .92);
+          outline-offset: 1px;
+          box-shadow: 0 0 0 2px rgba(255, 210, 80, .95), 0 0 12px rgba(255, 190, 50, .85), 0 0 24px rgba(255, 160, 20, .45);
+          filter: saturate(1.15) brightness(1.08) !important;
+        }
         .tracker-best-five-focus-active .tracker-non-best-five-card {
-          opacity: .34 !important;
+          opacity: .42 !important;
           filter: grayscale(.42) saturate(.35) brightness(.72) !important;
           transition: opacity 180ms ease-out, filter 180ms ease-out;
         }
+        .tracker-runout-board-card {
+          animation-name: tracker-runout-board-reveal;
+          animation-timing-function: cubic-bezier(.22,1,.36,1);
+        }
+        .tracker-runout-board-flop { animation-duration: .27s; }
+        .tracker-runout-board-turn { animation-duration: .3s; }
+        .tracker-runout-board-river { animation-duration: .5s; }
         .tracker-showdown-result { animation: tracker-showdown-result .24s cubic-bezier(.22,1,.36,1) both; }
         .tracker-motion-card {
           position: absolute;
@@ -603,6 +622,7 @@ export function TrackerVisualStyles() {
           .tracker-win-glow,
           .tracker-best-five-card,
           .tracker-non-best-five-card,
+          .tracker-runout-board-card,
           .tracker-showdown-result,
           .tracker-motion-card,
           .tracker-motion-showdown,

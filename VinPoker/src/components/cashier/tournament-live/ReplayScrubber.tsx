@@ -3,7 +3,7 @@
 // owns step/play/speed state, builds frames from the hand, and pushes the
 // current frame to the parent via onFrame so the existing <LiveFelt> renders it.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Slider } from "@/components/ui/slider";
 import { Play, Pause, SkipBack, SkipForward, RotateCcw, ChevronsRight } from "lucide-react";
@@ -14,6 +14,14 @@ import {
   type ReplayFrame,
   type ReplayHand,
 } from "@/lib/tracker-poker/replayEngine";
+import type { VerifiedShowdownPresentation } from "@/lib/tracker-poker/replayBestFiveFocus";
+import {
+  createReplayRunoutPresentation,
+  nextReplayRunoutPhase,
+  replayRunoutPhaseDuration,
+  replayRunoutShowsSummary,
+  type ReplayRunoutPresentation,
+} from "@/lib/tracker-poker/replayRunoutTimeline";
 import { formatActionLabel, formatStack, type ActionLog } from "./LiveFelt";
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
@@ -44,9 +52,21 @@ interface ReplayScrubberProps {
    */
   trackBets?: boolean;
   onSpeedChange?: (speed: number) => void;
+  /** The sole verified winner/rank model shared with the felt. */
+  showdownPresentation?: VerifiedShowdownPresentation | null;
+  /** Ephemeral playback-only state; never changes the replay frame or settlement. */
+  onRunoutPresentation?: (presentation: ReplayRunoutPresentation | null) => void;
 }
 
-export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, onSpeedChange }: ReplayScrubberProps) {
+export function ReplayScrubber({
+  hand,
+  onFrame,
+  hud = false,
+  trackBets = false,
+  onSpeedChange,
+  showdownPresentation = null,
+  onRunoutPresentation,
+}: ReplayScrubberProps) {
   const { t } = useTranslation();
   const frames = useMemo(() => buildReplayFrames(hand, { trackBets }), [hand, trackBets]);
   const streetIdx = useMemo(() => streetFrameIndex(frames), [frames]);
@@ -54,21 +74,69 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
 
   const [step, setStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  // Phase 3: default 2× (500ms/action) — 1×'s one-second dry steps read as "lag", and the
-  // felt's fold-fade/count-up/chip-fly cover the transition. All speeds stay selectable.
-  const [speed, setSpeed] = useState(2);
+  // The viewer HUD uses a readable 1× cinematic baseline. Legacy/operator replay
+  // remains at its previous 2× default.
+  const [speed, setSpeed] = useState(() => hud ? 1 : 2);
+  const [runoutPresentation, setRunoutPresentation] = useState<ReplayRunoutPresentation | null>(null);
   const frameSourceRef = useRef<ReplayFrameSource>("jump");
 
   useEffect(() => {
     onSpeedChange?.(speed);
   }, [onSpeedChange, speed]);
 
-  // New hand → rewind and pause.
+  const handKey = hand.hand_id ?? `hand-${hand.hand_number}`;
+  const settlementFingerprint = useMemo(() => {
+    const settlement = hand.publicSettlement;
+    if (!settlement) return "none";
+    return [
+      settlement.schemaVersion,
+      settlement.status,
+      settlement.players
+        .map((player) => `${player.playerId}:${player.potAward}:${player.refund}:${player.netDelta}`)
+        .sort()
+        .join("|"),
+      settlement.pots
+        .map((pot) => `${pot.potId}:${pot.amount}:${[...pot.winnerIds].sort().join(",")}:${pot.allocations
+          .map((allocation) => `${allocation.winnerId}:${allocation.amount}`)
+          .sort()
+          .join(",")}`)
+        .sort()
+        .join("|"),
+      settlement.refunds
+        .map((refund) => `${refund.playerId}:${refund.amount}:${refund.sourceActionId}`)
+        .sort()
+        .join("|"),
+      settlement.handRanks
+        .map((rank) => `${rank.playerId}:${rank.category}:${rank.bestFive.join(",")}:${rank.kickers.join(",")}`)
+        .sort()
+        .join("|"),
+    ].join("/");
+  }, [hand.publicSettlement]);
+  const runoutKey = `${handKey}:${lastIndex}:${settlementFingerprint}`;
+  const sortedActions = useMemo(
+    () => [...(hand.actions || [])].sort((a, b) => a.action_order - b.action_order),
+    [hand]
+  );
+  const hasCinematicAllInRunout = hud
+    && showdownPresentation?.enabled === true
+    && frames[lastIndex]?.revealHoleCards === true
+    && sortedActions.some((action) => action.action_type === "all_in");
+  const publishRunoutPresentation = useCallback((presentation: ReplayRunoutPresentation | null) => {
+    setRunoutPresentation(presentation);
+    onRunoutPresentation?.(presentation);
+  }, [onRunoutPresentation]);
+
+  // New hand → rewind and pause. The public presentation key prevents a late
+  // timer from carrying a previous result into the next hand.
   useEffect(() => {
     frameSourceRef.current = "jump";
     setStep(0);
     setIsPlaying(false);
-  }, [hand]);
+    setSpeed(hud ? 1 : 2);
+    publishRunoutPresentation(null);
+  }, [hand, hud, publishRunoutPresentation]);
+
+  useEffect(() => () => onRunoutPresentation?.(null), [onRunoutPresentation]);
 
   // Push the current frame up to the parent felt.
   const onFrameRef = useRef(onFrame);
@@ -78,43 +146,65 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
     if (f) onFrameRef.current(f, frameSourceRef.current);
   }, [step, frames, lastIndex]);
 
-  // Auto-advance while playing; stop at the end.
+  // A cancellable playback timeline replaces the fixed interval. Standard action
+  // steps retain their speed behavior; only a persisted all-in runout gets the
+  // staged board/result presentation. Scrub/jump/hand changes clear this effect.
   useEffect(() => {
     if (!isPlaying) return;
-    if (step >= lastIndex) {
+    if (step < lastIndex) {
+      const enteringCinematicRunout = step === lastIndex - 1 && hasCinematicAllInRunout;
+      const timer = window.setTimeout(() => {
+        frameSourceRef.current = "playback";
+        if (enteringCinematicRunout) {
+          publishRunoutPresentation(createReplayRunoutPresentation(runoutKey, "hole_hold"));
+        }
+        setStep((currentStep) => Math.min(lastIndex, currentStep + 1));
+      }, 1000 / speed);
+      return () => window.clearTimeout(timer);
+    }
+
+    if (!runoutPresentation || runoutPresentation.key !== runoutKey) {
       setIsPlaying(false);
       return;
     }
-    const id = window.setInterval(() => {
-      frameSourceRef.current = "playback";
-      setStep((s) => {
-        if (s >= lastIndex) return s;
-        return s + 1;
-      });
-    }, 1000 / speed);
-    return () => window.clearInterval(id);
-  }, [isPlaying, speed, step, lastIndex]);
+    const nextPhase = nextReplayRunoutPhase(runoutPresentation.phase);
+    if (!nextPhase) {
+      setIsPlaying(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      publishRunoutPresentation(createReplayRunoutPresentation(runoutKey, nextPhase));
+      if (nextPhase === "static") setIsPlaying(false);
+    }, replayRunoutPhaseDuration(runoutPresentation.phase, speed));
+    return () => window.clearTimeout(timer);
+  }, [hasCinematicAllInRunout, isPlaying, lastIndex, publishRunoutPresentation, runoutKey, runoutPresentation, speed, step]);
 
-  const pauseAnd = (fn: () => void) => {
+  const pauseTo = (nextStep: number) => {
     frameSourceRef.current = "scrub";
     setIsPlaying(false);
-    fn();
+    publishRunoutPresentation(
+      nextStep === lastIndex && hasCinematicAllInRunout
+        ? createReplayRunoutPresentation(runoutKey, "static")
+        : null,
+    );
+    setStep(Math.max(0, Math.min(lastIndex, nextStep)));
   };
 
   const togglePlay = () => {
+    if (isPlaying && runoutPresentation) {
+      publishRunoutPresentation(createReplayRunoutPresentation(runoutKey, "static"));
+      setIsPlaying(false);
+      return;
+    }
     if (step >= lastIndex) {
       frameSourceRef.current = "jump";
+      publishRunoutPresentation(null);
       setStep(0);
       setIsPlaying(true);
     } else {
       setIsPlaying((p) => !p);
     }
   };
-
-  const sortedActions = useMemo(
-    () => [...(hand.actions || [])].sort((a, b) => a.action_order - b.action_order),
-    [hand]
-  );
 
   const presentStreets = useMemo(
     () => Object.keys(STREET_LABELS).filter((s) => s in streetIdx),
@@ -123,6 +213,13 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
 
   const currentStreet = frames[Math.min(step, lastIndex)]?.currentStreet;
   const current = frames[Math.min(step, lastIndex)];
+  const currentPresentation = showdownPresentation?.enabled
+    && showdownPresentation.handId === hand.hand_id
+    && showdownPresentation.frameIndex === current?.index
+    ? showdownPresentation
+    : null;
+  const summaryVisible = currentPresentation != null
+    && (!runoutPresentation || (runoutPresentation.key === runoutKey && replayRunoutShowsSummary(runoutPresentation.phase)));
   const publicName = (name: string | null | undefined, playerId: string): string => {
     const trimmed = name?.trim() || "";
     const rawPrefix = playerId.slice(0, 6).toLowerCase();
@@ -139,25 +236,6 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
     [hud, sortedActions]
   );
   const inBB = (n: number): string | null => (bb > 0 ? `${(n / bb).toFixed(1)} BB` : null);
-  // One compact row per verified award winner. Refund-only players never enter
-  // this list; a player who also receives a refund remains a winner by pot award.
-  const winnerRows = useMemo(() => {
-    if (!hud || !current?.payoutVerified) return [];
-    const winnerIds = new Set(current.showdownWinnerIds ?? []);
-    const seen = new Set<string>();
-    return current.seats.filter((seat) => {
-      if (
-        seen.has(seat.player_id)
-        || !winnerIds.has(seat.player_id)
-        || seat.pot_winner !== true
-        || (seat.payout_award ?? 0) <= 0
-      ) {
-        return false;
-      }
-      seen.add(seat.player_id);
-      return true;
-    });
-  }, [hud, current]);
   // Hand-summary bullets reveal only actions reached by the current replay frame.
   const bullets = (() => {
     if (!hud) return [];
@@ -215,7 +293,7 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
         {presentStreets.map((s) => (
           <button
             key={s}
-            onClick={() => pauseAnd(() => setStep(streetIdx[s]))}
+            onClick={() => pauseTo(streetIdx[s])}
             className={`${hud ? "min-h-11 rounded-xl px-3 py-1.5" : "px-2.5 py-1 rounded-md"} text-[11px] font-bold uppercase tracking-wider border transition-colors ${
               currentStreet === s
                 ? hud
@@ -240,7 +318,7 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
         min={0}
         max={Math.max(lastIndex, 1)}
         step={1}
-        onValueChange={(v) => pauseAnd(() => setStep(v[0]))}
+        onValueChange={(v) => pauseTo(v[0])}
         aria-label={hud ? t("liveHub.replay.scrub", "Tua lại ván") : "Tua lại hand"}
         className={hud ? "py-2" : undefined}
       />
@@ -249,14 +327,14 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className={hud ? "flex items-center gap-1.5" : "flex items-center gap-1.5"}>
           <button
-            onClick={() => pauseAnd(() => setStep(0))}
+            onClick={() => pauseTo(0)}
             title={hud ? t("liveHub.replay.rewind", "Về đầu") : "Về đầu"}
             className={hud ? "inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:border-[hsl(var(--viewer-neon)_/_0.4)] hover:text-[hsl(var(--viewer-neon))]" : "p-1.5 rounded-md border border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-300 transition-colors"}
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={() => pauseAnd(() => setStep((s) => Math.max(0, s - 1)))}
+            onClick={() => pauseTo(step - 1)}
             title={hud ? t("liveHub.replay.previous", "Lùi 1 bước") : "Lùi 1 bước"}
             className={hud ? "inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:border-[hsl(var(--viewer-neon)_/_0.4)] hover:text-[hsl(var(--viewer-neon))]" : "p-1.5 rounded-md border border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-300 transition-colors"}
           >
@@ -272,7 +350,7 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
             {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
           </button>
           <button
-            onClick={() => pauseAnd(() => setStep((s) => Math.min(lastIndex, s + 1)))}
+            onClick={() => pauseTo(step + 1)}
             title={hud ? t("liveHub.replay.next", "Tiến 1 bước") : "Tiến 1 bước"}
             className={hud ? "inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:border-[hsl(var(--viewer-neon)_/_0.4)] hover:text-[hsl(var(--viewer-neon))]" : "p-1.5 rounded-md border border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-300 transition-colors"}
           >
@@ -280,7 +358,7 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
           </button>
           {hud && (
             <button
-              onClick={() => pauseAnd(() => setStep(lastIndex))}
+            onClick={() => pauseTo(lastIndex)}
               title={t("liveHub.replay.toEnd", "Tới cuối (showdown)")}
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:border-[hsl(var(--viewer-neon)_/_0.4)] hover:text-[hsl(var(--viewer-neon))]"
             >
@@ -332,7 +410,7 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
 
       {hud && hudTab === "summary" && (
         <div data-testid="replay-hud-summary" aria-live="polite" className="space-y-2">
-          {current?.showdownResult === "chop" && (
+          {summaryVisible && currentPresentation.isChop && (
             <div data-testid="replay-hud-chop" className="rounded-xl border border-[hsl(var(--viewer-neon)_/_0.35)] bg-[hsl(var(--viewer-neon)_/_0.08)] px-3 py-2 text-xs font-semibold text-[hsl(var(--viewer-neon))]">
               {t("liveHub.felt.chopPot", "Chop pot")}
             </div>
@@ -342,28 +420,33 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
               {t("liveHub.felt.needsResettle", "Cần tính lại kết quả")}
             </div>
           )}
-          {winnerRows.length > 0 && (
+          {summaryVisible && currentPresentation.winners.length > 0 && (
             <div className="space-y-1">
-              {winnerRows.map((winner) => (
+              {currentPresentation.winners.map((winner) => (
                 <div
-                  key={winner.player_id}
-                  data-testid={`replay-hud-winner-${winner.player_id}`}
-                  className="tracker-showdown-result flex min-h-11 items-center rounded-xl border border-[hsl(var(--viewer-neon)_/_0.18)] bg-[linear-gradient(135deg,hsl(var(--viewer-neon)_/_0.08),hsl(var(--background)_/_0.58))] px-3 py-2.5 text-xs"
+                  key={winner.playerId}
+                  data-testid={`replay-hud-winner-${winner.playerId}`}
+                  className="tracker-showdown-result min-h-11 rounded-xl border border-[hsl(var(--viewer-neon)_/_0.18)] bg-[linear-gradient(135deg,hsl(var(--viewer-neon)_/_0.08),hsl(var(--background)_/_0.58))] px-3 py-2.5 text-xs"
                 >
                   <span className="sr-only">{t("liveHub.replay.verifiedWinner", "Người thắng đã được xác minh")}: </span>
-                  <span className="min-w-0 truncate font-semibold text-foreground">
-                    {publicName(winner.display_name, winner.player_id)}
-                    {winner.seat_number > 0 && (
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold text-foreground">
+                    {publicName(winner.playerName, winner.playerId)}
+                    {winner.seatNumber > 0 && (
                       <span className="font-normal text-muted-foreground">
-                        {" — "}{t("liveHub.seat", "Ghế {{n}}", { n: winner.seat_number })}
+                        {" — "}{t("liveHub.seat", "Ghế {{n}}", { n: winner.seatNumber })}
                       </span>
                     )}
-                  </span>
+                    </div>
+                    <div data-testid={`replay-hud-ranking-${winner.playerId}`} className="mt-0.5 truncate text-[11px] font-medium text-[hsl(var(--poker-gold))]">
+                      {winner.rankingText}
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
           )}
-          {current?.showdownResult !== "needs_resettle" && winnerRows.length === 0 && (
+          {current?.showdownResult !== "needs_resettle" && !currentPresentation && !runoutPresentation && (
             <div className="text-[11px] text-muted-foreground">{t("liveHub.replay.noResult", "Chưa có kết quả — xem tab Hành động.")}</div>
           )}
           {bullets.length > 0 && (
@@ -405,7 +488,7 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
           return (
             <button
               key={a.action_order}
-              onClick={() => pauseAnd(() => setStep(i + 1))}
+              onClick={() => pauseTo(i + 1)}
               className={hud
                 ? `min-h-11 w-full flex justify-between items-center rounded-xl border border-border/35 px-3 py-2 text-left text-xs transition-colors ${active ? "bg-[hsl(var(--viewer-neon)_/_0.14)] text-[hsl(var(--viewer-neon))]" : "hover:bg-secondary/40"}`
                 : `w-full flex justify-between items-center px-1.5 py-1 rounded text-xs border-b border-border/10 last:border-0 transition-colors ${active ? "bg-amber-500/15 text-amber-200" : "hover:bg-secondary/40"}`}
