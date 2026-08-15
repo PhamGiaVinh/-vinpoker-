@@ -196,6 +196,8 @@ begin
 end;
 $$;
 
+reset role;
+
 do $$
 declare
   v_ft_id uuid;
