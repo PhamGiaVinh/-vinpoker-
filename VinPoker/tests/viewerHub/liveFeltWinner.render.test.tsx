@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LiveFelt, type SeatInfo } from "@/components/cashier/tournament-live/LiveFelt";
-import type { BestFiveFocus } from "@/lib/tracker-poker/replayBestFiveFocus";
+import type { BestFiveFocus, VerifiedShowdownPresentation } from "@/lib/tracker-poker/replayBestFiveFocus";
 
 function seat(overrides: Partial<SeatInfo>): SeatInfo {
   return {
@@ -46,6 +46,24 @@ const focus: BestFiveFocus = {
   winnerPlayerIds: new Set(["tom"]),
   boardCardCodes: new Set(["Jc", "Js", "Ah"]),
   holeCardCodesByPlayerId: new Map([["tom", new Set(["Jd", "Jh"])]]),
+};
+
+const showdownPresentation: VerifiedShowdownPresentation = {
+  enabled: true,
+  handId: "hand-1",
+  frameIndex: 7,
+  isChop: false,
+  winners: [{
+    playerId: "tom",
+    playerName: "Tom Dwan",
+    seatNumber: 1,
+    category: "four_of_a_kind",
+    bestFive: ["Jd", "Jh", "Jc", "Js", "Ah"],
+    kickers: ["A"],
+    rankingText: "Four Jacks - Ace kicker",
+    holeBestFive: new Set(["Jd", "Jh"]),
+  }],
+  focus,
 };
 
 const baseProps = {
@@ -95,6 +113,35 @@ describe("LiveFelt verified best-five focus", () => {
     expect(html).not.toMatch(/Thắng pot|Hoàn \+5k|quads|Kicker|Bộ 5 lá mạnh nhất/i);
     expect(html).toContain("20k");
     expect(html).toContain("100 BB");
+  });
+
+  it("shows verified ranking in the center only during the winner phase", () => {
+    const html = renderToStaticMarkup(
+      <LiveFelt
+        {...baseProps}
+        tableFx
+        bestFiveFocus={focus}
+        showdownPresentation={showdownPresentation}
+        bestFiveFocusPhase="static"
+        showdownResult="winner"
+      />,
+    );
+
+    expect(html).toContain('data-testid="felt-showdown-ranking"');
+    expect(html).toContain('data-testid="felt-showdown-ranking-tom"');
+    expect(html).toContain(showdownPresentation.winners[0].rankingText);
+
+    const dimmed = renderToStaticMarkup(
+      <LiveFelt
+        {...baseProps}
+        tableFx
+        bestFiveFocus={focus}
+        showdownPresentation={showdownPresentation}
+        bestFiveFocusPhase="dim"
+        showdownResult="winner"
+      />,
+    );
+    expect(dimmed).not.toContain('data-testid="felt-showdown-ranking"');
   });
 
   it("does not apply card focus when the derived focus is disabled", () => {

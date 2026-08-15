@@ -1575,6 +1575,9 @@ export function TournamentLiveView({
               bestFiveFocus={spectator && isReplay && FEATURES.liveReplayHud && replayFocusPhase !== "hidden"
                 ? replayShowdownPresentation?.focus ?? null
                 : null}
+              showdownPresentation={spectator && isReplay && FEATURES.liveReplayHud
+                ? replayShowdownPresentation
+                : null}
               bestFiveFocusPhase={replayFocusPhase}
               replayRunoutPhase={spectator && isReplay && FEATURES.liveReplayHud
                 ? replayRunoutForSelectedHand?.phase ?? null
