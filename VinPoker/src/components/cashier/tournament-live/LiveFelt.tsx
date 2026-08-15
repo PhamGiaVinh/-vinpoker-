@@ -25,6 +25,7 @@ import type { TableMotionEvent } from "@/lib/tracker-poker/tableMotion";
 import {
   normalizeReplayCardCode,
   type BestFiveFocus,
+  type VerifiedShowdownPresentation,
 } from "@/lib/tracker-poker/replayBestFiveFocus";
 import type { ReplayRunoutPhase } from "@/lib/tracker-poker/replayRunoutTimeline";
 
@@ -313,6 +314,8 @@ export interface LiveFeltProps {
   showdownResult?: "winner" | "chop" | "needs_resettle" | null;
   /** Verified final-frame card emphasis, derived by the replay parent on every render. */
   bestFiveFocus?: BestFiveFocus | null;
+  /** Shared verified showdown model for the center ranking presentation. */
+  showdownPresentation?: VerifiedShowdownPresentation | null;
   /** Presentation-only phase for the verified best-five result. */
   bestFiveFocusPhase?: "hidden" | "dim" | "glow" | "static";
   /** Sequential all-in board presentation; only viewer replay supplies this. */
@@ -359,6 +362,7 @@ export function LiveFelt({
   runout = false,
   showdownResult = null,
   bestFiveFocus = null,
+  showdownPresentation = null,
   bestFiveFocusPhase = "static",
   replayRunoutPhase = null,
   revealOrder,
@@ -382,6 +386,9 @@ export function LiveFelt({
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
   const bestFiveFocusActive = tableFx && bestFiveFocus?.enabled === true && bestFiveFocusPhase !== "hidden";
   const bestFiveGlowActive = bestFiveFocusActive && (bestFiveFocusPhase === "glow" || bestFiveFocusPhase === "static");
+  const showdownRankingVisible = bestFiveGlowActive
+    && showdownPresentation?.enabled === true
+    && showdownPresentation.winners.length > 0;
   const runoutBoardReveal = replayRunoutPhase === "flop" || replayRunoutPhase === "turn" || replayRunoutPhase === "river";
   const cardFocusClass = (card: string, selectedCards: ReadonlySet<string> | undefined): string => {
     if (!bestFiveFocusActive) return "";
@@ -717,6 +724,29 @@ export function LiveFelt({
               );
             })}
           </div>
+          {showdownRankingVisible && (
+            <div
+              data-testid="felt-showdown-ranking"
+              role="status"
+              aria-live="polite"
+              className="tracker-showdown-result mt-2 flex max-w-full flex-col items-center gap-0.5 rounded-full border border-[hsl(var(--poker-gold)/0.52)] bg-black/65 px-3 py-1 text-center shadow-[0_0_18px_hsl(var(--poker-gold)/0.18)]"
+            >
+              {showdownPresentation.isChop && (
+                <span className="tracker-display text-[8px] font-black uppercase tracking-[0.18em] text-[hsl(var(--poker-gold)/0.82)]">
+                  {t("liveHub.felt.chopPot", "Chop pot")}
+                </span>
+              )}
+              {showdownPresentation.winners.map((winner) => (
+                <span
+                  key={winner.playerId}
+                  data-testid={`felt-showdown-ranking-${winner.playerId}`}
+                  className="tracker-display max-w-full truncate text-[10px] font-black leading-tight text-[hsl(var(--poker-gold))] sm:text-[11px]"
+                >
+                  {winner.rankingText}
+                </span>
+              ))}
+            </div>
+          )}
           {/* Compact portrait: the pot lives in the STATUS BAR below (RPT pattern) — the
               short felt keeps only the board centered, so 9-max pods never collide. */}
           {potSize > 0 && !(compactActive && portrait) && (
