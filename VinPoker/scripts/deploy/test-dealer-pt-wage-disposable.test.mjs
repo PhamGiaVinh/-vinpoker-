@@ -16,6 +16,8 @@ const payrollFixtures = [
   "dealer_pt_global_continuous_accrual_readiness_acl_setup.sql",
   "dealer_pt_global_continuous_accrual_readiness_acl.sql",
   "dealer_pt_global_continuous_accrual_concurrency.sql",
+  "dealer_payroll_statements.sql",
+  "dealer_payroll_statements_concurrency.sql",
 ];
 
 test("PT wage disposable runner applies the exact payroll migration chain", () => {
@@ -25,12 +27,27 @@ test("PT wage disposable runner applies the exact payroll migration chain", () =
   assert.match(runner, /Invoke-ContainerPsql '\/tmp\/activation-gap\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/v2\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/activation-ready\.sql'/);
   assert.match(runner, /Invoke-ContainerPsql '\/tmp\/v2\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/lifecycle\.sql'/);
   assert.match(runner, /Invoke-ContainerPsql '\/tmp\/readiness-acl-setup\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/readiness-acl-repair\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/readiness-acl\.sql'/);
+  assert.match(runner, /Invoke-ContainerPsql '\/tmp\/payroll-statements-v1\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-statements-v1\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-statements\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-statements-concurrency\.sql'/);
   assert.equal(
     [...runner.matchAll(/Invoke-ContainerPsql '\/tmp\/readiness-acl-repair\.sql'/g)].length,
     2,
     "readiness ACL repair is applied twice in the disposable proof",
   );
   assert.match(runner, /verify-dealer-pt-wage-migration-inventory\.mjs/);
+});
+
+test("payroll statement disposable fixtures exercise immutable statement and PT reservation paths", () => {
+  const migration = readFileSync(
+    resolve(root, "supabase/migrations/20270112000000_dealer_payroll_statements_v1.sql"),
+    "utf8",
+  );
+  const lifecycle = readFileSync(resolve(root, "supabase/tests/dealer_payroll_statements.sql"), "utf8");
+
+  assert.match(migration, /create table if not exists public\.dealer_payroll_statements/i);
+  assert.match(migration, /create table if not exists public\.dealer_pt_wage_settlements/i);
+  assert.match(migration, /pay_finalized_part_time_payroll_statement/i);
+  assert.match(lifecycle, /PT_FINALIZED_STATEMENT_PENDING_PAYMENT/);
+  assert.match(lifecycle, /later source-row mutation cannot recalculate an existing statement/);
 });
 
 test("readiness helper ACL repair is transaction-wrapped and cannot write payroll data", () => {
