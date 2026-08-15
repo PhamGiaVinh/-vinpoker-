@@ -13,6 +13,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { buildVietQrPayload } from "@/lib/vietqr";
 import { normalizeBankNameToBin } from "@/lib/vietnamBanks";
 import { FEATURES } from "@/lib/featureFlags";
+import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
+import { fetchBuyinReceipt, toSeatReceiptData, type BuyinReceiptSnapshot } from "@/components/tournament/seat/buyinReceipt";
 
 interface RegInfo {
   registration_id: string;
@@ -33,6 +35,9 @@ interface RegInfo {
   savings?: number;
 }
 
+type EdgeErrorBody = { error?: string };
+type ErrorWithJsonContext = { context?: { json?: () => Promise<unknown> } };
+
 interface Props {
   tournamentId: string;
   tournamentName: string;
@@ -45,6 +50,7 @@ interface Props {
 }
 
 const TIMEOUT_MS = 30 * 60 * 1000;
+const RECEIPT_POLL_MS = 10_000;
 
 const useCountdown = (deadline: number) => {
   const [remaining, setRemaining] = useState(Math.max(0, deadline - Date.now()));
@@ -67,12 +73,22 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
   const [cancelling, setCancelling] = useState(false);
   const [proofUrl, setProofUrl] = useState<string | null>(null);
   const [proofSubmitted, setProofSubmitted] = useState(false);
+  const [confirmedReceipt, setConfirmedReceipt] = useState<BuyinReceiptSnapshot | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const onCloseRef = useRef(onClose);
+  const translateRef = useRef(t);
+  onCloseRef.current = onClose;
+  translateRef.current = t;
+  const userId = user?.id;
 
   useEffect(() => {
-    if (!open || !user) return;
+    if (!open || !userId) return;
     let mounted = true;
     (async () => {
+      setInfo(null);
+      setConfirmedReceipt(null);
+      setProofUrl(null);
+      setProofSubmitted(false);
       setLoading(true);
       const { data, error } = await supabase.functions.invoke(
         mode === "reentry" ? "tournament-reentry" : "tournament-register",
@@ -80,17 +96,21 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
       );
       if (!mounted) return;
       setLoading(false);
-      if (error || (data as any)?.error) {
+      const response = data as EdgeErrorBody | null;
+      if (error || response?.error) {
         // supabase-js reports any non-2xx as a generic "Edge Function returned a
         // non-2xx status code" and drops the body — surface the real reason
         // (e.g. "Giải đã bắt đầu hoặc kết thúc.") from the response context.
-        let msg = (data as any)?.error ?? error?.message ?? t("tournamentRegister.regError");
-        const ctx = (error as any)?.context;
+        let msg = response?.error ?? error?.message ?? translateRef.current("tournamentRegister.regError");
+        const ctx = (error as ErrorWithJsonContext | null)?.context;
         if (ctx && typeof ctx.json === "function") {
-          try { const b = await ctx.json(); if (b?.error) msg = b.error; } catch { /* keep generic */ }
+          try {
+            const body = await ctx.json() as EdgeErrorBody;
+            if (body?.error) msg = body.error;
+          } catch { /* keep generic */ }
         }
         toast.error(msg);
-        onClose();
+        onCloseRef.current();
         return;
       }
       const r = data as RegInfo;
@@ -101,7 +121,28 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
       window.dispatchEvent(new Event("vinpoker:registration-changed"));
     })();
     return () => { mounted = false; };
-  }, [open, tournamentId, user?.id, mode]);
+  }, [open, tournamentId, userId, mode]);
+
+  // Polls only the read-only receipt endpoint while this payment dialog is open.
+  // Do not call tournament-register again here: it can consume a free-rake slot.
+  useEffect(() => {
+    if (!open || !info?.registration_id || confirmedReceipt) return;
+    let current = true;
+    const refreshReceipt = async () => {
+      const snapshot = await fetchBuyinReceipt({ registrationId: info.registration_id });
+      if (!current || !snapshot || snapshot.status !== "confirmed" || !snapshot.receipt_code) return;
+      setConfirmedReceipt(snapshot);
+      window.dispatchEvent(new Event("vinpoker:registration-changed"));
+    };
+    void refreshReceipt();
+    const interval = window.setInterval(() => { void refreshReceipt(); }, RECEIPT_POLL_MS);
+    const timeout = window.setTimeout(() => window.clearInterval(interval), TIMEOUT_MS);
+    return () => {
+      current = false;
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+    };
+  }, [open, info?.registration_id, confirmedReceipt]);
 
 
   const transferContent = info ? `VINPoker ${info.reference_code}` : "";
@@ -126,7 +167,7 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
     } catch {
       return null;
     }
-  }, [info?.account_number, info?.total_pay, info?.reference_code, info?.bank_name, info?.bank_bin]);
+  }, [info]);
 
   const copy = (txt: string, lbl: string) => {
     navigator.clipboard.writeText(txt);
@@ -160,8 +201,8 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
       if (updErr) throw updErr;
       setProofUrl(url);
       toast.success(t("tournamentRegister.proofUploaded"));
-    } catch (e: any) {
-      toast.error(e.message ?? t("tournamentRegister.uploadFailed"));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("tournamentRegister.uploadFailed"));
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -198,6 +239,16 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
     window.dispatchEvent(new Event("vinpoker:registration-changed"));
     onClose();
   };
+
+  if (confirmedReceipt) {
+    return (
+      <SeatReceiptDialog
+        open={open}
+        onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}
+        receipt={toSeatReceiptData(confirmedReceipt)}
+      />
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
