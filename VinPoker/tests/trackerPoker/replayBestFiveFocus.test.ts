@@ -251,6 +251,8 @@ describe("resolveVerifiedBestFiveFocus", () => {
     expect(result.enabled).toBe(true);
     expect(result.winners.map((winner) => winner.playerId)).toEqual(["tom"]);
     expect(result.focus.winnerPlayerIds.has("phil")).toBe(false);
+    expect(result.potLayers.map((pot) => `${pot.kind}:${pot.amount}`)).toEqual(["main:10000", "side:10000"]);
+    expect(result.potLayers[0].allocations).toEqual([{ playerId: "tom", amount: 10_000 }]);
   });
 
   it("keeps a player with both a pot award and refund in the verified winner set", () => {

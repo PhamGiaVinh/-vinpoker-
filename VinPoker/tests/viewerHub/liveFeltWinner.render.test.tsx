@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LiveFelt, type SeatInfo } from "@/components/cashier/tournament-live/LiveFelt";
-import type { BestFiveFocus } from "@/lib/tracker-poker/replayBestFiveFocus";
+import type { BestFiveFocus, VerifiedShowdownPresentation } from "@/lib/tracker-poker/replayBestFiveFocus";
 
 function seat(overrides: Partial<SeatInfo>): SeatInfo {
   return {
@@ -46,6 +46,31 @@ const focus: BestFiveFocus = {
   winnerPlayerIds: new Set(["tom"]),
   boardCardCodes: new Set(["Jc", "Js", "Ah"]),
   holeCardCodesByPlayerId: new Map([["tom", new Set(["Jd", "Jh"])]]),
+};
+
+const showdownPresentation: VerifiedShowdownPresentation = {
+  enabled: true,
+  handId: "hand-1",
+  frameIndex: 7,
+  isChop: false,
+  potLayers: [{
+    potId: "main-1",
+    kind: "main",
+    amount: 20_000,
+    winnerPlayerIds: ["tom"],
+    allocations: [{ playerId: "tom", amount: 20_000 }],
+  }],
+  winners: [{
+    playerId: "tom",
+    playerName: "Tom Dwan",
+    seatNumber: 1,
+    category: "four_of_a_kind",
+    bestFive: ["Jd", "Jh", "Jc", "Js", "Ah"],
+    kickers: ["A"],
+    rankingText: "Four Jacks - Ace kicker",
+    holeBestFive: new Set(["Jd", "Jh"]),
+  }],
+  focus,
 };
 
 const baseProps = {
@@ -97,6 +122,35 @@ describe("LiveFelt verified best-five focus", () => {
     expect(html).toContain("100 BB");
   });
 
+  it("shows verified ranking in the center only during the winner phase", () => {
+    const html = renderToStaticMarkup(
+      <LiveFelt
+        {...baseProps}
+        tableFx
+        bestFiveFocus={focus}
+        showdownPresentation={showdownPresentation}
+        bestFiveFocusPhase="static"
+        showdownResult="winner"
+      />,
+    );
+
+    expect(html).toContain('data-testid="felt-showdown-ranking"');
+    expect(html).toContain('data-testid="felt-showdown-ranking-tom"');
+    expect(html).toContain(showdownPresentation.winners[0].rankingText);
+
+    const dimmed = renderToStaticMarkup(
+      <LiveFelt
+        {...baseProps}
+        tableFx
+        bestFiveFocus={focus}
+        showdownPresentation={showdownPresentation}
+        bestFiveFocusPhase="dim"
+        showdownResult="winner"
+      />,
+    );
+    expect(dimmed).not.toContain('data-testid="felt-showdown-ranking"');
+  });
+
   it("does not apply card focus when the derived focus is disabled", () => {
     const html = renderToStaticMarkup(
       <LiveFelt {...baseProps} tableFx bestFiveFocus={{ ...focus, enabled: false }} />,
@@ -127,5 +181,76 @@ describe("LiveFelt verified best-five focus", () => {
     expect(html).not.toContain("tracker-win-glow");
     expect(html).not.toContain("Hoàn");
     expect(html).not.toContain("+5k");
+  });
+
+  it("collects committed chips, then awards only the active verified pot recipient", () => {
+    const sideWinner = seat({
+      player_id: "side",
+      display_name: "Side winner",
+      seat_number: 3,
+      hole_cards: ["Ks", "Qs"],
+      is_all_in: true,
+      display_committed_bet: 8_000,
+    });
+    const layeredPresentation: VerifiedShowdownPresentation = {
+      ...showdownPresentation,
+      potLayers: [
+        showdownPresentation.potLayers[0],
+        {
+          potId: "side-1",
+          kind: "side",
+          amount: 8_000,
+          winnerPlayerIds: ["side"],
+          allocations: [{ playerId: "side", amount: 8_000 }],
+        },
+      ],
+    };
+    const collecting = renderToStaticMarkup(
+      <LiveFelt
+        {...baseProps}
+        seats={[{ ...winner, is_all_in: true, display_committed_bet: 12_000 }, sideWinner]}
+        tableFx
+        viewerLayout
+        bestFiveFocus={focus}
+        showdownPresentation={layeredPresentation}
+        replayRunoutPhase="pot_collect"
+        replayRunoutPresentation={{ key: "hand-1:7:verified", phase: "pot_collect", visibleBoardCount: 5, potAwardIndex: null }}
+      />,
+    );
+    expect(collecting).toContain('data-testid="felt-settlement-payout-motion"');
+    expect((collecting.match(/data-testid="felt-settlement-collect-chip"/g) ?? []).length).toBe(4);
+    expect(collecting).not.toContain('data-testid="felt-settlement-award-tom"');
+
+    const mainAward = renderToStaticMarkup(
+      <LiveFelt
+        {...baseProps}
+        seats={[{ ...winner, is_all_in: true, display_committed_bet: 12_000 }, sideWinner]}
+        tableFx
+        viewerLayout
+        bestFiveFocus={focus}
+        showdownPresentation={layeredPresentation}
+        replayRunoutPhase="pot_award"
+        replayRunoutPresentation={{ key: "hand-1:7:verified", phase: "pot_award", visibleBoardCount: 5, potAwardIndex: 0 }}
+      />,
+    );
+    expect((mainAward.match(/data-testid="felt-settlement-award-tom"/g) ?? []).length).toBe(3);
+    expect(mainAward).not.toContain('data-testid="felt-settlement-award-side"');
+    expect((mainAward.match(/tracker-win-glow/g) ?? []).length).toBe(1);
+
+    const sideAward = renderToStaticMarkup(
+      <LiveFelt
+        {...baseProps}
+        seats={[{ ...winner, is_all_in: true, display_committed_bet: 12_000 }, sideWinner]}
+        tableFx
+        viewerLayout
+        bestFiveFocus={focus}
+        showdownPresentation={layeredPresentation}
+        replayRunoutPhase="pot_award"
+        replayRunoutPresentation={{ key: "hand-1:7:verified", phase: "pot_award", visibleBoardCount: 5, potAwardIndex: 1 }}
+      />,
+    );
+    expect((sideAward.match(/data-testid="felt-settlement-award-side"/g) ?? []).length).toBe(3);
+    expect(sideAward).not.toContain('data-testid="felt-settlement-award-tom"');
+    expect((sideAward.match(/tracker-win-glow/g) ?? []).length).toBe(1);
   });
 });

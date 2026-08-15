@@ -8,13 +8,14 @@ import {
   playPokerLiveSound,
   setPokerSoundMuted,
   isPokerSoundMuted,
+  pokerSoundVolumeFor,
   type PokerLiveSound,
 } from "@/lib/pokerLiveSound";
 
 const ALL: PokerLiveSound[] = [
   "deal", "fold", "check", "call", "bet", "raise", "all_in",
   "post_sb", "post_bb", "post_ante",
-  "deal_flop", "deal_turn", "deal_river", "fold_muck", "chip",
+  "deal_flop", "deal_turn", "deal_river", "fold_muck", "chip", "pot_collect", "pot_award",
 ];
 
 afterEach(() => setPokerSoundMuted(false));
@@ -31,5 +32,20 @@ describe("pokerLiveSound — FX safety contract", () => {
     for (const k of ["deal_flop", "deal_turn", "deal_river", "fold_muck", "chip"] as PokerLiveSound[]) {
       expect(() => playPokerLiveSound(k)).not.toThrow();
     }
+  });
+
+  it("keeps the quiet source clips above the reused bet clip without clipping", () => {
+    expect(pokerSoundVolumeFor("deal_flop", "tracker")).toBeGreaterThan(pokerSoundVolumeFor("call", "tracker"));
+    expect(pokerSoundVolumeFor("deal_turn", "tracker")).toBeGreaterThan(pokerSoundVolumeFor("bet", "tracker"));
+    expect(pokerSoundVolumeFor("all_in", "tracker")).toBeGreaterThan(pokerSoundVolumeFor("call", "tracker"));
+    for (const kind of ALL) {
+      expect(pokerSoundVolumeFor(kind, "tracker")).toBeGreaterThan(0);
+      expect(pokerSoundVolumeFor(kind, "tracker")).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("leaves the legacy Online Poker source levels unchanged", () => {
+    expect(pokerSoundVolumeFor("deal")).toBe(0.32);
+    expect(pokerSoundVolumeFor("all_in")).toBe(0.4);
   });
 });

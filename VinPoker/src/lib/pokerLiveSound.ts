@@ -20,7 +20,9 @@ export type PokerLiveSound =
   | "chip"
   // C4 (trackerActionSounds) — chips gathered into the pot on a street change /
   // hand end. Only ever fired by flag-gated callers.
-  | "pot_collect";
+  | "pot_collect"
+  /** Ascending chip accent when one verified Main/Side Pot reaches its winner(s). */
+  | "pot_award";
 
 const MP3_BY_KIND: Partial<Record<PokerLiveSound, string>> = {
   deal: "/sounds/poker/deal-card.mp3",
@@ -91,8 +93,8 @@ function ensureGestureListeners() {
   window.addEventListener("touchstart", markGesture, { passive: true });
 }
 
-function canPlay(kind: PokerLiveSound) {
-  if (muted) return false;
+function canPlay(kind: PokerLiveSound, bypassStoredMute = false) {
+  if (muted && !bypassStoredMute) return false;
   if (typeof window === "undefined" || typeof document === "undefined") return false;
   ensureGestureListeners();
   const now = Date.now();
@@ -104,6 +106,15 @@ function canPlay(kind: PokerLiveSound) {
   return userGestureSeen;
 }
 
+export type PokerLiveSoundProfile = "legacy" | "tracker";
+
+type PokerLiveSoundOptions = {
+  /** Tracker owns a separate mute preference from the Online Poker table. */
+  bypassStoredMute?: boolean;
+  /** Keeps replay loudness normalization scoped to the Tracker. */
+  profile?: PokerLiveSoundProfile;
+};
+
 function playbackRateFor(kind: PokerLiveSound) {
   if (kind === "raise") return 1.05;
   if (kind === "all_in") return 1.12;
@@ -111,20 +122,48 @@ function playbackRateFor(kind: PokerLiveSound) {
   return 1;
 }
 
+/** Normalizes the supplied library clips to a consistent Tracker replay level. */
+export function pokerSoundVolumeFor(kind: PokerLiveSound, profile: PokerLiveSoundProfile = "legacy"): number {
+  // Other Poker surfaces retain their existing source levels. Tracker explicitly
+  // opts into this profile because its recorded clips have a much lower master.
+  if (profile !== "tracker") return kind === "deal" ? 0.32 : 0.4;
+  switch (kind) {
+    case "deal": return 0.7;
+    case "call": return 0.34;
+    case "bet": return 0.36;
+    case "raise": return 0.4;
+    case "all_in": return 0.44;
+    case "post_sb":
+    case "post_bb":
+    case "post_ante": return 0.29;
+    case "check": return 0.7;
+    case "fold":
+    case "fold_muck": return 0.56;
+    case "deal_flop": return 0.82;
+    case "deal_turn":
+    case "deal_river": return 0.9;
+    case "pot_collect": return 0.65;
+    default: return 0.4;
+  }
+}
+
 // Kinds with a synth voice to fall back to when an MP3 fails to load/play. The
 // enriched kinds only reach playMp3 via the flag-gated tracker map, so flag-OFF
 // behavior is unchanged (fold/check keep their legacy fallback).
 const SYNTH_FALLBACK_KINDS = new Set<PokerLiveSound>([
-  "fold", "check", "deal_flop", "deal_turn", "deal_river", "fold_muck", "chip", "pot_collect",
+  "fold", "check", "deal_flop", "deal_turn", "deal_river", "fold_muck", "chip", "pot_collect", "pot_award",
 ]);
 
-function playMp3(kind: PokerLiveSound, src: string) {
+function playMp3(kind: PokerLiveSound, src: string, profile: PokerLiveSoundProfile) {
   const audio = new Audio(src);
-  audio.volume = kind === "deal" ? 0.32 : 0.4;
+  audio.volume = pokerSoundVolumeFor(kind, profile);
   audio.playbackRate = playbackRateFor(kind);
   void audio.play().catch(() => {
     if (SYNTH_FALLBACK_KINDS.has(kind)) playSynth(kind);
   });
+  // The base bet clip is intentionally reused for action consistency. A quiet
+  // semantic accent differentiates raise/all-in without adding an asset/runtime.
+  if (kind === "raise" || kind === "all_in") playSynth(kind);
 }
 
 /** Single lazy AudioContext (never create a second one). */
@@ -180,9 +219,7 @@ function noiseBurst(
   };
 }
 
-function playSynth(kind: PokerLiveSound) {
-  const ctx = ensureCtx();
-  if (!ctx) return;
+function playSynthOnContext(ctx: AudioContext, kind: PokerLiveSound) {
   try {
     const now = ctx.currentTime;
     switch (kind) {
@@ -214,6 +251,22 @@ function playSynth(kind: PokerLiveSound) {
         noiseBurst(ctx, now + 0.11, 0.012, 3400, 2.5, 0.1);
         noiseBurst(ctx, now + 0.18, 0.05, 2400, 1.5, 0.09, 1400);
         return;
+      // A pot award rises rather than gathers. It is intentionally lower than
+      // action audio so a Main/Side Pot sequence stays legible instead of noisy.
+      case "pot_award":
+        noiseBurst(ctx, now, 0.012, 3100, 3, 0.1, 3900);
+        noiseBurst(ctx, now + 0.055, 0.011, 3900, 3.2, 0.09, 4700);
+        noiseBurst(ctx, now + 0.11, 0.014, 4800, 3.4, 0.1, 5600);
+        return;
+      case "raise":
+        noiseBurst(ctx, now, 0.012, 3000, 3, 0.055, 3900);
+        noiseBurst(ctx, now + 0.06, 0.012, 4100, 3, 0.06, 5100);
+        return;
+      case "all_in":
+        noiseBurst(ctx, now, 0.013, 2600, 2.8, 0.07, 3500);
+        noiseBurst(ctx, now + 0.055, 0.014, 3700, 3, 0.075, 4800);
+        noiseBurst(ctx, now + 0.12, 0.018, 4900, 3.2, 0.08, 6100);
+        return;
       // Legacy tones (unchanged): fold beep / check tick.
       default: {
         const osc = ctx.createOscillator();
@@ -241,15 +294,27 @@ function playSynth(kind: PokerLiveSound) {
   }
 }
 
+function playSynth(kind: PokerLiveSound) {
+  const ctx = ensureCtx();
+  if (!ctx || ctx.state === "closed") return;
+  if (ctx.state === "suspended") {
+    void ctx.resume().then(() => playSynthOnContext(ctx, kind)).catch(() => {
+      // Browser audio can be blocked; the tracker must continue silently.
+    });
+    return;
+  }
+  playSynthOnContext(ctx, kind);
+}
+
 export function markPokerSoundGesture() {
   userGestureSeen = true;
 }
 
-export function playPokerLiveSound(kind: PokerLiveSound) {
-  if (!canPlay(kind)) return;
+export function playPokerLiveSound(kind: PokerLiveSound, options?: PokerLiveSoundOptions) {
+  if (!canPlay(kind, options?.bypassStoredMute === true)) return;
   const src = mp3SrcFor(kind);
   if (src) {
-    playMp3(kind, src);
+    playMp3(kind, src, options?.profile ?? "legacy");
     return;
   }
   playSynth(kind);

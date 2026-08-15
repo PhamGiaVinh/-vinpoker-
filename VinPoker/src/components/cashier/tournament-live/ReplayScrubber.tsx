@@ -17,7 +17,7 @@ import {
 import type { VerifiedShowdownPresentation } from "@/lib/tracker-poker/replayBestFiveFocus";
 import {
   createReplayRunoutPresentation,
-  nextReplayRunoutPhase,
+  nextReplayRunoutPresentation,
   replayRunoutPhaseDuration,
   replayRunoutShowsSummary,
   type ReplayRunoutPresentation,
@@ -121,6 +121,7 @@ export function ReplayScrubber({
     && showdownPresentation?.enabled === true
     && frames[lastIndex]?.revealHoleCards === true
     && sortedActions.some((action) => action.action_type === "all_in");
+  const verifiedPotLayerCount = hasCinematicAllInRunout ? (showdownPresentation?.potLayers.length ?? 0) : 0;
   const publishRunoutPresentation = useCallback((presentation: ReplayRunoutPresentation | null) => {
     setRunoutPresentation(presentation);
     onRunoutPresentation?.(presentation);
@@ -156,7 +157,8 @@ export function ReplayScrubber({
       const timer = window.setTimeout(() => {
         frameSourceRef.current = "playback";
         if (enteringCinematicRunout) {
-          publishRunoutPresentation(createReplayRunoutPresentation(runoutKey, "hole_hold"));
+          const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+          publishRunoutPresentation(createReplayRunoutPresentation(runoutKey, reducedMotion ? "static" : "hole_hold"));
         }
         setStep((currentStep) => Math.min(lastIndex, currentStep + 1));
       }, 1000 / speed);
@@ -167,17 +169,17 @@ export function ReplayScrubber({
       setIsPlaying(false);
       return;
     }
-    const nextPhase = nextReplayRunoutPhase(runoutPresentation.phase);
-    if (!nextPhase) {
+    const nextPresentation = nextReplayRunoutPresentation(runoutPresentation, verifiedPotLayerCount);
+    if (!nextPresentation) {
       setIsPlaying(false);
       return;
     }
     const timer = window.setTimeout(() => {
-      publishRunoutPresentation(createReplayRunoutPresentation(runoutKey, nextPhase));
-      if (nextPhase === "static") setIsPlaying(false);
+      publishRunoutPresentation(nextPresentation);
+      if (nextPresentation.phase === "static") setIsPlaying(false);
     }, replayRunoutPhaseDuration(runoutPresentation.phase, speed));
     return () => window.clearTimeout(timer);
-  }, [hasCinematicAllInRunout, isPlaying, lastIndex, publishRunoutPresentation, runoutKey, runoutPresentation, speed, step]);
+  }, [hasCinematicAllInRunout, isPlaying, lastIndex, publishRunoutPresentation, runoutKey, runoutPresentation, speed, step, verifiedPotLayerCount]);
 
   const pauseTo = (nextStep: number) => {
     frameSourceRef.current = "scrub";
