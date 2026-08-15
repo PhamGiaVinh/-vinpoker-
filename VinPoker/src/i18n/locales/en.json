@@ -641,6 +641,7 @@
     "unverified": "Unverified",
     "soldFraction": "Sold",
     "remaining": "{{n}}% left",
+    "remainingLabel": "Left",
     "confirmedCount": "{{n}} confirmed",
     "pendingCount": "{{n}} pending payment",
     "minPurchaseHint": "Min buy {{min}}% · from {{price}}",

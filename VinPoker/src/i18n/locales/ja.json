@@ -517,6 +517,7 @@
     "unverified": "未確認",
     "soldFraction": "販売済み",
     "remaining": "残り {{n}}%",
+    "remainingLabel": "残り",
     "confirmedCount": "{{n}} 確認済み",
     "pendingCount": "{{n}} 支払い待ち",
     "minPurchaseHint": "最低購入 {{min}}% · 初期価格 {{price}}",

@@ -517,6 +517,7 @@
     "unverified": "ยังไม่ได้ตรวจสอบ",
     "soldFraction": "ขายแล้ว",
     "remaining": "เหลือ {{n}}%",
+    "remainingLabel": "เหลือ",
     "confirmedCount": "{{n}} ได้รับการยืนยัน",
     "pendingCount": "{{n}} รอการชำระเงิน",
     "minPurchaseHint": "ซื้อขั้นต่ำ {{min}}% · เริ่มต้นที่ {{price}}",

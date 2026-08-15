@@ -457,6 +457,7 @@
     "unverified": "미인증",
     "soldFraction": "판매 완료",
     "remaining": "{{n}}% 남음",
+    "remainingLabel": "남음",
     "confirmedCount": "{{n}}개 확인됨",
     "pendingCount": "{{n}}개 결제 대기 중",
     "minPurchaseHint": "최소 구매 {{min}}% · {{price}}부터",
