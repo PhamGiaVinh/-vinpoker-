@@ -206,6 +206,7 @@ export function TournamentLiveView({
   const replayFxRef = useRef<{ index: number | null; board: number }>({ index: null, board: 0 });
   const replayChipSeqRef = useRef(0);
   const replayMotionFrameRef = useRef<ReplayFrame | null>(null);
+  const replaySettlementSoundRef = useRef<string | null>(null);
   const previousLiveHandRef = useRef<string | null>(null);
 
   const enqueueTableMotion = useCallback((events: TableMotionEvent[]) => {
@@ -737,11 +738,11 @@ export function TournamentLiveView({
     // Sound — unchanged detection (new action by count, respects mute).
     if (!soundMuted && prev !== null && count > prev && last && SOUND_KINDS.has(last.action_type)) {
       if (FEATURES.liveTableFx && last.action_type === "fold") {
-        playPokerLiveSound("fold_muck"); // card-muck swoosh instead of the legacy beep
+        playPokerLiveSound("fold_muck", { bypassStoredMute: true, profile: "tracker" }); // card-muck swoosh instead of the legacy beep
       } else {
-        playPokerLiveSound(last.action_type as PokerLiveSound);
+        playPokerLiveSound(last.action_type as PokerLiveSound, { bypassStoredMute: true, profile: "tracker" });
         if (FEATURES.liveTableFx && CHIP_ACTIONS.has(last.action_type)) {
-          playPokerLiveSound("chip"); // crisp chip clink layered over the bet mp3
+          playPokerLiveSound("chip", { bypassStoredMute: true, profile: "tracker" }); // crisp chip clink layered over the bet mp3
         }
       }
     }
@@ -789,13 +790,13 @@ export function TournamentLiveView({
     // guard above IS the dedupe (fires once per board growth; polling echoes and
     // re-renders keep count unchanged and return early).
     if (!soundMuted) {
-      if (FEATURES.trackerActionSounds) playPokerLiveSound("pot_collect");
+      if (FEATURES.trackerActionSounds) playPokerLiveSound("pot_collect", { bypassStoredMute: true, profile: "tracker" });
       if (FEATURES.liveTableFx || FEATURES.trackerActionSounds) {
         // flop riffles in (deal_flop = 3 bursts), turn/river = a single card — with
         // trackerActionSounds on, these kinds resolve to the owner's MP3 clips.
-        playPokerLiveSound(count >= 5 ? "deal_river" : count === 4 ? "deal_turn" : "deal_flop");
+        playPokerLiveSound(count >= 5 ? "deal_river" : count === 4 ? "deal_turn" : "deal_flop", { bypassStoredMute: true, profile: "tracker" });
       } else {
-        playPokerLiveSound("deal");
+        playPokerLiveSound("deal", { bypassStoredMute: true, profile: "tracker" });
       }
     }
     if (FEATURES.liveTableMotionV2 && spectator && mode === "live" && handId) {
@@ -843,9 +844,9 @@ export function TournamentLiveView({
     });
 
     if (!soundMuted) {
-      if (fx.deal) playPokerLiveSound(fx.deal);
-      if (fx.action) playPokerLiveSound(fx.action);
-      if (fx.chipClink) playPokerLiveSound("chip");
+      if (fx.deal) playPokerLiveSound(fx.deal, { bypassStoredMute: true, profile: "tracker" });
+      if (fx.action) playPokerLiveSound(fx.action, { bypassStoredMute: true, profile: "tracker" });
+      if (fx.chipClink) playPokerLiveSound("chip", { bypassStoredMute: true, profile: "tracker" });
     }
     // Chip-push is visual + viewer-only (spectator); a monotonic seq keeps the nonce
     // unique even when the same hand is replayed twice.
@@ -960,6 +961,30 @@ export function TournamentLiveView({
     && replayRunoutPresentation?.key.startsWith(`${selectedReplayHandKey}:${selectedReplayHand.actions.length}:`)
     ? replayRunoutPresentation
     : null;
+  // The HUD owns the verified payout cadence. One key per phase/layer prevents
+  // polling, rerenders, and a fast scrub from replaying the collect/award sound.
+  useEffect(() => {
+    if (
+      mode !== "replay"
+      || !spectator
+      || !FEATURES.liveReplayHud
+      || !FEATURES.liveTableMotionV2
+      || !replayRunoutForSelectedHand
+      || (replayRunoutForSelectedHand.phase !== "pot_collect" && replayRunoutForSelectedHand.phase !== "pot_award")
+    ) {
+      replaySettlementSoundRef.current = null;
+      return;
+    }
+    const soundKey = `${replayRunoutForSelectedHand.key}:${replayRunoutForSelectedHand.phase}:${replayRunoutForSelectedHand.potAwardIndex ?? ""}`;
+    if (replaySettlementSoundRef.current === soundKey) return;
+    replaySettlementSoundRef.current = soundKey;
+    if (!soundMuted) {
+      playPokerLiveSound(replayRunoutForSelectedHand.phase === "pot_collect" ? "pot_collect" : "pot_award", {
+        bypassStoredMute: true,
+        profile: "tracker",
+      });
+    }
+  }, [mode, replayRunoutForSelectedHand, soundMuted, spectator]);
   const replayFocusPhase = replayRunoutFocusPhase(replayRunoutForSelectedHand?.phase ?? (
     replayShowdownPresentation?.enabled ? "static" : null
   ));
@@ -1581,6 +1606,9 @@ export function TournamentLiveView({
               bestFiveFocusPhase={replayFocusPhase}
               replayRunoutPhase={spectator && isReplay && FEATURES.liveReplayHud
                 ? replayRunoutForSelectedHand?.phase ?? null
+                : null}
+              replayRunoutPresentation={spectator && isReplay && FEATURES.liveReplayHud
+                ? replayRunoutForSelectedHand
                 : null}
             />
           )}

@@ -21,7 +21,7 @@ import { FEATURES } from "@/lib/featureFlags";
 const ALL_KINDS: PokerLiveSound[] = [
   "deal", "fold", "check", "call", "bet", "raise", "all_in",
   "post_sb", "post_bb", "post_ante",
-  "deal_flop", "deal_turn", "deal_river", "fold_muck", "chip", "pot_collect",
+  "deal_flop", "deal_turn", "deal_river", "fold_muck", "chip", "pot_collect", "pot_award",
 ];
 
 // Today's mapping, spelled out (a copy, NOT a re-import — so a regression in the
@@ -61,6 +61,7 @@ describe("mp3SrcFor (C4)", () => {
     expect(mp3SrcFor("deal_turn")).toBe("/sounds/tracker/deal-turn-river.mp3");
     expect(mp3SrcFor("deal_river")).toBe("/sounds/tracker/deal-turn-river.mp3");
     expect(mp3SrcFor("pot_collect")).toBe("/sounds/tracker/pot-collect.mp3");
+    expect(mp3SrcFor("pot_award")).toBeUndefined();
     // Owner decision: the bet family keeps the existing clip.
     for (const kind of ["bet", "call", "raise", "all_in", "post_sb", "post_bb"] as const) {
       expect(mp3SrcFor(kind), kind).toBe("/sounds/poker/poker-bet.mp3");

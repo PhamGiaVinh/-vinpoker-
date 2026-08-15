@@ -515,6 +515,20 @@ export function TrackerVisualStyles() {
           16% { opacity: 1; }
           to { transform: translate(var(--tm-dx), var(--tm-dy)) scale(.9); opacity: 0; }
         }
+        @keyframes tracker-settlement-collect {
+          from { transform: translate(-50%, -50%) scale(.82); opacity: 1; }
+          65% { opacity: 1; }
+          to { transform: translate(-50%, -50%) translate(var(--sp-dx), var(--sp-dy)) scale(.72); opacity: 0; }
+        }
+        @keyframes tracker-settlement-award {
+          from { transform: translate(-50%, -50%) scale(.72); opacity: 0; }
+          18% { opacity: 1; }
+          to { transform: translate(-50%, -50%) translate(var(--sp-dx), var(--sp-dy)) scale(.96); opacity: 0; }
+        }
+        @keyframes tracker-settlement-award-label {
+          from { transform: translate(-50%, -32%) scale(.86); opacity: 0; }
+          to { transform: translate(-50%, -90%) scale(1); opacity: 1; }
+        }
         .tracker-card-reveal { animation: tracker-card-reveal .36s cubic-bezier(.2,.7,.2,1) both; }
         .tracker-seat-pop { animation: tracker-seat-pop .22s ease-out both; }
         .tracker-pot-pulse { animation: tracker-pot-pulse 1.4s ease-in-out infinite; }
@@ -592,6 +606,33 @@ export function TrackerVisualStyles() {
           animation-name: tracker-motion-award; animation-fill-mode: both;
           animation-timing-function: cubic-bezier(.22,1,.36,1);
         }
+        .tracker-settlement-chip {
+          position: absolute;
+          width: clamp(8px, 2.2cqi, 15px);
+          aspect-ratio: 1;
+          border-radius: 9999px;
+          background: radial-gradient(circle at 35% 30%, #fff0a8, #e7a83d 52%, #8b5212 100%);
+          box-shadow: 0 0 0 1px rgba(255,255,255,.24), 0 2px 7px rgba(0,0,0,.56), 0 0 10px rgba(247,182,54,.32);
+          pointer-events: none;
+          animation-fill-mode: both;
+          animation-timing-function: cubic-bezier(.22,.82,.28,1);
+        }
+        .tracker-settlement-chip-collect { animation-name: tracker-settlement-collect; animation-duration: 420ms; }
+        .tracker-settlement-chip-award { animation-name: tracker-settlement-award; animation-duration: 560ms; }
+        .tracker-settlement-award-label {
+          border: 1px solid hsl(var(--viewer-neon) / .75);
+          border-radius: 9999px;
+          background: rgba(2,12,8,.88);
+          box-shadow: 0 0 14px hsl(var(--viewer-neon) / .3);
+          color: hsl(var(--viewer-neon));
+          font-family: var(--font-display, ui-monospace, monospace);
+          font-size: clamp(8px, 1.4cqi, 12px);
+          font-weight: 900;
+          line-height: 1;
+          padding: 3px 6px;
+          white-space: nowrap;
+          animation: tracker-settlement-award-label 220ms cubic-bezier(.22,1,.36,1) 130ms both;
+        }
         .tracker-felt {
           background:
             radial-gradient(circle at 50% 38%, rgba(88, 23, 35, .96), rgba(43, 11, 19, .98) 58%, rgba(12, 13, 16, .98) 100%),
@@ -627,6 +668,8 @@ export function TrackerVisualStyles() {
           .tracker-motion-card,
           .tracker-motion-showdown,
           .tracker-motion-chip,
+          .tracker-settlement-chip,
+          .tracker-settlement-award-label,
           .tracker-shine::before {
             animation: none !important;
             transition: none !important;

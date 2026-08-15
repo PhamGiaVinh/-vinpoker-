@@ -19,12 +19,26 @@ export type VerifiedWinnerPresentation = {
   holeBestFive: ReadonlySet<string>;
 };
 
+/**
+ * A display-only projection of one already-verified settlement pot. The replay
+ * never decides either the amount or the recipients; it only sequences this
+ * server-projected allocation as Main Pot, then each Side Pot.
+ */
+export type VerifiedSettlementPotLayer = {
+  potId: string;
+  kind: "main" | "side";
+  amount: number;
+  winnerPlayerIds: readonly string[];
+  allocations: readonly { playerId: string; amount: number }[];
+};
+
 export type VerifiedShowdownPresentation = {
   enabled: boolean;
   handId: string | null;
   frameIndex: number | null;
   isChop: boolean;
   winners: readonly VerifiedWinnerPresentation[];
+  potLayers: readonly VerifiedSettlementPotLayer[];
   focus: BestFiveFocus;
 };
 
@@ -140,6 +154,7 @@ function disabledPresentation(): VerifiedShowdownPresentation {
     frameIndex: null,
     isChop: false,
     winners: [],
+    potLayers: [],
     focus: disabledFocus(),
   };
 }
@@ -392,17 +407,46 @@ export function resolveVerifiedShowdownPresentation({
 
   const awardByPlayerId = new Map<string, number>();
   const settlementWinnerIds = new Set<string>();
-  for (const pot of settlement.pots) {
+  const unorderedPotLayers: Array<VerifiedSettlementPotLayer & { sourceIndex: number }> = [];
+  for (const [sourceIndex, pot] of settlement.pots.entries()) {
     if (pot.winnerIds.length === 0 || new Set(pot.winnerIds).size !== pot.winnerIds.length) return disabledPresentation();
     const potWinnerIds = new Set(pot.winnerIds);
+    const allocationByWinnerId = new Map<string, number>();
+    let allocatedTotal = 0;
     for (const winnerId of pot.winnerIds) settlementWinnerIds.add(winnerId);
     for (const allocation of pot.allocations) {
-      if (allocation.potId !== pot.potId || !potWinnerIds.has(allocation.winnerId)) return disabledPresentation();
+      if (
+        allocation.potId !== pot.potId
+        || !potWinnerIds.has(allocation.winnerId)
+        || !Number.isSafeInteger(allocation.amount)
+        || allocation.amount <= 0
+      ) {
+        return disabledPresentation();
+      }
       const next = safeAdd(awardByPlayerId.get(allocation.winnerId) ?? 0, allocation.amount);
-      if (next === null) return disabledPresentation();
+      const potWinnerNext = safeAdd(allocationByWinnerId.get(allocation.winnerId) ?? 0, allocation.amount);
+      const nextAllocatedTotal = safeAdd(allocatedTotal, allocation.amount);
+      if (next === null || potWinnerNext === null || nextAllocatedTotal === null) return disabledPresentation();
       awardByPlayerId.set(allocation.winnerId, next);
+      allocationByWinnerId.set(allocation.winnerId, potWinnerNext);
+      allocatedTotal = nextAllocatedTotal;
     }
+    if (allocatedTotal !== pot.amount || pot.winnerIds.some((winnerId) => (allocationByWinnerId.get(winnerId) ?? 0) <= 0)) {
+      return disabledPresentation();
+    }
+    unorderedPotLayers.push({
+      potId: pot.potId,
+      kind: pot.kind,
+      amount: pot.amount,
+      winnerPlayerIds: [...pot.winnerIds],
+      allocations: pot.winnerIds.map((playerId) => ({ playerId, amount: allocationByWinnerId.get(playerId) ?? 0 })),
+      sourceIndex,
+    });
   }
+  if (unorderedPotLayers.filter((pot) => pot.kind === "main").length !== 1) return disabledPresentation();
+  const potLayers = unorderedPotLayers
+    .sort((left, right) => (left.kind === "main" ? -1 : right.kind === "main" ? 1 : left.sourceIndex - right.sourceIndex))
+    .map(({ sourceIndex: _sourceIndex, ...pot }) => pot);
   if (settlementWinnerIds.size === 0 || !equalSets(settlementWinnerIds, new Set(frame.showdownWinnerIds ?? []))) {
     return disabledPresentation();
   }
@@ -485,6 +529,7 @@ export function resolveVerifiedShowdownPresentation({
     frameIndex: frame.index,
     isChop: frame.showdownResult === "chop",
     winners,
+    potLayers,
     focus: {
       enabled: true,
       winnerPlayerIds: settlementWinnerIds,

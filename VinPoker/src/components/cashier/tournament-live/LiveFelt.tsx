@@ -27,7 +27,7 @@ import {
   type BestFiveFocus,
   type VerifiedShowdownPresentation,
 } from "@/lib/tracker-poker/replayBestFiveFocus";
-import type { ReplayRunoutPhase } from "@/lib/tracker-poker/replayRunoutTimeline";
+import type { ReplayRunoutPhase, ReplayRunoutPresentation } from "@/lib/tracker-poker/replayRunoutTimeline";
 
 /** Count-up text (Phase 3, tableFx only): tweens a numeric display toward its target.
  *  First render / enabled-off / reduced-motion emit the target directly, so static
@@ -321,6 +321,11 @@ export interface LiveFeltProps {
   /** Sequential all-in board presentation; only viewer replay supplies this. */
   replayRunoutPhase?: ReplayRunoutPhase | null;
   /**
+   * Verified Main/Side Pot sequence for the viewer replay. This is presentation
+   * state only: all amounts and recipients come from `showdownPresentation`.
+   */
+  replayRunoutPresentation?: ReplayRunoutPresentation | null;
+  /**
    * trackerShowdownRevealOrder (viewer) — ADDITIVE; absent → simultaneous reveal
    * (byte-identical). player_ids in the order they should table their cards at
    * showdown; each revealed seat's hole-card flip is delayed by its index ×
@@ -365,6 +370,7 @@ export function LiveFelt({
   showdownPresentation = null,
   bestFiveFocusPhase = "static",
   replayRunoutPhase = null,
+  replayRunoutPresentation = null,
   revealOrder,
   revealStaggerMs = 500,
   motionEvents = [],
@@ -384,7 +390,17 @@ export function LiveFelt({
   // (module constants → stable identity for the chips-effect dependency).
   const seatMap = viewerLayout && !portrait ? LANDSCAPE_SEATS_V3 : geo.seats;
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
-  const bestFiveFocusActive = tableFx && bestFiveFocus?.enabled === true && bestFiveFocusPhase !== "hidden";
+  const settlementPayoutPhase = replayRunoutPresentation?.phase ?? null;
+  const settlementPayoutActive = viewerLayout
+    && tableFx
+    && showdownPresentation?.enabled === true
+    && (settlementPayoutPhase === "pot_collect" || settlementPayoutPhase === "pot_award");
+  // Pot-layer recipients are intentionally the sole glow target while chips are
+  // moving. The full best-five winner set appears only after the last layer.
+  const bestFiveFocusActive = tableFx
+    && bestFiveFocus?.enabled === true
+    && bestFiveFocusPhase !== "hidden"
+    && !settlementPayoutActive;
   const bestFiveGlowActive = bestFiveFocusActive && (bestFiveFocusPhase === "glow" || bestFiveFocusPhase === "static");
   const showdownRankingVisible = bestFiveGlowActive
     && showdownPresentation?.enabled === true
@@ -492,6 +508,36 @@ export function LiveFelt({
     }
     return { l, t };
   };
+  const activePotLayerIndex = settlementPayoutPhase === "pot_award"
+    ? replayRunoutPresentation?.potAwardIndex ?? -1
+    : -1;
+  const activePotLayer = activePotLayerIndex >= 0 ? showdownPresentation?.potLayers[activePotLayerIndex] ?? null : null;
+  const activePotWinnerIds = new Set(activePotLayer?.winnerPlayerIds ?? []);
+  const visibleSettlementPotLayers = settlementPayoutActive && showdownPresentation
+    ? settlementPayoutPhase === "pot_award"
+      ? showdownPresentation.potLayers.slice(Math.max(0, activePotLayerIndex))
+      : showdownPresentation.potLayers
+    : [];
+  const settlementPotPoint = (visibleIndex: number, total: number): Pt => {
+    const horizontalOffset = (visibleIndex - (total - 1) / 2) * 13;
+    return {
+      l: 50 + horizontalOffset,
+      t: Math.min(78, potCenterT + (portrait ? 16 : 15)),
+    };
+  };
+  const committedSeatStacks = viewerLayout
+    ? seats
+      .filter((seat) => seat.is_all_in || (!seat.is_folded && ((seat.current_bet ?? 0) > 0 || (seat.display_committed_bet ?? 0) > 0)))
+      .map((seat) => {
+        const slot = ((seat.seat_number - 1) % 9) + 1;
+        const amount = (seat.display_committed_bet ?? 0) > 0 ? seat.display_committed_bet as number : seat.current_bet ?? 0;
+        return { seat, amount, point: stackPt(seatMap[slot] || seatMap[1]) };
+      })
+    : [];
+  // Once the all-in reaches the verified outcome, leaving committed stacks at
+  // each seat would imply that the chips were never settled. Direct jumps render
+  // the resolved table immediately; the animated path replaces them with travel.
+  const hideCommittedSeatStacks = settlementPayoutActive || bestFiveFocusActive;
   // V2 forces its OWN premium surface, so the redesign never depends on the
   // separate liveHandFeed/viewerNeon flag being on (review P1).
   const neon = viewerNeon || viewerLayout;
@@ -545,7 +591,10 @@ export function LiveFelt({
   }, [viewerLayout, portrait]);
 
   return (
-    <div className={`w-full${bestFiveFocusActive ? ` tracker-best-five-focus-active tracker-best-five-focus-${bestFiveFocusPhase}` : ""}`} ref={feltWrapRef}>
+    <div
+      className={`w-full${bestFiveFocusActive ? ` tracker-best-five-focus-active tracker-best-five-focus-${bestFiveFocusPhase}` : ""}${settlementPayoutActive ? ` tracker-settlement-payout-${settlementPayoutPhase}` : ""}`}
+      ref={feltWrapRef}
+    >
       {/* Felt oval — scales with container; seats may straddle the rim so the
           container is overflow-visible (never clips a seat). When `fit` is set
           (narrow landscape) a height-reserver clips the oversized design-width box
@@ -837,7 +886,11 @@ export function LiveFelt({
           const nameShadow = { textShadow: "0 1px 3px rgba(0,0,0,0.95)" };
           // Winner identity remains server-proven; payout/rank/refund copy is kept
           // out of the felt so the verified best-five cards carry the result.
-          const isWinner = bestFiveGlowActive && bestFiveFocus?.winnerPlayerIds.has(seat.player_id) === true;
+          // During payout, only the active verified pot layer receives the winner
+          // halo. Once every pot has settled, best-five focus restores the final
+          // verified winner set.
+          const isWinner = (settlementPayoutPhase === "pot_award" && activePotWinnerIds.has(seat.player_id))
+            || (bestFiveGlowActive && bestFiveFocus?.winnerPlayerIds.has(seat.player_id) === true);
 
           // ADDITIVE operator-console hooks. Both fragments are "" and the spread
           // is {} when the props are absent, so the default (viewer/replay) render
@@ -1009,20 +1062,95 @@ export function LiveFelt({
           );
         })}
 
+        {/* Verified payout presentation. Committed chips converge first, then the
+            server-projected Main Pot and each Side Pot leave the center in order.
+            This branch is viewer-replay-only and never changes a chip value. */}
+        {settlementPayoutActive && (
+          <div data-testid="felt-settlement-payout-motion" className="pointer-events-none absolute inset-0 z-[24] overflow-visible" aria-hidden="true">
+            {settlementPayoutPhase === "pot_collect" && committedSeatStacks.flatMap(({ seat, point }) =>
+              [0, 1].map((chip) => (
+                <span
+                  key={`collect-${seat.player_id}-${chip}`}
+                  data-testid="felt-settlement-collect-chip"
+                  className="tracker-settlement-chip tracker-settlement-chip-collect"
+                  style={{
+                    left: `${point.l}%`,
+                    top: `${point.t}%`,
+                    "--sp-dx": `${50 - point.l}cqi`,
+                    "--sp-dy": `${(settlementPotPoint(0, 1).t - point.t) / motionAspect}cqi`,
+                    animationDelay: `${chip * 42}ms`,
+                  } as CSSProperties}
+                />
+              )),
+            )}
+
+            {visibleSettlementPotLayers.map((pot, visibleIndex) => {
+              const point = settlementPotPoint(visibleIndex, visibleSettlementPotLayers.length);
+              const isAwardingPot = settlementPayoutPhase === "pot_award" && visibleIndex === 0;
+              return (
+                <div
+                  key={pot.potId}
+                  data-testid={`felt-settlement-pot-${pot.kind}-${visibleIndex}`}
+                  className="absolute -translate-x-1/2 -translate-y-1/2"
+                  style={{ left: `${point.l}%`, top: `${point.t}%` }}
+                >
+                  <ChipStack
+                    label={`${pot.kind === "main" ? t("liveHub.felt.main", "Main") : t("liveHub.felt.side", "Side")} ${formatStack(pot.amount)}`}
+                    sizeStyle={stackStyle}
+                  />
+                  {isAwardingPot && pot.allocations.flatMap((allocation, allocationIndex) => {
+                    const winner = seats.find((seat) => seat.player_id === allocation.playerId);
+                    if (!winner) return [];
+                    const slot = ((winner.seat_number - 1) % 9) + 1;
+                    const target = stackPt(seatMap[slot] || seatMap[1]);
+                    return [0, 1, 2].map((chip) => (
+                      <span
+                        key={`${pot.potId}-${allocation.playerId}-${chip}`}
+                        data-testid={`felt-settlement-award-${allocation.playerId}`}
+                        className="tracker-settlement-chip tracker-settlement-chip-award"
+                        style={{
+                          left: `${point.l}%`,
+                          top: `${point.t}%`,
+                          "--sp-dx": `${target.l - point.l}cqi`,
+                          "--sp-dy": `${(target.t - point.t) / motionAspect}cqi`,
+                          animationDelay: `${allocationIndex * 55 + chip * 22}ms`,
+                        } as CSSProperties}
+                      />
+                    ));
+                  })}
+                </div>
+              );
+            })}
+
+            {settlementPayoutPhase === "pot_award" && activePotLayer?.allocations.map((allocation) => {
+              const winner = seats.find((seat) => seat.player_id === allocation.playerId);
+              if (!winner) return null;
+              const slot = ((winner.seat_number - 1) % 9) + 1;
+              const target = stackPt(seatMap[slot] || seatMap[1]);
+              return (
+                <span
+                  key={`award-label-${activePotLayer.potId}-${allocation.playerId}`}
+                  data-testid={`felt-settlement-award-label-${allocation.playerId}`}
+                  className="tracker-settlement-award-label absolute -translate-x-1/2 -translate-y-1/2"
+                  style={{ left: `${target.l}%`, top: `${target.t}%` }}
+                >
+                  +{formatStack(allocation.amount)}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
         {/* Committed-bet CHIP STACKS on the felt (viewerLayout only). A pointer-events-none
             layer placed in front of each betting/all-in seat, toward the pot (collision-guarded
             stackPt). Operator/TV never render this → byte-identical. z-[15]: above the felt,
             below the to-act badge (z-20) and the flying chip-push (z-[25]). */}
-        {viewerLayout &&
-          seats
-            .filter((s) => s.is_all_in || (!s.is_folded && ((s.current_bet ?? 0) > 0 || (s.display_committed_bet ?? 0) > 0)))
-            .map((s) => {
-              const slot = ((s.seat_number - 1) % 9) + 1;
-              const pt = stackPt(seatMap[slot] || seatMap[1]);
+        {viewerLayout && !hideCommittedSeatStacks &&
+          committedSeatStacks
+            .map(({ seat: s, amount: amt, point: pt }) => {
               // liveBetChips: prefer the whole-hand committed (display_committed_bet) so the
               // disc persists across street sweeps; fall back to the per-street current_bet
               // (today's behavior when the field is absent → byte-identical).
-              const amt = (s.display_committed_bet ?? 0) > 0 ? (s.display_committed_bet as number) : (s.current_bet ?? 0);
               // UAT wave 2 (Fix 3, compact only): the ALL-IN pill prefers the seat's
               // WHOLE-HAND committed total (survives street sweeps), and — RPT style —
               // shows the AMOUNT ALONE on the red pill: the red stack already signals

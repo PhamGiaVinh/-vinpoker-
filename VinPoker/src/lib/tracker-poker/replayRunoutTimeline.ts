@@ -6,6 +6,8 @@ export const TURN_REVEAL_MS = 300;
 export const TURN_READ_HOLD_MS = 800;
 export const RIVER_REVEAL_MS = 500;
 export const RIVER_RESULT_HOLD_MS = 350;
+export const POT_COLLECT_MS = 420;
+export const POT_AWARD_MS = 680;
 export const BEST_FIVE_DIM_MS = 180;
 export const BEST_FIVE_GLOW_MS = 320;
 export const SUMMARY_RANKING_DELAY_MS = 120;
@@ -16,6 +18,8 @@ export type ReplayRunoutPhase =
   | "flop"
   | "turn"
   | "river"
+  | "pot_collect"
+  | "pot_award"
   | "dim"
   | "glow"
   | "summary_delay"
@@ -26,13 +30,17 @@ export type ReplayRunoutPresentation = {
   key: string;
   phase: ReplayRunoutPhase;
   visibleBoardCount: 0 | 3 | 4 | 5;
+  /** Zero-based index of the verified Main/Side Pot being awarded. */
+  potAwardIndex: number | null;
 };
 
 const NEXT_PHASE: Record<Exclude<ReplayRunoutPhase, "static">, ReplayRunoutPhase> = {
   hole_hold: "flop",
   flop: "turn",
   turn: "river",
-  river: "dim",
+  river: "pot_collect",
+  pot_collect: "pot_award",
+  pot_award: "dim",
   dim: "glow",
   glow: "summary_delay",
   summary_delay: "summary",
@@ -46,12 +54,35 @@ function visibleBoardCount(phase: ReplayRunoutPhase): 0 | 3 | 4 | 5 {
   return 5;
 }
 
-export function createReplayRunoutPresentation(key: string, phase: ReplayRunoutPhase): ReplayRunoutPresentation {
-  return { key, phase, visibleBoardCount: visibleBoardCount(phase) };
+export function createReplayRunoutPresentation(
+  key: string,
+  phase: ReplayRunoutPhase,
+  potAwardIndex: number | null = null,
+): ReplayRunoutPresentation {
+  return { key, phase, visibleBoardCount: visibleBoardCount(phase), potAwardIndex };
 }
 
-export function nextReplayRunoutPhase(phase: ReplayRunoutPhase): ReplayRunoutPhase | null {
-  return phase === "static" ? null : NEXT_PHASE[phase];
+export function nextReplayRunoutPhase(phase: ReplayRunoutPhase, potLayerCount = 0, potAwardIndex: number | null = null): ReplayRunoutPhase | null {
+  if (phase === "static") return null;
+  if (phase === "river" && potLayerCount <= 0) return "dim";
+  if (phase === "pot_collect" && potLayerCount <= 0) return "dim";
+  if (phase === "pot_award" && (potAwardIndex ?? 0) + 1 < potLayerCount) return "pot_award";
+  return NEXT_PHASE[phase];
+}
+
+/** Advances the keyed UI-only payout timeline without changing replay data. */
+export function nextReplayRunoutPresentation(
+  presentation: ReplayRunoutPresentation,
+  potLayerCount: number,
+): ReplayRunoutPresentation | null {
+  const nextPhase = nextReplayRunoutPhase(presentation.phase, potLayerCount, presentation.potAwardIndex);
+  if (!nextPhase) return null;
+  const nextPotAwardIndex = nextPhase === "pot_award"
+    ? presentation.phase === "pot_award"
+      ? (presentation.potAwardIndex ?? 0) + 1
+      : 0
+    : null;
+  return createReplayRunoutPresentation(presentation.key, nextPhase, nextPotAwardIndex);
 }
 
 export function replayRunoutPhaseDuration(phase: ReplayRunoutPhase, speed: number): number {
@@ -63,6 +94,10 @@ export function replayRunoutPhaseDuration(phase: ReplayRunoutPhase, speed: numbe
         ? TURN_REVEAL_MS + TURN_READ_HOLD_MS
         : phase === "river"
           ? RIVER_REVEAL_MS + RIVER_RESULT_HOLD_MS
+          : phase === "pot_collect"
+            ? POT_COLLECT_MS
+            : phase === "pot_award"
+              ? POT_AWARD_MS
           : phase === "dim"
             ? BEST_FIVE_DIM_MS
             : phase === "glow"

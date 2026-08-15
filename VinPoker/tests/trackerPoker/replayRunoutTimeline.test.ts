@@ -5,6 +5,8 @@ import {
   BEST_FIVE_GLOW_MS,
   FLOP_READ_HOLD_MS,
   FLOP_REVEAL_TOTAL_MS,
+  POT_AWARD_MS,
+  POT_COLLECT_MS,
   RESULT_HOLD_MS,
   RIVER_RESULT_HOLD_MS,
   RIVER_REVEAL_MS,
@@ -12,6 +14,7 @@ import {
   TURN_READ_HOLD_MS,
   TURN_REVEAL_MS,
   createReplayRunoutPresentation,
+  nextReplayRunoutPresentation,
   nextReplayRunoutPhase,
   replayRunoutFocusPhase,
   replayRunoutPhaseDuration,
@@ -73,5 +76,29 @@ describe("viewer replay all-in runout timeline", () => {
     expect(replayRunoutShowsSummary("glow")).toBe(false);
     expect(replayRunoutShowsSummary("summary")).toBe(true);
     expect(replayRunoutShowsSummary("static")).toBe(true);
+  });
+
+  it("collects once, then awards Main Pot before each Side Pot", () => {
+    const phases: Array<{ phase: ReplayRunoutPhase; potAwardIndex: number | null }> = [];
+    let presentation = createReplayRunoutPresentation("hand:7:verified", "river");
+    while (true) {
+      const next = nextReplayRunoutPresentation(presentation, 3);
+      if (!next) break;
+      phases.push({ phase: next.phase, potAwardIndex: next.potAwardIndex });
+      presentation = next;
+    }
+    expect(phases).toEqual([
+      { phase: "pot_collect", potAwardIndex: null },
+      { phase: "pot_award", potAwardIndex: 0 },
+      { phase: "pot_award", potAwardIndex: 1 },
+      { phase: "pot_award", potAwardIndex: 2 },
+      { phase: "dim", potAwardIndex: null },
+      { phase: "glow", potAwardIndex: null },
+      { phase: "summary_delay", potAwardIndex: null },
+      { phase: "summary", potAwardIndex: null },
+      { phase: "static", potAwardIndex: null },
+    ]);
+    expect(replayRunoutPhaseDuration("pot_collect", 1)).toBe(POT_COLLECT_MS);
+    expect(replayRunoutPhaseDuration("pot_award", 1)).toBe(POT_AWARD_MS);
   });
 });
