@@ -207,6 +207,8 @@ export function TournamentLiveView({
   // liveTableFx replay playback FX: forward-only tracker (frame index + board count)
   // so PLAYING a hand back emits the same sounds + chip-push; scrubbing back is silent.
   const replayFxRef = useRef<{ index: number | null; board: number }>({ index: null, board: 0 });
+  const replayFxPlaybackStateRef = useRef({ soundMuted, spectator, replayMotionSpeed });
+  replayFxPlaybackStateRef.current = { soundMuted, spectator, replayMotionSpeed };
   const replayChipSeqRef = useRef(0);
   const replayMotionFrameRef = useRef<ReplayFrame | null>(null);
   const replaySettlementSoundRef = useRef<string | null>(null);
@@ -846,22 +848,23 @@ export function TournamentLiveView({
       seatNumber: la?.seat_number ?? 0,
     });
 
-    if (!soundMuted && fx.deal) {
+    if (!replayFxPlaybackStateRef.current.soundMuted && fx.deal) {
       playPokerLiveSound(fx.deal, { bypassStoredMute: true, profile: "tracker" });
     }
     const playActionFx = () => {
-      if (!soundMuted) {
+      const playbackState = replayFxPlaybackStateRef.current;
+      if (!playbackState.soundMuted) {
         if (fx.action) playPokerLiveSound(fx.action, { bypassStoredMute: true, profile: "tracker" });
         if (fx.chipClink) playPokerLiveSound("chip", { bypassStoredMute: true, profile: "tracker" });
       }
       // Chip-push is visual + viewer-only (spectator); a monotonic seq keeps the
       // nonce unique even when the same hand is replayed twice.
-      if (fx.chipPush && spectator && la) {
+      if (fx.chipPush && playbackState.spectator && la) {
         replayChipSeqRef.current += 1;
         setChipPush({ seatNumber: la.seat_number, nonce: 1_000_000 + replayChipSeqRef.current, kind: la.action_type });
       }
     };
-    const actionDelay = replayActionSoundDelayMs(fx.deal, replayMotionSpeed);
+    const actionDelay = replayActionSoundDelayMs(fx.deal, replayFxPlaybackStateRef.current.replayMotionSpeed);
     if (actionDelay === 0) {
       playActionFx();
       return;
@@ -869,7 +872,7 @@ export function TournamentLiveView({
     const actionTimer = window.setTimeout(playActionFx, actionDelay);
     return () => window.clearTimeout(actionTimer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [replayFrame, replayFrameSource, replayMotionSpeed, mode, soundMuted, spectator]);
+  }, [replayFrame, replayFrameSource, mode]);
 
   useEffect(() => {
     if (mode !== "replay" || !FEATURES.liveTableMotionV2 || !replayFrame || !replayHand) {
@@ -997,7 +1000,7 @@ export function TournamentLiveView({
       mode !== "replay"
       || !spectator
       || !FEATURES.liveReplayHud
-      || !FEATURES.liveTableMotionV2
+      || !FEATURES.liveTableFx
       || !replayRunoutForSelectedHand
       || (replayRunoutForSelectedHand.phase !== "pot_collect" && replayRunoutForSelectedHand.phase !== "pot_award")
     ) {

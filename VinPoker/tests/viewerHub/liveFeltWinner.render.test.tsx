@@ -238,6 +238,29 @@ describe("LiveFelt verified best-five focus", () => {
     expect((collecting.match(/data-testid="felt-settlement-collect-stack"/g) ?? []).length).toBe(2);
     expect(collecting).not.toContain('data-testid="felt-settlement-award-tom"');
 
+    const foldedCommitter = seat({
+      player_id: "folded",
+      seat_number: 4,
+      display_name: "Folded caller",
+      is_folded: true,
+      total_committed: 9_000,
+      display_committed_bet: 1_000,
+      current_bet: 0,
+    });
+    const collectingWholeHandCommitments = renderToStaticMarkup(
+      <LiveFelt
+        {...baseProps}
+        seats={[{ ...winner, is_all_in: true, total_committed: 12_000, display_committed_bet: 2_000 }, sideWinner, foldedCommitter]}
+        tableFx
+        viewerLayout
+        showdownPresentation={layeredPresentation}
+        replayRunoutPhase="pot_collect"
+        replayRunoutPresentation={{ key: "hand-1:7:verified", phase: "pot_collect", visibleBoardCount: 5, potAwardIndex: null }}
+      />,
+    );
+    expect((collectingWholeHandCommitments.match(/data-testid="felt-settlement-collect-stack"/g) ?? []).length).toBe(3);
+    expect(collectingWholeHandCommitments).toContain("9k");
+
     const mainPresentation = selectVerifiedPotLayerPresentation(layeredPresentation, 0);
     const mainAward = renderToStaticMarkup(
       <LiveFelt

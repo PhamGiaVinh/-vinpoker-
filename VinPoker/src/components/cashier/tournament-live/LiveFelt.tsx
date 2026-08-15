@@ -549,12 +549,15 @@ export function LiveFelt({
   };
   const committedSeatStacks = viewerLayout
     ? seats
-      .filter((seat) => seat.is_all_in || (!seat.is_folded && ((seat.current_bet ?? 0) > 0 || (seat.display_committed_bet ?? 0) > 0)))
       .map((seat) => {
         const slot = ((seat.seat_number - 1) % 9) + 1;
-        const amount = (seat.display_committed_bet ?? 0) > 0 ? seat.display_committed_bet as number : seat.current_bet ?? 0;
+        // Prefer the immutable whole-hand amount. A folded player still owns
+        // committed chips in the pot, and an all-in may span several streets.
+        const amount = [seat.total_committed, seat.display_committed_bet, seat.current_bet]
+          .find((value) => typeof value === "number" && Number.isFinite(value) && value > 0) ?? 0;
         return { seat, amount, point: stackPt(seatMap[slot] || seatMap[1]) };
       })
+      .filter(({ amount }) => amount > 0)
     : [];
   // Once the all-in reaches the verified outcome, leaving committed stacks at
   // each seat would imply that the chips were never settled. Direct jumps render
