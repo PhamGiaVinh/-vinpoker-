@@ -48,6 +48,7 @@ describe("trackBets absent — byte-identical frames", () => {
     for (const f of base) {
       for (const s of f.seats) {
         expect("current_bet" in s).toBe(false);
+        expect("display_committed_bet" in s).toBe(false);
         expect("total_committed" in s).toBe(false);
       }
     }
@@ -105,6 +106,26 @@ describe("trackBets — street bets + sweep", () => {
 });
 
 describe("trackBets — all-in totals", () => {
+  it("preserves a folded player's whole-hand commitment after later-street sweeps", () => {
+    const h = hand({
+      actions: [
+        A("P2", "post_sb", 50),
+        A("P3", "post_bb", 100),
+        A("P2", "call", 50),
+        A("P1", "call", 100),
+        A("P1", "bet", 200, "flop"),
+        A("P2", "call", 200, "flop"),
+        A("P2", "fold", 0, "turn"),
+      ],
+    });
+    const frames = buildReplayFrames(h, { trackBets: true });
+    const folded = seatOf(frames, frames.length - 1, "P2");
+
+    expect(folded.is_folded).toBe(true);
+    expect(folded.current_bet).toBe(0);
+    expect(folded.display_committed_bet).toBe(300);
+  });
+
   it("explicit all_in carries whole-hand total_committed through later frames incl. final", () => {
     // Cara (600) shoves over her BB; Bob covers with plenty behind (no all-in for him).
     const h = hand({

@@ -80,3 +80,42 @@ export function replayActionSoundDelayMs(
   const normalizedSpeed = Number.isFinite(speed) ? Math.min(8, Math.max(0.5, speed)) : 1;
   return Math.round(baseDelay / normalizedSpeed);
 }
+
+export type ReplayActionFxScheduler = {
+  schedule: (key: string, delayMs: number, callback: () => void) => void;
+  cancel: () => void;
+};
+
+/**
+ * Keeps one pending action effect per replay frame. A new frame, scrub, or hand
+ * switch invalidates the previous callback; unrelated rerenders do not.
+ */
+export function createReplayActionFxScheduler(): ReplayActionFxScheduler {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let activeKey: string | null = null;
+
+  const cancel = () => {
+    activeKey = null;
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+  };
+
+  return {
+    cancel,
+    schedule(key, delayMs, callback) {
+      cancel();
+      activeKey = key;
+      if (delayMs <= 0) {
+        callback();
+        activeKey = null;
+        return;
+      }
+      timer = setTimeout(() => {
+        timer = null;
+        if (activeKey !== key) return;
+        activeKey = null;
+        callback();
+      }, delayMs);
+    },
+  };
+}

@@ -35,7 +35,11 @@ import {
   type ReplayHand,
   type ReplayFrame,
 } from "@/lib/tracker-poker/replayEngine";
-import { deriveReplayPlaybackFx, replayActionSoundDelayMs } from "@/lib/tracker-poker/replayFx";
+import {
+  createReplayActionFxScheduler,
+  deriveReplayPlaybackFx,
+  replayActionSoundDelayMs,
+} from "@/lib/tracker-poker/replayFx";
 import {
   resolveVerifiedShowdownPresentation,
   selectVerifiedPotLayerPresentation,
@@ -209,6 +213,10 @@ export function TournamentLiveView({
   const replayFxRef = useRef<{ index: number | null; board: number }>({ index: null, board: 0 });
   const replayFxPlaybackStateRef = useRef({ soundMuted, spectator, replayMotionSpeed });
   replayFxPlaybackStateRef.current = { soundMuted, spectator, replayMotionSpeed };
+  const replayActionFxSchedulerRef = useRef<ReturnType<typeof createReplayActionFxScheduler> | null>(null);
+  if (!replayActionFxSchedulerRef.current) {
+    replayActionFxSchedulerRef.current = createReplayActionFxScheduler();
+  }
   const replayChipSeqRef = useRef(0);
   const replayMotionFrameRef = useRef<ReplayFrame | null>(null);
   const replaySettlementSoundRef = useRef<string | null>(null);
@@ -217,6 +225,8 @@ export function TournamentLiveView({
   const enqueueTableMotion = useCallback((events: TableMotionEvent[]) => {
     if (events.length > 0) setTableMotionEvents((current) => appendTableMotionEvents(current, events));
   }, []);
+
+  useEffect(() => () => replayActionFxSchedulerRef.current?.cancel(), []);
 
   const loadedReplayHandKey = replayHand
     ? replayHand.hand_id ?? `hand-${replayHand.hand_number}`
@@ -828,7 +838,9 @@ export function TournamentLiveView({
   // Replay "Phát" button is itself a user gesture, so audio is already unlocked.
   // Flag OFF → no-op (replay stays silent, exactly as today).
   useEffect(() => {
+    const scheduler = replayActionFxSchedulerRef.current;
     if (mode !== "replay" || !FEATURES.liveTableFx || !replayFrame) {
+      scheduler?.cancel();
       replayFxRef.current = { index: null, board: 0 };
       return;
     }
@@ -836,7 +848,10 @@ export function TournamentLiveView({
     const board = replayFrame.displayCards.filter(Boolean).length;
     const prev = replayFxRef.current;
     replayFxRef.current = { index: idx, board };
-    if (replayFrameSource !== "playback") return;
+    if (replayFrameSource !== "playback") {
+      scheduler?.cancel();
+      return;
+    }
 
     const la = replayFrame.latestAction;
     const fx = deriveReplayPlaybackFx({
@@ -865,12 +880,8 @@ export function TournamentLiveView({
       }
     };
     const actionDelay = replayActionSoundDelayMs(fx.deal, replayFxPlaybackStateRef.current.replayMotionSpeed);
-    if (actionDelay === 0) {
-      playActionFx();
-      return;
-    }
-    const actionTimer = window.setTimeout(playActionFx, actionDelay);
-    return () => window.clearTimeout(actionTimer);
+    const actionKey = `${loadedReplayHandKey ?? "replay"}:${idx}:${board}:${la?.action_id ?? la?.action_order ?? "none"}`;
+    scheduler?.schedule(actionKey, actionDelay, playActionFx);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replayFrame, replayFrameSource, mode]);
 
