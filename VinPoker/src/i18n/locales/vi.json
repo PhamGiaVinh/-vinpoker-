@@ -3431,5 +3431,42 @@
       "loadError": "Chưa tải được danh sách.",
       "assignedCount": "{{count}} người được cấp quyền"
     }
+  },
+  "feed": {
+    "title": "Bảng tin",
+    "yourStory": "Tin của bạn",
+    "addStory": "Thêm Tin",
+    "anonymousPlayer": "Người chơi ẩn danh",
+    "sharePrompt": "Bạn muốn chia sẻ điều gì?",
+    "empty": "Chưa có bài viết nào. Hãy là người chia sẻ đầu tiên.",
+    "loadError": "Không tải được Bảng tin. Vui lòng thử lại.",
+    "retry": "Thử lại",
+    "loginRequired": "Vui lòng đăng nhập để thực hiện thao tác này.",
+    "like": "Thích bài viết",
+    "likeFailed": "Không thể cập nhật lượt thích. Vui lòng thử lại.",
+    "ago": "trước",
+    "comment": {
+      "placeholder": "Viết bình luận...",
+      "send": "Gửi",
+      "failed": "Không thể gửi bình luận. Vui lòng thử lại."
+    },
+    "create": {
+      "title": "Tạo bài viết",
+      "placeholder": "Bạn đang nghĩ gì?",
+      "mediaBtn": "Thêm ảnh hoặc video",
+      "submit": "Đăng bài",
+      "ok": "Đã đăng bài viết.",
+      "fail": "Không thể đăng bài. Vui lòng thử lại.",
+      "errEmpty": "Hãy nhập nội dung hoặc chọn ảnh/video.",
+      "errMediaType": "{{name}} không phải định dạng ảnh/video được hỗ trợ.",
+      "errSize": "{{name}} vượt quá giới hạn {{limit}}.",
+      "addHand": "Thêm ván bài để review",
+      "heroCards": "Bài của bạn",
+      "board": "Bài chung",
+      "gamePlaceholder": "Loại game",
+      "potPlaceholder": "Pot",
+      "win": "Thắng",
+      "loss": "Thua"
+    }
   }
 }

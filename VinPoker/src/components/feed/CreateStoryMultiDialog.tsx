@@ -4,14 +4,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Camera, Music2, Loader2, X, ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
+import { Camera, Loader2, X, ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MusicPicker, type StoryMusic } from "./MusicPicker";
+import { FEED_MEDIA_ACCEPT, getFeedMediaKind, validateFeedMediaFile } from "@/lib/feedMedia";
 
 interface StoryFile {
   file: File;
   preview: string;
-  music: StoryMusic | null;
 }
 
 interface Props {
@@ -21,14 +20,11 @@ interface Props {
 }
 
 const MAX_FILES = 10;
-const IMAGE_MAX = 10 * 1024 * 1024;
-const VIDEO_MAX = 50 * 1024 * 1024;
 
 export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
   const { t } = useTranslation();
   const [files, setFiles] = useState<StoryFile[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [musicPickerOpen, setMusicPickerOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -40,12 +36,11 @@ export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
     const next: StoryFile[] = [...files];
     for (const f of arr) {
       if (next.length >= MAX_FILES) { toast.error(t("createStory.maxFilesReached", { max: MAX_FILES })); break; }
-      const isVideo = f.type.startsWith("video/");
-      const isImage = f.type.startsWith("image/");
-      if (!isVideo && !isImage) { toast.error(t("createStory.fileInvalid", { name: f.name })); continue; }
-      const max = isVideo ? VIDEO_MAX : IMAGE_MAX;
-      if (f.size > max) { toast.error(t("createStory.fileTooLarge", { name: f.name, limit: isVideo ? "50MB" : "10MB" })); continue; }
-      next.push({ file: f, preview: URL.createObjectURL(f), music: null });
+      const kind = getFeedMediaKind(f);
+      const validationError = validateFeedMediaFile(f);
+      if (validationError === "unsupported_type" || !kind) { toast.error(t("createStory.fileInvalid", { name: f.name })); continue; }
+      if (validationError === "too_large") { toast.error(t("createStory.fileTooLarge", { name: f.name, limit: kind === "video" ? "50MB" : "10MB" })); continue; }
+      next.push({ file: f, preview: URL.createObjectURL(f) });
     }
     setFiles(next);
     if (fileRef.current) fileRef.current.value = "";
@@ -59,16 +54,6 @@ export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
       else if (next.length === 0) setCurrentIndex(0);
       return next;
     });
-  };
-
-  const setMusic = (m: StoryMusic | null) => {
-    setFiles(prev => prev.map((f, i) => i === currentIndex ? { ...f, music: m } : f));
-  };
-
-  const applyMusicToAll = () => {
-    if (!cur?.music) { toast.error(t("createStory.noMusicSelected")); return; }
-    setFiles(prev => prev.map(f => ({ ...f, music: cur.music })));
-    toast.success(t("createStory.appliedToAll"));
   };
 
   const cleanup = () => files.forEach(f => URL.revokeObjectURL(f.preview));
@@ -85,33 +70,12 @@ export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
           const { error: upErr } = await supabase.storage.from("feed-media").upload(path, sf.file);
           if (upErr) { console.error(upErr); continue; }
           const { data } = supabase.storage.from("feed-media").getPublicUrl(path);
-          const m = sf.music;
-          const musicFields = m
-            ? m.source === "library"
-              ? {
-                  music_source: "library",
-                  music_url: m.file_url,
-                  music_name: m.name,
-                  music_artist: m.artist,
-                  music_thumbnail_url: m.thumbnail_url ?? null,
-                  music_soundcloud_url: null,
-                  music_html: null,
-                }
-              : {
-                  music_source: "soundcloud",
-                  music_url: null,
-                  music_name: m.name,
-                  music_artist: m.artist,
-                  music_thumbnail_url: m.thumbnail_url ?? null,
-                  music_soundcloud_url: m.soundcloud_url,
-                  music_html: m.iframe_src,
-                }
-            : {};
+          const mediaKind = getFeedMediaKind(sf.file);
+          if (!mediaKind) throw new Error("Unsupported feed media type");
           const { error: insErr } = await supabase.from("feed_stories").insert({
             author_id: userId,
             media_url: data.publicUrl,
-            media_type: sf.file.type.startsWith("video") ? "video" : "image",
-            ...musicFields,
+            media_type: mediaKind,
           });
           if (insErr) { console.error(insErr); continue; }
           ok++;
@@ -172,22 +136,6 @@ export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
                     <X className="w-4 h-4" />
                   </button>
 
-                  {cur.music && (
-                    <div className="absolute bottom-2 left-2 right-2 flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-black/60 backdrop-blur-sm text-white">
-                      {cur.music.thumbnail_url ? (
-                        <img src={cur.music.thumbnail_url} alt="" className="w-5 h-5 rounded object-cover shrink-0" />
-                      ) : (
-                        <Music2 className="w-3.5 h-3.5 shrink-0" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-semibold truncate">{cur.music.name}</div>
-                        {cur.music.artist && <div className="text-[10px] opacity-75 truncate">{cur.music.artist}</div>}
-                      </div>
-                      <button onClick={() => setMusic(null)} className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  )}
                 </div>
 
                 {files.length > 1 && (
@@ -206,24 +154,10 @@ export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
                         ) : (
                           <video src={f.preview} className="w-full h-full object-cover" />
                         )}
-                        {f.music && (
-                          <div className="absolute bottom-0 right-0 w-4 h-4 rounded-tl bg-primary text-primary-foreground flex items-center justify-center">
-                            <Music2 className="w-2.5 h-2.5" />
-                          </div>
-                        )}
                       </button>
                     ))}
                   </div>
                 )}
-
-                <div className="flex gap-2">
-                  <Button onClick={() => setMusicPickerOpen(true)} variant="outline" size="sm" className="flex-1">
-                    <Music2 className="w-4 h-4 mr-1" /> {cur?.music ? t("createStory.changeMusic") : t("createStory.addMusic")}
-                  </Button>
-                  {cur?.music && files.length > 1 && (
-                    <Button onClick={applyMusicToAll} variant="outline" size="sm">{t("createStory.applyToAll")}</Button>
-                  )}
-                </div>
 
                 <div className="flex gap-2">
                   <Button onClick={() => fileRef.current?.click()} variant="outline" size="sm" className="flex-1" disabled={files.length >= MAX_FILES}>
@@ -239,7 +173,7 @@ export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
             <input
               ref={fileRef}
               type="file"
-              accept="image/*,video/mp4,video/webm,video/quicktime"
+              accept={FEED_MEDIA_ACCEPT}
               multiple
               hidden
               onChange={e => addFiles(e.target.files)}
@@ -247,13 +181,6 @@ export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
           </div>
         </DialogContent>
       </Dialog>
-
-      <MusicPicker
-        open={musicPickerOpen}
-        onOpenChange={setMusicPickerOpen}
-        onSelect={setMusic}
-        selected={cur?.music}
-      />
     </>
   );
 }
