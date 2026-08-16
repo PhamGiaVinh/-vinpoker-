@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LiveFelt, type SeatInfo } from "@/components/cashier/tournament-live/LiveFelt";
-import type { BestFiveFocus, VerifiedShowdownPresentation } from "@/lib/tracker-poker/replayBestFiveFocus";
+import {
+  selectVerifiedPotLayerPresentation,
+  type BestFiveFocus,
+  type VerifiedShowdownPresentation,
+} from "@/lib/tracker-poker/replayBestFiveFocus";
 
 function seat(overrides: Partial<SeatInfo>): SeatInfo {
   return {
@@ -231,17 +235,41 @@ describe("LiveFelt verified best-five focus", () => {
       />,
     );
     expect(collecting).toContain('data-testid="felt-settlement-payout-motion"');
-    expect((collecting.match(/data-testid="felt-settlement-collect-chip"/g) ?? []).length).toBe(4);
+    expect((collecting.match(/data-testid="felt-settlement-collect-stack"/g) ?? []).length).toBe(2);
     expect(collecting).not.toContain('data-testid="felt-settlement-award-tom"');
 
+    const foldedCommitter = seat({
+      player_id: "folded",
+      seat_number: 4,
+      display_name: "Folded caller",
+      is_folded: true,
+      total_committed: 9_000,
+      display_committed_bet: 1_000,
+      current_bet: 0,
+    });
+    const collectingWholeHandCommitments = renderToStaticMarkup(
+      <LiveFelt
+        {...baseProps}
+        seats={[{ ...winner, is_all_in: true, total_committed: 12_000, display_committed_bet: 2_000 }, sideWinner, foldedCommitter]}
+        tableFx
+        viewerLayout
+        showdownPresentation={layeredPresentation}
+        replayRunoutPhase="pot_collect"
+        replayRunoutPresentation={{ key: "hand-1:7:verified", phase: "pot_collect", visibleBoardCount: 5, potAwardIndex: null }}
+      />,
+    );
+    expect((collectingWholeHandCommitments.match(/data-testid="felt-settlement-collect-stack"/g) ?? []).length).toBe(3);
+    expect(collectingWholeHandCommitments).toContain("9k");
+
+    const mainPresentation = selectVerifiedPotLayerPresentation(layeredPresentation, 0);
     const mainAward = renderToStaticMarkup(
       <LiveFelt
         {...baseProps}
         seats={[{ ...winner, is_all_in: true, display_committed_bet: 12_000 }, sideWinner]}
         tableFx
         viewerLayout
-        bestFiveFocus={focus}
-        showdownPresentation={layeredPresentation}
+        bestFiveFocus={mainPresentation.focus}
+        showdownPresentation={mainPresentation}
         replayRunoutPhase="pot_award"
         replayRunoutPresentation={{ key: "hand-1:7:verified", phase: "pot_award", visibleBoardCount: 5, potAwardIndex: 0 }}
       />,
@@ -254,15 +282,35 @@ describe("LiveFelt verified best-five focus", () => {
     expect(mainAward).toContain("Main Pot");
     expect(mainAward).toContain("Tom Dwan");
     expect(mainAward).toContain("+20k (100 BB)");
+    expect(mainAward).toContain(showdownPresentation.winners[0].rankingText);
+    expect((mainAward.match(/tracker-best-five-card/g) ?? []).length).toBe(5);
 
+    const settledMain = renderToStaticMarkup(
+      <LiveFelt
+        {...baseProps}
+        seats={[{ ...winner, is_all_in: true, display_committed_bet: 12_000 }, sideWinner]}
+        tableFx
+        viewerLayout
+        bestFiveFocus={mainPresentation.focus}
+        showdownPresentation={mainPresentation}
+        replayRunoutPhase="static"
+        replayRunoutPresentation={{ key: "hand-1:7:verified", phase: "static", visibleBoardCount: 5, potAwardIndex: 0 }}
+      />,
+    );
+    expect(settledMain).toContain('data-testid="felt-settlement-award-label-tom"');
+    expect(settledMain).toContain('data-testid="felt-settlement-award-recipient-tom"');
+    expect(settledMain).toContain("+20k (100 BB)");
+    expect(settledMain).not.toContain('data-testid="felt-settlement-award-tom"');
+
+    const sidePresentation = selectVerifiedPotLayerPresentation(layeredPresentation, 1);
     const sideAward = renderToStaticMarkup(
       <LiveFelt
         {...baseProps}
         seats={[{ ...winner, is_all_in: true, display_committed_bet: 12_000 }, sideWinner]}
         tableFx
         viewerLayout
-        bestFiveFocus={focus}
-        showdownPresentation={layeredPresentation}
+        bestFiveFocus={sidePresentation.focus}
+        showdownPresentation={sidePresentation}
         replayRunoutPhase="pot_award"
         replayRunoutPresentation={{ key: "hand-1:7:verified", phase: "pot_award", visibleBoardCount: 5, potAwardIndex: 1 }}
       />,
@@ -275,5 +323,22 @@ describe("LiveFelt verified best-five focus", () => {
     expect(sideAward).toContain("Side Pot");
     expect(sideAward).toContain("Side winner");
     expect(sideAward).toContain("+8k (40 BB)");
+    expect(sideAward).toContain("Pair of Jacks - Ace-Q king kickers");
+    expect(sideAward).not.toContain(showdownPresentation.winners[0].rankingText);
+    expect((sideAward.match(/tracker-best-five-card/g) ?? []).length).toBe(5);
+  });
+
+  it("makes the viewer portrait board larger without resizing operator cards", () => {
+    const viewer = renderToStaticMarkup(
+      <LiveFelt {...baseProps} viewerLayout portrait />,
+    );
+    const operator = renderToStaticMarkup(
+      <LiveFelt {...baseProps} portrait />,
+    );
+
+    expect(viewer).toContain("width:clamp(30px,11.5cqi,50px)");
+    expect(viewer).toContain("height:clamp(42px,16.2cqi,70px)");
+    expect(operator).not.toContain("11.5cqi");
+    expect(operator).not.toContain("16.2cqi");
   });
 });

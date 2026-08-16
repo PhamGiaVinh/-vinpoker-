@@ -32,8 +32,10 @@ for (const viewport of [
 
     await expect(page.locator('[data-testid="seat-holecards"].tracker-win-glow')).toHaveCount(0);
     await expect(page.locator(".tracker-win-glow")).toHaveCount(1);
-    await expect(page.locator(".tracker-best-five-focus-active")).not.toContainText(/Thắng pot|quads|Kicker|Hoàn|Bộ 5 lá/i);
+    await expect(page.locator(".tracker-best-five-focus-active")).not.toContainText(/Thắng pot|Hoàn|Bộ 5 lá/i);
     await expect(page.locator(".tracker-best-five-focus-active")).toContainText("20k");
+    await expect(page.getByTestId("felt-settlement-award-recipient-tom")).toContainText("+20k (100 BB)");
+    await expect(page.getByTestId("felt-showdown-ranking-tom")).toContainText(/Tứ quý J.*Kicker A|Four Jacks.*Ace kicker/i);
 
     const first = await page.locator(".tracker-best-five-card").evaluateAll((cards) => cards.map((card) => {
       const rect = card.getBoundingClientRect();

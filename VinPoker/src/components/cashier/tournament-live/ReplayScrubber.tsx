@@ -14,7 +14,10 @@ import {
   type ReplayFrame,
   type ReplayHand,
 } from "@/lib/tracker-poker/replayEngine";
-import type { VerifiedShowdownPresentation } from "@/lib/tracker-poker/replayBestFiveFocus";
+import {
+  selectVerifiedPotLayerPresentation,
+  type VerifiedShowdownPresentation,
+} from "@/lib/tracker-poker/replayBestFiveFocus";
 import {
   createReplayRunoutPresentation,
   nextReplayRunoutPresentation,
@@ -117,11 +120,13 @@ export function ReplayScrubber({
     () => [...(hand.actions || [])].sort((a, b) => a.action_order - b.action_order),
     [hand]
   );
-  const hasCinematicAllInRunout = hud
+  const hasVerifiedPayoutSequence = hud
     && showdownPresentation?.enabled === true
     && frames[lastIndex]?.revealHoleCards === true
+    && (showdownPresentation?.potLayers.length ?? 0) > 0;
+  const hasCinematicAllInRunout = hasVerifiedPayoutSequence
     && sortedActions.some((action) => action.action_type === "all_in");
-  const verifiedPotLayerCount = hasCinematicAllInRunout ? (showdownPresentation?.potLayers.length ?? 0) : 0;
+  const verifiedPotLayerCount = hasVerifiedPayoutSequence ? (showdownPresentation?.potLayers.length ?? 0) : 0;
   const publishRunoutPresentation = useCallback((presentation: ReplayRunoutPresentation | null) => {
     setRunoutPresentation(presentation);
     onRunoutPresentation?.(presentation);
@@ -148,17 +153,23 @@ export function ReplayScrubber({
   }, [step, frames, lastIndex]);
 
   // A cancellable playback timeline replaces the fixed interval. Standard action
-  // steps retain their speed behavior; only a persisted all-in runout gets the
-  // staged board/result presentation. Scrub/jump/hand changes clear this effect.
+  // steps retain their speed behavior; verified payouts always get the pot award
+  // cadence, while all-in hands also receive the staged board runout. Scrub,
+  // jump, and hand changes clear this effect.
   useEffect(() => {
     if (!isPlaying) return;
     if (step < lastIndex) {
-      const enteringCinematicRunout = step === lastIndex - 1 && hasCinematicAllInRunout;
+      const enteringVerifiedPayout = step === lastIndex - 1 && hasVerifiedPayoutSequence;
       const timer = window.setTimeout(() => {
         frameSourceRef.current = "playback";
-        if (enteringCinematicRunout) {
+        if (enteringVerifiedPayout) {
           const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-          publishRunoutPresentation(createReplayRunoutPresentation(runoutKey, reducedMotion ? "static" : "hole_hold"));
+          const lastPotIndex = Math.max(0, verifiedPotLayerCount - 1);
+          publishRunoutPresentation(createReplayRunoutPresentation(
+            runoutKey,
+            reducedMotion ? "static" : hasCinematicAllInRunout ? "hole_hold" : "pot_collect",
+            reducedMotion ? lastPotIndex : null,
+          ));
         }
         setStep((currentStep) => Math.min(lastIndex, currentStep + 1));
       }, 1000 / speed);
@@ -179,22 +190,25 @@ export function ReplayScrubber({
       if (nextPresentation.phase === "static") setIsPlaying(false);
     }, replayRunoutPhaseDuration(runoutPresentation.phase, speed));
     return () => window.clearTimeout(timer);
-  }, [hasCinematicAllInRunout, isPlaying, lastIndex, publishRunoutPresentation, runoutKey, runoutPresentation, speed, step, verifiedPotLayerCount]);
+  }, [hasCinematicAllInRunout, hasVerifiedPayoutSequence, isPlaying, lastIndex, publishRunoutPresentation, runoutKey, runoutPresentation, speed, step, verifiedPotLayerCount]);
 
   const pauseTo = (nextStep: number) => {
     frameSourceRef.current = "scrub";
-    setIsPlaying(false);
-    publishRunoutPresentation(
-      nextStep === lastIndex && hasCinematicAllInRunout
-        ? createReplayRunoutPresentation(runoutKey, "static")
-        : null,
-    );
+    const entersVerifiedPayout = nextStep === lastIndex && hasVerifiedPayoutSequence;
+    const reducedMotion = entersVerifiedPayout
+      && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+    const lastPotIndex = Math.max(0, verifiedPotLayerCount - 1);
+    publishRunoutPresentation(entersVerifiedPayout
+      ? reducedMotion
+        ? createReplayRunoutPresentation(runoutKey, "static", lastPotIndex)
+        : createReplayRunoutPresentation(runoutKey, "pot_collect")
+      : null);
+    setIsPlaying(entersVerifiedPayout && !reducedMotion);
     setStep(Math.max(0, Math.min(lastIndex, nextStep)));
   };
 
   const togglePlay = () => {
     if (isPlaying && runoutPresentation) {
-      publishRunoutPresentation(createReplayRunoutPresentation(runoutKey, "static"));
       setIsPlaying(false);
       return;
     }
@@ -220,7 +234,15 @@ export function ReplayScrubber({
     && showdownPresentation.frameIndex === current?.index
     ? showdownPresentation
     : null;
-  const summaryVisible = currentPresentation != null
+  const potScopedPresentation = runoutPresentation?.key === runoutKey && runoutPresentation.potAwardIndex != null
+    ? selectVerifiedPotLayerPresentation(currentPresentation, runoutPresentation.potAwardIndex)
+    : null;
+  const visiblePresentation = potScopedPresentation?.enabled
+    ? potScopedPresentation
+      : hasVerifiedPayoutSequence && runoutPresentation
+      ? null
+      : currentPresentation;
+  const summaryVisible = visiblePresentation != null
     && (!runoutPresentation || (runoutPresentation.key === runoutKey && replayRunoutShowsSummary(runoutPresentation.phase)));
   const publicName = (name: string | null | undefined, playerId: string): string => {
     const trimmed = name?.trim() || "";
@@ -412,7 +434,7 @@ export function ReplayScrubber({
 
       {hud && hudTab === "summary" && (
         <div data-testid="replay-hud-summary" aria-live="polite" className="space-y-2">
-          {summaryVisible && currentPresentation.isChop && (
+          {summaryVisible && visiblePresentation.isChop && (
             <div data-testid="replay-hud-chop" className="rounded-xl border border-[hsl(var(--viewer-neon)_/_0.35)] bg-[hsl(var(--viewer-neon)_/_0.08)] px-3 py-2 text-xs font-semibold text-[hsl(var(--viewer-neon))]">
               {t("liveHub.felt.chopPot", "Chop pot")}
             </div>
@@ -422,9 +444,9 @@ export function ReplayScrubber({
               {t("liveHub.felt.needsResettle", "Cần tính lại kết quả")}
             </div>
           )}
-          {summaryVisible && currentPresentation.winners.length > 0 && (
+          {summaryVisible && visiblePresentation.winners.length > 0 && (
             <div className="space-y-1">
-              {currentPresentation.winners.map((winner) => (
+              {visiblePresentation.winners.map((winner) => (
                 <div
                   key={winner.playerId}
                   data-testid={`replay-hud-winner-${winner.playerId}`}

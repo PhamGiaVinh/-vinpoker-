@@ -35,8 +35,15 @@ import {
   type ReplayHand,
   type ReplayFrame,
 } from "@/lib/tracker-poker/replayEngine";
-import { deriveReplayPlaybackFx } from "@/lib/tracker-poker/replayFx";
-import { resolveVerifiedShowdownPresentation } from "@/lib/tracker-poker/replayBestFiveFocus";
+import {
+  createReplayActionFxScheduler,
+  deriveReplayPlaybackFx,
+  replayActionSoundDelayMs,
+} from "@/lib/tracker-poker/replayFx";
+import {
+  resolveVerifiedShowdownPresentation,
+  selectVerifiedPotLayerPresentation,
+} from "@/lib/tracker-poker/replayBestFiveFocus";
 import {
   replayRunoutFocusPhase,
   type ReplayRunoutPresentation,
@@ -204,6 +211,12 @@ export function TournamentLiveView({
   // liveTableFx replay playback FX: forward-only tracker (frame index + board count)
   // so PLAYING a hand back emits the same sounds + chip-push; scrubbing back is silent.
   const replayFxRef = useRef<{ index: number | null; board: number }>({ index: null, board: 0 });
+  const replayFxPlaybackStateRef = useRef({ soundMuted, spectator, replayMotionSpeed });
+  replayFxPlaybackStateRef.current = { soundMuted, spectator, replayMotionSpeed };
+  const replayActionFxSchedulerRef = useRef<ReturnType<typeof createReplayActionFxScheduler> | null>(null);
+  if (!replayActionFxSchedulerRef.current) {
+    replayActionFxSchedulerRef.current = createReplayActionFxScheduler();
+  }
   const replayChipSeqRef = useRef(0);
   const replayMotionFrameRef = useRef<ReplayFrame | null>(null);
   const replaySettlementSoundRef = useRef<string | null>(null);
@@ -212,6 +225,8 @@ export function TournamentLiveView({
   const enqueueTableMotion = useCallback((events: TableMotionEvent[]) => {
     if (events.length > 0) setTableMotionEvents((current) => appendTableMotionEvents(current, events));
   }, []);
+
+  useEffect(() => () => replayActionFxSchedulerRef.current?.cancel(), []);
 
   const loadedReplayHandKey = replayHand
     ? replayHand.hand_id ?? `hand-${replayHand.hand_number}`
@@ -823,7 +838,9 @@ export function TournamentLiveView({
   // Replay "Phát" button is itself a user gesture, so audio is already unlocked.
   // Flag OFF → no-op (replay stays silent, exactly as today).
   useEffect(() => {
+    const scheduler = replayActionFxSchedulerRef.current;
     if (mode !== "replay" || !FEATURES.liveTableFx || !replayFrame) {
+      scheduler?.cancel();
       replayFxRef.current = { index: null, board: 0 };
       return;
     }
@@ -831,7 +848,10 @@ export function TournamentLiveView({
     const board = replayFrame.displayCards.filter(Boolean).length;
     const prev = replayFxRef.current;
     replayFxRef.current = { index: idx, board };
-    if (replayFrameSource !== "playback") return;
+    if (replayFrameSource !== "playback") {
+      scheduler?.cancel();
+      return;
+    }
 
     const la = replayFrame.latestAction;
     const fx = deriveReplayPlaybackFx({
@@ -843,19 +863,27 @@ export function TournamentLiveView({
       seatNumber: la?.seat_number ?? 0,
     });
 
-    if (!soundMuted) {
-      if (fx.deal) playPokerLiveSound(fx.deal, { bypassStoredMute: true, profile: "tracker" });
-      if (fx.action) playPokerLiveSound(fx.action, { bypassStoredMute: true, profile: "tracker" });
-      if (fx.chipClink) playPokerLiveSound("chip", { bypassStoredMute: true, profile: "tracker" });
+    if (!replayFxPlaybackStateRef.current.soundMuted && fx.deal) {
+      playPokerLiveSound(fx.deal, { bypassStoredMute: true, profile: "tracker" });
     }
-    // Chip-push is visual + viewer-only (spectator); a monotonic seq keeps the nonce
-    // unique even when the same hand is replayed twice.
-    if (fx.chipPush && spectator && la) {
-      replayChipSeqRef.current += 1;
-      setChipPush({ seatNumber: la.seat_number, nonce: 1_000_000 + replayChipSeqRef.current, kind: la.action_type });
-    }
+    const playActionFx = () => {
+      const playbackState = replayFxPlaybackStateRef.current;
+      if (!playbackState.soundMuted) {
+        if (fx.action) playPokerLiveSound(fx.action, { bypassStoredMute: true, profile: "tracker" });
+        if (fx.chipClink) playPokerLiveSound("chip", { bypassStoredMute: true, profile: "tracker" });
+      }
+      // Chip-push is visual + viewer-only (spectator); a monotonic seq keeps the
+      // nonce unique even when the same hand is replayed twice.
+      if (fx.chipPush && playbackState.spectator && la) {
+        replayChipSeqRef.current += 1;
+        setChipPush({ seatNumber: la.seat_number, nonce: 1_000_000 + replayChipSeqRef.current, kind: la.action_type });
+      }
+    };
+    const actionDelay = replayActionSoundDelayMs(fx.deal, replayFxPlaybackStateRef.current.replayMotionSpeed);
+    const actionKey = `${loadedReplayHandKey ?? "replay"}:${idx}:${board}:${la?.action_id ?? la?.action_order ?? "none"}`;
+    scheduler?.schedule(actionKey, actionDelay, playActionFx);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [replayFrame, replayFrameSource, mode, soundMuted, spectator]);
+  }, [replayFrame, replayFrameSource, mode]);
 
   useEffect(() => {
     if (mode !== "replay" || !FEATURES.liveTableMotionV2 || !replayFrame || !replayHand) {
@@ -961,6 +989,21 @@ export function TournamentLiveView({
     && replayRunoutPresentation?.key.startsWith(`${selectedReplayHandKey}:${selectedReplayHand.actions.length}:`)
     ? replayRunoutPresentation
     : null;
+  const replayHasVerifiedPotSequence = replayShowdownPresentation?.enabled === true
+    && replayShowdownPresentation.potLayers.length > 0;
+  const replayVisibleShowdownPresentation = useMemo(() => {
+    if (!replayShowdownPresentation?.enabled) return null;
+    if (replayRunoutForSelectedHand?.potAwardIndex != null) {
+      const scoped = selectVerifiedPotLayerPresentation(
+        replayShowdownPresentation,
+        replayRunoutForSelectedHand.potAwardIndex,
+      );
+      return scoped.enabled ? scoped : null;
+    }
+    // A cinematic all-in must never flash the union of every Main/Side winner
+    // while its keyed pot sequence is collecting chips or switching layers.
+    return replayHasVerifiedPotSequence ? null : replayShowdownPresentation;
+  }, [replayHasVerifiedPotSequence, replayRunoutForSelectedHand?.potAwardIndex, replayShowdownPresentation]);
   // The HUD owns the verified payout cadence. One key per phase/layer prevents
   // polling, rerenders, and a fast scrub from replaying the collect/award sound.
   useEffect(() => {
@@ -968,7 +1011,7 @@ export function TournamentLiveView({
       mode !== "replay"
       || !spectator
       || !FEATURES.liveReplayHud
-      || !FEATURES.liveTableMotionV2
+      || !FEATURES.liveTableFx
       || !replayRunoutForSelectedHand
       || (replayRunoutForSelectedHand.phase !== "pot_collect" && replayRunoutForSelectedHand.phase !== "pot_award")
     ) {
@@ -986,7 +1029,7 @@ export function TournamentLiveView({
     }
   }, [mode, replayRunoutForSelectedHand, soundMuted, spectator]);
   const replayFocusPhase = replayRunoutFocusPhase(replayRunoutForSelectedHand?.phase ?? (
-    replayShowdownPresentation?.enabled ? "static" : null
+    replayVisibleShowdownPresentation?.enabled ? "static" : null
   ));
   const replayDisplayCards = selectedReplayFrame
     ? replayRunoutForSelectedHand
@@ -1598,10 +1641,10 @@ export function TournamentLiveView({
               motionEvents={tableMotionEvents}
               motionSpeed={isReplay ? (spectator && FEATURES.liveReplayHud ? replayMotionSpeed : 2) : 1}
               bestFiveFocus={spectator && isReplay && FEATURES.liveReplayHud && replayFocusPhase !== "hidden"
-                ? replayShowdownPresentation?.focus ?? null
+                ? replayVisibleShowdownPresentation?.focus ?? null
                 : null}
               showdownPresentation={spectator && isReplay && FEATURES.liveReplayHud
-                ? replayShowdownPresentation
+                ? replayVisibleShowdownPresentation
                 : null}
               bestFiveFocusPhase={replayFocusPhase}
               replayRunoutPhase={spectator && isReplay && FEATURES.liveReplayHud

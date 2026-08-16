@@ -299,7 +299,7 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
           ? { category: settledRank.category, best_five: [...settledRank.bestFive], kickers: [...settledRank.kickers] }
           : undefined,
         // trackBets only — absent keys keep flag-off frames deep-equal to today's.
-        ...(trackBets ? { current_bet: st.streetBet } : {}),
+        ...(trackBets ? { current_bet: st.streetBet, display_committed_bet: st.totalBet } : {}),
         ...(trackBets && st.allIn ? { total_committed: st.totalBet } : {}),
       };
     });

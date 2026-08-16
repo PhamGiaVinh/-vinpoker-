@@ -27,7 +27,11 @@ import { LiveFelt } from "@/components/cashier/tournament-live/LiveFelt";
 import { TrackerVisualStyles } from "@/components/cashier/tournament-live/PokerVisuals";
 import { ReplayScrubber } from "@/components/cashier/tournament-live/ReplayScrubber";
 import { buildReplayFrames, detectBigBlind, type ReplayFrame } from "@/lib/tracker-poker/replayEngine";
-import { resolveVerifiedBestFiveFocus } from "@/lib/tracker-poker/replayBestFiveFocus";
+import {
+  resolveVerifiedShowdownPresentation,
+  selectVerifiedPotLayerPresentation,
+} from "@/lib/tracker-poker/replayBestFiveFocus";
+import { createReplayRunoutPresentation } from "@/lib/tracker-poker/replayRunoutTimeline";
 import { deriveReplayPlaybackFx } from "@/lib/tracker-poker/replayFx";
 import { buildFixtureHand, type LiveFeltFixtureName } from "./livefeltFixtures";
 
@@ -59,6 +63,7 @@ export default function LiveFeltPreview() {
   const frames = useMemo(() => buildReplayFrames(hand, { trackBets: viewerLayout && compact }), [hand, viewerLayout, compact]);
   const stepParam = params.get("step");
   const step = stepParam == null ? frames.length - 1 : Math.max(0, Math.min(frames.length - 1, Number(stepParam) || 0));
+  const requestedPotIndex = Math.max(0, Number(params.get("pot")) || 0);
 
   const [frame, setFrame] = useState<ReplayFrame>(frames[step]);
   useEffect(() => { if (!play) setFrame(frames[step]); }, [frames, step, play]);
@@ -86,12 +91,24 @@ export default function LiveFeltPreview() {
   const bb = detectBigBlind(hand);
   const formatBB = (n: number): string | null => (bb > 0 ? `${(n / bb).toFixed(1).replace(/\.0$/, "")} BB` : null);
   const blinds = bb > 0 ? { sb: bb / 2, bb, ante: 0 } : null;
-  const bestFiveFocus = useMemo(() => resolveVerifiedBestFiveFocus({
+  const verifiedPresentation = useMemo(() => resolveVerifiedShowdownPresentation({
     handId: hand.hand_id ?? `fixture-${fixture}-${hand.hand_number}`,
     frame,
     finalFrameIndex: frames.length - 1,
     settlement: hand.publicSettlement,
+    locale: "vi",
   }), [fixture, frame, frames.length, hand]);
+  const visiblePresentation = useMemo(
+    () => selectVerifiedPotLayerPresentation(verifiedPresentation, requestedPotIndex),
+    [requestedPotIndex, verifiedPresentation],
+  );
+  const staticPayoutPresentation = visiblePresentation.enabled
+    ? createReplayRunoutPresentation(
+        `${visiblePresentation.handId}:${visiblePresentation.frameIndex}:dev-fixture`,
+        "static",
+        requestedPotIndex,
+      )
+    : null;
 
   const felt = (
     <LiveFelt
@@ -110,7 +127,11 @@ export default function LiveFeltPreview() {
       viewerLayout={viewerLayout}
       compact={compact}
       tableFx={tableFx}
-      bestFiveFocus={bestFiveFocus}
+      bestFiveFocus={visiblePresentation.enabled ? visiblePresentation.focus : null}
+      showdownPresentation={visiblePresentation.enabled ? visiblePresentation : null}
+      bestFiveFocusPhase="static"
+      replayRunoutPhase={staticPayoutPresentation?.phase ?? null}
+      replayRunoutPresentation={staticPayoutPresentation}
       chipPush={chipPush}
       blinds={blinds}
     />

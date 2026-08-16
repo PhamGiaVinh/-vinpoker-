@@ -42,6 +42,56 @@ export type VerifiedShowdownPresentation = {
   focus: BestFiveFocus;
 };
 
+/**
+ * Narrows an already verified showdown to one server-projected pot layer. This
+ * is a presentation projection only: it never changes winners, awards, ranks,
+ * or cards and therefore cannot create a result that settlement did not emit.
+ */
+export function selectVerifiedPotLayerPresentation(
+  presentation: VerifiedShowdownPresentation | null | undefined,
+  potLayerIndex: number,
+): VerifiedShowdownPresentation {
+  if (!presentation?.enabled || !Number.isInteger(potLayerIndex) || potLayerIndex < 0) {
+    return disabledPresentation();
+  }
+
+  const layer = presentation.potLayers[potLayerIndex];
+  if (!layer || layer.winnerPlayerIds.length === 0) return disabledPresentation();
+
+  const winnersByPlayerId = new Map(presentation.winners.map((winner) => [winner.playerId, winner]));
+  const winners = layer.winnerPlayerIds.flatMap((playerId) => {
+    const winner = winnersByPlayerId.get(playerId);
+    return winner ? [winner] : [];
+  });
+  if (winners.length !== layer.winnerPlayerIds.length) return disabledPresentation();
+
+  const boardCardCodes = new Set<string>();
+  const holeCardCodesByPlayerId = new Map<string, ReadonlySet<string>>();
+  for (const winner of winners) {
+    const bestFive = new Set(winner.bestFive);
+    if (bestFive.size !== 5) return disabledPresentation();
+    for (const holeCard of winner.holeBestFive) {
+      if (!bestFive.has(holeCard)) return disabledPresentation();
+    }
+    for (const card of bestFive) {
+      if (!winner.holeBestFive.has(card)) boardCardCodes.add(card);
+    }
+    holeCardCodesByPlayerId.set(winner.playerId, new Set(winner.holeBestFive));
+  }
+
+  return {
+    ...presentation,
+    isChop: layer.winnerPlayerIds.length > 1,
+    winners,
+    focus: {
+      enabled: true,
+      winnerPlayerIds: new Set(layer.winnerPlayerIds),
+      boardCardCodes,
+      holeCardCodesByPlayerId,
+    },
+  };
+}
+
 type ResolveVerifiedShowdownPresentationInput = {
   handId: string;
   frame: ReplayFrame;

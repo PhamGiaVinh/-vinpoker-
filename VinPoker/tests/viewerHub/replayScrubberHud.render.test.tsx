@@ -128,6 +128,13 @@ const verifiedRefundOnlyLoserHand: ReplayHand = {
   },
 };
 
+const verifiedCheckedDownHand: ReplayHand = {
+  ...verifiedHand,
+  actions: verifiedHand.actions.map((action) => (
+    action.action_type === "all_in" ? { ...action, action_type: "bet" } : action
+  )),
+};
+
 afterEach(() => {
   vi.useRealTimers();
   cleanup();
@@ -216,7 +223,8 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
     vi.useRealTimers();
   });
 
-  it("direct showdown jump is static rather than replaying a long result animation", () => {
+  it("direct showdown jump collects committed chips before presenting the verified pot", () => {
+    vi.useFakeTimers();
     const onRunoutPresentation = vi.fn();
     const view = render(
       <ReplayScrubber
@@ -228,7 +236,33 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
       />,
     );
     fireEvent.click(view.getByTitle("Tới cuối (showdown)"));
-    expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "static", visibleBoardCount: 5 });
+    expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_collect", visibleBoardCount: 5 });
+    act(() => vi.advanceTimersByTime(420));
+    expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_award", potAwardIndex: 0 });
+  });
+
+  it("uses the same three-second verified pot result for a hand without an all-in and keeps it visible", () => {
+    vi.useFakeTimers();
+    const onRunoutPresentation = vi.fn();
+    const view = render(
+      <ReplayScrubber
+        hand={verifiedCheckedDownHand}
+        onFrame={() => {}}
+        hud
+        showdownPresentation={presentationFor(verifiedCheckedDownHand)}
+        onRunoutPresentation={onRunoutPresentation}
+      />,
+    );
+
+    fireEvent.click(view.getByText("Showdown"));
+    expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_collect" });
+    act(() => vi.advanceTimersByTime(420));
+    expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_award", potAwardIndex: 0 });
+    act(() => vi.advanceTimersByTime(2_999));
+    expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_award", potAwardIndex: 0 });
+    act(() => vi.advanceTimersByTime(1));
+    expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "static", potAwardIndex: 0 });
+    expect(view.getByTestId("replay-hud-winner-b")).toBeTruthy();
   });
 
   it("hud does not name a reconstructed Broadway split without server proof", () => {
@@ -239,12 +273,14 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
   });
 
   it("shows only the verified winner identity at settlement and removes payout details", () => {
+    vi.useFakeTimers();
     const { getByTestId, getByTitle, queryByTestId } = render(
       <ReplayScrubber hand={verifiedHand} onFrame={() => {}} hud showdownPresentation={presentationFor(verifiedHand)} />,
     );
     expect(queryByTestId("replay-hud-winner-b")).toBeNull();
 
     fireEvent.click(getByTitle("Tới cuối (showdown)"));
+    act(() => vi.advanceTimersByTime(420));
     const winner = getByTestId("replay-hud-winner-b");
     expect(winner.textContent).toContain("KIÊN");
     expect(winner.textContent).toMatch(/Ghế 2|Seat 2/);
@@ -259,10 +295,12 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
   });
 
   it("shows the chop banner and one identity row per verified winner without pot shares", () => {
+    vi.useFakeTimers();
     const { getByTestId, getByTitle } = render(
       <ReplayScrubber hand={verifiedChopHand} onFrame={() => {}} hud showdownPresentation={presentationFor(verifiedChopHand)} />,
     );
     fireEvent.click(getByTitle("Tới cuối (showdown)"));
+    act(() => vi.advanceTimersByTime(420));
     expect(getByTestId("replay-hud-chop").textContent).toMatch(/Chop pot|Chia đôi pot/i);
     expect(getByTestId("replay-hud-winner-a").textContent).toMatch(/Alice.*Ghế 1|Alice.*Seat 1/);
     expect(getByTestId("replay-hud-winner-b").textContent).toMatch(/Bob.*Ghế 2|Bob.*Seat 2/);
@@ -270,10 +308,12 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
   });
 
   it("does not render a refund-only player row while retaining a payout-plus-refund winner", () => {
+    vi.useFakeTimers();
     const first = render(
       <ReplayScrubber hand={verifiedRefundOnlyLoserHand} onFrame={() => {}} hud showdownPresentation={presentationFor(verifiedRefundOnlyLoserHand)} />,
     );
     fireEvent.click(first.getByTitle("Tới cuối (showdown)"));
+    act(() => vi.advanceTimersByTime(420));
     expect(first.getByTestId("replay-hud-winner-b")).toBeTruthy();
     expect(first.queryByTestId("replay-hud-winner-a")).toBeNull();
     expect(first.queryByTestId("replay-hud-refund-a")).toBeNull();
@@ -283,11 +323,13 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
       <ReplayScrubber hand={verifiedHand} onFrame={() => {}} hud showdownPresentation={presentationFor(verifiedHand)} />,
     );
     fireEvent.click(second.getByTitle("Tới cuối (showdown)"));
+    act(() => vi.advanceTimersByTime(420));
     expect(second.getByTestId("replay-hud-winner-b")).toBeTruthy();
     expect(second.getByTestId("replay-hud-summary").textContent).not.toMatch(/Hoàn|Refund|\+300k/i);
   });
 
   it("deduplicates a winner who receives allocations from multiple side-pot layers", () => {
+    vi.useFakeTimers();
     const multiPotHand: ReplayHand = {
       ...verifiedHand,
       publicSettlement: {
@@ -314,6 +356,7 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
       <ReplayScrubber hand={multiPotHand} onFrame={() => {}} hud showdownPresentation={presentationFor(multiPotHand)} />,
     );
     fireEvent.click(getByTitle("Tới cuối (showdown)"));
+    act(() => vi.advanceTimersByTime(420));
     expect(queryAllByTestId("replay-hud-winner-b")).toHaveLength(1);
   });
 
