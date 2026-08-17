@@ -27,7 +27,7 @@ import {
   type BestFiveFocus,
   type VerifiedShowdownPresentation,
 } from "@/lib/tracker-poker/replayBestFiveFocus";
-import type { ReplayRunoutPhase, ReplayRunoutPresentation } from "@/lib/tracker-poker/replayRunoutTimeline";
+import { isReplaySettlementPayoutPhase, type ReplayRunoutPhase, type ReplayRunoutPresentation } from "@/lib/tracker-poker/replayRunoutTimeline";
 
 /** Count-up text (Phase 3, tableFx only): tweens a numeric display toward its target.
  *  First render / enabled-off / reduced-motion emit the target directly, so static
@@ -395,6 +395,23 @@ export function LiveFelt({
     && tableFx
     && showdownPresentation?.enabled === true
     && (settlementPayoutPhase === "pot_collect" || settlementPayoutPhase === "pot_award");
+  // Keep committed chips out of their seat positions for the whole verified
+  // settlement sequence. The old gate stopped at pot_award, so static/dim/glow
+  // frames mounted the scattered seat stacks again after collection finished.
+  const settlementPayoutSequenceActive = viewerLayout
+    && tableFx
+    && showdownPresentation?.enabled === true
+    && replayRunoutPresentation != null
+    && isReplaySettlementPayoutPhase(settlementPayoutPhase);
+  // Live all-in has no replay HUD settlement model yet, but the server-derived
+  // runout state still tells us betting is closed. Keep those committed chips
+  // from reappearing around seats; collect them into one neutral center stack.
+  // This is deliberately collect-only: no winner, pot layer, or payout is
+  // inferred on the client.
+  const livePotCollectionActive = viewerLayout
+    && tableFx
+    && runout === true
+    && replayRunoutPresentation == null;
   const settlementPotResultActive = viewerLayout
     && tableFx
     && showdownPresentation?.enabled === true
@@ -535,7 +552,7 @@ export function LiveFelt({
   const activePotWinnerIds = new Set(
     activePotAwardsComplete ? activePotLayer?.winnerPlayerIds ?? [] : [],
   );
-  const visibleSettlementPotLayers = settlementPayoutActive && showdownPresentation
+  const visibleSettlementPotLayers = settlementPayoutSequenceActive && showdownPresentation
     ? settlementPayoutPhase === "pot_award"
       ? showdownPresentation.potLayers.slice(Math.max(0, activePotLayerIndex))
       : showdownPresentation.potLayers
@@ -562,7 +579,7 @@ export function LiveFelt({
   // Once the all-in reaches the verified outcome, leaving committed stacks at
   // each seat would imply that the chips were never settled. Direct jumps render
   // the resolved table immediately; the animated path replaces them with travel.
-  const hideCommittedSeatStacks = settlementPayoutActive || bestFiveFocusActive;
+  const hideCommittedSeatStacks = settlementPayoutSequenceActive || livePotCollectionActive || bestFiveFocusActive;
   // V2 forces its OWN premium surface, so the redesign never depends on the
   // separate liveHandFeed/viewerNeon flag being on (review P1).
   const neon = viewerNeon || viewerLayout;
@@ -1090,9 +1107,9 @@ export function LiveFelt({
         {/* Verified payout presentation. Committed chips converge first, then the
             server-projected Main Pot and each Side Pot leave the center in order.
             This branch is viewer-replay-only and never changes a chip value. */}
-        {(settlementPayoutActive || settlementPotResultActive) && (
+        {(settlementPayoutSequenceActive || livePotCollectionActive || settlementPotResultActive) && (
           <div data-testid="felt-settlement-payout-motion" className="pointer-events-none absolute inset-0 z-[24] overflow-visible" aria-hidden="true">
-            {settlementPayoutPhase === "pot_collect" && committedSeatStacks.map(({ seat, amount, point }) => (
+            {(settlementPayoutPhase === "pot_collect" || livePotCollectionActive) && committedSeatStacks.map(({ seat, amount, point }) => (
               <div
                 key={`collect-stack-${seat.player_id}`}
                 data-testid="felt-settlement-collect-stack"
@@ -1108,7 +1125,17 @@ export function LiveFelt({
               </div>
             ))}
 
-            {visibleSettlementPotLayers.map((pot, visibleIndex) => {
+            {(settlementPayoutPhase === "pot_collect" || livePotCollectionActive) && (
+              <div
+                data-testid="felt-settlement-collect-center"
+                className="absolute -translate-x-1/2 -translate-y-1/2"
+                style={{ left: "50%", top: `${settlementPotPoint(0, 1).t}%` }}
+              >
+                <ChipStack label={`${t("liveHub.felt.pot", "POT")} ${formatStack(displayPot)}`} sizeStyle={stackStyle} />
+              </div>
+            )}
+
+            {(settlementPayoutPhase === "pot_collect" ? [] : visibleSettlementPotLayers).map((pot, visibleIndex) => {
               const point = settlementPotPoint(visibleIndex, visibleSettlementPotLayers.length);
               const isAwardingPot = settlementPayoutPhase === "pot_award" && visibleIndex === 0;
               return (

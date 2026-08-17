@@ -36,6 +36,21 @@ export type ReplayRunoutPresentation = {
   potAwardIndex: number | null;
 };
 
+const SETTLEMENT_PAYOUT_PHASES: ReadonlySet<ReplayRunoutPhase> = new Set([
+  "pot_collect",
+  "pot_award",
+  "dim",
+  "glow",
+  "summary_delay",
+  "summary",
+  "static",
+]);
+
+/** True after collection starts, including the final direct-jump/static state. */
+export function isReplaySettlementPayoutPhase(phase: ReplayRunoutPhase | null | undefined): boolean {
+  return phase != null && SETTLEMENT_PAYOUT_PHASES.has(phase);
+}
+
 const NEXT_PHASE: Record<Exclude<ReplayRunoutPhase, "static">, ReplayRunoutPhase> = {
   hole_hold: "flop",
   flop: "turn",
