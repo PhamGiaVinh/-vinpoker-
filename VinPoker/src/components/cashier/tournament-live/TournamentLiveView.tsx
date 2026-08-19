@@ -54,6 +54,7 @@ import {
   deriveReplayTableMotionEvents,
   type TableMotionEvent,
 } from "@/lib/tracker-poker/tableMotion";
+import { shouldCollectCommittedChips } from "@/lib/tracker-poker/livePotCollection";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
 import { resolveViewerIdentity } from "./viewer-hub/viewerIdentity";
@@ -1039,6 +1040,54 @@ export function TournamentLiveView({
       : selectedReplayFrame.displayCards
     : null;
 
+  const replayFinalAllInCollection = Boolean(
+    spectator
+      && isReplay
+      && FEATURES.liveReplayHud
+      && selectedReplayHand
+      && selectedReplayFrame
+      && selectedReplayFrame.index === selectedReplayHand.actions.length
+      && selectedReplayFrame.displayCards.filter(Boolean).length >= 5
+      && selectedReplayHand.actions.some((action) => action.action_type === "all_in")
+      && selectedReplayFrame.seats.some((seat) => (
+        seat.is_all_in === true
+        || [seat.total_committed, seat.display_committed_bet, seat.current_bet]
+          .some((value) => typeof value === "number" && Number.isFinite(value) && value > 0)
+      ))
+  );
+  const liveFinalAllInCollection = Boolean(
+    spectator
+      && !isReplay
+      && FEATURES.liveViewerFeltV2
+      && FEATURES.liveTableFx
+      && communityCards.filter(Boolean).length >= 5
+      && actions.some((action) => action.action_type === "all_in")
+      && seats.some((seat) => (
+        seat.is_all_in === true
+        || [seat.total_committed, seat.display_committed_bet, seat.current_bet]
+          .some((value) => typeof value === "number" && Number.isFinite(value) && value > 0)
+      ))
+  );
+  const collectCommittedChips = shouldCollectCommittedChips({
+    enabled: spectator && FEATURES.liveTableFx,
+    runout: !isReplay && liveRunout,
+    finalAllIn: replayFinalAllInCollection || liveFinalAllInCollection,
+    hasCommittedChips: isReplay
+      ? Boolean(selectedReplayFrame?.potBreakdown?.totalCommitted)
+        || Boolean(selectedReplayFrame?.seats.some((seat) => (
+          [seat.total_committed, seat.display_committed_bet, seat.current_bet]
+            .some((value) => typeof value === "number" && Number.isFinite(value) && value > 0)
+        )))
+      : Boolean(potBreakdown?.totalCommitted)
+        || Boolean(seats.some((seat) => (
+          [seat.total_committed, seat.display_committed_bet, seat.current_bet]
+            .some((value) => typeof value === "number" && Number.isFinite(value) && value > 0)
+        )))
+        || actions.some((action) => action.action_amount > 0 && [
+          "post_sb", "post_bb", "post_ante", "bet", "raise", "call", "all_in",
+        ].includes(action.action_type)),
+  });
+
   // Replay uses the historical hand's own big blind (the live clock may have moved on).
   const replayBigBlind = selectedReplayHand ? detectBigBlind(selectedReplayHand) : 0;
   const replayFormatBB = useCallback(
@@ -1636,6 +1685,7 @@ export function TournamentLiveView({
               compact={compactFelt}
               blinds={feltBlinds}
               runout={!isReplay && liveRunout}
+              collectCommittedChips={collectCommittedChips}
               revealOrder={revealOrder}
               motionEnabled={spectator && FEATURES.liveTableMotionV2}
               motionEvents={tableMotionEvents}
