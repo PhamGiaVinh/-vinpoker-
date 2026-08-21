@@ -16,6 +16,7 @@
 // delete_last_action. `action_amount` is always chips ADDED (never "bet to").
 
 import type { PotLayer } from "@/lib/tracker-poker/potEngine";
+import type { VoiceActionMetadata } from "@/lib/trackerVoice";
 
 /** Local player shape (subset of HandInputPanel's PlayerState the payloads read). */
 export interface EdgePlayer {
@@ -72,6 +73,7 @@ export function buildRecordActionBody(p: {
   /** Chips ADDED (NOT "bet to" total) — converted via betToAdded before this call. */
   actionAmount: number;
   actionOrder: number;
+  metadata?: VoiceActionMetadata;
 }) {
   return {
     tournament_id: p.tournamentId,
@@ -83,6 +85,16 @@ export function buildRecordActionBody(p: {
     action_type: p.actionType,
     action_amount: p.actionAmount,
     action_order: p.actionOrder,
+    ...(p.metadata
+      ? {
+          source: p.metadata.source,
+          tournament_table_id: p.metadata.tournamentTableId,
+          voice_event_id: p.metadata.voiceEventId,
+          idempotency_key: p.metadata.idempotencyKey,
+          trace_id: p.metadata.traceId,
+          expected_state_version: p.metadata.expectedStateVersion,
+        }
+      : {}),
   };
 }
 

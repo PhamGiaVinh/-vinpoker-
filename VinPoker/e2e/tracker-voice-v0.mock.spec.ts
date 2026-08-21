@@ -1,0 +1,61 @@
+import { expect, test } from "@playwright/test";
+
+const viewports = [
+  { width: 390, height: 844 },
+  { width: 834, height: 1112 },
+  { width: 1194, height: 834 },
+  { width: 1440, height: 900 },
+] as const;
+
+test("mock Voice flows through Shadow, Assist, correction and Viewer/Replay", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/__dev/tracker-voice-v0");
+
+  await page.getByRole("button", { name: "Bắt đầu nghe" }).click();
+  await expect(page.getByText("Đang nghe", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "assist" }).click();
+
+  const transcript = page.getByRole("textbox", { name: "Mock transcript" });
+  await transcript.fill("call");
+  await page.getByRole("button", { name: "Phát final" }).click();
+  await expect(page.getByText("Player A · call", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Xác nhận action" }).click();
+  await expect(page.getByTestId("canonical-action-count")).toHaveText("1");
+  await expect(page.getByTestId("viewer-replay-actions")).toContainText("Player A · call");
+  await expect(page.getByTestId("analytics-vpip")).toHaveText("100.0%");
+
+  await page.getByRole("button", { name: "Phát duplicate provider callback" }).click();
+  await expect(page.getByTestId("validation-count")).toHaveText("2");
+  await page.getByRole("button", { name: "Xác nhận action" }).click();
+  await expect(page.getByTestId("canonical-action-count")).toHaveText("2");
+
+  await transcript.fill("báo sai action");
+  await page.getByRole("button", { name: "Phát final" }).click();
+  await expect(page.getByText("Alert đã vào hàng đợi Floor.")).toBeVisible();
+  await expect(page.getByTestId("floor-alert-count")).toHaveText("1");
+
+  await transcript.fill("raise 6 nghìn");
+  await page.getByRole("button", { name: "Phát final" }).click();
+  await expect(page.getByText("1 transcript đang chờ Floor")).toBeVisible();
+  await expect(page.getByTestId("canonical-action-count")).toHaveText("2");
+  await page.getByRole("button", { name: "Kiểm tra lại sau khi Floor sửa" }).click();
+  await page.getByRole("button", { name: "Xác nhận action" }).click();
+  await expect(page.getByTestId("canonical-action-count")).toHaveText("3");
+  await expect(page.getByTestId("viewer-replay-actions")).toContainText("raise tới 6.000");
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+  expect(pageErrors).toEqual([]);
+});
+
+test("mock Voice recovers fail-closed after an offline event", async ({ page }) => {
+  await page.goto("/__dev/tracker-voice-v0");
+  await page.getByRole("button", { name: "Bắt đầu nghe" }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await expect(page.getByText("Thiết bị mất mạng. Voice đã dừng ghi action.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Kết nối lại" })).toBeVisible();
+});

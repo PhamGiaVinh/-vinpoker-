@@ -1,11 +1,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  nextToAct,
   reconcileSidePots,
+  reduceHand,
   validateAction,
   type ActionRow,
   type PlayerSeed,
   type ProposedAction,
+  type Street,
 } from "../_shared/trackerEngine/index.ts";
+import { parseTrackerVoiceCommand } from "../_shared/trackerVoiceParser.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,6 +24,66 @@ const VALIDATION_MODE = (Deno.env.get("TRACKER_VALIDATION_MODE") || "warn").toLo
 // live entry (heads-up, straddles, out-of-turn-but-allowed). Off by default even
 // in enforce mode; opt in explicitly.
 const ENFORCE_TURN_ORDER = (Deno.env.get("TRACKER_ENFORCE_TURN_ORDER") || "false") === "true";
+const VOICE_AUTO_ENABLED = (Deno.env.get("TRACKER_VOICE_AUTO_ENABLED") || "false") === "true";
+const VOICE_CAPABILITY_VERSION = Deno.env.get("TRACKER_VOICE_CAPABILITY_VERSION") || "tracker-voice-v0";
+
+type VoiceSnapshot = {
+  ok: boolean;
+  error?: string;
+  hand_id: string;
+  button_seat: number;
+  community_cards: string[];
+  state_version: string;
+  correction_pending: boolean;
+  configured_mode: "shadow" | "assist" | "auto";
+  provider_model: string;
+  spoken_amount_unit: number;
+  amount_unit_confirmed: boolean;
+  players: Array<PlayerSeed & { entry_number: number }>;
+  actions: ActionRow[];
+};
+
+function streetForBoard(board: string[]): Street {
+  if (board.length >= 5) return "river";
+  if (board.length === 4) return "turn";
+  if (board.length === 3) return "flop";
+  return "preflop";
+}
+
+function clockwiseAfter<T extends { seat_number: number }>(players: T[], seat: number): T | null {
+  const ordered = [...players].sort((a, b) => a.seat_number - b.seat_number);
+  return ordered.find((player) => player.seat_number > seat) ?? ordered[0] ?? null;
+}
+
+function resolveVoiceActor(snapshot: VoiceSnapshot, street: Street): {
+  playerId: string;
+  entryNumber: number;
+  currentBet: number;
+  stack: number;
+  highestBet: number;
+} | null {
+  const runtime = reduceHand(snapshot.players, snapshot.actions, snapshot.button_seat);
+  const hasStreetAction = snapshot.actions.some((action) => action.street === street);
+  let playerId = nextToAct(snapshot.players, snapshot.actions, snapshot.button_seat);
+  if (!playerId && !hasStreetAction && street !== runtime.street) {
+    playerId = clockwiseAfter(
+      runtime.players.filter((player) => !player.is_folded && !player.is_all_in),
+      snapshot.button_seat,
+    )?.player_id ?? null;
+  }
+  if (!playerId) return null;
+  const player = runtime.players.find((candidate) => candidate.player_id === playerId);
+  const seed = snapshot.players.find((candidate) => candidate.player_id === playerId);
+  if (!player || !seed) return null;
+  const newStreet = street !== runtime.street;
+  return {
+    playerId,
+    entryNumber: seed.entry_number || 1,
+    currentBet: newStreet ? 0 : player.street_bet,
+    stack: player.stack,
+    highestBet: newStreet ? 0 : runtime.highestBet,
+  };
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -204,10 +268,51 @@ Deno.serve(async (req) => {
         break;
       }
       case "record_action": {
-        const { hand_id, player_id, entry_number, street, action_type, action_amount, action_order, idempotency_key, trace_id } = body;
+        const {
+          hand_id, player_id, entry_number, street, action_type, action_amount,
+          action_order, idempotency_key, trace_id, source, tournament_table_id, voice_event_id,
+          expected_state_version,
+        } = body;
 
-        if (VALIDATION_MODE !== "off") {
-          const loaded = await loadHandForValidation(hand_id);
+        if (source === "voice" && (
+          typeof voice_event_id !== "string"
+          || typeof tournament_table_id !== "string"
+          || typeof idempotency_key !== "string"
+          || typeof trace_id !== "string"
+          || typeof expected_state_version !== "string"
+        )) {
+          return validationError("VOICE_METADATA_REQUIRED", "Voice action thiếu proof bắt buộc.");
+        }
+
+        if (VALIDATION_MODE !== "off" || source === "voice") {
+          let loaded: { seeds: PlayerSeed[]; priorActions: ActionRow[]; buttonSeat: number } | null;
+          if (source === "voice") {
+            const { data: rawVoiceSnapshot, error: voiceSnapshotError } = await supabase.rpc(
+              "get_tracker_voice_validation_snapshot",
+              {
+                p_tournament_id: tournament_id,
+                p_tournament_table_id: tournament_table_id,
+                p_hand_id: hand_id,
+              },
+            );
+            const voiceSnapshot = rawVoiceSnapshot as VoiceSnapshot | null;
+            if (voiceSnapshotError || !voiceSnapshot?.ok) {
+              return validationError(
+                voiceSnapshot?.error ?? "VOICE_SNAPSHOT_UNAVAILABLE",
+                "Không tải được trạng thái hand hoặc assignment để xác minh Voice.",
+              );
+            }
+            if (voiceSnapshot.state_version !== expected_state_version) {
+              return validationError("STALE_STATE_VERSION", "Trạng thái bàn đã thay đổi. Hãy nói lại action.");
+            }
+            loaded = {
+              seeds: voiceSnapshot.players,
+              priorActions: voiceSnapshot.actions,
+              buttonSeat: voiceSnapshot.button_seat,
+            };
+          } else {
+            loaded = await loadHandForValidation(hand_id);
+          }
           if (loaded) {
             const proposed: ProposedAction = {
               player_id,
@@ -223,7 +328,7 @@ Deno.serve(async (req) => {
               // Telemetry first so the reject is observable in BOTH modes
               // (enforce returns 422 below; warn records anyway).
               logValidationReject({ validation_code: verdict.code, hand_id, player_id, action_type, street: street || "preflop" });
-              if (VALIDATION_MODE === "enforce") {
+              if (VALIDATION_MODE === "enforce" || source === "voice") {
                 return validationError(verdict.code, verdict.message);
               }
               // warn: record anyway, but surface the verdict for observability.
@@ -246,6 +351,166 @@ Deno.serve(async (req) => {
           p_user_id: user.id,
           p_idempotency_key: idempotency_key ?? null,
           p_trace_id: trace_id ?? null,
+        });
+        if (source === "voice" && result.data && typeof result.data === "object") {
+          const verdict = result.data as { error?: unknown; voice_event_id?: unknown };
+          if (typeof verdict.error === "string") {
+            return new Response(JSON.stringify({ error: verdict.error, code: verdict.error }), {
+              status: 409,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          if (verdict.voice_event_id !== voice_event_id) {
+            return validationError("VOICE_RECEIPT_MISMATCH", "Canonical receipt không khớp Voice event.");
+          }
+        }
+        break;
+      }
+      case "validate_voice_event": {
+        const {
+          tournament_table_id, hand_id, final_transcript, provider_name,
+          provider_model, provider_event_id, provider_confidence,
+          execution_mode, expected_state_version, idempotency_key, trace_id,
+        } = body;
+        if (
+          typeof tournament_table_id !== "string"
+          || typeof hand_id !== "string"
+          || typeof final_transcript !== "string"
+          || final_transcript.length < 1
+          || final_transcript.length > 500
+          || typeof expected_state_version !== "string"
+          || typeof idempotency_key !== "string"
+          || typeof trace_id !== "string"
+        ) {
+          return validationError("VOICE_REQUEST_INVALID", "Voice event thiếu dữ liệu bắt buộc.");
+        }
+
+        const { data: rawSnapshot, error: snapshotError } = await supabase.rpc(
+          "get_tracker_voice_validation_snapshot",
+          {
+            p_tournament_id: tournament_id,
+            p_tournament_table_id: tournament_table_id,
+            p_hand_id: hand_id,
+          },
+        );
+        const snapshot = rawSnapshot as VoiceSnapshot | null;
+        if (snapshotError || !snapshot?.ok) {
+          const code = snapshot?.error ?? "VOICE_SNAPSHOT_UNAVAILABLE";
+          return validationError(code, "Không thể xác minh assignment hoặc trạng thái bàn.");
+        }
+        if (snapshot.state_version !== expected_state_version) {
+          return validationError("STALE_STATE_VERSION", "Trạng thái bàn đã thay đổi. Hãy nói lại action.");
+        }
+        if (snapshot.correction_pending) {
+          return validationError("CORRECTION_PENDING", "Đang chờ Floor sửa action trước đó.");
+        }
+
+        const command = parseTrackerVoiceCommand(final_transcript, {
+          spokenAmountUnit: snapshot.spoken_amount_unit,
+          amountUnitConfirmed: snapshot.amount_unit_confirmed,
+        });
+        if (!command) return validationError("VOICE_COMMAND_UNKNOWN", "Không nhận ra lệnh poker.");
+        if (command.amountAmbiguous) {
+          return validationError("VOICE_AMOUNT_AMBIGUOUS", "Số chip chưa rõ đơn vị.");
+        }
+
+        const street = streetForBoard(snapshot.community_cards ?? []);
+        const actionOrder = (snapshot.actions.at(-1)?.action_order ?? 0) + 1;
+        let normalizedCommand: Record<string, unknown> = {
+          kind: command.kind,
+          normalized_transcript: command.normalizedTranscript,
+        };
+
+        if (command.kind !== "report_wrong_action" && command.kind !== "call_floor") {
+          const actor = resolveVoiceActor(snapshot, street);
+          if (!actor) return validationError("VOICE_ACTOR_UNAVAILABLE", "Không xác định được người đang tới lượt.");
+          const canonicalAction = command.kind === "bet_to"
+            ? "bet"
+            : command.kind === "raise_to"
+              ? "raise"
+              : command.kind;
+          let actionAmount = 0;
+          if (canonicalAction === "call") {
+            actionAmount = Math.min(actor.stack, Math.max(0, actor.highestBet - actor.currentBet));
+          } else if (canonicalAction === "all_in") {
+            actionAmount = actor.stack;
+          } else if (canonicalAction === "bet" || canonicalAction === "raise") {
+            if (command.amount === null) return validationError("VOICE_AMOUNT_REQUIRED", "Bet/raise cần số chip.");
+            actionAmount = command.amount - actor.currentBet;
+          }
+
+          const proposed: ProposedAction = {
+            player_id: actor.playerId,
+            street,
+            action_type: canonicalAction,
+            action_amount: actionAmount,
+            action_order: actionOrder,
+          };
+          const verdict = validateAction(
+            snapshot.players,
+            snapshot.actions,
+            snapshot.button_seat,
+            proposed,
+            { enforceTurnOrder: false },
+          );
+          if (!verdict.valid) {
+            logValidationReject({
+              validation_code: verdict.code,
+              hand_id,
+              player_id: actor.playerId,
+              action_type: canonicalAction,
+              street,
+            });
+            return validationError(verdict.code, verdict.message);
+          }
+          normalizedCommand = {
+            ...normalizedCommand,
+            canonical_action: canonicalAction,
+            actor_player_id: actor.playerId,
+            entry_number: actor.entryNumber,
+            street,
+            action_amount: verdict.normalizedAmount,
+            action_order: actionOrder,
+          };
+        }
+
+        const mode = execution_mode === "auto" ? "auto" : execution_mode === "assist" ? "assist" : "shadow";
+        if (mode === "auto" && (
+          !VOICE_AUTO_ENABLED
+          || VALIDATION_MODE !== "enforce"
+          || !ENFORCE_TURN_ORDER
+          || provider_confidence === null
+          || provider_confidence === undefined
+        )) {
+          return validationError("AUTO_CAPABILITY_MISSING", "Auto chưa đủ capability server.");
+        }
+
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        const supabaseUrl = Deno.env.get("SUPABASE_URL");
+        if (!serviceKey || !supabaseUrl) {
+          throw new Error("tracker_voice_service_not_configured");
+        }
+        const service = createClient(supabaseUrl, serviceKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        result = await service.rpc("_tracker_voice_register_validated_event", {
+          p_actor_user_id: user.id,
+          p_tournament_id: tournament_id,
+          p_tournament_table_id: tournament_table_id,
+          p_hand_id: hand_id,
+          p_provider_name: provider_name === "mock" ? "mock" : "openai_realtime",
+          p_provider_model: typeof provider_model === "string" ? provider_model : snapshot.provider_model,
+          p_provider_event_id: typeof provider_event_id === "string" ? provider_event_id : null,
+          p_provider_confidence: typeof provider_confidence === "number" ? provider_confidence : null,
+          p_final_transcript: final_transcript,
+          p_normalized_command: normalizedCommand,
+          p_expected_state_version: expected_state_version,
+          p_execution_mode: mode,
+          p_idempotency_key: idempotency_key,
+          p_trace_id: trace_id,
+          p_validation_mode: "enforce",
+          p_turn_order_enforced: true,
+          p_capability_version: VOICE_CAPABILITY_VERSION,
         });
         break;
       }

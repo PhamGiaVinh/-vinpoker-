@@ -182,6 +182,7 @@
         "npm:tailwind-merge@^2.6.0",
         "npm:tailwindcss-animate@^1.0.7",
         "npm:tailwindcss@^3.4.17",
+        "npm:thinking-orbs@0.2.0",
         "npm:typescript-eslint@^8.38.0",
         "npm:typescript@^5.8.3",
         "npm:vaul@~0.9.9",

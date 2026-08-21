@@ -12,7 +12,9 @@ import { initRemoteRanges } from "@/lib/gto/precomputed";
 const isSeriesMarketDevRoute = import.meta.env.DEV && window.location.pathname === "/__dev/series-market";
 const isTrackerUnifiedOpsDevRoute =
   import.meta.env.DEV && window.location.pathname === "/__dev/tracker-unified-ops";
-if (!isSeriesMarketDevRoute && !isTrackerUnifiedOpsDevRoute) initRemoteRanges();
+const isTrackerVoiceV0DevRoute =
+  import.meta.env.DEV && window.location.pathname === "/__dev/tracker-voice-v0";
+if (!isSeriesMarketDevRoute && !isTrackerUnifiedOpsDevRoute && !isTrackerVoiceV0DevRoute) initRemoteRanges();
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
@@ -60,6 +62,7 @@ const DealerControlBoard = lazy(() => import("./pages/DealerControlBoard"));
 const TrackerDashboard = lazy(() => import("./pages/TrackerDashboard"));
 const TrackerHandHistory = lazy(() => import("./pages/TrackerHandHistory"));
 const TrackerHandInputConsole = lazy(() => import("./pages/TrackerHandInputConsole"));
+const TrackerPlayerAnalytics = lazy(() => import("./pages/TrackerPlayerAnalytics"));
 const FloorDashboard = lazy(() => import("./pages/FloorDashboard"));
 const DealerSwingDashboard = lazy(() => import("./pages/DealerSwingDashboard"));
 // Accountant workspace (/accountant) — dedicated role-gated area (club_accountants/owner/admin).
@@ -142,6 +145,9 @@ const DevSeriesMarketPreview = import.meta.env.DEV
 const DevTrackerUnifiedOpsPreview = import.meta.env.DEV
   ? lazy(() => import("./dev/TrackerUnifiedOpsPreview"))
   : null;
+const DevTrackerVoiceV0Preview = import.meta.env.DEV
+  ? lazy(() => import("./dev/TrackerVoiceV0Preview"))
+  : null;
 // Poker IQ Drill — player-facing cold-start feature (focused full-screen flow, no Layout chrome)
 const PokerIQ = lazy(() => import("./pages/PokerIQ"));
 // Dealer Mobile App (/dealer/*) — own mobile shell; gated by FEATURES.dealerMobileApp
@@ -192,6 +198,18 @@ const App = () => {
         <Suspense fallback={<RouteLoader />}>
           <Routes>
             <Route path="*" element={<DevTrackerUnifiedOpsPreview />} />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+    );
+  }
+
+  if (isTrackerVoiceV0DevRoute && DevTrackerVoiceV0Preview) {
+    return (
+      <BrowserRouter>
+        <Suspense fallback={<RouteLoader />}>
+          <Routes>
+            <Route path="*" element={<DevTrackerVoiceV0Preview />} />
           </Routes>
         </Suspense>
       </BrowserRouter>
@@ -358,6 +376,7 @@ const App = () => {
                 <Route path="/tracker/history" element={<TrackerHandHistory />} />
                 <Route path="/accountant" element={<AccountantDashboard />} />
                 <Route path="/tracker/hand-input" element={<TrackerHandInputConsole />} />
+                <Route path="/tracker/player/:playerId/analytics" element={<TrackerPlayerAnalytics />} />
                 <Route path="/floor" element={<FloorDashboard />} />
                 <Route path="/dealer-swing" element={<DealerSwingDashboard />} />
                 <Route path="/admin" element={<SuperAdmin />} />

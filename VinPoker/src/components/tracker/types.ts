@@ -28,6 +28,7 @@ export interface ActionIntent {
 }
 
 export interface SeatVM {
+  playerId?: string; // stable identity for ops-only sub-controls; never derived from display name
   seatNumber: number; // physical seat 1..9
   name: string;
   stack: number; // chips behind (NOT yet committed this street)
@@ -53,6 +54,8 @@ export interface TrackerRacetrackProps {
   bigBlind: number;
   /** Tap a seat (occupied OR empty) — used pre-hand to set the button incl. a dead button. */
   onSeatTap?: (seatNumber: number) => void;
+  /** Opens the operational player analytics view without changing the acting seat. */
+  onAnalyticsTap?: (seat: SeatVM) => void;
   // ─── RICH props (all optional; omitting them = byte-identical to today) ───────
   /** Master switch. Falsy ⇒ renders exactly as before (no card faces/backs,
    *  avatars, side pots, felt skin). The console sets this from FEATURES.trackerRacetrackRich. */

@@ -97,6 +97,7 @@ import {
   playTrackerSoundOnce,
 } from "@/lib/trackerSound";
 import type { PokerLiveSound } from "@/lib/pokerLiveSound";
+import type { VoiceActionMetadata, VoiceActionProposal } from "@/lib/trackerVoice";
 
 type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
 
@@ -1486,6 +1487,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     actionType: string,
     amountOverride?: number,
     betToOverride?: number, // racetrack ActionDock forwards the "bet to" street TOTAL directly
+    metadata?: VoiceActionMetadata,
   ): Promise<boolean> => {
     const player = players.find((p) => p.player_id === playerId);
     if (!player) return false;
@@ -1685,6 +1687,7 @@ export function useStandaloneHandInput(tournamentId: string) {
             actionType,
             actionAmount: amount,
             actionOrder: currentOrder,
+            metadata,
           }),
         }));
       } catch {
@@ -1751,6 +1754,23 @@ export function useStandaloneHandInput(tournamentId: string) {
       }
     }
     return commitConfirmedAction();
+  };
+
+  const handleVoiceAction = async (
+    proposal: VoiceActionProposal,
+    metadata: VoiceActionMetadata,
+  ): Promise<boolean> => {
+    if (!effectiveActorId || proposal.actor.playerId !== effectiveActorId) {
+      toast.error("Người đang tới lượt đã thay đổi. Hãy nghe lại action.");
+      return false;
+    }
+    return handleAction(
+      proposal.actor.playerId,
+      proposal.canonicalAction,
+      undefined,
+      proposal.betToTotal,
+      metadata,
+    );
   };
 
   const handleDockAction = (type: string, betTo?: number) => {
@@ -2577,6 +2597,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     tableId,
     tableName,
     handNumber,
+    handId,
     setHandNumber,
     availableTables,
     tableLoadState,
@@ -2680,6 +2701,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleContinueOrphan,
     handleVoidOrphan,
     handleDockAction,
+    handleVoiceAction,
     handlePostBlind,
     handleConfirmBlinds,
     handleToggleDeadSb,

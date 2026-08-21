@@ -15,6 +15,7 @@
 // StandaloneHandInputConsole, so production is unchanged.
 
 import { ArrowLeft, Loader2 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { FEATURES } from "@/lib/featureFlags";
 import { displayCard, type Card } from "@/components/shared/CardSlotPicker";
 import { TrackerRacetrack } from "@/components/tracker/TrackerRacetrack";
@@ -35,6 +36,7 @@ import { WorkflowProgressRail } from "./WorkflowProgressRail";
 import { HandGuideDrawer } from "./HandGuideDrawer";
 import { TrackerSoundToggle } from "./TrackerSoundToggle";
 import { OperatorActionLog } from "./OperatorActionLog";
+import { TrackerVoicePanel } from "@/components/tracker/voice/TrackerVoicePanel";
 import { formatStack } from "./format";
 import type { PlayerState, StandaloneHandInput } from "./useStandaloneHandInput";
 
@@ -51,6 +53,7 @@ function toSeatVMs(
 ): SeatVM[] {
   return players.map((p) => {
     const base: SeatVM = {
+      playerId: p.player_id,
       seatNumber: p.seat_number,
       name: p.display_name,
       stack: p.current_stack, // chips BEHIND (audit Q5)
@@ -71,6 +74,9 @@ function toSeatVMs(
 }
 
 export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   // No table chosen → operator table picker (full screen).
   if (!hook.tableId) {
     return (
@@ -406,6 +412,12 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
         pot={hook.potSize}
         bigBlind={bigBlind}
         onSeatTap={disabled ? undefined : hook.handleSeatNumberTap}
+        onAnalyticsTap={FEATURES.trackerPlayerAnalytics ? (seat) => {
+          if (!seat.playerId) return;
+          const returnTo = `${location.pathname}${location.search}${location.hash}`;
+          const query = new URLSearchParams({ t: hook.tournamentId, returnTo });
+          navigate(`/tracker/player/${seat.playerId}/analytics?${query.toString()}`);
+        } : undefined}
         rich={rich}
         potBreakdown={rich ? hook.potBreakdown : undefined}
         engineToActSeatNumber={rich ? hook.engineActor?.seat_number ?? null : undefined}
@@ -490,6 +502,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
 
   // LOG
   const logBlock = <OperatorActionLog actions={hook.actions} communityCards={hook.communityCards} />;
+  const voiceBlock = FEATURES.trackerVoiceInput ? <TrackerVoicePanel hook={hook} /> : null;
 
   // A4: flag ON → at ≥xl the felt sits in a LEFT column and the guided region + log in a
   // fixed RIGHT column (both visible without scrolling); below xl it's the single column.
@@ -509,6 +522,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
             {boardBlock}
           </div>
           <div className="flex flex-col gap-2">
+            {voiceBlock}
             {guidedBlock}
             {logBlock}
           </div>
@@ -523,6 +537,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
       {orphanBlock}
       {progressBlock}
       {feltBlock}
+      {voiceBlock}
       {guidedBlock}
       {boardBlock}
       {logBlock}
