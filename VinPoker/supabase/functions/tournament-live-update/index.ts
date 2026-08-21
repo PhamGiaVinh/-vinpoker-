@@ -552,6 +552,17 @@ Deno.serve(async (req) => {
         });
       }
     }
+    // A JSONB denial from the canonical action RPC is an authoritative failure,
+    // not a successful Edge envelope. This keeps non-Voice callers fail-closed too.
+    if (action === "record_action" && result.data && typeof result.data === "object") {
+      const verdict = result.data as { error?: unknown };
+      if (typeof verdict.error === "string") {
+        return new Response(JSON.stringify({ error: verdict.error, code: verdict.error }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
     // Echo the caller's trace_id (when present) for end-to-end correlation. The RPC
     // JSONB (in `data`) carries the authoritative verdict incl. duplicate/conflict/lock.
     return new Response(JSON.stringify({ status: "success", data: result.data, ...(body.trace_id ? { trace_id: body.trace_id } : {}), ...(validationNote ? { validation: validationNote } : {}) }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });

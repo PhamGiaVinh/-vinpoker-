@@ -312,9 +312,9 @@ AS $function$
         LIMIT 1
       ), 'preflop'),
       'community_cards', COALESCE(h.community_cards, '[]'::JSONB),
-      'locked_by_user_id', h.locked_by_user_id,
-      'locked_at', h.locked_at,
-      'lock_version', COALESCE(h.tracker_lock_version, 0),
+      -- Lock ownership is validated separately by the canonical writer.
+      -- It must not invalidate an otherwise unchanged Voice proposal when
+      -- its authenticated operator claims or refreshes the hand lock.
       'source_revision', COALESCE(h.source_revision, 1)
     ),
     'players', COALESCE((
@@ -1063,6 +1063,77 @@ GRANT EXECUTE ON FUNCTION public._tracker_voice_register_validated_event(
 -- contract, so every manual caller keeps the same route. Assigned Dealers can
 -- only enter through a matching immutable Voice event; no second action writer
 -- exists.
+CREATE OR REPLACE FUNCTION public.heartbeat_lock(
+  p_hand_id UUID,
+  p_user_id UUID DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+DECLARE
+  v_actor UUID := auth.uid();
+  v_hand RECORD;
+  v_is_tracker BOOLEAN := FALSE;
+  v_assignment JSONB;
+BEGIN
+  IF v_actor IS NULL THEN
+    RETURN jsonb_build_object('error', 'unauthorized');
+  END IF;
+  IF p_user_id IS NOT NULL AND p_user_id <> v_actor THEN
+    RETURN jsonb_build_object('error', 'actor_mismatch');
+  END IF;
+
+  SELECT h.id, h.tournament_id, h.table_id, h.status, h.is_voided,
+         h.locked_by_user_id, h.locked_at, t.club_id
+  INTO v_hand
+  FROM public.tournament_hands h
+  JOIN public.tournaments t ON t.id = h.tournament_id
+  WHERE h.id = p_hand_id
+  FOR UPDATE OF h;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('error', 'Hand not found');
+  END IF;
+  IF v_hand.status <> 'in_progress' OR COALESCE(v_hand.is_voided, false) THEN
+    RETURN jsonb_build_object('error', 'Hand is not in progress');
+  END IF;
+
+  v_is_tracker := public.is_club_tracker(v_actor, v_hand.club_id);
+  IF NOT v_is_tracker THEN
+    v_assignment := public._tracker_voice_assignment_context(
+      v_hand.tournament_id, v_hand.table_id, v_actor
+    );
+    IF COALESCE((v_assignment->>'ok')::BOOLEAN, false) IS NOT TRUE THEN
+      RETURN jsonb_build_object('error', 'actor_not_allowed');
+    END IF;
+  END IF;
+
+  IF v_hand.locked_by_user_id IS NULL AND v_hand.locked_at IS NOT NULL THEN
+    RETURN jsonb_build_object('error', 'tracker_lock_ambiguous');
+  END IF;
+  IF v_hand.locked_by_user_id IS NOT NULL
+     AND v_hand.locked_by_user_id <> v_actor
+     AND v_hand.locked_at IS NOT NULL
+     AND v_hand.locked_at > now() - public.tracker_lock_ttl() THEN
+    RETURN jsonb_build_object(
+      'error', 'tracker_lock_owned_by_another',
+      'locked_by', v_hand.locked_by_user_id
+    );
+  END IF;
+
+  UPDATE public.tournament_hands
+  SET locked_by_user_id = v_actor,
+      locked_at = now()
+  WHERE id = p_hand_id;
+
+  RETURN jsonb_build_object('status', 'success', 'locked_by', v_actor, 'locked_at', now());
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.heartbeat_lock(UUID, UUID) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.heartbeat_lock(UUID, UUID) TO authenticated;
+
 CREATE OR REPLACE FUNCTION public.record_action(
   p_hand_id UUID,
   p_player_id UUID,
@@ -1109,12 +1180,33 @@ BEGIN
   INTO v_hand
   FROM public.tournament_hands h
   JOIN public.tournaments t ON t.id = h.tournament_id
-  WHERE h.id = p_hand_id;
+  WHERE h.id = p_hand_id
+  FOR UPDATE OF h;
   IF NOT FOUND THEN
     RETURN jsonb_build_object('error', 'Hand not found', 'trace_id', p_trace_id);
   END IF;
   v_club_id := v_hand.club_id;
   v_is_tracker := public.is_club_tracker(v_actor, v_club_id);
+
+  IF v_hand.status <> 'in_progress' OR COALESCE(v_hand.is_voided, false) THEN
+    RETURN jsonb_build_object('error', 'Hand is not in progress', 'trace_id', p_trace_id);
+  END IF;
+  IF v_hand.locked_by_user_id IS NULL AND v_hand.locked_at IS NULL THEN
+    RETURN jsonb_build_object('error', 'tracker_lock_required', 'trace_id', p_trace_id);
+  END IF;
+  IF v_hand.locked_by_user_id IS NULL OR v_hand.locked_at IS NULL THEN
+    RETURN jsonb_build_object('error', 'tracker_lock_ambiguous', 'trace_id', p_trace_id);
+  END IF;
+  IF v_hand.locked_at <= now() - public.tracker_lock_ttl() THEN
+    RETURN jsonb_build_object('error', 'tracker_lock_expired', 'trace_id', p_trace_id);
+  END IF;
+  IF v_hand.locked_by_user_id <> v_actor THEN
+    RETURN jsonb_build_object(
+      'error', 'tracker_lock_owned_by_another',
+      'locked_by', v_hand.locked_by_user_id,
+      'trace_id', p_trace_id
+    );
+  END IF;
 
   IF p_idempotency_key IS NOT NULL THEN
     SELECT * INTO v_existing
@@ -1215,9 +1307,6 @@ BEGIN
     RETURN jsonb_build_object('error', 'actor_not_allowed', 'trace_id', p_trace_id);
   END IF;
 
-  IF v_hand.status <> 'in_progress' OR COALESCE(v_hand.is_voided, false) THEN
-    RETURN jsonb_build_object('error', 'Hand is not in progress', 'trace_id', p_trace_id);
-  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.hand_players hp
     WHERE hp.hand_id = p_hand_id
@@ -1230,19 +1319,6 @@ BEGIN
     RETURN jsonb_build_object('error', 'Invalid action_order', 'trace_id', p_trace_id);
   END IF;
 
-  SELECT h.locked_by_user_id, h.locked_at
-  INTO v_locked_by, v_locked_at
-  FROM public.tournament_hands h
-  WHERE h.id = p_hand_id
-  FOR UPDATE;
-  IF public.tracker_lock_blocks(v_locked_by, v_locked_at, v_actor) THEN
-    RETURN jsonb_build_object(
-      'error', 'Hand is locked by another tracker',
-      'locked_by', v_locked_by,
-      'trace_id', p_trace_id
-    );
-  END IF;
-
   IF v_source = 'voice' THEN
     v_state_version := public._tracker_voice_hand_state_version(p_hand_id);
     IF v_state_version IS NULL OR v_state_version <> v_voice.state_version THEN
@@ -1253,12 +1329,6 @@ BEGIN
       );
     END IF;
   END IF;
-
-  UPDATE public.tournament_hands
-  SET locked_by_user_id = v_actor,
-      locked_at = now(),
-      updated_at = now()
-  WHERE id = p_hand_id;
 
   BEGIN
     INSERT INTO public.hand_actions (

@@ -211,6 +211,15 @@ SELECT public.tracker_voice_test_assert(
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '81200000-0000-4000-8000-000000000001', false);
 SELECT set_config('request.jwt.claims', '{"sub":"81200000-0000-4000-8000-000000000001","role":"authenticated"}', false);
+SELECT public.heartbeat_lock(
+  '86000000-0000-4000-8000-000000000001',
+  '81200000-0000-4000-8000-000000000001'
+)::TEXT AS payload \gset voice_lock_
+SELECT public.tracker_voice_test_assert(
+  :'voice_lock_payload'::JSONB->>'status' = 'success'
+  AND (:'voice_lock_payload'::JSONB->>'locked_by')::UUID = '81200000-0000-4000-8000-000000000001',
+  'assigned Dealer claims the canonical hand before the Voice action write'
+);
 SELECT public.record_action(
   '86000000-0000-4000-8000-000000000001',
   '82000000-0000-4000-8000-000000000001',
@@ -261,10 +270,10 @@ SELECT public.record_action(
 )::TEXT AS payload \gset action_changed_retry_
 RESET ROLE;
 SELECT public.tracker_voice_test_assert(
-  :'action_cross_actor_payload'::JSONB->>'error' = 'actor_not_allowed'
+  :'action_cross_actor_payload'::JSONB->>'error' = 'tracker_lock_owned_by_another'
   AND :'action_changed_retry_payload'::JSONB->>'error' = 'idempotency_key_conflict'
   AND (SELECT count(*) = 1 FROM public.hand_actions WHERE hand_id = '86000000-0000-4000-8000-000000000001'),
-  'canonical retry enforces actor ownership and immutable payload'
+  'canonical retry rejects a foreign operator before idempotency and preserves the immutable payload'
 );
 
 -- A retry of the identical validated event remains idempotent even after the
@@ -322,6 +331,9 @@ INSERT INTO public.hand_players(
   '82000000-0000-4000-8000-000000000001',
   1, 1, 30000, 30000, 'Player A'
 );
+UPDATE public.tournament_hands
+SET locked_by_user_id = '81400000-0000-4000-8000-000000000001', locked_at = now()
+WHERE id = '86000000-0000-4000-8000-000000000002';
 
 CREATE OR REPLACE FUNCTION public.tracker_voice_test_delay_manual_action()
 RETURNS TRIGGER
