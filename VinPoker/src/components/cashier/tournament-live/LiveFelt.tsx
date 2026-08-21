@@ -28,6 +28,7 @@ import {
   type VerifiedShowdownPresentation,
 } from "@/lib/tracker-poker/replayBestFiveFocus";
 import { isReplaySettlementPayoutPhase, type ReplayRunoutPhase, type ReplayRunoutPresentation } from "@/lib/tracker-poker/replayRunoutTimeline";
+import { shouldCollectCommittedChips } from "@/lib/tracker-poker/livePotCollection";
 
 /** Count-up text (Phase 3, tableFx only): tweens a numeric display toward its target.
  *  First render / enabled-off / reduced-motion emit the target directly, so static
@@ -310,6 +311,11 @@ export interface LiveFeltProps {
    * viewer only; absent → no change.
    */
   runout?: boolean;
+  /**
+   * Final all-in/replay snapshot with no verified payout sequence yet. This only
+   * collects committed chips and never chooses a winner or payout.
+   */
+  collectCommittedChips?: boolean;
   /** Replay-only display state; never changes chip calculations. */
   showdownResult?: "winner" | "chop" | "needs_resettle" | null;
   /** Verified final-frame card emphasis, derived by the replay parent on every render. */
@@ -365,6 +371,7 @@ export function LiveFelt({
   compact = false,
   blinds = null,
   runout = false,
+  collectCommittedChips = false,
   showdownResult = null,
   bestFiveFocus = null,
   showdownPresentation = null,
@@ -410,7 +417,12 @@ export function LiveFelt({
   // inferred on the client.
   const livePotCollectionActive = viewerLayout
     && tableFx
-    && runout === true
+    && shouldCollectCommittedChips({
+      enabled: true,
+      runout: runout === true,
+      finalAllIn: collectCommittedChips,
+      hasCommittedChips: true,
+    })
     && replayRunoutPresentation == null;
   const settlementPotResultActive = viewerLayout
     && tableFx
@@ -576,6 +588,8 @@ export function LiveFelt({
       })
       .filter(({ amount }) => amount > 0)
     : [];
+  const livePotLayers = potBreakdown?.pots ?? [];
+  const canRenderLivePotLayers = livePotCollectionActive && livePotLayers.length > 0;
   // Once the all-in reaches the verified outcome, leaving committed stacks at
   // each seat would imply that the chips were never settled. Direct jumps render
   // the resolved table immediately; the animated path replaces them with travel.
@@ -1134,6 +1148,26 @@ export function LiveFelt({
                 <ChipStack label={`${t("liveHub.felt.pot", "POT")} ${formatStack(displayPot)}`} sizeStyle={stackStyle} />
               </div>
             )}
+
+            {canRenderLivePotLayers && livePotLayers.map((pot, index) => {
+              const point = {
+                l: 50 + (index - (livePotLayers.length - 1) / 2) * 13,
+                t: Math.min(84, potCenterT + (portrait ? 27 : 23)),
+              };
+              return (
+                <div
+                  key={`live-pot-layer-${index}`}
+                  data-testid={`felt-live-pot-layer-${index}`}
+                  className="absolute -translate-x-1/2 -translate-y-1/2"
+                  style={{ left: `${point.l}%`, top: `${point.t}%` }}
+                >
+                  <ChipStack
+                    label={`${index === 0 ? t("liveHub.felt.main", "Main") : t("liveHub.felt.side", "Side")} ${formatStack(pot.amount)}`}
+                    sizeStyle={stackStyle}
+                  />
+                </div>
+              );
+            })}
 
             {(settlementPayoutPhase === "pot_collect" ? [] : visibleSettlementPotLayers).map((pot, visibleIndex) => {
               const point = settlementPotPoint(visibleIndex, visibleSettlementPotLayers.length);
