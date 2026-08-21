@@ -56,8 +56,9 @@ The local Supabase stack and every remote environment were excluded.
 - Exact migration transaction rollback: `PASS`.
   An injected `division by zero` exited non-zero and neither newly-created
   function remained after the transaction rolled back.
-- Contract/client tests: `16/16 PASS`; Deno Edge check, migration catalog,
-  credential-context guard, and `git diff --check` passed.
+- Contract/client tests: `16/16 PASS`; the dedicated hotfix TypeScript project,
+  Deno Edge check, migration catalog, credential-context guard, and
+  `git diff --check` passed.
 
 ## Apply gate
 

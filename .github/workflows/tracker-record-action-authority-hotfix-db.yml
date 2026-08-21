@@ -120,5 +120,8 @@ jobs:
             tests/trackerRecordActionAuthority/migration.contract.test.ts \
             tests/trackerVoice/migration.contract.test.ts \
             --maxWorkers=1 --minWorkers=1
+          node ./node_modules/typescript/bin/tsc \
+            -p tsconfig.tracker-record-action-authority-hotfix.json \
+            --pretty false
           deno check supabase/functions/tournament-live-update/index.ts
           git diff --check
