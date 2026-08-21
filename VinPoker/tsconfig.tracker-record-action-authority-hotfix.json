@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vite/client", "vitest/globals"],
+    "tsBuildInfoFile": "./node_modules/.tmp/tracker-record-action-authority-hotfix.tsbuildinfo"
+  },
+  "include": [
+    "src/vite-env.d.ts",
+    "src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts",
+    "src/components/cashier/tournament-live/handinput/handLockClaim.ts",
+    "src/components/cashier/tournament-live/handinput/handLockClaim.test.ts",
+    "tests/trackerRecordActionAuthority/**/*.ts",
+    "tests/trackerVoice/migration.contract.test.ts"
+  ]
+}

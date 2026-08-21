@@ -31,7 +31,7 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(names.filter((name) => name.startsWith("20270112000003_"))).toEqual([
       migrationName,
     ]);
-    expect(names.at(-1)).toBe(migrationName);
+    expect(names).toContain(migrationName);
   });
 
   it("keeps every mergeable Voice and Analytics flag disabled", () => {

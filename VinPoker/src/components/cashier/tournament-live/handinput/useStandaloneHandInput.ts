@@ -98,6 +98,7 @@ import {
 } from "@/lib/trackerSound";
 import type { PokerLiveSound } from "@/lib/pokerLiveSound";
 import type { VoiceActionMetadata, VoiceActionProposal } from "@/lib/trackerVoice";
+import { resolveHandLockClaim } from "./handLockClaim";
 
 type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
 
@@ -267,6 +268,7 @@ export function useStandaloneHandInput(tournamentId: string) {
   const handSubmitGuardRef = useRef(createSingleFlightGuard());
   const actionScopeRef = useRef("");
   const blockedActionScopeRef = useRef<string | null>(null);
+  const claimedHandLockRef = useRef<string | null>(null);
 
   // ----- URL params -------------------------------------------------------
   // `table` is authoritative (drives the resume-on-return flow). hand/street/actor
@@ -301,6 +303,28 @@ export function useStandaloneHandInput(tournamentId: string) {
   useEffect(() => {
     actionScopeRef.current = `${tableId}:${handId ?? "draft"}`;
   }, [tableId, handId]);
+
+  const claimHandLock = useCallback(async (targetHandId: string): Promise<boolean> => {
+    if (!user?.id) return false;
+
+    const { data, error } = await supabase.rpc("heartbeat_lock", {
+      p_hand_id: targetHandId,
+      p_user_id: user.id,
+    });
+    const resolution = resolveHandLockClaim(data, error, user.id);
+    if (!resolution.ok) {
+      claimedHandLockRef.current = null;
+      setActionSyncBlocked(true);
+      setIsReadOnly(true);
+      toast.error("Không thể nhận quyền điều hành hand. Màn hình chỉ xem cho đến khi claim lock thành công.");
+      return false;
+    }
+
+    claimedHandLockRef.current = targetHandId;
+    setActionSyncBlocked(false);
+    setIsReadOnly(false);
+    return true;
+  }, [user?.id]);
 
   useEffect(() => {
     const tableGuard = tableLoadGuardRef.current;
@@ -478,11 +502,17 @@ export function useStandaloneHandInput(tournamentId: string) {
     if (!handId || !handStarted || !user?.id) return;
     let failCount = 0;
     const MAX_FAILS = 2;
-    const interval = setInterval(async () => {
+    const heartbeat = async () => {
       try {
-        const { error } = await supabase.rpc("heartbeat_lock", { p_hand_id: handId, p_user_id: user.id });
-        if (error) {
-          const isAuthError = error.message?.includes("Unauthorized") || error.message?.includes("locked by another");
+        const { data, error } = await supabase.rpc("heartbeat_lock", { p_hand_id: handId, p_user_id: user.id });
+        const resolution = resolveHandLockClaim(data, error, user.id);
+        if (!resolution.ok) {
+          const isAuthError = [
+            "actor_mismatch",
+            "actor_not_allowed",
+            "tracker_lock_owned_by_another",
+            "tracker_lock_ambiguous",
+          ].includes(resolution.code);
           failCount++;
           if (isAuthError) {
             // trackerMultiTable: name whoever took the table over (best-effort) instead
@@ -502,27 +532,36 @@ export function useStandaloneHandInput(tournamentId: string) {
             } else {
               toast.error("Phiên làm việc đã hết hạn. Vui lòng tải lại trang.");
             }
+            setActionSyncBlocked(true);
             setIsReadOnly(true);
-            clearInterval(interval);
             return;
           }
           if (failCount >= MAX_FAILS) {
             toast.warning("Mất kết nối phiên làm việc. Vui lòng kiểm tra lại trạng thái bàn.");
+            setActionSyncBlocked(true);
             setIsReadOnly(true);
           }
         } else {
           failCount = 0;
+          claimedHandLockRef.current = handId;
+          setActionSyncBlocked(false);
+          setIsReadOnly(false);
         }
       } catch {
         failCount++;
         if (failCount >= MAX_FAILS) {
           toast.warning("Mất kết nối phiên làm việc.");
+          setActionSyncBlocked(true);
           setIsReadOnly(true);
         }
       }
-    }, 120000);
+    };
+    // The start/resume handlers claim before enabling the writer. This fallback
+    // covers only a restored in-progress hand that bypassed those handlers.
+    if (claimedHandLockRef.current !== handId) void heartbeat();
+    const interval = setInterval(heartbeat, 120000);
     return () => clearInterval(interval);
-  }, [handId, handStarted, user?.id]);
+  }, [handId, handStarted, tournamentId, user?.id]);
 
   const markSync = useCallback((phase: SyncPhase, label?: string) => {
     setSyncPhase(phase);
@@ -1331,6 +1370,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
     startingRef.current = true; // set AFTER every early-return guard (released in finally)
     setSubmitting(true);
+    setActionSyncBlocked(true);
     markSync("sending", `Bắt đầu Hand #${Number(handNumber)}`);
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
@@ -1350,7 +1390,12 @@ export function useStandaloneHandInput(tournamentId: string) {
         const nestedError = typeof handData?.error === "string" ? handData.error : null;
         throw new Error(nestedError ?? await readEdgeError(error, data));
       }
-      setHandId(handData?.hand_id);
+      if (!await claimHandLock(handData.hand_id)) {
+        setOrphanHand({ id: handData.hand_id, hand_number: Number(handNumber) });
+        markSync("error");
+        return;
+      }
+      setHandId(handData.hand_id);
       setHandStarted(true);
       setNextActionOrder(1);
       toast.success("Hand started");
@@ -1370,6 +1415,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     const targetOrphan = orphanHand;
     const loadToken = tableLoadGuardRef.current.capture(tableId);
     setSubmitting(true);
+    setActionSyncBlocked(true);
     try {
       const [handResult, actionResult] = await Promise.all([
         supabase
@@ -1427,6 +1473,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       setPersistedBoardCount(communityCount);
       setUndoStack([]);
       setSelectedActorId(null);
+      if (!await claimHandLock(hand.id)) return false;
       setHandId(hand.id);
       setHandStarted(true);
       setOrphanHand(null);
