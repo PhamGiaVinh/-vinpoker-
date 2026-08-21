@@ -704,6 +704,18 @@ export const FEATURES = {
    */
   trackerUnifiedOpsFlow: false,
   /**
+   * Voice-assisted dealer input for the Tracker console. Source ships dark: the
+   * panel is not mounted and no microphone/session RPC runs while false.
+   */
+  trackerVoiceInput: false,
+  /** Ops-only aggregate player analytics. Never exposed by the public viewer. */
+  trackerPlayerAnalytics: false,
+  /**
+   * Final autonomous action gate. This source flag is intentionally insufficient
+   * on its own; the server capability/allowlist/confidence gates must also pass.
+   */
+  trackerVoiceAutoCommit: false,
+  /**
    * Standalone operator Hand Input console (`/tracker/hand-input`) — the full-screen
    * floor-control surface (2-col desktop / 3-tab mobile) per the approved mockup.
    * Decoupled from `trackerEngineMode`: this flag ONLY enables the standalone console

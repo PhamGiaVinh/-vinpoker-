@@ -26,6 +26,7 @@ import { PrizesTab } from "./tournament-live/PrizesTab";
 import { TournamentLiveView } from "./tournament-live/TournamentLiveView";
 import { HandHistoryPanel } from "./tournament-live/HandHistoryPanel";
 import { RegistrationQueuePanel } from "./tournament-live/RegistrationQueuePanel";
+import { TrackerFloorAlertLane } from "./tournament-live/TrackerFloorAlertLane";
 import { TvDisplaysPanel } from "./tournament-live/TvDisplaysPanel";
 import { TdAiTabPanel } from "@/components/td-ai/TdAiTabPanel";
 import { FloorTournamentsLanding } from "@/components/floor/FloorTournamentsLanding";
@@ -361,12 +362,17 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
             { value: "live_view", icon: Eye, label: t("tournamentLive.liveView.title"), render: () => <TournamentLiveView tournamentId={selectedTournament.id} /> },
             { value: "clock", icon: Clock, label: t("tournamentLive.clock.title"), render: () => <ClockPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
             { value: "queue", icon: ListOrdered, label: "Hàng chờ", render: () => (
-              <RegistrationQueuePanel
-                tournamentId={selectedTournament.id}
-                tournamentName={selectedTournament.name}
-                tournamentDate={(selectedTournament as Tournament & { start_time?: string | null }).start_time ?? null}
-                refreshTrigger={refreshTrigger}
-              />
+              <>
+                {FEATURES.trackerVoiceInput && (
+                  <TrackerFloorAlertLane tournamentId={selectedTournament.id} />
+                )}
+                <RegistrationQueuePanel
+                  tournamentId={selectedTournament.id}
+                  tournamentName={selectedTournament.name}
+                  tournamentDate={(selectedTournament as Tournament & { start_time?: string | null }).start_time ?? null}
+                  refreshTrigger={refreshTrigger}
+                />
+              </>
             ) },
             { value: "hand_input", icon: Hand, label: t("tournamentLive.tabs.input"), render: () => (
               <TrackerHandInputBoundary

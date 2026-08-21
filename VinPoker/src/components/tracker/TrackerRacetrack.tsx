@@ -136,6 +136,7 @@ function Seat({
   feltV2 = false,
   t,
   onTap,
+  onAnalyticsTap,
 }: {
   seat: SeatVM;
   anchor: { left: number; top: number } | undefined;
@@ -150,6 +151,7 @@ function Seat({
   feltV2?: boolean;
   t: TFunction;
   onTap?: () => void;
+  onAnalyticsTap?: () => void;
 }) {
   if (!anchor) return null;
   const seatLabel = t('liveHub.seat', 'Ghế {{n}}', { n: seat.seatNumber });
@@ -272,21 +274,49 @@ function Seat({
           </div>
         </div>
         <div className="mt-0.5 flex items-center gap-1.5">
-          <SeatAvatar seat={seat} feltV2={feltV2} />
-          <div className="min-w-0">
-            {/* feltV2: FULL name on up to 2 lines (owner: "tên đang bị che") — the stack
-                line below must never be pushed out, hence the tight clamp. */}
-            <div
-              className={`tracker-display text-xs font-semibold text-[hsl(var(--foreground))] ${
-                feltV2 ? 'line-clamp-2 break-words leading-tight' : 'truncate'
-              }`}
-            >
-              {seat.name}
-            </div>
-            <div className="tracker-num text-sm font-bold leading-tight text-[hsl(var(--poker-stack))]">
-              {formatChips(seat.stack)}
-            </div>
-          </div>
+          {onAnalyticsTap ? (
+            <>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onAnalyticsTap();
+                }}
+                onKeyDown={(event) => event.stopPropagation()}
+                className="flex min-h-11 min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left outline-none transition-colors hover:bg-emerald-300/5 focus-visible:ring-2 focus-visible:ring-emerald-300"
+                aria-label={t('tracker.analytics.openForPlayer', 'Mở phân tích vận hành của {{name}}', { name: seat.name })}
+              >
+                <SeatAvatar seat={seat} feltV2={feltV2} />
+                <span
+                  className={`tracker-display min-w-0 text-xs font-semibold text-[hsl(var(--foreground))] ${
+                    feltV2 ? 'line-clamp-2 break-words leading-tight' : 'truncate'
+                  }`}
+                >
+                  {seat.name}
+                </span>
+              </button>
+              <div className="tracker-num shrink-0 text-right text-sm font-bold leading-tight text-[hsl(var(--poker-stack))]">
+                {formatChips(seat.stack)}
+              </div>
+            </>
+          ) : (
+            <>
+              <SeatAvatar seat={seat} feltV2={feltV2} />
+              <div className="min-w-0">
+                {/* feltV2: FULL name on up to 2 lines; keep the stack line visible. */}
+                <div
+                  className={`tracker-display text-xs font-semibold text-[hsl(var(--foreground))] ${
+                    feltV2 ? 'line-clamp-2 break-words leading-tight' : 'truncate'
+                  }`}
+                >
+                  {seat.name}
+                </div>
+                <div className="tracker-num text-sm font-bold leading-tight text-[hsl(var(--poker-stack))]">
+                  {formatChips(seat.stack)}
+                </div>
+              </div>
+            </>
+          )}
         </div>
         {seat.isAllIn ? (
           <div className="mt-0.5 inline-block rounded bg-[hsl(var(--destructive)/0.18)] px-1 text-[8px] font-bold text-[hsl(var(--destructive))]">
@@ -357,6 +387,7 @@ export function TrackerRacetrack({
   pot,
   bigBlind,
   onSeatTap,
+  onAnalyticsTap,
   rich = false,
   potBreakdown,
   engineToActSeatNumber,
@@ -544,6 +575,7 @@ export function TrackerRacetrack({
           feltV2={v2}
           t={t}
           onTap={onSeatTap ? () => onSeatTap(seat.seatNumber) : undefined}
+          onAnalyticsTap={onAnalyticsTap && seat.playerId ? () => onAnalyticsTap(seat) : undefined}
         />
       ))}
 
