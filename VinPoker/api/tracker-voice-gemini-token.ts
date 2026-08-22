@@ -62,13 +62,6 @@ export function buildGeminiAuthTokenRequest(now: number): Record<string, unknown
     uses: 1,
     newSessionExpireTime: new Date(now + 60_000).toISOString(),
     expireTime: new Date(now + (20 * 60_000)).toISOString(),
-    liveConnectConstraints: {
-      model: `models/${GEMINI_LIVE_MODEL}`,
-      config: {
-        sessionResumption: {},
-        responseModalities: ["AUDIO"],
-      },
-    },
   };
 }
 
