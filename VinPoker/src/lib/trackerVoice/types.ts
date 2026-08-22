@@ -45,6 +45,7 @@ export interface VoiceProviderHandlers {
   onStatus: (status: VoiceProviderStatus, message?: string) => void;
   onTranscript: (event: VoiceTranscriptEvent) => void;
   onLevel?: (rms: number) => void;
+  onInputDevice?: (device: { deviceId: string | null; label: string | null }) => void;
 }
 
 export interface RealtimeTranscriptionProvider {

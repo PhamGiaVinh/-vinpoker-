@@ -12,9 +12,9 @@ import { initRemoteRanges } from "@/lib/gto/precomputed";
 const isSeriesMarketDevRoute = import.meta.env.DEV && window.location.pathname === "/__dev/series-market";
 const isTrackerUnifiedOpsDevRoute =
   import.meta.env.DEV && window.location.pathname === "/__dev/tracker-unified-ops";
-const isTrackerVoiceV0DevRoute =
-  import.meta.env.DEV && window.location.pathname === "/__dev/tracker-voice-v0";
-if (!isSeriesMarketDevRoute && !isTrackerUnifiedOpsDevRoute && !isTrackerVoiceV0DevRoute) initRemoteRanges();
+const isTrackerVoiceUatDevRoute = import.meta.env.DEV
+  && ["/__dev/tracker-voice-v0", "/__dev/tracker-voice-uat"].includes(window.location.pathname);
+if (!isSeriesMarketDevRoute && !isTrackerUnifiedOpsDevRoute && !isTrackerVoiceUatDevRoute) initRemoteRanges();
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
@@ -204,7 +204,7 @@ const App = () => {
     );
   }
 
-  if (isTrackerVoiceV0DevRoute && DevTrackerVoiceV0Preview) {
+  if (isTrackerVoiceUatDevRoute && DevTrackerVoiceV0Preview) {
     return (
       <BrowserRouter>
         <Suspense fallback={<RouteLoader />}>

@@ -4,8 +4,8 @@ import { useWakeLock } from "@/hooks/useWakeLock";
 import { FEATURES } from "@/lib/featureFlags";
 import {
   loadTrackerVoiceRuntimeContext,
+  createTrackerVoiceOpenAiProvider,
   MockRealtimeTranscriptionProvider,
-  OpenAIRealtimeTranscriptionProvider,
   parseVoiceCommand,
   resolveVoiceProposal,
   validateTrackerVoiceEvent,
@@ -28,6 +28,23 @@ interface TrackerVoicePanelProps {
   validateEventOverride?: (input: ValidateVoiceEventInput) => Promise<ValidatedVoiceEventReceipt>;
   spokenAmountUnit?: number;
   amountUnitConfirmed?: boolean;
+  onDiagnosticSnapshot?: (snapshot: TrackerVoiceDiagnosticSnapshot) => void;
+}
+
+export interface TrackerVoiceDiagnosticSnapshot {
+  provider: "mock" | "openai_realtime" | null;
+  status: VoiceProviderStatus;
+  statusMessage: string | null;
+  inputDevice: { deviceId: string | null; label: string | null } | null;
+  rms: number;
+  partialTranscript: string;
+  finalTranscript: string;
+  finalProviderEventId: string | null;
+  finalCapturedAt: string | null;
+  proposal: VoiceProposal | null;
+  proposalLatencyMs: number | null;
+  validationState: "idle" | "validating" | "validated" | "committing" | "committed" | "error";
+  validationError: string | null;
 }
 
 interface VoiceEventAttempt {
@@ -44,27 +61,7 @@ function createDefaultProvider(hook: StandaloneHandInput): RealtimeTranscription
   if (import.meta.env.VITE_TRACKER_VOICE_PROVIDER === "mock") {
     return new MockRealtimeTranscriptionProvider();
   }
-  return new OpenAIRealtimeTranscriptionProvider({
-    language: "vi",
-    prompt: "Poker actions: fold, check, call, bet, raise, all-in; chip amounts in Vietnamese or English.",
-    getSessionCredential: async () => {
-      const { supabase } = await import("@/integrations/supabase/client");
-      const { data, error } = await supabase.functions.invoke("tracker-voice-session", {
-        body: {
-          tournament_id: hook.tournamentId,
-          tournament_table_id: hook.tableId,
-        },
-      });
-      if (error || !data?.client_secret || !data?.model || !data?.expires_at) {
-        throw new Error(data?.error ?? "Không cấp được phiên Voice cho bàn này.");
-      }
-      return {
-        clientSecret: data.client_secret,
-        model: data.model,
-        expiresAt: data.expires_at,
-      };
-    },
-  });
+  return createTrackerVoiceOpenAiProvider(hook.tournamentId, hook.tableId);
 }
 
 function proposalTone(proposal: VoiceProposal | null): string {
@@ -81,6 +78,7 @@ export function TrackerVoicePanel({
   validateEventOverride = validateTrackerVoiceEvent,
   spokenAmountUnit = 1,
   amountUnitConfirmed = false,
+  onDiagnosticSnapshot,
 }: TrackerVoicePanelProps) {
   const providerRef = useRef<RealtimeTranscriptionProvider | null>(providerOverride ?? null);
   const [status, setStatus] = useState<VoiceProviderStatus>("idle");
@@ -92,6 +90,10 @@ export function TrackerVoicePanel({
   const [mockText, setMockText] = useState("raise 120k");
   const [providerConfidence, setProviderConfidence] = useState<number | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [inputDevice, setInputDevice] = useState<{ deviceId: string | null; label: string | null } | null>(null);
+  const [lastFinalProviderEventId, setLastFinalProviderEventId] = useState<string | null>(null);
+  const [lastFinalCapturedAt, setLastFinalCapturedAt] = useState<string | null>(null);
+  const [proposalLatencyMs, setProposalLatencyMs] = useState<number | null>(null);
   const [micTestStartedAt, setMicTestStartedAt] = useState<number | null>(null);
   const [micTestElapsedMs, setMicTestElapsedMs] = useState(0);
   const [micTestResult, setMicTestResult] = useState<string | null>(null);
@@ -113,6 +115,7 @@ export function TrackerVoicePanel({
   const statusRef = useRef<VoiceProviderStatus>("idle");
   const runtimeRef = useRef<TrackerVoiceRuntimeContext | null>(runtimeOverride ?? null);
   const processedAttemptIdsRef = useRef(new Set<string>());
+  const finalReceivedAtRef = useRef(new Map<string, number>());
 
   useWakeLock(status === "listening");
 
@@ -205,7 +208,44 @@ export function TrackerVoicePanel({
     processedAttemptIdsRef.current.clear();
     validationPromisesRef.current.clear();
     requestIdentitiesRef.current.clear();
+    finalReceivedAtRef.current.clear();
+    setInputDevice(null);
+    setLastFinalProviderEventId(null);
+    setLastFinalCapturedAt(null);
+    setProposalLatencyMs(null);
   }, [hook.handId]);
+
+  useEffect(() => {
+    onDiagnosticSnapshot?.({
+      provider: providerRef.current?.kind ?? null,
+      status,
+      statusMessage,
+      inputDevice,
+      rms: audioLevel,
+      partialTranscript: partial,
+      finalTranscript,
+      finalProviderEventId: lastFinalProviderEventId,
+      finalCapturedAt: lastFinalCapturedAt,
+      proposal,
+      proposalLatencyMs,
+      validationState,
+      validationError,
+    });
+  }, [
+    audioLevel,
+    finalTranscript,
+    inputDevice,
+    lastFinalCapturedAt,
+    lastFinalProviderEventId,
+    onDiagnosticSnapshot,
+    partial,
+    proposal,
+    proposalLatencyMs,
+    status,
+    statusMessage,
+    validationError,
+    validationState,
+  ]);
 
   useEffect(() => {
     if (!finalAttempt || processedAttemptIdsRef.current.has(finalAttempt.attemptId)) return;
@@ -226,6 +266,8 @@ export function TrackerVoicePanel({
         : null,
       correctionPending: attemptRuntime?.correction_pending ?? false,
     });
+    const receivedAt = finalReceivedAtRef.current.get(finalEvent.providerEventId);
+    setProposalLatencyMs(receivedAt === undefined ? null : Math.max(0, performance.now() - receivedAt));
     setProposal(nextProposal);
     setValidatedProposal(null);
     setValidatedReceipt(null);
@@ -238,6 +280,15 @@ export function TrackerVoicePanel({
     if (!attemptRuntime?.can_mint_session || !activeHand || activeHand.hand_id !== hook.handId) {
       setValidationState("error");
       setValidationError(runtimeError ?? "Voice chưa có assignment hoặc active hand hợp lệ.");
+      return;
+    }
+
+    // Poker commands stay local in Shadow. Control commands intentionally go
+    // through the existing alert path, which never records a poker action.
+    const requiresServerValidation = attemptMode !== "shadow" || "controlAction" in nextProposal;
+    if (!requiresServerValidation) {
+      setValidatedProposal(nextProposal);
+      setValidationState("validated");
       return;
     }
 
@@ -367,6 +418,9 @@ export function TrackerVoicePanel({
           }
           setPartial("");
           setFinalTranscript(event.transcript);
+          setLastFinalProviderEventId(event.providerEventId);
+          setLastFinalCapturedAt(event.capturedAt);
+          finalReceivedAtRef.current.set(event.providerEventId, performance.now());
           setProviderConfidence(event.providerConfidence ?? null);
           if (micTestActiveRef.current) micTestFinalCountRef.current += 1;
           if (runtimeRef.current?.correction_pending) {
@@ -390,6 +444,7 @@ export function TrackerVoicePanel({
           setAudioLevel(normalized);
           if (micTestActiveRef.current) micTestMaxLevelRef.current = Math.max(micTestMaxLevelRef.current, normalized);
         },
+        onInputDevice: setInputDevice,
       });
     } catch (error) {
       await provider.disconnect().catch(() => undefined);
@@ -518,7 +573,7 @@ export function TrackerVoicePanel({
           className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-4 text-xs font-semibold text-emerald-200 outline-none transition hover:bg-emerald-300/15 focus-visible:ring-2 focus-visible:ring-emerald-300"
         >
           {status === "listening" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          {status === "listening" ? "Dừng nghe" : "Bắt đầu nghe"}
+          {status === "listening" ? "Ngắt mic" : "Kết nối mic"}
         </button>
       </div>
 
@@ -568,7 +623,7 @@ export function TrackerVoicePanel({
               onClick={startMicTest}
               className="min-h-11 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-zinc-300 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:opacity-35"
             >
-              {micTestStartedAt === null ? "Test mic 30 giây" : `Đang test ${Math.ceil((MIC_TEST_DURATION_MS - micTestElapsedMs) / 1000)}s`}
+              {micTestStartedAt === null ? "Kiểm tra mic 30 giây" : `Đang test ${Math.ceil((MIC_TEST_DURATION_MS - micTestElapsedMs) / 1000)}s`}
             </button>
             {(status === "recovering" || status === "offline" || status === "error") && (
               <button
@@ -636,13 +691,13 @@ export function TrackerVoicePanel({
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Đang xác minh assignment và luật action trên server
             </div>
           )}
-          {validationState === "validated" && validatedReceipt && (
+          {validationState === "validated" && (
             <div className="mt-2 flex items-center gap-2 text-[11px] text-emerald-200">
               <Check className="h-3.5 w-3.5" />
-              {validatedReceipt.execution_result === "alert_opened"
+              {validatedReceipt?.execution_result === "alert_opened"
                 ? "Alert đã vào hàng đợi Floor."
                 : mode === "shadow"
-                  ? "Đã xác minh Shadow, chưa ghi action."
+                  ? "Shadow hợp lệ, không gọi server và chưa ghi action."
                   : "Đã xác minh, chờ Dealer xác nhận."}
             </div>
           )}

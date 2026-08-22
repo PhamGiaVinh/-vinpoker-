@@ -10,6 +10,7 @@ export class MockRealtimeTranscriptionProvider implements RealtimeTranscriptionP
 
   async connect(handlers: VoiceProviderHandlers): Promise<void> {
     this.handlers = handlers;
+    handlers.onInputDevice?.({ deviceId: "mock-microphone", label: "Mock microphone" });
     handlers.onStatus("listening");
   }
 
@@ -48,6 +49,26 @@ export interface OpenAIRealtimeProviderOptions {
   prompt?: string;
 }
 
+export function createTrackerVoiceOpenAiProvider(
+  tournamentId: string,
+  tournamentTableId: string,
+): RealtimeTranscriptionProvider {
+  return new OpenAIRealtimeTranscriptionProvider({
+    language: "vi",
+    prompt: "Poker actions: fold, check, call, bet, raise, all-in; chip amounts in Vietnamese or English.",
+    getSessionCredential: async () => {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke("tracker-voice-session", {
+        body: { tournament_id: tournamentId, tournament_table_id: tournamentTableId },
+      });
+      if (error || !data?.client_secret || !data?.model || !data?.expires_at) {
+        throw new Error(data?.error ?? "Không cấp được phiên Voice cho bàn này.");
+      }
+      return { clientSecret: data.client_secret, model: data.model, expiresAt: data.expires_at };
+    },
+  });
+}
+
 export class OpenAIRealtimeTranscriptionProvider implements RealtimeTranscriptionProvider {
   readonly kind = "openai_realtime" as const;
   private peer: RTCPeerConnection | null = null;
@@ -67,6 +88,11 @@ export class OpenAIRealtimeTranscriptionProvider implements RealtimeTranscriptio
     handlers.onStatus("requesting_permission");
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    const audioTrack = this.stream.getAudioTracks()[0];
+    handlers.onInputDevice?.({
+      deviceId: audioTrack?.getSettings().deviceId ?? null,
+      label: audioTrack?.label || null,
     });
     this.startLevelMeter(this.stream);
     handlers.onStatus("connecting");

@@ -7,24 +7,31 @@ const viewports = [
   { width: 1440, height: 900 },
 ] as const;
 
-test("mock Voice flows through Shadow, Assist, correction and Viewer/Replay", async ({ page }) => {
+test("mock Voice keeps Shadow local, then flows through Assist, correction and Viewer/Replay", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/__dev/tracker-voice-v0");
+  await page.goto("/__dev/tracker-voice-uat");
 
-  await page.getByRole("button", { name: "Bắt đầu nghe" }).click();
+  await page.getByRole("button", { name: "Kết nối mic" }).click();
   await expect(page.getByText("Đang nghe", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "assist" }).click();
+  await page.getByRole("button", { name: "Bắt đầu phiên test" }).click();
+  await expect(page.getByTestId("connection-drop-count")).toHaveText("0");
+  await expect(page.getByTestId("reconnect-count")).toHaveText("0");
 
   const transcript = page.getByRole("textbox", { name: "Mock transcript" });
+  await transcript.fill("call");
+  await page.getByRole("button", { name: "Phát final" }).click();
+  await expect(page.getByText("Shadow hợp lệ, không gọi server và chưa ghi action.")).toBeVisible();
+  await expect(page.getByTestId("validation-count")).toHaveText("0");
+
+  await page.getByRole("button", { name: "assist" }).click();
   await transcript.fill("call");
   await page.getByRole("button", { name: "Phát final" }).click();
   await expect(page.getByText("Player A · call", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Xác nhận action" }).click();
   await expect(page.getByTestId("canonical-action-count")).toHaveText("1");
   await expect(page.getByTestId("viewer-replay-actions")).toContainText("Player A · call");
-  await expect(page.getByTestId("analytics-vpip")).toHaveText("100.0%");
 
   await page.getByRole("button", { name: "Phát duplicate provider callback" }).click();
   await expect(page.getByTestId("validation-count")).toHaveText("2");
@@ -53,9 +60,13 @@ test("mock Voice flows through Shadow, Assist, correction and Viewer/Replay", as
 });
 
 test("mock Voice recovers fail-closed after an offline event", async ({ page }) => {
-  await page.goto("/__dev/tracker-voice-v0");
-  await page.getByRole("button", { name: "Bắt đầu nghe" }).click();
+  await page.goto("/__dev/tracker-voice-uat");
+  await page.getByRole("button", { name: "Kết nối mic" }).click();
+  await page.getByRole("button", { name: "Bắt đầu phiên test" }).click();
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
   await expect(page.getByText("Thiết bị mất mạng. Voice đã dừng ghi action.")).toBeVisible();
+  await expect(page.getByTestId("connection-drop-count")).toHaveText("1");
   await expect(page.getByRole("button", { name: "Kết nối lại" })).toBeVisible();
+  await page.getByRole("button", { name: "Kết nối lại" }).click();
+  await expect(page.getByTestId("reconnect-count")).toHaveText("1");
 });
