@@ -1,0 +1,93 @@
+name: Tracker takeover authority closure disposable PostgreSQL
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/tracker-takeover-authority-closure-db.yml"
+      - "VinPoker/supabase/migrations/20270112000007_tracker_p0_authority_closure.sql"
+      - "VinPoker/src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts"
+      - "VinPoker/tests/trackerTakeoverAuthority/**"
+      - "VinPoker/tsconfig.tracker-takeover-authority-closure.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tracker-takeover-authority-closure-db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - name: Install source-test dependencies without install hooks
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+
+      - name: Apply exact authority closure and run authenticated lock matrix
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          createdb tracker_takeover_authority
+          psql -X -v ON_ERROR_STOP=1 -d tracker_takeover_authority \
+            -f tests/trackerUnifiedOps/disposableDb.baseline.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_takeover_authority \
+            -f supabase/migrations/20260928000000_tracker_lock_activation_idempotency_trace.sql
+          createdb tracker_takeover_authority_rollback -T tracker_takeover_authority
+          psql -X -v ON_ERROR_STOP=1 -d tracker_takeover_authority \
+            -f supabase/migrations/20270112000007_tracker_p0_authority_closure.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_takeover_authority \
+            -f tests/trackerTakeoverAuthority/disposableDb.integration.sql
+
+      - name: Prove exact migration transaction rollback
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          snapshot_sql="SELECT md5(coalesce(string_agg(oid::regprocedure::text || E'\\n' || pg_get_functiondef(oid) || E'\\n' || coalesce(array_to_string(proacl, ';'), ''), E'\\n---\\n' ORDER BY oid::regprocedure::text), '<absent>')) FROM pg_proc WHERE oid = to_regprocedure('public.takeover_hand_lock(uuid,boolean,uuid)');"
+          rollback_before="$(psql -X -At -d tracker_takeover_authority_rollback -c "$snapshot_sql")"
+          failing="$RUNNER_TEMP/tracker-takeover-authority-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_takeover_authority_injected_failure;"; print }' \
+            supabase/migrations/20270112000007_tracker_p0_authority_closure.sql > "$failing"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_takeover_authority_rollback -f "$failing"; then
+            echo "Injected authority closure unexpectedly committed" >&2
+            exit 1
+          fi
+          rollback_after="$(psql -X -At -d tracker_takeover_authority_rollback -c "$snapshot_sql")"
+          test "$rollback_before" = "$rollback_after"
+          test "$(psql -X -At -d tracker_takeover_authority_rollback -c "SELECT to_regprocedure('public.takeover_hand_lock(uuid,boolean,uuid)') IS NULL")" = "t"
+          echo "TRACKER_TAKEOVER_AUTHORITY_ROLLBACK=PASS"
+
+      - name: Run focused source contracts
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          node ./node_modules/vitest/vitest.mjs run \
+            tests/trackerTakeoverAuthority/migration.contract.test.ts \
+            --maxWorkers=1 --minWorkers=1
+          node ./node_modules/typescript/bin/tsc \
+            -p tsconfig.tracker-takeover-authority-closure.json \
+            --pretty false
+          git diff --check
