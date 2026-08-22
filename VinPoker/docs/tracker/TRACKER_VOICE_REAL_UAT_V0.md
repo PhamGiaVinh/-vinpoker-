@@ -10,6 +10,15 @@ The DEV-only route is `/__dev/tracker-voice-uat`. Vite removes both the route
 and its lazy component from a production build. It is not linked from normal
 application navigation.
 
+## Preview Boundary
+
+The PR receives a standard Vercel Preview artifact, but the diagnostic route
+is intentionally absent from that artifact because `import.meta.env.DEV` is
+false for a Preview build. Do not make this diagnostic console public merely
+to test a microphone. A real-provider test requires an owner-controlled,
+authenticated non-production environment with the session function and its
+secret configured there.
+
 ## Capability Truth Table
 
 | Capability | Source exists | Automated tested | Real provider measured | Production enabled |
