@@ -13,6 +13,54 @@ export interface LiveTimingInput {
   clock_started_at?: string | null;
 }
 
+export type TournamentPreStartState = "registration" | "awaiting_floor" | null;
+
+export interface TournamentPreStartInput {
+  start_time?: string | null;
+  clock_started_at?: string | null;
+  status?: string | null;
+}
+
+const TERMINAL_TOURNAMENT_STATUSES = new Set(["finished", "completed", "cancelled"]);
+
+/**
+ * A planned start time is not proof that play has begun. The Floor action
+ * records clock_started_at, which is the only client-visible signal that the
+ * tournament clock is actually live.
+ */
+export function getTournamentPreStartState(
+  tournament: TournamentPreStartInput,
+  now = Date.now(),
+): TournamentPreStartState {
+  if (
+    tournament.clock_started_at ||
+    TERMINAL_TOURNAMENT_STATUSES.has(tournament.status ?? "")
+  ) {
+    return null;
+  }
+
+  const plannedStart = tournament.start_time
+    ? new Date(tournament.start_time).getTime()
+    : Number.NaN;
+
+  return Number.isFinite(plannedStart) && plannedStart > now
+    ? "registration"
+    : "awaiting_floor";
+}
+
+export function formatStartCountdown(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1_000));
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  const clock = [hours, minutes, seconds]
+    .map((part) => String(part).padStart(2, "0"))
+    .join(":");
+
+  return days > 0 ? `${days}d ${clock}` : clock;
+}
+
 // The tournament's real play-start: the actual clock-start timestamp when the
 // clock has been started, otherwise the planned start_time. This keeps late-reg
 // and level math correct when a tournament is started later than its planned

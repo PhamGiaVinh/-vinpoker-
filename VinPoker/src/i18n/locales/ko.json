@@ -2290,6 +2290,9 @@
   },
   "tournamentDetailPage": {
     "statusRegistering": "등록 중",
+    "statusAwaitingStart": "시작 대기 중",
+    "startsIn": "{{time}} 후 시작",
+    "awaitingFloorStart": "시작 시간이 되었습니다 — Floor가 시계를 시작할 때까지 기다리는 중",
     "statusBreak": "휴식 중",
     "statusFinalTable": "파이널 테이블",
     "statusPlaying": "진행 중",
