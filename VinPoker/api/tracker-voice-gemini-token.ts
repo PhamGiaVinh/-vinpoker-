@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { GoogleGenAI, Modality, type CreateAuthTokenParameters } from "@google/genai";
 
 export const GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview";
-const GEMINI_LIVE_MODEL_RESOURCE = `models/${GEMINI_LIVE_MODEL}`;
-const GEMINI_AUTH_TOKEN_URL = "https://generativelanguage.googleapis.com/v1alpha/auth_tokens";
 const MAX_REQUESTS_PER_MINUTE = 6;
 const RATE_WINDOW_MS = 60_000;
 const MAX_RATE_LIMIT_KEYS = 512;
@@ -30,7 +29,7 @@ interface GeminiAuthTokenResponse {
 }
 
 interface TrackerVoiceGeminiUatDependencies {
-  fetcher?: typeof fetch;
+  tokenCreator?: (environment: TrackerVoiceGeminiUatEnvironment, now: number) => Promise<GeminiAuthTokenResponse>;
   now?: () => number;
   limiter?: GeminiPreviewRateLimiter;
 }
@@ -54,28 +53,39 @@ function upstreamTokenError(status: number): string {
   return "gemini_ephemeral_token_unavailable";
 }
 
-function buildTokenRequest(now: number): string {
-  return JSON.stringify({
-    authToken: {
+export function buildGeminiAuthTokenConfig(now: number): CreateAuthTokenParameters {
+  return {
+    config: {
       uses: 1,
       newSessionExpireTime: new Date(now + 60_000).toISOString(),
       expireTime: new Date(now + (20 * 60_000)).toISOString(),
-      bidiGenerateContentSetup: {
-        model: GEMINI_LIVE_MODEL_RESOURCE,
-        generationConfig: {
-          responseModalities: ["AUDIO"],
-        },
-        inputAudioTranscription: {},
-        realtimeInputConfig: {
-          automaticActivityDetection: {
-            disabled: false,
-            prefixPaddingMs: 300,
-            silenceDurationMs: 600,
+      liveConnectConstraints: {
+        model: GEMINI_LIVE_MODEL,
+        config: {
+          responseModalities: [Modality.AUDIO],
+          inputAudioTranscription: {},
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              disabled: false,
+              prefixPaddingMs: 300,
+              silenceDurationMs: 600,
+            },
           },
         },
       },
     },
+  };
+}
+
+async function createGeminiAuthToken(
+  environment: TrackerVoiceGeminiUatEnvironment,
+  now: number,
+): Promise<GeminiAuthTokenResponse> {
+  const client = new GoogleGenAI({
+    apiKey: environment.GEMINI_API_KEY,
+    httpOptions: { apiVersion: "v1alpha" },
   });
+  return client.authTokens.create(buildGeminiAuthTokenConfig(now));
 }
 
 export class GeminiPreviewRateLimiter {
@@ -116,26 +126,14 @@ export async function createTrackerVoiceGeminiCredential(
   const limiter = dependencies.limiter ?? defaultRateLimiter;
   if (!limiter.allow(clientKey, now)) return json(429, { error: "preview_uat_rate_limited" });
 
-  let response: Response;
-  try {
-    response = await (dependencies.fetcher ?? fetch)(GEMINI_AUTH_TOKEN_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": environment.GEMINI_API_KEY,
-      },
-      body: buildTokenRequest(now),
-    });
-  } catch {
-    return json(502, { error: "gemini_ephemeral_token_unavailable" });
-  }
-  if (!response.ok) return json(502, { error: upstreamTokenError(response.status) });
-
   let payload: GeminiAuthTokenResponse;
   try {
-    payload = await response.json() as GeminiAuthTokenResponse;
-  } catch {
-    return json(502, { error: "gemini_ephemeral_token_unavailable" });
+    payload = await (dependencies.tokenCreator ?? createGeminiAuthToken)(environment, now);
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number"
+      ? error.status
+      : 0;
+    return json(502, { error: upstreamTokenError(status) });
   }
   if (typeof payload.name !== "string" || payload.name.length === 0 || payload.name.length > 4_096 || !isIsoDate(payload.expireTime)) {
     return json(502, { error: "gemini_ephemeral_token_unavailable" });

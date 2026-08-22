@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  buildGeminiAuthTokenConfig,
   createTrackerVoiceGeminiCredential,
   GeminiPreviewRateLimiter,
   isTrackerVoiceGeminiPreview,
@@ -27,31 +28,31 @@ describe("tracker voice Gemini Preview token endpoint", () => {
   });
 
   it("fails closed before Gemini for production, disabled, wrong-method, and missing-secret requests", async () => {
-    const fetcher = vi.fn<typeof fetch>();
+    const tokenCreator = vi.fn();
     await expect(createTrackerVoiceGeminiCredential(
       { ...PREVIEW_ENV, VERCEL_ENV: "production" },
       { method: "POST", clientIp: "198.51.100.1" },
-      { fetcher },
+      { tokenCreator },
     )).resolves.toMatchObject({ status: 404, body: { error: "preview_uat_disabled" } });
     await expect(createTrackerVoiceGeminiCredential(
       PREVIEW_ENV,
       { method: "GET", clientIp: "198.51.100.1" },
-      { fetcher },
+      { tokenCreator },
     )).resolves.toMatchObject({ status: 405, body: { error: "method_not_allowed" } });
     await expect(createTrackerVoiceGeminiCredential(
       { ...PREVIEW_ENV, GEMINI_API_KEY: "" },
       { method: "POST", clientIp: "198.51.100.1" },
-      { fetcher },
+      { tokenCreator },
     )).resolves.toMatchObject({ status: 503, body: { error: "gemini_preview_secret_missing" } });
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(tokenCreator).not.toHaveBeenCalled();
   });
 
   it("mints a constrained ephemeral token without returning the permanent API key", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => tokenResponse());
+    const tokenCreator = vi.fn().mockImplementation(async () => tokenResponse().json());
     const result = await createTrackerVoiceGeminiCredential(
       PREVIEW_ENV,
       { method: "POST", clientIp: "198.51.100.1" },
-      { fetcher, limiter: new GeminiPreviewRateLimiter(), now: () => 1_000 },
+      { tokenCreator, limiter: new GeminiPreviewRateLimiter(), now: () => 1_000 },
     );
 
     expect(result).toEqual({
@@ -63,32 +64,23 @@ describe("tracker voice Gemini Preview token endpoint", () => {
       },
     });
     expect(JSON.stringify(result)).not.toContain(PREVIEW_ENV.GEMINI_API_KEY);
-    expect(fetcher).toHaveBeenCalledWith(
-      "https://generativelanguage.googleapis.com/v1alpha/auth_tokens",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          "x-goog-api-key": PREVIEW_ENV.GEMINI_API_KEY,
-        }),
-      }),
-    );
-    const request = fetcher.mock.calls[0]?.[1];
-    expect(JSON.parse(String(request?.body))).toEqual({
-      authToken: {
+    expect(tokenCreator).toHaveBeenCalledWith(PREVIEW_ENV, 1_000);
+    expect(buildGeminiAuthTokenConfig(1_000)).toEqual({
+      config: {
         uses: 1,
         newSessionExpireTime: "1970-01-01T00:01:01.000Z",
         expireTime: "1970-01-01T00:20:01.000Z",
-        bidiGenerateContentSetup: {
-          model: "models/gemini-3.1-flash-live-preview",
-          generationConfig: {
+        liveConnectConstraints: {
+          model: "gemini-3.1-flash-live-preview",
+          config: {
             responseModalities: ["AUDIO"],
-          },
-          inputAudioTranscription: {},
-          realtimeInputConfig: {
-            automaticActivityDetection: {
-              disabled: false,
-              prefixPaddingMs: 300,
-              silenceDurationMs: 600,
+            inputAudioTranscription: {},
+            realtimeInputConfig: {
+              automaticActivityDetection: {
+                disabled: false,
+                prefixPaddingMs: 300,
+                silenceDurationMs: 600,
+              },
             },
           },
         },
@@ -97,29 +89,29 @@ describe("tracker voice Gemini Preview token endpoint", () => {
   });
 
   it("classifies an upstream token rejection without exposing its response body", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => new Response("provider details", { status: 403 }));
+    const tokenCreator = vi.fn().mockRejectedValue({ status: 403, message: "provider details" });
     await expect(createTrackerVoiceGeminiCredential(
       PREVIEW_ENV,
       { method: "POST", clientIp: "198.51.100.11" },
-      { fetcher, limiter: new GeminiPreviewRateLimiter(), now: () => 1_000 },
+      { tokenCreator, limiter: new GeminiPreviewRateLimiter(), now: () => 1_000 },
     )).resolves.toEqual({ status: 502, body: { error: "gemini_ephemeral_token_unauthorized" } });
   });
 
   it("rate limits a Preview requester without contacting Gemini again", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => tokenResponse());
+    const tokenCreator = vi.fn().mockImplementation(async () => tokenResponse().json());
     const limiter = new GeminiPreviewRateLimiter();
     for (let index = 0; index < 6; index += 1) {
       await expect(createTrackerVoiceGeminiCredential(
         PREVIEW_ENV,
         { method: "POST", clientIp: "198.51.100.8" },
-        { fetcher, limiter, now: () => 1_000 },
+        { tokenCreator, limiter, now: () => 1_000 },
       )).resolves.toMatchObject({ status: 200 });
     }
     await expect(createTrackerVoiceGeminiCredential(
       PREVIEW_ENV,
       { method: "POST", clientIp: "198.51.100.8" },
-      { fetcher, limiter, now: () => 1_000 },
+      { tokenCreator, limiter, now: () => 1_000 },
     )).resolves.toMatchObject({ status: 429, body: { error: "preview_uat_rate_limited" } });
-    expect(fetcher).toHaveBeenCalledTimes(6);
+    expect(tokenCreator).toHaveBeenCalledTimes(6);
   });
 });
