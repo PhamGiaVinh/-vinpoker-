@@ -67,14 +67,6 @@ export function buildGeminiAuthTokenRequest(now: number): Record<string, unknown
       config: {
         sessionResumption: {},
         responseModalities: ["AUDIO"],
-        inputAudioTranscription: {},
-        realtimeInputConfig: {
-          automaticActivityDetection: {
-            disabled: false,
-            prefixPaddingMs: 300,
-            silenceDurationMs: 600,
-          },
-        },
       },
     },
   };

@@ -74,14 +74,6 @@ describe("tracker voice Gemini Preview token endpoint", () => {
         config: {
           sessionResumption: {},
           responseModalities: ["AUDIO"],
-          inputAudioTranscription: {},
-          realtimeInputConfig: {
-            automaticActivityDetection: {
-              disabled: false,
-              prefixPaddingMs: 300,
-              silenceDurationMs: 600,
-            },
-          },
         },
       },
     });
