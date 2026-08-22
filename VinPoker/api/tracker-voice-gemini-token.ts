@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 export const GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview";
-const GEMINI_AUTH_TOKEN_URL = "https://generativelanguage.googleapis.com/v1alpha/auth_tokens";
+const GEMINI_LIVE_MODEL_RESOURCE = `models/${GEMINI_LIVE_MODEL}`;
+const GEMINI_AUTH_TOKEN_URL = "https://generativelanguage.googleapis.com/v1beta/auth_tokens";
 const MAX_REQUESTS_PER_MINUTE = 6;
 const RATE_WINDOW_MS = 60_000;
 const MAX_RATE_LIMIT_KEYS = 512;
@@ -52,7 +53,7 @@ function buildTokenRequest(now: number): string {
     newSessionExpireTime: new Date(now + 60_000).toISOString(),
     expireTime: new Date(now + (20 * 60_000)).toISOString(),
     liveConnectConstraints: {
-      model: GEMINI_LIVE_MODEL,
+      model: GEMINI_LIVE_MODEL_RESOURCE,
       config: {
         responseModalities: ["AUDIO"],
         inputAudioTranscription: {},

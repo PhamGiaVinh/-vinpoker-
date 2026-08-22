@@ -64,7 +64,7 @@ describe("tracker voice Gemini Preview token endpoint", () => {
     });
     expect(JSON.stringify(result)).not.toContain(PREVIEW_ENV.GEMINI_API_KEY);
     expect(fetcher).toHaveBeenCalledWith(
-      "https://generativelanguage.googleapis.com/v1alpha/auth_tokens",
+      "https://generativelanguage.googleapis.com/v1beta/auth_tokens",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
@@ -78,7 +78,7 @@ describe("tracker voice Gemini Preview token endpoint", () => {
       newSessionExpireTime: "1970-01-01T00:01:01.000Z",
       expireTime: "1970-01-01T00:20:01.000Z",
       liveConnectConstraints: {
-        model: "gemini-3.1-flash-live-preview",
+        model: "models/gemini-3.1-flash-live-preview",
         config: {
           responseModalities: ["AUDIO"],
           inputAudioTranscription: {},
