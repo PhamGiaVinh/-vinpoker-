@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Check, Headphones, Loader2, Mic, MicOff, Radio, RotateCcw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Check, Headphones, Loader2, Mic, MicOff, PhoneCall, Radio, RotateCcw, ShieldCheck } from "lucide-react";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { FEATURES } from "@/lib/featureFlags";
 import {
@@ -58,6 +58,21 @@ interface VoiceEventAttempt {
 
 export const MIC_TEST_DURATION_MS = 30_000;
 const MAX_BUFFERED_TRANSCRIPTS = 20;
+
+type ManualFallbackAction = "fold" | "check" | "call" | "bet" | "raise" | "all_in";
+
+const MANUAL_FALLBACK_ACTIONS: ReadonlyArray<{
+  action: ManualFallbackAction;
+  label: string;
+  legalKey: "fold" | "check" | "call" | "bet" | "raise" | "allIn";
+}> = [
+  { action: "fold", label: "Fold", legalKey: "fold" },
+  { action: "check", label: "Check", legalKey: "check" },
+  { action: "call", label: "Call", legalKey: "call" },
+  { action: "bet", label: "Bet", legalKey: "bet" },
+  { action: "raise", label: "Raise", legalKey: "raise" },
+  { action: "all_in", label: "All-in", legalKey: "allIn" },
+];
 
 function createDefaultProvider(hook: StandaloneHandInput): RealtimeTranscriptionProvider {
   if (import.meta.env.VITE_TRACKER_VOICE_PROVIDER === "mock") {
@@ -475,6 +490,53 @@ export function TrackerVoicePanel({
     await connect();
   };
 
+  const submitControlAction = useCallback((controlAction: "report_wrong_action" | "call_floor") => {
+    const currentRuntime = runtimeRef.current ?? runtime;
+    const activeHand = currentRuntime?.active_hand;
+    if (
+      !currentRuntime?.can_mint_session
+      || currentRuntime.read_only
+      || !activeHand
+      || activeHand.hand_id !== hook.handId
+    ) {
+      setStatusMessage("Voice chưa có quyền hợp lệ trên hand này. Không tạo yêu cầu Floor.");
+      return;
+    }
+    const now = new Date().toISOString();
+    const providerEventId = `voice-control:${crypto.randomUUID()}`;
+    const transcript = controlAction === "report_wrong_action" ? "báo sai action" : "gọi floor";
+    const event: VoiceTranscriptEvent = {
+      providerEventId,
+      transcript,
+      isFinal: true,
+      capturedAt: now,
+    };
+    finalReceivedAtRef.current.set(providerEventId, performance.now());
+    setFinalTranscript(transcript);
+    setLastFinalProviderEventId(providerEventId);
+    setLastFinalCapturedAt(now);
+    setProviderConfidence(null);
+    // Alert creation remains server-owned and refuses stale assignment or hand state.
+    setFinalAttempt({
+      attemptId: `manual-control:${providerEventId}`,
+      event,
+      runtimeSnapshot: currentRuntime,
+      executionMode: "shadow",
+    });
+  }, [hook.handId, runtime]);
+
+  const runManualFallback = useCallback((action: ManualFallbackAction) => {
+    if (
+      hook.isReadOnly
+      || !hook.actorPlayer
+      || typeof hook.handleDockAction !== "function"
+    ) return;
+    const betTo = action === "bet" || action === "raise"
+      ? hook.actorViewData?.minRaiseTo
+      : undefined;
+    hook.handleDockAction(action, betTo);
+  }, [hook]);
+
   const startMicTest = () => {
     if (status !== "listening") return;
     micTestMaxLevelRef.current = 0;
@@ -579,14 +641,25 @@ export function TrackerVoicePanel({
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={status === "listening" ? disconnect : connect}
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-4 text-xs font-semibold text-emerald-200 outline-none transition hover:bg-emerald-300/15 focus-visible:ring-2 focus-visible:ring-emerald-300"
-        >
-          {status === "listening" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          {status === "listening" ? "Ngắt microphone" : "Kết nối microphone"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={status === "listening" ? disconnect : connect}
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-4 text-xs font-semibold text-emerald-200 outline-none transition hover:bg-emerald-300/15 focus-visible:ring-2 focus-visible:ring-emerald-300"
+          >
+            {status === "listening" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            {status === "listening" ? "Tạm dừng" : "Bắt đầu Voice"}
+          </button>
+          {status !== "idle" && status !== "requesting_permission" && (
+            <button
+              type="button"
+              onClick={() => void reconnect()}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-zinc-200 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+            >
+              <RotateCcw className="h-4 w-4" /> Kết nối lại
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-3 p-4">
@@ -617,7 +690,10 @@ export function TrackerVoicePanel({
             <div className="text-xs font-medium text-zinc-200">{status === "listening" ? "Đang nghe" : "Microphone chưa hoạt động"}</div>
             <div className="truncate text-[11px] text-zinc-500">{statusMessage ?? (partial || "Final transcript mới được phân tích.")}</div>
           </div>
-          <Headphones className="h-4 w-4 text-zinc-600" />
+          <span className="inline-flex items-center gap-1 text-[10px] text-zinc-500" title="Trạng thái tai nghe và microphone">
+            <Headphones className="h-4 w-4" />
+            {status === "listening" ? "Mic đang theo dõi" : "Mic chưa sẵn sàng"}
+          </span>
         </div>
 
         <div className="rounded-xl border border-white/8 bg-black/20 p-3">
@@ -647,7 +723,54 @@ export function TrackerVoicePanel({
               </button>
             )}
           </div>
+          {micTestStartedAt !== null && (
+            <div className="mt-3 grid min-h-24 place-items-center rounded-xl border border-emerald-300/20 bg-emerald-300/[0.06] text-center" aria-live="polite">
+              <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-200/75">Kiểm tra microphone</span>
+              <strong className="text-3xl font-black tabular-nums text-emerald-200">{Math.max(0, Math.ceil((MIC_TEST_DURATION_MS - micTestElapsedMs) / 1000))}s</strong>
+            </div>
+          )}
           {micTestResult && <p className="mt-2 text-[11px] text-zinc-400" aria-live="polite">{micTestResult}</p>}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2" aria-label="Floor alerts">
+          <button
+            type="button"
+            onClick={() => submitControlAction("report_wrong_action")}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-300/30 bg-rose-300/[0.08] px-3 text-xs font-bold text-rose-100 outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+          >
+            <AlertTriangle className="h-4 w-4" /> Báo sai action
+          </button>
+          <button
+            type="button"
+            onClick={() => submitControlAction("call_floor")}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-300/30 bg-amber-300/[0.08] px-3 text-xs font-bold text-amber-100 outline-none focus-visible:ring-2 focus-visible:ring-amber-200"
+          >
+            <PhoneCall className="h-4 w-4" /> Gọi Floor
+          </button>
+        </div>
+
+        <div className="rounded-xl border border-white/8 bg-black/20 p-3" aria-label="Fallback hand actions">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <span className="text-[11px] font-semibold text-zinc-300">Fallback thao tác tay</span>
+            <span className="text-[10px] text-zinc-500">Không qua Voice</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {MANUAL_FALLBACK_ACTIONS.map(({ action, label, legalKey }) => {
+              const isLegal = Boolean(hook.actorViewData?.legal[legalKey]);
+              const disabled = hook.isReadOnly || !hook.actorPlayer || typeof hook.handleDockAction !== "function" || !isLegal;
+              return (
+                <button
+                  key={action}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => runManualFallback(action)}
+                  className="min-h-11 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-xs font-bold text-zinc-200 outline-none transition hover:border-emerald-300/30 hover:bg-emerald-300/[0.08] focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {providerKind === "mock" && (
