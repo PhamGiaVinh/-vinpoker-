@@ -74,13 +74,15 @@ describe("tracker voice Gemini Preview token endpoint", () => {
     );
     const request = fetcher.mock.calls[0]?.[1];
     expect(JSON.parse(String(request?.body))).toEqual({
-      uses: 1,
-      newSessionExpireTime: "1970-01-01T00:01:01.000Z",
-      expireTime: "1970-01-01T00:20:01.000Z",
-      liveConnectConstraints: {
-        model: "gemini-3.1-flash-live-preview",
-        config: {
-          responseModalities: ["AUDIO"],
+      authToken: {
+        uses: 1,
+        newSessionExpireTime: "1970-01-01T00:01:01.000Z",
+        expireTime: "1970-01-01T00:20:01.000Z",
+        bidiGenerateContentSetup: {
+          model: "models/gemini-3.1-flash-live-preview",
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+          },
           inputAudioTranscription: {},
           realtimeInputConfig: {
             automaticActivityDetection: {
