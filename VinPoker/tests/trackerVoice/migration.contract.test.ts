@@ -147,6 +147,8 @@ describe("Tracker Voice V0 migration contract", () => {
     ]) {
       expect(geminiMigration).toContain(guard);
     }
+    expect(integration).toContain("\\if :gemini_provider_available");
+    expect(integration).toContain("Gemini Shadow is allowed while confidence-less Auto remains impossible");
   });
 
   it("mints a Gemini credential only after the existing assignment and rate-limit gates", () => {

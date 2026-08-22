@@ -438,6 +438,18 @@ SELECT public.tracker_voice_test_assert(
   'stale state and confidence-less Auto are zero-write denials'
 );
 
+-- The current-P0 chain deliberately proves record_action before the Gemini
+-- provider migration. Run the Gemini-specific assertion only when 12008 has
+-- installed its provider constraint; the exact final Voice-chain workflow
+-- requires that condition and therefore always executes this block.
+SELECT EXISTS (
+  SELECT 1
+  FROM pg_constraint c
+  WHERE c.conrelid = 'public.tracker_voice_events'::regclass
+    AND c.conname = 'tracker_voice_events_provider_name_check'
+    AND pg_get_constraintdef(c.oid) LIKE '%gemini_live%'
+) AS gemini_provider_available \gset
+\if :gemini_provider_available
 -- Gemini Live may create a Shadow proposal with the reviewed model, but it
 -- cannot fabricate the compatible confidence required to enter Auto.
 UPDATE public.tracker_voice_configs
@@ -480,6 +492,9 @@ SELECT public.tracker_voice_test_assert(
   AND (SELECT count(*) = 0 FROM public.hand_actions WHERE idempotency_key = 'voice-event-gemini-auto-0001'),
   'Gemini Shadow is allowed while confidence-less Auto remains impossible'
 );
+\else
+SELECT 'TRACKER_VOICE_GEMINI_AUTO_TEST_SKIPPED_PRE_12008' AS result;
+\endif
 
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '81200000-0000-4000-8000-000000000001', false);
