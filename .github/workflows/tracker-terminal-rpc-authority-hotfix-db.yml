@@ -1,0 +1,89 @@
+name: Tracker terminal RPC authority hotfix disposable PostgreSQL
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/tracker-terminal-rpc-authority-hotfix-db.yml"
+      - "VinPoker/supabase/migrations/20270112000006_tracker_terminal_hand_rpc_authority.sql"
+      - "VinPoker/supabase/functions/tournament-live-update/index.ts"
+      - "VinPoker/supabase/functions/tournament-live-cleanup/index.ts"
+      - "VinPoker/tests/trackerTerminalRpcAuthority/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tracker-terminal-rpc-authority-hotfix-db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - name: Install source-test dependencies without install hooks
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+
+      - name: Apply exact terminal authority hotfix and run role matrix
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          createdb tracker_terminal_rpc_authority
+          psql -X -v ON_ERROR_STOP=1 -d tracker_terminal_rpc_authority \
+            -f tests/trackerTerminalRpcAuthority/disposableDb.baseline.sql
+          createdb tracker_terminal_rpc_authority_rollback -T tracker_terminal_rpc_authority
+          psql -X -v ON_ERROR_STOP=1 -d tracker_terminal_rpc_authority \
+            -f supabase/migrations/20270112000006_tracker_terminal_hand_rpc_authority.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_terminal_rpc_authority \
+            -f tests/trackerTerminalRpcAuthority/disposableDb.integration.sql
+
+      - name: Prove migration transaction rollback
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          failing="$RUNNER_TEMP/tracker-terminal-rpc-authority-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_terminal_rpc_authority_injected_failure;"; print }' \
+            supabase/migrations/20270112000006_tracker_terminal_hand_rpc_authority.sql > "$failing"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_terminal_rpc_authority_rollback -f "$failing"; then
+            echo "Injected terminal authority migration unexpectedly committed" >&2
+            exit 1
+          fi
+          rollback_state="$(psql -X -At -d tracker_terminal_rpc_authority_rollback -c \
+            "SELECT NOT (SELECT prosecdef FROM pg_proc WHERE oid='public.void_last_hand(uuid)'::regprocedure)
+                    AND NOT (SELECT prosecdef FROM pg_proc WHERE oid='public.cleanup_orphan_hands(interval)'::regprocedure)
+                    AND has_function_privilege('anon','public.void_last_hand(uuid)'::regprocedure,'EXECUTE')
+                    AND has_function_privilege('authenticated','public.undo_last_action(uuid)'::regprocedure,'EXECUTE')")"
+          test "$rollback_state" = "t"
+          echo "TRACKER_TERMINAL_RPC_AUTHORITY_ROLLBACK=PASS"
+
+      - name: Run focused source contracts
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          node ./node_modules/vitest/vitest.mjs run \
+            tests/trackerTerminalRpcAuthority/migration.contract.test.ts \
+            --maxWorkers=1 --minWorkers=1
+          git diff --check
