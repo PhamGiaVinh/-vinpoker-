@@ -9,12 +9,13 @@ installToastSounds();
 
 // Pull GTO custom ranges from DB + listen realtime updates
 import { initRemoteRanges } from "@/lib/gto/precomputed";
+import { isTrackerVoiceUatRoute } from "@/lib/trackerVoice/previewRoute";
 const isSeriesMarketDevRoute = import.meta.env.DEV && window.location.pathname === "/__dev/series-market";
 const isTrackerUnifiedOpsDevRoute =
   import.meta.env.DEV && window.location.pathname === "/__dev/tracker-unified-ops";
-const isTrackerVoiceV0DevRoute =
-  import.meta.env.DEV && window.location.pathname === "/__dev/tracker-voice-v0";
-if (!isSeriesMarketDevRoute && !isTrackerUnifiedOpsDevRoute && !isTrackerVoiceV0DevRoute) initRemoteRanges();
+const trackerVoiceUatEnabled = import.meta.env.VITE_TRACKER_VOICE_UAT_ENABLED === "true";
+const isTrackerVoiceUatPreviewRoute = isTrackerVoiceUatRoute(window.location.pathname, trackerVoiceUatEnabled);
+if (!isSeriesMarketDevRoute && !isTrackerUnifiedOpsDevRoute && !isTrackerVoiceUatPreviewRoute) initRemoteRanges();
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
@@ -145,7 +146,9 @@ const DevSeriesMarketPreview = import.meta.env.DEV
 const DevTrackerUnifiedOpsPreview = import.meta.env.DEV
   ? lazy(() => import("./dev/TrackerUnifiedOpsPreview"))
   : null;
-const DevTrackerVoiceV0Preview = import.meta.env.DEV
+// The diagnostic is bundled only by a deliberate Preview UAT build variable.
+// Production builds do not register the route or import its chunk.
+const DevTrackerVoiceV0Preview = trackerVoiceUatEnabled
   ? lazy(() => import("./dev/TrackerVoiceV0Preview"))
   : null;
 // Poker IQ Drill — player-facing cold-start feature (focused full-screen flow, no Layout chrome)
@@ -204,7 +207,7 @@ const App = () => {
     );
   }
 
-  if (isTrackerVoiceV0DevRoute && DevTrackerVoiceV0Preview) {
+  if (isTrackerVoiceUatPreviewRoute && DevTrackerVoiceV0Preview) {
     return (
       <BrowserRouter>
         <Suspense fallback={<RouteLoader />}>

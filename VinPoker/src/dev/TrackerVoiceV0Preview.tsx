@@ -1,9 +1,15 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { TrackerVoicePanel } from "@/components/tracker/voice/TrackerVoicePanel";
+import {
+  TrackerVoicePanel,
+  type TrackerVoiceDiagnosticSnapshot,
+} from "@/components/tracker/voice/TrackerVoicePanel";
 import type { StandaloneHandInput } from "@/components/cashier/tournament-live/handinput/useStandaloneHandInput";
 import {
   MockRealtimeTranscriptionProvider,
+  createTrackerVoicePreviewGeminiProvider,
+  createTrackerVoicePreviewOpenAiProvider,
+  parseVoiceCommand,
   type TrackerVoiceRuntimeContext,
   type ValidateVoiceEventInput,
   type ValidatedVoiceEventReceipt,
@@ -24,20 +30,81 @@ const READY_RUNTIME: TrackerVoiceRuntimeContext = {
   config: {
     enabled: true,
     configured_mode: "assist",
-    provider_model: "gpt-live-transcribe",
+    provider_model: "gemini-3.1-flash-live-preview",
     spoken_amount_unit: 1,
     amount_unit_confirmed: false,
     provider_confidence_threshold: null,
     server_auto_allowed: false,
     correction_state: "ready",
   },
-  active_hand: {
-    hand_id: HAND_ID,
-    hand_number: 12,
-    status: "in_progress",
-    state_version: STATE_VERSION,
+  active_hand: { hand_id: HAND_ID, hand_number: 12, status: "in_progress", state_version: STATE_VERSION },
+};
+
+type FixtureScenario = "check_legal" | "facing_bet" | "short_stack" | "correction_pending";
+
+const FIXTURE_SCENARIOS: Record<FixtureScenario, {
+  label: string;
+  helper: string;
+  stack: number;
+  currentBet: number;
+  toCall: number;
+  minRaiseTo: number;
+  legal: { fold: boolean; check: boolean; call: boolean; bet: boolean; raise: boolean; allIn: boolean };
+  correctionPending: boolean;
+}> = {
+  check_legal: {
+    label: "Check hợp lệ",
+    helper: "Ghế 4 · to call 0 · check / bet / all-in",
+    stack: 300_000,
+    currentBet: 0,
+    toCall: 0,
+    minRaiseTo: 40_000,
+    legal: { fold: false, check: true, call: false, bet: true, raise: false, allIn: true },
+    correctionPending: false,
+  },
+  facing_bet: {
+    label: "Đang facing bet",
+    helper: "Ghế 4 · to call 40.000 · raise tối thiểu 120.000",
+    stack: 300_000,
+    currentBet: 0,
+    toCall: 40_000,
+    minRaiseTo: 120_000,
+    legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+    correctionPending: false,
+  },
+  short_stack: {
+    label: "Short stack",
+    helper: "Ghế 4 · stack 80.000 · to call 40.000 · short all-in hợp lệ",
+    stack: 80_000,
+    currentBet: 0,
+    toCall: 40_000,
+    minRaiseTo: 120_000,
+    legal: { fold: true, check: false, call: true, bet: false, raise: false, allIn: true },
+    correctionPending: false,
+  },
+  correction_pending: {
+    label: "Đang chờ Floor sửa",
+    helper: "Mọi poker action bị buffer · chỉ Floor mới xử lý correction",
+    stack: 300_000,
+    currentBet: 0,
+    toCall: 40_000,
+    minRaiseTo: 120_000,
+    legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+    correctionPending: true,
   },
 };
+
+const EXPECTED_COMMANDS = [
+  "Fold",
+  "Check",
+  "Call",
+  "Bet",
+  "Raise",
+  "All-in",
+  "Báo sai",
+  "Gọi Floor",
+  "Không phải poker action",
+] as const;
 
 interface PreviewAction {
   idempotencyKey: string;
@@ -45,16 +112,99 @@ interface PreviewAction {
   amount: number | null;
 }
 
+interface VoiceUatMeasurement {
+  providerEventId: string;
+  transcript: string;
+  capturedAt: string;
+  transcriptLatencyMs: number | null;
+  proposalLatencyMs: number | null;
+  command: string | null;
+  amount: number | null;
+  amountAmbiguous: boolean | null;
+  result: "pending" | "correct" | "incorrect";
+  expected: string;
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
+function downloadArtifact(name: string, content: string, type: string) {
+  const href = URL.createObjectURL(new Blob([content], { type }));
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = name;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(href), 0);
+}
+
+function csvValue(value: unknown): string {
+  return `"${String(value ?? "").replaceAll("\"", "\"\"")}"`;
+}
+
+function snapshotCommand(snapshot: TrackerVoiceDiagnosticSnapshot | null): string | null {
+  if (!snapshot?.proposal?.ok) return null;
+  return "controlAction" in snapshot.proposal
+    ? snapshot.proposal.controlAction
+    : snapshot.proposal.canonicalAction;
+}
+
+function providerLabel(provider: "mock" | "gemini" | "openai"): string {
+  if (provider === "mock") return "Mock";
+  if (provider === "gemini") return "Gemini Live";
+  return "OpenAI Realtime";
+}
+
 export default function TrackerVoiceV0Preview() {
-  const [provider] = useState(() => new MockRealtimeTranscriptionProvider());
+  const [providerKind, setProviderKind] = useState<"mock" | "gemini" | "openai">("gemini");
+  const [scenario, setScenario] = useState<FixtureScenario>("facing_bet");
+  const [snapshot, setSnapshot] = useState<TrackerVoiceDiagnosticSnapshot | null>(null);
   const [actions, setActions] = useState<PreviewAction[]>([]);
   const [validationCount, setValidationCount] = useState(0);
   const [floorAlertCount, setFloorAlertCount] = useState(0);
+  const [sessionRunning, setSessionRunning] = useState(false);
+  const [expectedCommand, setExpectedCommand] = useState("");
+  const [expectedAmount, setExpectedAmount] = useState("");
+  const [pendingUtteranceAt, setPendingUtteranceAt] = useState<number | null>(null);
+  const [measurements, setMeasurements] = useState<VoiceUatMeasurement[]>([]);
+  const [connectionDrops, setConnectionDrops] = useState(0);
+  const [reconnects, setReconnects] = useState(0);
+  const [deviceChanges, setDeviceChanges] = useState(0);
+  const processedFinalRef = useRef<string | null>(null);
+  const previousStatusRef = useRef<TrackerVoiceDiagnosticSnapshot["status"] | null>(null);
+  const previousDeviceIdRef = useRef<string | null>(null);
+  const sessionRunningRef = useRef(false);
+  const reconnectPendingRef = useRef(false);
 
-  const validateEvent = async (input: ValidateVoiceEventInput): Promise<ValidatedVoiceEventReceipt> => {
+  const fixture = FIXTURE_SCENARIOS[scenario];
+  const expected = expectedCommand && (expectedCommand === "Bet" || expectedCommand === "Raise") && expectedAmount
+    ? `${expectedCommand} ${expectedAmount}`
+    : expectedCommand;
+
+  const provider = useMemo(() => {
+    if (providerKind === "mock") return new MockRealtimeTranscriptionProvider();
+    if (providerKind === "gemini") return createTrackerVoicePreviewGeminiProvider();
+    return createTrackerVoicePreviewOpenAiProvider();
+  }, [providerKind]);
+
+  const runtime = useMemo<TrackerVoiceRuntimeContext>(() => ({
+    ...READY_RUNTIME,
+    correction_pending: fixture.correctionPending,
+    config: {
+      ...READY_RUNTIME.config,
+      correction_state: fixture.correctionPending ? "correction_pending" : "ready",
+    },
+  }), [fixture.correctionPending]);
+
+  const validateEvent = useCallback(async (input: ValidateVoiceEventInput): Promise<ValidatedVoiceEventReceipt> => {
     setValidationCount((current) => current + 1);
-    const wrongAction = input.finalTranscript.toLocaleLowerCase("vi-VN").includes("sai action");
-    if (wrongAction) setFloorAlertCount((current) => current + 1);
+    const controlAction = parseVoiceCommand(input.finalTranscript)?.kind;
+    const opensAlert = controlAction === "report_wrong_action" || controlAction === "call_floor";
+    const wrongAction = controlAction === "report_wrong_action";
+    if (opensAlert) setFloorAlertCount((current) => current + 1);
     return {
       ok: true,
       voice_event_id: crypto.randomUUID(),
@@ -62,13 +212,13 @@ export default function TrackerVoiceV0Preview() {
       trace_id: input.traceId,
       state_version: input.expectedStateVersion,
       execution_mode: input.executionMode,
-      execution_result: wrongAction ? "alert_opened" : "validated",
+      execution_result: opensAlert ? "alert_opened" : "validated",
       correction_pending: wrongAction,
-      alert_id: wrongAction ? crypto.randomUUID() : null,
+      alert_id: opensAlert ? crypto.randomUUID() : null,
     };
-  };
+  }, []);
 
-  const handleVoiceAction = async (
+  const handleVoiceAction = useCallback(async (
     proposal: VoiceActionProposal,
     metadata: VoiceActionMetadata,
   ): Promise<boolean> => {
@@ -80,9 +230,9 @@ export default function TrackerVoiceV0Preview() {
           amount: proposal.betToTotal ?? null,
         }]);
     return true;
-  };
+  }, []);
 
-  const hook = {
+  const hook = useMemo(() => ({
     tournamentId: TOURNAMENT_ID,
     tableId: TABLE_ID,
     handId: HAND_ID,
@@ -91,75 +241,287 @@ export default function TrackerVoiceV0Preview() {
       player_id: "74000000-0000-4000-8000-000000000001",
       display_name: "Player A",
       seat_number: 3,
-      current_stack: 30_000,
-      current_bet: 1_000,
+      current_stack: fixture.stack,
+      current_bet: fixture.currentBet,
     },
     actorViewData: {
-      toCall: 1_000,
-      minRaiseTo: 4_000,
-      legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+      toCall: fixture.toCall,
+      minRaiseTo: fixture.minRaiseTo,
+      legal: fixture.legal,
     },
     handStarted: true,
     showActionStep: true,
     isReadOnly: false,
     actionSyncBlocked: false,
     handleVoiceAction,
-  } as unknown as StandaloneHandInput;
+  }) as unknown as StandaloneHandInput, [fixture, handleVoiceAction]);
+
+  useEffect(() => {
+    sessionRunningRef.current = sessionRunning;
+  }, [sessionRunning]);
+
+  const onSnapshot = useCallback((next: TrackerVoiceDiagnosticSnapshot) => {
+    const previousStatus = previousStatusRef.current;
+    const disconnected = next.status === "offline" || next.status === "recovering" || next.status === "error";
+    const wasDisconnected = previousStatus === "offline" || previousStatus === "recovering" || previousStatus === "error";
+
+    if (sessionRunningRef.current && previousStatus !== next.status && disconnected) {
+      setConnectionDrops((current) => current + 1);
+      reconnectPendingRef.current = true;
+    }
+    if (sessionRunningRef.current && previousStatus !== next.status && next.status === "listening" && (wasDisconnected || reconnectPendingRef.current)) {
+      setReconnects((current) => current + 1);
+      reconnectPendingRef.current = false;
+    }
+
+    const deviceId = next.inputDevice?.deviceId ?? null;
+    if (sessionRunningRef.current && previousDeviceIdRef.current !== null && deviceId !== null && previousDeviceIdRef.current !== deviceId) {
+      setDeviceChanges((current) => current + 1);
+    }
+
+    previousStatusRef.current = next.status;
+    if (deviceId !== null) previousDeviceIdRef.current = deviceId;
+    setSnapshot(next);
+  }, []);
+
+  useEffect(() => {
+    const providerEventId = snapshot?.finalProviderEventId;
+    if (!sessionRunning || !providerEventId || processedFinalRef.current === providerEventId) return;
+    processedFinalRef.current = providerEventId;
+    const command = snapshotCommand(snapshot);
+    const amount = snapshot?.proposal?.ok && "canonicalAction" in snapshot.proposal
+      ? snapshot.proposal.betToTotal ?? null
+      : null;
+    const amountAmbiguous = snapshot?.proposal?.command?.amount?.ambiguous ?? null;
+    setMeasurements((current) => [...current, {
+      providerEventId,
+      transcript: snapshot.finalTranscript,
+      capturedAt: snapshot.finalCapturedAt ?? new Date().toISOString(),
+      transcriptLatencyMs: pendingUtteranceAt === null ? null : Math.max(0, performance.now() - pendingUtteranceAt),
+      proposalLatencyMs: snapshot.proposalLatencyMs,
+      command,
+      amount,
+      amountAmbiguous,
+      result: "pending",
+      expected,
+    }]);
+    setPendingUtteranceAt(null);
+  }, [expected, pendingUtteranceAt, sessionRunning, snapshot]);
+
+  const finalLatencies = measurements.flatMap((item) => item.transcriptLatencyMs === null ? [] : [item.transcriptLatencyMs]);
+  const exactMatches = measurements.filter((item) => item.result === "correct").length;
+  const permission = snapshot?.status === "listening" ? "granted" : snapshot?.status === "requesting_permission" ? "pending" : "unknown";
+
+  const markLatest = (result: "pending" | "correct" | "incorrect") => {
+    setMeasurements((current) => current.map((item, index) => index === current.length - 1 ? { ...item, result, expected } : item));
+  };
+
+  const startSession = () => {
+    processedFinalRef.current = null;
+    setMeasurements([]);
+    setConnectionDrops(0);
+    setReconnects(0);
+    setDeviceChanges(0);
+    previousStatusRef.current = snapshot?.status ?? null;
+    previousDeviceIdRef.current = snapshot?.inputDevice?.deviceId ?? null;
+    reconnectPendingRef.current = false;
+    setExpectedCommand("");
+    setExpectedAmount("");
+    setPendingUtteranceAt(null);
+    setSessionRunning(true);
+  };
+
+  const resetResults = () => {
+    processedFinalRef.current = null;
+    setSessionRunning(false);
+    setMeasurements([]);
+    setActions([]);
+    setValidationCount(0);
+    setFloorAlertCount(0);
+    setConnectionDrops(0);
+    setReconnects(0);
+    setDeviceChanges(0);
+    setExpectedCommand("");
+    setExpectedAmount("");
+    setPendingUtteranceAt(null);
+  };
+
+  const emitDuplicateProviderCallback = () => {
+    if (!(provider instanceof MockRealtimeTranscriptionProvider)) return;
+    provider.emit("call", { final: true, id: "duplicate-provider-item" });
+    provider.emit("call", { final: true, id: "duplicate-provider-item" });
+  };
+
+  const exportJson = () => downloadArtifact("tracker-voice-uat.json", JSON.stringify({
+    generatedAt: new Date().toISOString(),
+    provider: providerKind,
+    measurements,
+    connectionDrops,
+    reconnects,
+    deviceChanges,
+  }, null, 2), "application/json");
+
+  const exportCsv = () => downloadArtifact("tracker-voice-uat.csv", [
+    ["providerEventId", "transcript", "capturedAt", "transcriptLatencyMs", "proposalLatencyMs", "command", "amount", "amountAmbiguous", "result", "expected"].join(","),
+    ...measurements.map((item) => [
+      item.providerEventId, item.transcript, item.capturedAt, item.transcriptLatencyMs, item.proposalLatencyMs,
+      item.command, item.amount, item.amountAmbiguous, item.result, item.expected,
+    ].map(csvValue).join(",")),
+  ].join("\n"), "text/csv;charset=utf-8");
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,.14),transparent_30%),#070a0c] p-3 text-zinc-100 md:p-6">
-      <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,.75fr)]">
-        <TrackerVoicePanel
-          hook={hook}
-          providerOverride={provider}
-          runtimeOverride={READY_RUNTIME}
-          validateEventOverride={validateEvent}
-        />
+    <main className="min-h-screen bg-[#070a0c] p-3 text-zinc-100 md:p-6">
+      <div className="mx-auto max-w-6xl space-y-4">
+        <header className="rounded-2xl border border-emerald-300/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,.15),transparent_36%),rgba(10,13,16,.92)] p-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">PREVIEW UAT · Protected · Shadow test</p>
+          <h1 className="mt-1 text-xl font-black">Tracker Voice recognition diagnostic</h1>
+          <p className="mt-2 max-w-3xl text-xs leading-relaxed text-zinc-400">Chỉ final transcript mới tạo Shadow proposal. Bản UAT này dùng fixture đã làm sạch, không gọi record_action, không ghi hand và không tạo Floor alert production.</p>
+          <p className="mt-3 inline-flex min-h-11 items-center rounded-xl border border-amber-300/35 bg-amber-300/10 px-3 text-xs font-black tracking-wide text-amber-100">SHADOW TEST · KHÔNG GHI HAND</p>
+        </header>
 
-        <aside className="space-y-4">
-          <section className="rounded-2xl border border-emerald-300/20 bg-black/30 p-4" aria-label="Mock E2E controls">
-            <h1 className="text-lg font-black">Voice V0 local E2E</h1>
-            <p className="mt-1 text-xs text-zinc-500">Dev-only fixture. Không kết nối Supabase hoặc OpenAI.</p>
-            <button
-              type="button"
-              onClick={() => {
-                provider.emit("call", { final: true, id: "duplicate-provider-item" });
-                provider.emit("call", { final: true, id: "duplicate-provider-item" });
-              }}
-              className="mt-4 min-h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-zinc-200"
-            >
-              Phát duplicate provider callback
-            </button>
-            <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-xl bg-white/[0.04] p-3"><dt className="text-[10px] text-zinc-500">Validated</dt><dd data-testid="validation-count" className="mt-1 font-mono text-xl text-emerald-300">{validationCount}</dd></div>
-              <div className="rounded-xl bg-white/[0.04] p-3"><dt className="text-[10px] text-zinc-500">Committed</dt><dd data-testid="canonical-action-count" className="mt-1 font-mono text-xl text-emerald-300">{actions.length}</dd></div>
-              <div className="rounded-xl bg-white/[0.04] p-3"><dt className="text-[10px] text-zinc-500">Floor</dt><dd data-testid="floor-alert-count" className="mt-1 font-mono text-xl text-amber-300">{floorAlertCount}</dd></div>
-            </dl>
-          </section>
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,1.18fr)_minmax(340px,.82fr)]">
+          <TrackerVoicePanel
+            key={`${providerKind}:${scenario}`}
+            hook={hook}
+            providerOverride={provider}
+            runtimeOverride={runtime}
+            validateEventOverride={validateEvent}
+            onDiagnosticSnapshot={onSnapshot}
+          />
 
-          <section className="rounded-2xl border border-sky-300/20 bg-black/30 p-4" aria-label="Viewer Replay receipt">
-            <h2 className="text-sm font-bold text-sky-200">Viewer / Replay canonical receipt</h2>
-            {actions.length === 0 ? (
-              <p className="mt-3 text-xs text-zinc-500">Chưa có canonical action.</p>
-            ) : (
-              <ol className="mt-3 space-y-2" data-testid="viewer-replay-actions">
-                {actions.map((action, index) => (
-                  <li key={action.idempotencyKey} className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-sm">
-                    #{index + 1} · Player A · {action.action}{action.amount === null ? "" : ` tới ${action.amount.toLocaleString("vi-VN")}`}
-                  </li>
+          <aside className="space-y-4">
+            <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4" aria-label="Voice UAT controls">
+              <h2 className="font-bold">Provider và phiên đo</h2>
+              <div className="mt-3 grid gap-2 sm:grid-cols-3" role="group" aria-label="Provider">
+                {(["mock", "gemini", "openai"] as const).map((item) => (
+                  <button key={item} type="button" onClick={() => setProviderKind(item)} className={`min-h-11 rounded-xl border px-3 text-xs font-bold ${providerKind === item ? "border-emerald-300/50 bg-emerald-300/15 text-emerald-100" : "border-white/10 bg-black/20 text-zinc-400"}`}>
+                    {item === "mock" ? "MOCK" : item === "gemini" ? "GEMINI LIVE · MIC THẬT" : "OPENAI REALTIME · MIC THẬT"}
+                  </button>
                 ))}
-              </ol>
-            )}
-          </section>
+              </div>
+              <p className="mt-3 text-[11px] text-zinc-500">Gemini Live là mặc định cho UAT thật. Browser chỉ nhận token Preview ngắn hạn sau khi kết nối microphone; không nhận API key lâu dài. Mock vẫn dùng cho luồng tự động; OpenAI là tùy chọn đối chiếu.</p>
+              <label className="mt-4 block text-[11px] font-semibold text-zinc-300" htmlFor="tracker-voice-fixture">Tình huống engine fixture</label>
+              <select
+                id="tracker-voice-fixture"
+                value={scenario}
+                onChange={(event) => setScenario(event.target.value as FixtureScenario)}
+                className="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+              >
+                {(Object.keys(FIXTURE_SCENARIOS) as FixtureScenario[]).map((item) => <option key={item} value={item}>{FIXTURE_SCENARIOS[item].label}</option>)}
+              </select>
+              <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">{fixture.helper}</p>
+              <label className="mt-4 block text-[11px] font-semibold text-zinc-300" htmlFor="tracker-voice-expected-command">Lệnh mong đợi (chỉ để chấm)</label>
+              <select
+                id="tracker-voice-expected-command"
+                value={expectedCommand}
+                onChange={(event) => setExpectedCommand(event.target.value)}
+                className="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+              >
+                <option value="">Chọn lệnh mong đợi</option>
+                {EXPECTED_COMMANDS.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+              {(expectedCommand === "Bet" || expectedCommand === "Raise") && (
+                <label className="mt-2 block text-[11px] font-semibold text-zinc-300" htmlFor="tracker-voice-expected-amount">
+                  Expected amount
+                  <input
+                    id="tracker-voice-expected-amount"
+                    inputMode="numeric"
+                    value={expectedAmount}
+                    onChange={(event) => setExpectedAmount(event.target.value)}
+                    placeholder="Ví dụ: 120000"
+                    className="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+                  />
+                </label>
+              )}
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button type="button" onClick={startSession} className="min-h-11 rounded-xl bg-emerald-300 px-3 text-xs font-black text-emerald-950">Bắt đầu phiên test</button>
+                <button type="button" onClick={() => setSessionRunning(false)} className="min-h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-xs font-bold text-zinc-200">Dừng phiên test</button>
+                <button type="button" onClick={() => setPendingUtteranceAt(performance.now())} disabled={!sessionRunning} className="min-h-11 rounded-xl border border-sky-300/30 bg-sky-300/10 px-3 text-xs font-bold text-sky-100 disabled:opacity-35">Đánh dấu bắt đầu câu</button>
+                <button type="button" onClick={() => markLatest("correct")} disabled={measurements.length === 0} className="min-h-11 rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 text-xs font-bold text-emerald-100 disabled:opacity-35">Đúng</button>
+                <button type="button" onClick={() => markLatest("incorrect")} disabled={measurements.length === 0} className="min-h-11 rounded-xl border border-rose-300/30 bg-rose-300/10 px-3 text-xs font-bold text-rose-100 disabled:opacity-35">Sai</button>
+                <button type="button" onClick={() => markLatest("pending")} disabled={measurements.length === 0} className="min-h-11 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 text-xs font-bold text-amber-100 disabled:opacity-35">Nói lại</button>
+                <button type="button" onClick={resetResults} className="min-h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-xs font-bold text-zinc-200">Reset kết quả</button>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button type="button" onClick={exportJson} disabled={measurements.length === 0} className="min-h-11 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-zinc-200 disabled:opacity-35">Xuất JSON</button>
+                <button type="button" onClick={exportCsv} disabled={measurements.length === 0} className="min-h-11 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-zinc-200 disabled:opacity-35">Xuất CSV</button>
+              </div>
+              {providerKind === "mock" && (
+                <button type="button" onClick={emitDuplicateProviderCallback} className="mt-2 min-h-11 w-full rounded-xl border border-amber-300/25 bg-amber-300/[0.06] px-3 text-xs font-bold text-amber-100">
+                  Phát duplicate provider callback
+                </button>
+              )}
+            </section>
 
-          <section className="rounded-2xl border border-amber-300/20 bg-black/30 p-4" aria-label="Player Analytics mock proof">
-            <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-200">OPS-only analytics proof</div>
-            <div className="mt-3 flex items-end justify-between">
-              <div><div className="text-xs text-zinc-500">VPIP sample</div><strong data-testid="analytics-vpip" className="font-mono text-3xl text-emerald-300">{actions.length > 0 ? "100.0%" : "—"}</strong></div>
-              <span className="text-xs text-zinc-500">{actions.length}/{actions.length}</span>
-            </div>
-          </section>
-        </aside>
+            <section className="rounded-2xl border border-white/10 bg-black/20 p-4" aria-label="Live Voice diagnostic">
+              <h2 className="font-bold">Tín hiệu hiện tại</h2>
+              <dl className="mt-3 space-y-2 text-xs">
+                <div className="flex justify-between gap-4"><dt className="text-zinc-500">Provider</dt><dd>{providerLabel(providerKind)}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-zinc-500">Mic permission</dt><dd>{permission}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-zinc-500">Input device</dt><dd className="max-w-[58%] truncate text-right">{snapshot?.inputDevice?.label ?? "—"}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-zinc-500">Connection</dt><dd>{snapshot?.status ?? "idle"}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-zinc-500">Session</dt><dd className="max-w-[58%] truncate text-right">{snapshot?.session ? `${snapshot.session.model} · hết ${new Date(snapshot.session.expiresAt).toLocaleTimeString("vi-VN")}` : "—"}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-zinc-500">RMS</dt><dd>{Math.round((snapshot?.rms ?? 0) * 100)}%</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-zinc-500">Actor / legal</dt><dd className="text-right">Player A · call / raise / all-in</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-zinc-500">Provider event</dt><dd className="max-w-[58%] truncate text-right font-mono text-[10px]">{snapshot?.finalProviderEventId ?? "—"}</dd></div>
+              </dl>
+              <div className="mt-4 space-y-2 rounded-xl border border-white/8 bg-white/[0.03] p-3 text-xs">
+                <p><span className="text-zinc-500">Partial:</span> {snapshot?.partialTranscript || "—"}</p>
+                <p><span className="text-zinc-500">Final:</span> {snapshot?.finalTranscript || "—"}</p>
+                <p><span className="text-zinc-500">Parsed:</span> {snapshotCommand(snapshot) ?? snapshot?.validationError ?? "—"}</p>
+                <p><span className="text-zinc-500">Amount:</span> {snapshot?.proposal?.ok && "canonicalAction" in snapshot.proposal ? snapshot.proposal.betToTotal?.toLocaleString("vi-VN") ?? "—" : "—"}</p>
+                <p><span className="text-zinc-500">Proposal latency:</span> {snapshot?.proposalLatencyMs === null || snapshot?.proposalLatencyMs === undefined ? "—" : `${Math.round(snapshot.proposalLatencyMs)} ms`}</p>
+              </div>
+            </section>
+
+            <details className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-xs text-zinc-300">
+              <summary className="cursor-pointer font-bold text-zinc-100">Hướng dẫn test nhanh trên iPad</summary>
+              <ol className="mt-3 list-decimal space-y-2 pl-4 leading-relaxed text-zinc-400">
+                <li>Chọn fixture, provider và lệnh mong đợi, rồi bấm Bắt đầu phiên test.</li>
+                <li>Bấm Kết nối microphone, cho phép Safari dùng mic, rồi chạy Kiểm tra mic 30 giây.</li>
+                <li>Nói 5 lần: Fold, Check, Call, All-in; sau đó Bỏ bài, Theo, Tất tay.</li>
+                <li>Nói Raise 100k, Raise 120k, Raise hai trăm nghìn; tiếp tục Bet 50k, Bet 80k và Cược một trăm nghìn.</li>
+                <li>Nói Báo sai, Gọi Floor, rồi vài câu không liên quan. Kết quả mong đợi là NO ACTION.</li>
+                <li>Đánh dấu Đúng/Sai/Nói lại cho từng final transcript và Xuất JSON hoặc CSV. Không có audio nào được lưu.</li>
+              </ol>
+            </details>
+
+            <section className="rounded-2xl border border-sky-300/20 bg-sky-300/[0.04] p-4" aria-label="Assist fixture receipt">
+              <h2 className="font-bold text-sky-100">Assist fixture receipt</h2>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                <div><div className="text-zinc-500">Validated</div><strong data-testid="validation-count" className="text-lg text-sky-100">{validationCount}</strong></div>
+                <div><div className="text-zinc-500">Committed</div><strong data-testid="canonical-action-count" className="text-lg text-emerald-300">{actions.length}</strong></div>
+                <div><div className="text-zinc-500">Floor alerts</div><strong data-testid="floor-alert-count" className="text-lg text-amber-200">{floorAlertCount}</strong></div>
+              </div>
+              {actions.length === 0 ? (
+                <p className="mt-3 text-xs text-zinc-500">Shadow không tạo receipt hoặc action. Assist cần xác nhận thủ công.</p>
+              ) : (
+                <ol className="mt-3 space-y-2" data-testid="viewer-replay-actions">
+                  {actions.map((action, index) => (
+                    <li key={action.idempotencyKey} className="rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-xs">
+                      #{index + 1} · Player A · {action.action}{action.amount === null ? "" : ` tới ${action.amount.toLocaleString("vi-VN")}`}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+
+            <section className="rounded-2xl border border-amber-300/20 bg-amber-300/[0.04] p-4" aria-label="Voice UAT measurements">
+              <h2 className="font-bold text-amber-100">Kết quả đo phiên này</h2>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                <div><div className="text-zinc-500">Final</div><strong data-testid="final-count" className="text-lg">{measurements.length}</strong></div>
+                <div><div className="text-zinc-500">Đúng</div><strong data-testid="exact-match-count" className="text-lg text-emerald-300">{exactMatches}</strong></div>
+                <div><div className="text-zinc-500">Median</div><strong data-testid="median-latency" className="text-lg">{median(finalLatencies) === null ? "—" : `${Math.round(median(finalLatencies) ?? 0)}ms`}</strong></div>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                <div><div className="text-zinc-500">Rớt kết nối</div><strong data-testid="connection-drop-count">{connectionDrops}</strong></div>
+                <div><div className="text-zinc-500">Kết nối lại</div><strong data-testid="reconnect-count">{reconnects}</strong></div>
+                <div><div className="text-zinc-500">Đổi thiết bị</div><strong data-testid="device-change-count">{deviceChanges}</strong></div>
+              </div>
+              <p className="mt-3 text-[11px] leading-relaxed text-amber-100/75">Để đo latency thật, bấm “Đánh dấu bắt đầu câu” ngay trước khi nói. Nếu không đánh dấu, transcript vẫn được ghi nhưng latency là chưa đo được.</p>
+            </section>
+          </aside>
+        </section>
       </div>
     </main>
   );
