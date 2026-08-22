@@ -11,9 +11,9 @@ test("mock Voice keeps Shadow local, then flows through Assist, correction and V
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/__dev/tracker-voice-uat");
+  await page.goto("/__uat/tracker-voice");
 
-  await page.getByRole("button", { name: "Kết nối mic" }).click();
+  await page.getByRole("button", { name: "Kết nối microphone" }).click();
   await expect(page.getByText("Đang nghe", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Bắt đầu phiên test" }).click();
   await expect(page.getByTestId("connection-drop-count")).toHaveText("0");
@@ -43,14 +43,14 @@ test("mock Voice keeps Shadow local, then flows through Assist, correction and V
   await expect(page.getByText("Alert đã vào hàng đợi Floor.")).toBeVisible();
   await expect(page.getByTestId("floor-alert-count")).toHaveText("1");
 
-  await transcript.fill("raise 6 nghìn");
+  await transcript.fill("raise 120 nghìn");
   await page.getByRole("button", { name: "Phát final" }).click();
   await expect(page.getByText("1 transcript đang chờ Floor")).toBeVisible();
   await expect(page.getByTestId("canonical-action-count")).toHaveText("2");
   await page.getByRole("button", { name: "Kiểm tra lại sau khi Floor sửa" }).click();
   await page.getByRole("button", { name: "Xác nhận action" }).click();
   await expect(page.getByTestId("canonical-action-count")).toHaveText("3");
-  await expect(page.getByTestId("viewer-replay-actions")).toContainText("raise tới 6.000");
+  await expect(page.getByTestId("viewer-replay-actions")).toContainText("raise tới 120.000");
 
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
@@ -60,8 +60,8 @@ test("mock Voice keeps Shadow local, then flows through Assist, correction and V
 });
 
 test("mock Voice recovers fail-closed after an offline event", async ({ page }) => {
-  await page.goto("/__dev/tracker-voice-uat");
-  await page.getByRole("button", { name: "Kết nối mic" }).click();
+  await page.goto("/__uat/tracker-voice");
+  await page.getByRole("button", { name: "Kết nối microphone" }).click();
   await page.getByRole("button", { name: "Bắt đầu phiên test" }).click();
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
   await expect(page.getByText("Thiết bị mất mạng. Voice đã dừng ghi action.")).toBeVisible();
@@ -69,4 +69,17 @@ test("mock Voice recovers fail-closed after an offline event", async ({ page }) 
   await expect(page.getByRole("button", { name: "Kết nối lại" })).toBeVisible();
   await page.getByRole("button", { name: "Kết nối lại" }).click();
   await expect(page.getByTestId("reconnect-count")).toHaveText("1");
+});
+
+test("mock call Floor creates only a local fixture alert", async ({ page }) => {
+  await page.goto("/__uat/tracker-voice");
+  await page.getByRole("button", { name: "Kết nối microphone" }).click();
+  await page.getByRole("button", { name: "Bắt đầu phiên test" }).click();
+  await page.getByRole("button", { name: "assist" }).click();
+  await page.getByRole("textbox", { name: "Mock transcript" }).fill("gọi floor");
+  await page.getByRole("button", { name: "Phát final" }).click();
+
+  await expect(page.getByText("Alert đã vào hàng đợi Floor.")).toBeVisible();
+  await expect(page.getByTestId("floor-alert-count")).toHaveText("1");
+  await expect(page.getByTestId("canonical-action-count")).toHaveText("0");
 });

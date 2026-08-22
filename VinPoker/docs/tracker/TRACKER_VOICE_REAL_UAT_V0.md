@@ -6,18 +6,24 @@ This is a source-only, non-production qualification surface. It does not
 apply a migration, deploy an Edge Function or frontend, change a feature flag,
 or write a production action.
 
-The DEV-only route is `/__dev/tracker-voice-uat`. Vite removes both the route
-and its lazy component from a production build. It is not linked from normal
-application navigation.
+The protected Preview-only route is `/__uat/tracker-voice`. The former
+`/__dev/tracker-voice-uat` route remains an alias only while the same explicit
+build-time gate is on. Neither route is linked from normal application
+navigation.
 
 ## Preview Boundary
 
-The PR receives a standard Vercel Preview artifact, but the diagnostic route
-is intentionally absent from that artifact because `import.meta.env.DEV` is
-false for a Preview build. Do not make this diagnostic console public merely
-to test a microphone. A real-provider test requires an owner-controlled,
-authenticated non-production environment with the session function and its
-secret configured there.
+The route and its lazy component are included only when
+`VITE_TRACKER_VOICE_UAT_ENABLED=true` at build time. They are absent from a
+normal production build. The Vercel endpoint `/api/tracker-voice-uat-session`
+also returns `404 preview_uat_disabled` unless both
+`VERCEL_ENV=preview` and `TRACKER_VOICE_UAT_ENABLED=true` are present.
+
+Vercel Deployment Protection covers the Preview deployment, including
+`/api/*`; the owner must sign into Vercel before opening the UAT route. The
+endpoint has a small per-requester rate limit and returns only an OpenAI
+short-lived client credential, model and expiry. It never returns, stores or
+logs the permanent API key.
 
 ## Capability Truth Table
 
@@ -29,7 +35,7 @@ secret configured there.
 | Assist confirmation through the current action handler | Yes | Yes, sanitized fixture | No | No |
 | Mock microphone/provider diagnostic | Yes | Yes | Mock only | No |
 | OpenAI Realtime WebRTC provider | Yes | Session contract only | No | No |
-| Voice session token endpoint | Yes | Protocol only | No non-production deployment | No |
+| Preview-only Vercel session endpoint | Yes | Unit tested | No Preview credential yet | No |
 
 The three source flags remain false:
 
@@ -59,32 +65,36 @@ trackerVoiceAutoCommit=false
 8. Assist waits for a validation receipt and then uses the existing
    `handleVoiceAction` path.
 
-## Database and Runtime Dependencies
+## Sanitized Preview Fixture
 
-The real server path requires the source objects in
-`20270112000003_tracker_voice_player_analytics_v0.sql`, including Voice config,
-runtime/validation RPCs, event ledger and alert tables. The subsequent P0
-authority migrations `20270112000004` through `20270112000007` harden the
-existing Tracker action and lock authority paths.
-
-This qualification does not apply any of those migrations. Do not use a broad
-migration replay or `--include-all`; historical `202608xx` migration order is
-not a valid substitute for an owner-controlled exact apply plan.
+The UAT page does not call `record_action`, `tracker-voice-session`, a Viewer,
+or a Floor alert service. It uses only a browser fixture with four selectable
+states: check legal, facing a bet, short-stack all-in, and correction pending.
+The fixture calls the shared deterministic parser and proposal resolver, then
+leaves all Shadow proposals local. Browser-side measurements can be marked and
+exported as JSON/CSV; neither audio nor transcript is persisted.
 
 ## Real Provider Preconditions
 
-The DEV route can select **OpenAI Realtime**, but a real connection is only
-measurable after a local or other non-production `tracker-voice-session`
-function is running against a compatible disposable schema. The permanent
-credential belongs only in that function's secret environment as:
+The protected Preview route can select **OPENAI REALTIME - MIC THẬT**. It asks
+for microphone permission only after the owner presses the connection button.
+The permanent credential belongs only in Vercel's **Preview** environment as:
 
 ```text
 OPENAI_API_KEY
 ```
 
 Do not place it in `VITE_*`, source, browser storage, screenshots, logs, or
-chat. Without the local non-production secret, the correct outcome is
-`REAL_PROVIDER_SECRET_REQUIRED`, not a mock success claim.
+chat. The other required Preview-only variables are:
+
+```text
+VITE_TRACKER_VOICE_UAT_ENABLED=true
+TRACKER_VOICE_UAT_ENABLED=true
+```
+
+Without the Preview-only `OPENAI_API_KEY`, the correct outcome is
+`OPENAI_PREVIEW_SECRET_REQUIRED`, not a mock success claim. Production values
+remain absent or false and no production deployment is part of this UAT.
 
 ## UAT Corpus and Export
 
@@ -103,8 +113,9 @@ JSON or CSV. It never records audio.
 
 ## Required Real-Voice Gate
 
-For a real-phone or iPad qualification, run the corpus in quiet and moderate
-noise conditions, mark each spoken utterance immediately before speech, and
-record command/amount accuracy, false activations, transcript latency and
-disconnect/reconnect counts. Keep Auto disabled. A physical device run is not
-implied by automated mock E2E.
+For a real-phone or iPad qualification, select an expected command only for
+scoring, then run the corpus in quiet and moderate noise conditions. Mark the
+result immediately after each final transcript and record command/amount
+accuracy, false activations, transcript latency and disconnect/reconnect
+counts. Keep Auto disabled. A physical device run is not implied by automated
+mock E2E.

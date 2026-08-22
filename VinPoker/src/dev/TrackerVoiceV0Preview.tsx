@@ -7,7 +7,8 @@ import {
 import type { StandaloneHandInput } from "@/components/cashier/tournament-live/handinput/useStandaloneHandInput";
 import {
   MockRealtimeTranscriptionProvider,
-  createTrackerVoiceOpenAiProvider,
+  createTrackerVoicePreviewOpenAiProvider,
+  parseVoiceCommand,
   type TrackerVoiceRuntimeContext,
   type ValidateVoiceEventInput,
   type ValidatedVoiceEventReceipt,
@@ -37,6 +38,72 @@ const READY_RUNTIME: TrackerVoiceRuntimeContext = {
   },
   active_hand: { hand_id: HAND_ID, hand_number: 12, status: "in_progress", state_version: STATE_VERSION },
 };
+
+type FixtureScenario = "check_legal" | "facing_bet" | "short_stack" | "correction_pending";
+
+const FIXTURE_SCENARIOS: Record<FixtureScenario, {
+  label: string;
+  helper: string;
+  stack: number;
+  currentBet: number;
+  toCall: number;
+  minRaiseTo: number;
+  legal: { fold: boolean; check: boolean; call: boolean; bet: boolean; raise: boolean; allIn: boolean };
+  correctionPending: boolean;
+}> = {
+  check_legal: {
+    label: "Check hợp lệ",
+    helper: "Ghế 4 · to call 0 · check / bet / all-in",
+    stack: 300_000,
+    currentBet: 0,
+    toCall: 0,
+    minRaiseTo: 40_000,
+    legal: { fold: false, check: true, call: false, bet: true, raise: false, allIn: true },
+    correctionPending: false,
+  },
+  facing_bet: {
+    label: "Đang facing bet",
+    helper: "Ghế 4 · to call 40.000 · raise tối thiểu 120.000",
+    stack: 300_000,
+    currentBet: 0,
+    toCall: 40_000,
+    minRaiseTo: 120_000,
+    legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+    correctionPending: false,
+  },
+  short_stack: {
+    label: "Short stack",
+    helper: "Ghế 4 · stack 80.000 · to call 40.000 · short all-in hợp lệ",
+    stack: 80_000,
+    currentBet: 0,
+    toCall: 40_000,
+    minRaiseTo: 120_000,
+    legal: { fold: true, check: false, call: true, bet: false, raise: false, allIn: true },
+    correctionPending: false,
+  },
+  correction_pending: {
+    label: "Đang chờ Floor sửa",
+    helper: "Mọi poker action bị buffer · chỉ Floor mới xử lý correction",
+    stack: 300_000,
+    currentBet: 0,
+    toCall: 40_000,
+    minRaiseTo: 120_000,
+    legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+    correctionPending: true,
+  },
+};
+
+const EXPECTED_COMMANDS = [
+  "Fold",
+  "Check",
+  "Call",
+  "Bet",
+  "Raise",
+  "All-in",
+  "Báo sai",
+  "Gọi Floor",
+  "Không phải poker action",
+] as const;
 
 interface PreviewAction {
   idempotencyKey: string;
@@ -86,12 +153,14 @@ function snapshotCommand(snapshot: TrackerVoiceDiagnosticSnapshot | null): strin
 
 export default function TrackerVoiceV0Preview() {
   const [providerKind, setProviderKind] = useState<"mock" | "openai">("mock");
+  const [scenario, setScenario] = useState<FixtureScenario>("facing_bet");
   const [snapshot, setSnapshot] = useState<TrackerVoiceDiagnosticSnapshot | null>(null);
   const [actions, setActions] = useState<PreviewAction[]>([]);
   const [validationCount, setValidationCount] = useState(0);
   const [floorAlertCount, setFloorAlertCount] = useState(0);
   const [sessionRunning, setSessionRunning] = useState(false);
-  const [expected, setExpected] = useState("");
+  const [expectedCommand, setExpectedCommand] = useState("");
+  const [expectedAmount, setExpectedAmount] = useState("");
   const [pendingUtteranceAt, setPendingUtteranceAt] = useState<number | null>(null);
   const [measurements, setMeasurements] = useState<VoiceUatMeasurement[]>([]);
   const [connectionDrops, setConnectionDrops] = useState(0);
@@ -103,14 +172,30 @@ export default function TrackerVoiceV0Preview() {
   const sessionRunningRef = useRef(false);
   const reconnectPendingRef = useRef(false);
 
+  const fixture = FIXTURE_SCENARIOS[scenario];
+  const expected = expectedCommand && (expectedCommand === "Bet" || expectedCommand === "Raise") && expectedAmount
+    ? `${expectedCommand} ${expectedAmount}`
+    : expectedCommand;
+
   const provider = useMemo(() => providerKind === "mock"
     ? new MockRealtimeTranscriptionProvider()
-    : createTrackerVoiceOpenAiProvider(TOURNAMENT_ID, TABLE_ID), [providerKind]);
+    : createTrackerVoicePreviewOpenAiProvider(), [providerKind]);
+
+  const runtime = useMemo<TrackerVoiceRuntimeContext>(() => ({
+    ...READY_RUNTIME,
+    correction_pending: fixture.correctionPending,
+    config: {
+      ...READY_RUNTIME.config,
+      correction_state: fixture.correctionPending ? "correction_pending" : "ready",
+    },
+  }), [fixture.correctionPending]);
 
   const validateEvent = useCallback(async (input: ValidateVoiceEventInput): Promise<ValidatedVoiceEventReceipt> => {
     setValidationCount((current) => current + 1);
-    const wrongAction = input.finalTranscript.toLocaleLowerCase("vi-VN").includes("sai action");
-    if (wrongAction) setFloorAlertCount((current) => current + 1);
+    const controlAction = parseVoiceCommand(input.finalTranscript)?.kind;
+    const opensAlert = controlAction === "report_wrong_action" || controlAction === "call_floor";
+    const wrongAction = controlAction === "report_wrong_action";
+    if (opensAlert) setFloorAlertCount((current) => current + 1);
     return {
       ok: true,
       voice_event_id: crypto.randomUUID(),
@@ -118,9 +203,9 @@ export default function TrackerVoiceV0Preview() {
       trace_id: input.traceId,
       state_version: input.expectedStateVersion,
       execution_mode: input.executionMode,
-      execution_result: wrongAction ? "alert_opened" : "validated",
+      execution_result: opensAlert ? "alert_opened" : "validated",
       correction_pending: wrongAction,
-      alert_id: wrongAction ? crypto.randomUUID() : null,
+      alert_id: opensAlert ? crypto.randomUUID() : null,
     };
   }, []);
 
@@ -147,20 +232,20 @@ export default function TrackerVoiceV0Preview() {
       player_id: "74000000-0000-4000-8000-000000000001",
       display_name: "Player A",
       seat_number: 3,
-      current_stack: 30_000,
-      current_bet: 1_000,
+      current_stack: fixture.stack,
+      current_bet: fixture.currentBet,
     },
     actorViewData: {
-      toCall: 1_000,
-      minRaiseTo: 4_000,
-      legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+      toCall: fixture.toCall,
+      minRaiseTo: fixture.minRaiseTo,
+      legal: fixture.legal,
     },
     handStarted: true,
     showActionStep: true,
     isReadOnly: false,
     actionSyncBlocked: false,
     handleVoiceAction,
-  }) as unknown as StandaloneHandInput, [handleVoiceAction]);
+  }) as unknown as StandaloneHandInput, [fixture, handleVoiceAction]);
 
   useEffect(() => {
     sessionRunningRef.current = sessionRunning;
@@ -218,7 +303,7 @@ export default function TrackerVoiceV0Preview() {
   const exactMatches = measurements.filter((item) => item.result === "correct").length;
   const permission = snapshot?.status === "listening" ? "granted" : snapshot?.status === "requesting_permission" ? "pending" : "unknown";
 
-  const markLatest = (result: "correct" | "incorrect") => {
+  const markLatest = (result: "pending" | "correct" | "incorrect") => {
     setMeasurements((current) => current.map((item, index) => index === current.length - 1 ? { ...item, result, expected } : item));
   };
 
@@ -231,9 +316,25 @@ export default function TrackerVoiceV0Preview() {
     previousStatusRef.current = snapshot?.status ?? null;
     previousDeviceIdRef.current = snapshot?.inputDevice?.deviceId ?? null;
     reconnectPendingRef.current = false;
-    setExpected("");
+    setExpectedCommand("");
+    setExpectedAmount("");
     setPendingUtteranceAt(null);
     setSessionRunning(true);
+  };
+
+  const resetResults = () => {
+    processedFinalRef.current = null;
+    setSessionRunning(false);
+    setMeasurements([]);
+    setActions([]);
+    setValidationCount(0);
+    setFloorAlertCount(0);
+    setConnectionDrops(0);
+    setReconnects(0);
+    setDeviceChanges(0);
+    setExpectedCommand("");
+    setExpectedAmount("");
+    setPendingUtteranceAt(null);
   };
 
   const emitDuplicateProviderCallback = () => {
@@ -263,17 +364,18 @@ export default function TrackerVoiceV0Preview() {
     <main className="min-h-screen bg-[#070a0c] p-3 text-zinc-100 md:p-6">
       <div className="mx-auto max-w-6xl space-y-4">
         <header className="rounded-2xl border border-emerald-300/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,.15),transparent_36%),rgba(10,13,16,.92)] p-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">DEV ONLY · Non-production Voice UAT</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">PREVIEW UAT · Protected · Shadow test</p>
           <h1 className="mt-1 text-xl font-black">Tracker Voice recognition diagnostic</h1>
-          <p className="mt-2 max-w-3xl text-xs leading-relaxed text-zinc-400">Chỉ final transcript mới tạo Shadow proposal. Mock chứng minh UI/parser; OpenAI Realtime cần session endpoint và secret cục bộ, không có fallback bí mật.</p>
+          <p className="mt-2 max-w-3xl text-xs leading-relaxed text-zinc-400">Chỉ final transcript mới tạo Shadow proposal. Bản UAT này dùng fixture đã làm sạch, không gọi record_action, không ghi hand và không tạo Floor alert production.</p>
+          <p className="mt-3 inline-flex min-h-11 items-center rounded-xl border border-amber-300/35 bg-amber-300/10 px-3 text-xs font-black tracking-wide text-amber-100">SHADOW TEST · KHÔNG GHI HAND</p>
         </header>
 
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1.18fr)_minmax(340px,.82fr)]">
           <TrackerVoicePanel
-            key={providerKind}
+            key={`${providerKind}:${scenario}`}
             hook={hook}
             providerOverride={provider}
-            runtimeOverride={READY_RUNTIME}
+            runtimeOverride={runtime}
             validateEventOverride={validateEvent}
             onDiagnosticSnapshot={onSnapshot}
           />
@@ -284,18 +386,52 @@ export default function TrackerVoiceV0Preview() {
               <div className="mt-3 grid grid-cols-2 gap-2" role="group" aria-label="Provider">
                 {(["mock", "openai"] as const).map((item) => (
                   <button key={item} type="button" onClick={() => setProviderKind(item)} className={`min-h-11 rounded-xl border px-3 text-xs font-bold ${providerKind === item ? "border-emerald-300/50 bg-emerald-300/15 text-emerald-100" : "border-white/10 bg-black/20 text-zinc-400"}`}>
-                    {item === "mock" ? "Mock" : "OpenAI Realtime"}
+                    {item === "mock" ? "MOCK" : "OPENAI REALTIME · MIC THẬT"}
                   </button>
                 ))}
               </div>
-              <p className="mt-3 text-[11px] text-zinc-500">OpenAI selection only attempts the local `tracker-voice-session` endpoint after mic connect. It never embeds or displays a credential.</p>
+              <p className="mt-3 text-[11px] text-zinc-500">OpenAI chỉ gọi endpoint Preview được bảo vệ sau thao tác kết nối microphone. Browser chỉ nhận credential ngắn hạn, không nhận khóa OpenAI dài hạn.</p>
+              <label className="mt-4 block text-[11px] font-semibold text-zinc-300" htmlFor="tracker-voice-fixture">Tình huống engine fixture</label>
+              <select
+                id="tracker-voice-fixture"
+                value={scenario}
+                onChange={(event) => setScenario(event.target.value as FixtureScenario)}
+                className="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+              >
+                {(Object.keys(FIXTURE_SCENARIOS) as FixtureScenario[]).map((item) => <option key={item} value={item}>{FIXTURE_SCENARIOS[item].label}</option>)}
+              </select>
+              <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">{fixture.helper}</p>
+              <label className="mt-4 block text-[11px] font-semibold text-zinc-300" htmlFor="tracker-voice-expected-command">Lệnh mong đợi (chỉ để chấm)</label>
+              <select
+                id="tracker-voice-expected-command"
+                value={expectedCommand}
+                onChange={(event) => setExpectedCommand(event.target.value)}
+                className="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+              >
+                <option value="">Chọn lệnh mong đợi</option>
+                {EXPECTED_COMMANDS.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+              {(expectedCommand === "Bet" || expectedCommand === "Raise") && (
+                <label className="mt-2 block text-[11px] font-semibold text-zinc-300" htmlFor="tracker-voice-expected-amount">
+                  Expected amount
+                  <input
+                    id="tracker-voice-expected-amount"
+                    inputMode="numeric"
+                    value={expectedAmount}
+                    onChange={(event) => setExpectedAmount(event.target.value)}
+                    placeholder="Ví dụ: 120000"
+                    className="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+                  />
+                </label>
+              )}
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button type="button" onClick={startSession} className="min-h-11 rounded-xl bg-emerald-300 px-3 text-xs font-black text-emerald-950">Bắt đầu phiên test</button>
                 <button type="button" onClick={() => setSessionRunning(false)} className="min-h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-xs font-bold text-zinc-200">Dừng phiên test</button>
                 <button type="button" onClick={() => setPendingUtteranceAt(performance.now())} disabled={!sessionRunning} className="min-h-11 rounded-xl border border-sky-300/30 bg-sky-300/10 px-3 text-xs font-bold text-sky-100 disabled:opacity-35">Đánh dấu bắt đầu câu</button>
-                <input aria-label="Nhập kết quả mong đợi" value={expected} onChange={(event) => setExpected(event.target.value)} placeholder="Kết quả mong đợi" className="min-h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300" />
-                <button type="button" onClick={() => markLatest("correct")} disabled={measurements.length === 0} className="min-h-11 rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 text-xs font-bold text-emerald-100 disabled:opacity-35">Đánh dấu đúng</button>
-                <button type="button" onClick={() => markLatest("incorrect")} disabled={measurements.length === 0} className="min-h-11 rounded-xl border border-rose-300/30 bg-rose-300/10 px-3 text-xs font-bold text-rose-100 disabled:opacity-35">Đánh dấu sai</button>
+                <button type="button" onClick={() => markLatest("correct")} disabled={measurements.length === 0} className="min-h-11 rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 text-xs font-bold text-emerald-100 disabled:opacity-35">Đúng</button>
+                <button type="button" onClick={() => markLatest("incorrect")} disabled={measurements.length === 0} className="min-h-11 rounded-xl border border-rose-300/30 bg-rose-300/10 px-3 text-xs font-bold text-rose-100 disabled:opacity-35">Sai</button>
+                <button type="button" onClick={() => markLatest("pending")} disabled={measurements.length === 0} className="min-h-11 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 text-xs font-bold text-amber-100 disabled:opacity-35">Nói lại</button>
+                <button type="button" onClick={resetResults} className="min-h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-xs font-bold text-zinc-200">Reset kết quả</button>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button type="button" onClick={exportJson} disabled={measurements.length === 0} className="min-h-11 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-zinc-200 disabled:opacity-35">Xuất JSON</button>
@@ -327,6 +463,18 @@ export default function TrackerVoiceV0Preview() {
                 <p><span className="text-zinc-500">Proposal latency:</span> {snapshot?.proposalLatencyMs === null || snapshot?.proposalLatencyMs === undefined ? "—" : `${Math.round(snapshot.proposalLatencyMs)} ms`}</p>
               </div>
             </section>
+
+            <details className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-xs text-zinc-300">
+              <summary className="cursor-pointer font-bold text-zinc-100">Hướng dẫn test nhanh trên iPad</summary>
+              <ol className="mt-3 list-decimal space-y-2 pl-4 leading-relaxed text-zinc-400">
+                <li>Chọn fixture, provider và lệnh mong đợi, rồi bấm Bắt đầu phiên test.</li>
+                <li>Bấm Kết nối microphone, cho phép Safari dùng mic, rồi chạy Kiểm tra mic 30 giây.</li>
+                <li>Nói 5 lần: Fold, Check, Call, All-in; sau đó Bỏ bài, Theo, Tất tay.</li>
+                <li>Nói Raise 100k, Raise 120k, Raise hai trăm nghìn; tiếp tục Bet 50k, Bet 80k và Cược một trăm nghìn.</li>
+                <li>Nói Báo sai, Gọi Floor, rồi vài câu không liên quan. Kết quả mong đợi là NO ACTION.</li>
+                <li>Đánh dấu Đúng/Sai/Nói lại cho từng final transcript và Xuất JSON hoặc CSV. Không có audio nào được lưu.</li>
+              </ol>
+            </details>
 
             <section className="rounded-2xl border border-sky-300/20 bg-sky-300/[0.04] p-4" aria-label="Assist fixture receipt">
               <h2 className="font-bold text-sky-100">Assist fixture receipt</h2>

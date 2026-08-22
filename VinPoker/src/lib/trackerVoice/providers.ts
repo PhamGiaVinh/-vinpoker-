@@ -69,6 +69,36 @@ export function createTrackerVoiceOpenAiProvider(
   });
 }
 
+/**
+ * This provider is deliberately isolated to the protected Preview diagnostic.
+ * It never reads a production Voice config or invokes a Supabase Edge function.
+ */
+export function createTrackerVoicePreviewOpenAiProvider(): RealtimeTranscriptionProvider {
+  return new OpenAIRealtimeTranscriptionProvider({
+    getSessionCredential: async () => {
+      const response = await fetch("/api/tracker-voice-uat-session", {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        credentials: "same-origin",
+      });
+      const payload = await response.json().catch(() => null) as {
+        client_secret?: unknown;
+        model?: unknown;
+        expires_at?: unknown;
+        error?: unknown;
+      } | null;
+      if (!response.ok || typeof payload?.client_secret !== "string" || typeof payload.model !== "string" || typeof payload.expires_at !== "string") {
+        throw new Error(typeof payload?.error === "string" ? payload.error : "preview_voice_session_unavailable");
+      }
+      return {
+        clientSecret: payload.client_secret,
+        model: payload.model,
+        expiresAt: payload.expires_at,
+      };
+    },
+  });
+}
+
 export class OpenAIRealtimeTranscriptionProvider implements RealtimeTranscriptionProvider {
   readonly kind = "openai_realtime" as const;
   private peer: RTCPeerConnection | null = null;

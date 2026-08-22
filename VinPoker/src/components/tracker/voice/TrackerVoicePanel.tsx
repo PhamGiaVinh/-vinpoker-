@@ -573,7 +573,7 @@ export function TrackerVoicePanel({
           className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-4 text-xs font-semibold text-emerald-200 outline-none transition hover:bg-emerald-300/15 focus-visible:ring-2 focus-visible:ring-emerald-300"
         >
           {status === "listening" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          {status === "listening" ? "Ngắt mic" : "Kết nối mic"}
+          {status === "listening" ? "Ngắt microphone" : "Kết nối microphone"}
         </button>
       </div>
 

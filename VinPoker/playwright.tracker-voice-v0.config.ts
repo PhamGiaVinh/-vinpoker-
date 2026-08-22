@@ -27,6 +27,7 @@ export default defineConfig({
     env: {
       VITE_SUPABASE_URL: "http://127.0.0.1:54321",
       VITE_SUPABASE_PUBLISHABLE_KEY: "tracker-voice-local-anon-key",
+      VITE_TRACKER_VOICE_UAT_ENABLED: "true",
     },
   },
 });
