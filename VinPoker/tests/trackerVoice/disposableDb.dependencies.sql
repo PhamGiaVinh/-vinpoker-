@@ -132,6 +132,17 @@ AS $$
      AND p_locked_at > now() - public.tracker_lock_ttl();
 $$;
 
+-- The production catalog already contained this retired legacy RPC when the
+-- P0 terminal migration revoked its browser access. The disposable baseline
+-- needs its ABI only so that the exact REVOKE statement can execute; no Voice
+-- test calls this implementation.
+CREATE OR REPLACE FUNCTION public.undo_last_action(p_hand_id UUID)
+RETURNS JSONB
+LANGUAGE SQL
+AS $$
+  SELECT jsonb_build_object('error', 'legacy_fixture_only', 'hand_id', p_hand_id);
+$$;
+
 CREATE OR REPLACE FUNCTION public.tracker_voice_test_assert(
   p_condition BOOLEAN,
   p_message TEXT
