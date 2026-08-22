@@ -3,7 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "tracker-voice-v0.mock.spec.ts",
-  timeout: 45_000,
+  // The first dev-server transform includes the lazily loaded Gemini browser SDK.
+  // Keep E2E deterministic on cold caches without weakening product assertions.
+  timeout: 120_000,
   expect: { timeout: 8_000 },
   fullyParallel: false,
   retries: 0,
@@ -27,6 +29,7 @@ export default defineConfig({
     env: {
       VITE_SUPABASE_URL: "http://127.0.0.1:54321",
       VITE_SUPABASE_PUBLISHABLE_KEY: "tracker-voice-local-anon-key",
+      VITE_TRACKER_VOICE_UAT_ENABLED: "true",
     },
   },
 });

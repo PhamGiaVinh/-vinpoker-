@@ -438,6 +438,64 @@ SELECT public.tracker_voice_test_assert(
   'stale state and confidence-less Auto are zero-write denials'
 );
 
+-- The current-P0 chain deliberately proves record_action before the Gemini
+-- provider migration. Run the Gemini-specific assertion only when 12008 has
+-- installed its provider constraint; the exact final Voice-chain workflow
+-- requires that condition and therefore always executes this block.
+SELECT EXISTS (
+  SELECT 1
+  FROM pg_constraint c
+  WHERE c.conrelid = 'public.tracker_voice_events'::regclass
+    AND c.conname = 'tracker_voice_events_provider_name_check'
+    AND pg_get_constraintdef(c.oid) LIKE '%gemini_live%'
+) AS gemini_provider_available \gset
+\if :gemini_provider_available
+-- Gemini Live may create a Shadow proposal with the reviewed model, but it
+-- cannot fabricate the compatible confidence required to enter Auto.
+UPDATE public.tracker_voice_configs
+SET configured_mode = 'auto',
+    provider_model = 'gemini-3.1-flash-live-preview',
+    server_auto_allowed = true,
+    auto_turn_order_compatible = true,
+    provider_confidence_threshold = 0.9000,
+    auto_capability_version = 'voice-cap-v0'
+WHERE tournament_id = '85000000-0000-4000-8000-000000000001'
+  AND tournament_table_id = '84000000-0000-4000-8000-000000000001';
+SELECT public._tracker_voice_hand_state_version('86000000-0000-4000-8000-000000000001') AS value \gset gemini_state_
+SET ROLE service_role;
+SELECT set_config('request.jwt.claims', '{"sub":"81200000-0000-4000-8000-000000000001","role":"service_role"}', false);
+SELECT public._tracker_voice_register_validated_event(
+  '81200000-0000-4000-8000-000000000001',
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001',
+  '86000000-0000-4000-8000-000000000001',
+  'gemini_live', 'gemini-3.1-flash-live-preview', 'provider-gemini-shadow', NULL, 'Player B check',
+  '{"kind":"check","canonical_action":"check","actor_player_id":"82000000-0000-4000-8000-000000000002","entry_number":1,"street":"preflop","action_order":2,"action_amount":0}'::JSONB,
+  :'gemini_state_value', 'shadow', 'voice-event-gemini-shadow-0001', 'trace-gemini-shadow-0001',
+  'enforce', true, 'voice-cap-v0'
+)::TEXT AS payload \gset gemini_shadow_
+SELECT public._tracker_voice_register_validated_event(
+  '81200000-0000-4000-8000-000000000001',
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001',
+  '86000000-0000-4000-8000-000000000001',
+  'gemini_live', 'gemini-3.1-flash-live-preview', 'provider-gemini-auto', NULL, 'Player B check',
+  '{"kind":"check","canonical_action":"check","actor_player_id":"82000000-0000-4000-8000-000000000002","entry_number":1,"street":"preflop","action_order":2,"action_amount":0}'::JSONB,
+  :'gemini_state_value', 'auto', 'voice-event-gemini-auto-0001', 'trace-gemini-auto-0001',
+  'enforce', true, 'voice-cap-v0'
+)::TEXT AS payload \gset gemini_auto_
+RESET ROLE;
+SELECT public.tracker_voice_test_assert(
+  (:'gemini_shadow_payload'::JSONB->>'ok')::BOOLEAN
+  AND :'gemini_shadow_payload'::JSONB->>'execution_mode' = 'shadow'
+  AND :'gemini_auto_payload'::JSONB->>'error' = 'auto_capability_missing'
+  AND (SELECT count(*) = 0 FROM public.hand_actions WHERE idempotency_key = 'voice-event-gemini-auto-0001'),
+  'Gemini Shadow is allowed while confidence-less Auto remains impossible'
+);
+\else
+SELECT 'TRACKER_VOICE_GEMINI_AUTO_TEST_SKIPPED_PRE_12008' AS result;
+\endif
+
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '81200000-0000-4000-8000-000000000001', false);
 SELECT public.record_action(

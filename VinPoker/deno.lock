@@ -105,6 +105,7 @@
     "packageJson": {
       "dependencies": [
         "npm:@eslint/js@^9.32.0",
+        "npm:@google/genai@2.18.0",
         "npm:@playwright/test@^1.60.0",
         "npm:@radix-ui/react-accordion@^1.2.11",
         "npm:@radix-ui/react-alert-dialog@^1.1.14",

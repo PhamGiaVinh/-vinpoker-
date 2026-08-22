@@ -498,7 +498,11 @@ Deno.serve(async (req) => {
           p_tournament_id: tournament_id,
           p_tournament_table_id: tournament_table_id,
           p_hand_id: hand_id,
-          p_provider_name: provider_name === "mock" ? "mock" : "openai_realtime",
+          p_provider_name: provider_name === "mock"
+            ? "mock"
+            : provider_name === "gemini_live"
+              ? "gemini_live"
+              : "openai_realtime",
           p_provider_model: typeof provider_model === "string" ? provider_model : snapshot.provider_model,
           p_provider_event_id: typeof provider_event_id === "string" ? provider_event_id : null,
           p_provider_confidence: typeof provider_confidence === "number" ? provider_confidence : null,
