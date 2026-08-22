@@ -64,7 +64,7 @@ describe("tracker voice Gemini Preview token endpoint", () => {
     });
     expect(JSON.stringify(result)).not.toContain(PREVIEW_ENV.GEMINI_API_KEY);
     expect(fetcher).toHaveBeenCalledWith(
-      "https://generativelanguage.googleapis.com/v1beta/auth_tokens",
+      "https://generativelanguage.googleapis.com/v1alpha/auth_tokens",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
@@ -78,7 +78,7 @@ describe("tracker voice Gemini Preview token endpoint", () => {
       newSessionExpireTime: "1970-01-01T00:01:01.000Z",
       expireTime: "1970-01-01T00:20:01.000Z",
       liveConnectConstraints: {
-        model: "models/gemini-3.1-flash-live-preview",
+        model: "gemini-3.1-flash-live-preview",
         config: {
           responseModalities: ["AUDIO"],
           inputAudioTranscription: {},
@@ -92,6 +92,15 @@ describe("tracker voice Gemini Preview token endpoint", () => {
         },
       },
     });
+  });
+
+  it("classifies an upstream token rejection without exposing its response body", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => new Response("provider details", { status: 403 }));
+    await expect(createTrackerVoiceGeminiCredential(
+      PREVIEW_ENV,
+      { method: "POST", clientIp: "198.51.100.11" },
+      { fetcher, limiter: new GeminiPreviewRateLimiter(), now: () => 1_000 },
+    )).resolves.toEqual({ status: 502, body: { error: "gemini_ephemeral_token_unauthorized" } });
   });
 
   it("rate limits a Preview requester without contacting Gemini again", async () => {

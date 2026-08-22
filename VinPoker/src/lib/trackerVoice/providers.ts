@@ -181,7 +181,7 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
     const { GoogleGenAI, Modality } = await import("@google/genai");
     const client = new GoogleGenAI({
       apiKey: credential.ephemeralToken,
-      httpOptions: { apiVersion: "v1beta" },
+      httpOptions: { apiVersion: "v1alpha" },
     });
     const session = await client.live.connect({
       model: credential.model,

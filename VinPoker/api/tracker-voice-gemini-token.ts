@@ -2,8 +2,7 @@ import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 export const GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview";
-const GEMINI_LIVE_MODEL_RESOURCE = `models/${GEMINI_LIVE_MODEL}`;
-const GEMINI_AUTH_TOKEN_URL = "https://generativelanguage.googleapis.com/v1beta/auth_tokens";
+const GEMINI_AUTH_TOKEN_URL = "https://generativelanguage.googleapis.com/v1alpha/auth_tokens";
 const MAX_REQUESTS_PER_MINUTE = 6;
 const RATE_WINDOW_MS = 60_000;
 const MAX_RATE_LIMIT_KEYS = 512;
@@ -47,13 +46,20 @@ function isIsoDate(value: unknown): value is string {
   return typeof value === "string" && !Number.isNaN(Date.parse(value));
 }
 
+function upstreamTokenError(status: number): string {
+  if (status === 400) return "gemini_ephemeral_token_invalid_request";
+  if (status === 401 || status === 403) return "gemini_ephemeral_token_unauthorized";
+  if (status === 429) return "gemini_ephemeral_token_rate_limited";
+  return "gemini_ephemeral_token_unavailable";
+}
+
 function buildTokenRequest(now: number): string {
   return JSON.stringify({
     uses: 1,
     newSessionExpireTime: new Date(now + 60_000).toISOString(),
     expireTime: new Date(now + (20 * 60_000)).toISOString(),
     liveConnectConstraints: {
-      model: GEMINI_LIVE_MODEL_RESOURCE,
+      model: GEMINI_LIVE_MODEL,
       config: {
         responseModalities: ["AUDIO"],
         inputAudioTranscription: {},
@@ -120,7 +126,7 @@ export async function createTrackerVoiceGeminiCredential(
   } catch {
     return json(502, { error: "gemini_ephemeral_token_unavailable" });
   }
-  if (!response.ok) return json(502, { error: "gemini_ephemeral_token_unavailable" });
+  if (!response.ok) return json(502, { error: upstreamTokenError(response.status) });
 
   let payload: GeminiAuthTokenResponse;
   try {
