@@ -3,7 +3,10 @@ import { createClient } from "npm:@supabase/supabase-js@2.105.4";
 import { corsHeaders, handleOptions, jsonResp } from "../_shared/cors.ts";
 import { retryFetch } from "../_shared/retry.ts";
 import {
+  buildTrackerVoiceGeminiAuthTokenRequest,
   buildTrackerVoiceRealtimeSession,
+  isTrackerVoiceGeminiLiveModel,
+  normalizeTrackerVoiceGeminiCredential,
   normalizeTrackerVoiceCredential,
   TRACKER_VOICE_DEFAULT_MODEL,
 } from "./protocol.ts";
@@ -33,8 +36,7 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const openAiKey = Deno.env.get("OPENAI_API_KEY");
-  if (!supabaseUrl || !anonKey || !serviceRoleKey || !openAiKey) {
+  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     return jsonResp(req, { error: "VOICE_SESSION_MISCONFIGURED" }, 503);
   }
 
@@ -113,6 +115,31 @@ Deno.serve(async (req) => {
     const model = typeof config.provider_model === "string" && config.provider_model.trim()
       ? config.provider_model
       : TRACKER_VOICE_DEFAULT_MODEL;
+
+    if (isTrackerVoiceGeminiLiveModel(model)) {
+      const geminiKey = Deno.env.get("GEMINI_API_KEY");
+      if (!geminiKey) return jsonResp(req, { error: "GEMINI_SESSION_MISCONFIGURED" }, 503);
+      const now = Date.now();
+      const providerResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/auth_tokens", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": geminiKey,
+        },
+        body: JSON.stringify(buildTrackerVoiceGeminiAuthTokenRequest(now)),
+      });
+      if (!providerResponse.ok) return jsonResp(req, { error: "GEMINI_SESSION_FAILED" }, 502);
+      const credential = normalizeTrackerVoiceGeminiCredential(
+        await providerResponse.json(),
+        model,
+        now,
+      );
+      if (!credential) return jsonResp(req, { error: "GEMINI_SESSION_MALFORMED" }, 502);
+      return jsonResp(req, { provider: "gemini_live", ...credential });
+    }
+
+    const openAiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!openAiKey) return jsonResp(req, { error: "OPENAI_SESSION_MISCONFIGURED" }, 503);
     const providerResponse = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
       method: "POST",
       headers: {
@@ -127,7 +154,7 @@ Deno.serve(async (req) => {
     }
     const credential = normalizeTrackerVoiceCredential(await providerResponse.json(), model);
     if (!credential) return jsonResp(req, { error: "OPENAI_SESSION_MALFORMED" }, 502);
-    return jsonResp(req, credential);
+    return jsonResp(req, { provider: "openai_realtime", ...credential });
   } catch {
     return jsonResp(req, { error: "VOICE_SESSION_FAILED" }, 500);
   }

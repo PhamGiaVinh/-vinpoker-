@@ -4,7 +4,9 @@ import { useWakeLock } from "@/hooks/useWakeLock";
 import { FEATURES } from "@/lib/featureFlags";
 import {
   loadTrackerVoiceRuntimeContext,
+  createTrackerVoiceGeminiProvider,
   createTrackerVoiceOpenAiProvider,
+  isTrackerVoiceGeminiLiveModel,
   MockRealtimeTranscriptionProvider,
   parseVoiceCommand,
   resolveVoiceProposal,
@@ -74,9 +76,15 @@ const MANUAL_FALLBACK_ACTIONS: ReadonlyArray<{
   { action: "all_in", label: "All-in", legalKey: "allIn" },
 ];
 
-function createDefaultProvider(hook: StandaloneHandInput): RealtimeTranscriptionProvider {
+function createDefaultProvider(
+  hook: StandaloneHandInput,
+  runtime: TrackerVoiceRuntimeContext,
+): RealtimeTranscriptionProvider {
   if (import.meta.env.VITE_TRACKER_VOICE_PROVIDER === "mock") {
     return new MockRealtimeTranscriptionProvider();
+  }
+  if (isTrackerVoiceGeminiLiveModel(runtime.config.provider_model)) {
+    return createTrackerVoiceGeminiProvider(hook.tournamentId, hook.tableId);
   }
   return createTrackerVoiceOpenAiProvider(hook.tournamentId, hook.tableId);
 }
@@ -422,7 +430,17 @@ export function TrackerVoicePanel({
       setStatusMessage(runtimeError ?? "Dealer chưa có đúng một assignment hoặc Voice chưa được bật.");
       return;
     }
-    const provider = providerRef.current ?? createDefaultProvider(hook);
+    const expectedProviderKind = import.meta.env.VITE_TRACKER_VOICE_PROVIDER === "mock"
+      ? "mock"
+      : isTrackerVoiceGeminiLiveModel(currentRuntime.config.provider_model)
+        ? "gemini_live"
+        : "openai_realtime";
+    // Test and Preview seams inject an explicit provider. Never replace it
+    // from the runtime model; production has no override and remains server-selected.
+    const provider = providerOverride
+      ?? (providerRef.current?.kind === expectedProviderKind
+        ? providerRef.current
+        : createDefaultProvider(hook, currentRuntime));
     providerRef.current = provider;
     setAudioLevel(0);
     setStatusMessage(null);
@@ -618,7 +636,11 @@ export function TrackerVoicePanel({
     : proposal?.message ?? "Nói một lệnh để tạo đề xuất Shadow.";
 
   const providerKind = providerRef.current?.kind ??
-    (import.meta.env.VITE_TRACKER_VOICE_PROVIDER === "mock" ? "mock" : "openai_realtime");
+    (import.meta.env.VITE_TRACKER_VOICE_PROVIDER === "mock"
+      ? "mock"
+      : isTrackerVoiceGeminiLiveModel(runtime?.config.provider_model)
+        ? "gemini_live"
+        : "openai_realtime");
 
   return (
     <section

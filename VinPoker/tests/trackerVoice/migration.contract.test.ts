@@ -5,8 +5,14 @@ import { describe, expect, it } from "vitest";
 const root = process.cwd();
 const migrationName =
   "20270112000003_tracker_voice_player_analytics_v0.sql";
+const geminiMigrationName =
+  "20270112000008_tracker_voice_gemini_live_provider.sql";
 const migration = readFileSync(
   resolve(root, "supabase/migrations", migrationName),
+  "utf8",
+).replace(/\r\n/g, "\n");
+const geminiMigration = readFileSync(
+  resolve(root, "supabase/migrations", geminiMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const integration = readFileSync(
@@ -31,7 +37,11 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(names.filter((name) => name.startsWith("20270112000003_"))).toEqual([
       migrationName,
     ]);
+    expect(names.filter((name) => name.startsWith("20270112000008_"))).toEqual([
+      geminiMigrationName,
+    ]);
     expect(names).toContain(migrationName);
+    expect(names).toContain(geminiMigrationName);
   });
 
   it("keeps every mergeable Voice and Analytics flag disabled", () => {
@@ -91,5 +101,34 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(sessionEdge).not.toMatch(/console\.(log|info|warn|error)\([^)]*(secret|api[_-]?key)/i);
     expect(sessionEdge).not.toMatch(/OPENAI_API_KEY\s*[:=]\s*["'][^"']+["']/);
     expect(sessionEdge).toContain("OPENAI_API_KEY");
+  });
+
+  it("adds Gemini only through the service-owned validated-event seam", () => {
+    expect(geminiMigration).toContain("tracker_voice_v0_dependency_missing");
+    expect(geminiMigration).toContain(
+      "CHECK (provider_name IN ('openai_realtime', 'gemini_live', 'mock'))",
+    );
+    expect(geminiMigration).toContain("p_provider_name NOT IN ('openai_realtime', 'gemini_live', 'mock')");
+    expect(geminiMigration).toContain("voice_provider_config_mismatch");
+    expect(geminiMigration).toContain("p_provider_name = 'gemini_live'");
+    expect(geminiMigration).toContain("v_config.provider_model <> 'gemini-3.1-flash-live-preview'");
+    expect(geminiMigration).toMatch(
+      /REVOKE ALL ON FUNCTION public\._tracker_voice_register_validated_event\([\s\S]+?FROM PUBLIC, anon, authenticated;/,
+    );
+    expect(geminiMigration).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\._tracker_voice_register_validated_event\([\s\S]+?TO service_role;/,
+    );
+  });
+
+  it("mints a Gemini credential only after the existing assignment and rate-limit gates", () => {
+    const runtimeGate = sessionEdge.indexOf("get_tracker_voice_runtime_context");
+    const rateLimitGate = sessionEdge.indexOf("_tracker_voice_consume_session_rate_limit");
+    const geminiBranch = sessionEdge.indexOf("isTrackerVoiceGeminiLiveModel(model)");
+    expect(runtimeGate).toBeGreaterThanOrEqual(0);
+    expect(rateLimitGate).toBeGreaterThan(runtimeGate);
+    expect(geminiBranch).toBeGreaterThan(rateLimitGate);
+    expect(sessionEdge).toContain('provider: "gemini_live"');
+    expect(sessionEdge).toContain("GEMINI_API_KEY");
+    expect(sessionEdge).not.toMatch(/GEMINI_API_KEY\s*[:=]\s*["'][^"']+["']/);
   });
 });

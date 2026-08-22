@@ -106,6 +106,12 @@ export interface GeminiLiveSessionCredential {
   expiresAt: string;
 }
 
+export const TRACKER_VOICE_GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview";
+
+export function isTrackerVoiceGeminiLiveModel(model: string | null | undefined): boolean {
+  return model === TRACKER_VOICE_GEMINI_LIVE_MODEL;
+}
+
 interface GeminiLiveSession {
   sendRealtimeInput(input: { audio?: Blob; audioStreamEnd?: boolean }): void;
   close(): void;
@@ -140,6 +146,38 @@ export function createTrackerVoicePreviewGeminiProvider(): RealtimeTranscription
         ephemeralToken: payload.ephemeral_token,
         model: payload.model,
         expiresAt: payload.expires_at,
+      };
+    },
+  });
+}
+
+/**
+ * Real Hand Input receives only a short-lived token from the authenticated
+ * Edge session. The browser never sees the permanent Gemini API key.
+ */
+export function createTrackerVoiceGeminiProvider(
+  tournamentId: string,
+  tournamentTableId: string,
+): RealtimeTranscriptionProvider {
+  return new GeminiLiveTranscriptionProvider({
+    getSessionCredential: async () => {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke("tracker-voice-session", {
+        body: { tournament_id: tournamentId, tournament_table_id: tournamentTableId },
+      });
+      if (
+        error
+        || data?.provider !== "gemini_live"
+        || typeof data?.ephemeral_token !== "string"
+        || typeof data?.model !== "string"
+        || typeof data?.expires_at !== "string"
+      ) {
+        throw new Error(data?.error ?? "Không cấp được phiên Gemini Voice cho bàn này.");
+      }
+      return {
+        ephemeralToken: data.ephemeral_token,
+        model: data.model,
+        expiresAt: data.expires_at,
       };
     },
   });
