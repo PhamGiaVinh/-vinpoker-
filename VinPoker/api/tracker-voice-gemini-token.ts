@@ -6,6 +6,7 @@ export const GEMINI_LIVE_API_VERSION = "v1beta";
 const MAX_REQUESTS_PER_MINUTE = 6;
 const RATE_WINDOW_MS = 60_000;
 const MAX_RATE_LIMIT_KEYS = 512;
+const TOKEN_SESSION_LIFETIME_MS = 20 * 60_000;
 
 export interface TrackerVoiceGeminiUatEnvironment {
   VERCEL_ENV?: string;
@@ -25,7 +26,6 @@ export interface TrackerVoiceGeminiUatResponse {
 
 interface GeminiAuthTokenResponse {
   name?: unknown;
-  expireTime?: unknown;
 }
 
 interface GeminiProvisioningError {
@@ -46,10 +46,6 @@ function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function isIsoDate(value: unknown): value is string {
-  return typeof value === "string" && !Number.isNaN(Date.parse(value));
-}
-
 function upstreamTokenError(status: number): string {
   if (status === 400) return "gemini_ephemeral_token_invalid_request";
   if (status === 401 || status === 403) return "gemini_ephemeral_token_unauthorized";
@@ -61,7 +57,7 @@ export function buildGeminiAuthTokenRequest(now: number): Record<string, unknown
   return {
     uses: 1,
     newSessionExpireTime: new Date(now + 60_000).toISOString(),
-    expireTime: new Date(now + (20 * 60_000)).toISOString(),
+    expireTime: new Date(now + TOKEN_SESSION_LIFETIME_MS).toISOString(),
   };
 }
 
@@ -133,14 +129,15 @@ export async function createTrackerVoiceGeminiCredential(
     const status = isProvisioningError(error) ? error.status : 0;
     return json(502, { error: upstreamTokenError(status) });
   }
-  if (typeof payload.name !== "string" || payload.name.length === 0 || payload.name.length > 4_096 || !isIsoDate(payload.expireTime)) {
+  if (typeof payload.name !== "string" || payload.name.length === 0 || payload.name.length > 4_096) {
     return json(502, { error: "gemini_ephemeral_token_unavailable" });
   }
 
   // The permanent key stays on the Vercel Preview function. The browser gets only this restricted token.
   return json(200, {
     ephemeral_token: payload.name,
-    expires_at: new Date(payload.expireTime).toISOString(),
+    // AuthToken guarantees a name. The server advertises the same capped lifetime it requested.
+    expires_at: new Date(now + TOKEN_SESSION_LIFETIME_MS).toISOString(),
     model: GEMINI_LIVE_MODEL,
   });
 }

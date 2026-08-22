@@ -16,7 +16,6 @@ const PREVIEW_ENV = {
 function tokenResponse() {
   return new Response(JSON.stringify({
     name: "ephemeral-preview-token",
-    expireTime: "2033-05-18T03:33:20.000Z",
   }), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
@@ -59,7 +58,7 @@ describe("tracker voice Gemini Preview token endpoint", () => {
       status: 200,
       body: {
         ephemeral_token: "ephemeral-preview-token",
-        expires_at: "2033-05-18T03:33:20.000Z",
+        expires_at: "1970-01-01T00:20:01.000Z",
         model: "gemini-3.1-flash-live-preview",
       },
     });
