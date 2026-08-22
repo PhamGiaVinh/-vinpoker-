@@ -31,7 +31,9 @@ describe("Tracker record_action authority hotfix", () => {
       .filter((name) => /^\d{14}_.+\.sql$/.test(name))
       .sort();
     expect(names.filter((name) => name.startsWith("20270112000004_"))).toEqual([hotfixName]);
-    expect(names.at(-1)).toBe(hotfixName);
+    expect(names.filter((name) => name.startsWith("20270112000005_"))).toEqual([
+      "20270112000005_tracker_start_hand_authority_binding.sql",
+    ]);
   });
 
   it("keeps the current-schema writer as a security invoker with auth-bound strict locking", () => {
@@ -98,7 +100,7 @@ describe("Tracker record_action authority hotfix", () => {
     expect(resumeClaim).toBeGreaterThanOrEqual(0);
     expect(resumeClaim).toBeLessThan(resumeEnabled);
     expect(consoleHook).toContain("resolveHandLockClaim(data, error, user.id)");
-    expect(consoleHook).toContain("setActionSyncBlocked(true);\n            setIsReadOnly(true);");
+    expect(consoleHook).toMatch(/setActionSyncBlocked\(true\);\s+setIsReadOnly\(true\);/);
   });
 
   it("keeps the disposable proof local and source-only", () => {
