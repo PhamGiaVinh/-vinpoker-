@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 const root = process.cwd();
 const migrationDirectory = resolve(root, "supabase/migrations");
 const hotfixName = "20270112000005_tracker_start_hand_authority_binding.sql";
-const hotfix = readFileSync(resolve(migrationDirectory, hotfixName), "utf8");
+const normalizeSql = (source: string) => source.replace(/\r\n/g, "\n");
+const hotfix = normalizeSql(readFileSync(resolve(migrationDirectory, hotfixName), "utf8"));
 const edge = readFileSync(resolve(root, "supabase/functions/tournament-live-update/index.ts"), "utf8");
 
 function functionBody(functionName: string): string {
@@ -16,19 +17,65 @@ function functionBody(functionName: string): string {
   return hotfix.slice(start, end + "$function$;".length);
 }
 
+function migrationDefinesStartHand(migration: string): boolean {
+  return migration.includes("FUNCTION public.start_hand(");
+}
+
+function startHandDefinition(migration: string): string {
+  const start = migration.indexOf("FUNCTION public.start_hand(");
+  expect(start).toBeGreaterThanOrEqual(0);
+
+  const terminator = ["$function$;", "$body$;", "$definition$;"]
+    .map((value) => ({ value, index: migration.indexOf(value, start) }))
+    .filter(({ index }) => index >= 0)
+    .sort((left, right) => left.index - right.index)
+    .at(0);
+
+  expect(terminator).toBeDefined();
+  return migration.slice(start, terminator!.index + terminator!.value.length);
+}
+
+function expectAuthBoundStartHandDefinition(definition: string, migration: string): void {
+  expect(definition).toContain("p_created_by uuid DEFAULT NULL::uuid");
+  expect(definition).toContain("SECURITY INVOKER");
+  expect(definition).toContain("SET search_path = public");
+  expect(definition).toContain("v_actor_user_id UUID := auth.uid()");
+  expect(definition).toContain("IF v_actor_user_id IS NULL THEN");
+  expect(definition).toContain("'error', 'unauthenticated'");
+  expect(definition).toContain("p_created_by IS NOT NULL AND p_created_by <> v_actor_user_id");
+  expect(definition).toContain("'error', 'actor_mismatch'");
+  expect(definition).toContain("public.is_club_tracker(v_actor_user_id, v_tt.club_id)");
+  expect(definition).toContain("v_actor_user_id, v_actor_user_id, NOW(), p_button_seat");
+  expect(definition).not.toContain("p_created_by, p_created_by, NOW()");
+  expect(migration).toContain(
+    "REVOKE ALL ON FUNCTION public.start_hand(UUID, UUID, INTEGER, TIMESTAMPTZ, UUID, INTEGER)",
+  );
+  expect(migration).toContain(
+    "GRANT EXECUTE ON FUNCTION public.start_hand(UUID, UUID, INTEGER, TIMESTAMPTZ, UUID, INTEGER)\n  TO authenticated;",
+  );
+}
+
 describe("Tracker start_hand authority hotfix", () => {
-  it("uses the unique next migration version and remains the final start_hand definition", () => {
+  it("keeps the final start_hand definition auth-bound without coupling the guard to unrelated later migrations", () => {
     const migrations = readdirSync(migrationDirectory)
       .filter((name) => /^\d{14}_.+\.sql$/.test(name))
       .sort();
 
     expect(migrations.filter((name) => name.startsWith("20270112000005_"))).toEqual([hotfixName]);
-    expect(migrations.at(-1)).toBe(hotfixName);
 
-    const laterStartDefinitions = migrations
+    const laterStartMigrations = migrations
       .filter((name) => name > hotfixName)
-      .filter((name) => readFileSync(resolve(migrationDirectory, name), "utf8").includes("FUNCTION public.start_hand("));
-    expect(laterStartDefinitions).toEqual([]);
+      .map((name) => ({ name, sql: normalizeSql(readFileSync(resolve(migrationDirectory, name), "utf8")) }))
+      .filter(({ sql }) => migrationDefinesStartHand(sql));
+
+    // A future migration may legitimately sort after the P0 hotfix. It only
+    // becomes unsafe when it replaces start_hand without preserving the reviewed
+    // auth.uid(), ABI, role, and ACL contract.
+    for (const { sql } of laterStartMigrations) {
+      expectAuthBoundStartHandDefinition(startHandDefinition(sql), sql);
+    }
+
+    expectAuthBoundStartHandDefinition(functionBody("start_hand"), hotfix);
   });
 
   it("binds start ownership and audit identity to auth.uid while preserving the six-argument ABI", () => {

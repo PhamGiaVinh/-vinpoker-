@@ -4,7 +4,16 @@ on:
   pull_request:
     paths:
       - ".github/workflows/tracker-voice-v0-disposable-db.yml"
+      - "VinPoker/supabase/migrations/20260928000000_tracker_lock_activation_idempotency_trace.sql"
+      - "VinPoker/supabase/migrations/20261221000000_tracker_lock_takeover.sql"
+      - "VinPoker/supabase/migrations/20270105000004_floor_table_control_mode.sql"
+      - "VinPoker/supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql"
       - "VinPoker/supabase/migrations/20270112000003_tracker_voice_player_analytics_v0.sql"
+      - "VinPoker/supabase/migrations/20270112000004_tracker_record_action_authority_binding.sql"
+      - "VinPoker/supabase/migrations/20270112000005_tracker_start_hand_authority_binding.sql"
+      - "VinPoker/supabase/migrations/20270112000006_tracker_terminal_hand_rpc_authority.sql"
+      - "VinPoker/supabase/migrations/20270112000007_tracker_p0_authority_closure.sql"
+      - "VinPoker/supabase/migrations/20270112000008_tracker_voice_gemini_live_provider.sql"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
       - "VinPoker/supabase/functions/tracker-player-analytics/**"
@@ -54,7 +63,7 @@ jobs:
         working-directory: VinPoker
         run: npm ci --ignore-scripts
 
-      - name: Create isolated Tracker Voice baseline and rollback copy
+      - name: Create sanitized current-P0 baseline without Unified Ops or Voice
         working-directory: VinPoker
         run: |
           set -euo pipefail
@@ -62,32 +71,125 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f tests/trackerUnifiedOps/disposableDb.baseline.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
-            -f supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql
-          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f tests/trackerVoice/disposableDb.dependencies.sql
-          createdb tracker_voice_v0_rollback -T tracker_voice_v0
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20260928000000_tracker_lock_activation_idempotency_trace.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270105000004_floor_table_control_mode.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20261221000000_tracker_lock_takeover.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270112000004_tracker_record_action_authority_binding.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270112000005_tracker_start_hand_authority_binding.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270112000006_tracker_terminal_hand_rpc_authority.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270112000007_tracker_p0_authority_closure.sql
+          test "$(psql -X -At -d tracker_voice_v0 -c \
+            "SELECT to_regprocedure('public._tracker_unified_ops_request_hash_v2(jsonb)') IS NULL
+                    AND to_regclass('public.tracker_voice_configs') IS NULL
+                    AND NOT EXISTS (
+                      SELECT 1 FROM information_schema.columns
+                      WHERE table_schema = 'public'
+                        AND table_name = 'tournament_hands'
+                        AND column_name = 'tracker_lock_version'
+                    )")" = "t"
+          createdb tracker_voice_v0_before_080 -T tracker_voice_v0
 
-      - name: Apply exact Voice migration and run transaction/RLS suite
+      - name: Apply the exact future chain after current P0 and capture catalog evidence
         working-directory: VinPoker
         run: |
           set -euo pipefail
+          protected_digest() {
+            psql -X -At -d tracker_voice_v0 -c "
+              SELECT md5(string_agg(
+                p.oid::regprocedure::text || E'\\n' || pg_get_functiondef(p.oid) || E'\\n'
+                || pg_get_userbyid(p.proowner) || E'\\n' || coalesce(array_to_string(p.proconfig, ';'), '')
+                || E'\\n' || coalesce(array_to_string(p.proacl, ';'), ''),
+                E'\\n---\\n' ORDER BY p.oid::regprocedure::text
+              ))
+              FROM pg_proc p
+              WHERE p.oid::regprocedure::text IN (
+                'start_hand(uuid,uuid,integer,timestamp with time zone,uuid,integer)',
+                'update_community_cards(uuid,jsonb,uuid)',
+                'show_hole_cards(uuid,jsonb,uuid)',
+                'delete_last_action(uuid,uuid)',
+                'void_last_hand(uuid)',
+                'cleanup_orphan_hands(interval)',
+                'takeover_hand_lock(uuid,boolean,uuid)'
+              )"
+          }
+          before_p0_digest="$(protected_digest)"
+          echo "TRACKER_VOICE_P0_CATALOG_BEFORE=$before_p0_digest"
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql
+          test "$(psql -X -At -d tracker_voice_v0 -c \
+            "SELECT to_regprocedure('public._tracker_unified_ops_request_hash_v2(jsonb)') IS NOT NULL
+                    AND to_regprocedure('public.tracker_unified_ops_lock_tournament(uuid)') IS NOT NULL
+                    AND EXISTS (
+                      SELECT 1 FROM information_schema.columns
+                      WHERE table_schema = 'public'
+                        AND table_name = 'tournament_hands'
+                        AND column_name = 'tracker_lock_version'
+                    )")" = "t"
+          echo "TRACKER_VOICE_080_APPLY=PASS"
+          createdb tracker_voice_v0_before_12003 -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f supabase/migrations/20270112000003_tracker_voice_player_analytics_v0.sql
+          test "$(psql -X -At -d tracker_voice_v0 -c \
+            "SELECT to_regclass('public.tracker_voice_configs') IS NOT NULL
+                    AND to_regclass('public.tracker_voice_events') IS NOT NULL
+                    AND to_regprocedure('public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)') IS NOT NULL")" = "t"
+          echo "TRACKER_VOICE_12003_APPLY=PASS"
+          createdb tracker_voice_v0_before_12008 -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
-            -f tests/trackerVoice/disposableDb.integration.sql
+            -f supabase/migrations/20270112000008_tracker_voice_gemini_live_provider.sql
+          after_p0_digest="$(protected_digest)"
+          test "$before_p0_digest" = "$after_p0_digest"
+          echo "TRACKER_VOICE_P0_CATALOG_UNCHANGED=PASS"
+          echo "TRACKER_VOICE_12008_APPLY=PASS"
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f tests/trackerVoice/currentP0VoiceChain.integration.sql
 
-      - name: Prove exact migration transaction rollback
+      - name: Run Voice and start-hand runtime suites against the exact final chain
         working-directory: VinPoker
         run: |
           set -euo pipefail
-          failing="$RUNNER_TEMP/tracker-voice-v0-failing.sql"
+          createdb tracker_voice_v0_runtime -T tracker_voice_v0
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_runtime \
+            -f tests/trackerVoice/disposableDb.integration.sql
+          createdb tracker_voice_v0_start_runtime -T tracker_voice_v0
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_start_runtime \
+            -f tests/trackerStartHandAuthority/disposableDb.integration.sql
+
+      - name: Prove each exact prerequisite migration rolls back without partial catalog state
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          failing="$RUNNER_TEMP/tracker-voice-080-failing.sql"
           awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
-            supabase/migrations/20270112000003_tracker_voice_player_analytics_v0.sql > "$failing"
-          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_rollback -f "$failing"; then
-            echo "Injected Voice migration unexpectedly committed" >&2
+            supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql > "$failing"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_080 -f "$failing"; then
+            echo "Injected 080 migration unexpectedly committed" >&2
             exit 1
           fi
-          rollback_state="$(psql -X -At -d tracker_voice_v0_rollback -c \
+          test "$(psql -X -At -d tracker_voice_v0_before_080 -c \
+            "SELECT to_regprocedure('public._tracker_unified_ops_request_hash_v2(jsonb)') IS NULL
+                    AND NOT EXISTS (
+                      SELECT 1 FROM information_schema.columns
+                      WHERE table_schema = 'public'
+                        AND table_name = 'tournament_hands'
+                        AND column_name = 'tracker_lock_version'
+                    )")" = "t"
+          failing="$RUNNER_TEMP/tracker-voice-12003-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
+            supabase/migrations/20270112000003_tracker_voice_player_analytics_v0.sql > "$failing"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_12003 -f "$failing"; then
+            echo "Injected 12003 migration unexpectedly committed" >&2
+            exit 1
+          fi
+          rollback_state="$(psql -X -At -d tracker_voice_v0_before_12003 -c \
             "SELECT to_regclass('public.tracker_voice_events') IS NULL
                     AND to_regclass('public.tracker_floor_alerts') IS NULL
                     AND to_regprocedure('public.get_tracker_voice_runtime_context(uuid,uuid)') IS NULL
@@ -98,7 +200,28 @@ jobs:
                         AND column_name IN ('source', 'voice_event_id')
                     )")"
           test "$rollback_state" = "t"
-          echo "TRACKER_VOICE_MIGRATION_ROLLBACK=PASS"
+          failing="$RUNNER_TEMP/tracker-voice-12008-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
+            supabase/migrations/20270112000008_tracker_voice_gemini_live_provider.sql > "$failing"
+          before_constraint="$(psql -X -At -d tracker_voice_v0_before_12008 -c \
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint
+              WHERE conrelid = 'public.tracker_voice_events'::regclass
+                AND conname = 'tracker_voice_events_provider_name_check'")"
+          before_helper="$(psql -X -At -d tracker_voice_v0_before_12008 -c \
+            "SELECT md5(pg_get_functiondef('public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure))")"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_12008 -f "$failing"; then
+            echo "Injected 12008 migration unexpectedly committed" >&2
+            exit 1
+          fi
+          after_constraint="$(psql -X -At -d tracker_voice_v0_before_12008 -c \
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint
+              WHERE conrelid = 'public.tracker_voice_events'::regclass
+                AND conname = 'tracker_voice_events_provider_name_check'")"
+          after_helper="$(psql -X -At -d tracker_voice_v0_before_12008 -c \
+            "SELECT md5(pg_get_functiondef('public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure))")"
+          test "$before_constraint" = "$after_constraint"
+          test "$before_helper" = "$after_helper"
+          echo "TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS"
 
       - name: Run focused Voice, Analytics and contract tests
         working-directory: VinPoker
@@ -112,6 +235,7 @@ jobs:
             tests/trackerVoice/trackerPlayerAnalyticsPage.test.tsx \
             tests/trackerVoice/trackerAnalyticsSeatControl.test.tsx \
             tests/trackerVoice/migration.contract.test.ts \
+            tests/trackerStartHandAuthority/migration.contract.test.ts \
             --maxWorkers=1 --minWorkers=1
           deno check supabase/functions/tracker-voice-session/index.ts
           deno check supabase/functions/tracker-player-analytics/index.ts

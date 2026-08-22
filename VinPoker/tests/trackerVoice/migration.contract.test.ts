@@ -15,6 +15,13 @@ const geminiMigration = readFileSync(
   resolve(root, "supabase/migrations", geminiMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
+const unifiedOpsMigration = readFileSync(
+  resolve(
+    root,
+    "supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql",
+  ),
+  "utf8",
+).replace(/\r\n/g, "\n");
 const integration = readFileSync(
   resolve(root, "tests/trackerVoice/disposableDb.integration.sql"),
   "utf8",
@@ -91,7 +98,10 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(workflow).toContain("POSTGRES_HOST_AUTH_METHOD: trust");
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).toContain(migrationName);
-    expect(workflow).toContain("TRACKER_VOICE_MIGRATION_ROLLBACK=PASS");
+    expect(workflow).toContain("20270108000003_tracker_unified_ops_v2_context_safe_start.sql");
+    expect(workflow).toContain(geminiMigrationName);
+    expect(workflow).toContain("TRACKER_VOICE_P0_CATALOG_UNCHANGED=PASS");
+    expect(workflow).toContain("TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS");
     expect(workflow).not.toMatch(/--linked|db push|migration repair|functions deploy|vercel --prod/i);
     expect(workflow).not.toContain("orlesggcjamwuknxwcpk");
     expect(workflow).not.toMatch(/SUPABASE_(URL|KEY|SERVICE_ROLE_KEY)/i);
@@ -118,6 +128,25 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(geminiMigration).toMatch(
       /GRANT EXECUTE ON FUNCTION public\._tracker_voice_register_validated_event\([\s\S]+?TO service_role;/,
     );
+  });
+
+  it("keeps the Unified Ops dependency explicit and lets Gemini Auto fail closed without provider confidence", () => {
+    expect(migration).toContain("public._tracker_unified_ops_request_hash_v2");
+    expect(migration).toContain("public.tracker_unified_ops_lock_tournament");
+    expect(unifiedOpsMigration).toContain(
+      "CREATE OR REPLACE FUNCTION public._tracker_unified_ops_request_hash_v2",
+    );
+    expect(unifiedOpsMigration).toContain(
+      "CREATE OR REPLACE FUNCTION public.tracker_unified_ops_lock_tournament",
+    );
+    for (const guard of [
+      "p_provider_confidence IS NULL",
+      "v_config.provider_confidence_threshold IS NULL",
+      "p_provider_confidence < v_config.provider_confidence_threshold",
+      "'error', 'auto_capability_missing'",
+    ]) {
+      expect(geminiMigration).toContain(guard);
+    }
   });
 
   it("mints a Gemini credential only after the existing assignment and rate-limit gates", () => {
