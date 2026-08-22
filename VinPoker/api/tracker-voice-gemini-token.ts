@@ -1,0 +1,168 @@
+import { createHash } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
+
+export const GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview";
+const GEMINI_AUTH_TOKEN_URL = "https://generativelanguage.googleapis.com/v1alpha/auth_tokens";
+const MAX_REQUESTS_PER_MINUTE = 6;
+const RATE_WINDOW_MS = 60_000;
+const MAX_RATE_LIMIT_KEYS = 512;
+
+export interface TrackerVoiceGeminiUatEnvironment {
+  VERCEL_ENV?: string;
+  TRACKER_VOICE_UAT_ENABLED?: string;
+  GEMINI_API_KEY?: string;
+}
+
+export interface TrackerVoiceGeminiUatRequest {
+  method?: string;
+  clientIp: string;
+}
+
+export interface TrackerVoiceGeminiUatResponse {
+  status: number;
+  body: Record<string, string>;
+}
+
+interface GeminiAuthTokenResponse {
+  name?: unknown;
+  expireTime?: unknown;
+}
+
+interface TrackerVoiceGeminiUatDependencies {
+  fetcher?: typeof fetch;
+  now?: () => number;
+  limiter?: GeminiPreviewRateLimiter;
+}
+
+function json(status: number, body: Record<string, string>): TrackerVoiceGeminiUatResponse {
+  return { status, body };
+}
+
+function hash(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function isIsoDate(value: unknown): value is string {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value));
+}
+
+function buildTokenRequest(now: number): string {
+  return JSON.stringify({
+    uses: 1,
+    newSessionExpireTime: new Date(now + 60_000).toISOString(),
+    expireTime: new Date(now + (20 * 60_000)).toISOString(),
+    liveConnectConstraints: {
+      model: GEMINI_LIVE_MODEL,
+      config: {
+        responseModalities: ["AUDIO"],
+        inputAudioTranscription: {},
+        realtimeInputConfig: {
+          automaticActivityDetection: {
+            disabled: false,
+            prefixPaddingMs: 300,
+            silenceDurationMs: 600,
+          },
+        },
+      },
+    },
+  });
+}
+
+export class GeminiPreviewRateLimiter {
+  private readonly attempts = new Map<string, number[]>();
+
+  allow(key: string, now: number): boolean {
+    const cutoff = now - RATE_WINDOW_MS;
+    const recent = (this.attempts.get(key) ?? []).filter((attempt) => attempt > cutoff);
+    if (recent.length >= MAX_REQUESTS_PER_MINUTE) {
+      this.attempts.set(key, recent);
+      return false;
+    }
+    recent.push(now);
+    this.attempts.set(key, recent);
+    if (this.attempts.size > MAX_RATE_LIMIT_KEYS) {
+      const oldest = this.attempts.keys().next().value;
+      if (typeof oldest === "string") this.attempts.delete(oldest);
+    }
+    return true;
+  }
+}
+
+export function isTrackerVoiceGeminiPreview(environment: TrackerVoiceGeminiUatEnvironment): boolean {
+  return environment.VERCEL_ENV === "preview" && environment.TRACKER_VOICE_UAT_ENABLED === "true";
+}
+
+export async function createTrackerVoiceGeminiCredential(
+  environment: TrackerVoiceGeminiUatEnvironment,
+  request: TrackerVoiceGeminiUatRequest,
+  dependencies: TrackerVoiceGeminiUatDependencies = {},
+): Promise<TrackerVoiceGeminiUatResponse> {
+  if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
+  if (!isTrackerVoiceGeminiPreview(environment)) return json(404, { error: "preview_uat_disabled" });
+  if (!environment.GEMINI_API_KEY) return json(503, { error: "gemini_preview_secret_missing" });
+
+  const now = dependencies.now?.() ?? Date.now();
+  const clientKey = hash(request.clientIp || "unknown");
+  const limiter = dependencies.limiter ?? defaultRateLimiter;
+  if (!limiter.allow(clientKey, now)) return json(429, { error: "preview_uat_rate_limited" });
+
+  let response: Response;
+  try {
+    response = await (dependencies.fetcher ?? fetch)(GEMINI_AUTH_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": environment.GEMINI_API_KEY,
+      },
+      body: buildTokenRequest(now),
+    });
+  } catch {
+    return json(502, { error: "gemini_ephemeral_token_unavailable" });
+  }
+  if (!response.ok) return json(502, { error: "gemini_ephemeral_token_unavailable" });
+
+  let payload: GeminiAuthTokenResponse;
+  try {
+    payload = await response.json() as GeminiAuthTokenResponse;
+  } catch {
+    return json(502, { error: "gemini_ephemeral_token_unavailable" });
+  }
+  if (typeof payload.name !== "string" || payload.name.length === 0 || payload.name.length > 4_096 || !isIsoDate(payload.expireTime)) {
+    return json(502, { error: "gemini_ephemeral_token_unavailable" });
+  }
+
+  // The permanent key stays on the Vercel Preview function. The browser gets only this restricted token.
+  return json(200, {
+    ephemeral_token: payload.name,
+    expires_at: new Date(payload.expireTime).toISOString(),
+    model: GEMINI_LIVE_MODEL,
+  });
+}
+
+const defaultRateLimiter = new GeminiPreviewRateLimiter();
+
+function requestIp(request: IncomingMessage): string {
+  const forwarded = request.headers["x-forwarded-for"];
+  const value = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  return value?.split(",")[0]?.trim().slice(0, 128) || request.socket.remoteAddress || "unknown";
+}
+
+function send(response: ServerResponse, result: TrackerVoiceGeminiUatResponse): void {
+  response.statusCode = result.status;
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
+  response.end(JSON.stringify(result.body));
+}
+
+export default async function handler(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  const environment: TrackerVoiceGeminiUatEnvironment = {
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    TRACKER_VOICE_UAT_ENABLED: process.env.TRACKER_VOICE_UAT_ENABLED,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+  };
+  const result = await createTrackerVoiceGeminiCredential(environment, {
+    method: request.method,
+    clientIp: requestIp(request),
+  });
+  send(response, result);
+}

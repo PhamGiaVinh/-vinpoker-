@@ -10,6 +10,8 @@ export type VoiceCommandKind =
 
 export type VoiceExecutionMode = "shadow" | "assist" | "auto";
 
+export type VoiceProviderKind = "mock" | "openai_realtime" | "gemini_live";
+
 export type VoiceProviderStatus =
   | "idle"
   | "requesting_permission"
@@ -46,10 +48,11 @@ export interface VoiceProviderHandlers {
   onTranscript: (event: VoiceTranscriptEvent) => void;
   onLevel?: (rms: number) => void;
   onInputDevice?: (device: { deviceId: string | null; label: string | null }) => void;
+  onSession?: (session: { model: string; expiresAt: string }) => void;
 }
 
 export interface RealtimeTranscriptionProvider {
-  readonly kind: "mock" | "openai_realtime";
+  readonly kind: VoiceProviderKind;
   connect(handlers: VoiceProviderHandlers): Promise<void>;
   disconnect(): Promise<void>;
 }
@@ -180,7 +183,7 @@ export interface ValidateVoiceEventInput {
   tournamentTableId: string;
   handId: string;
   finalTranscript: string;
-  providerName: "mock" | "openai_realtime";
+  providerName: VoiceProviderKind;
   providerModel: string;
   providerEventId: string;
   providerConfidence?: number;

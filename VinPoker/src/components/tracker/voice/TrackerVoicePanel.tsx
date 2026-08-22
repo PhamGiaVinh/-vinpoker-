@@ -16,6 +16,7 @@ import {
   type VoiceExecutionMode,
   type VoiceActionProposal,
   type VoiceProposal,
+  type VoiceProviderKind,
   type VoiceProviderStatus,
   type VoiceTranscriptEvent,
 } from "@/lib/trackerVoice";
@@ -32,10 +33,11 @@ interface TrackerVoicePanelProps {
 }
 
 export interface TrackerVoiceDiagnosticSnapshot {
-  provider: "mock" | "openai_realtime" | null;
+  provider: VoiceProviderKind | null;
   status: VoiceProviderStatus;
   statusMessage: string | null;
   inputDevice: { deviceId: string | null; label: string | null } | null;
+  session: { model: string; expiresAt: string } | null;
   rms: number;
   partialTranscript: string;
   finalTranscript: string;
@@ -91,6 +93,7 @@ export function TrackerVoicePanel({
   const [providerConfidence, setProviderConfidence] = useState<number | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [inputDevice, setInputDevice] = useState<{ deviceId: string | null; label: string | null } | null>(null);
+  const [session, setSession] = useState<{ model: string; expiresAt: string } | null>(null);
   const [lastFinalProviderEventId, setLastFinalProviderEventId] = useState<string | null>(null);
   const [lastFinalCapturedAt, setLastFinalCapturedAt] = useState<string | null>(null);
   const [proposalLatencyMs, setProposalLatencyMs] = useState<number | null>(null);
@@ -210,6 +213,7 @@ export function TrackerVoicePanel({
     requestIdentitiesRef.current.clear();
     finalReceivedAtRef.current.clear();
     setInputDevice(null);
+    setSession(null);
     setLastFinalProviderEventId(null);
     setLastFinalCapturedAt(null);
     setProposalLatencyMs(null);
@@ -221,6 +225,7 @@ export function TrackerVoicePanel({
       status,
       statusMessage,
       inputDevice,
+      session,
       rms: audioLevel,
       partialTranscript: partial,
       finalTranscript,
@@ -241,6 +246,7 @@ export function TrackerVoicePanel({
     partial,
     proposal,
     proposalLatencyMs,
+    session,
     status,
     statusMessage,
     validationError,
@@ -445,6 +451,7 @@ export function TrackerVoicePanel({
           if (micTestActiveRef.current) micTestMaxLevelRef.current = Math.max(micTestMaxLevelRef.current, normalized);
         },
         onInputDevice: setInputDevice,
+        onSession: setSession,
       });
     } catch (error) {
       await provider.disconnect().catch(() => undefined);
@@ -458,6 +465,7 @@ export function TrackerVoicePanel({
     setStatus("idle");
     setAudioLevel(0);
     setPartial("");
+    setSession(null);
     micTestActiveRef.current = false;
     setMicTestStartedAt(null);
   };
@@ -563,7 +571,11 @@ export function TrackerVoicePanel({
           <div className="min-w-0">
             <h2 className="text-sm font-semibold tracking-wide text-zinc-100">Voice Tracker</h2>
             <p className="truncate text-[11px] text-zinc-500">
-              {providerKind === "mock" ? "Mock mic · Preview" : "OpenAI Realtime · Dealer assignment bắt buộc"}
+              {providerKind === "mock"
+                ? "Mock mic · Preview"
+                : providerKind === "gemini_live"
+                  ? "Gemini Live · Dealer assignment bắt buộc"
+                  : "OpenAI Realtime · Dealer assignment bắt buộc"}
             </p>
           </div>
         </div>

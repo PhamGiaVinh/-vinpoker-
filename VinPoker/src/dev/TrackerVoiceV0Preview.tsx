@@ -7,6 +7,7 @@ import {
 import type { StandaloneHandInput } from "@/components/cashier/tournament-live/handinput/useStandaloneHandInput";
 import {
   MockRealtimeTranscriptionProvider,
+  createTrackerVoicePreviewGeminiProvider,
   createTrackerVoicePreviewOpenAiProvider,
   parseVoiceCommand,
   type TrackerVoiceRuntimeContext,
@@ -29,7 +30,7 @@ const READY_RUNTIME: TrackerVoiceRuntimeContext = {
   config: {
     enabled: true,
     configured_mode: "assist",
-    provider_model: "gpt-live-transcribe",
+    provider_model: "gemini-3.1-flash-live-preview",
     spoken_amount_unit: 1,
     amount_unit_confirmed: false,
     provider_confidence_threshold: null,
@@ -151,8 +152,14 @@ function snapshotCommand(snapshot: TrackerVoiceDiagnosticSnapshot | null): strin
     : snapshot.proposal.canonicalAction;
 }
 
+function providerLabel(provider: "mock" | "gemini" | "openai"): string {
+  if (provider === "mock") return "Mock";
+  if (provider === "gemini") return "Gemini Live";
+  return "OpenAI Realtime";
+}
+
 export default function TrackerVoiceV0Preview() {
-  const [providerKind, setProviderKind] = useState<"mock" | "openai">("mock");
+  const [providerKind, setProviderKind] = useState<"mock" | "gemini" | "openai">("gemini");
   const [scenario, setScenario] = useState<FixtureScenario>("facing_bet");
   const [snapshot, setSnapshot] = useState<TrackerVoiceDiagnosticSnapshot | null>(null);
   const [actions, setActions] = useState<PreviewAction[]>([]);
@@ -177,9 +184,11 @@ export default function TrackerVoiceV0Preview() {
     ? `${expectedCommand} ${expectedAmount}`
     : expectedCommand;
 
-  const provider = useMemo(() => providerKind === "mock"
-    ? new MockRealtimeTranscriptionProvider()
-    : createTrackerVoicePreviewOpenAiProvider(), [providerKind]);
+  const provider = useMemo(() => {
+    if (providerKind === "mock") return new MockRealtimeTranscriptionProvider();
+    if (providerKind === "gemini") return createTrackerVoicePreviewGeminiProvider();
+    return createTrackerVoicePreviewOpenAiProvider();
+  }, [providerKind]);
 
   const runtime = useMemo<TrackerVoiceRuntimeContext>(() => ({
     ...READY_RUNTIME,
@@ -383,14 +392,14 @@ export default function TrackerVoiceV0Preview() {
           <aside className="space-y-4">
             <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4" aria-label="Voice UAT controls">
               <h2 className="font-bold">Provider và phiên đo</h2>
-              <div className="mt-3 grid grid-cols-2 gap-2" role="group" aria-label="Provider">
-                {(["mock", "openai"] as const).map((item) => (
+              <div className="mt-3 grid gap-2 sm:grid-cols-3" role="group" aria-label="Provider">
+                {(["mock", "gemini", "openai"] as const).map((item) => (
                   <button key={item} type="button" onClick={() => setProviderKind(item)} className={`min-h-11 rounded-xl border px-3 text-xs font-bold ${providerKind === item ? "border-emerald-300/50 bg-emerald-300/15 text-emerald-100" : "border-white/10 bg-black/20 text-zinc-400"}`}>
-                    {item === "mock" ? "MOCK" : "OPENAI REALTIME · MIC THẬT"}
+                    {item === "mock" ? "MOCK" : item === "gemini" ? "GEMINI LIVE · MIC THẬT" : "OPENAI REALTIME · MIC THẬT"}
                   </button>
                 ))}
               </div>
-              <p className="mt-3 text-[11px] text-zinc-500">OpenAI chỉ gọi endpoint Preview được bảo vệ sau thao tác kết nối microphone. Browser chỉ nhận credential ngắn hạn, không nhận khóa OpenAI dài hạn.</p>
+              <p className="mt-3 text-[11px] text-zinc-500">Gemini Live là mặc định cho UAT thật. Browser chỉ nhận token Preview ngắn hạn sau khi kết nối microphone; không nhận API key lâu dài. Mock vẫn dùng cho luồng tự động; OpenAI là tùy chọn đối chiếu.</p>
               <label className="mt-4 block text-[11px] font-semibold text-zinc-300" htmlFor="tracker-voice-fixture">Tình huống engine fixture</label>
               <select
                 id="tracker-voice-fixture"
@@ -447,10 +456,11 @@ export default function TrackerVoiceV0Preview() {
             <section className="rounded-2xl border border-white/10 bg-black/20 p-4" aria-label="Live Voice diagnostic">
               <h2 className="font-bold">Tín hiệu hiện tại</h2>
               <dl className="mt-3 space-y-2 text-xs">
-                <div className="flex justify-between gap-4"><dt className="text-zinc-500">Provider</dt><dd>{providerKind === "mock" ? "Mock" : "OpenAI Realtime"}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-zinc-500">Provider</dt><dd>{providerLabel(providerKind)}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-zinc-500">Mic permission</dt><dd>{permission}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-zinc-500">Input device</dt><dd className="max-w-[58%] truncate text-right">{snapshot?.inputDevice?.label ?? "—"}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-zinc-500">Connection</dt><dd>{snapshot?.status ?? "idle"}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-zinc-500">Session</dt><dd className="max-w-[58%] truncate text-right">{snapshot?.session ? `${snapshot.session.model} · hết ${new Date(snapshot.session.expiresAt).toLocaleTimeString("vi-VN")}` : "—"}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-zinc-500">RMS</dt><dd>{Math.round((snapshot?.rms ?? 0) * 100)}%</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-zinc-500">Actor / legal</dt><dd className="text-right">Player A · call / raise / all-in</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-zinc-500">Provider event</dt><dd className="max-w-[58%] truncate text-right font-mono text-[10px]">{snapshot?.finalProviderEventId ?? "—"}</dd></div>

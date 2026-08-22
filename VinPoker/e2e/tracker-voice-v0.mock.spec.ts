@@ -12,6 +12,7 @@ test("mock Voice keeps Shadow local, then flows through Assist, correction and V
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/__uat/tracker-voice");
+  await page.getByRole("button", { name: "MOCK" }).click();
 
   await page.getByRole("button", { name: "Kết nối microphone" }).click();
   await expect(page.getByText("Đang nghe", { exact: true })).toBeVisible();
@@ -61,6 +62,7 @@ test("mock Voice keeps Shadow local, then flows through Assist, correction and V
 
 test("mock Voice recovers fail-closed after an offline event", async ({ page }) => {
   await page.goto("/__uat/tracker-voice");
+  await page.getByRole("button", { name: "MOCK" }).click();
   await page.getByRole("button", { name: "Kết nối microphone" }).click();
   await page.getByRole("button", { name: "Bắt đầu phiên test" }).click();
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
@@ -73,6 +75,7 @@ test("mock Voice recovers fail-closed after an offline event", async ({ page }) 
 
 test("mock call Floor creates only a local fixture alert", async ({ page }) => {
   await page.goto("/__uat/tracker-voice");
+  await page.getByRole("button", { name: "MOCK" }).click();
   await page.getByRole("button", { name: "Kết nối microphone" }).click();
   await page.getByRole("button", { name: "Bắt đầu phiên test" }).click();
   await page.getByRole("button", { name: "assist" }).click();

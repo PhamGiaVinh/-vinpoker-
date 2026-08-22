@@ -3,7 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "tracker-voice-v0.mock.spec.ts",
-  timeout: 45_000,
+  // The first dev-server transform includes the lazily loaded Gemini browser SDK.
+  // Keep E2E deterministic on cold caches without weakening product assertions.
+  timeout: 120_000,
   expect: { timeout: 8_000 },
   fullyParallel: false,
   retries: 0,

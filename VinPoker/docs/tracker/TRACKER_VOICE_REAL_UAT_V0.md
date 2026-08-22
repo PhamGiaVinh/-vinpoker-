@@ -15,14 +15,14 @@ navigation.
 
 The route and its lazy component are included only when
 `VITE_TRACKER_VOICE_UAT_ENABLED=true` at build time. They are absent from a
-normal production build. The Vercel endpoint `/api/tracker-voice-uat-session`
+normal production build. The Vercel endpoint `/api/tracker-voice-gemini-token`
 also returns `404 preview_uat_disabled` unless both
 `VERCEL_ENV=preview` and `TRACKER_VOICE_UAT_ENABLED=true` are present.
 
 Vercel Deployment Protection covers the Preview deployment, including
 `/api/*`; the owner must sign into Vercel before opening the UAT route. The
-endpoint has a small per-requester rate limit and returns only an OpenAI
-short-lived client credential, model and expiry. It never returns, stores or
+endpoint has a small per-requester rate limit and returns only a constrained,
+one-use Gemini ephemeral token, model and expiry. It never returns, stores or
 logs the permanent API key.
 
 ## Capability Truth Table
@@ -34,8 +34,9 @@ logs the permanent API key.
 | Shadow zero canonical action writes | Yes | Yes, fixture E2E | No | No |
 | Assist confirmation through the current action handler | Yes | Yes, sanitized fixture | No | No |
 | Mock microphone/provider diagnostic | Yes | Yes | Mock only | No |
+| Gemini Live PCM16 provider | Yes | PCM/token contract | No | No |
 | OpenAI Realtime WebRTC provider | Yes | Session contract only | No | No |
-| Preview-only Vercel session endpoint | Yes | Unit tested | No Preview credential yet | No |
+| Preview-only Gemini token endpoint | Yes | Unit tested | No Preview token yet | No |
 
 The three source flags remain false:
 
@@ -51,18 +52,25 @@ trackerVoiceAutoCommit=false
 2. The Edge parser is active in `supabase/functions/_shared/trackerVoiceParser.ts`.
 3. Both call `src/lib/trackerVoice/parserCore.ts`; the parity corpus asserts
    command kind, normalized transcript, amount and ambiguity for every row.
-4. The OpenAI provider uses browser WebRTC with real microphone constraints:
-   echo cancellation, noise suppression and automatic gain control.
-5. `tracker-voice-session` mints a short-lived client credential server-side.
-   Its configured transcription model is `gpt-live-transcribe`; the browser
-   never receives the permanent key.
-6. Only `conversation.item.input_audio_transcription.completed` creates a
-   proposal. Delta events update partial text only.
-7. Poker proposals in Shadow stay local. They do not call voice validation,
+4. The Gemini Live provider captures browser microphone audio with echo
+   cancellation, noise suppression and automatic gain control. It sends mono
+   PCM16 little-endian at 16 kHz directly to Gemini Live using a constrained
+   ephemeral token.
+5. The deterministic VinPoker parser and proposal resolver remain the only
+   components that interpret a final transcript as a poker action. Gemini is
+   transcription-only and has no Tracker write path.
+6. The Preview token endpoint mints a one-use credential server-side for
+   `gemini-3.1-flash-live-preview`; the browser never receives the permanent
+   key.
+7. The OpenAI provider remains optional for comparison and uses browser WebRTC
+   with the same microphone constraints.
+8. Only a Gemini `turnComplete` containing input transcription creates a
+   proposal. Working transcription updates partial text only.
+9. Poker proposals in Shadow stay local. They do not call voice validation,
    record an event, or invoke the canonical action writer. `Báo sai action`
    and `Gọi Floor` deliberately keep their existing alert path and do not
    record poker actions.
-8. Assist waits for a validation receipt and then uses the existing
+10. Assist waits for a validation receipt and then uses the existing
    `handleVoiceAction` path.
 
 ## Sanitized Preview Fixture
@@ -76,12 +84,12 @@ exported as JSON/CSV; neither audio nor transcript is persisted.
 
 ## Real Provider Preconditions
 
-The protected Preview route can select **OPENAI REALTIME - MIC THẬT**. It asks
-for microphone permission only after the owner presses the connection button.
-The permanent credential belongs only in Vercel's **Preview** environment as:
+The protected Preview route defaults to **GEMINI LIVE - MIC THẬT**. It asks for
+microphone permission only after the owner presses the connection button. The
+permanent credential belongs only in Vercel's **Preview** environment as:
 
 ```text
-OPENAI_API_KEY
+GEMINI_API_KEY
 ```
 
 Do not place it in `VITE_*`, source, browser storage, screenshots, logs, or
@@ -92,8 +100,8 @@ VITE_TRACKER_VOICE_UAT_ENABLED=true
 TRACKER_VOICE_UAT_ENABLED=true
 ```
 
-Without the Preview-only `OPENAI_API_KEY`, the correct outcome is
-`OPENAI_PREVIEW_SECRET_REQUIRED`, not a mock success claim. Production values
+Without the Preview-only `GEMINI_API_KEY`, the correct outcome is
+`GEMINI_PREVIEW_SECRET_REQUIRED`, not a mock success claim. Production values
 remain absent or false and no production deployment is part of this UAT.
 
 ## UAT Corpus and Export
