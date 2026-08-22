@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  buildGeminiAuthTokenConfig,
+  buildGeminiAuthTokenRequest,
   createTrackerVoiceGeminiCredential,
   GeminiPreviewRateLimiter,
   isTrackerVoiceGeminiPreview,
@@ -65,22 +65,21 @@ describe("tracker voice Gemini Preview token endpoint", () => {
     });
     expect(JSON.stringify(result)).not.toContain(PREVIEW_ENV.GEMINI_API_KEY);
     expect(tokenCreator).toHaveBeenCalledWith(PREVIEW_ENV, 1_000);
-    expect(buildGeminiAuthTokenConfig(1_000)).toEqual({
-      config: {
-        uses: 1,
-        newSessionExpireTime: "1970-01-01T00:01:01.000Z",
-        expireTime: "1970-01-01T00:20:01.000Z",
-        liveConnectConstraints: {
-          model: "gemini-3.1-flash-live-preview",
-          config: {
-            responseModalities: ["AUDIO"],
-            inputAudioTranscription: {},
-            realtimeInputConfig: {
-              automaticActivityDetection: {
-                disabled: false,
-                prefixPaddingMs: 300,
-                silenceDurationMs: 600,
-              },
+    expect(buildGeminiAuthTokenRequest(1_000)).toEqual({
+      uses: 1,
+      newSessionExpireTime: "1970-01-01T00:01:01.000Z",
+      expireTime: "1970-01-01T00:20:01.000Z",
+      liveConnectConstraints: {
+        model: "models/gemini-3.1-flash-live-preview",
+        config: {
+          sessionResumption: {},
+          responseModalities: ["AUDIO"],
+          inputAudioTranscription: {},
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              disabled: false,
+              prefixPaddingMs: 300,
+              silenceDurationMs: 600,
             },
           },
         },
