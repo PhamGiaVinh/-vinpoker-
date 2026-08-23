@@ -79,14 +79,15 @@ const MANUAL_FALLBACK_ACTIONS: ReadonlyArray<{
 function createDefaultProvider(
   hook: StandaloneHandInput,
   runtime: TrackerVoiceRuntimeContext,
-): RealtimeTranscriptionProvider {
+): RealtimeTranscriptionProvider | null {
+  if (!hook.tournamentTableId) return null;
   if (import.meta.env.VITE_TRACKER_VOICE_PROVIDER === "mock") {
     return new MockRealtimeTranscriptionProvider();
   }
   if (isTrackerVoiceGeminiLiveModel(runtime.config.provider_model)) {
-    return createTrackerVoiceGeminiProvider(hook.tournamentId, hook.tableId);
+    return createTrackerVoiceGeminiProvider(hook.tournamentId, hook.tournamentTableId);
   }
-  return createTrackerVoiceOpenAiProvider(hook.tournamentId, hook.tableId);
+  return createTrackerVoiceOpenAiProvider(hook.tournamentId, hook.tournamentTableId);
 }
 
 function proposalTone(proposal: VoiceProposal | null): string {
@@ -198,13 +199,18 @@ export function TrackerVoicePanel({
   );
 
   const refreshRuntime = useCallback(async () => {
+    if (!hook.tournamentTableId) {
+      setRuntime(null);
+      setRuntimeError("KhÃ´ng xÃ¡c minh Ä‘Æ°á»£c bÃ n canonical cho Voice.");
+      return null;
+    }
     if (runtimeOverride) {
       setRuntime(runtimeOverride);
       setRuntimeError(null);
       return runtimeOverride;
     }
     try {
-      const next = await loadTrackerVoiceRuntimeContext(hook.tournamentId, hook.tableId);
+      const next = await loadTrackerVoiceRuntimeContext(hook.tournamentId, hook.tournamentTableId);
       setRuntime(next);
       setRuntimeError(null);
       return next;
@@ -214,7 +220,7 @@ export function TrackerVoicePanel({
       setRuntimeError(message);
       return null;
     }
-  }, [hook.tableId, hook.tournamentId, runtimeOverride]);
+  }, [hook.tournamentId, hook.tournamentTableId, runtimeOverride]);
 
   useEffect(() => {
     void refreshRuntime();
@@ -312,6 +318,12 @@ export function TrackerVoicePanel({
       return;
     }
 
+    if (!hook.tournamentTableId) {
+      setValidationState("error");
+      setValidationError("KhÃ´ng xÃ¡c minh Ä‘Æ°á»£c bÃ n canonical cho Voice.");
+      return;
+    }
+
     // Poker commands stay local in Shadow. Control commands intentionally go
     // through the existing alert path, which never records a poker action.
     const requiresServerValidation = attemptMode !== "shadow" || "controlAction" in nextProposal;
@@ -332,7 +344,7 @@ export function TrackerVoicePanel({
     const generation = ++validationGenerationRef.current;
     const input: ValidateVoiceEventInput = {
       tournamentId: hook.tournamentId,
-      tournamentTableId: hook.tableId,
+      tournamentTableId: hook.tournamentTableId,
       handId: activeHand.hand_id,
       finalTranscript: finalEvent.transcript,
       providerName: providerRef.current?.kind ?? "openai_realtime",
@@ -370,8 +382,8 @@ export function TrackerVoicePanel({
     amountUnitConfirmed,
     finalAttempt,
     hook.handId,
-    hook.tableId,
     hook.tournamentId,
+    hook.tournamentTableId,
     mode,
     proposalContext,
     runtime,
@@ -441,6 +453,11 @@ export function TrackerVoicePanel({
       ?? (providerRef.current?.kind === expectedProviderKind
         ? providerRef.current
         : createDefaultProvider(hook, currentRuntime));
+    if (!provider) {
+      setStatus("error");
+      setStatusMessage("KhÃ´ng xÃ¡c minh Ä‘Æ°á»£c bÃ n canonical cho Voice.");
+      return;
+    }
     providerRef.current = provider;
     setAudioLevel(0);
     setStatusMessage(null);
@@ -604,6 +621,8 @@ export function TrackerVoicePanel({
 
   const confirmAssist = async () => {
     if (
+      !hook.tournamentTableId
+      ||
       validationState !== "validated"
       || !validatedReceipt
       || !validatedProposal?.ok
@@ -614,7 +633,7 @@ export function TrackerVoicePanel({
     const actionProposal = validatedProposal as VoiceActionProposal;
     const committed = await hook.handleVoiceAction(actionProposal, {
       source: "voice",
-      tournamentTableId: hook.tableId,
+      tournamentTableId: hook.tournamentTableId,
       voiceEventId: validatedReceipt.voice_event_id,
       idempotencyKey: validatedReceipt.idempotency_key,
       traceId: validatedReceipt.trace_id,

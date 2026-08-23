@@ -3,8 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { InputTableMap, type InputTableSummary } from "@/components/cashier/tournament-live/handinput/InputTableMap";
 
 const tables: InputTableSummary[] = [
-  { id: "tA", name: "Bàn 1", playerCount: 8, hasLiveHand: true },
-  { id: "tB", name: "Bàn 2", playerCount: 6, hasLiveHand: false },
+  { id: "tA", physicalTableId: "tA", tournamentTableId: "ttA", name: "Bàn 1", playerCount: 8, hasLiveHand: true },
+  { id: "tB", physicalTableId: "tB", tournamentTableId: "ttB", name: "Bàn 2", playerCount: 6, hasLiveHand: false },
 ];
 
 describe("InputTableMap (operator table picker)", () => {
@@ -97,8 +97,8 @@ describe("InputTableMap (operator table picker)", () => {
   // B3 (trackerMultiTable): lock visibility + stale-lock takeover row.
   it("shows the holder chip when a table is locked by someone else", () => {
     const locked: InputTableSummary[] = [
-      { id: "tA", name: "Bàn 1", playerCount: 8, hasLiveHand: true, lockHandId: "h1", lockedByName: "TĐ Minh", lockedByOther: true, lockAgeMin: 2, lockStale: false },
-      { id: "tB", name: "Bàn 2", playerCount: 6, hasLiveHand: false },
+      { id: "tA", physicalTableId: "tA", tournamentTableId: "ttA", name: "Bàn 1", playerCount: 8, hasLiveHand: true, lockHandId: "h1", lockedByName: "TĐ Minh", lockedByOther: true, lockAgeMin: 2, lockStale: false },
+      { id: "tB", physicalTableId: "tB", tournamentTableId: "ttB", name: "Bàn 2", playerCount: 6, hasLiveHand: false },
     ];
     const html = renderToStaticMarkup(<InputTableMap tables={locked} activeTableId={null} onSelect={() => {}} />);
     expect(html).toContain("TĐ Minh");
@@ -107,8 +107,8 @@ describe("InputTableMap (operator table picker)", () => {
 
   it("renders a 'Tiếp quản' row ONLY for a STALE lock and ONLY when onTakeover is wired", () => {
     const stale: InputTableSummary[] = [
-      { id: "tA", name: "Bàn 1", playerCount: 8, hasLiveHand: true, lockHandId: "h1", lockedByName: "TĐ Minh", lockedByOther: true, lockAgeMin: 7, lockStale: true },
-      { id: "tB", name: "Bàn 2", playerCount: 6, hasLiveHand: true, lockHandId: "h2", lockedByName: "TĐ An", lockedByOther: true, lockAgeMin: 1, lockStale: false },
+      { id: "tA", physicalTableId: "tA", tournamentTableId: "ttA", name: "Bàn 1", playerCount: 8, hasLiveHand: true, lockHandId: "h1", lockedByName: "TĐ Minh", lockedByOther: true, lockAgeMin: 7, lockStale: true },
+      { id: "tB", physicalTableId: "tB", tournamentTableId: "ttB", name: "Bàn 2", playerCount: 6, hasLiveHand: true, lockHandId: "h2", lockedByName: "TĐ An", lockedByOther: true, lockAgeMin: 1, lockStale: false },
     ];
     // No onTakeover → no takeover row even for the stale one.
     const noCb = renderToStaticMarkup(<InputTableMap tables={stale} activeTableId={null} onSelect={() => {}} />);

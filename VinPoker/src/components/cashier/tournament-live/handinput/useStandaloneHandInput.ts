@@ -58,6 +58,7 @@ import {
 } from "./trackerWorkflow";
 import type { RailSeat } from "./SeatRail";
 import type { InputTableLoadState, InputTableSummary } from "./InputTableMap";
+import { resolveTournamentTableId, type TournamentTableIdentityRow } from "./tableIdentity";
 import { formatStack } from "./format";
 import { friendlyValidationError } from "./validationMessages";
 import {
@@ -404,11 +405,25 @@ export function useStandaloneHandInput(tournamentId: string) {
           setTableLoadError("Không thể tải danh sách bàn. Hãy thử lại.");
           return;
         }
-        const base = (Array.isArray(data) ? data : []).map((t: any) => ({
-          id: t.table_id,
-          name: t.table_name || t.table_id.slice(0, 8),
-        }));
-        const [{ data: seatRows, error: seatError }, { data: liveHands, error: liveHandsError }] = await Promise.all([
+        const base = (Array.isArray(data) ? data : []).flatMap((t: any) => {
+          const physicalTableId = typeof t.table_id === "string" ? t.table_id : "";
+          if (!physicalTableId) return [];
+          return [{
+            id: physicalTableId,
+            physicalTableId,
+            tournamentTableId: null as string | null,
+            name: t.table_name || physicalTableId.slice(0, 8),
+          }];
+        });
+        const [
+          { data: canonicalTableRows },
+          { data: seatRows, error: seatError },
+          { data: liveHands, error: liveHandsError },
+        ] = await Promise.all([
+          supabase
+            .from("tournament_tables")
+            .select("id, table_id")
+            .eq("tournament_id", tournamentId),
           supabase
             .from("tournament_seats")
             .select("table_id, player_id")
@@ -451,6 +466,10 @@ export function useStandaloneHandInput(tournamentId: string) {
         setAvailableTables(
           base.map((t) => ({
             ...t,
+            tournamentTableId: resolveTournamentTableId(
+              (Array.isArray(canonicalTableRows) ? canonicalTableRows : []) as TournamentTableIdentityRow[],
+              t.physicalTableId,
+            ),
             playerCount: countByTable.get(t.id) || 0,
             hasLiveHand: liveSet.has(t.id),
             ...lockFieldsFrom(lockByTable.get(t.id)),
@@ -822,7 +841,7 @@ export function useStandaloneHandInput(tournamentId: string) {
           .from("tournament_tables")
           .select("max_seats")
           .eq("tournament_id", tournamentId)
-          .eq("id", newTableId)
+          .eq("table_id", newTableId)
         .maybeSingle()
         .then(({ data }) => {
           if (isCurrentLoad()) setMaxSeats((data as any)?.max_seats ?? 9);
@@ -1054,6 +1073,11 @@ export function useStandaloneHandInput(tournamentId: string) {
   }, [availableTables, searchParams, tableId, tableLoadState, tournamentId]);
 
   // ----- Derived ----------------------------------------------------------
+  const tournamentTableId = useMemo(
+    () => availableTables.find((table) => table.id === tableId)?.tournamentTableId ?? null,
+    [availableTables, tableId],
+  );
+
   const potSize = useMemo(
     () =>
       actions.reduce((sum, a) => {
@@ -2642,6 +2666,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     // identity / status
     tournamentId,
     tableId,
+    tournamentTableId,
     tableName,
     handNumber,
     handId,

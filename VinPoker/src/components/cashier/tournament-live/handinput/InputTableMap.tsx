@@ -7,7 +7,11 @@
 // match the rest of the operator-only HandInputPanel.
 
 export interface InputTableSummary {
+  /** Physical game_tables.id used by the existing hand engine and picker. */
   id: string;
+  physicalTableId: string;
+  /** Canonical tournament_tables.id used by Voice/runtime RPCs. */
+  tournamentTableId: string | null;
   name: string;
   /** Active players currently seated at this table. */
   playerCount: number;
