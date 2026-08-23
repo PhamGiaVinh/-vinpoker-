@@ -17,6 +17,7 @@ const REQUIRED_CRITICAL_POSTURE = new Map([
   ["checkout-dealer", true],
   ["tournament-live-clock", true],
   ["ops-club-accounts", true],
+  ["render-payroll-statement", true],
 ]);
 const TARGET_REQUIREMENTS = new Set(["floorClockRevisionV1"]);
 

@@ -451,6 +451,41 @@
         }
       ]
     },
+    "render-payroll-statement": {
+      "path": "VinPoker/supabase/functions/render-payroll-statement",
+      "critical": true,
+      "autoDeployOnPush": false,
+      "verifyJwt": true,
+      "receiptEnvironment": "receipt-vinpoker-edge-render-payroll-statement",
+      "quality": {
+        "denoTests": [
+          "VinPoker/supabase/tests/dealer_payroll_statement_pdf_contract.test.ts",
+          "VinPoker/supabase/tests/dealer_payroll_statement_pdf_render.test.ts"
+        ]
+      },
+      "contracts": [
+        { "type": "relation", "name": "public.dealer_payroll_statements" },
+        { "type": "relation", "name": "public.dealer_payroll_statement_lines" },
+        { "type": "column", "relation": "public.dealer_payroll_statements", "name": "pdf_hash" },
+        { "type": "column", "relation": "public.dealer_payroll_statements", "name": "pdf_storage_path" },
+        {
+          "type": "function",
+          "name": "public.get_dealer_payroll_statement",
+          "arguments": ["p_statement_id"],
+          "argumentTypes": ["uuid"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": true, "anon": false, "service_role": true }
+        },
+        {
+          "type": "function",
+          "name": "public.mark_dealer_payroll_statement_pdf_rendered",
+          "arguments": ["p_statement_id", "p_pdf_hash", "p_storage_path", "p_render_version"],
+          "argumentTypes": ["uuid", "text", "text", "text"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": false, "anon": false, "service_role": true }
+        }
+      ]
+    },
     "assign-dealer": {
       "path": "VinPoker/supabase/functions/assign-dealer",
       "critical": false,
