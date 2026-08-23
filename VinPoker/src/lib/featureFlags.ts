@@ -1,6 +1,13 @@
 // Feature flags for staged rollout of cashier/floor features.
 // Flipping a flag is a one-line commit — keep defaults SAFE (hidden) until the
 // owner's production UAT passes (plan: Seat Floor Cashier UX, 2026-06-13).
+// This exact-string gate intentionally rejects truthy-looking deployment values
+// such as "1", "yes", and "TRUE". The server runtime gate must still approve
+// the exact Dealer assignment and Voice config before the panel can render.
+export function isTrackerVoiceBuildEnabled(value: unknown): boolean {
+  return value === "true";
+}
+
 export const FEATURES = {
   /**
    * Owner Daily Digest web report — owner-only, read-only surface in VinPoker Ops.
@@ -707,7 +714,7 @@ export const FEATURES = {
    * Voice-assisted dealer input for the Tracker console. Source ships dark: the
    * panel is not mounted and no microphone/session RPC runs while false.
    */
-  trackerVoiceInput: import.meta.env.VITE_TRACKER_VOICE_INPUT === "true",
+  trackerVoiceInput: isTrackerVoiceBuildEnabled(import.meta.env.VITE_TRACKER_VOICE_INPUT),
   /** Ops-only aggregate player analytics. Never exposed by the public viewer. */
   trackerPlayerAnalytics: false,
   /**
