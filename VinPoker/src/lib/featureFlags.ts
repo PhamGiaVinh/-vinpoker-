@@ -707,7 +707,7 @@ export const FEATURES = {
    * Voice-assisted dealer input for the Tracker console. Source ships dark: the
    * panel is not mounted and no microphone/session RPC runs while false.
    */
-  trackerVoiceInput: false,
+  trackerVoiceInput: import.meta.env.VITE_TRACKER_VOICE_INPUT === "true",
   /** Ops-only aggregate player analytics. Never exposed by the public viewer. */
   trackerPlayerAnalytics: false,
   /**

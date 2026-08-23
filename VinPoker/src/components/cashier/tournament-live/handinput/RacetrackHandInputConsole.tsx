@@ -36,7 +36,7 @@ import { WorkflowProgressRail } from "./WorkflowProgressRail";
 import { HandGuideDrawer } from "./HandGuideDrawer";
 import { TrackerSoundToggle } from "./TrackerSoundToggle";
 import { OperatorActionLog } from "./OperatorActionLog";
-import { TrackerVoicePanel } from "@/components/tracker/voice/TrackerVoicePanel";
+import { TrackerVoicePanelGate } from "@/components/tracker/voice/TrackerVoicePanelGate";
 import { formatStack } from "./format";
 import type { PlayerState, StandaloneHandInput } from "./useStandaloneHandInput";
 
@@ -502,7 +502,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
 
   // LOG
   const logBlock = <OperatorActionLog actions={hook.actions} communityCards={hook.communityCards} />;
-  const voiceBlock = FEATURES.trackerVoiceInput ? <TrackerVoicePanel hook={hook} /> : null;
+  const voiceBlock = FEATURES.trackerVoiceInput ? <TrackerVoicePanelGate hook={hook} /> : null;
 
   // A4: flag ON → at ≥xl the felt sits in a LEFT column and the guided region + log in a
   // fixed RIGHT column (both visible without scrolling); below xl it's the single column.
