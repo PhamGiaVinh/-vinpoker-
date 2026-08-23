@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 const root = process.cwd();
 const migrationDirectory = resolve(root, "supabase/migrations");
 const migrationName = "20270112000006_tracker_terminal_hand_rpc_authority.sql";
-const migration = readFileSync(resolve(migrationDirectory, migrationName), "utf8");
+// Git stores the migration with LF, while Windows working trees can materialize
+// CRLF. The contract is about SQL tokens, not checkout line endings.
+const migration = readFileSync(resolve(migrationDirectory, migrationName), "utf8").replace(/\r\n/g, "\n");
 const updateEdge = readFileSync(resolve(root, "supabase/functions/tournament-live-update/index.ts"), "utf8");
 const cleanupEdge = readFileSync(resolve(root, "supabase/functions/tournament-live-cleanup/index.ts"), "utf8");
 
