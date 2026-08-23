@@ -2,6 +2,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { isTrackerVoiceBuildEnabled } from "@/lib/featureFlags";
+import { isTrackerVoiceUiEnabled } from "@/lib/trackerVoice/uiGate";
+import type { TrackerVoiceRuntimeContext } from "@/lib/trackerVoice";
+
 const root = process.cwd();
 const migrationName =
   "20270112000003_tracker_voice_player_analytics_v0.sql";
@@ -35,6 +39,37 @@ const sessionEdge = readFileSync(
   resolve(root, "supabase/functions/tracker-voice-session/index.ts"),
   "utf8",
 );
+const voiceGate = readFileSync(
+  resolve(root, "src/components/tracker/voice/TrackerVoicePanelGate.tsx"),
+  "utf8",
+);
+const handInputConsole = readFileSync(
+  resolve(root, "src/components/cashier/tournament-live/handinput/RacetrackHandInputConsole.tsx"),
+  "utf8",
+);
+
+function runtimeFixture(
+  overrides: Partial<TrackerVoiceRuntimeContext> = {},
+): TrackerVoiceRuntimeContext {
+  return {
+    ok: true,
+    can_mint_session: true,
+    read_only: false,
+    correction_pending: false,
+    config: {
+      enabled: true,
+      configured_mode: "shadow",
+      provider_model: "gemini-3.1-flash-live-preview",
+      spoken_amount_unit: 1,
+      amount_unit_confirmed: false,
+      provider_confidence_threshold: null,
+      server_auto_allowed: false,
+      correction_state: "ready",
+    },
+    active_hand: null,
+    ...overrides,
+  };
+}
 
 describe("Tracker Voice V0 migration contract", () => {
   it("uses a unique migration version at the repository maximum", () => {
@@ -51,10 +86,31 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(names).toContain(geminiMigrationName);
   });
 
-  it("keeps every mergeable Voice and Analytics flag disabled", () => {
-    expect(flags).toMatch(/trackerVoiceInput:\s*false/);
+  it("enables the Voice build gate only for the exact approved Vite value", () => {
+    expect(isTrackerVoiceBuildEnabled(undefined)).toBe(false);
+    expect(isTrackerVoiceBuildEnabled("")).toBe(false);
+    expect(isTrackerVoiceBuildEnabled("false")).toBe(false);
+    expect(isTrackerVoiceBuildEnabled("1")).toBe(false);
+    expect(isTrackerVoiceBuildEnabled("yes")).toBe(false);
+    expect(isTrackerVoiceBuildEnabled("TRUE")).toBe(false);
+    expect(isTrackerVoiceBuildEnabled(true)).toBe(false);
+    expect(isTrackerVoiceBuildEnabled("true")).toBe(true);
+    expect(flags).toContain("trackerVoiceInput: isTrackerVoiceBuildEnabled(import.meta.env.VITE_TRACKER_VOICE_INPUT)");
     expect(flags).toMatch(/trackerPlayerAnalytics:\s*false/);
     expect(flags).toMatch(/trackerVoiceAutoCommit:\s*false/);
+  });
+
+  it("requires the server-authoritative runtime gate after the build gate", () => {
+    expect(handInputConsole).toContain("FEATURES.trackerVoiceInput ? <TrackerVoicePanelGate hook={hook} /> : null");
+    expect(voiceGate).toContain("loadTrackerVoiceRuntimeContext");
+    expect(voiceGate).toContain("isTrackerVoiceUiEnabled(runtime)");
+    expect(isTrackerVoiceUiEnabled(runtimeFixture())).toBe(true);
+    expect(isTrackerVoiceUiEnabled(runtimeFixture({ ok: false }))).toBe(false);
+    expect(isTrackerVoiceUiEnabled(runtimeFixture({ read_only: true }))).toBe(false);
+    expect(isTrackerVoiceUiEnabled(runtimeFixture({
+      config: { ...runtimeFixture().config, enabled: false },
+    }))).toBe(false);
+    expect(isTrackerVoiceUiEnabled(null)).toBe(false);
   });
 
   it("stores final transcripts only and keeps the event stream immutable", () => {

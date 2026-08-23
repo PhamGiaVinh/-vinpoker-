@@ -218,7 +218,7 @@ export function TrackerVoicePanel({
 
   useEffect(() => {
     void refreshRuntime();
-  }, [refreshRuntime]);
+  }, [hook.handId, refreshRuntime]);
 
   useEffect(() => {
     validationGenerationRef.current += 1;
