@@ -13,9 +13,16 @@ import { isTrackerVoiceUatRoute } from "@/lib/trackerVoice/previewRoute";
 const isSeriesMarketDevRoute = import.meta.env.DEV && window.location.pathname === "/__dev/series-market";
 const isTrackerUnifiedOpsDevRoute =
   import.meta.env.DEV && window.location.pathname === "/__dev/tracker-unified-ops";
+const isPayrollStatementDevRoute =
+  import.meta.env.DEV && window.location.pathname === "/__dev/payroll-statement";
 const trackerVoiceUatEnabled = import.meta.env.VITE_TRACKER_VOICE_UAT_ENABLED === "true";
 const isTrackerVoiceUatPreviewRoute = isTrackerVoiceUatRoute(window.location.pathname, trackerVoiceUatEnabled);
-if (!isSeriesMarketDevRoute && !isTrackerUnifiedOpsDevRoute && !isTrackerVoiceUatPreviewRoute) initRemoteRanges();
+if (
+  !isSeriesMarketDevRoute &&
+  !isTrackerUnifiedOpsDevRoute &&
+  !isPayrollStatementDevRoute &&
+  !isTrackerVoiceUatPreviewRoute
+) initRemoteRanges();
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
@@ -146,6 +153,9 @@ const DevSeriesMarketPreview = import.meta.env.DEV
 const DevTrackerUnifiedOpsPreview = import.meta.env.DEV
   ? lazy(() => import("./dev/TrackerUnifiedOpsPreview"))
   : null;
+const DevPayrollStatementPreview = import.meta.env.DEV
+  ? lazy(() => import("./dev/PayrollStatementPreview"))
+  : null;
 // The diagnostic is bundled only by a deliberate Preview UAT build variable.
 // Production builds do not register the route or import its chunk.
 const DevTrackerVoiceV0Preview = trackerVoiceUatEnabled
@@ -201,6 +211,18 @@ const App = () => {
         <Suspense fallback={<RouteLoader />}>
           <Routes>
             <Route path="*" element={<DevTrackerUnifiedOpsPreview />} />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+    );
+  }
+
+  if (isPayrollStatementDevRoute && DevPayrollStatementPreview) {
+    return (
+      <BrowserRouter>
+        <Suspense fallback={<RouteLoader />}>
+          <Routes>
+            <Route path="*" element={<DevPayrollStatementPreview />} />
           </Routes>
         </Suspense>
       </BrowserRouter>

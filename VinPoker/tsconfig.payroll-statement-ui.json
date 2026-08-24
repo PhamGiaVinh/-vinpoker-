@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false
+  },
+  "include": [
+    "src/vite-env.d.ts",
+    "src/dev/PayrollStatementPreview.tsx",
+    "src/components/cashier/DealerPayrollTab.tsx",
+    "src/components/cashier/FtPayrollStatementControls.tsx",
+    "src/hooks/useFtPayrollStatements.ts",
+    "src/hooks/useFtPayrollStatements.test.tsx",
+    "src/lib/payrollStatementUi.ts",
+    "src/lib/payrollStatementUi.test.ts"
+  ]
+}

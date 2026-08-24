@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useOperatorClubs } from "@/hooks/useOperatorClubs";
+import { useFtPayrollStatements } from "@/hooks/useFtPayrollStatements";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,6 +38,11 @@ import {
   largeAdjustments, negativeAdjustments, highCostOutliers, type AnomalyItem,
 } from "@/lib/payrollAnomalies";
 import { buildPayrollFinanceSummary } from "@/lib/payrollFinanceSummary";
+import {
+  FtPayrollStatementActions,
+  FtPayrollStatementBadge,
+  FtPayrollStatementSummary,
+} from "@/components/cashier/FtPayrollStatementControls";
 
 type ClubRow = { id: string; name: string };
 type AdjType = "BONUS" | "PENALTY" | "DEDUCTION" | "ADVANCE" | "OTHER" | "TIPS";
@@ -321,7 +328,8 @@ interface DealerPayrollTabProps {
 }
 
 export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }: DealerPayrollTabProps) {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
+  const { scope: operatorScope } = useOperatorClubs();
   const monthOptions = useMemo(() => getMonthYearOptions(), []);
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value ?? "");
   const currentRange = useMemo(() => monthOptions.find((o) => o.value === selectedMonth), [monthOptions, selectedMonth]);
@@ -558,6 +566,13 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
   const isDraft = payrollStatus === "draft" || payrollStatus === null;
   const isSubmitted = payrollStatus === "submitted";
   const isApproved = payrollStatus === "approved";
+  const ftStatementController = useFtPayrollStatements({
+    clubId: activeClubId,
+    periodId: savedPeriodId,
+    periodStatus: payrollStatus,
+    canFinalize: isAdmin || operatorScope.some((row) => row.club_id === activeClubId && row.can_owner),
+    dealerIds: ftDealers.map((dealer) => dealer.dealer_id),
+  });
 
   // ── Submit / Approve / Lock ─────────────────────────────────────────────
 
@@ -795,6 +810,9 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
           <div className="font-medium text-white text-sm">
             <div className="flex items-center gap-1">
               {r.full_name}
+              {isFullTime && (
+                <FtPayrollStatementBadge controller={ftStatementController} dealerId={r.dealer_id} />
+              )}
               {canEditAdjustments && savedRecords[r.dealer_id] && (
                 <button
                   className="text-[10px] text-muted-foreground hover:text-success ml-1"
@@ -888,6 +906,18 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
         );
       case "net_pay":         return <span className={`${baseRight} font-semibold`}>{formatVND(r.net_pay_vnd)}</span>;
       case "actions":
+        if (isFullTime && ftStatementController.availability !== "legacy") {
+          return (
+            <FtPayrollStatementActions
+              key={`${activeClubId}:${selectedMonth}:${r.dealer_id}`}
+              controller={ftStatementController}
+              dealerId={r.dealer_id}
+              dealerName={r.full_name}
+              clubName={clubs.find((club) => club.id === activeClubId)?.name ?? "CLB"}
+              periodLabel={currentRange?.label ?? selectedMonth}
+            />
+          );
+        }
         return (
           <div className="flex items-center gap-0.5">
             <button
@@ -964,7 +994,7 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
           size="sm"
           variant="outline"
           className="h-8 text-xs"
-          onClick={refreshAll}
+          onClick={() => void Promise.all([refreshAll(), ftStatementController.refresh()])}
           disabled={loading}
         >
           <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? "animate-spin" : ""}`} />
@@ -1006,6 +1036,10 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
           )}
         </div>
       </div>
+
+      {ftDealers.length > 0 && (
+        <FtPayrollStatementSummary controller={ftStatementController} totalDealers={ftDealers.length} />
+      )}
 
       {displayRows.length > 0 && (
         <>
