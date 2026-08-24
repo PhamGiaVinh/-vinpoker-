@@ -7,7 +7,7 @@ param(
   [string]$SchemaPath
 )
 
-# Disposable-only payroll proof. The input must be a public-schema dump captured
+# Disposable-only payroll proof. The input must be a public+storage schema dump captured
 # before this run; this script never links to or mutates a Supabase project.
 $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $PSCommandPath

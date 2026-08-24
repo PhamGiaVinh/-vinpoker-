@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       schema_artifact_name:
-        description: "Artifact containing live-public-schema.sql and live-public-schema.sha256"
+        description: "Artifact containing the schema-only public+storage catalog and checksum"
         required: true
         default: "live-public-schema"
         type: string
