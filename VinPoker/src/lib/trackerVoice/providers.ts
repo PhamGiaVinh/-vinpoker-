@@ -3,7 +3,7 @@ import type {
   VoiceProviderHandlers,
   VoiceTranscriptEvent,
 } from "./types";
-import { pcm16ToLittleEndianBytes, resampleMonoToPcm16 } from "./geminiPcm";
+import { createGeminiLiveAudioPayload, pcm16ToLittleEndianBytes, resampleMonoToPcm16 } from "./geminiPcm";
 
 export class MockRealtimeTranscriptionProvider implements RealtimeTranscriptionProvider {
   readonly kind = "mock" as const;
@@ -113,8 +113,87 @@ export function isTrackerVoiceGeminiLiveModel(model: string | null | undefined):
 }
 
 interface GeminiLiveSession {
-  sendRealtimeInput(input: { audio?: Blob; audioStreamEnd?: boolean }): void;
+  sendRealtimeInput(input: {
+    audio?: { data: string; mimeType: "audio/pcm;rate=16000" };
+    audioStreamEnd?: boolean;
+  }): void;
   close(): void;
+}
+
+export type GeminiTranscriptState = {
+  workingTranscript: string;
+  confirmedTranscript: string;
+  turnCompleteSeen: boolean;
+  finalCount: number;
+};
+
+const EMPTY_GEMINI_TRANSCRIPT_STATE: GeminiTranscriptState = {
+  workingTranscript: "",
+  confirmedTranscript: "",
+  turnCompleteSeen: false,
+  finalCount: 0,
+};
+
+export function reduceGeminiTranscriptMessage(
+  state: GeminiTranscriptState,
+  message: unknown,
+  capturedAt: string,
+): { state: GeminiTranscriptState; events: VoiceTranscriptEvent[] } {
+  if (!message || typeof message !== "object") return { state, events: [] };
+  const serverContent = (message as { serverContent?: unknown }).serverContent;
+  if (!serverContent || typeof serverContent !== "object") return { state, events: [] };
+  const content = serverContent as {
+    interimInputTranscription?: { text?: unknown };
+    inputTranscription?: { text?: unknown };
+    turnComplete?: unknown;
+  };
+  const partial = typeof content.interimInputTranscription?.text === "string"
+    ? content.interimInputTranscription.text.trim()
+    : "";
+  const confirmed = typeof content.inputTranscription?.text === "string"
+    ? content.inputTranscription.text.trim()
+    : "";
+  let workingTranscript = partial
+    ? joinTranscript(state.workingTranscript, partial)
+    : state.workingTranscript;
+  const confirmedTranscript = confirmed
+    ? joinTranscript(state.confirmedTranscript, confirmed)
+    : state.confirmedTranscript;
+  if (confirmed) workingTranscript = joinTranscript(workingTranscript, confirmed);
+  const turnCompleteSeen = state.turnCompleteSeen || content.turnComplete === true;
+  const events: VoiceTranscriptEvent[] = [];
+
+  if (turnCompleteSeen && confirmedTranscript) {
+    const finalCount = state.finalCount + 1;
+    events.push({
+      providerEventId: `gemini-live:${finalCount}`,
+      transcript: confirmedTranscript,
+      isFinal: true,
+      capturedAt,
+    });
+    return {
+      state: { ...EMPTY_GEMINI_TRANSCRIPT_STATE, finalCount },
+      events,
+    };
+  }
+
+  if (workingTranscript && (partial || confirmed)) {
+    events.push({
+      providerEventId: `gemini-live:partial:${state.finalCount}`,
+      transcript: workingTranscript,
+      isFinal: false,
+      capturedAt,
+    });
+  }
+  return {
+    state: {
+      workingTranscript,
+      confirmedTranscript,
+      turnCompleteSeen,
+      finalCount: state.finalCount,
+    },
+    events,
+  };
 }
 
 export interface GeminiLiveTranscriptionProviderOptions {
@@ -195,8 +274,7 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
   private levelFrame: number | null = null;
   private handlers: VoiceProviderHandlers | null = null;
   private active = false;
-  private finalCount = 0;
-  private workingTranscript = "";
+  private transcriptState: GeminiTranscriptState = EMPTY_GEMINI_TRANSCRIPT_STATE;
 
   constructor(private readonly options: GeminiLiveTranscriptionProviderOptions) {}
 
@@ -279,7 +357,7 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
     this.analyser = null;
     this.silentSink = null;
     this.audioContext = null;
-    this.workingTranscript = "";
+    this.transcriptState = EMPTY_GEMINI_TRANSCRIPT_STATE;
     this.handlers?.onStatus("idle");
     this.handlers = null;
   }
@@ -308,7 +386,7 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
       if (samples.length === 0) return;
       const bytes = pcm16ToLittleEndianBytes(samples);
       this.session.sendRealtimeInput({
-        audio: new Blob([bytes], { type: "audio/pcm;rate=16000" }),
+        audio: createGeminiLiveAudioPayload(bytes),
       });
     };
     this.audioContext = audioContext;
@@ -336,39 +414,10 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
   }
 
   private handleGeminiMessage(message: unknown): void {
-    if (!this.active || !this.handlers || !message || typeof message !== "object") return;
-    const serverContent = (message as { serverContent?: unknown }).serverContent;
-    if (!serverContent || typeof serverContent !== "object") return;
-    const content = serverContent as {
-      interimInputTranscription?: { text?: unknown };
-      inputTranscription?: { text?: unknown };
-      turnComplete?: unknown;
-    };
-    const partial = typeof content.interimInputTranscription?.text === "string"
-      ? content.interimInputTranscription.text.trim()
-      : "";
-    if (partial) {
-      this.workingTranscript = joinTranscript(this.workingTranscript, partial);
-      this.handlers.onTranscript({
-        providerEventId: `gemini-live:partial:${this.finalCount}`,
-        transcript: this.workingTranscript,
-        isFinal: false,
-        capturedAt: new Date().toISOString(),
-      });
-    }
-    const confirmed = typeof content.inputTranscription?.text === "string"
-      ? content.inputTranscription.text.trim()
-      : "";
-    if (confirmed) this.workingTranscript = joinTranscript(this.workingTranscript, confirmed);
-    if (content.turnComplete !== true || !this.workingTranscript) return;
-    this.finalCount += 1;
-    this.handlers.onTranscript({
-      providerEventId: `gemini-live:${this.finalCount}`,
-      transcript: this.workingTranscript,
-      isFinal: true,
-      capturedAt: new Date().toISOString(),
-    });
-    this.workingTranscript = "";
+    if (!this.active || !this.handlers) return;
+    const result = reduceGeminiTranscriptMessage(this.transcriptState, message, new Date().toISOString());
+    this.transcriptState = result.state;
+    result.events.forEach((event) => this.handlers?.onTranscript(event));
   }
 }
 
