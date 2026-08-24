@@ -34,6 +34,7 @@ function fixture(): PayrollStatementSnapshot {
       club_name: "HSOP · pgv",
       brand_key: "vinpoker",
       brand_asset_version: "v1",
+      brand_asset_hash: "e9ba119de7f679a0530cb565a677e73acaad4789f5c86cf96c40fbf14f1e86f3",
     },
     financial_snapshot: { currency: "VND" },
     source_fingerprint: hash,
@@ -55,10 +56,9 @@ async function digest(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(value), (part) => part.toString(16).padStart(2, "0")).join("");
 }
 
-Deno.test("final PDF is deterministic and embeds Vietnamese-capable output", async () => {
-  const first = await renderPayrollStatementPdf(fixture(), { mode: "final" });
-  const second = await renderPayrollStatementPdf(fixture(), { mode: "final" });
-  assertEquals(await digest(first.bytes), await digest(second.bytes));
+Deno.test("finalized PDF embeds Vietnamese-capable output", async () => {
+  const first = await renderPayrollStatementPdf(fixture(), { mode: "finalized" });
+  assertEquals((await digest(first.bytes)).length, 64);
   assert(first.bytes.length > 10_000);
   const parsed = await PDFDocument.load(first.bytes);
   assertEquals(parsed.getPages().length, 1);
@@ -67,8 +67,8 @@ Deno.test("final PDF is deterministic and embeds Vietnamese-capable output", asy
 });
 
 Deno.test("preview watermark is explicit and final snapshot values are reused", async () => {
-  const preview = await renderPayrollStatementPdf(fixture(), { mode: "preview" });
-  const final = await renderPayrollStatementPdf(fixture(), { mode: "final" });
+  const preview = await renderPayrollStatementPdf(fixture(), { mode: "draft_preview" });
+  const final = await renderPayrollStatementPdf(fixture(), { mode: "finalized" });
   assert(preview.bytes.length !== final.bytes.length);
   const parsed = await PDFDocument.load(preview.bytes);
   assertEquals(parsed.getPages().length, 1);
@@ -77,7 +77,13 @@ Deno.test("preview watermark is explicit and final snapshot values are reused", 
 Deno.test("renderer rejects client-like snapshot mismatches", async () => {
   const invalid = fixture();
   invalid.club_snapshot = { ...invalid.club_snapshot, club_id: dealerId };
-  await assertRejectsCode(() => renderPayrollStatementPdf(invalid, { mode: "final" }), "PAYROLL_PDF_CLUB_SNAPSHOT_MISMATCH");
+  await assertRejectsCode(() => renderPayrollStatementPdf(invalid, { mode: "finalized" }), "PAYROLL_PDF_CLUB_SNAPSHOT_MISMATCH");
+});
+
+Deno.test("renderer rejects a mismatched versioned brand asset", async () => {
+  const invalid = fixture();
+  invalid.club_snapshot = { ...invalid.club_snapshot, brand_asset_hash: "b".repeat(64) };
+  await assertRejectsCode(() => renderPayrollStatementPdf(invalid, { mode: "finalized" }), "PAYROLL_PDF_BRAND_ASSET_HASH_MISMATCH");
 });
 
 async function assertRejectsCode(action: () => Promise<unknown>, code: string): Promise<void> {

@@ -5,6 +5,8 @@
     "receiptEnvironment": "receipt-vinpoker-frontend",
     "quality": {
       "vitest": [
+        "src/lib/payrollStatementUi.test.ts",
+        "src/hooks/useFtPayrollStatements.test.tsx",
         "src/components/ops/dealer-swing/DealerPhoneCompletionStates.test.tsx",
         "src/hooks/useDealerSwingPhoneRollout.test.tsx",
         "src/components/cashier/dealer-swing/__tests__/swingTableStatus.test.ts",
@@ -14,6 +16,37 @@
     },
     "contracts": [
       { "type": "relation", "name": "public.clubs" },
+      { "type": "relation", "name": "public.dealer_payroll_statement_rollout" },
+      { "type": "relation", "name": "public.dealer_payroll_statements" },
+      { "type": "column", "relation": "public.dealer_payroll_statements", "name": "statement_version" },
+      { "type": "column", "relation": "public.dealer_payroll_statements", "name": "pdf_status" },
+      {
+        "type": "function",
+        "name": "public.get_dealer_payroll_statement_rollout",
+        "arguments": ["p_expected_club_id"],
+        "argumentTypes": ["uuid"],
+        "allowOtherOverloads": false,
+        "acl": { "authenticated": true, "anon": false, "service_role": true },
+        "dependencyKind": "direct_frontend"
+      },
+      {
+        "type": "function",
+        "name": "public.list_full_time_payroll_statements_for_period",
+        "arguments": ["p_club_id", "p_payroll_period_id"],
+        "argumentTypes": ["uuid", "uuid"],
+        "allowOtherOverloads": false,
+        "acl": { "authenticated": true, "anon": false, "service_role": true },
+        "dependencyKind": "direct_frontend"
+      },
+      {
+        "type": "function",
+        "name": "public.finalize_full_time_payroll_statement",
+        "arguments": ["p_request_id", "p_club_id", "p_dealer_id", "p_payroll_period_id", "p_reason", "p_replaces_statement_id"],
+        "argumentTypes": ["uuid", "uuid", "uuid", "uuid", "text", "uuid"],
+        "allowOtherOverloads": false,
+        "acl": { "authenticated": true, "anon": false },
+        "dependencyKind": "direct_frontend"
+      },
       { "type": "relation", "name": "public.club_members" },
       { "type": "relation", "name": "public.club_settings" },
       {
@@ -460,14 +493,18 @@
       "quality": {
         "denoTests": [
           "VinPoker/supabase/tests/dealer_payroll_statement_pdf_contract.test.ts",
-          "VinPoker/supabase/tests/dealer_payroll_statement_pdf_render.test.ts"
+          "VinPoker/supabase/tests/dealer_payroll_statement_pdf_render.test.ts",
+          "VinPoker/supabase/tests/dealer_payroll_statement_pdf_runtime.test.ts"
         ]
       },
       "contracts": [
         { "type": "relation", "name": "public.dealer_payroll_statements" },
         { "type": "relation", "name": "public.dealer_payroll_statement_lines" },
+        { "type": "relation", "name": "public.dealer_payroll_statement_rollout" },
         { "type": "column", "relation": "public.dealer_payroll_statements", "name": "pdf_hash" },
         { "type": "column", "relation": "public.dealer_payroll_statements", "name": "pdf_storage_path" },
+        { "type": "column", "relation": "public.dealer_payroll_statements", "name": "pdf_status" },
+        { "type": "column", "relation": "public.dealer_payroll_statements", "name": "pdf_generation_token" },
         {
           "type": "function",
           "name": "public.get_dealer_payroll_statement",
@@ -478,9 +515,41 @@
         },
         {
           "type": "function",
-          "name": "public.mark_dealer_payroll_statement_pdf_rendered",
-          "arguments": ["p_statement_id", "p_pdf_hash", "p_storage_path", "p_render_version"],
-          "argumentTypes": ["uuid", "text", "text", "text"],
+          "name": "public.get_dealer_payroll_statement_rollout",
+          "arguments": ["p_expected_club_id"],
+          "argumentTypes": ["uuid"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": true, "anon": false, "service_role": true }
+        },
+        {
+          "type": "function",
+          "name": "public.preview_full_time_payroll_statement",
+          "arguments": ["p_club_id", "p_dealer_id", "p_payroll_period_id"],
+          "argumentTypes": ["uuid", "uuid", "uuid"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": true, "anon": false, "service_role": true }
+        },
+        {
+          "type": "function",
+          "name": "public.claim_dealer_payroll_statement_pdf",
+          "arguments": ["p_statement_id", "p_request_id"],
+          "argumentTypes": ["uuid", "uuid"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": false, "anon": false, "service_role": true }
+        },
+        {
+          "type": "function",
+          "name": "public.complete_dealer_payroll_statement_pdf",
+          "arguments": ["p_statement_id", "p_generation_token", "p_pdf_hash", "p_render_version"],
+          "argumentTypes": ["uuid", "uuid", "text", "text"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": false, "anon": false, "service_role": true }
+        },
+        {
+          "type": "function",
+          "name": "public.fail_dealer_payroll_statement_pdf",
+          "arguments": ["p_statement_id", "p_generation_token", "p_error_code"],
+          "argumentTypes": ["uuid", "uuid", "text"],
           "allowOtherOverloads": false,
           "acl": { "authenticated": false, "anon": false, "service_role": true }
         }

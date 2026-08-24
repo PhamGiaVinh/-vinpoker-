@@ -58,7 +58,7 @@ export async function renderPayrollStatementPdf(
   const brand = resolvePayrollBrand(statement.club_snapshot);
   const page = document.addPage([A4_WIDTH, A4_HEIGHT]);
 
-  drawPageHeader(page, regular, bold, statement, brand, options.mode === "preview");
+  drawPageHeader(page, regular, bold, statement, brand, options.mode === "draft_preview");
   let y = 684;
   y = drawIdentityGrid(page, regular, bold, statement, y);
   y = drawSectionTitle(page, bold, "I. Thông tin nhân sự", y - 18);
@@ -74,7 +74,7 @@ export async function renderPayrollStatementPdf(
 
   drawNetAmount(page, regular, bold, statement, 125);
   drawFooter(page, regular, statement);
-  if (options.mode === "preview") drawPreviewWatermark(page, regular);
+  if (options.mode === "draft_preview") drawPreviewWatermark(page, regular);
 
   const bytes = await document.save({ useObjectStreams: false, addDefaultPage: false });
   return {
