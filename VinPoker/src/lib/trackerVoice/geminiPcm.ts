@@ -42,3 +42,23 @@ export function pcm16ToLittleEndianBytes(samples: Int16Array): Uint8Array {
   }
   return bytes;
 }
+
+/** Encodes browser PCM bytes into the base64 payload required by Gemini Live. */
+export function pcmBytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+export function createGeminiLiveAudioPayload(bytes: Uint8Array): {
+  data: string;
+  mimeType: "audio/pcm;rate=16000";
+} {
+  return {
+    data: pcmBytesToBase64(bytes),
+    mimeType: "audio/pcm;rate=16000",
+  };
+}

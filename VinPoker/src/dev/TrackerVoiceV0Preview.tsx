@@ -235,6 +235,7 @@ export default function TrackerVoiceV0Preview() {
   const hook = useMemo(() => ({
     tournamentId: TOURNAMENT_ID,
     tableId: TABLE_ID,
+    tournamentTableId: TABLE_ID,
     handId: HAND_ID,
     currentStreet: "flop",
     actorPlayer: {

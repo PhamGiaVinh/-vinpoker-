@@ -87,6 +87,17 @@ const renderPanel = (
 });
 
 describe("TrackerVoicePanel", () => {
+  it("lets an explicit UAT runtime and provider reach the microphone permission seam", async () => {
+    const hook = hookFixture() as StandaloneHandInput & { tournamentTableId?: string };
+    delete hook.tournamentTableId;
+    renderPanel(hook, new MockRealtimeTranscriptionProvider());
+
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+
+    expect(await screen.findByText("Microphone đã kết nối")).toBeInTheDocument();
+    expect(screen.queryByText(/canonical cho Voice/)).not.toBeInTheDocument();
+  });
+
   it("turns only a final transcript into a Shadow proposal", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const validateEventOverride = vi.fn(async () => validatedReceipt);
@@ -98,8 +109,8 @@ describe("TrackerVoicePanel", () => {
         validateEventOverride={validateEventOverride}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu Voice" }));
-    await screen.findByText("Đang nghe");
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
     act(() => provider.emit("raise", { final: false, id: "partial" }));
     expect(screen.queryByText(/Player A · raise/)).not.toBeInTheDocument();
     act(() => provider.emit("raise 6k", { final: true, id: "final" }));
@@ -113,8 +124,8 @@ describe("TrackerVoicePanel", () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const hook = hookFixture();
     const { view } = renderPanel(hook, provider);
-    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu Voice" }));
-    await screen.findByText("Đang nghe");
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
     view.rerender(
       <TrackerVoicePanel
         hook={{ ...hook, actorPlayer: null, actorViewData: null }}
@@ -131,8 +142,8 @@ describe("TrackerVoicePanel", () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const disconnect = vi.spyOn(provider, "disconnect");
     const { view } = renderPanel(hookFixture(), provider);
-    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu Voice" }));
-    await waitFor(() => expect(screen.getByText("Đang nghe")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await waitFor(() => expect(screen.getByText("Microphone đã kết nối")).toBeInTheDocument());
     view.unmount();
     expect(disconnect).toHaveBeenCalledOnce();
   });
@@ -145,8 +156,8 @@ describe("TrackerVoicePanel", () => {
     const validateEventOverride = vi.fn(async () => receipt);
     renderPanel(hook, provider, validateEventOverride);
     fireEvent.click(screen.getByRole("button", { name: "assist" }));
-    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu Voice" }));
-    await screen.findByText("Đang nghe");
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
     act(() => provider.emit("call", { final: true, id: "assist-final" }));
     const confirm = await screen.findByRole("button", { name: "Xác nhận action" });
     fireEvent.click(confirm);
@@ -164,8 +175,8 @@ describe("TrackerVoicePanel", () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const validateEventOverride = vi.fn(async () => validatedReceipt);
     renderPanel(hookFixture(), provider, validateEventOverride);
-    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu Voice" }));
-    await screen.findByText("Đang nghe");
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
     act(() => {
       provider.emit("call", { final: true, id: "same-provider-item" });
       provider.emit("call", { final: true, id: "same-provider-item" });
@@ -194,8 +205,8 @@ describe("TrackerVoicePanel", () => {
       };
     });
     renderPanel(hook, provider, validateEventOverride);
-    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu Voice" }));
-    await screen.findByText("Đang nghe");
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
 
     act(() => provider.emit("báo sai action", { final: true, id: "wrong-action" }));
     expect(await screen.findByText("Alert đã vào hàng đợi Floor.")).toBeInTheDocument();
@@ -220,8 +231,8 @@ describe("TrackerVoicePanel", () => {
     const provider = new MockRealtimeTranscriptionProvider();
     renderPanel(hookFixture(), provider);
     expect(screen.getByRole("button", { name: "Kiểm tra mic 30 giây" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu Voice" }));
-    await screen.findByText("Đang nghe");
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
     act(() => provider.emitLevel(0.4));
     expect(screen.getByRole("meter", { name: "Mức tín hiệu microphone" })).toHaveAttribute("aria-valuenow", "40");
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra mic 30 giây" }));
