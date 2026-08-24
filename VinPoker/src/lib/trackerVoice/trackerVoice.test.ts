@@ -65,6 +65,25 @@ describe("parseVoiceCommand", () => {
   it("rejects partial/noise text", () => {
     expect(parseVoiceCommand("dealer talking about dinner")).toBeNull();
   });
+
+  it.each([
+    ["phâu", "fold"],
+    ["ô in", "all_in"],
+    ["rây 120k", "raise_to"],
+  ])("recognizes a reviewed Vietnamese dealer pronunciation %s", (input, kind) => {
+    expect(parseVoiceCommand(input, { amountUnitConfirmed: true })?.kind).toBe(kind);
+  });
+
+  it.each([
+    "Sit down, Ray.",
+    "sít",
+    "bắt tần",
+    "sờ mo bờ lai",
+    "bích bờ lai",
+    "외 9 외 소 9 오인",
+  ])("keeps non-action vocabulary and wrong-language output fail-closed: %s", (input) => {
+    expect(parseVoiceCommand(input, { amountUnitConfirmed: true })).toBeNull();
+  });
 });
 
 describe("resolveVoiceProposal", () => {

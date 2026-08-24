@@ -108,6 +108,32 @@ export interface GeminiLiveSessionCredential {
 
 export const TRACKER_VOICE_GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview";
 
+export const TRACKER_VOICE_GEMINI_LANGUAGE_CODES = ["vi-VN", "en-US"] as const;
+
+export const TRACKER_VOICE_GEMINI_CUSTOM_VOCABULARY = [
+  "fold", "phâu", "bỏ bài",
+  "check", "chéch", "xem",
+  "call", "theo",
+  "bet", "cược",
+  "raise", "rây", "tố",
+  "all-in", "ô in", "tất tay",
+  "seat", "sít",
+  "button", "bắt tần",
+  "small blind", "sờ mo bờ lai",
+  "big blind", "bích bờ lai",
+  "báo sai action", "gọi Floor",
+] as const;
+
+export function createTrackerVoiceGeminiTranscriptionConfig(): {
+  languageCodes: string[];
+  customVocabulary: string[];
+} {
+  return {
+    languageCodes: [...TRACKER_VOICE_GEMINI_LANGUAGE_CODES],
+    customVocabulary: [...TRACKER_VOICE_GEMINI_CUSTOM_VOCABULARY],
+  };
+}
+
 export function isTrackerVoiceGeminiLiveModel(model: string | null | undefined): boolean {
   return model === TRACKER_VOICE_GEMINI_LIVE_MODEL;
 }
@@ -303,7 +329,7 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
       model: credential.model,
       config: {
         responseModalities: [Modality.AUDIO],
-        inputAudioTranscription: {},
+        inputAudioTranscription: createTrackerVoiceGeminiTranscriptionConfig(),
         realtimeInputConfig: {
           automaticActivityDetection: {
             disabled: false,

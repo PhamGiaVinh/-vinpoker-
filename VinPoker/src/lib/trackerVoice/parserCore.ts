@@ -59,12 +59,12 @@ const NUMBER_STARTS = new Set([
 const COMMANDS: Array<{ kind: TrackerVoiceCoreCommandKind; pattern: RegExp }> = [
   { kind: "report_wrong_action", pattern: /\b(bao sai|sai action|wrong action|action sai|tracker(?:\s+ghi)?\s+sai|sai hanh dong)\b/ },
   { kind: "call_floor", pattern: /\b(goi floor|call floor|floor oi|can floor|floor ho tro|floor toi ban)\b/ },
-  { kind: "all_in", pattern: /\b(all[ -]?in|tat tay|tat ca(?:\s+chip)?)(?!\s+(?:nguoi\s+choi|nhan\s+vien))\b/ },
-  { kind: "raise_to", pattern: /\b(?:raise(?:\s+to)?|to(?:\s+len)?|nang(?:\s+len)?)\b(?=\s+(?:\d|mot\b|hai\b|ba\b|bon\b|tu\b|nam\b|one\b|two\b|three\b|four\b|five\b))/ },
+  { kind: "all_in", pattern: /\b(all[ -]?in|o[ -]?in|tat tay|tat ca(?:\s+chip)?)(?!\s+(?:nguoi\s+choi|nhan\s+vien))\b/ },
+  { kind: "raise_to", pattern: /\b(?:raise(?:\s+to)?|ray(?:\s+to)?|to(?:\s+len)?|nang(?:\s+len)?)\b(?=\s+(?:\d|mot\b|hai\b|ba\b|bon\b|tu\b|nam\b|one\b|two\b|three\b|four\b|five\b))/ },
   { kind: "bet_to", pattern: /\b(?:bet(?:\s+to)?|cuoc(?:\s+(?:den|len))?)\b(?=\s+(?:\d|mot\b|hai\b|ba\b|bon\b|tu\b|nam\b|one\b|two\b|three\b|four\b|five\b))/ },
   { kind: "call", pattern: /\b(call(?!\s+dien\s+thoai)|theo|theo bai)\b/ },
   { kind: "check", pattern: /\b(check(?!\s+camera)|xem|qua|check bai)\b/ },
-  { kind: "fold", pattern: /\b(fold|up bai|bo bai|bo(?!\s+cai\b))\b/ },
+  { kind: "fold", pattern: /(?:\b(fold|phau|up bai|bo bai|bo luon|bo van nay|toi bo|bo di)\b|^bo$)/ },
 ];
 
 const NOISE_PATTERNS = [

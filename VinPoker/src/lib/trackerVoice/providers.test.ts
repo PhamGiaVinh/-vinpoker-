@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createTrackerVoiceGeminiTranscriptionConfig,
   isTrackerVoiceGeminiLiveModel,
   reduceGeminiTranscriptMessage,
   TRACKER_VOICE_GEMINI_LIVE_MODEL,
@@ -20,6 +21,15 @@ describe("Tracker Voice provider selection", () => {
     expect(isTrackerVoiceGeminiLiveModel("gemini-3.1-flash-live-preview-extra")).toBe(false);
     expect(isTrackerVoiceGeminiLiveModel("gpt-live-transcribe")).toBe(false);
     expect(isTrackerVoiceGeminiLiveModel(null)).toBe(false);
+  });
+
+  it("biases Gemini transcription to Vietnamese, English, and reviewed dealer vocabulary", () => {
+    const config = createTrackerVoiceGeminiTranscriptionConfig();
+    expect(config.languageCodes).toEqual(["vi-VN", "en-US"]);
+    expect(config.customVocabulary).toEqual(expect.arrayContaining([
+      "fold", "phâu", "raise", "rây", "all-in", "ô in",
+      "seat", "sít", "button", "bắt tần", "small blind", "big blind",
+    ]));
   });
 
   it("finalizes when confirmed transcription arrives before turnComplete", () => {
