@@ -19,6 +19,8 @@ const payrollFixtures = [
   "disposable-payroll-baseline.sql",
   "dealer_payroll_statements.sql",
   "dealer_payroll_statements_concurrency.sql",
+  "dealer_payroll_statement_ft_ui.sql",
+  "dealer_payroll_statement_ft_ui_concurrency.sql",
 ];
 
 test("PT wage disposable runner applies the exact payroll migration chain", () => {
@@ -30,6 +32,7 @@ test("PT wage disposable runner applies the exact payroll migration chain", () =
   assert.match(runner, /Invoke-ContainerPsql '\/tmp\/readiness-acl-setup\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/readiness-acl-repair\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/readiness-acl\.sql'/);
   assert.match(runner, /Invoke-ContainerPsql '\/tmp\/support\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-baseline\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/activation-gap\.sql'/);
   assert.match(runner, /Invoke-ContainerPsql '\/tmp\/payroll-statements-v1\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-statements-v1\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-statements\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-statements-concurrency\.sql'/);
+  assert.match(runner, /Invoke-ContainerPsql '\/tmp\/payroll-pdf-storage\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-ft-ui\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-ft-ui\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-ft-ui-test\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-ft-ui-concurrency\.sql'/);
   assert.equal(
     [...runner.matchAll(/Invoke-ContainerPsql '\/tmp\/readiness-acl-repair\.sql'/g)].length,
     2,
