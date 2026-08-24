@@ -193,6 +193,27 @@ test("probe accepts matching typed contracts", () => {
   assert.deepEqual(missing, []);
 });
 
+test("Storage bucket clients are not inferred as public database relations", () => {
+  const { contracts } = contractsForTargets({
+    manifest,
+    rawTargets: "render-payroll-statement",
+    targetRoot: repositoryRoot,
+  });
+
+  assert.equal(
+    contracts.some((contract) =>
+      contract.type === "relation" && contract.name === "public.dealer_payroll_statements"
+    ),
+    true,
+  );
+  assert.equal(
+    contracts.some((contract) =>
+      contract.type === "relation" && contract.name === "public.payroll-statements"
+    ),
+    false,
+  );
+});
+
 test("probe reports a missing column and signature without converting them to success", () => {
   const missing = findMissingContracts(baseSchema, [
     { type: "column", relation: "public.game_tables", name: "missing_column" },

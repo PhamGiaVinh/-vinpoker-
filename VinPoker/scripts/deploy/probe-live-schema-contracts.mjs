@@ -514,6 +514,8 @@ function staticDatabaseContracts(files, targetRoot, dependencyKind) {
   for (const file of files) {
     const source = readFileSync(resolve(targetRoot, file), "utf8");
     for (const match of source.matchAll(/\.from\(\s*["'`]([^"'`]+)["'`]\s*\)/g)) {
+      const receiver = source.slice(0, match.index);
+      if (/\.\s*storage\s*\??\s*$/.test(receiver)) continue;
       addEvidence(relations, `public.${match[1]}`, file);
     }
     for (const match of source.matchAll(/\.rpc\(\s*["'`]([^"'`]+)["'`]/g)) {
