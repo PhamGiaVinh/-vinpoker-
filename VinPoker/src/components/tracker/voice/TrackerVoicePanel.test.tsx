@@ -148,6 +148,22 @@ describe("TrackerVoicePanel", () => {
     expect(disconnect).toHaveBeenCalledOnce();
   });
 
+  it("pauses a capable provider without treating its final-transcript flush as a disconnect", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const pause = vi.spyOn(provider, "pause");
+    const disconnect = vi.spyOn(provider, "disconnect");
+    renderPanel(hookFixture(), provider);
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+
+    fireEvent.click(screen.getByRole("button", { name: "Tạm dừng Voice" }));
+
+    expect(await screen.findByText("Voice đã tạm dừng an toàn")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tiếp tục Voice" })).toBeInTheDocument();
+    expect(pause).toHaveBeenCalledOnce();
+    expect(disconnect).not.toHaveBeenCalled();
+  });
+
   it("commits an Assist proposal once through the canonical hook", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const handleVoiceAction = vi.fn(async () => true);
