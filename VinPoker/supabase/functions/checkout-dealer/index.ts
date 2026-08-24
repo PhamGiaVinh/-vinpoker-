@@ -4,6 +4,10 @@ import {
   sendTelegramNotification, getClubTelegramChatId, mention, notifyDealerDM,
 } from "../_shared/telegram.ts";
 import { authenticateUser } from "../_shared/staking-common.ts";
+import { mapWithConcurrency } from "../_shared/mapWithConcurrency.ts";
+import { requiresStaleCheckoutCleanup } from "../_shared/checkoutSafety.ts";
+
+const CHECKOUT_BATCH_CONCURRENCY = 3;
 
 interface AttendanceRow {
   id: string;
@@ -80,11 +84,18 @@ async function processOneCheckout(
   }
 
   // 1b. Get dealer info (separate query to avoid join syntax issues)
-  const { data: dealer } = (await admin
+  const { data: dealer, error: dealerErr } = (await admin
     .from("dealers")
     .select("id, full_name, club_id, telegram_username, telegram_user_id")
     .eq("id", att.dealer_id)
-    .single()) as unknown as { data: DealerRow | null };
+    .single()) as unknown as { data: DealerRow | null; error: { message: string } | null };
+
+  if (dealerErr) {
+    return { attendance_id: attendanceId, success: false, error: `Dealer lookup failed: ${dealerErr.message}` };
+  }
+  if (!dealer) {
+    return { attendance_id: attendanceId, success: false, error: "Dealer not found" };
+  }
 
   const clubId = dealer?.club_id ?? "";
   const dealerName = dealer?.full_name ?? "";
@@ -94,6 +105,18 @@ async function processOneCheckout(
     telegram_user_id: dealer?.telegram_user_id ? Number(dealer.telegram_user_id) : null,
   });
   const checkInTime = att.check_in_time;
+
+  // Normal checkout calculates worked time and overtime from check-in until now.
+  // Old or invalid attendance must use the separately owner-gated stale cleanup
+  // path so a retry cannot turn weeks of stale test data into payroll minutes.
+  if (requiresStaleCheckoutCleanup(checkInTime)) {
+    return {
+      attendance_id: attendanceId,
+      success: false,
+      code: "STALE_ATTENDANCE_REQUIRES_CLEANUP",
+      error: "Ca check-in quá 24 giờ hoặc thiếu giờ vào; hãy dùng chế độ dọn ca treo để không tính lại lương/OT",
+    };
+  }
 
   // Auth check for first item only (caller already verified for this club)
   // All items in a batch are expected to belong to the same club
@@ -148,18 +171,22 @@ async function processOneCheckout(
   let workedMinutes = 0;
   let totalHours = 0;
 
-  if (!checkInTime) {
-    console.error(`[checkout-dealer] attendance ${attendanceId} has no check_in_time — skipping OT computation`);
-  } else {
+  if (checkInTime) {
     const checkInMs = new Date(checkInTime).getTime();
     const nowMs = Date.now();
     const totalMinutes = Math.round((nowMs - checkInMs) / 60000);
 
     // Subtract break time from both assignment-linked and attendance-linked rows.
-    const { data: assignments } = (await admin
+    const { data: assignments, error: assignmentsErr } = (await admin
       .from("dealer_assignments")
       .select("id")
-      .eq("attendance_id", attendanceId)) as unknown as { data: AssignmentIdRow[] | null };
+      .eq("attendance_id", attendanceId)) as unknown as {
+        data: AssignmentIdRow[] | null;
+        error: { message: string } | null;
+      };
+    if (assignmentsErr) {
+      return { attendance_id: attendanceId, success: false, error: `Assignment lookup failed: ${assignmentsErr.message}` };
+    }
     const assignmentIds = (assignments ?? []).map((a) => a.id);
 
     const [attendanceBreakResult, assignmentBreakResult] = (await Promise.all([
@@ -205,18 +232,24 @@ async function processOneCheckout(
   }
 
   // 3. State transition via RPC (validated + audited)
-    const { data: txResult } = (await admin.rpc("transition_dealer_state", {
+  const { data: txResult, error: txErr } = (await admin.rpc("transition_dealer_state", {
       p_attendance_id: attendanceId,
       p_new_state: "checked_out",
       p_reason: "dealer_checkout",
-    })) as unknown as { data: TxResultRow | null };
+    })) as unknown as { data: TxResultRow | null; error: { message: string } | null };
+  if (txErr) {
+    return { attendance_id: attendanceId, success: false, error: `State transition DB error: ${txErr.message}` };
+  }
+  if (!txResult) {
+    return { attendance_id: attendanceId, success: false, error: "State transition returned no result" };
+  }
   if (txResult?.ok === false) {
     return { attendance_id: attendanceId, success: false, error: `State transition failed: ${txResult.error}` };
   }
 
   // 4. Update non-state fields (checkout time, status, OT, cleanup)
   const nowISO = new Date().toISOString();
-  const { error: checkoutErr } = await admin
+  const { data: checkoutRow, error: checkoutErr } = (await admin
     .from("dealer_attendance")
     .update({
       status: "checked_out",
@@ -228,7 +261,40 @@ async function processOneCheckout(
       total_worked_minutes_today: workedMinutes,
     })
     .eq("id", attendanceId)
-    .eq("status", "checked_in");   // anti-double-checkout guard
+    .eq("status", "checked_in")
+    .select("id")
+    .maybeSingle()) as unknown as {
+      data: { id: string } | null;
+      error: { message: string } | null;
+    };   // anti-double-checkout guard
+
+  if (checkoutErr) {
+    return { attendance_id: attendanceId, success: false, error: `Checkout update failed: ${checkoutErr.message}` };
+  }
+  if (!checkoutRow) {
+    const { data: current, error: currentErr } = (await admin
+      .from("dealer_attendance")
+      .select("status, check_out_time")
+      .eq("id", attendanceId)
+      .maybeSingle()) as unknown as {
+        data: { status: string; check_out_time: string | null } | null;
+        error: { message: string } | null;
+      };
+    if (currentErr) {
+      return { attendance_id: attendanceId, success: false, error: `Checkout verification failed: ${currentErr.message}` };
+    }
+    if (current?.status === "checked_out") {
+      return {
+        attendance_id: attendanceId,
+        success: true,
+        idempotent: true,
+        dealer_name: dealerName,
+        check_in_time: checkInTime,
+        check_out_time: current.check_out_time,
+      };
+    }
+    return { attendance_id: attendanceId, success: false, error: "Checkout conflict: attendance was not updated" };
+  }
 
   const fmtTime = (d: Date) =>
     d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
@@ -478,6 +544,7 @@ Deno.serve(async (req) => {
     const uid = authResult.uid;
 
     const body = await req.json();
+    const mode = body.mode === "stale_cleanup" ? "stale_cleanup" : "normal";
     const ids: string[] = Array.from(new Set<string>(
       (body.attendance_ids || (body.attendance_id ? [body.attendance_id] : []))
         .filter((id: unknown): id is string => typeof id === "string" && id.length > 0),
@@ -504,18 +571,60 @@ Deno.serve(async (req) => {
     if (clubIds.size !== 1) return jsonResponse({ error: "Mixed-club checkout batches are not allowed" }, 403);
     const clubId = [...clubIds][0];
 
-    const { data: isControl } = await admin
+    const { data: isControl, error: controlErr } = await admin
       .rpc("is_club_dealer_control", { _user_id: uid, _club_id: clubId });
+    if (controlErr) return jsonResponse({ error: `Cannot verify dealer-control scope: ${controlErr.message}` }, 500);
     if (!isControl) return jsonResponse({ error: "Forbidden" }, 403);
 
-    // Process all attendance IDs
-    const results = await Promise.allSettled(
-      ids.map((id: string) => processOneCheckout(admin, botToken, uid, id))
+    if (mode === "stale_cleanup") {
+      const { data: cleanupResults, error: cleanupErr } = (await admin.rpc(
+        "administrative_close_stale_dealer_attendance",
+        { p_attendance_ids: ids, p_actor_id: uid },
+      )) as unknown as { data: unknown; error: { message: string } | null };
+
+      if (cleanupErr) {
+        console.error("[checkout-dealer] stale cleanup RPC failed", cleanupErr.message);
+        return jsonResponse({ error: `Stale cleanup failed: ${cleanupErr.message}` }, 500);
+      }
+
+      const results = Array.isArray(cleanupResults) ? cleanupResults : [];
+      const failedResults = results.filter((result) => (result as { success?: boolean })?.success !== true);
+      if (failedResults.length > 0) {
+        console.warn(
+          `[checkout-dealer] stale cleanup held ${failedResults.length}/${ids.length} rows`,
+          failedResults,
+        );
+      }
+      return jsonResponse({ mode, results });
+    }
+
+    // A checkout performs several PostgREST/RPC calls. Running up to 100 dealers
+    // with Promise.allSettled creates an unbounded request fan-out and can make an
+    // otherwise valid batch fail together. Keep pressure bounded and preserve order.
+    const mappedResults = await mapWithConcurrency(
+      ids,
+      CHECKOUT_BATCH_CONCURRENCY,
+      async (id: string) => {
+        try {
+          return await processOneCheckout(admin, botToken, uid, id);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unknown error";
+          console.error(`[checkout-dealer] unhandled item failure attendance=${id}: ${message}`);
+          return { attendance_id: id, success: false, error: message };
+        }
+      },
     );
 
-    const mappedResults = results.map((r) =>
-      r.status === "fulfilled" ? r.value : { attendance_id: "unknown", success: false, error: r.reason?.message ?? "Unknown error" }
-    );
+    const failedResults = mappedResults.filter((result) => result.success !== true);
+    if (failedResults.length > 0) {
+      console.error(
+        `[checkout-dealer] batch failed ${failedResults.length}/${ids.length}`,
+        failedResults.map((result) => ({
+          attendance_id: result.attendance_id,
+          error: result.error ?? "Unknown error",
+        })),
+      );
+    }
 
     return jsonResponse({ results: mappedResults });
   } catch (e) {

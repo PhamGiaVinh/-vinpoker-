@@ -28,6 +28,7 @@ import {
 } from "@/hooks/useDealerSwing";
 import { useShiftPlanner } from "@/hooks/useShiftPlanner";
 import type { AvailabilityRequest } from "@/types/shiftPlanner";
+import { summarizeDealerCheckoutBatch } from "@/lib/dealerCheckoutResults";
 
 /**
  * Dealer Swing (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads).
@@ -360,7 +361,13 @@ function DealerSwingClubView({
       try { const ctx = (error as any)?.context; if (ctx?.json) { const b = await ctx.json(); if (b?.error) detail = b.error; } } catch { /* ignore */ }
       toast.error(detail); return;
     }
-    if ((data as any)?.released_pre_assigned) toast.warning(`Dealer đang pre-assign bàn ${(data as any).pre_assigned_table ?? "?"} được release`);
+    const summary = summarizeDealerCheckoutBatch(data, 1);
+    if (summary.failedCount > 0) {
+      toast.error(summary.failureMessage ?? "Check-out dealer thất bại");
+      return;
+    }
+    const result = summary.results[0];
+    if (result?.released_pre_assigned) toast.warning(`Dealer đang pre-assign bàn ${result.pre_assigned_table ?? "?"} được release`);
     toast.success(`Đã check-out ${d.dealers?.full_name ?? "dealer"}`);
     setDealerSheet(null);
     reloadAll();
@@ -375,10 +382,28 @@ function DealerSwingClubView({
       try { const ctx = (error as any)?.context; if (ctx?.json) { const b = await ctx.json(); if (b?.error) detail = b.error; } } catch { /* ignore */ }
       toast.error(detail); return;
     }
-    const results = (data as any)?.results ?? [];
-    const ok = results.filter((r: any) => r.success).length;
-    if (ok > 0) toast.success(`Đã check-out ${ok}/${ids.length} dealer`);
-    if (ok < ids.length) toast.error(`${ids.length - ok} dealer thất bại`);
+    const summary = summarizeDealerCheckoutBatch(data, ids.length);
+    if (summary.successCount > 0) toast.success(`Đã check-out ${summary.successCount}/${ids.length} dealer`);
+    if (summary.failureMessage) toast.error(summary.failureMessage);
+    setCheckout(new Set());
+    reloadAll();
+  });
+
+  // Explicit stale-shift cleanup: closes only rows with historical end evidence
+  // and leaves payroll/OT fields untouched. This is never folded into normal checkout.
+  const doStaleCleanup = (ids: string[]) => runAction(async () => {
+    if (!ids.length) return;
+    const { data, error } = await supabase.functions.invoke("checkout-dealer", {
+      body: { attendance_ids: ids, mode: "stale_cleanup" },
+    });
+    if (error) {
+      let detail = error.message || "Lỗi dọn ca treo";
+      try { const ctx = (error as any)?.context; if (ctx?.json) { const b = await ctx.json(); if (b?.error) detail = b.error; } } catch { /* ignore */ }
+      toast.error(detail); return;
+    }
+    const summary = summarizeDealerCheckoutBatch(data, ids.length);
+    if (summary.successCount > 0) toast.success(`Đã dọn ${summary.successCount}/${ids.length} ca; không tính lại lương/OT`);
+    if (summary.failureMessage) toast.warning(`Giữ lại để kiểm tra: ${summary.failureMessage}`);
     setCheckout(new Set());
     reloadAll();
   });
@@ -841,6 +866,10 @@ function DealerSwingClubView({
             <button onClick={() => doBatchCheckout([...checkout])} disabled={checkout.size === 0 || busy}
               className="ios-press ios-fill mt-2.5 w-full rounded-2xl py-2.5 text-[14px] font-medium text-[#f2ece6] disabled:opacity-40">
               Check-out {checkout.size} người đã chọn
+            </button>
+            <button onClick={() => doStaleCleanup([...checkout])} disabled={checkout.size === 0 || busy}
+              className="ios-press mt-2 w-full rounded-2xl border border-amber-400/30 bg-amber-400/10 py-2.5 text-[13px] font-medium text-amber-200 disabled:opacity-40">
+              Dọn ca treo {checkout.size ? `(${checkout.size})` : ""} · giữ nguyên lương/OT
             </button>
           </div>
           {(outQ.data ?? []).length > 0 && (
