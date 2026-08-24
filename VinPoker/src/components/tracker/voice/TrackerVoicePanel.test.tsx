@@ -11,7 +11,8 @@ import { TrackerVoicePanel } from "./TrackerVoicePanel";
 function hookFixture(): StandaloneHandInput {
   return {
     tournamentId: "tournament-1",
-    tableId: "table-1",
+    tableId: "physical-table-1",
+    tournamentTableId: "canonical-table-1",
     handId: "hand-1",
     currentStreet: "flop",
     actorPlayer: {
@@ -153,7 +154,7 @@ describe("TrackerVoicePanel", () => {
     expect(handleVoiceAction).toHaveBeenCalledOnce();
     expect(handleVoiceAction.mock.calls[0][1]).toMatchObject({
       source: "voice",
-      tournamentTableId: "table-1",
+      tournamentTableId: "canonical-table-1",
       voiceEventId: "voice-event-1",
       expectedStateVersion: "a".repeat(64),
     });

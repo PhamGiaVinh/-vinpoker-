@@ -16,7 +16,14 @@ export function TrackerVoicePanelGate({ hook }: { hook: StandaloneHandInput }) {
   useEffect(() => {
     let cancelled = false;
 
-    void loadTrackerVoiceRuntimeContext(hook.tournamentId, hook.tableId)
+    if (!hook.tournamentTableId) {
+      setRuntime(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void loadTrackerVoiceRuntimeContext(hook.tournamentId, hook.tournamentTableId)
       .then((nextRuntime) => {
         if (!cancelled) setRuntime(nextRuntime);
       })
@@ -28,7 +35,7 @@ export function TrackerVoicePanelGate({ hook }: { hook: StandaloneHandInput }) {
     return () => {
       cancelled = true;
     };
-  }, [hook.tableId, hook.tournamentId]);
+  }, [hook.tournamentId, hook.tournamentTableId]);
 
   return isTrackerVoiceUiEnabled(runtime) ? <TrackerVoicePanel hook={hook} /> : null;
 }
