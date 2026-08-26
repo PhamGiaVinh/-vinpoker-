@@ -5,6 +5,10 @@ import test from "node:test";
 
 const root = resolve(import.meta.dirname, "..", "..");
 const runner = readFileSync(resolve(root, "scripts/deploy/test-dealer-pt-wage-disposable.ps1"), "utf8");
+const disposableBootstrap = readFileSync(
+  resolve(root, "scripts/deploy/disposable-public-schema-bootstrap.sql"),
+  "utf8",
+);
 const readinessAclMigration = readFileSync(
   resolve(root, "supabase/migrations/20270106000002_dealer_pt_wage_readiness_acl.sql"),
   "utf8",
@@ -70,6 +74,12 @@ test("PT wage disposable runner never links to or mutates a production project",
   assert.doesNotMatch(runner, /supabase\s+(?:link|db\s+(?:push|reset)|functions\s+deploy)/i);
   assert.doesNotMatch(runner, /VERCEL|SUPABASE_(?:ACCESS|DB_PASSWORD|SERVICE)/i);
   assert.match(runner, /postgres:\$PostgresMajor/);
+});
+
+test("disposable bootstrap mirrors Supabase ownership roles from the storage schema dump", () => {
+  assert.match(disposableBootstrap, /CREATE ROLE supabase_admin NOLOGIN/i);
+  assert.match(disposableBootstrap, /CREATE ROLE supabase_storage_admin NOLOGIN/i);
+  assert.doesNotMatch(disposableBootstrap, /\bLOGIN\b/i);
 });
 
 test("PT wage disposable SQL fixtures use canonical UUID literals", () => {
