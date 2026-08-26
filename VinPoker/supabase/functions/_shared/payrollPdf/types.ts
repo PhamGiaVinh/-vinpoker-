@@ -30,7 +30,7 @@ export interface PayrollStatementSnapshot {
   financial_snapshot: JsonRecord;
   source_fingerprint: string;
   statement_hash: string;
-  finalized_at: string;
+  finalized_at: string | null;
   pt_wage_payment_id: string | null;
   lines: PayrollStatementLine[];
 }
@@ -40,7 +40,7 @@ export interface PayrollPdfFonts {
   bold: Uint8Array;
 }
 
-export type PayrollPdfMode = "preview" | "final";
+export type PayrollPdfMode = "draft_preview" | "finalized";
 
 export interface PayrollPdfRenderOptions {
   mode: PayrollPdfMode;

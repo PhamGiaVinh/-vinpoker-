@@ -1242,6 +1242,12 @@ export const FEATURES = {
    */
   salaryTabV2: true,
   /**
+   * Immutable FT payroll statements for clubs beyond the HSOP canary. Keep OFF
+   * through source merge and TEST-club UAT; the server rollout remains the
+   * authoritative master switch and allowlist for every statement/PDF action.
+   */
+  payrollStatementPdfAllClubs: false,
+  /**
    * Chip Ops — read-only Issued-Chip-Inventory screen (/chip-ops) + the Chip-Master role.
    * The screen shows server-computed per-denomination chip counts + a reconciliation badge for
    * a tournament (RPC `get_issued_chip_inventory`); strictly read-only. Default **OFF** (dark):
