@@ -79,6 +79,7 @@ test("PT wage disposable runner never links to or mutates a production project",
 test("disposable bootstrap mirrors Supabase ownership roles from the storage schema dump", () => {
   assert.match(disposableBootstrap, /CREATE ROLE supabase_admin NOLOGIN/i);
   assert.match(disposableBootstrap, /CREATE ROLE supabase_storage_admin NOLOGIN/i);
+  assert.match(disposableBootstrap, /CREATE ROLE dashboard_user NOLOGIN/i);
   assert.doesNotMatch(disposableBootstrap, /\bLOGIN\b/i);
 });
 
