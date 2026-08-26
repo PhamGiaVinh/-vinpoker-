@@ -1,56 +1,68 @@
 import { createRoot } from "react-dom/client";
 import { ErrorBoundary } from "react-error-boundary";
-import PlayerApp from "./PlayerApp.tsx";
 import "./index.css";
-import "./i18n";
-import { initButtonSounds } from "./lib/sound";
-import { registerServiceWorker } from "./lib/registerSW";
-import { initOneSignal } from "./lib/onesignal";
-import { initWebVitals } from "./lib/webVitals";
-import { RootErrorFallback } from "./components/RootErrorFallback";
 
-initButtonSounds();
-registerServiceWorker();
-initOneSignal();
-initWebVitals();
+const root = createRoot(document.getElementById("root")!);
+const isCenterPointPokerMastersRoute = window.location.pathname.replace(/\/+$/, "") === "/center-point-poker-masters";
 
-// Lazy-load Sentry only in production when a DSN is configured.
-// Keeps dev bundles slim and avoids any runtime cost when monitoring is off.
-if (import.meta.env.PROD && import.meta.env.VITE_SENTRY_DSN) {
-  import("@sentry/react").then((Sentry) => {
-    Sentry.init({ dsn: import.meta.env.VITE_SENTRY_DSN as string });
+function finishBootTransition() {
+  // Signal boot synchronously after React accepts the root render. Background tabs
+  // can throttle requestAnimationFrame for longer than the watchdog timeout.
+  window.dispatchEvent(new Event("vp:react-mounted"));
+
+  // Keep the visual splash transition on the next frame.
+  requestAnimationFrame(() => {
+    try {
+      sessionStorage.removeItem("vp:just-updated");
+      sessionStorage.removeItem("vp:auto-reloaded");
+      sessionStorage.removeItem("vp:reloaded-after-preload-error");
+    } catch {
+      // Session storage is best-effort on privacy-restricted browsers.
+    }
+    const splash = document.getElementById("boot-splash");
+    if (!splash) return;
+    splash.classList.add("boot-splash--hide");
+    setTimeout(() => splash.remove(), 500);
   });
 }
 
-const root = createRoot(document.getElementById("root")!);
-root.render(
-  <ErrorBoundary
-    FallbackComponent={RootErrorFallback}
-    onError={(error, info) => console.error("Root ErrorBoundary:", error, info)}
-    onReset={() => window.location.reload()}
-  >
-    <PlayerApp />
-  </ErrorBoundary>
-);
+if (isCenterPointPokerMastersRoute) {
+  void import("./pages/CenterPointPokerMastersApp").then(({ default: CenterPointPokerMastersApp }) => {
+    root.render(<CenterPointPokerMastersApp />);
+    finishBootTransition();
+  });
+} else {
+  void Promise.all([
+    import("./PlayerApp"),
+    import("./components/RootErrorFallback"),
+    import("./i18n"),
+    import("./lib/sound"),
+    import("./lib/registerSW"),
+    import("./lib/onesignal"),
+    import("./lib/webVitals"),
+  ]).then(([{ default: PlayerApp }, { RootErrorFallback }, , { initButtonSounds }, { registerServiceWorker }, { initOneSignal }, { initWebVitals }]) => {
+    initButtonSounds();
+    registerServiceWorker();
+    initOneSignal();
+    initWebVitals();
 
-// Signal boot synchronously after React accepts the root render. Background tabs
-// can throttle requestAnimationFrame for longer than the watchdog timeout.
-window.dispatchEvent(new Event("vp:react-mounted"));
+    // Lazy-load Sentry only in production when a DSN is configured.
+    if (import.meta.env.PROD && import.meta.env.VITE_SENTRY_DSN) {
+      void import("@sentry/react").then((Sentry) => Sentry.init({ dsn: import.meta.env.VITE_SENTRY_DSN as string }));
+    }
 
-// Keep the visual splash transition on the next frame.
-requestAnimationFrame(() => {
-  try {
-    sessionStorage.removeItem("vp:just-updated");
-    sessionStorage.removeItem("vp:auto-reloaded");
-    sessionStorage.removeItem("vp:reloaded-after-preload-error");
-  } catch {
-    // Session storage is best-effort on privacy-restricted browsers.
-  }
-  const splash = document.getElementById("boot-splash");
-  if (!splash) return;
-  splash.classList.add("boot-splash--hide");
-  setTimeout(() => splash.remove(), 500);
-});
+    root.render(
+      <ErrorBoundary
+        FallbackComponent={RootErrorFallback}
+        onError={(error, info) => console.error("Root ErrorBoundary:", error, info)}
+        onReset={() => window.location.reload()}
+      >
+        <PlayerApp />
+      </ErrorBoundary>,
+    );
+    finishBootTransition();
+  });
+}
 
 // Recover from Vite chunk-load failures (common right after an update when
 // caches were cleared but the module graph still references old hashes).
