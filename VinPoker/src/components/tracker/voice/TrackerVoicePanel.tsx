@@ -199,7 +199,7 @@ export function TrackerVoicePanel({
   );
 
   const refreshRuntime = useCallback(async () => {
-    if (!hook.tournamentTableId) {
+    if (!hook.tournamentTableId && !runtimeOverride) {
       setRuntime(null);
       setRuntimeError("KhÃ´ng xÃ¡c minh Ä‘Æ°á»£c bÃ n canonical cho Voice.");
       return null;
@@ -520,6 +520,23 @@ export function TrackerVoicePanel({
     setMicTestStartedAt(null);
   };
 
+  const pause = async () => {
+    const provider = providerRef.current;
+    if (!provider?.pause) {
+      await disconnect();
+      return;
+    }
+    try {
+      await provider.pause();
+      setAudioLevel(0);
+      micTestActiveRef.current = false;
+      setMicTestStartedAt(null);
+    } catch (error) {
+      setStatus("error");
+      setStatusMessage(error instanceof Error ? error.message : "Không thể hoàn tất transcript cuối.");
+    }
+  };
+
   const reconnect = async () => {
     await disconnect();
     await connect();
@@ -660,6 +677,44 @@ export function TrackerVoicePanel({
       : isTrackerVoiceGeminiLiveModel(runtime?.config.provider_model)
         ? "gemini_live"
         : "openai_realtime");
+  const microphoneBusy = status === "requesting_permission"
+    || status === "preparing_audio"
+    || status === "connecting"
+    || status === "connected"
+    || status === "audio_running"
+    || status === "flushing";
+  const microphoneButtonLabel = status === "listening"
+    ? "Tạm dừng Voice"
+    : status === "requesting_permission"
+      ? "Đang chờ quyền mic..."
+      : status === "preparing_audio"
+        ? "Đang chuẩn bị âm thanh..."
+        : status === "connecting"
+          ? "Đang kết nối Gemini..."
+          : status === "connected" || status === "audio_running"
+            ? "Đang khởi động PCM..."
+            : status === "flushing"
+              ? "Đang hoàn tất câu cuối..."
+              : status === "paused"
+                ? "Tiếp tục Voice"
+                : "Cho phép microphone";
+  const microphoneStatusLabel = status === "listening"
+    ? "Microphone đã kết nối"
+    : status === "requesting_permission"
+      ? "Đang chờ bạn cho phép microphone"
+      : status === "preparing_audio"
+        ? "Đã có quyền mic, đang chuẩn bị âm thanh"
+        : status === "connecting"
+          ? "Đang kết nối Gemini Live"
+          : status === "connected"
+            ? "Gemini đã kết nối, đang kiểm tra PCM"
+            : status === "audio_running"
+              ? "PCM đã chạy, chờ khung âm thanh đầu tiên"
+              : status === "flushing"
+                ? "Đang nhận final transcript cuối"
+                : status === "paused"
+                  ? "Voice đã tạm dừng an toàn"
+                  : "Microphone chưa được kết nối";
 
   return (
     <section
@@ -685,13 +740,14 @@ export function TrackerVoicePanel({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={status === "listening" ? disconnect : connect}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-4 text-xs font-semibold text-emerald-200 outline-none transition hover:bg-emerald-300/15 focus-visible:ring-2 focus-visible:ring-emerald-300"
+            onClick={status === "listening" ? () => void pause() : () => void connect()}
+            disabled={microphoneBusy}
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-4 text-xs font-semibold text-emerald-200 outline-none transition hover:bg-emerald-300/15 focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-wait disabled:opacity-70"
           >
-            {status === "listening" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-            {status === "listening" ? "Tạm dừng" : "Bắt đầu Voice"}
+            {status === "listening" || status === "flushing" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            {microphoneButtonLabel}
           </button>
-          {status !== "idle" && status !== "requesting_permission" && (
+          {status !== "idle" && status !== "requesting_permission" && status !== "preparing_audio" && (
             <button
               type="button"
               onClick={() => void reconnect()}
@@ -728,12 +784,12 @@ export function TrackerVoicePanel({
         <div className="flex min-h-11 items-center gap-3 rounded-xl border border-white/8 bg-black/25 px-3">
           <span className={`h-2.5 w-2.5 rounded-full ${status === "listening" ? "bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,.8)]" : "bg-zinc-600"}`} />
           <div className="min-w-0 flex-1">
-            <div className="text-xs font-medium text-zinc-200">{status === "listening" ? "Đang nghe" : "Microphone chưa hoạt động"}</div>
+            <div className="text-xs font-medium text-zinc-200">{microphoneStatusLabel}</div>
             <div className="truncate text-[11px] text-zinc-500">{statusMessage ?? (partial || "Final transcript mới được phân tích.")}</div>
           </div>
           <span className="inline-flex items-center gap-1 text-[10px] text-zinc-500" title="Trạng thái tai nghe và microphone">
             <Headphones className="h-4 w-4" />
-            {status === "listening" ? "Mic đang theo dõi" : "Mic chưa sẵn sàng"}
+            {status === "listening" ? "Mic đang theo dõi" : status === "flushing" ? "Đang flush câu cuối" : "Mic chưa sẵn sàng"}
           </span>
         </div>
 

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createGeminiLiveAudioPayload,
   GEMINI_LIVE_PCM_SAMPLE_RATE,
   pcm16ToLittleEndianBytes,
+  pcmBytesToBase64,
   resampleMonoToPcm16,
 } from "./geminiPcm";
 
@@ -23,5 +25,13 @@ describe("Gemini Live PCM conversion", () => {
 
   it("encodes signed PCM16 as little-endian bytes", () => {
     expect([...pcm16ToLittleEndianBytes(new Int16Array([0x1234, -2]))]).toEqual([0x34, 0x12, 0xfe, 0xff]);
+  });
+
+  it("encodes PCM bytes as the base64 Gemini Live Blob payload", () => {
+    expect(pcmBytesToBase64(new Uint8Array([0x34, 0x12, 0xfe, 0xff]))).toBe("NBL+/w==");
+    expect(createGeminiLiveAudioPayload(new Uint8Array([0x34, 0x12, 0xfe, 0xff]))).toEqual({
+      data: "NBL+/w==",
+      mimeType: "audio/pcm;rate=16000",
+    });
   });
 });

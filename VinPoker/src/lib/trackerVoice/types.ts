@@ -15,8 +15,13 @@ export type VoiceProviderKind = "mock" | "openai_realtime" | "gemini_live";
 export type VoiceProviderStatus =
   | "idle"
   | "requesting_permission"
+  | "preparing_audio"
   | "connecting"
+  | "connected"
+  | "audio_running"
   | "listening"
+  | "flushing"
+  | "paused"
   | "recovering"
   | "offline"
   | "error";
@@ -54,6 +59,8 @@ export interface VoiceProviderHandlers {
 export interface RealtimeTranscriptionProvider {
   readonly kind: VoiceProviderKind;
   connect(handlers: VoiceProviderHandlers): Promise<void>;
+  /** Stops microphone capture but may keep a realtime session alive to flush a final transcript. */
+  pause?(): Promise<void>;
   disconnect(): Promise<void>;
 }
 

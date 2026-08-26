@@ -235,6 +235,7 @@ export default function TrackerVoiceV0Preview() {
   const hook = useMemo(() => ({
     tournamentId: TOURNAMENT_ID,
     tableId: TABLE_ID,
+    tournamentTableId: TABLE_ID,
     handId: HAND_ID,
     currentStreet: "flop",
     actorPlayer: {
@@ -310,7 +311,11 @@ export default function TrackerVoiceV0Preview() {
 
   const finalLatencies = measurements.flatMap((item) => item.transcriptLatencyMs === null ? [] : [item.transcriptLatencyMs]);
   const exactMatches = measurements.filter((item) => item.result === "correct").length;
-  const permission = snapshot?.status === "listening" ? "granted" : snapshot?.status === "requesting_permission" ? "pending" : "unknown";
+  const permission = snapshot?.status === "requesting_permission"
+    ? "pending"
+    : snapshot?.inputDevice
+      ? "granted"
+      : "unknown";
 
   const markLatest = (result: "pending" | "correct" | "incorrect") => {
     setMeasurements((current) => current.map((item, index) => index === current.length - 1 ? { ...item, result, expected } : item));
