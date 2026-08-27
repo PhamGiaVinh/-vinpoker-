@@ -7,8 +7,24 @@ const migration = readFileSync(
   resolve(root, "supabase/migrations/20270113000003_floor_table_control_v3_server_contract.sql"),
   "utf8",
 );
+const hardeningMigration = readFileSync(
+  resolve(root, "supabase/migrations/20270113000004_floor_table_control_v3_contract_hardening.sql"),
+  "utf8",
+);
 const disposable = readFileSync(
   resolve(root, "tests/floorTableControlV3/disposableDb.serverContract.sql"),
+  "utf8",
+);
+const authenticatedDisposable = readFileSync(
+  resolve(root, "tests/floorTableControlV3/disposableDb.serverContract.authenticated.sql"),
+  "utf8",
+);
+const concurrencySetup = readFileSync(
+  resolve(root, "tests/floorTableControlV3/disposableDb.serverContract.concurrent.setup.sql"),
+  "utf8",
+);
+const concurrencyRunner = readFileSync(
+  resolve(root, "tests/floorTableControlV3/runServerContractConcurrency.sh"),
   "utf8",
 );
 const workflow = readFileSync(
@@ -37,6 +53,18 @@ describe("Floor Table Control V3 server contract", () => {
     expect(migration).toContain("game_table_scope_mismatch");
     expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.floor_open_tournament_table_v3");
     expect(migration).toContain("REVOKE ALL ON FUNCTION public.floor_open_tournament_table_v3");
+    expect(hardeningMigration).toContain("REVOKE ALL ON FUNCTION public.floor_open_tournament_table_v3(uuid, uuid, text, uuid) FROM authenticated");
+    expect(hardeningMigration).toContain("floor_table_v3_guard_dealer_assignment_session");
+    const dealerAssignmentGuard = hardeningMigration.slice(
+      hardeningMigration.indexOf("CREATE OR REPLACE FUNCTION floor_private.floor_table_v3_guard_dealer_assignment_session"),
+      hardeningMigration.indexOf("DROP TRIGGER IF EXISTS floor_table_v3_guard_dealer_assignment_session"),
+    );
+    expect(dealerAssignmentGuard).toContain("FOR KEY SHARE");
+    expect(hardeningMigration).toContain("FOR SHARE");
+    expect(dealerAssignmentGuard.indexOf("FOR KEY SHARE")).toBeLessThan(
+      dealerAssignmentGuard.indexOf("FOR SHARE"),
+    );
+    expect(hardeningMigration).toContain("floor_table_v3_dealer_assignment_session_not_active");
   });
 
   it("makes physical-table leases, mode fencing, revisions and durable receipts explicit", () => {
@@ -48,7 +76,14 @@ describe("Floor Table Control V3 server contract", () => {
     expect(migration).toContain("floor_table_v3_lock_receipt");
     expect(migration).toContain("floor_table_v3_save_receipt");
     expect(migration).toContain("ORDER BY gt.id FOR UPDATE");
-    expect(migration).toContain("ORDER BY session_row.id FOR UPDATE");
+
+    const breakWriter = hardeningMigration.slice(
+      hardeningMigration.indexOf("CREATE OR REPLACE FUNCTION public.floor_break_table_v3"),
+      hardeningMigration.indexOf("ALTER FUNCTION public.floor_break_table_v3"),
+    );
+    expect(breakWriter).toContain("JOIN public.game_tables gt ON gt.id = session_row.game_table_id");
+    expect(breakWriter).toContain("ORDER BY gt.id, session_row.id");
+    expect(breakWriter).not.toContain("ORDER BY session_row.id FOR UPDATE");
   });
 
   it("uses entry-backed V3 roster mutations without a money or legacy-table writer", () => {
@@ -63,9 +98,12 @@ describe("Floor Table Control V3 server contract", () => {
     expect(migration).not.toMatch(/sepay|staking|buy.?in|prize_payment/i);
   });
 
-  it("proves lifecycle, fencing, ACL and cross-club paths in an isolated PostgreSQL 17 database", () => {
+  it("proves lifecycle, fencing, ACL, authenticated callers and real races in isolated PostgreSQL 17", () => {
     expect(workflow).toContain("image: postgres:17");
     expect(workflow).toContain("tests/floorTableControlV3/disposableDb.serverContract.sql");
+    expect(workflow).toContain("disposableDb.serverContract.authenticated.sql");
+    expect(workflow).toContain("disposableDb.serverContract.concurrent.setup.sql");
+    expect(workflow).toContain("runServerContractConcurrency.sh");
     expect(workflow).toContain("vitest.serverContract.config.ts");
     expect(workflow).not.toMatch(/db push|functions deploy|vercel --prod|orlesggcjamwuknxwcpk/i);
     expect(disposable).toContain("FLOOR_TABLE_CONTROL_V3_SERVER_CONTRACT_DISPOSABLE_PASS");
@@ -75,5 +113,18 @@ describe("Floor Table Control V3 server contract", () => {
     expect(disposable).toContain("move leaves no ghost seat in the former table");
     expect(disposable).toContain("break ends the dealer assignment and session history together");
     expect(disposable).toContain("authenticated Floor cannot open another club physical table");
+    expect(disposable).toContain("expected V3 dealer assignment guard for a closed session");
+    expect(authenticatedDisposable).toContain("SET LOCAL ROLE authenticated");
+    expect(authenticatedDisposable).toContain("FLOOR_TABLE_CONTROL_V3_AUTHENTICATED_CALLER_PASS");
+    expect(authenticatedDisposable).toContain("authenticated cross-club access was not denied");
+    expect(concurrencySetup).toContain("Dedicated exact-ID fixtures for real multi-connection races");
+    expect(concurrencyRunner).toContain("same-seat race");
+    expect(concurrencyRunner).toContain("move-vs-bust race");
+    expect(concurrencyRunner).toContain("close-vs-dealer assignment race");
+    expect(concurrencyRunner).toContain("SET LOCAL ROLE authenticated");
+    expect(concurrencyRunner).toContain("deadlock_or_lock_timeout");
+    expect(concurrencyRunner).toContain("floor_table_v3_dealer_assignment_session_not_active");
+    expect(concurrencyRunner).toContain("grep -h -c");
+    expect(concurrencyRunner).not.toContain("awk -F:");
   });
 });

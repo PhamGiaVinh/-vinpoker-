@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "VinPoker/supabase/migrations/20270113000003_floor_table_control_v3_server_contract.sql"
+      - "VinPoker/supabase/migrations/20270113000004_floor_table_control_v3_contract_hardening.sql"
       - "VinPoker/tests/floorTableControlV3/**"
       - ".github/workflows/floor-table-control-v3-contract-disposable-db.yml"
   push:
@@ -49,4 +50,8 @@ jobs:
           PGPORT: 5432
           PGUSER: postgres
           PGDATABASE: floor_table_control_v3_contract
-        run: psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.sql
+        run: |
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.sql
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.authenticated.sql
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.concurrent.setup.sql
+          bash tests/floorTableControlV3/runServerContractConcurrency.sh
