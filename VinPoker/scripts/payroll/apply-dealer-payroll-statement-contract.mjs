@@ -72,7 +72,7 @@ select
   f.lines_table is not null as lines_table_exists,
   f.rollout_table is not null as rollout_table_exists,
   f.buckets_table is not null as buckets_table_exists,
-  coalesce((select public from storage.buckets where id='payroll-statements' limit 1), false) as payroll_bucket_private,
+  coalesce((select not bucket.public from storage.buckets bucket where bucket.id='payroll-statements' limit 1), false) as payroll_bucket_private,
   c.pdf_hash, c.pdf_storage_path, c.pdf_render_version, c.pdf_rendered_at,
   c.statement_version, c.pdf_status, c.pdf_generation_request_id, c.pdf_generation_token,
   f.mark_oid is not null as mark_exists,

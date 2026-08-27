@@ -138,6 +138,10 @@ test("pre-migration catalog query does not reference the absent rollout relation
   assert.match(ROLLOUT_STATE_SQL, /from\s+public\.dealer_payroll_statement_rollout/i);
 });
 
+test("private storage bucket is reported with the correct boolean polarity", () => {
+  assert.match(STATE_SQL, /select\s+not\s+bucket\.public\s+from\s+storage\.buckets\s+bucket/i);
+});
+
 test("apply sends only the exact migrations in order and verifies each post-state", async () => {
   let reads = 0;
   const calls = [];
