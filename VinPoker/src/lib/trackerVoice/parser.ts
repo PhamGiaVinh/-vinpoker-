@@ -15,5 +15,6 @@ export function parseVoiceCommand(
     transcript: transcript.trim(),
     normalizedTranscript: parsed.normalizedTranscript,
     amount: parsed.amount,
+    spokenSeatNumber: parsed.spokenSeatNumber,
   };
 }

@@ -38,6 +38,7 @@ export interface ParsedVoiceCommand {
   transcript: string;
   normalizedTranscript: string;
   amount: ParsedVoiceAmount | null;
+  spokenSeatNumber: number | null;
 }
 
 export interface VoiceTranscriptEvent {
@@ -105,6 +106,7 @@ export type VoiceProposalFailureCode =
   | "no_active_hand"
   | "not_action_step"
   | "actor_missing"
+  | "spoken_actor_mismatch"
   | "read_only"
   | "sync_blocked"
   | "correction_pending"

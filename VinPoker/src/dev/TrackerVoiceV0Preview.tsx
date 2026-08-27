@@ -121,6 +121,9 @@ interface VoiceUatMeasurement {
   command: string | null;
   amount: number | null;
   amountAmbiguous: boolean | null;
+  spokenSeatNumber: number | null;
+  proposalOk: boolean | null;
+  proposalCode: string | null;
   result: "pending" | "correct" | "incorrect";
   expected: string;
 }
@@ -146,10 +149,11 @@ function csvValue(value: unknown): string {
 }
 
 function snapshotCommand(snapshot: TrackerVoiceDiagnosticSnapshot | null): string | null {
-  if (!snapshot?.proposal?.ok) return null;
-  return "controlAction" in snapshot.proposal
-    ? snapshot.proposal.controlAction
-    : snapshot.proposal.canonicalAction;
+  const kind = snapshot?.proposal?.command?.kind;
+  if (!kind) return null;
+  if (kind === "bet_to") return "bet";
+  if (kind === "raise_to") return "raise";
+  return kind;
 }
 
 function providerLabel(provider: "mock" | "gemini" | "openai"): string {
@@ -241,7 +245,7 @@ export default function TrackerVoiceV0Preview() {
     actorPlayer: {
       player_id: "74000000-0000-4000-8000-000000000001",
       display_name: "Player A",
-      seat_number: 3,
+      seat_number: 4,
       current_stack: fixture.stack,
       current_bet: fixture.currentBet,
     },
@@ -288,12 +292,14 @@ export default function TrackerVoiceV0Preview() {
   useEffect(() => {
     const providerEventId = snapshot?.finalProviderEventId;
     if (!sessionRunning || !providerEventId || processedFinalRef.current === providerEventId) return;
+    if (snapshot.proposalProviderEventId !== providerEventId) return;
     processedFinalRef.current = providerEventId;
     const command = snapshotCommand(snapshot);
-    const amount = snapshot?.proposal?.ok && "canonicalAction" in snapshot.proposal
-      ? snapshot.proposal.betToTotal ?? null
-      : null;
+    const amount = snapshot?.proposal?.command?.amount?.value ?? null;
     const amountAmbiguous = snapshot?.proposal?.command?.amount?.ambiguous ?? null;
+    const spokenSeatNumber = snapshot?.proposal?.command?.spokenSeatNumber ?? null;
+    const proposalOk = snapshot?.proposal?.ok ?? null;
+    const proposalCode = snapshot?.proposal && !snapshot.proposal.ok ? snapshot.proposal.code : null;
     setMeasurements((current) => [...current, {
       providerEventId,
       transcript: snapshot.finalTranscript,
@@ -303,6 +309,9 @@ export default function TrackerVoiceV0Preview() {
       command,
       amount,
       amountAmbiguous,
+      spokenSeatNumber,
+      proposalOk,
+      proposalCode,
       result: "pending",
       expected,
     }]);
@@ -367,10 +376,10 @@ export default function TrackerVoiceV0Preview() {
   }, null, 2), "application/json");
 
   const exportCsv = () => downloadArtifact("tracker-voice-uat.csv", [
-    ["providerEventId", "transcript", "capturedAt", "transcriptLatencyMs", "proposalLatencyMs", "command", "amount", "amountAmbiguous", "result", "expected"].join(","),
+    ["providerEventId", "transcript", "capturedAt", "transcriptLatencyMs", "proposalLatencyMs", "command", "amount", "amountAmbiguous", "spokenSeatNumber", "proposalOk", "proposalCode", "result", "expected"].join(","),
     ...measurements.map((item) => [
       item.providerEventId, item.transcript, item.capturedAt, item.transcriptLatencyMs, item.proposalLatencyMs,
-      item.command, item.amount, item.amountAmbiguous, item.result, item.expected,
+      item.command, item.amount, item.amountAmbiguous, item.spokenSeatNumber, item.proposalOk, item.proposalCode, item.result, item.expected,
     ].map(csvValue).join(",")),
   ].join("\n"), "text/csv;charset=utf-8");
 

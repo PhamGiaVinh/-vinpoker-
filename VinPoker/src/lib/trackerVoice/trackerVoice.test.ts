@@ -58,8 +58,34 @@ describe("parseVoiceCommand", () => {
     ["tất tay", "all_in"],
     ["báo sai action", "report_wrong_action"],
     ["gọi floor", "call_floor"],
+    ["seat number three fold", "fold"],
+    ["see number three phâu", "fold"],
+    ["sit high o-in", "all_in"],
+    ["seat number one race 4000", "raise_to"],
+    ["ghế số ba rây 20.000", "raise_to"],
   ])("parses %s", (input, kind) => {
     expect(parseVoiceCommand(input, { amountUnitConfirmed: true })?.kind).toBe(kind);
+  });
+
+  it.each([
+    ["race 4000", 4_000, null],
+    ["seat number two race four thousand", 4_000, 2],
+    ["seat number six raise 20,000", 20_000, 6],
+    ["về số 6 raise 20.000", 20_000, 6],
+    ["ghế số 7 raise 50.000", 50_000, 7],
+  ])("normalizes bounded dealer pronunciation in %s", (input, amount, seat) => {
+    expect(parseVoiceCommand(input)).toMatchObject({
+      kind: "raise_to",
+      spokenSeatNumber: seat,
+      amount: { value: amount, ambiguous: false },
+    });
+  });
+
+  it("keeps incomplete or unsafe UAT fragments fail-closed", () => {
+    expect(parseVoiceCommand("Sit number five.")).toBeNull();
+    expect(parseVoiceCommand("Seat number three four")).toBeNull();
+    expect(parseVoiceCommand("racer một phau", { spokenAmountUnit: 1_000, amountUnitConfirmed: true })).toBeNull();
+    expect(parseVoiceCommand("90.000")).toBeNull();
   });
 
   it("rejects partial/noise text", () => {
@@ -84,6 +110,14 @@ describe("resolveVoiceProposal", () => {
     expect(resolveVoiceProposal(parseVoiceCommand("call"), { ...READY, syncBlocked: true })).toMatchObject({ ok: false, code: "sync_blocked" });
     expect(resolveVoiceProposal(parseVoiceCommand("call"), { ...READY, correctionPending: true })).toMatchObject({ ok: false, code: "correction_pending" });
     expect(resolveVoiceProposal(parseVoiceCommand("check"), READY)).toMatchObject({ ok: false, code: "illegal_action" });
+  });
+
+  it("binds a spoken seat to the current actor instead of silently using another player", () => {
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three call"), READY)).toMatchObject({ ok: true, canonicalAction: "call" });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat five call"), READY)).toMatchObject({
+      ok: false,
+      code: "spoken_actor_mismatch",
+    });
   });
 
   it("allows a short all-in raise but rejects an undersized non-all-in raise", () => {

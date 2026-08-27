@@ -41,6 +41,13 @@ export function resolveVoiceProposal(
   if (!context.actor || !context.actorView) {
     return reject(command, "actor_missing", "Chưa xác định được người đang tới lượt.");
   }
+  if (command.spokenSeatNumber !== null && command.spokenSeatNumber !== context.actor.seatNumber) {
+    return reject(
+      command,
+      "spoken_actor_mismatch",
+      `Đang tới Ghế ${context.actor.seatNumber}, nhưng Voice nghe Ghế ${command.spokenSeatNumber}.`,
+    );
+  }
 
   const canonicalAction = command.kind === "bet_to"
     ? "bet"
