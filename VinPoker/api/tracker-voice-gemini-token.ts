@@ -6,7 +6,7 @@ import {
   parseGeminiTranscribeLanguageProfile,
   type GeminiLiveConnectionProfile,
   type GeminiTranscribeLanguageProfile,
-} from "../src/lib/trackerVoice/geminiTranscribeProfile";
+} from "../src/lib/trackerVoice/geminiTranscribeProfile.js";
 
 export const GEMINI_LIVE_MODEL = "gemini-3.5-transcribe-live";
 export const GEMINI_LIVE_API_VERSION = "v1beta";
