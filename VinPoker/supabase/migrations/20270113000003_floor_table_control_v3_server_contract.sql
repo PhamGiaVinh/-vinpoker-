@@ -74,7 +74,7 @@ BEGIN
         WHERE a.attrelid = c.conrelid
           AND a.attnum = ANY(c.conkey)
         ORDER BY a.attnum
-      ) = ARRAY['table_id']
+      ) = ARRAY['table_id']::name[]
   LOOP
     EXECUTE pg_catalog.format(
       'ALTER TABLE public.tournament_tables DROP CONSTRAINT %I',

@@ -433,7 +433,7 @@ SELECT public.floor_table_v3_assert(
         WHERE a.attrelid = c.conrelid
           AND a.attnum = ANY(c.conkey)
         ORDER BY a.attnum
-      ) = ARRAY['table_id']
+      ) = ARRAY['table_id']::name[]
   ),
   'catalog-targeted transition removes only the legacy permanent table_id uniqueness'
 );
