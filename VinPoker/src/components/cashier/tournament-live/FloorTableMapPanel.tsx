@@ -21,6 +21,7 @@ import { findFloorTableControlRow, parseFloorTableControlMode, parseFloorTableCo
 import { floorOpsErrorMessage } from "@/lib/floorOpsErrors";
 import { ManualFloorBustConfirmDialog } from "./ManualFloorBustConfirmDialog";
 import { FloorTableRosterIndex } from "@/components/ops/shared/FloorTableRosterIndex";
+import { FloorTableMapPanelV3 } from "./FloorTableMapPanelV3";
 
 type StatusKey = "open" | "running" | "paused" | "closed";
 
@@ -78,6 +79,19 @@ function tableStatus(occupied: number, raw: string, onBreak: boolean): StatusKey
  * on break).
  */
 export function FloorTableMapPanel({
+  tournament,
+  refreshTrigger,
+}: {
+  tournament: Tournament;
+  refreshTrigger: number;
+}) {
+  if (FEATURES.floorTableControlV3) {
+    return <FloorTableMapPanelV3 tournament={tournament} refreshTrigger={refreshTrigger} />;
+  }
+  return <FloorTableMapPanelLegacy tournament={tournament} refreshTrigger={refreshTrigger} />;
+}
+
+function FloorTableMapPanelLegacy({
   tournament,
   refreshTrigger,
 }: {

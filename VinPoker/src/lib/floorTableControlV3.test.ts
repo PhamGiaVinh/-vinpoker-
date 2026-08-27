@@ -18,6 +18,30 @@ const inventoryRow = {
   active_dealer_assignment_id: null,
 };
 
+const rosterRow = {
+  tournament_id: "tournament-a",
+  tournament_table_id: "assignment-a",
+  game_table_id: "table-5",
+  table_number: 5,
+  table_name: "Bàn 5",
+  table_session_id: "session-a",
+  session_revision: 4,
+  control_mode: "manual",
+  control_epoch: 1,
+  tournament_table_status: "active",
+  session_closed_at: null,
+  active_dealer_assignment_id: null,
+  seats: [{
+    seat_number: 1,
+    entry_id: "entry-a",
+    player_id: "player-a",
+    display_name: "Player A",
+    entry_no: 1,
+    chip_count: 30000,
+    is_active: true,
+  }],
+};
+
 function clientFrom(handler: ReturnType<typeof vi.fn>, enabled = true) {
   return createFloorTableControlV3Client(handler as unknown as FloorTableControlV3Rpc, { enabled });
 }
@@ -92,6 +116,33 @@ describe("floorTableControlV3 browser boundary", () => {
       p_tournament_table_id: "assignment-a",
       p_table_session_id: "session-a",
       p_control_epoch: 3,
+    });
+  });
+
+  it("uses the fixed canonical roster RPC and rejects duplicate active seats", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: [{ ...rosterRow, seats: [rosterRow.seats[0], { ...rosterRow.seats[0], entry_id: "entry-b" }] }],
+      error: null,
+    });
+    const client = clientFrom(rpc);
+
+    await expect(client.getTournamentTableRoster("tournament-a")).resolves.toEqual({
+      ok: false,
+      error: "V3_ROSTER_SEAT_DUPLICATE",
+    });
+    expect(rpc).toHaveBeenCalledWith("get_floor_tournament_table_roster_v3", { p_tournament_id: "tournament-a" });
+  });
+
+  it("fails closed for a mixed-session roster row", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: [{ ...rosterRow, session_closed_at: "2026-08-27T00:00:00.000Z" }],
+      error: null,
+    });
+    const client = clientFrom(rpc);
+
+    await expect(client.getTournamentTableRoster("tournament-a")).resolves.toEqual({
+      ok: false,
+      error: "V3_ROSTER_ROW_MALFORMED",
     });
   });
 });

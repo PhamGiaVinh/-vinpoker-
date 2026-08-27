@@ -196,7 +196,8 @@ SET game_table_id = '00000000-0000-0000-0000-000000000504',
 WHERE id = '00000000-0000-0000-0000-000000000700';
 
 \ir ../../supabase/migrations/20270113000003_floor_table_control_v3_server_contract.sql
-\ir ../../supabase/migrations/20270113000004_floor_table_control_v3_contract_hardening.sql
+\ir ../../supabase/migrations/20270113000005_floor_table_control_v3_contract_hardening.sql
+\ir ../../supabase/migrations/20270113000006_floor_table_control_v3_roster_read_contract.sql
 
 INSERT INTO public.tournaments (id, club_id) VALUES
   ('00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000010'),

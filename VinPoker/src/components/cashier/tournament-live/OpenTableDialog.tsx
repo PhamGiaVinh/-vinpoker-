@@ -277,8 +277,13 @@ export function OpenTableDialog({
                     <FloorTableModePicker
                       value={controlMode}
                       onChange={setControlMode}
-                      disabled={busy}
+                      disabled={busy || tableControlV3.enabled}
                     />
+                    {tableControlV3.enabled && (
+                      <p className="mt-3 rounded-xl border border-amber-400/25 bg-amber-400/5 px-3 py-2 text-xs leading-5 text-amber-100/90">
+                        Preview V3 chỉ mở Manual Floor cho tới khi Tracker runtime chuyển toàn bộ writer sang fencing tuple V3. Không có fallback sang contract Tracker cũ.
+                      </p>
+                    )}
                   </div>
                 </div>
 

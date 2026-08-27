@@ -78,6 +78,10 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.FLOOR_UAT_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.FLOOR_UAT_SUPABASE_ANON_KEY }}
+          # The browser seam accepts V3 only when both exact Preview markers
+          # are present.  Missing or any other value remains default-OFF.
+          VITE_FLOOR_TABLE_CONTROL_V3: preview
+          VITE_FLOOR_UAT_ENV: preview
         run: |
           set -euo pipefail
           npm run build

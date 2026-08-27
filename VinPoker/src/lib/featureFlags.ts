@@ -8,6 +8,19 @@ export function isTrackerVoiceBuildEnabled(value: unknown): boolean {
   return value === "true";
 }
 
+/**
+ * Floor Table Control V3 is dark unless an isolated UAT build supplies BOTH
+ * exact values.  A production build with absent, truthy-looking, or partial
+ * variables stays OFF.  This is presentation rollout only: database RPCs
+ * remain caller-bound and their grants are independent.
+ */
+export function isFloorTableControlV3PreviewEnabled(
+  flagValue: unknown = import.meta.env.VITE_FLOOR_TABLE_CONTROL_V3,
+  environmentValue: unknown = import.meta.env.VITE_FLOOR_UAT_ENV,
+): boolean {
+  return flagValue === "preview" && environmentValue === "preview";
+}
+
 export const FEATURES = {
   /**
    * Owner Daily Digest web report — owner-only, read-only surface in VinPoker Ops.
@@ -862,7 +875,7 @@ export const FEATURES = {
    * and an owner-gated rollout explicitly re-grants the exact writers.  This
    * switch must never be used as an authorization mechanism.
    */
-  floorTableControlV3: false,
+  floorTableControlV3: isFloorTableControlV3PreviewEnabled(),
   /**
    * Ops phone app (mobileOpsV2) — Dealer Swing action wiring. The `/ops/dealer-swing`
    * page renders every operator action (swing 1 table, assign a specific dealer via the

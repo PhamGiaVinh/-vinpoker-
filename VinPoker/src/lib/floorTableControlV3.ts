@@ -12,6 +12,8 @@ import { FEATURES } from "@/lib/featureFlags";
 export type FloorTableControlV3RpcName =
   | "get_club_table_inventory"
   | "get_floor_seatable_entries"
+  | "get_floor_tournament_table_roster_v3"
+  | "get_floor_restorable_entries_v3"
   | "validate_tracker_table_writer_context_v3"
   | "floor_open_tournament_table_v3"
   | "operator_open_club_tables_v2"
@@ -65,6 +67,44 @@ export type FloorSeatableEntry = {
   displayName: string;
   currentStack: number;
   registrationId: string;
+};
+
+/**
+ * Canonical active-session roster.  This type deliberately has no legacy
+ * `table_id`: the browser only receives all three explicit V3 identities.
+ */
+export type FloorTableRosterSeat = {
+  seatNumber: number;
+  entryId: string;
+  playerId: string;
+  displayName: string;
+  entryNo: number;
+  chipCount: number;
+  isActive: true;
+};
+
+export type FloorTournamentTableRoster = {
+  tournamentId: string;
+  tournamentTableId: string;
+  gameTableId: string;
+  tableNumber: number;
+  tableName: string;
+  tableSessionId: string;
+  sessionRevision: number;
+  controlMode: "manual" | "tracker";
+  controlEpoch: number;
+  tournamentTableStatus: "active";
+  sessionClosedAt: null;
+  activeDealerAssignmentId: string | null;
+  seats: FloorTableRosterSeat[];
+};
+
+export type FloorRestorableEntry = {
+  entryId: string;
+  playerId: string;
+  entryNo: number;
+  displayName: string;
+  currentStack: number;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -184,6 +224,120 @@ function parseSeatableEntry(value: unknown): FloorTableControlV3Result<FloorSeat
   return { ok: true, data: { entryId, playerId, entryNo, displayName, currentStack, registrationId } };
 }
 
+function parseRosterSeat(value: unknown): FloorTableControlV3Result<FloorTableRosterSeat> {
+  if (!isRecord(value)) return { ok: false, error: "V3_ROSTER_SEAT_MALFORMED" };
+  const seatNumber = value.seat_number;
+  const entryId = value.entry_id;
+  const playerId = value.player_id;
+  const displayName = value.display_name;
+  const entryNo = value.entry_no;
+  const chipCount = value.chip_count;
+  const isActive = value.is_active;
+  if (
+    typeof seatNumber !== "number" || !Number.isSafeInteger(seatNumber) || seatNumber < 1 || seatNumber > 9
+    || typeof entryId !== "string" || !entryId
+    || typeof playerId !== "string" || !playerId
+    || typeof displayName !== "string" || !displayName.trim()
+    || typeof entryNo !== "number" || !Number.isSafeInteger(entryNo)
+    || typeof chipCount !== "number" || !Number.isSafeInteger(chipCount) || chipCount < 0
+    || isActive !== true
+  ) {
+    return { ok: false, error: "V3_ROSTER_SEAT_MALFORMED" };
+  }
+  return {
+    ok: true,
+    data: { seatNumber, entryId, playerId, displayName, entryNo, chipCount, isActive: true },
+  };
+}
+
+function parseRoster(value: unknown): FloorTableControlV3Result<FloorTournamentTableRoster> {
+  if (!isRecord(value)) return { ok: false, error: "V3_ROSTER_ROW_MALFORMED" };
+  const tournamentId = value.tournament_id;
+  const tournamentTableId = value.tournament_table_id;
+  const gameTableId = value.game_table_id;
+  const tableNumber = value.table_number;
+  const tableName = value.table_name;
+  const tableSessionId = value.table_session_id;
+  const sessionRevision = value.session_revision;
+  const controlMode = value.control_mode;
+  const controlEpoch = value.control_epoch;
+  const tournamentTableStatus = value.tournament_table_status;
+  const sessionClosedAt = nullableString(value.session_closed_at);
+  const activeDealerAssignmentId = nullableString(value.active_dealer_assignment_id);
+  const seats = value.seats;
+
+  if (
+    typeof tournamentId !== "string" || !tournamentId
+    || typeof tournamentTableId !== "string" || !tournamentTableId
+    || typeof gameTableId !== "string" || !gameTableId
+    || typeof tableNumber !== "number" || !Number.isSafeInteger(tableNumber) || tableNumber < 1 || tableNumber > 100
+    || typeof tableName !== "string" || !tableName.trim()
+    || typeof tableSessionId !== "string" || !tableSessionId
+    || typeof sessionRevision !== "number" || !Number.isSafeInteger(sessionRevision) || sessionRevision < 0
+    || !["manual", "tracker"].includes(String(controlMode))
+    || typeof controlEpoch !== "number" || !Number.isSafeInteger(controlEpoch) || controlEpoch < 1
+    || tournamentTableStatus !== "active"
+    || sessionClosedAt !== null
+    || activeDealerAssignmentId === undefined
+    || !Array.isArray(seats)
+  ) {
+    return { ok: false, error: "V3_ROSTER_ROW_MALFORMED" };
+  }
+
+  const parsedSeats: FloorTableRosterSeat[] = [];
+  const seenSeatNumbers = new Set<number>();
+  const seenEntries = new Set<string>();
+  for (const value of seats) {
+    const parsed = parseRosterSeat(value);
+    if (parsed.ok === false) return parsed;
+    if (seenSeatNumbers.has(parsed.data.seatNumber) || seenEntries.has(parsed.data.entryId)) {
+      return { ok: false, error: "V3_ROSTER_SEAT_DUPLICATE" };
+    }
+    seenSeatNumbers.add(parsed.data.seatNumber);
+    seenEntries.add(parsed.data.entryId);
+    parsedSeats.push(parsed.data);
+  }
+  if (parsedSeats.length > 9) return { ok: false, error: "V3_ROSTER_TOO_MANY_SEATS" };
+
+  return {
+    ok: true,
+    data: {
+      tournamentId,
+      tournamentTableId,
+      gameTableId,
+      tableNumber,
+      tableName,
+      tableSessionId,
+      sessionRevision,
+      controlMode: controlMode as "manual" | "tracker",
+      controlEpoch,
+      tournamentTableStatus: "active",
+      sessionClosedAt: null,
+      activeDealerAssignmentId,
+      seats: parsedSeats.sort((left, right) => left.seatNumber - right.seatNumber),
+    },
+  };
+}
+
+function parseRestorableEntry(value: unknown): FloorTableControlV3Result<FloorRestorableEntry> {
+  if (!isRecord(value)) return { ok: false, error: "V3_RESTORABLE_ENTRY_MALFORMED" };
+  const entryId = value.entry_id;
+  const playerId = value.player_id;
+  const entryNo = value.entry_no;
+  const displayName = value.display_name;
+  const currentStack = value.current_stack;
+  if (
+    typeof entryId !== "string" || !entryId
+    || typeof playerId !== "string" || !playerId
+    || typeof entryNo !== "number" || !Number.isSafeInteger(entryNo)
+    || typeof displayName !== "string" || !displayName.trim()
+    || typeof currentStack !== "number" || !Number.isSafeInteger(currentStack) || currentStack < 0
+  ) {
+    return { ok: false, error: "V3_RESTORABLE_ENTRY_MALFORMED" };
+  }
+  return { ok: true, data: { entryId, playerId, entryNo, displayName, currentStack } };
+}
+
 function parseMutation(value: unknown): FloorTableControlV3Result<MutationResult> {
   if (!isRecord(value) || typeof value.ok !== "boolean") {
     return { ok: false, error: "V3_MUTATION_RESPONSE_MALFORMED" };
@@ -249,6 +403,49 @@ export function createFloorTableControlV3Client(
         const parsed = parseSeatableEntry(row);
         if (parsed.ok === false) return { ok: false, error: parsed.error };
         if (ids.has(parsed.data.entryId)) return { ok: false, error: "V3_SEATABLE_ENTRY_DUPLICATE" };
+        ids.add(parsed.data.entryId);
+        entries.push(parsed.data);
+      }
+      return { ok: true, data: entries };
+    },
+
+    async getTournamentTableRoster(tournamentId: string): Promise<FloorTableControlV3Result<FloorTournamentTableRoster[]>> {
+      const response = await call("get_floor_tournament_table_roster_v3", { p_tournament_id: tournamentId });
+      if (response.ok === false) return { ok: false, error: response.error };
+      if (!Array.isArray(response.data)) return { ok: false, error: "V3_ROSTER_RESPONSE_MALFORMED" };
+      const roster: FloorTournamentTableRoster[] = [];
+      const tableIds = new Set<string>();
+      const sessionIds = new Set<string>();
+      const tableNumbers = new Set<number>();
+      for (const row of response.data) {
+        const parsed = parseRoster(row);
+        if (parsed.ok === false) return { ok: false, error: parsed.error };
+        if (
+          parsed.data.tournamentId !== tournamentId
+          || tableIds.has(parsed.data.tournamentTableId)
+          || sessionIds.has(parsed.data.tableSessionId)
+          || tableNumbers.has(parsed.data.tableNumber)
+        ) {
+          return { ok: false, error: "V3_ROSTER_TABLE_DUPLICATE_OR_SCOPE_MISMATCH" };
+        }
+        tableIds.add(parsed.data.tournamentTableId);
+        sessionIds.add(parsed.data.tableSessionId);
+        tableNumbers.add(parsed.data.tableNumber);
+        roster.push(parsed.data);
+      }
+      return { ok: true, data: roster.sort((left, right) => left.tableNumber - right.tableNumber) };
+    },
+
+    async getRestorableEntries(tournamentId: string): Promise<FloorTableControlV3Result<FloorRestorableEntry[]>> {
+      const response = await call("get_floor_restorable_entries_v3", { p_tournament_id: tournamentId });
+      if (response.ok === false) return { ok: false, error: response.error };
+      if (!Array.isArray(response.data)) return { ok: false, error: "V3_RESTORABLE_ENTRIES_RESPONSE_MALFORMED" };
+      const entries: FloorRestorableEntry[] = [];
+      const ids = new Set<string>();
+      for (const row of response.data) {
+        const parsed = parseRestorableEntry(row);
+        if (parsed.ok === false) return { ok: false, error: parsed.error };
+        if (ids.has(parsed.data.entryId)) return { ok: false, error: "V3_RESTORABLE_ENTRY_DUPLICATE" };
         ids.add(parsed.data.entryId);
         entries.push(parsed.data);
       }

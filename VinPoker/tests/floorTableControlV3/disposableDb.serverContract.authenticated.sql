@@ -1,19 +1,9 @@
 \set ON_ERROR_STOP on
 
--- Disposable-only activation of the exact V3 writer grants.  Production remains
--- OFF because 20270113000004 revokes these from authenticated; no browser role
--- can grant itself access.
-GRANT EXECUTE ON FUNCTION public.floor_open_tournament_table_v3(uuid, uuid, text, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.operator_open_club_tables_v2(uuid[], text, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.operator_close_club_table_v2(uuid, bigint, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.validate_tracker_table_writer_context_v3(uuid, uuid, uuid, bigint) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.floor_assign_entry_to_seat(uuid, uuid, integer, bigint, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.floor_set_table_control_mode_v3(uuid, text, bigint, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.move_player_seat_v2(uuid, uuid, integer, bigint, bigint, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.close_tournament_table_v3(uuid, bigint, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.floor_break_table_v3(uuid, bigint, uuid, text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.floor_bust_player_v3(uuid, bigint, bigint, integer, uuid, text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.floor_restore_busted_player_to_seat_v3(uuid, uuid, integer, bigint, bigint, uuid) TO authenticated;
+-- Disposable-only activation of the exact V3 writer rollout.  The same
+-- additive migration is what a future isolated Preview applies; production
+-- remains untouched until its separate owner-gated runbook.
+\ir ../../supabase/migrations/20270113000007_floor_table_control_v3_exact_writer_grants.sql
 
 -- These calls are deliberately made as the PostgreSQL `authenticated` role,
 -- not as the disposable database owner with a spoofed auth.uid().  The setup
