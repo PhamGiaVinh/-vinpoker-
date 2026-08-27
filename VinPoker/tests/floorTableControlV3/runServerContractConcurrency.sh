@@ -129,10 +129,12 @@ echo 'FLOOR_TABLE_CONTROL_V3_CONCURRENCY close-vs-dealer assignment race'
 BEGIN;
 SET LOCAL lock_timeout = '3s';
 SET LOCAL deadlock_timeout = '200ms';
-SELECT 1 FROM public.table_sessions WHERE id = '00000000-0000-0000-0000-000000000628' FOR SHARE;
-SELECT pg_catalog.pg_sleep(0.8);
 INSERT INTO public.dealer_assignments (table_id, table_session_id, status)
 VALUES ('00000000-0000-0000-0000-000000000528', '00000000-0000-0000-0000-000000000628', 'assigned');
+-- Hold the real assignment's game-table/session locks while close competes.
+-- Do not pre-lock the session in reverse order: the public writer is the
+-- trigger itself, whose contract is game_table -> table_session.
+SELECT pg_catalog.pg_sleep(0.8);
 COMMIT;
 SQL
 ) >"$tmp_dir/dealer-assignment" 2>&1 &
