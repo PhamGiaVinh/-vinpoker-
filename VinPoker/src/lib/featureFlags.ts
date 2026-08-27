@@ -1513,6 +1513,12 @@ export const FEATURES = {
    */
   mobileOpsV2: true,
   /**
+   * Read-only desktop terminal for Owner / Super Admin inside the Ops Control
+   * Deck. It resolves a trusted club before mounting any source reader. Keep
+   * dark through source merge; Preview and production activation are separate.
+   */
+  opsIntelligenceCommandCenterV1: false,
+  /**
    * cockpitFloorActions — nâng cấp cockpit giải trên điện thoại (`OpsTournamentCockpit`): tab "Bàn"
    * hiện sơ đồ bàn INLINE (thay redirect) + tab "Người chơi" 3 tab Tất cả/Đang chơi/Busted, người
    * đang chơi CHẠM ĐỂ THAO TÁC (Sửa chip/Loại/Chuyển/Phiếu — dùng chung `FloorPlayerActions` với màn

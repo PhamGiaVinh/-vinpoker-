@@ -21,6 +21,7 @@ import {
   type OpsModuleId,
 } from "@/ops/registry/opsModuleRegistry";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
+import { OpsIntelligenceEntryGate } from "@/ops/intelligence/OpsIntelligenceEntryGate";
 
 const GROUPS: readonly { id: OpsModuleGroup; title: string; description: string }[] = [
   { id: "CORE", title: "Điều hành trực tiếp", description: "Công việc đang diễn ra trong CLB và giải đấu." },
@@ -55,6 +56,20 @@ export default function OpsSelectModule() {
   if (capabilities.scopeError) return <OpsAccessDenied message={capabilities.scopeError} />;
   if (!capabilities.hasAnyAccess) return <OpsAccessDenied message="Tài khoản chưa có quyền vận hành CLB." />;
 
+  return <OpsIntelligenceEntryGate fallback={<OpsModuleSelector capabilities={capabilities} workspace={workspace} navigate={navigate} spacesOnly={spacesOnly} />} />;
+}
+
+function OpsModuleSelector({
+  capabilities,
+  workspace,
+  navigate,
+  spacesOnly,
+}: {
+  capabilities: ReturnType<typeof useOpsCapabilities>;
+  workspace: ReturnType<typeof useOpsWorkspace>;
+  navigate: ReturnType<typeof useNavigate>;
+  spacesOnly: boolean;
+}) {
   const openModule = (module: OpsModuleDefinition) => {
     if (module.defaultState === "BLOCKED" || module.defaultState === "DISABLED") return;
     const clubIds = capabilities.moduleClubIds(module.id);

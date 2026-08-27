@@ -5,24 +5,13 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  listTrackerFloorAlerts,
+  type TrackerFloorAlert,
+  type TrackerFloorAlertStatus,
+} from "@/lib/tracker-floor-alerts/trackerFloorAlertsRead";
 
-type FloorAlertStatus = "open" | "acknowledged" | "in_progress" | "resolved" | "dismissed";
-
-interface TrackerFloorAlert {
-  id: string;
-  tournament_id: string;
-  tournament_table_id: string;
-  hand_id: string | null;
-  dealer_name: string | null;
-  alert_kind: "wrong_action" | "call_floor";
-  priority: "high" | "urgent";
-  status: FloorAlertStatus;
-  version: number;
-  correction_required: boolean;
-  title: string;
-  message: string | null;
-  created_at: string;
-}
+type FloorAlertStatus = TrackerFloorAlertStatus;
 interface TrackerFloorAlertLaneProps {
   tournamentId: string;
 }
@@ -42,22 +31,13 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
 
   const reload = useCallback(async () => {
     setError(null);
-    const { data, error: rpcError } = await supabase.rpc("list_tracker_floor_alerts" as never, {
-      p_tournament_id: tournamentId,
-      p_status: null,
-    } as never);
-    if (rpcError) {
-      setError(rpcError.message);
+    const result = await listTrackerFloorAlerts(supabase, tournamentId);
+    if ("error" in result) {
+      setError(result.error);
       setLoading(false);
       return;
     }
-    const payload = data as unknown as { ok?: boolean; error?: string; alerts?: TrackerFloorAlert[] } | null;
-    if (!payload?.ok) {
-      setError(payload?.error ?? "Không tải được cảnh báo Voice.");
-      setLoading(false);
-      return;
-    }
-    setAlerts((payload.alerts ?? []).filter((alert) => !["resolved", "dismissed"].includes(alert.status)));
+    setAlerts([...result.alerts]);
     setLoading(false);
   }, [tournamentId]);
 
