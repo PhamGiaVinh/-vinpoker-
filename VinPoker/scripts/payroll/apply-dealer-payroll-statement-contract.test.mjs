@@ -10,8 +10,10 @@ import {
   finalPostProblems,
   pdfPostProblems,
   preStateProblems,
+  ROLLOUT_STATE_SQL,
   run,
   sourceProblems,
+  STATE_SQL,
 } from "./apply-dealer-payroll-statement-contract.mjs";
 
 function preState() {
@@ -131,6 +133,11 @@ test("unknown partial state blocks instead of guessing a repair", () => {
   assert.equal(applyPlan(state, []).action, "block");
 });
 
+test("pre-migration catalog query does not reference the absent rollout relation", () => {
+  assert.doesNotMatch(STATE_SQL, /from\s+public\.dealer_payroll_statement_rollout/i);
+  assert.match(ROLLOUT_STATE_SQL, /from\s+public\.dealer_payroll_statement_rollout/i);
+});
+
 test("apply sends only the exact migrations in order and verifies each post-state", async () => {
   let reads = 0;
   const calls = [];
@@ -144,6 +151,10 @@ test("apply sends only the exact migrations in order and verifies each post-stat
       return { ok: true, status: 200, json: async () => ({ ok: true }) };
     }
     if (url.endsWith("/database/query/read-only")) {
+      const query = JSON.parse(options.body).query;
+      if (/from\s+public\.dealer_payroll_statement_rollout/i.test(query)) {
+        return { ok: true, status: 200, json: async () => [finalState()] };
+      }
       return { ok: true, status: 200, json: async () => [states[Math.min(reads++, states.length - 1)]] };
     }
     throw new Error(`unexpected URL ${url}`);

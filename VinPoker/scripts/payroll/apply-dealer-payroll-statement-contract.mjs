@@ -102,12 +102,17 @@ select
   coalesce(has_function_privilege('authenticated', f.complete_oid, 'EXECUTE'), false) as complete_authenticated_execute,
   coalesce(has_function_privilege('service_role', f.fail_oid, 'EXECUTE'), false) as fail_service_execute,
   coalesce(has_function_privilege('authenticated', f.fail_oid, 'EXECUTE'), false) as fail_authenticated_execute,
-  coalesce((select relrowsecurity from pg_class where oid=f.rollout_table), false) as rollout_rls_enabled,
-  (select count(*) from public.dealer_payroll_statement_rollout) as rollout_row_count,
-  (select count(*) from public.dealer_payroll_statement_rollout where master_enabled) as rollout_master_enabled_count,
-  (select count(*) from public.dealer_payroll_statement_rollout where all_clubs_enabled) as rollout_all_clubs_enabled_count,
-  (select count(*) from public.dealer_payroll_statement_rollout where coalesce(array_length(allowed_club_ids, 1), 0) > 0) as rollout_allowlist_count
+  coalesce((select relrowsecurity from pg_class where oid=f.rollout_table), false) as rollout_rls_enabled
 from functions f cross join columns c;`;
+
+// The rollout relation is intentionally absent before the first migration. Keep
+// its row checks in a second query so the pre-migration catalog probe remains valid.
+export const ROLLOUT_STATE_SQL = `select
+  count(*) as rollout_row_count,
+  count(*) filter (where master_enabled) as rollout_master_enabled_count,
+  count(*) filter (where all_clubs_enabled) as rollout_all_clubs_enabled_count,
+  count(*) filter (where coalesce(array_length(allowed_club_ids, 1), 0) > 0) as rollout_allowlist_count
+from public.dealer_payroll_statement_rollout;`;
 
 function firstRow(value) {
   return Array.isArray(value) ? value[0] : value;
@@ -252,13 +257,30 @@ async function request({ projectRef, token, path, method, body, fetchImpl = fetc
 }
 
 export async function readState(credentials, fetchImpl = fetch) {
-  return firstRow(await request({
+  const state = firstRow(await request({
     ...credentials,
     path: "/database/query/read-only",
     method: "POST",
     body: { query: STATE_SQL },
     fetchImpl,
   }));
+  if (state?.rollout_table_exists !== true) {
+    return {
+      ...state,
+      rollout_row_count: 0,
+      rollout_master_enabled_count: 0,
+      rollout_all_clubs_enabled_count: 0,
+      rollout_allowlist_count: 0,
+    };
+  }
+  const rollout = firstRow(await request({
+    ...credentials,
+    path: "/database/query/read-only",
+    method: "POST",
+    body: { query: ROLLOUT_STATE_SQL },
+    fetchImpl,
+  }));
+  return { ...state, ...rollout };
 }
 
 export async function listMigrationHistory(credentials, fetchImpl = fetch) {
