@@ -46,11 +46,35 @@ SET search_path = ''
 AS $$
 DECLARE
   v_session public.table_sessions%ROWTYPE;
+  v_game_table_id uuid;
 BEGIN
   IF NEW.table_session_id IS NULL
      OR NEW.released_at IS NOT NULL
      OR NEW.status NOT IN ('assigned', 'on_break') THEN
     RETURN NEW;
+  END IF;
+
+  -- All V3 writes coordinate physical table before session.  The dealer
+  -- assignment FK to game_tables takes a key-share lock after this trigger;
+  -- acquiring that lock first prevents a close (game_table -> session) from
+  -- deadlocking against an assignment (session -> game_table).
+  SELECT session_row.game_table_id INTO v_game_table_id
+  FROM public.table_sessions session_row
+  WHERE session_row.id = NEW.table_session_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P0001',
+      MESSAGE = 'floor_table_v3_dealer_assignment_session_not_active';
+  END IF;
+
+  PERFORM 1
+  FROM public.game_tables game_table_row
+  WHERE game_table_row.id = v_game_table_id
+  FOR KEY SHARE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P0001',
+      MESSAGE = 'floor_table_v3_dealer_assignment_session_not_active';
   END IF;
 
   SELECT * INTO v_session

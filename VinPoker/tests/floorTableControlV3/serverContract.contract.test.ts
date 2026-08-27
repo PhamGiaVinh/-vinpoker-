@@ -55,7 +55,15 @@ describe("Floor Table Control V3 server contract", () => {
     expect(migration).toContain("REVOKE ALL ON FUNCTION public.floor_open_tournament_table_v3");
     expect(hardeningMigration).toContain("REVOKE ALL ON FUNCTION public.floor_open_tournament_table_v3(uuid, uuid, text, uuid) FROM authenticated");
     expect(hardeningMigration).toContain("floor_table_v3_guard_dealer_assignment_session");
+    const dealerAssignmentGuard = hardeningMigration.slice(
+      hardeningMigration.indexOf("CREATE OR REPLACE FUNCTION floor_private.floor_table_v3_guard_dealer_assignment_session"),
+      hardeningMigration.indexOf("DROP TRIGGER IF EXISTS floor_table_v3_guard_dealer_assignment_session"),
+    );
+    expect(dealerAssignmentGuard).toContain("FOR KEY SHARE");
     expect(hardeningMigration).toContain("FOR SHARE");
+    expect(dealerAssignmentGuard.indexOf("FOR KEY SHARE")).toBeLessThan(
+      dealerAssignmentGuard.indexOf("FOR SHARE"),
+    );
     expect(hardeningMigration).toContain("floor_table_v3_dealer_assignment_session_not_active");
   });
 
