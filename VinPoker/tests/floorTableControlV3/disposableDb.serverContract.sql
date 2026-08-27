@@ -682,16 +682,14 @@ BEGIN
     'Cash close ends the active dealer assignment rather than deleting history'
   );
 
+  PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
   v_result := public.floor_open_tournament_table_v3(
     '00000000-0000-0000-0000-000000000100',
     '00000000-0000-0000-0000-000000000506',
     'tracker',
     '00000000-0000-0000-0000-000000001018'
   );
-  PERFORM public.floor_table_v3_assert(
-    (v_result ->> 'ok')::boolean,
-    'Tracker session can open on another available physical table; error=' || COALESCE(v_result ->> 'error', v_result::text)
-  );
+  PERFORM public.floor_table_v3_assert((v_result ->> 'ok')::boolean, 'Tracker session can open on another available physical table');
   v_old_tracker_table_id := (v_result ->> 'tournament_table_id')::uuid;
   v_old_tracker_session_id := (v_result ->> 'table_session_id')::uuid;
   v_result := public.close_tournament_table_v3(
