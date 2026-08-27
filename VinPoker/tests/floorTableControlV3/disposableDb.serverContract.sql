@@ -40,7 +40,11 @@ CREATE TABLE public.tournament_tables (
   table_id uuid REFERENCES public.game_tables(id),
   table_number integer,
   max_seats integer NOT NULL DEFAULT 9,
-  status text NOT NULL DEFAULT 'active'
+  status text NOT NULL DEFAULT 'active',
+  -- The V3 inventory contract orders historical tournament assignments by
+  -- creation time. Keep the disposable schema aligned with that public read
+  -- contract instead of weakening the production query for a fixture.
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.tournament_entries (
   id uuid PRIMARY KEY,
