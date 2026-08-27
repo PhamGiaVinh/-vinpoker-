@@ -71,5 +71,17 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
     CREATE ROLE service_role NOLOGIN;
   END IF;
+  -- Supabase-managed ownership roles are present in a public+storage schema
+  -- dump but do not exist in the disposable PostgreSQL image. These inert
+  -- roles are only for replaying ownership metadata; they cannot log in.
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin') THEN
+    CREATE ROLE supabase_admin NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_storage_admin') THEN
+    CREATE ROLE supabase_storage_admin NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dashboard_user') THEN
+    CREATE ROLE dashboard_user NOLOGIN;
+  END IF;
 END;
 $$;
