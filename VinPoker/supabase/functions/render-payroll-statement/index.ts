@@ -1,5 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.106.2";
-import { renderPayrollStatementPdf, loadPayrollPdfFonts } from "../_shared/payrollPdf/render.ts";
+import {
+  buildPayrollStatementViewModel,
+  renderPayrollStatementPdf,
+  loadPayrollPdfFonts,
+} from "../_shared/payrollPdf/render.ts";
 import type { PayrollStatementSnapshot } from "../_shared/payrollPdf/types.ts";
 import {
   fixedPayrollPdfPath,
@@ -39,7 +43,7 @@ Deno.serve(async (request) => {
     const { data: userData, error: userError } = await userClient.auth.getUser(authHeader.slice(7));
     if (userError || !userData.user?.id) return json({ error: "UNAUTHORIZED" }, 401);
 
-    if (parsed.mode === "preview_ft") {
+    if (parsed.mode === "preview_ft" || parsed.mode === "preview_ft_view") {
       const rollout = await requireRollout(userClient, parsed.club_id);
       if (!rollout.allowed) return json({ error: rollout.error }, rollout.status);
       const { data, error } = await userClient.rpc("preview_full_time_payroll_statement", {
@@ -49,6 +53,7 @@ Deno.serve(async (request) => {
       });
       if (error || !data) return json({ error: sanitizePayrollPdfError(error, "PAYROLL_STATEMENT_PREVIEW_UNAVAILABLE") }, 409);
       const snapshot = data as PayrollStatementSnapshot;
+      if (parsed.mode === "preview_ft_view") return json({ view: buildPayrollStatementViewModel(snapshot, true) });
       const rendered = await renderPayrollStatementPdf(snapshot, {
         mode: "draft_preview",
         fonts: await loadPayrollPdfFonts(),
@@ -56,6 +61,7 @@ Deno.serve(async (request) => {
       return pdf(rendered.bytes, payrollPdfDownloadFilename(snapshot.id, snapshot.source_snapshot, true), snapshot.statement_hash);
     }
 
+    if (!("statement_id" in parsed)) return json({ error: "INVALID_REQUEST" }, 400);
     const { data: statement, error: statementError } = await userClient.rpc("get_dealer_payroll_statement", {
       p_statement_id: parsed.statement_id,
     });
@@ -64,6 +70,10 @@ Deno.serve(async (request) => {
     const rollout = await requireRollout(userClient, snapshot.club_id);
     if (!rollout.allowed) return json({ error: rollout.error }, rollout.status);
     if (!(await isPdfActor(admin, userData.user.id, snapshot.club_id))) return json({ error: "FORBIDDEN" }, 403);
+
+    if (parsed.mode === "preview_view") {
+      return json({ view: buildPayrollStatementViewModel(snapshot, false) });
+    }
 
     if (parsed.mode === "preview") {
       const rendered = await renderPayrollStatementPdf(snapshot, {

@@ -17,6 +17,8 @@ Deno.test("PDF storage migration is additive and private", () => {
 Deno.test("renderer is snapshot-only and does not accept client payroll data", () => {
   assertStringIncludes(renderer, 'rpc("get_dealer_payroll_statement"');
   assertStringIncludes(renderer, "renderPayrollStatementPdf(snapshot");
+  assertStringIncludes(renderer, "buildPayrollStatementViewModel(snapshot, true)");
+  assertStringIncludes(renderer, "buildPayrollStatementViewModel(snapshot, false)");
   assertStringIncludes(renderer, 'snapshot.club_id');
   assertStringIncludes(renderer, 'snapshot.statement_hash');
   assert(!renderer.includes("body.amount"));

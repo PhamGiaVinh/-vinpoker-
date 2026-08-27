@@ -256,6 +256,154 @@ begin
 end;
 $$;
 
+select pg_temp.assert_true(
+  has_function_privilege('authenticated', 'public.get_dealer_payroll_statement_delivery_rollout(uuid)', 'EXECUTE')
+  and has_function_privilege('authenticated', 'public.create_dealer_payroll_statement_delivery_operation(uuid,uuid,uuid)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'public.claim_dealer_payroll_statement_delivery_target(uuid)', 'EXECUTE')
+  and has_function_privilege('service_role', 'public.claim_dealer_payroll_statement_delivery_target(uuid)', 'EXECUTE')
+  and not has_table_privilege('authenticated', 'public.dealer_payroll_delivery_targets', 'SELECT'),
+  'Telegram delivery entrypoints and worker internals are separated by ACL'
+);
+
+update public.dealers
+set telegram_user_id = 123456789
+where id = 'fc130001-0000-4000-8000-000000000001';
+
+select set_config('request.jwt.claim.sub', 'fa130001-0000-4000-8000-000000000002', true);
+set role authenticated;
+do $$
+begin
+  begin
+    perform public.create_dealer_payroll_statement_delivery_operation(
+      'ad130001-0000-4000-8000-000000000001',
+      'fb130001-0000-4000-8000-000000000001',
+      'fd130001-0000-4000-8000-000000000001'
+    );
+    raise exception 'delivery unexpectedly ignored master OFF';
+  exception when raise_exception then
+    if sqlerrm <> 'PAYROLL_DELIVERY_ROLLOUT_DISABLED' then raise; end if;
+  end;
+end;
+$$;
+
+reset role;
+update public.dealer_payroll_statement_delivery_rollout
+set master_enabled = true,
+    all_clubs_enabled = false,
+    allowed_club_ids = array['fb130001-0000-4000-8000-000000000001'::uuid]
+where id;
+
+select set_config('request.jwt.claim.sub', 'fa130001-0000-4000-8000-000000000002', true);
+set role authenticated;
+do $$
+declare
+  v_first jsonb;
+  v_replay jsonb;
+  v_resumed jsonb;
+begin
+  v_first := public.create_dealer_payroll_statement_delivery_operation(
+    'ad130001-0000-4000-8000-000000000002',
+    'fb130001-0000-4000-8000-000000000001',
+    'fd130001-0000-4000-8000-000000000001'
+  );
+  perform pg_temp.assert_true((v_first->>'pending_count')::int = 1, 'ready PDF with linked Telegram becomes one pending target');
+  v_replay := public.create_dealer_payroll_statement_delivery_operation(
+    'ad130001-0000-4000-8000-000000000002',
+    'fb130001-0000-4000-8000-000000000001',
+    'fd130001-0000-4000-8000-000000000001'
+  );
+  perform pg_temp.assert_eq(v_replay->>'operation_id', v_first->>'operation_id', 'delivery request replay returns the same operation');
+  perform pg_temp.assert_eq(v_replay->>'idempotent', 'true', 'delivery request replay is explicit');
+  v_resumed := public.create_dealer_payroll_statement_delivery_operation(
+    'ad130001-0000-4000-8000-000000000003',
+    'fb130001-0000-4000-8000-000000000001',
+    'fd130001-0000-4000-8000-000000000001'
+  );
+  perform pg_temp.assert_eq(v_resumed->>'operation_id', v_first->>'operation_id', 'new browser resumes the active delivery operation');
+  perform pg_temp.assert_eq(v_resumed->>'resumed', 'true', 'active delivery resume is explicit');
+end;
+$$;
+
+reset role;
+set role service_role;
+do $$
+declare
+  v_operation uuid;
+  v_claim jsonb;
+  v_done jsonb;
+begin
+  select id into v_operation from public.dealer_payroll_delivery_operations
+  where request_id = 'ad130001-0000-4000-8000-000000000002';
+  v_claim := public.claim_dealer_payroll_statement_delivery_target(v_operation);
+  perform pg_temp.assert_eq(v_claim->>'claimed', 'true', 'one service worker claims one target');
+  v_done := public.complete_dealer_payroll_statement_delivery_target(
+    (v_claim->>'target_id')::uuid,
+    (v_claim->>'dispatch_token')::uuid,
+    repeat('a', 64),
+    'TELEGRAM_SENT'
+  );
+  perform pg_temp.assert_eq(v_done->>'state', 'completed', 'successful worker receipt completes the operation');
+  perform pg_temp.assert_true((v_done->>'sent_count')::int = 1, 'one immutable PDF is recorded as sent');
+  perform pg_temp.assert_true(
+    (select count(*) from public.dealer_payroll_delivery_attempts where operation_id = v_operation and status = 'sent') = 1,
+    'provider receipt is recorded once'
+  );
+end;
+$$;
+reset role;
+
+set role service_role;
+do $$
+declare
+  v_statement uuid;
+  v_operation uuid := 'ad130001-0000-4000-8000-000000000004';
+  v_target uuid := 'ae130001-0000-4000-8000-000000000004';
+  v_summary jsonb;
+begin
+  select statement_id into v_statement
+  from public.dealer_payroll_delivery_targets
+  where operation_id = (
+    select id from public.dealer_payroll_delivery_operations
+    where request_id = 'ad130001-0000-4000-8000-000000000002'
+  );
+
+  update public.dealer_payroll_delivery_targets
+  set delivery_state = 'failed'
+  where statement_id = v_statement and channel = 'telegram';
+
+  insert into public.dealer_payroll_delivery_operations (
+    id, club_id, payroll_period_id, request_id, requested_by, state
+  ) values (
+    v_operation,
+    'fb130001-0000-4000-8000-000000000001',
+    'fd130001-0000-4000-8000-000000000001',
+    'ad130001-0000-4000-8000-000000000004',
+    'fa130001-0000-4000-8000-000000000002',
+    'dispatching'
+  );
+  insert into public.dealer_payroll_delivery_targets (
+    id, operation_id, club_id, statement_id, dealer_id, delivery_state,
+    idempotency_key, dispatch_token, dispatch_started_at, attempt_count
+  ) values (
+    v_target, v_operation,
+    'fb130001-0000-4000-8000-000000000001', v_statement,
+    'fc130001-0000-4000-8000-000000000001', 'sending',
+    'af130001-0000-4000-8000-000000000004',
+    'b0130001-0000-4000-8000-000000000004', now() - interval '6 minutes', 2
+  );
+
+  v_summary := public._refresh_dealer_payroll_delivery_operation(v_operation);
+  perform pg_temp.assert_eq(v_summary->>'state', 'partial', 'stale send never finalizes completed');
+  perform pg_temp.assert_eq(v_summary->>'unknown_count', '1', 'stale send is marked unknown');
+  perform pg_temp.assert_true(
+    (select count(*) from public.dealer_payroll_delivery_attempts
+     where target_id = v_target and status = 'unknown' and provider_code = 'TELEGRAM_DISPATCH_UNCONFIRMED') = 1,
+    'stale send receipt is recorded once without an automatic resend'
+  );
+end;
+$$;
+reset role;
+
 update public.dealer_payroll_statement_rollout
 set master_enabled = false where id;
 

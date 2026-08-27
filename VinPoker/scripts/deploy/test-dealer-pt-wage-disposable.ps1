@@ -74,6 +74,7 @@ try {
     '/tmp/payroll-statements-v1.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270112000000_dealer_payroll_statements_v1.sql'
     '/tmp/payroll-pdf-storage.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270113000000_dealer_payroll_statement_pdf_storage.sql'
     '/tmp/payroll-ft-ui.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270113000001_dealer_payroll_statement_ft_ui_contract.sql'
+    '/tmp/payroll-telegram-delivery.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270113000004_dealer_payroll_statement_telegram_delivery.sql'
     '/tmp/payroll-statements.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_payroll_statements.sql'
     '/tmp/payroll-statements-concurrency.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_payroll_statements_concurrency.sql'
     '/tmp/payroll-ft-ui-test.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_payroll_statement_ft_ui.sql'
@@ -106,10 +107,12 @@ try {
   Invoke-ContainerPsql '/tmp/payroll-pdf-storage.sql'
   Invoke-ContainerPsql '/tmp/payroll-ft-ui.sql'
   Invoke-ContainerPsql '/tmp/payroll-ft-ui.sql'
+  Invoke-ContainerPsql '/tmp/payroll-telegram-delivery.sql'
+  Invoke-ContainerPsql '/tmp/payroll-telegram-delivery.sql'
   Invoke-ContainerPsql '/tmp/payroll-ft-ui-test.sql'
   Invoke-ContainerPsql '/tmp/payroll-ft-ui-concurrency.sql'
 
-  Write-Host "Dealer PT wage PG$PostgresMajor current-schema restore, ordered migration apply/reapply, ACL, lifecycle, immutable FT statement/PDF state machine, PT reservation, payout bridge, and concurrency suites passed."
+  Write-Host "Dealer PT wage PG$PostgresMajor current-schema restore, ordered migration apply/reapply, ACL, lifecycle, immutable FT statement/PDF/Telegram delivery state machines, PT reservation, payout bridge, and concurrency suites passed."
 } finally {
   if (Test-Path -LiteralPath $preparedSchemaPath) { Remove-Item -LiteralPath $preparedSchemaPath -Force }
   $existing = & docker ps -a --format '{{.Names}}' | Where-Object { $_ -eq $containerName }

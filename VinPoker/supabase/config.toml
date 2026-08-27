@@ -4,3 +4,6 @@ verify_jwt = false
 
 [functions.send-push-notification]
 verify_jwt = false
+
+[functions.send-payroll-statement]
+verify_jwt = true

@@ -24,6 +24,17 @@ Deno.test("runtime accepts only intent identifiers for FT draft preview", () => 
     payroll_period_id: periodId,
   });
   assertEquals(parsePayrollPdfRequest({
+    mode: "preview_ft_view",
+    club_id: clubId,
+    dealer_id: dealerId,
+    payroll_period_id: periodId,
+  }), {
+    mode: "preview_ft_view",
+    club_id: clubId,
+    dealer_id: dealerId,
+    payroll_period_id: periodId,
+  });
+  assertEquals(parsePayrollPdfRequest({
     mode: "preview_ft",
     club_id: clubId,
     dealer_id: dealerId,
@@ -35,6 +46,10 @@ Deno.test("runtime accepts only intent identifiers for FT draft preview", () => 
 Deno.test("runtime accepts finalized preview and final intents only", () => {
   assertEquals(parsePayrollPdfRequest({ mode: "preview", statement_id: statementId }), {
     mode: "preview",
+    statement_id: statementId,
+  });
+  assertEquals(parsePayrollPdfRequest({ mode: "preview_view", statement_id: statementId }), {
+    mode: "preview_view",
     statement_id: statementId,
   });
   assertEquals(parsePayrollPdfRequest({ mode: "final", statement_id: statementId }), {

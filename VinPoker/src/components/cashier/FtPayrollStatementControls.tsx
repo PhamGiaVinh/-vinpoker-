@@ -18,10 +18,12 @@ import {
 import {
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger,
 } from "@/components/ui/sheet";
+import { PayrollStatementPreviewDialog } from "@/components/cashier/PayrollStatementPreviewDialog";
 import type { useFtPayrollStatements } from "@/hooks/useFtPayrollStatements";
 import {
   FT_STATEMENT_STATUS_LABELS,
   type FtPayrollStatementStatus,
+  type PayrollStatementOnlinePreview,
 } from "@/lib/payrollStatementUi";
 
 type Controller = ReturnType<typeof useFtPayrollStatements>;
@@ -114,6 +116,7 @@ export function FtPayrollStatementActions(props: {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState<PayrollStatementOnlinePreview | null>(null);
   const status = controller.statusFor(dealerId);
   const isFinal = ["FINALIZED", "PDF_GENERATING", "PDF_READY", "PDF_FAILED"].includes(status);
   const locked = controller.availability !== "ready" || busy || status === "FINALIZING" || status === "PDF_GENERATING";
@@ -122,8 +125,8 @@ export function FtPayrollStatementActions(props: {
     setBusy(true);
     setSheetOpen(false);
     try {
-      if (action === "draft") await controller.previewDraft(dealerId);
-      if (action === "final-preview") await controller.previewFinal(dealerId);
+      if (action === "draft") setPreview(await controller.previewDraft(dealerId));
+      if (action === "final-preview") setPreview(await controller.previewFinal(dealerId));
       if (action === "pdf") await controller.generatePdf(dealerId);
       if (action === "refresh") await controller.refresh();
     } catch {
@@ -244,6 +247,7 @@ export function FtPayrollStatementActions(props: {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <PayrollStatementPreviewDialog preview={preview} onOpenChange={(open) => { if (!open) setPreview(null); }} />
     </>
   );
 }

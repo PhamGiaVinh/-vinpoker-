@@ -11,7 +11,7 @@ export async function exportPayrollPdf(
   singleDealerId?: string
 ): Promise<void> {
   // Build printable HTML
-  const html = buildPayrollHtml(rows, clubName, monthLabel, singleDealerId);
+  const html = buildPayrollPreviewHtml(rows, clubName, monthLabel, singleDealerId);
 
   try {
     // Dynamic import to keep bundle small
@@ -32,6 +32,8 @@ export async function exportPayrollPdf(
     container.style.top = "0";
     container.style.width = "800px";
     container.style.background = "white";
+    container.style.color = "#151a17";
+    container.style.fontFamily = "Arial, Helvetica, sans-serif";
     document.body.appendChild(container);
 
     try {
@@ -47,7 +49,7 @@ export async function exportPayrollPdf(
         pdf.addImage(imgData, "PNG", 10, 10, imgWidth, imgHeight);
       } else {
         // Multi-page
-        let y = 10;
+        const y = 10;
         let remaining = imgHeight;
         let position = 0;
         while (remaining > 0) {
@@ -58,9 +60,10 @@ export async function exportPayrollPdf(
         }
       }
 
+      const period = monthLabel.replace(/[^0-9-]/g, "").slice(0, 16) || "ky-luong";
       const filename = singleDealerId
-        ? `phieu-luong-${rows[0]?.full_name ?? "dealer"}-${monthLabel}.pdf`
-        : `bang-luong-${clubName}-${monthLabel}.pdf`;
+        ? `phieu-luong-tam-tinh-${period}-${singleDealerId}.pdf`
+        : `bang-luong-tam-tinh-${period}.pdf`;
       pdf.save(filename);
     } finally {
       document.body.removeChild(container);
@@ -83,15 +86,14 @@ export async function exportPayrollPdf(
   }
 }
 
-function buildPayrollHtml(
+export function buildPayrollPreviewHtml(
   rows: DealerPayrollRow[],
   clubName: string,
   monthLabel: string,
   singleDealerId?: string
 ): string {
-  const title = singleDealerId && rows[0]
-    ? `Phiếu lương — ${rows[0].full_name}`
-    : `Bảng lương — ${clubName} — ${monthLabel}`;
+  const single = singleDealerId && rows[0] ? rows[0] : null;
+  const title = single ? "PHIẾU LƯƠNG" : "BẢNG LƯƠNG";
 
   const rowsHtml = rows.map((r) => `
     <tr>
@@ -108,10 +110,52 @@ function buildPayrollHtml(
     </tr>
   `).join("");
 
+  const singleIdentity = single ? `
+    <section class="identity-grid">
+      <div><span>Họ và tên</span><strong>${escapeHtml(single.full_name)}</strong></div>
+      <div><span>Loại hợp đồng</span><strong>${single.employment_type === "full_time" ? "Toàn thời gian" : "Bán thời gian"}</strong></div>
+      <div><span>Ngày công</span><strong>${single.total_shifts} ca</strong></div>
+      <div><span>Tổng giờ</span><strong>${(single.total_hours ?? 0).toFixed(1)} giờ</strong></div>
+    </section>
+  ` : "";
+
   return `
-    <h1>${escapeHtml(title)}</h1>
-    <div class="meta">CLB: ${escapeHtml(clubName)} · Kỳ: ${escapeHtml(monthLabel)}</div>
-    <table>
+    <style>
+      .payroll-print { box-sizing: border-box; width: 800px; min-height: 1040px; padding: 42px; color: #172019; background: #fff; font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height: 1.42; }
+      .payroll-print * { box-sizing: border-box; color: inherit; }
+      .payroll-brand { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #176b38; padding-bottom: 14px; }
+      .payroll-brand__mark { color: #176b38; font-weight: 800; font-size: 22px; letter-spacing: .5px; }
+      .payroll-brand__status { border: 1px solid #74a87f; color: #176b38; border-radius: 999px; padding: 5px 10px; font-size: 11px; font-weight: 700; }
+      .payroll-title { margin: 28px 0 20px; text-align: center; }
+      .payroll-title h1 { margin: 0; font-family: Georgia, 'Times New Roman', serif; font-size: 29px; letter-spacing: .5px; color: #121712; }
+      .payroll-title p { margin: 5px 0 0; color: #58635a; font-size: 14px; }
+      .identity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 34px; margin: 18px 0 22px; padding: 16px 18px; border: 1px solid #cbd4cd; border-radius: 4px; background: #fbfdfb; }
+      .identity-grid div { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px dotted #d6ded8; padding-bottom: 5px; }
+      .identity-grid span { color: #58635a; }
+      .identity-grid strong { font-weight: 700; text-align: right; }
+      .payroll-section { margin: 22px 0 9px; color: #176b38; font-family: Georgia, 'Times New Roman', serif; font-size: 19px; font-weight: 700; }
+      .payroll-table { width: 100%; border-collapse: collapse; table-layout: fixed; background: #fff; }
+      .payroll-table th, .payroll-table td { border: 1px solid #b9c5bb; padding: 8px 7px; vertical-align: middle; color: #172019; font-size: 11px; }
+      .payroll-table th { background: #155f32; color: #fff; font-weight: 700; text-align: center; }
+      .payroll-table tr:nth-child(even) td { background: #f4f8f4; }
+      .payroll-table td:first-child { font-weight: 600; }
+      .payroll-table .right { text-align: right; font-variant-numeric: tabular-nums; }
+      .payroll-total { display: flex; justify-content: flex-end; gap: 28px; margin-top: 0; border: 1px solid #b9c5bb; border-top: 0; padding: 12px 14px; background: #eaf5ec; color: #155f32; font-weight: 800; font-size: 16px; }
+      .payroll-note { margin-top: 28px; border-top: 1px solid #aebbb1; padding-top: 10px; color: #6b746d; font-size: 10px; }
+      .payroll-draft { color: #ad7812; font-weight: 700; }
+    </style>
+    <article class="payroll-print">
+      <header class="payroll-brand">
+        <div class="payroll-brand__mark">VINPOKER</div>
+        <div class="payroll-brand__status">BẢN TẠM TÍNH</div>
+      </header>
+      <div class="payroll-title">
+        <h1>${title}</h1>
+        <p>${escapeHtml(clubName)} · ${escapeHtml(monthLabel)}</p>
+      </div>
+      ${singleIdentity}
+      <h2 class="payroll-section">I. Thu nhập</h2>
+      <table class="payroll-table">
       <thead>
         <tr>
           <th>Tên</th><th>Loại</th><th>Ca</th><th>Giờ</th><th>OT</th>
@@ -119,7 +163,10 @@ function buildPayrollHtml(
         </tr>
       </thead>
       <tbody>${rowsHtml}</tbody>
-    </table>
+      </table>
+      <div class="payroll-total"><span>TỔNG THỰC LÃNH</span><span>${formatVND(rows.reduce((total, row) => total + (row.net_pay_vnd ?? 0), 0))}</span></div>
+      <footer class="payroll-note"><span class="payroll-draft">Tạm tính:</span> Bản này chỉ dùng để xem trước. Phiếu đã chốt bất biến được tạo qua luồng server.</footer>
+    </article>
   `;
 }
 

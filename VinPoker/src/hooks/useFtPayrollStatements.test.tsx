@@ -26,6 +26,20 @@ const rolloutOn = {
   reason: "ENABLED",
 };
 
+const onlinePreview = {
+  view: {
+    statement_id: "55555555-5555-4555-8555-555555555555",
+    statement_hash: "a".repeat(64),
+    draft: true,
+    brand_name: "VINPOKER",
+    club_name: "HSOP",
+    period_label: "Tháng 08/2026",
+    dealer: { full_name: "Nguyễn Minh Anh", department: "Dealer", job_title: "Dealer", bank_account_number: "0338356589", bank_name: "VPBank", hire_date: "15/04/2024", employment_type: "Chính thức" },
+    metrics: [], income_lines: [], rate_segments: [], deduction_lines: [],
+    gross_amount: "0", deduction_amount: "0", net_amount: "0", finalized_label: "—",
+  },
+};
+
 describe("useFtPayrollStatements", () => {
   beforeEach(() => {
     rpcMock.mockReset();
@@ -97,5 +111,24 @@ describe("useFtPayrollStatements", () => {
       .mockResolvedValueOnce({ data: null, error: { code: "NETWORK" } });
     await act(async () => { await result.current.finalize(dealer); });
     expect(result.current.statusFor(dealer)).toBe("UNKNOWN");
+  });
+
+  it("requests a server-built online draft view without passing payroll values", async () => {
+    rpcMock
+      .mockResolvedValueOnce({ data: rolloutOn, error: null })
+      .mockResolvedValueOnce({ data: [], error: null });
+    invokeMock.mockResolvedValueOnce({ data: onlinePreview, error: null });
+    const { result } = renderHook(() => useFtPayrollStatements({
+      clubId: hsop,
+      periodId: period,
+      periodStatus: "locked",
+      canFinalize: true,
+      dealerIds: [dealer],
+    }));
+    await waitFor(() => expect(result.current.availability).toBe("ready"));
+    await expect(result.current.previewDraft(dealer)).resolves.toMatchObject({ draft: true, club_name: "HSOP" });
+    expect(invokeMock).toHaveBeenCalledWith("render-payroll-statement", {
+      body: { mode: "preview_ft_view", club_id: hsop, dealer_id: dealer, payroll_period_id: period },
+    });
   });
 });

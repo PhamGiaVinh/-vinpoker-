@@ -54,3 +54,29 @@ export interface RenderedPayrollPdf {
   renderVersion: string;
   mode: PayrollPdfMode;
 }
+
+export interface PayrollStatementViewModel {
+  statement_id: string;
+  statement_hash: string;
+  draft: boolean;
+  brand_name: string;
+  club_name: string;
+  period_label: string;
+  dealer: {
+    full_name: string;
+    department: string;
+    job_title: string;
+    bank_account_number: string;
+    bank_name: string;
+    hire_date: string;
+    employment_type: string;
+  };
+  metrics: Array<{ label: string; value: string }>;
+  income_lines: Array<{ label: string; method: string; quantity: string; unit_rate: string; amount: string }>;
+  rate_segments: Array<{ range: string; unit_rate: string; quantity: string }>;
+  deduction_lines: Array<{ label: string; amount: string }>;
+  gross_amount: string;
+  deduction_amount: string;
+  net_amount: string;
+  finalized_label: string;
+}
