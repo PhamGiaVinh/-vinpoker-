@@ -1,0 +1,52 @@
+name: Floor Table Control V3 server contract
+
+on:
+  pull_request:
+    paths:
+      - "VinPoker/supabase/migrations/20270113000003_floor_table_control_v3_server_contract.sql"
+      - "VinPoker/tests/floorTableControlV3/**"
+      - ".github/workflows/floor-table-control-v3-contract-disposable-db.yml"
+  push:
+    branches:
+      - "agent/floor-table-control-v3-contract"
+
+permissions:
+  contents: read
+
+jobs:
+  floor-table-control-v3-server-contract:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: floor_table_control_v3_contract
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d floor_table_control_v3_contract"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+      - name: Install locked dependencies without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+      - name: Verify server contract source
+        working-directory: VinPoker
+        run: ./node_modules/.bin/vitest run --config tests/floorTableControlV3/vitest.serverContract.config.ts
+      - name: Run disposable PostgreSQL server contract
+        working-directory: VinPoker
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGDATABASE: floor_table_control_v3_contract
+        run: psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.sql
