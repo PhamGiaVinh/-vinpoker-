@@ -163,7 +163,11 @@ function makeAdmin(fix: {
 }
 
 // ── Fixture builders ────────────────────────────────────────────────────────
-function poolRow(id: string, dealerId: string, opts: { priorityBreak?: boolean; tier?: "A" | "B" | "C" } = {}): Row {
+function poolRow(
+  id: string,
+  dealerId: string,
+  opts: { priorityBreak?: boolean; tier?: "A" | "B" | "C"; checkInTime?: string | null } = {},
+): Row {
   return {
     id,
     dealer_id: dealerId,
@@ -172,7 +176,9 @@ function poolRow(id: string, dealerId: string, opts: { priorityBreak?: boolean; 
     worked_minutes_since_last_break: 0,
     priority_break_flag: opts.priorityBreak ?? false,
     last_released_at: null,
-    check_in_time: "2026-06-18T00:00:00Z",
+    check_in_time: opts.checkInTime === undefined
+      ? new Date(Date.now() - 60_000).toISOString()
+      : opts.checkInTime,
     dealers: {
       full_name: dealerId.toUpperCase(),
       telegram_username: null,
@@ -494,6 +500,36 @@ Deno.test("attendance-linked active break keeps an on-break dealer out of the ca
   assertEquals(result.status, "ok");
   assertEquals(result.candidates.length, 0);
   assertEquals(result.diag?.on_break_excluded, 1);
+});
+
+Deno.test("candidate pool excludes attendance older than 24 hours before scoring", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["fresh", "stale"],
+    poolRows: [
+      poolRow("a-fresh", "fresh", { checkInTime: new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString() }),
+      poolRow("a-stale", "stale", { checkInTime: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString() }),
+    ],
+    metricsRows: [metric("a-fresh", 30), metric("a-stale", 30)],
+  });
+
+  const result = await buildDealerCandidates(admin, "club", {});
+  assertEquals(result.status, "ok");
+  assertEquals(result.candidates.map((candidate) => candidate.dealer_id), ["fresh"]);
+});
+
+Deno.test("candidate pool fails closed for future or invalid check-in timestamps", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["future", "invalid"],
+    poolRows: [
+      poolRow("a-future", "future", { checkInTime: new Date(Date.now() + 60_000).toISOString() }),
+      poolRow("a-invalid", "invalid", { checkInTime: "not-a-date" }),
+    ],
+    metricsRows: [metric("a-future", 30), metric("a-invalid", 30)],
+  });
+
+  const result = await buildDealerCandidates(admin, "club", {});
+  assertEquals(result.status, "ok");
+  assertEquals(result.candidates, []);
 });
 
 Deno.test("legacy assignment-linked active break keeps an on-break dealer out of the candidate pool", async () => {

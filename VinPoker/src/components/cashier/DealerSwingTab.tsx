@@ -53,6 +53,7 @@ import ReconcileRoomWizard from "./ReconcileRoomWizard";
 import DealerSwingSummaryStrip from "./dealer-swing/DealerSwingSummaryStrip";
 import { TierBadge, TableTypeBadge, StatusPill } from "./dealer-swing/SwingBadges";
 import DealerSwingInfraHealth from "./dealer-swing/DealerSwingInfraHealth";
+import { summarizeDealerCheckoutBatch } from "@/lib/dealerCheckoutResults";
 import { useDealerSwingHealth } from "@/hooks/useDealerSwingHealth";
 import SwingTableActions from "./dealer-swing/SwingTableActions";
 import StatusFilterChips, { type StatusFilterValue } from "./dealer-swing/StatusFilterChips";
@@ -1563,8 +1564,14 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       toast.error(detail);
       return;
     }
-    if (data?.released_pre_assigned) {
-      toast.warning(`Dealer đang pre_assigned cho bàn ${data.pre_assigned_table ?? "?"} được release`);
+    const summary = summarizeDealerCheckoutBatch(data, 1);
+    if (summary.failedCount > 0) {
+      toast.error(summary.failureMessage ?? "Check-out dealer thất bại");
+      return;
+    }
+    const result = summary.results[0];
+    if (result?.released_pre_assigned) {
+      toast.warning(`Dealer đang pre_assigned cho bàn ${result.pre_assigned_table ?? "?"} được release`);
     }
     toast.success("Đã check-out dealer");
     setCheckoutOpen(false);
@@ -1638,16 +1645,45 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
         toast.error(detail);
         return;
       }
-      const results = (data as any)?.results ?? [];
-      const successCount = results.filter((r: any) => r.success).length;
-      if (successCount > 0) {
-        toast.success(`Đã checkout ${successCount}/${ids.length} dealer`);
+      const summary = summarizeDealerCheckoutBatch(data, ids.length);
+      if (summary.successCount > 0) {
+        toast.success(`Đã checkout ${summary.successCount}/${ids.length} dealer`);
       }
-      if (successCount < ids.length) {
-        const failed = results.filter((r: any) => !r.success);
-        toast.error(`${failed.length} dealer thất bại`);
+      if (summary.failureMessage) toast.error(summary.failureMessage);
+      onOptCheckout(summary.successCount);
+      setTimeout(refetchDealers, 50);
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  // Explicit stale-shift cleanup. The server chooses the latest valid evidence
+  // per row and never recalculates payroll/OT; rows without evidence stay open.
+  const doStaleCleanup = async (ids: string[]) => {
+    if (!ids.length) return;
+    setProcessing("checkout");
+    try {
+      const { data, error } = await supabase.functions.invoke("checkout-dealer", {
+        body: { attendance_ids: ids, mode: "stale_cleanup" },
+      });
+      if (error) {
+        let detail = error.message || "Lỗi dọn ca treo";
+        try {
+          const ctx = (error as any)?.context;
+          if (ctx?.json) {
+            const body = await ctx.json();
+            if (body?.error) detail = body.error;
+          }
+        } catch { /* ignore */ }
+        toast.error(detail);
+        return;
       }
-      onOptCheckout(successCount);
+      const summary = summarizeDealerCheckoutBatch(data, ids.length);
+      if (summary.successCount > 0) toast.success(`Đã dọn ${summary.successCount}/${ids.length} ca; không tính lại lương/OT`);
+      if (summary.failureMessage) toast.warning(`Giữ lại để kiểm tra: ${summary.failureMessage}`);
+      onOptCheckout(summary.successCount);
       setTimeout(refetchDealers, 50);
     } catch (e: any) {
       toast.error(e.message);
@@ -2006,6 +2042,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                   onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
                   onCheckoutOpen={() => setCheckoutOpen(true)}
                   onBatchCheckout={handleBatchCheckoutClick}
+                  onStaleCleanup={doStaleCleanup}
                   onReCheckin={doReCheckin}
                   breakPolicies={breakPolicies ?? []}
                   onMealBreak={handleMealBreak}
@@ -3020,7 +3057,7 @@ function BreakDurationDialog({
 function RosterPanel({
   dealers, assignments, swingConfigs, processing, totalDealers, checkedInCount,
   checkedOutDealers, onSendToBreak, onCheckinOpen, onCheckoutOpen,
-  onBatchCheckout, onReCheckin, breakPolicies, onMealBreak, mealBreakAvailability,
+  onBatchCheckout, onStaleCleanup, onReCheckin, breakPolicies, onMealBreak, mealBreakAvailability,
 }: {
   dealers: DealerAttendance[];
   assignments: DealerAssignment[];
@@ -3033,6 +3070,7 @@ function RosterPanel({
   onCheckinOpen: () => void;
   onCheckoutOpen: () => void;
   onBatchCheckout: (ids: string[]) => void;
+  onStaleCleanup: (ids: string[]) => void;
   onReCheckin: (dealerId: string) => void;
   breakPolicies: ShiftBreakPolicy[];
   onMealBreak: (attendanceId: string) => void;
@@ -3360,6 +3398,10 @@ function RosterPanel({
           <Button size="sm" variant="destructive" className="text-xs h-7"
             onClick={() => { onBatchCheckout([...selectedIds]); setSelectedIds(new Set()); }}>
             <UserMinus className="w-3 h-3 mr-1" /> Check-out
+          </Button>
+          <Button size="sm" variant="outline" className="text-xs h-7 border-amber-400/40 text-amber-200"
+            onClick={() => { onStaleCleanup([...selectedIds]); setSelectedIds(new Set()); }}>
+            Dọn ca treo
           </Button>
           <Button size="sm" variant="outline" className="text-xs h-7"
             onClick={() => setSelectedIds(new Set())}>
