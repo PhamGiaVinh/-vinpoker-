@@ -2540,6 +2540,9 @@
   },
   "tournamentDetailPage": {
     "statusRegistering": "Đang đăng ký",
+    "statusAwaitingStart": "Chờ bắt đầu",
+    "startsIn": "Bắt đầu sau {{time}}",
+    "awaitingFloorStart": "Đã đến giờ — chờ Floor bắt đầu đồng hồ",
     "statusBreak": "Nghỉ giải lao",
     "statusFinalTable": "Bàn cuối",
     "statusPlaying": "Đang chơi",

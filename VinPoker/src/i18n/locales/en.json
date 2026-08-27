@@ -2540,6 +2540,9 @@
   },
   "tournamentDetailPage": {
     "statusRegistering": "Registering",
+    "statusAwaitingStart": "Waiting to start",
+    "startsIn": "Starts in {{time}}",
+    "awaitingFloorStart": "Start time reached — waiting for Floor to start the clock",
     "statusBreak": "On break",
     "statusFinalTable": "Final table",
     "statusPlaying": "In play",

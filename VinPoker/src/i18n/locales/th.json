@@ -2294,6 +2294,9 @@
   },
   "tournamentDetailPage": {
     "statusRegistering": "กำลังลงทะเบียน",
+    "statusAwaitingStart": "รอเริ่มการแข่งขัน",
+    "startsIn": "เริ่มใน {{time}}",
+    "awaitingFloorStart": "ถึงเวลาเริ่มแล้ว — รอ Floor เริ่มนาฬิกา",
     "statusBreak": "พักเบรก",
     "statusFinalTable": "โต๊ะสุดท้าย",
     "statusPlaying": "กำลังเล่น",

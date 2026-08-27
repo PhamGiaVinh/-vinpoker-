@@ -2294,6 +2294,9 @@
   },
   "tournamentDetailPage": {
     "statusRegistering": "报名中",
+    "statusAwaitingStart": "等待开始",
+    "startsIn": "{{time}} 后开始",
+    "awaitingFloorStart": "已到开始时间 — 等待 Floor 启动时钟",
     "statusBreak": "休息中",
     "statusFinalTable": "决赛桌",
     "statusPlaying": "进行中",

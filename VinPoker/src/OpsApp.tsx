@@ -26,6 +26,7 @@ const OpsAlertsHub = lazy(() => import("@/ops/pages/OpsAlertsHub"));
 const OpsTournaments = lazy(() => import("@/pages/ops/OpsTournaments"));
 const OpsTables = lazy(() => import("@/pages/ops/OpsTables"));
 const OpsCashier = lazy(() => import("@/pages/ops/OpsCashier"));
+const OpsTournamentTv = lazy(() => import("@/pages/ops/OpsTournamentTv"));
 const FloorTournamentWorkspace = lazy(() => import("@/ops/floor/FloorTournamentWorkspace"));
 const OpsTrackerWorkspace = lazy(() => import("@/ops/tracker/OpsTrackerWorkspace"));
 const OpsDealerControlWorkspace = lazy(() => import("@/ops/dealer-control/OpsDealerControlWorkspace"));
@@ -100,6 +101,16 @@ export default function OpsApp() {
                       <Route path="/ops/alerts" element={<OpsAlertsHub />} />
                       <Route path="/ops/account" element={<OpsAccount />} />
                     </Route>
+                    <Route
+                      path="/ops/floor/tournaments/:id/tv"
+                      element={(
+                        <OpsModuleGate capability="floor">
+                          <OpsTournamentScopeGate>
+                            <OpsTournamentTv />
+                          </OpsTournamentScopeGate>
+                        </OpsModuleGate>
+                      )}
+                    />
                     <Route element={<OpsShell />}>
                       <Route
                         path="/ops/club-admin/accounts"
