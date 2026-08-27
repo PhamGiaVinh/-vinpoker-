@@ -14,6 +14,7 @@ on:
       - "VinPoker/supabase/migrations/20270112000006_tracker_terminal_hand_rpc_authority.sql"
       - "VinPoker/supabase/migrations/20270112000007_tracker_p0_authority_closure.sql"
       - "VinPoker/supabase/migrations/20270112000008_tracker_voice_gemini_live_provider.sql"
+      - "VinPoker/supabase/migrations/20270113000004_tracker_voice_transcribe35_binding.sql"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
       - "VinPoker/supabase/functions/tracker-player-analytics/**"
@@ -149,6 +150,17 @@ jobs:
           test "$before_p0_digest" = "$after_p0_digest"
           echo "TRACKER_VOICE_P0_CATALOG_UNCHANGED=PASS"
           echo "TRACKER_VOICE_12008_APPLY=PASS"
+          createdb tracker_voice_v0_before_13000004 -T tracker_voice_v0
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270113000004_tracker_voice_transcribe35_binding.sql
+          test "$(psql -X -At -d tracker_voice_v0 -c \
+            "SELECT position('gemini-3.5-transcribe-live' IN pg_get_functiondef(
+              'public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure
+            )) > 0
+            AND position('p_provider_model <> v_config.provider_model' IN pg_get_functiondef(
+              'public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure
+            )) > 0")" = "t"
+          echo "TRACKER_VOICE_13000004_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f tests/trackerVoice/currentP0VoiceChain.integration.sql
 
@@ -222,6 +234,19 @@ jobs:
           test "$before_constraint" = "$after_constraint"
           test "$before_helper" = "$after_helper"
           echo "TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS"
+          failing="$RUNNER_TEMP/tracker-voice-13000004-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
+            supabase/migrations/20270113000004_tracker_voice_transcribe35_binding.sql > "$failing"
+          before_helper="$(psql -X -At -d tracker_voice_v0_before_13000004 -c \
+            "SELECT md5(pg_get_functiondef('public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure))")"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_13000004 -f "$failing"; then
+            echo "Injected 13000004 migration unexpectedly committed" >&2
+            exit 1
+          fi
+          after_helper="$(psql -X -At -d tracker_voice_v0_before_13000004 -c \
+            "SELECT md5(pg_get_functiondef('public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure))")"
+          test "$before_helper" = "$after_helper"
+          echo "TRACKER_VOICE_13000004_ROLLBACK=PASS"
 
       - name: Run focused Voice, Analytics and contract tests
         working-directory: VinPoker

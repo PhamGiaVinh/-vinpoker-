@@ -59,21 +59,16 @@ describe("parseVoiceCommand", () => {
     ["báo sai action", "report_wrong_action"],
     ["gọi floor", "call_floor"],
     ["seat number three fold", "fold"],
-    ["see number three phâu", "fold"],
-    ["sit high o-in", "all_in"],
-    ["seat number one race 4000", "raise_to"],
-    ["ghế số ba rây 20.000", "raise_to"],
+    ["seat five all in", "all_in"],
+    ["ghế số ba raise 20.000", "raise_to"],
   ])("parses %s", (input, kind) => {
     expect(parseVoiceCommand(input, { amountUnitConfirmed: true })?.kind).toBe(kind);
   });
 
   it.each([
-    ["race 4000", 4_000, null],
-    ["seat number two race four thousand", 4_000, 2],
     ["seat number six raise 20,000", 20_000, 6],
-    ["về số 6 raise 20.000", 20_000, 6],
     ["ghế số 7 raise 50.000", 50_000, 7],
-  ])("normalizes bounded dealer pronunciation in %s", (input, amount, seat) => {
+  ])("parses exact seated amount commands in %s", (input, amount, seat) => {
     expect(parseVoiceCommand(input)).toMatchObject({
       kind: "raise_to",
       spokenSeatNumber: seat,
@@ -84,12 +79,33 @@ describe("parseVoiceCommand", () => {
   it("keeps incomplete or unsafe UAT fragments fail-closed", () => {
     expect(parseVoiceCommand("Sit number five.")).toBeNull();
     expect(parseVoiceCommand("Seat number three four")).toBeNull();
+    expect(parseVoiceCommand("seat number one race 4000")).toBeNull();
+    expect(parseVoiceCommand("see number three phâu")).toBeNull();
+    expect(parseVoiceCommand("fit 9 all in now")).toBeNull();
     expect(parseVoiceCommand("racer một phau", { spokenAmountUnit: 1_000, amountUnitConfirmed: true })).toBeNull();
     expect(parseVoiceCommand("90.000")).toBeNull();
   });
 
   it("rejects partial/noise text", () => {
     expect(parseVoiceCommand("dealer talking about dinner")).toBeNull();
+  });
+
+  it("allows exactly one seat-prefix repair and requires explicit confirmation", () => {
+    expect(parseVoiceCommand("fit 3 call")).toMatchObject({
+      kind: "call",
+      spokenSeatNumber: 3,
+      riskTier: "BOUNDED_REPAIR",
+      requiresConfirmation: true,
+      repairs: [{ rule: "seat_prefix_fit_to_seat", from: "fit", to: "seat" }],
+    });
+    expect(resolveVoiceProposal(parseVoiceCommand("feet 3 call"), READY)).toMatchObject({
+      ok: true,
+      command: { requiresConfirmation: true },
+    });
+    expect(resolveVoiceProposal(parseVoiceCommand("fit 9 all in"), READY)).toMatchObject({
+      ok: false,
+      code: "spoken_actor_mismatch",
+    });
   });
 });
 

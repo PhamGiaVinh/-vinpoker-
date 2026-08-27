@@ -11,12 +11,18 @@ const migrationName =
   "20270112000003_tracker_voice_player_analytics_v0.sql";
 const geminiMigrationName =
   "20270112000008_tracker_voice_gemini_live_provider.sql";
+const transcribeBindingMigrationName =
+  "20270113000004_tracker_voice_transcribe35_binding.sql";
 const migration = readFileSync(
   resolve(root, "supabase/migrations", migrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const geminiMigration = readFileSync(
   resolve(root, "supabase/migrations", geminiMigrationName),
+  "utf8",
+).replace(/\r\n/g, "\n");
+const transcribeBindingMigration = readFileSync(
+  resolve(root, "supabase/migrations", transcribeBindingMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const unifiedOpsMigration = readFileSync(
@@ -82,8 +88,12 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(names.filter((name) => name.startsWith("20270112000008_"))).toEqual([
       geminiMigrationName,
     ]);
+    expect(names.filter((name) => name.startsWith("20270113000004_"))).toEqual([
+      transcribeBindingMigrationName,
+    ]);
     expect(names).toContain(migrationName);
     expect(names).toContain(geminiMigrationName);
+    expect(names).toContain(transcribeBindingMigrationName);
   });
 
   it("enables the Voice build gate only for the exact approved Vite value", () => {
@@ -156,6 +166,7 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(workflow).toContain(migrationName);
     expect(workflow).toContain("20270108000003_tracker_unified_ops_v2_context_safe_start.sql");
     expect(workflow).toContain(geminiMigrationName);
+    expect(workflow).toContain(transcribeBindingMigrationName);
     expect(workflow).toContain("TRACKER_VOICE_P0_CATALOG_UNCHANGED=PASS");
     expect(workflow).toContain("TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS");
     expect(workflow).not.toMatch(/--linked|db push|migration repair|functions deploy|vercel --prod/i);
@@ -182,6 +193,20 @@ describe("Tracker Voice V0 migration contract", () => {
       /REVOKE ALL ON FUNCTION public\._tracker_voice_register_validated_event\([\s\S]+?FROM PUBLIC, anon, authenticated;/,
     );
     expect(geminiMigration).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\._tracker_voice_register_validated_event\([\s\S]+?TO service_role;/,
+    );
+  });
+
+  it("binds Gemini Transcribe requests to the configured provider and exact reviewed model", () => {
+    expect(transcribeBindingMigration).toContain("gemini-3.1-flash-live-preview");
+    expect(transcribeBindingMigration).toContain("gemini-3.5-transcribe-live");
+    expect(transcribeBindingMigration).toContain("p_provider_name <> 'gemini_live'");
+    expect(transcribeBindingMigration).toContain("p_provider_model <> v_config.provider_model");
+    expect(transcribeBindingMigration).toContain("tracker_voice_provider_binding_precondition_failed");
+    expect(transcribeBindingMigration).toMatch(
+      /REVOKE ALL ON FUNCTION public\._tracker_voice_register_validated_event\([\s\S]+?FROM PUBLIC, anon, authenticated;/,
+    );
+    expect(transcribeBindingMigration).toMatch(
       /GRANT EXECUTE ON FUNCTION public\._tracker_voice_register_validated_event\([\s\S]+?TO service_role;/,
     );
   });

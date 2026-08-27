@@ -492,6 +492,60 @@ SELECT public.tracker_voice_test_assert(
   AND (SELECT count(*) = 0 FROM public.hand_actions WHERE idempotency_key = 'voice-event-gemini-auto-0001'),
   'Gemini Shadow is allowed while confidence-less Auto remains impossible'
 );
+
+-- Transcribe 3.5 is valid only when the server-side config selects it. A
+-- caller cannot substitute the legacy model or an OpenAI provider.
+UPDATE public.tracker_voice_configs
+SET configured_mode = 'shadow',
+    provider_model = 'gemini-3.5-transcribe-live',
+    server_auto_allowed = false,
+    auto_turn_order_compatible = false,
+    provider_confidence_threshold = NULL,
+    auto_capability_version = NULL
+WHERE tournament_id = '85000000-0000-4000-8000-000000000001'
+  AND tournament_table_id = '84000000-0000-4000-8000-000000000001';
+SELECT count(*) AS value FROM public.tracker_voice_events \gset transcribe35_before_
+SELECT public._tracker_voice_hand_state_version('86000000-0000-4000-8000-000000000001') AS value \gset transcribe35_state_
+SET ROLE service_role;
+SELECT set_config('request.jwt.claims', '{"sub":"81200000-0000-4000-8000-000000000001","role":"service_role"}', false);
+SELECT public._tracker_voice_register_validated_event(
+  '81200000-0000-4000-8000-000000000001',
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001',
+  '86000000-0000-4000-8000-000000000001',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'provider-gemini-transcribe35-shadow', NULL, 'Player B check',
+  '{"kind":"check","canonical_action":"check","actor_player_id":"82000000-0000-4000-8000-000000000002","entry_number":1,"street":"preflop","action_order":2,"action_amount":0}'::JSONB,
+  :'transcribe35_state_value', 'shadow', 'voice-event-gemini-transcribe35-shadow-0001', 'trace-gemini-transcribe35-shadow-0001',
+  'enforce', true, NULL
+)::TEXT AS payload \gset transcribe35_ok_
+SELECT public._tracker_voice_register_validated_event(
+  '81200000-0000-4000-8000-000000000001',
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001',
+  '86000000-0000-4000-8000-000000000001',
+  'gemini_live', 'gemini-3.1-flash-live-preview', 'provider-gemini-transcribe35-model-mismatch', NULL, 'Player B check',
+  '{"kind":"check","canonical_action":"check","actor_player_id":"82000000-0000-4000-8000-000000000002","entry_number":1,"street":"preflop","action_order":2,"action_amount":0}'::JSONB,
+  :'transcribe35_state_value', 'shadow', 'voice-event-gemini-transcribe35-model-mismatch-0001', 'trace-gemini-transcribe35-model-mismatch-0001',
+  'enforce', true, NULL
+)::TEXT AS payload \gset transcribe35_model_mismatch_
+SELECT public._tracker_voice_register_validated_event(
+  '81200000-0000-4000-8000-000000000001',
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001',
+  '86000000-0000-4000-8000-000000000001',
+  'openai_realtime', 'gemini-3.5-transcribe-live', 'provider-gemini-transcribe35-provider-mismatch', NULL, 'Player B check',
+  '{"kind":"check","canonical_action":"check","actor_player_id":"82000000-0000-4000-8000-000000000002","entry_number":1,"street":"preflop","action_order":2,"action_amount":0}'::JSONB,
+  :'transcribe35_state_value', 'shadow', 'voice-event-gemini-transcribe35-provider-mismatch-0001', 'trace-gemini-transcribe35-provider-mismatch-0001',
+  'enforce', true, NULL
+)::TEXT AS payload \gset transcribe35_provider_mismatch_
+RESET ROLE;
+SELECT public.tracker_voice_test_assert(
+  (:'transcribe35_ok_payload'::JSONB->>'ok')::BOOLEAN
+  AND :'transcribe35_model_mismatch_payload'::JSONB->>'error' = 'voice_provider_config_mismatch'
+  AND :'transcribe35_provider_mismatch_payload'::JSONB->>'error' = 'voice_provider_config_mismatch'
+  AND (SELECT count(*) = :transcribe35_before_value::BIGINT + 1 FROM public.tracker_voice_events),
+  'Transcribe 3.5 requires exact configured model and provider with zero writes on mismatch'
+);
 \else
 SELECT 'TRACKER_VOICE_GEMINI_AUTO_TEST_SKIPPED_PRE_12008' AS result;
 \endif

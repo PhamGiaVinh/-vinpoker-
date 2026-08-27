@@ -16,5 +16,8 @@ export function parseVoiceCommand(
     normalizedTranscript: parsed.normalizedTranscript,
     amount: parsed.amount,
     spokenSeatNumber: parsed.spokenSeatNumber,
+    riskTier: parsed.riskTier,
+    repairs: parsed.repairs,
+    requiresConfirmation: parsed.requiresConfirmation,
   };
 }

@@ -16,19 +16,19 @@ export type DealerVoiceCorpusEntry = {
 export const DEALER_VOICE_CORPUS: readonly DealerVoiceCorpusEntry[] = [
   { category: "fold", spoken: "fold", expectedTranscript: "fold", expectedParserCommand: "fold", expectedAmount: null },
   { category: "fold", spoken: "bỏ bài", expectedTranscript: "bỏ bài", expectedParserCommand: "fold", expectedAmount: null },
-  { category: "fold", spoken: "player fold", expectedTranscript: "player fold", expectedParserCommand: "fold", expectedAmount: null },
-  { category: "fold", spoken: "người chơi bỏ bài", expectedTranscript: "người chơi bỏ bài", expectedParserCommand: "fold", expectedAmount: null },
+  { category: "fold", spoken: "player fold", expectedTranscript: "player fold", expectedParserCommand: null, expectedAmount: null },
+  { category: "fold", spoken: "người chơi bỏ bài", expectedTranscript: "người chơi bỏ bài", expectedParserCommand: null, expectedAmount: null },
 
   { category: "check", spoken: "check", expectedTranscript: "check", expectedParserCommand: "check", expectedAmount: null },
   { category: "check", spoken: "check bài", expectedTranscript: "check bài", expectedParserCommand: "check", expectedAmount: null },
   { category: "check", spoken: "xem", expectedTranscript: "xem", expectedParserCommand: "check", expectedAmount: null },
   { category: "check", spoken: "qua", expectedTranscript: "qua", expectedParserCommand: "check", expectedAmount: null },
-  { category: "check", spoken: "player check", expectedTranscript: "player check", expectedParserCommand: "check", expectedAmount: null },
+  { category: "check", spoken: "player check", expectedTranscript: "player check", expectedParserCommand: null, expectedAmount: null },
 
   { category: "call", spoken: "call", expectedTranscript: "call", expectedParserCommand: "call", expectedAmount: null },
   { category: "call", spoken: "theo", expectedTranscript: "theo", expectedParserCommand: "call", expectedAmount: null },
   { category: "call", spoken: "theo bài", expectedTranscript: "theo bài", expectedParserCommand: "call", expectedAmount: null },
-  { category: "call", spoken: "player call", expectedTranscript: "player call", expectedParserCommand: "call", expectedAmount: null },
+  { category: "call", spoken: "player call", expectedTranscript: "player call", expectedParserCommand: null, expectedAmount: null },
 
   { category: "all_in", spoken: "all in", expectedTranscript: "all in", expectedParserCommand: "all_in", expectedAmount: null },
   { category: "all_in", spoken: "all-in", expectedTranscript: "all-in", expectedParserCommand: "all_in", expectedAmount: null },

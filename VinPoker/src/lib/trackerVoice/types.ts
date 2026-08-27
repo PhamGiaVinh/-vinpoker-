@@ -39,6 +39,9 @@ export interface ParsedVoiceCommand {
   normalizedTranscript: string;
   amount: ParsedVoiceAmount | null;
   spokenSeatNumber: number | null;
+  riskTier: "EXACT" | "BOUNDED_REPAIR";
+  repairs: readonly { rule: "seat_prefix_fit_to_seat"; from: "fit" | "feet"; to: "seat" }[];
+  requiresConfirmation: boolean;
 }
 
 export interface VoiceTranscriptEvent {

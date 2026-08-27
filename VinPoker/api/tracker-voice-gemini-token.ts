@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import {
+  buildGeminiEphemeralTokenRequest,
+  buildGeminiTranscribeProfile,
+  parseGeminiTranscribeLanguageProfile,
+  type GeminiLiveConnectionProfile,
+  type GeminiTranscribeLanguageProfile,
+} from "../src/lib/trackerVoice/geminiTranscribeProfile";
 
-export const GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview";
+export const GEMINI_LIVE_MODEL = "gemini-3.5-transcribe-live";
 export const GEMINI_LIVE_API_VERSION = "v1beta";
 const MAX_REQUESTS_PER_MINUTE = 6;
 const RATE_WINDOW_MS = 60_000;
@@ -17,6 +24,7 @@ export interface TrackerVoiceGeminiUatEnvironment {
 export interface TrackerVoiceGeminiUatRequest {
   method?: string;
   clientIp: string;
+  languageProfile?: unknown;
 }
 
 export interface TrackerVoiceGeminiUatResponse {
@@ -33,7 +41,11 @@ interface GeminiProvisioningError {
 }
 
 interface TrackerVoiceGeminiUatDependencies {
-  tokenCreator?: (environment: TrackerVoiceGeminiUatEnvironment, now: number) => Promise<GeminiAuthTokenResponse>;
+  tokenCreator?: (
+    environment: TrackerVoiceGeminiUatEnvironment,
+    now: number,
+    profile: GeminiLiveConnectionProfile,
+  ) => Promise<GeminiAuthTokenResponse>;
   now?: () => number;
   limiter?: GeminiPreviewRateLimiter;
 }
@@ -53,12 +65,11 @@ function upstreamTokenError(status: number): string {
   return "gemini_ephemeral_token_unavailable";
 }
 
-export function buildGeminiAuthTokenRequest(now: number): Record<string, unknown> {
-  return {
-    uses: 1,
-    newSessionExpireTime: new Date(now + 60_000).toISOString(),
-    expireTime: new Date(now + TOKEN_SESSION_LIFETIME_MS).toISOString(),
-  };
+export function buildGeminiAuthTokenRequest(
+  now: number,
+  languageProfile: GeminiTranscribeLanguageProfile = "auto",
+): Record<string, unknown> {
+  return buildGeminiEphemeralTokenRequest(now, buildGeminiTranscribeProfile(languageProfile));
 }
 
 function isProvisioningError(error: unknown): error is GeminiProvisioningError {
@@ -71,6 +82,7 @@ function isProvisioningError(error: unknown): error is GeminiProvisioningError {
 async function createGeminiAuthToken(
   environment: TrackerVoiceGeminiUatEnvironment,
   now: number,
+  profile: GeminiLiveConnectionProfile,
 ): Promise<GeminiAuthTokenResponse> {
   const response = await fetch(`https://generativelanguage.googleapis.com/${GEMINI_LIVE_API_VERSION}/auth_tokens`, {
     method: "POST",
@@ -78,7 +90,7 @@ async function createGeminiAuthToken(
       "Content-Type": "application/json",
       "x-goog-api-key": environment.GEMINI_API_KEY ?? "",
     },
-    body: JSON.stringify(buildGeminiAuthTokenRequest(now)),
+    body: JSON.stringify(buildGeminiEphemeralTokenRequest(now, profile)),
   });
   if (!response.ok) throw { status: response.status } satisfies GeminiProvisioningError;
   return response.json() as Promise<GeminiAuthTokenResponse>;
@@ -116,6 +128,11 @@ export async function createTrackerVoiceGeminiCredential(
   if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
   if (!isTrackerVoiceGeminiPreview(environment)) return json(404, { error: "preview_uat_disabled" });
   if (!environment.GEMINI_API_KEY) return json(503, { error: "gemini_preview_secret_missing" });
+  const languageProfile = request.languageProfile === undefined
+    ? "auto"
+    : parseGeminiTranscribeLanguageProfile(request.languageProfile);
+  if (!languageProfile) return json(400, { error: "preview_language_profile_invalid" });
+  const profile = buildGeminiTranscribeProfile(languageProfile);
 
   const now = dependencies.now?.() ?? Date.now();
   const clientKey = hash(request.clientIp || "unknown");
@@ -124,7 +141,7 @@ export async function createTrackerVoiceGeminiCredential(
 
   let payload: GeminiAuthTokenResponse;
   try {
-    payload = await (dependencies.tokenCreator ?? createGeminiAuthToken)(environment, now);
+    payload = await (dependencies.tokenCreator ?? createGeminiAuthToken)(environment, now, profile);
   } catch (error) {
     const status = isProvisioningError(error) ? error.status : 0;
     return json(502, { error: upstreamTokenError(status) });
@@ -138,7 +155,7 @@ export async function createTrackerVoiceGeminiCredential(
     ephemeral_token: payload.name,
     // AuthToken guarantees a name. The server advertises the same capped lifetime it requested.
     expires_at: new Date(now + TOKEN_SESSION_LIFETIME_MS).toISOString(),
-    model: GEMINI_LIVE_MODEL,
+    model: profile.model,
   });
 }
 
@@ -157,15 +174,36 @@ function send(response: ServerResponse, result: TrackerVoiceGeminiUatResponse): 
   response.end(JSON.stringify(result.body));
 }
 
+async function readPreviewRequestBody(request: IncomingMessage): Promise<Record<string, unknown> | null> {
+  let raw = "";
+  for await (const chunk of request) {
+    raw += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    if (Buffer.byteLength(raw, "utf8") > 1_024) return null;
+  }
+  if (!raw.trim()) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const environment: TrackerVoiceGeminiUatEnvironment = {
     VERCEL_ENV: process.env.VERCEL_ENV,
     TRACKER_VOICE_UAT_ENABLED: process.env.TRACKER_VOICE_UAT_ENABLED,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   };
-  const result = await createTrackerVoiceGeminiCredential(environment, {
-    method: request.method,
-    clientIp: requestIp(request),
-  });
+  const body = request.method === "POST" ? await readPreviewRequestBody(request) : {};
+  const result = body === null
+    ? json(400, { error: "preview_request_invalid" })
+    : await createTrackerVoiceGeminiCredential(environment, {
+      method: request.method,
+      clientIp: requestIp(request),
+      languageProfile: body.languageProfile,
+    });
   send(response, result);
 }
