@@ -173,3 +173,23 @@ test("workflow uses the protected environment and the exact runner", () => {
   assert.match(workflow, /actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/);
   assert.doesNotMatch(workflow, /db push|include-all|SUPABASE_DB_PASSWORD/i);
 });
+
+test("management API failures expose only sanitized method, path, status, and provider code", async () => {
+  await assert.rejects(
+    () => run(["--preflight", "--source-root", resolve(import.meta.dirname, "../..")], {
+      SUPABASE_ACCESS_TOKEN: "test-only-token",
+      SUPABASE_PROJECT_REF: "orlesggcjamwuknxwcpk",
+    }, async (url, options) => ({
+      ok: false,
+      status: 400,
+      json: async () => ({ code: "PGRST200", message: "private message with UUID" }),
+      url,
+      options,
+    })),
+    (error) => {
+      assert.match(error.message, /Management API request failed: POST \/database\/query\/read-only status 400 provider_code PGRST200/);
+      assert.doesNotMatch(error.message, /private message|UUID|message/);
+      return true;
+    },
+  );
+});
