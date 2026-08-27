@@ -251,13 +251,23 @@ INSERT INTO public.tournament_tables (
 DO $$
 BEGIN
   BEGIN
+    INSERT INTO public.table_sessions (
+      id, club_id, game_table_id, session_type, tournament_id, control_mode, control_epoch
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000603',
+      '00000000-0000-0000-0000-000000000010',
+      '00000000-0000-0000-0000-000000000503',
+      'tournament',
+      '00000000-0000-0000-0000-000000000100',
+      'manual',
+      1
+    );
     INSERT INTO public.tournament_tables (
-      tournament_id, table_id, game_table_id, table_session_id, table_number
+      tournament_id, game_table_id, table_session_id, table_number
     ) VALUES (
       '00000000-0000-0000-0000-000000000100',
-      '00000000-0000-0000-0000-000000000503',
-      '00000000-0000-0000-0000-000000000503',
-      '00000000-0000-0000-0000-000000000601',
+      '00000000-0000-0000-0000-000000000501',
+      '00000000-0000-0000-0000-000000000603',
       6
     );
     RAISE EXCEPTION 'expected session/game-table pairing constraint';
