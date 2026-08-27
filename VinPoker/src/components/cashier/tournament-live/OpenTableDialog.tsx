@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import {
   Dialog,
@@ -24,6 +24,11 @@ import {
   type FloorTableCatalogRow,
 } from "@/components/ops/shared/floorTablePresentation";
 import type { FloorTableControlMode } from "@/lib/floorTableControlMode";
+import { FEATURES } from "@/lib/featureFlags";
+import {
+  createFloorTableControlV3Client,
+  type FloorTableControlV3Rpc,
+} from "@/lib/floorTableControlV3";
 
 function mapError(code?: string): string {
   switch (code) {
@@ -35,6 +40,9 @@ function mapError(code?: string): string {
     case "invalid_floor_control_mode": return "Chế độ kiểm soát bàn không hợp lệ.";
     case "table_has_active_seats": return "Bàn đã đóng vẫn còn ghế hoạt động nên chưa thể mở lại.";
     case "game_table_in_use": return "Bàn vật lý này đang được một giải khác sử dụng.";
+    case "game_table_not_available": return "Bàn này đang bảo trì hoặc không sẵn sàng.";
+    case "table_preflight_required": return "Bàn chưa qua kiểm tra V3 nên chưa thể mở.";
+    case "FLOOR_TABLE_CONTROL_V3_DISABLED": return "Table Control V3 hiện chưa được mở cho môi trường này.";
     case "table_mode_apply_failed": return "Không thể xác nhận chế độ của bàn. Không có bàn mới nào được mở.";
     default: return "Mở bàn thất bại. Hãy tải lại và thử lại.";
   }
@@ -66,6 +74,7 @@ export function OpenTableDialog({
 }) {
   const supabase = useSupabaseClient();
   const [catalog, setCatalog] = useState<FloorTableCatalogRow[]>([]);
+  const [v3GameTableIdByNumber, setV3GameTableIdByNumber] = useState<Record<number, string>>({});
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
   const [controlMode, setControlMode] = useState<FloorTableControlMode>("manual");
   const [loadingCatalog, setLoadingCatalog] = useState(false);
@@ -73,12 +82,53 @@ export function OpenTableDialog({
   const [busy, setBusy] = useState(false);
   const submitLock = useRef(false);
   const requestSequence = useRef(0);
+  const tableControlV3 = useMemo(
+    () => createFloorTableControlV3Client(
+      ((name, args) => (
+        supabase.rpc as unknown as FloorTableControlV3Rpc
+      )(name, args)),
+    ),
+    [supabase],
+  );
 
   const loadCatalog = useCallback(async () => {
     const sequence = ++requestSequence.current;
     setLoadingCatalog(true);
     setCatalogError(null);
     try {
+      if (tableControlV3.enabled) {
+        const { data: tournament, error: tournamentError } = await supabase
+          .from("tournaments")
+          .select("club_id")
+          .eq("id", tournamentId)
+          .single();
+        if (sequence !== requestSequence.current) return;
+        if (tournamentError || !tournament?.club_id) {
+          setCatalog([]);
+          setV3GameTableIdByNumber({});
+          setCatalogError("Không xác định được CLB của giải. Không thể mở bàn V3.");
+          return;
+        }
+        const inventory = await tableControlV3.getClubTableInventory(tournament.club_id);
+        if (sequence !== requestSequence.current) return;
+        if (!inventory.ok) {
+          setCatalog([]);
+          setV3GameTableIdByNumber({});
+          setCatalogError("Không tải được kho bàn vật lý V3. Không thể mở bàn cho tới khi tải lại thành công.");
+          return;
+        }
+        const tableIds: Record<number, string> = {};
+        for (const item of inventory.data) tableIds[item.tableNumber] = item.gameTableId;
+        setV3GameTableIdByNumber(tableIds);
+        setCatalog(inventory.data.map((item) => ({
+          table_number: item.tableNumber,
+          status: item.tournamentTableStatus,
+          availability_status: item.availabilityStatus,
+          session_type: item.sessionType,
+          operational_status: item.operationalStatus,
+        })));
+        return;
+      }
       const { data, error } = await supabase
         .from("tournament_tables")
         .select("table_number, status")
@@ -89,6 +139,7 @@ export function OpenTableDialog({
         setCatalogError("Không tải được danh sách số bàn. Không thể mở bàn cho tới khi tải lại thành công.");
         return;
       }
+      setV3GameTableIdByNumber({});
       setCatalog((data ?? []) as FloorTableCatalogRow[]);
     } catch {
       if (sequence !== requestSequence.current) return;
@@ -97,7 +148,7 @@ export function OpenTableDialog({
     } finally {
       if (sequence === requestSequence.current) setLoadingCatalog(false);
     }
-  }, [supabase, tournamentId]);
+  }, [supabase, tableControlV3, tournamentId]);
 
   useEffect(() => {
     if (!open) {
@@ -114,9 +165,32 @@ export function OpenTableDialog({
     submitLock.current = true;
     setBusy(true);
     try {
-      // New RPC is intentionally untyped until the source-only migration is
-      // applied and generated types are refreshed under the controlled DB gate.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (tableControlV3.enabled) {
+        const gameTableId = v3GameTableIdByNumber[selectedNumber];
+        if (!gameTableId) {
+          toast.error("Bàn vật lý này chưa được khai báo hoặc không sẵn sàng.");
+          return;
+        }
+        const result = await tableControlV3.openTournamentTable({
+          tournamentId,
+          gameTableId,
+          controlMode,
+          requestId: crypto.randomUUID(),
+        });
+        if (result.ok === false) {
+          toast.error(mapError(result.error));
+          await loadCatalog();
+          return;
+        }
+        const modeLabel = controlMode === "tracker" ? "Live Tracker" : "Manual Floor";
+        toast.success(`Đã mở Bàn ${selectedNumber} · ${modeLabel} · 9 ghế`);
+        onDone();
+        onOpenChange(false);
+        return;
+      }
+
+      // Legacy behavior remains intact until the owner-gated V3 rollout.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy RPC has generated types pending.
       const { data, error } = await (supabase.rpc as any)("floor_open_tournament_table_v2", {
         p_tournament_id: tournamentId,
         p_table_number: selectedNumber,
@@ -176,11 +250,12 @@ export function OpenTableDialog({
           ) : (
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]">
               <div className="order-2 lg:order-1">
-                <FloorTableNumberPicker
-                  rows={catalog}
-                  value={selectedNumber}
-                  onChange={setSelectedNumber}
-                  disabled={busy}
+              <FloorTableNumberPicker
+                rows={catalog}
+                value={selectedNumber}
+                onChange={setSelectedNumber}
+                disabled={busy}
+                missingState={tableControlV3.enabled ? "unavailable" : "available"}
                 />
               </div>
 

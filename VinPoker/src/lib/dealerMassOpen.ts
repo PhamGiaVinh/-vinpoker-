@@ -1,4 +1,4 @@
-export type MassOpenGate = "checking" | "legacy" | "enabled" | "disabled";
+export type MassOpenGate = "checking" | "enabled" | "disabled";
 
 export type OpenOperationProgress = {
   operationId: string;
@@ -26,11 +26,9 @@ export function edgeErrorStatus(error: unknown): number | null {
 
 export function resolveMassOpenGate(data: unknown, error: unknown): MassOpenGate {
   if (error) {
-    const record = asRecord(error);
-    const message = errorMessage(error);
-    const missingRpc = record?.code === "PGRST202"
-      || message.includes("get_dealer_mass_open_rollout") && message.includes("schema cache");
-    return missingRpc ? "legacy" : "disabled";
+    // A missing server contract is never permission to update game_tables from
+    // the browser.  Fail closed until the controlled server writer is present.
+    return "disabled";
   }
   return asRecord(data)?.allowed === true ? "enabled" : "disabled";
 }
