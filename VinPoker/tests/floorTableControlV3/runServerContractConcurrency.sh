@@ -28,7 +28,10 @@ assert_exactly_one_success() {
   local left="$1"
   local right="$2"
   local successes
-  successes="$(grep -h -c '"ok": true' "$left" "$right" | awk -F: '{ sum += $2 } END { print sum + 0 }')"
+  # `grep -h -c` emits bare per-file counts (for example `1` then `0`), not
+  # `file:count`.  Sum those counts directly, and keep the zero-success path
+  # diagnostic rather than letting `set -e -o pipefail` hide it.
+  successes="$({ grep -h -c '"ok": true' "$left" "$right" || true; } | awk '{ sum += $1 } END { print sum + 0 }')"
   if [[ "$successes" != "1" ]]; then
     echo "FLOOR_TABLE_CONTROL_V3_CONCURRENCY_ASSERTION_FAILED expected one winner" >&2
     cat "$left" "$right" >&2

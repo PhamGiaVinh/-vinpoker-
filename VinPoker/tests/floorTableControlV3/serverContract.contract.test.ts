@@ -115,5 +115,7 @@ describe("Floor Table Control V3 server contract", () => {
     expect(concurrencyRunner).toContain("close-vs-dealer assignment race");
     expect(concurrencyRunner).toContain("SET LOCAL ROLE authenticated");
     expect(concurrencyRunner).toContain("deadlock_or_lock_timeout");
+    expect(concurrencyRunner).toContain("grep -h -c");
+    expect(concurrencyRunner).not.toContain("awk -F:");
   });
 });
