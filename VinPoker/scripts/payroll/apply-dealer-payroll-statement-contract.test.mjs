@@ -7,6 +7,10 @@ import {
   CONFIRMATION,
   MIGRATIONS,
   applyPlan,
+  deliveryPostProblems,
+  deliveryPreProblems,
+  DELIVERY_ROLLOUT_STATE_SQL,
+  DELIVERY_STATE_SQL,
   finalPostProblems,
   pdfPostProblems,
   preStateProblems,
@@ -102,7 +106,76 @@ function finalState() {
   };
 }
 
-test("source policy pins the two exact payroll migrations", () => {
+function deliveryPreState() {
+  return {
+    ...finalState(),
+    delivery_rollout_table_exists: false,
+    delivery_operations_table_exists: false,
+    delivery_targets_table_exists: false,
+    delivery_assert_exists: false,
+    delivery_rollout_exists: false,
+    delivery_create_exists: false,
+    delivery_get_exists: false,
+    delivery_claim_exists: false,
+    delivery_complete_exists: false,
+    delivery_fail_exists: false,
+    delivery_assert_overloads: 0,
+    delivery_rollout_overloads: 0,
+    delivery_create_overloads: 0,
+    delivery_get_overloads: 0,
+    delivery_claim_overloads: 0,
+    delivery_complete_overloads: 0,
+    delivery_fail_overloads: 0,
+    delivery_rollout_row_count: 0,
+    delivery_rollout_master_enabled_count: 0,
+    delivery_rollout_all_clubs_enabled_count: 0,
+    delivery_rollout_allowlist_count: 0,
+  };
+}
+
+function deliveryState() {
+  return {
+    ...deliveryPreState(),
+    delivery_rollout_table_exists: true,
+    delivery_operations_table_exists: true,
+    delivery_targets_table_exists: true,
+    delivery_rollout_rls_enabled: true,
+    delivery_operations_rls_enabled: true,
+    delivery_targets_rls_enabled: true,
+    delivery_assert_exists: true,
+    delivery_rollout_exists: true,
+    delivery_create_exists: true,
+    delivery_get_exists: true,
+    delivery_claim_exists: true,
+    delivery_complete_exists: true,
+    delivery_fail_exists: true,
+    delivery_assert_overloads: 1,
+    delivery_rollout_overloads: 1,
+    delivery_create_overloads: 1,
+    delivery_get_overloads: 1,
+    delivery_claim_overloads: 1,
+    delivery_complete_overloads: 1,
+    delivery_fail_overloads: 1,
+    delivery_assert_service_execute: true,
+    delivery_assert_authenticated_execute: false,
+    delivery_assert_anon_execute: false,
+    delivery_rollout_authenticated_execute: true,
+    delivery_rollout_anon_execute: false,
+    delivery_create_authenticated_execute: true,
+    delivery_create_anon_execute: false,
+    delivery_get_authenticated_execute: true,
+    delivery_get_anon_execute: false,
+    delivery_claim_service_execute: true,
+    delivery_claim_authenticated_execute: false,
+    delivery_complete_service_execute: true,
+    delivery_complete_authenticated_execute: false,
+    delivery_fail_service_execute: true,
+    delivery_fail_authenticated_execute: false,
+    delivery_rollout_row_count: 1,
+  };
+}
+
+test("source policy pins the three exact payroll migrations", () => {
   assert.deepEqual(sourceProblems(resolve(import.meta.dirname, "../..")), []);
 });
 
@@ -122,9 +195,15 @@ test("partial first-migration state schedules only the second migration", () => 
   assert.equal(applyPlan(state, []).migrations[0].version, "20270113000001");
 });
 
+test("statement-ready state schedules only the delivery migration", () => {
+  const state = deliveryPreState();
+  assert.deepEqual(deliveryPreProblems(state), []);
+  assert.deepEqual(applyPlan(state, []).migrations.map((migration) => migration.version), ["20270113000004"]);
+});
+
 test("complete state skips without another migration request", () => {
-  const state = finalState();
-  assert.deepEqual(finalPostProblems(state), []);
+  const state = deliveryState();
+  assert.deepEqual(deliveryPostProblems(state), []);
   assert.deepEqual(applyPlan(state, []), { action: "skip", reason: "exact_post_verified", migrations: [] });
 });
 
@@ -145,7 +224,7 @@ test("private storage bucket is reported with the correct boolean polarity", () 
 test("apply sends only the exact migrations in order and verifies each post-state", async () => {
   let reads = 0;
   const calls = [];
-  const states = [preState(), pdfState(), finalState()];
+  const states = [preState(), pdfState(), finalState(), finalState()];
   const fetchImpl = async (url, options = {}) => {
     calls.push({ url, options });
     if (url.endsWith("/database/migrations") && options.method === "GET") {
@@ -156,8 +235,14 @@ test("apply sends only the exact migrations in order and verifies each post-stat
     }
     if (url.endsWith("/database/query/read-only")) {
       const query = JSON.parse(options.body).query;
-      if (/from\s+public\.dealer_payroll_statement_rollout/i.test(query)) {
+      if (query === ROLLOUT_STATE_SQL) {
         return { ok: true, status: 200, json: async () => [finalState()] };
+      }
+      if (query === DELIVERY_STATE_SQL) {
+        return { ok: true, status: 200, json: async () => [reads >= states.length ? deliveryState() : deliveryPreState()] };
+      }
+      if (query === DELIVERY_ROLLOUT_STATE_SQL) {
+        return { ok: true, status: 200, json: async () => [deliveryState()] };
       }
       return { ok: true, status: 200, json: async () => [states[Math.min(reads++, states.length - 1)]] };
     }
@@ -175,7 +260,7 @@ test("apply sends only the exact migrations in order and verifies each post-stat
   );
   assert.equal(result.applied, true);
   const applyCalls = calls.filter((call) => call.url.endsWith("/database/migrations") && call.options.method === "POST");
-  assert.equal(applyCalls.length, 2);
+  assert.equal(applyCalls.length, 3);
   assert.deepEqual(applyCalls.map((call) => JSON.parse(call.options.body).name), MIGRATIONS.map((migration) => migration.name));
 });
 

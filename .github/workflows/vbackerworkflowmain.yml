@@ -40,6 +40,11 @@ on:
         required: true
         default: false
         type: boolean
+      deploy_send_payroll_statement:
+        description: "Deploy critical Edge function send-payroll-statement"
+        required: true
+        default: false
+        type: boolean
       deploy_frontend:
         description: "Deploy the reviewed frontend source at commit_sha"
         required: true
@@ -134,6 +139,7 @@ jobs:
           DEPLOY_TOURNAMENT_LIVE_CLOCK: ${{ inputs.deploy_tournament_live_clock || false }}
           DEPLOY_OPS_CLUB_ACCOUNTS: ${{ inputs.deploy_ops_club_accounts || false }}
           DEPLOY_RENDER_PAYROLL_STATEMENT: ${{ inputs.deploy_render_payroll_statement || false }}
+          DEPLOY_SEND_PAYROLL_STATEMENT: ${{ inputs.deploy_send_payroll_statement || false }}
           DEPLOY_FRONTEND: ${{ inputs.deploy_frontend || false }}
           FORCE_FRONTEND_REDEPLOY: ${{ inputs.force_frontend_redeploy || false }}
         run: |
@@ -145,6 +151,7 @@ jobs:
           [[ "$DEPLOY_TOURNAMENT_LIVE_CLOCK" == "true" ]] && selected+=("tournament-live-clock")
           [[ "$DEPLOY_OPS_CLUB_ACCOUNTS" == "true" ]] && selected+=("ops-club-accounts")
           [[ "$DEPLOY_RENDER_PAYROLL_STATEMENT" == "true" ]] && selected+=("render-payroll-statement")
+          [[ "$DEPLOY_SEND_PAYROLL_STATEMENT" == "true" ]] && selected+=("send-payroll-statement")
           selected_csv="$(IFS=,; echo "${selected[*]-}")"
           node control-plane/VinPoker/scripts/deploy/plan-edge-deployment.mjs \
             --event "${{ github.event_name }}" \

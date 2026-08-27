@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       source_sha:
-        description: "Exact reviewed source SHA containing the two payroll migrations"
+        description: "Exact reviewed source SHA containing the payroll PDF, FT UI, and delivery migrations"
         required: true
         type: string
       mode:
@@ -16,7 +16,7 @@ on:
           - preflight
           - apply
       confirmation:
-        description: "For apply: APPLY_DEALER_PAYROLL_STATEMENT_CONTRACT_20270113000000_20270113000001"
+        description: "For apply: APPLY_DEALER_PAYROLL_STATEMENT_CONTRACT_20270113000000_20270113000001_20270113000004"
         required: true
         default: HOLD
         type: string
@@ -106,6 +106,6 @@ jobs:
             echo ""
             echo "- Source SHA: `${{ inputs.source_sha }}`"
             echo "- Mode: `${{ inputs.mode }}`"
-            echo "- Exact migrations only: `20270113000000`, `20270113000001`"
+            echo "- Exact migrations only: `20270113000000`, `20270113000001`, `20270113000004`"
             echo "- No broad migration replay or database password used."
           } >> "$GITHUB_STEP_SUMMARY"
