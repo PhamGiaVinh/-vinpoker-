@@ -272,6 +272,8 @@ test("workflow uses the protected environment and the exact runner", () => {
   assert.doesNotMatch(workflow, /secrets\.SUPABASEACCESTOKEN/);
   assert.match(workflow, /actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/);
   assert.doesNotMatch(workflow, /db push|include-all|SUPABASE_DB_PASSWORD/i);
+  assert.match(workflow, /printf '%s\\n' '- Source SHA: `\$\{\{ inputs\.source_sha \}\}`'/);
+  assert.doesNotMatch(workflow, /echo "- Source SHA: `/);
 });
 
 test("management API failures expose only sanitized method, path, status, and provider code", async () => {
