@@ -3,10 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { FEATURES } from "@/lib/featureFlags";
 import {
   deriveFtStatementStatus,
+  parsePayrollStatementOnlinePreview,
   parseFtStatementRecords,
   parseFtStatementRollout,
   type FtPayrollStatementRecord,
   type FtPayrollStatementStatus,
+  type PayrollStatementOnlinePreview,
 } from "@/lib/payrollStatementUi";
 
 const HSOP_CLUB_ID = "22222222-2222-2222-2222-222222222222";
@@ -158,15 +160,15 @@ export function useFtPayrollStatements(input: {
 
   const previewDraft = useCallback(async (dealerId: string) => {
     if (availability !== "ready" || !periodId) throw new Error("PAYROLL_STATEMENT_UNAVAILABLE");
-    const data = await invokePdf({ mode: "preview_ft", club_id: clubId, dealer_id: dealerId, payroll_period_id: periodId });
-    openPdfBlob(data);
+    const data = await invokePdf({ mode: "preview_ft_view", club_id: clubId, dealer_id: dealerId, payroll_period_id: periodId });
+    return payrollStatementOnlinePreview(data, true);
   }, [availability, clubId, invokePdf, periodId]);
 
   const previewFinal = useCallback(async (dealerId: string) => {
     const statement = records[dealerId];
     if (availability !== "ready" || !statement) throw new Error("PAYROLL_STATEMENT_UNAVAILABLE");
-    const data = await invokePdf({ mode: "preview", statement_id: statement.statement_id });
-    openPdfBlob(data);
+    const data = await invokePdf({ mode: "preview_view", statement_id: statement.statement_id });
+    return payrollStatementOnlinePreview(data, false);
   }, [availability, invokePdf, records]);
 
   const generatePdf = useCallback(async (dealerId: string) => {
@@ -237,9 +239,8 @@ async function downloadSignedPdf(url: string, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
-function openPdfBlob(data: unknown) {
-  if (!(data instanceof Blob)) throw new Error("PAYROLL_PDF_PREVIEW_UNAVAILABLE");
-  const url = URL.createObjectURL(data);
-  window.open(url, "_blank", "noopener,noreferrer");
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+function payrollStatementOnlinePreview(data: unknown, draft: boolean): PayrollStatementOnlinePreview {
+  const preview = parsePayrollStatementOnlinePreview(data);
+  if (!preview || preview.draft !== draft) throw new Error("PAYROLL_STATEMENT_PREVIEW_UNAVAILABLE");
+  return preview;
 }

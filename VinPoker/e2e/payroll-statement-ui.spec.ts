@@ -20,6 +20,12 @@ for (const viewport of viewports) {
 
     await page.getByRole("button", { name: "Hành động phiếu lương Nguyễn Minh Anh" }).click();
     await expect(page.getByText("Xem bản nháp", { exact: true })).toBeVisible();
+    await page.getByText("Xem bản nháp", { exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Bản nháp phiếu lương" })).toBeVisible();
+    await expect(page.getByText("THỰC LĨNH", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Phiếu lương xem trực tiếp").getByText("17.726.250 đ", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Hành động phiếu lương Nguyễn Minh Anh" }).click();
     await page.getByText("Chốt phiếu", { exact: true }).click();
     await expect(page.getByRole("heading", { name: "Chốt phiếu lương FT?" })).toBeVisible();
     await expect(page.getByText("Sau khi chốt, phiếu trở thành bản ghi bất biến và không thể chỉnh sửa trực tiếp.")).toBeVisible();

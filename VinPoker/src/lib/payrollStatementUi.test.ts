@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   deriveFtStatementStatus,
   opaquePayrollFilename,
+  parsePayrollStatementOnlinePreview,
   parseFtStatementRecords,
   parseFtStatementRollout,
   type FtPayrollStatementRecord,
@@ -47,5 +48,37 @@ describe("payroll statement UI contract", () => {
     const filename = opaquePayrollFilename("Tháng 08/2026", record.statement_id);
     expect(filename).toBe(`phieu-luong-082026-${record.statement_id}.pdf`);
     expect(filename).not.toContain("dealer");
+  });
+
+  it("accepts only a complete server-built online preview model", () => {
+    const value = {
+      view: {
+        statement_id: record.statement_id,
+        statement_hash: record.statement_hash,
+        draft: false,
+        brand_name: "VINPOKER",
+        club_name: "HSOP",
+        period_label: "Tháng 08/2026",
+        dealer: {
+          full_name: "Nguyễn Minh Anh",
+          department: "Dealer",
+          job_title: "Dealer",
+          bank_account_number: "0338356589",
+          bank_name: "VPBank",
+          hire_date: "15/04/2024",
+          employment_type: "Chính thức",
+        },
+        metrics: [{ label: "Tổng giờ công", value: "168,5 giờ" }],
+        income_lines: [{ label: "Giờ thường", method: "Theo snapshot", quantity: "124 giờ", unit_rate: "100.000", amount: "12.400.000" }],
+        rate_segments: [],
+        deduction_lines: [],
+        gross_amount: "12.400.000",
+        deduction_amount: "0",
+        net_amount: "12.400.000",
+        finalized_label: "31/08/2026",
+      },
+    };
+    expect(parsePayrollStatementOnlinePreview(value)?.dealer.full_name).toBe("Nguyễn Minh Anh");
+    expect(parsePayrollStatementOnlinePreview({ ...value, view: { ...value.view, net_amount: 12_400_000 } })).toBeNull();
   });
 });

@@ -11,6 +11,7 @@ import type {
   JsonRecord,
   PayrollPdfFonts,
   PayrollPdfRenderOptions,
+  PayrollStatementViewModel,
   PayrollStatementLine,
   PayrollStatementSnapshot,
   RenderedPayrollPdf,
@@ -83,6 +84,60 @@ export async function renderPayrollStatementPdf(
     statementHash: statement.statement_hash,
     renderVersion: PAYROLL_PDF_RENDER_VERSION,
     mode: options.mode,
+  };
+}
+
+// Browser rendering is presentation-only. Every displayed value originates
+// from the same validated server snapshot that is used for the immutable PDF.
+export function buildPayrollStatementViewModel(
+  statement: PayrollStatementSnapshot,
+  draft: boolean,
+): PayrollStatementViewModel {
+  assertRenderableStatement(statement);
+  const dealer = statement.dealer_snapshot;
+  const club = statement.club_snapshot;
+  const brand = resolvePayrollBrand(club);
+  const income = statement.lines.filter((line) => line.line_type !== "deduction" && line.line_type !== "rate_segment");
+  const rateSegments = statement.lines.filter((line) => line.line_type === "rate_segment");
+  const deductions = statement.lines.filter((line) => line.line_type === "deduction");
+
+  return {
+    statement_id: statement.id,
+    statement_hash: statement.statement_hash,
+    draft,
+    brand_name: brand.displayName,
+    club_name: readString(club.club_name),
+    period_label: periodLabel(statement),
+    dealer: {
+      full_name: readString(dealer.full_name),
+      department: readString(dealer.department) || "Dealer",
+      job_title: readString(dealer.job_title) || "Dealer",
+      bank_account_number: readString(dealer.bank_account_number) || "—",
+      bank_name: readString(dealer.bank_name) || "—",
+      hire_date: readString(dealer.hire_date) || "—",
+      employment_type: employmentLabel(readString(dealer.employment_type)),
+    },
+    metrics: metricValues(statement).map(([label, value]) => ({ label, value })),
+    income_lines: income.map((line) => ({
+      label: lineLabel(line),
+      method: lineMethod(line),
+      quantity: formatQuantity(line.quantity, line.unit),
+      unit_rate: formatVnd(line.unit_rate_vnd),
+      amount: formatVnd(line.amount_vnd),
+    })),
+    rate_segments: rateSegments.map((line) => ({
+      range: rateRange(line.source_snapshot ?? {}),
+      unit_rate: formatVnd(line.unit_rate_vnd),
+      quantity: formatQuantity(line.quantity, line.unit),
+    })),
+    deduction_lines: deductions.map((line) => ({
+      label: lineLabel(line),
+      amount: formatVnd(Math.abs(numberValue(line.amount_vnd))),
+    })),
+    gross_amount: formatVnd(statement.gross_amount_vnd),
+    deduction_amount: formatVnd(Math.abs(numberValue(statement.deduction_amount_vnd))),
+    net_amount: formatVnd(statement.net_amount_vnd),
+    finalized_label: statement.finalized_at ? formatDate(statement.finalized_at) : "—",
   };
 }
 

@@ -1248,6 +1248,12 @@ export const FEATURES = {
    */
   payrollStatementPdfAllClubs: false,
   /**
+   * Immutable payroll Telegram delivery remains dark by default. The database
+   * master switch and per-club allowlist are authoritative; this source flag
+   * only prevents a wide frontend surface before an owner-approved rollout.
+   */
+  payrollStatementTelegramDeliveryAllClubs: false,
+  /**
    * Chip Ops — read-only Issued-Chip-Inventory screen (/chip-ops) + the Chip-Master role.
    * The screen shows server-computed per-denomination chip counts + a reconciliation badge for
    * a tournament (RPC `get_issued_chip_inventory`); strictly read-only. Default **OFF** (dark):

@@ -6,7 +6,7 @@ import {
   FtPayrollStatementSummary,
 } from "@/components/cashier/FtPayrollStatementControls";
 import type { useFtPayrollStatements } from "@/hooks/useFtPayrollStatements";
-import type { FtPayrollStatementStatus } from "@/lib/payrollStatementUi";
+import type { FtPayrollStatementStatus, PayrollStatementOnlinePreview } from "@/lib/payrollStatementUi";
 
 type Controller = ReturnType<typeof useFtPayrollStatements>;
 
@@ -15,6 +15,47 @@ const DEALERS = [
   { id: "22222222-2222-4222-8222-222222222222", name: "Phạm Gia Vinh", net: "12.400.000 đ" },
   { id: "33333333-3333-4333-8333-333333333333", name: "Trần Thảo My", net: "9.850.000 đ" },
 ];
+
+const PREVIEW: PayrollStatementOnlinePreview = {
+  statement_id: DEALERS[0].id,
+  statement_hash: "a".repeat(64),
+  draft: true,
+  brand_name: "VINPOKER",
+  club_name: "HSOP",
+  period_label: "Tháng 08/2026",
+  dealer: {
+    full_name: DEALERS[0].name,
+    department: "Dealer",
+    job_title: "Dealer poker tournament",
+    bank_account_number: "0338356589",
+    bank_name: "VPBank",
+    hire_date: "15/04/2024",
+    employment_type: "Chính thức",
+  },
+  metrics: [
+    { label: "Ngày công chuẩn", value: "27 ngày" },
+    { label: "Tổng giờ công", value: "168,5 giờ" },
+    { label: "Tổng giờ OT", value: "44,5 giờ" },
+    { label: "Đơn giá cơ bản", value: "100.000 đ/giờ" },
+  ],
+  income_lines: [
+    { label: "Giờ thường", method: "Giờ công", quantity: "124 giờ", unit_rate: "100.000", amount: "12.400.000" },
+    { label: "OT 150%", method: "Theo snapshot", quantity: "20 giờ", unit_rate: "150.000", amount: "3.000.000" },
+    { label: "Phụ cấp ăn", method: "Theo quy định", quantity: "27 ngày", unit_rate: "80.000", amount: "2.160.000" },
+  ],
+  rate_segments: [
+    { range: "01/08/2026 - 15/08/2026", unit_rate: "95.000", quantity: "72 giờ" },
+    { range: "16/08/2026 - 31/08/2026", unit_rate: "100.000", quantity: "96,5 giờ" },
+  ],
+  deduction_lines: [
+    { label: "Tạm ứng", amount: "5.000.000" },
+    { label: "Thuế TNCN", amount: "2.500.000" },
+  ],
+  gross_amount: "25.726.250",
+  deduction_amount: "8.000.000",
+  net_amount: "17.726.250",
+  finalized_label: "31/08/2026",
+};
 
 export default function PayrollStatementPreview() {
   const [statuses, setStatuses] = useState<Record<string, FtPayrollStatementStatus>>({
@@ -39,8 +80,8 @@ export default function PayrollStatementPreview() {
       setStatuses((current) => ({ ...current, [dealerId]: "FINALIZED" }));
       return true;
     },
-    previewDraft: async () => undefined,
-    previewFinal: async () => undefined,
+    previewDraft: async () => PREVIEW,
+    previewFinal: async () => ({ ...PREVIEW, draft: false, filename: "phieu-luong-da-chot.pdf" }),
     generatePdf: async (dealerId: string) => {
       setStatuses((current) => ({ ...current, [dealerId]: "PDF_READY" }));
       return true;

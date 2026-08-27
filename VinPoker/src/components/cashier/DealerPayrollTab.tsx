@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useOperatorClubs } from "@/hooks/useOperatorClubs";
 import { useFtPayrollStatements } from "@/hooks/useFtPayrollStatements";
+import { usePayrollStatementTelegramDelivery } from "@/hooks/usePayrollStatementTelegramDelivery";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,7 +31,7 @@ import {
   type PayrollAdjustmentRow, type SavedPayrollRecord, type PaymentRecord,
 } from "@/hooks/useDealerPayroll";
 import {
-  Users, RefreshCw, Download, Calculator, Save, Plus, Trash2, Loader2, Moon, FileText,
+  Users, RefreshCw, Download, Calculator, Save, Plus, Trash2, Loader2, Moon, Eye,
   AlertTriangle, CheckCircle2, TrendingUp, ChevronDown, ChevronUp, ShieldAlert,
 } from "lucide-react";
 import {
@@ -43,6 +44,8 @@ import {
   FtPayrollStatementBadge,
   FtPayrollStatementSummary,
 } from "@/components/cashier/FtPayrollStatementControls";
+import { PayrollStatementTelegramDeliveryControls } from "@/components/cashier/PayrollStatementTelegramDeliveryControls";
+import { LegacyPayrollPreviewDialog } from "@/components/cashier/LegacyPayrollPreviewDialog";
 
 type ClubRow = { id: string; name: string };
 type AdjType = "BONUS" | "PENALTY" | "DEDUCTION" | "ADVANCE" | "OTHER" | "TIPS";
@@ -390,6 +393,7 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
 
   // PDF export loading state
   const [exporting, setExporting] = useState<string | null>(null);
+  const [legacyPreview, setLegacyPreview] = useState<{ row: DealerPayrollRow; title: string; html: string } | null>(null);
 
   // Adjustment dialog state
   const [adjDialogOpen, setAdjDialogOpen] = useState(false);
@@ -573,6 +577,11 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
     canFinalize: isAdmin || operatorScope.some((row) => row.club_id === activeClubId && row.can_owner),
     dealerIds: ftDealers.map((dealer) => dealer.dealer_id),
   });
+  const payrollDeliveryController = usePayrollStatementTelegramDelivery({
+    clubId: activeClubId,
+    periodId: savedPeriodId,
+    canSend: isAdmin || operatorScope.some((row) => row.club_id === activeClubId && row.can_owner),
+  });
 
   // ── Submit / Approve / Lock ─────────────────────────────────────────────
 
@@ -727,6 +736,17 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
       setExporting(null);
     }
   }, [clubs, activeClubId, currentRange, selectedMonth]);
+
+  const openLegacyPreview = useCallback(async (row: DealerPayrollRow) => {
+    const clubName = clubs.find((club) => club.id === activeClubId)?.name ?? "CLB";
+    const monthLabel = currentRange?.label ?? selectedMonth;
+    const { buildPayrollPreviewHtml } = await import("@/lib/exportPayrollPdf");
+    setLegacyPreview({
+      row,
+      title: `Bản xem tạm tính · ${row.full_name}`,
+      html: buildPayrollPreviewHtml([row], clubName, monthLabel, row.dealer_id),
+    });
+  }, [activeClubId, clubs, currentRange, selectedMonth]);
 
   // ── Add adjustment ────────────────────────────────────────────────────────
 
@@ -921,15 +941,15 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
         return (
           <div className="flex items-center gap-0.5">
             <button
-              onClick={() => exportSinglePdf(r)}
+              onClick={() => openLegacyPreview(r)}
               disabled={exporting === r.dealer_id}
               className="p-1 rounded text-muted-foreground hover:text-success disabled:opacity-50"
-              title="Xuất PDF"
+              title="Xem tạm tính"
             >
               {exporting === r.dealer_id ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <FileText className="w-3.5 h-3.5" />
+                <Eye className="w-3.5 h-3.5" />
               )}
             </button>
             {canEditAdjustments && savedRecords[r.dealer_id] && (
@@ -1008,6 +1028,14 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
           </Button>
         )}
 
+        {savedPeriodId ? (
+          <PayrollStatementTelegramDeliveryControls
+            controller={payrollDeliveryController}
+            clubName={clubs.find((club) => club.id === activeClubId)?.name ?? "CLB"}
+            periodLabel={currentRange?.label ?? selectedMonth}
+          />
+        ) : null}
+
         {/* Save button (always in toolbar) */}
         {displayRows.length > 0 && !savedPeriodId && (
           <Button size="sm" className="h-8 text-xs bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleSave} disabled={saving}>
@@ -1040,6 +1068,12 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
       {ftDealers.length > 0 && (
         <FtPayrollStatementSummary controller={ftStatementController} totalDealers={ftDealers.length} />
       )}
+
+      <LegacyPayrollPreviewDialog
+        preview={legacyPreview ? { title: legacyPreview.title, html: legacyPreview.html } : null}
+        onOpenChange={(open) => { if (!open) setLegacyPreview(null); }}
+        onDownload={() => { if (legacyPreview) void exportSinglePdf(legacyPreview.row); }}
+      />
 
       {displayRows.length > 0 && (
         <>

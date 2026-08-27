@@ -1,6 +1,6 @@
 export type PayrollPdfRequest =
-  | { mode: "preview_ft"; club_id: string; dealer_id: string; payroll_period_id: string }
-  | { mode: "preview" | "final"; statement_id: string };
+  | { mode: "preview_ft" | "preview_ft_view"; club_id: string; dealer_id: string; payroll_period_id: string }
+  | { mode: "preview" | "preview_view" | "final"; statement_id: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_ERROR = /^PAYROLL_(?:PDF|STATEMENT)_[A-Z0-9_]{1,80}$/;
@@ -8,17 +8,17 @@ const SAFE_ERROR = /^PAYROLL_(?:PDF|STATEMENT)_[A-Z0-9_]{1,80}$/;
 export function parsePayrollPdfRequest(value: unknown): PayrollPdfRequest | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const body = value as Record<string, unknown>;
-  if (body.mode === "preview_ft") {
+  if (body.mode === "preview_ft" || body.mode === "preview_ft_view") {
     if (!hasExactKeys(body, ["mode", "club_id", "dealer_id", "payroll_period_id"])) return null;
     if (!isUuid(body.club_id) || !isUuid(body.dealer_id) || !isUuid(body.payroll_period_id)) return null;
     return {
-      mode: "preview_ft",
+      mode: body.mode,
       club_id: body.club_id,
       dealer_id: body.dealer_id,
       payroll_period_id: body.payroll_period_id,
     };
   }
-  if ((body.mode === "preview" || body.mode === "final") && isUuid(body.statement_id)) {
+  if ((body.mode === "preview" || body.mode === "preview_view" || body.mode === "final") && isUuid(body.statement_id)) {
     if (!hasExactKeys(body, ["mode", "statement_id"])) return null;
     return { mode: body.mode, statement_id: body.statement_id };
   }
