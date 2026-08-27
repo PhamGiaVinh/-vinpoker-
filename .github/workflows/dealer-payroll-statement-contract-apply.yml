@@ -100,12 +100,15 @@ jobs:
 
       - name: Publish sanitized summary
         shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          MODE: ${{ inputs.mode }}
         run: |
           {
             echo "## Payroll statement contract"
             echo ""
-            printf '%s\n' '- Source SHA: `${{ inputs.source_sha }}`'
-            printf '%s\n' '- Mode: `${{ inputs.mode }}`'
-            echo '- Exact migrations only: `20270113000000`, `20270113000001`, `20270113000004`'
+            printf '%s\n' "- Source SHA: $SOURCE_SHA"
+            printf '%s\n' "- Mode: $MODE"
+            echo "- Exact migrations only: 20270113000000, 20270113000001, 20270113000004"
             echo "- No broad migration replay or database password used."
           } >> "$GITHUB_STEP_SUMMARY"
