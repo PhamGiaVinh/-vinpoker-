@@ -76,7 +76,7 @@ INSERT INTO public.tracker_voice_configs(
   '85000000-0000-4000-8000-000000000001',
   '84000000-0000-4000-8000-000000000001',
   '83000000-0000-4000-8000-000000000001',
-  true, 'assist', 'gpt-live-transcribe', 1, false, false
+  true, 'assist', 'gemini-3.5-transcribe-live', 1, false, false
 );
 
 -- Catalog and least-privilege gates.
@@ -194,7 +194,7 @@ SELECT public._tracker_voice_register_validated_event(
   '85000000-0000-4000-8000-000000000001',
   '84000000-0000-4000-8000-000000000001',
   '86000000-0000-4000-8000-000000000001',
-  'mock', 'mock-v0', 'provider-event-1', NULL, 'Player A call 100',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'provider-event-1', NULL, 'Player A call 100',
   '{"kind":"call","canonical_action":"call","actor_player_id":"82000000-0000-4000-8000-000000000001","entry_number":1,"street":"preflop","action_order":1,"action_amount":100}'::JSONB,
   :'initial_state_value', 'assist', 'voice-event-call-0001', 'trace-call-0001',
   'enforce', true, NULL
@@ -293,7 +293,7 @@ SELECT public._tracker_voice_register_validated_event(
   '85000000-0000-4000-8000-000000000001',
   '84000000-0000-4000-8000-000000000001',
   '86000000-0000-4000-8000-000000000001',
-  'mock', 'mock-v0', 'provider-event-1', NULL, 'Player A call 100',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'provider-event-1', NULL, 'Player A call 100',
   '{"kind":"call","canonical_action":"call","actor_player_id":"82000000-0000-4000-8000-000000000001","entry_number":1,"street":"preflop","action_order":1,"action_amount":100}'::JSONB,
   :'initial_state_value', 'assist', 'voice-event-call-0001', 'trace-call-0001',
   'enforce', true, NULL
@@ -303,7 +303,7 @@ SELECT public._tracker_voice_register_validated_event(
   '85000000-0000-4000-8000-000000000001',
   '84000000-0000-4000-8000-000000000001',
   '86000000-0000-4000-8000-000000000001',
-  'mock', 'mock-v0', 'provider-event-1', NULL, 'Player A call 200',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'provider-event-1', NULL, 'Player A call 200',
   '{"kind":"call","canonical_action":"call","actor_player_id":"82000000-0000-4000-8000-000000000001","entry_number":1,"street":"preflop","action_order":1,"action_amount":200}'::JSONB,
   :'initial_state_value', 'assist', 'voice-event-call-0001', 'trace-call-0001',
   'enforce', true, NULL
@@ -422,7 +422,7 @@ SELECT public._tracker_voice_register_validated_event(
   '85000000-0000-4000-8000-000000000001',
   '84000000-0000-4000-8000-000000000001',
   '86000000-0000-4000-8000-000000000001',
-  'mock', 'mock-v0', 'provider-stale', NULL, 'Player B check',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'provider-stale', NULL, 'Player B check',
   '{"kind":"check","canonical_action":"check","actor_player_id":"82000000-0000-4000-8000-000000000002","entry_number":1,"street":"preflop","action_order":2,"action_amount":0}'::JSONB,
   repeat('0', 64), 'assist', 'voice-event-stale-0001', 'trace-stale-0001',
   'enforce', true, NULL
@@ -432,7 +432,7 @@ SELECT public._tracker_voice_register_validated_event(
   '85000000-0000-4000-8000-000000000001',
   '84000000-0000-4000-8000-000000000001',
   '86000000-0000-4000-8000-000000000001',
-  'mock', 'mock-v0', 'provider-auto', NULL, 'Player B check',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'provider-auto', NULL, 'Player B check',
   '{"kind":"check","canonical_action":"check","actor_player_id":"82000000-0000-4000-8000-000000000002","entry_number":1,"street":"preflop","action_order":2,"action_amount":0}'::JSONB,
   :'current_state_value', 'auto', 'voice-event-auto-0001', 'trace-auto-0001',
   'enforce', true, 'voice-cap-v0'
@@ -557,6 +557,13 @@ SELECT public.tracker_voice_test_assert(
 SELECT 'TRACKER_VOICE_GEMINI_AUTO_TEST_SKIPPED_PRE_12008' AS result;
 \endif
 
+-- Restore a matching Assist config for the correction-pending lifecycle tests.
+UPDATE public.tracker_voice_configs
+SET configured_mode = 'assist',
+    provider_model = 'gemini-3.5-transcribe-live'
+WHERE tournament_id = '85000000-0000-4000-8000-000000000001'
+  AND tournament_table_id = '84000000-0000-4000-8000-000000000001';
+
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '81200000-0000-4000-8000-000000000001', false);
 SELECT public.record_action(
@@ -584,7 +591,7 @@ SELECT public._tracker_voice_register_validated_event(
   '85000000-0000-4000-8000-000000000001',
   '84000000-0000-4000-8000-000000000001',
   '86000000-0000-4000-8000-000000000001',
-  'mock', 'mock-v0', 'provider-pending', NULL, 'Player B call 200',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'provider-pending', NULL, 'Player B call 200',
   '{"kind":"call","canonical_action":"call","actor_player_id":"82000000-0000-4000-8000-000000000002","entry_number":1,"street":"preflop","action_order":2,"action_amount":200}'::JSONB,
   :'pending_state_value', 'assist', 'voice-event-pending-01', 'trace-pending-01',
   'enforce', true, NULL
@@ -594,7 +601,7 @@ SELECT public._tracker_voice_register_validated_event(
   '85000000-0000-4000-8000-000000000001',
   '84000000-0000-4000-8000-000000000001',
   '86000000-0000-4000-8000-000000000001',
-  'mock', 'mock-v0', 'provider-wrong', NULL, 'Bao sai action vua nhap',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'provider-wrong', NULL, 'Bao sai action vua nhap',
   '{"kind":"report_wrong_action"}'::JSONB,
   :'pending_state_value', 'assist', 'voice-event-wrong-0001', 'trace-wrong-0001',
   'enforce', true, NULL
@@ -635,7 +642,7 @@ SELECT public._tracker_voice_register_validated_event(
   '85000000-0000-4000-8000-000000000001',
   '84000000-0000-4000-8000-000000000001',
   '86000000-0000-4000-8000-000000000001',
-  'mock', 'mock-v0', 'provider-blocked', NULL, 'Player B call 200',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'provider-blocked', NULL, 'Player B call 200',
   '{"kind":"call","canonical_action":"call","actor_player_id":"82000000-0000-4000-8000-000000000002","entry_number":1,"street":"preflop","action_order":2,"action_amount":200}'::JSONB,
   :'pending_state_value', 'assist', 'voice-event-blocked-01', 'trace-blocked-01',
   'enforce', true, NULL
@@ -862,7 +869,7 @@ BEGIN
       '85000000-0000-4000-8000-000000000001',
       '84000000-0000-4000-8000-000000000001',
       '86000000-0000-4000-8000-000000000001',
-      'mock', 'mock-v0', 'provider-injected', NULL, 'Goi Floor injected failure',
+      'gemini_live', 'gemini-3.5-transcribe-live', 'provider-injected', NULL, 'Goi Floor injected failure',
       '{"kind":"call_floor"}'::JSONB,
       v_state, 'assist', 'voice-event-inject-001', 'trace-inject-001',
       'enforce', true, NULL
