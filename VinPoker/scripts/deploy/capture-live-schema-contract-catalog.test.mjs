@@ -25,6 +25,8 @@ test("catalog capture calls only the Management API read-only SQL endpoint", asy
   assert.equal(calls[0].options.method, "POST");
   assert.equal(JSON.parse(calls[0].options.body).query, CATALOG_SQL);
   assert.match(CATALOG_SQL, /pg_catalog\.pg_class/);
+  assert.match(CATALOG_SQL, /namespace\.nspname IN \('public', 'storage'\)/);
+  assert.match(CATALOG_SQL, /FROM pg_catalog\.pg_proc[\s\S]*WHERE namespace\.nspname = 'public'/);
   assert.doesNotMatch(CATALOG_SQL, /\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|CREATE)\b/i);
 });
 

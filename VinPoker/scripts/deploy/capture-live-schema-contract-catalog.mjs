@@ -88,7 +88,7 @@ WITH relation_catalog AS (
   ) AS item
   FROM pg_catalog.pg_class relation
   JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
-  WHERE namespace.nspname = 'public'
+  WHERE namespace.nspname IN ('public', 'storage')
     AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
 ), function_catalog AS (
   SELECT jsonb_build_object(
