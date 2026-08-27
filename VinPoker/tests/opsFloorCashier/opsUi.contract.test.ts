@@ -47,8 +47,9 @@ describe("Ops production safety affordances", () => {
     );
   });
 
-  it("keeps profile review off until approve_verification authority is proven", () => {
+  it("keeps enabled profile review behind the server-authoritative approve_verification RPC", () => {
     const gate = readFileSync(resolve(repo, "src/lib/profileReviewGate.ts"), "utf8");
-    expect(gate).toContain("export const PROFILE_REVIEW_ENABLED = false;");
+    expect(gate).toContain("server-authoritative");
+    expect(gate).toContain("export const PROFILE_REVIEW_ENABLED = true;");
   });
 });
