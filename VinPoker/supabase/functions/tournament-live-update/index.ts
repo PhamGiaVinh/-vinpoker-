@@ -58,6 +58,7 @@ function clockwiseAfter<T extends { seat_number: number }>(players: T[], seat: n
 function resolveVoiceActor(snapshot: VoiceSnapshot, street: Street): {
   playerId: string;
   entryNumber: number;
+  seatNumber: number;
   currentBet: number;
   stack: number;
   highestBet: number;
@@ -79,6 +80,7 @@ function resolveVoiceActor(snapshot: VoiceSnapshot, street: Street): {
   return {
     playerId,
     entryNumber: seed.entry_number || 1,
+    seatNumber: seed.seat_number,
     currentBet: newStreet ? 0 : player.street_bet,
     stack: player.stack,
     highestBet: newStreet ? 0 : runtime.highestBet,
@@ -424,6 +426,12 @@ Deno.serve(async (req) => {
         if (command.kind !== "report_wrong_action" && command.kind !== "call_floor") {
           const actor = resolveVoiceActor(snapshot, street);
           if (!actor) return validationError("VOICE_ACTOR_UNAVAILABLE", "Không xác định được người đang tới lượt.");
+          if (command.spokenSeatNumber !== null && command.spokenSeatNumber !== actor.seatNumber) {
+            return validationError(
+              "VOICE_ACTOR_MISMATCH",
+              `Đang tới Ghế ${actor.seatNumber}, nhưng Voice nghe Ghế ${command.spokenSeatNumber}.`,
+            );
+          }
           const canonicalAction = command.kind === "bet_to"
             ? "bet"
             : command.kind === "raise_to"
@@ -467,6 +475,7 @@ Deno.serve(async (req) => {
             ...normalizedCommand,
             canonical_action: canonicalAction,
             actor_player_id: actor.playerId,
+            spoken_seat_number: command.spokenSeatNumber,
             entry_number: actor.entryNumber,
             street,
             action_amount: verdict.normalizedAmount,

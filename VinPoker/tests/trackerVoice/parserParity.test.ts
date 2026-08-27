@@ -12,6 +12,7 @@ function browserShape(transcript: string, options: { spokenAmountUnit?: number; 
         normalizedTranscript: parsed.normalizedTranscript,
         amount: parsed.amount?.value ?? null,
         amountAmbiguous: parsed.amount?.ambiguous ?? false,
+        spokenSeatNumber: parsed.spokenSeatNumber,
       }
     : null;
 }
@@ -49,5 +50,16 @@ describe("Tracker Voice browser and Edge parser parity", () => {
     expect(serverShape("raise 120", {})).toMatchObject({ kind: "raise_to", amount: 120, amountAmbiguous: true });
     expect(browserShape("raise 120", { spokenAmountUnit: 1_000, amountUnitConfirmed: true }))
       .toMatchObject({ kind: "raise_to", amount: 120_000, amountAmbiguous: false });
+  });
+
+  it.each([
+    ["seat number two race four thousand", 2, 4_000],
+    ["see number three fold", 3, null],
+    ["seat number seat number five all in", 5, null],
+    ["về số 6 raise 20.000", 6, 20_000],
+  ])("keeps browser and Edge seat/pronunciation metadata identical for %s", (transcript, seat, amount) => {
+    const options = { spokenAmountUnit: 1, amountUnitConfirmed: false };
+    expect(browserShape(transcript, options)).toEqual(serverShape(transcript, options));
+    expect(browserShape(transcript, options)).toMatchObject({ spokenSeatNumber: seat, amount });
   });
 });

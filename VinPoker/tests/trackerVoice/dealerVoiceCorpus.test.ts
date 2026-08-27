@@ -26,13 +26,15 @@ describe("Dealer Voice UAT corpus", () => {
     }
   });
 
-  it("does not make phonetic Vietnamese dealer speech a new parser alias", () => {
+  it("accepts only bounded phonetic raise forms with an amount", () => {
     const phoneticDealerSpeech = DEALER_VOICE_CORPUS
       .filter((entry) => entry.spoken.startsWith("rây"))
       .map((entry) => entry.spoken);
 
     for (const spoken of phoneticDealerSpeech) {
-      expect(parseVoiceCommand(spoken, { amountUnitConfirmed: true }), spoken).toBeNull();
+      expect(parseVoiceCommand(spoken, { amountUnitConfirmed: true }), spoken).toMatchObject({ kind: "raise_to" });
     }
+    expect(parseVoiceCommand("rây your hand")).toBeNull();
+    expect(parseVoiceCommand("race tomorrow")).toBeNull();
   });
 });

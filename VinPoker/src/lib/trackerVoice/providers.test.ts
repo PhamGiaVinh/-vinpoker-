@@ -161,10 +161,13 @@ describe("Gemini Live dealer phrase adaptation", () => {
       "raise 120k",
       "rây một trăm hai mươi nghìn",
       "seat five",
+      "seat number five",
       "sít năm",
+      "ghế số năm",
+      "ô in",
       "tất tay",
     ]));
     expect(TRACKER_VOICE_GEMINI_CUSTOM_VOCABULARY.length).toBeGreaterThanOrEqual(40);
-    expect(TRACKER_VOICE_GEMINI_CUSTOM_VOCABULARY.length).toBeLessThanOrEqual(60);
+    expect(TRACKER_VOICE_GEMINI_CUSTOM_VOCABULARY.length).toBeLessThanOrEqual(80);
   });
 });

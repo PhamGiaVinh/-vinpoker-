@@ -7,6 +7,7 @@ import {
 } from "@/lib/trackerVoice";
 import type { StandaloneHandInput } from "@/components/cashier/tournament-live/handinput/useStandaloneHandInput";
 import { TrackerVoicePanel } from "./TrackerVoicePanel";
+import type { TrackerVoiceDiagnosticSnapshot } from "./TrackerVoicePanel";
 
 function hookFixture(): StandaloneHandInput {
   return {
@@ -118,6 +119,42 @@ describe("TrackerVoicePanel", () => {
     expect(await screen.findByText("Shadow hợp lệ, không gọi server và chưa ghi action.")).toBeInTheDocument();
     expect(validateEventOverride).not.toHaveBeenCalled();
     expect(screen.getByText(/Auto bị khóa/)).toBeInTheDocument();
+  });
+
+  it("keys each diagnostic proposal to its own final transcript", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const snapshots: TrackerVoiceDiagnosticSnapshot[] = [];
+    render(
+      <TrackerVoicePanel
+        hook={hookFixture()}
+        providerOverride={provider}
+        runtimeOverride={runtimeFixture}
+        validateEventOverride={vi.fn(async () => validatedReceipt)}
+        onDiagnosticSnapshot={(snapshot) => snapshots.push(snapshot)}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+
+    act(() => provider.emit("fold", { final: true, id: "final-fold" }));
+    await waitFor(() => expect(snapshots.some((snapshot) => (
+      snapshot.finalProviderEventId === "final-fold"
+      && snapshot.proposalProviderEventId === "final-fold"
+      && snapshot.proposal?.command?.kind === "fold"
+    ))).toBe(true));
+
+    act(() => provider.emit("seat number five call", { final: true, id: "final-seat-five" }));
+    await waitFor(() => expect(snapshots.some((snapshot) => (
+      snapshot.finalProviderEventId === "final-seat-five"
+      && snapshot.proposalProviderEventId === "final-seat-five"
+      && snapshot.proposal?.command?.kind === "call"
+    ))).toBe(true));
+
+    expect(snapshots.some((snapshot) => (
+      snapshot.finalProviderEventId === "final-seat-five"
+      && snapshot.proposalProviderEventId === "final-fold"
+    ))).toBe(false);
+    expect(await screen.findByText("Đang tới Ghế 3, nhưng Voice nghe Ghế 5.")).toBeInTheDocument();
   });
 
   it("fails closed when the actor changes before proposal validation", async () => {

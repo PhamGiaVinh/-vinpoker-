@@ -15,6 +15,7 @@ export interface TrackerVoiceParsedCommand {
   normalizedTranscript: string;
   amount: number | null;
   amountAmbiguous: boolean;
+  spokenSeatNumber: number | null;
 }
 
 /**
@@ -32,5 +33,6 @@ export function parseTrackerVoiceCommand(
     normalizedTranscript: parsed.normalizedTranscript,
     amount: parsed.amount?.value ?? null,
     amountAmbiguous: parsed.amount?.ambiguous ?? false,
+    spokenSeatNumber: parsed.spokenSeatNumber,
   };
 }

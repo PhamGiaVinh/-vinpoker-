@@ -46,6 +46,7 @@ export interface TrackerVoiceDiagnosticSnapshot {
   finalProviderEventId: string | null;
   finalCapturedAt: string | null;
   proposal: VoiceProposal | null;
+  proposalProviderEventId: string | null;
   proposalLatencyMs: number | null;
   validationState: "idle" | "validating" | "validated" | "committing" | "committed" | "error";
   validationError: string | null;
@@ -120,6 +121,7 @@ export function TrackerVoicePanel({
   const [session, setSession] = useState<{ model: string; expiresAt: string } | null>(null);
   const [lastFinalProviderEventId, setLastFinalProviderEventId] = useState<string | null>(null);
   const [lastFinalCapturedAt, setLastFinalCapturedAt] = useState<string | null>(null);
+  const [proposalProviderEventId, setProposalProviderEventId] = useState<string | null>(null);
   const [proposalLatencyMs, setProposalLatencyMs] = useState<number | null>(null);
   const [micTestStartedAt, setMicTestStartedAt] = useState<number | null>(null);
   const [micTestElapsedMs, setMicTestElapsedMs] = useState(0);
@@ -245,6 +247,7 @@ export function TrackerVoicePanel({
     setSession(null);
     setLastFinalProviderEventId(null);
     setLastFinalCapturedAt(null);
+    setProposalProviderEventId(null);
     setProposalLatencyMs(null);
   }, [hook.handId]);
 
@@ -261,6 +264,7 @@ export function TrackerVoicePanel({
       finalProviderEventId: lastFinalProviderEventId,
       finalCapturedAt: lastFinalCapturedAt,
       proposal,
+      proposalProviderEventId,
       proposalLatencyMs,
       validationState,
       validationError,
@@ -274,6 +278,7 @@ export function TrackerVoicePanel({
     onDiagnosticSnapshot,
     partial,
     proposal,
+    proposalProviderEventId,
     proposalLatencyMs,
     session,
     status,
@@ -304,6 +309,7 @@ export function TrackerVoicePanel({
     const receivedAt = finalReceivedAtRef.current.get(finalEvent.providerEventId);
     setProposalLatencyMs(receivedAt === undefined ? null : Math.max(0, performance.now() - receivedAt));
     setProposal(nextProposal);
+    setProposalProviderEventId(finalEvent.providerEventId);
     setValidatedProposal(null);
     setValidatedReceipt(null);
     setValidationError(null);
@@ -473,6 +479,9 @@ export function TrackerVoicePanel({
             return;
           }
           setPartial("");
+          setProposal(null);
+          setProposalProviderEventId(null);
+          setProposalLatencyMs(null);
           setFinalTranscript(event.transcript);
           setLastFinalProviderEventId(event.providerEventId);
           setLastFinalCapturedAt(event.capturedAt);
