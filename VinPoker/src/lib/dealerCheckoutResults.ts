@@ -1,6 +1,7 @@
 export interface DealerCheckoutResult {
   attendance_id?: string;
   success?: boolean;
+  code?: string;
   error?: string;
   dealer_name?: string;
   released_pre_assigned?: boolean;
@@ -8,6 +9,8 @@ export interface DealerCheckoutResult {
   idempotent?: boolean;
   [key: string]: unknown;
 }
+
+export const STALE_ATTENDANCE_REQUIRES_CLEANUP = "STALE_ATTENDANCE_REQUIRES_CLEANUP";
 
 export interface DealerCheckoutBatchSummary {
   results: DealerCheckoutResult[];
@@ -65,4 +68,38 @@ export function summarizeDealerCheckoutBatch(
     failedCount,
     failureMessage: `${failedCount} dealer thất bại — ${reasons}`,
   };
+}
+
+export function staleCleanupAttendanceIds(results: DealerCheckoutResult[]): string[] {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+
+  for (const result of results) {
+    const attendanceId = result.attendance_id;
+    if (
+      result.success === true
+      || result.code !== STALE_ATTENDANCE_REQUIRES_CLEANUP
+      || typeof attendanceId !== "string"
+      || !attendanceId
+      || seen.has(attendanceId)
+    ) continue;
+
+    seen.add(attendanceId);
+    ids.push(attendanceId);
+  }
+
+  return ids;
+}
+
+export function unresolvedCheckoutAttendanceIds(
+  results: DealerCheckoutResult[],
+  requestedIds: string[],
+): string[] {
+  const successfulIds = new Set(
+    results
+      .filter((result) => result.success === true && typeof result.attendance_id === "string")
+      .map((result) => result.attendance_id as string),
+  );
+
+  return [...new Set(requestedIds)].filter((attendanceId) => !successfulIds.has(attendanceId));
 }

@@ -53,7 +53,11 @@ import ReconcileRoomWizard from "./ReconcileRoomWizard";
 import DealerSwingSummaryStrip from "./dealer-swing/DealerSwingSummaryStrip";
 import { TierBadge, TableTypeBadge, StatusPill } from "./dealer-swing/SwingBadges";
 import DealerSwingInfraHealth from "./dealer-swing/DealerSwingInfraHealth";
-import { summarizeDealerCheckoutBatch } from "@/lib/dealerCheckoutResults";
+import {
+  staleCleanupAttendanceIds,
+  summarizeDealerCheckoutBatch,
+  unresolvedCheckoutAttendanceIds,
+} from "@/lib/dealerCheckoutResults";
 import { useDealerSwingHealth } from "@/hooks/useDealerSwingHealth";
 import SwingTableActions from "./dealer-swing/SwingTableActions";
 import StatusFilterChips, { type StatusFilterValue } from "./dealer-swing/StatusFilterChips";
@@ -387,6 +391,8 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   const [batchCheckoutConfirmOpen, setBatchCheckoutConfirmOpen] = useState(false);
   const [batchCheckoutWarnings, setBatchCheckoutWarnings] = useState<string[]>([]);
   const [batchCheckoutPending, setBatchCheckoutPending] = useState<string[]>([]);
+  const [staleCleanupIds, setStaleCleanupIds] = useState<string[]>([]);
+  const [staleCleanupConfirmOpen, setStaleCleanupConfirmOpen] = useState(false);
 
   // Close table confirmation
   const [closeTableConfirmId, setCloseTableConfirmId] = useState<string | null>(null);
@@ -1547,6 +1553,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   // Manual check-out via edge function (with pre_assigned cleanup)
   const doCheckout = async () => {
     if (!checkoutAttendanceId) return;
+    setStaleCleanupIds([]);
     setProcessing("checkout");
     const { data, error } = await supabase.functions.invoke("checkout-dealer", {
       body: { attendance_id: checkoutAttendanceId },
@@ -1566,6 +1573,9 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
     }
     const summary = summarizeDealerCheckoutBatch(data, 1);
     if (summary.failedCount > 0) {
+      const cleanupIds = staleCleanupAttendanceIds(summary.results);
+      setStaleCleanupIds(cleanupIds);
+      if (cleanupIds.length > 0) setCheckoutOpen(false);
       toast.error(summary.failureMessage ?? "Check-out dealer thất bại");
       return;
     }
@@ -1628,6 +1638,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   // Batch checkout via edge function
   const doBatchCheckout = async (ids: string[]) => {
     if (!ids.length) return;
+    setStaleCleanupIds([]);
     setProcessing("checkout");
     try {
       const { data, error } = await supabase.functions.invoke("checkout-dealer", {
@@ -1646,6 +1657,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
         return;
       }
       const summary = summarizeDealerCheckoutBatch(data, ids.length);
+      setStaleCleanupIds(staleCleanupAttendanceIds(summary.results));
       if (summary.successCount > 0) {
         toast.success(`Đã checkout ${summary.successCount}/${ids.length} dealer`);
       }
@@ -1683,6 +1695,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       const summary = summarizeDealerCheckoutBatch(data, ids.length);
       if (summary.successCount > 0) toast.success(`Đã dọn ${summary.successCount}/${ids.length} ca; không tính lại lương/OT`);
       if (summary.failureMessage) toast.warning(`Giữ lại để kiểm tra: ${summary.failureMessage}`);
+      setStaleCleanupIds(unresolvedCheckoutAttendanceIds(summary.results, ids));
       onOptCheckout(summary.successCount);
       setTimeout(refetchDealers, 50);
     } catch (e: any) {
@@ -2042,7 +2055,8 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                   onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
                   onCheckoutOpen={() => setCheckoutOpen(true)}
                   onBatchCheckout={handleBatchCheckoutClick}
-                  onStaleCleanup={doStaleCleanup}
+                  staleCleanupIds={staleCleanupIds}
+                  onRequestStaleCleanup={() => setStaleCleanupConfirmOpen(true)}
                   onReCheckin={doReCheckin}
                   breakPolicies={breakPolicies ?? []}
                   onMealBreak={handleMealBreak}
@@ -2413,6 +2427,31 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={staleCleanupConfirmOpen} onOpenChange={setStaleCleanupConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dọn {staleCleanupIds.length} ca treo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Chỉ dọn đúng các ca vừa bị máy chủ từ chối vì quá 24 giờ hoặc thiếu giờ vào.
+              Máy chủ sẽ dùng bằng chứng kết thúc hợp lệ, giữ nguyên lương/OT và để riêng ca thiếu bằng chứng.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={processing === "checkout"}>Huỷ</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={staleCleanupIds.length === 0 || processing === "checkout"}
+              onClick={() => {
+                const ids = [...staleCleanupIds];
+                setStaleCleanupConfirmOpen(false);
+                void doStaleCleanup(ids);
+              }}
+            >
+              {processing === "checkout" ? "Đang dọn..." : `Dọn ${staleCleanupIds.length} ca treo`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* "Đóng bàn" — scope-aware bulk close confirm */}
       <Dialog open={closeTablesConfirmOpen} onOpenChange={setCloseTablesConfirmOpen}>
@@ -3057,7 +3096,7 @@ function BreakDurationDialog({
 function RosterPanel({
   dealers, assignments, swingConfigs, processing, totalDealers, checkedInCount,
   checkedOutDealers, onSendToBreak, onCheckinOpen, onCheckoutOpen,
-  onBatchCheckout, onStaleCleanup, onReCheckin, breakPolicies, onMealBreak, mealBreakAvailability,
+  onBatchCheckout, staleCleanupIds, onRequestStaleCleanup, onReCheckin, breakPolicies, onMealBreak, mealBreakAvailability,
 }: {
   dealers: DealerAttendance[];
   assignments: DealerAssignment[];
@@ -3070,7 +3109,8 @@ function RosterPanel({
   onCheckinOpen: () => void;
   onCheckoutOpen: () => void;
   onBatchCheckout: (ids: string[]) => void;
-  onStaleCleanup: (ids: string[]) => void;
+  staleCleanupIds: string[];
+  onRequestStaleCleanup: () => void;
   onReCheckin: (dealerId: string) => void;
   breakPolicies: ShiftBreakPolicy[];
   onMealBreak: (attendanceId: string) => void;
@@ -3392,16 +3432,37 @@ function RosterPanel({
       </div>
 
       {/* ── Sticky batch action footer ── */}
+      {staleCleanupIds.length > 0 && (
+        <div className="mt-2 border border-warning/40 bg-warning/10 p-2.5">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-foreground">
+                {staleCleanupIds.length} ca không thể check-out thường
+              </p>
+              <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                Ca quá 24 giờ hoặc thiếu giờ vào. Dọn riêng để không tính lại lương/OT.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-2 h-8 w-full border-warning/50 text-xs text-warning"
+                disabled={processing === "checkout"}
+                onClick={onRequestStaleCleanup}
+              >
+                Dọn {staleCleanupIds.length} ca treo
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {batchMode && selectedIds.size > 0 && (
         <div className="sticky bottom-0 bg-card border-t border-border p-2 mt-2 flex items-center gap-2 rounded-b-lg">
           <span className="text-xs text-muted-foreground flex-1">{selectedIds.size} dealer đã chọn</span>
           <Button size="sm" variant="destructive" className="text-xs h-7"
             onClick={() => { onBatchCheckout([...selectedIds]); setSelectedIds(new Set()); }}>
             <UserMinus className="w-3 h-3 mr-1" /> Check-out
-          </Button>
-          <Button size="sm" variant="outline" className="text-xs h-7 border-amber-400/40 text-amber-200"
-            onClick={() => { onStaleCleanup([...selectedIds]); setSelectedIds(new Set()); }}>
-            Dọn ca treo
           </Button>
           <Button size="sm" variant="outline" className="text-xs h-7"
             onClick={() => setSelectedIds(new Set())}>

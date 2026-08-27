@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { mapWithConcurrency } from "../supabase/functions/_shared/mapWithConcurrency.ts";
-import { summarizeDealerCheckoutBatch } from "../src/lib/dealerCheckoutResults";
+import {
+  staleCleanupAttendanceIds,
+  summarizeDealerCheckoutBatch,
+  unresolvedCheckoutAttendanceIds,
+} from "../src/lib/dealerCheckoutResults";
 import {
   isFreshDealerPoolAttendance,
   requiresStaleCheckoutCleanup,
@@ -61,6 +65,26 @@ describe("checkout-dealer result reporting", () => {
 
     expect(summary.failedCount).toBe(27);
     expect(summary.failureMessage).toContain("Thiếu 27 kết quả từ máy chủ");
+  });
+
+  it("offers stale cleanup only for rows rejected with the dedicated server code", () => {
+    const ids = staleCleanupAttendanceIds([
+      { attendance_id: "stale-a", success: false, code: "STALE_ATTENDANCE_REQUIRES_CLEANUP" },
+      { attendance_id: "db-error", success: false, code: "DATABASE_UNAVAILABLE" },
+      { attendance_id: "success", success: true, code: "STALE_ATTENDANCE_REQUIRES_CLEANUP" },
+      { attendance_id: "stale-a", success: false, code: "STALE_ATTENDANCE_REQUIRES_CLEANUP" },
+    ]);
+
+    expect(ids).toEqual(["stale-a"]);
+  });
+
+  it("keeps only unresolved rows after a partial stale cleanup response", () => {
+    const ids = unresolvedCheckoutAttendanceIds([
+      { attendance_id: "closed", success: true },
+      { attendance_id: "no-evidence", success: false, code: "NO_END_EVIDENCE" },
+    ], ["closed", "no-evidence", "missing-result"]);
+
+    expect(ids).toEqual(["no-evidence", "missing-result"]);
   });
 });
 
