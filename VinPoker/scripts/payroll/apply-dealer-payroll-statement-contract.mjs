@@ -217,6 +217,16 @@ function sourceRootFromArgv(argv) {
   return resolve(value);
 }
 
+function safeProviderCode(payload) {
+  const candidates = [payload?.code, payload?.error_code, payload?.errorCode];
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const value = candidate.trim();
+    if (/^[A-Z0-9_]{3,32}$/.test(value)) return value;
+  }
+  return "UNKNOWN";
+}
+
 async function request({ projectRef, token, path, method, body, fetchImpl = fetch }) {
   let response;
   try {
@@ -229,7 +239,15 @@ async function request({ projectRef, token, path, method, body, fetchImpl = fetc
   } catch {
     throw new Error("Management API network request failed");
   }
-  if (!response.ok) throw new Error(`Management API request failed with status ${response.status}`);
+  if (!response.ok) {
+    let providerCode = "UNKNOWN";
+    try {
+      providerCode = safeProviderCode(await response.json());
+    } catch {
+      // Keep the diagnostic sanitized when an error body is not JSON.
+    }
+    throw new Error(`Management API request failed: ${method} ${path} status ${response.status} provider_code ${providerCode}`);
+  }
   return response.status === 204 ? null : response.json();
 }
 
