@@ -202,7 +202,14 @@ SELECT public._tracker_voice_register_validated_event(
 RESET ROLE;
 SELECT public.tracker_voice_test_assert(
   (:'event_one_payload'::JSONB->>'ok')::BOOLEAN
-  AND :'event_one_payload'::JSONB->>'execution_result' = 'validated',
+  AND :'event_one_payload'::JSONB->>'execution_result' = 'validated'
+  AND EXISTS (
+    SELECT 1
+    FROM public.tracker_voice_events
+    WHERE id = (:'event_one_payload'::JSONB->>'voice_event_id')::UUID
+      AND event_kind = 'final_transcript'
+      AND final_transcript = 'Player A call 100'
+  ),
   'final transcript persists only after server validation'
 );
 
