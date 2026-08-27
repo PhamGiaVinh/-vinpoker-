@@ -516,7 +516,9 @@ function staticDatabaseContracts(files, targetRoot, dependencyKind) {
     for (const match of source.matchAll(/\.from\(\s*["'`]([^"'`]+)["'`]\s*\)/g)) {
       const receiver = source.slice(0, match.index);
       if (/\.\s*storage\s*\??\s*$/.test(receiver)) continue;
-      addEvidence(relations, `public.${match[1]}`, file);
+      const schemaMatch = receiver.match(/\.schema\(\s*["'`]([^"'`]+)["'`]\s*\)\s*$/);
+      const schema = schemaMatch ? schemaMatch[1].toLowerCase() : "public";
+      addEvidence(relations, `${schema}.${match[1]}`, file);
     }
     for (const match of source.matchAll(/\.rpc\(\s*["'`]([^"'`]+)["'`]/g)) {
       addEvidence(functions, `public.${match[1]}`, file);
