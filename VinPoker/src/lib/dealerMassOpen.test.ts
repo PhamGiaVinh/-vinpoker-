@@ -7,14 +7,14 @@ import {
 } from "./dealerMassOpen";
 
 describe("dealer mass-open client contract", () => {
-  it("fails closed except for a known pre-migration missing RPC", () => {
+  it("fails closed, including a missing server RPC", () => {
     expect(resolveMassOpenGate({ allowed: true }, null)).toBe("enabled");
     expect(resolveMassOpenGate({ allowed: false }, null)).toBe("disabled");
     expect(resolveMassOpenGate(null, { code: "42501", message: "denied" })).toBe("disabled");
     expect(resolveMassOpenGate(null, {
       code: "PGRST202",
       message: "get_dealer_mass_open_rollout missing from schema cache",
-    })).toBe("legacy");
+    })).toBe("disabled");
   });
 
   it("ignores a stale club response by request generation", () => {
