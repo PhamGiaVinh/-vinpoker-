@@ -58,6 +58,24 @@ BEGIN
   IF (v_result ->> 'ok')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'authenticated owner open failed: %', v_result;
   END IF;
+  -- Preserve only the opaque fencing context produced by the authenticated
+  -- opener.  Tracker deliberately does not receive Floor/Dealer inventory
+  -- access; its later assertion proves it can validate this exact context.
+  PERFORM set_config(
+    'floor_table_v3_test.tournament_table_id',
+    v_result ->> 'tournament_table_id',
+    false
+  );
+  PERFORM set_config(
+    'floor_table_v3_test.table_session_id',
+    v_result ->> 'table_session_id',
+    false
+  );
+  PERFORM set_config(
+    'floor_table_v3_test.control_epoch',
+    v_result ->> 'control_epoch',
+    false
+  );
 END;
 $$;
 COMMIT;
@@ -102,17 +120,13 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000004', true);
 DO $$
 DECLARE
-  v_table_id uuid;
-  v_session_id uuid;
-  v_epoch bigint;
   v_result jsonb;
 BEGIN
-  SELECT tournament_table_id, table_session_id, control_epoch
-  INTO v_table_id, v_session_id, v_epoch
-  FROM public.get_club_table_inventory('00000000-0000-0000-0000-000000000010')
-  WHERE game_table_id = '00000000-0000-0000-0000-000000000508';
   v_result := public.validate_tracker_table_writer_context_v3(
-    '00000000-0000-0000-0000-000000000102', v_table_id, v_session_id, v_epoch
+    '00000000-0000-0000-0000-000000000102',
+    current_setting('floor_table_v3_test.tournament_table_id')::uuid,
+    current_setting('floor_table_v3_test.table_session_id')::uuid,
+    current_setting('floor_table_v3_test.control_epoch')::bigint
   );
   IF (v_result ->> 'ok')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'authenticated Tracker context failed: %', v_result;
