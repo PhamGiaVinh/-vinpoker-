@@ -1,14 +1,16 @@
 -- ============================================================================
--- Floor Table Control V3 — exact authenticated writer rollout (SOURCE-ONLY)
+-- Floor Table Control V3 — Preview/disposable-only authenticated writer grants
 -- ============================================================================
 -- Depends on: 20270113000006_floor_table_control_v3_roster_read_contract.sql
 --
--- This is intentionally an explicit rollout seam.  It is not a production
--- apply instruction: production remains dark until the owner-gated runbook has
--- a non-production authenticated UAT receipt.  The grants below are exact; no
--- table grants, schema grants, generic RPC grants, or service credentials are
--- introduced.  Every function remains caller-bound and SECURITY DEFINER with a
--- fixed search_path in the V3 server contract.
+-- This file is deliberately outside supabase/migrations and must never be
+-- applied to production. It exists only for the disposable database suite and
+-- an explicitly owner-gated Preview bootstrap after a safe Preview project has
+-- been verified. The active migration catalog keeps all V3 writer EXECUTE
+-- grants revoked, so a frontend feature flag cannot become a production
+-- authorization bypass. The grants below are exact; no table grants, schema
+-- grants, generic RPC grants, or service credentials are introduced. Every
+-- function remains caller-bound and SECURITY DEFINER with a fixed search_path.
 --
 -- ROLLBACK (owner-gated): REVOKE these exact signatures FROM authenticated.
 -- ============================================================================

@@ -1,9 +1,9 @@
 \set ON_ERROR_STOP on
 
--- Disposable-only activation of the exact V3 writer rollout.  The same
--- additive migration is what a future isolated Preview applies; production
--- remains untouched until its separate owner-gated runbook.
-\ir ../../supabase/migrations/20270113000007_floor_table_control_v3_exact_writer_grants.sql
+-- Disposable-only activation of the exact V3 writer rollout. This test fixture
+-- is outside the active migration catalog; production writer grants stay
+-- revoked until a separate owner-gated Preview/bootstrap runbook.
+\ir previewOnlyWriterGrants.sql
 
 -- These calls are deliberately made as the PostgreSQL `authenticated` role,
 -- not as the disposable database owner with a spoofed auth.uid().  The setup

@@ -53,6 +53,16 @@ test("rejects historical never-apply migrations in the active catalog", () => {
   });
 });
 
+test("rejects the duplicate-version Floor contract in the active catalog", () => {
+  withCatalog([
+    "20270113000004_floor_table_control_v3_contract_hardening.sql",
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "forbidden active migration 20270113000004_floor_table_control_v3_contract_hardening.sql: duplicate-version Floor contract belongs in migration-archive/never-apply",
+    ]);
+  });
+});
+
 test("rejects a retired credential-bearing scheduler by filename", () => {
   withCatalog([
     "20260428144425_53b3e896-323b-45b5-82e3-921bdaccaa91.sql",

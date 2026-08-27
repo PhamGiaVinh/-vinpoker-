@@ -1,16 +1,11 @@
 -- ============================================================================
--- Floor Table Control V3 — contract hardening replacement (SOURCE-ONLY / RED)
+-- Floor Table Control V3 — contract hardening (SOURCE-ONLY / RED)
 -- ============================================================================
 -- Depends on: 20270113000003_floor_table_control_v3_server_contract.sql
 --
--- The original source was version 20270113000004, which collided with a
--- separately merged payroll migration of the same version. Its unchanged
--- historical payload is retained at
--- migration-archive/never-apply/20270113000004_floor_table_control_v3_contract_hardening.sql.
--- This new 20270113000005 active replacement preserves the intended fresh
--- Preview contract without rewriting a database migration ledger. It does not
--- backfill/repair data, deploy Edge, enable V3, or change legacy table_id
--- semantics.
+-- This is additive governance hardening after the original V3 contract was
+-- merged.  It does not edit historical migration SQL, backfill/repair data,
+-- deploy Edge, enable V3, or change any legacy table_id semantics.
 --
 -- ROLLBACK (owner-gated): restore only the listed EXECUTE grants after the
 -- future Writer Convergence rollout has a passing authenticated TEST receipt.
