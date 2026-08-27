@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: { functions: { invoke: vi.fn() } },
-}));
-
-import { toSeatReceiptData, type BuyinReceiptSnapshot } from "./buyinReceipt";
+import { fetchBuyinReceiptWithClient, toSeatReceiptData, type BuyinReceiptSnapshot } from "./buyinReceiptCore";
 
 const snapshot: BuyinReceiptSnapshot = {
   registration_id: "registration-1",
@@ -51,5 +47,15 @@ describe("toSeatReceiptData", () => {
     expect(receipt.tableNumber).toBe(2);
     expect(receipt.seatNumber).toBe(5);
     expect(receipt.playerName).toBe("Nguyễn Văn A");
+  });
+});
+
+describe("fetchBuyinReceiptWithClient", () => {
+  it("keeps the Edge receipt request server-authorized through the injected client", async () => {
+    const invoke = vi.fn().mockResolvedValue({ data: { receipt: snapshot }, error: null });
+    const result = await fetchBuyinReceiptWithClient({ functions: { invoke } } as never, { receiptCode: "SEAT-QR-1" });
+
+    expect(invoke).toHaveBeenCalledWith("get-buyin-receipt", { body: { receipt_code: "SEAT-QR-1" } });
+    expect(result).toEqual(snapshot);
   });
 });

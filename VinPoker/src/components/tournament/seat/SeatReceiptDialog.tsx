@@ -9,10 +9,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { Printer, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { SeatReceipt, type SeatReceiptData } from "./SeatReceipt";
-import { fetchBuyinReceipt, toSeatReceiptData } from "./buyinReceipt";
+import { fetchBuyinReceiptWithClient, toSeatReceiptData } from "./buyinReceiptCore";
 
 interface Props {
   open: boolean;
@@ -30,6 +31,7 @@ const PX_TO_MM = 25.4 / 96;
  */
 export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
   const { t } = useTranslation();
+  const supabase = useSupabaseClient();
   const ref = useRef<HTMLDivElement>(null);
   const receiptRef = useRef<SeatReceiptData | null>(null);
   const [busy, setBusy] = useState(false);
@@ -42,11 +44,11 @@ export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
     const receiptCode = receiptRef.current?.receiptCode;
     if (!open || !receiptCode) return () => { current = false; };
 
-    void fetchBuyinReceipt({ receiptCode }).then((snapshot) => {
+    void fetchBuyinReceiptWithClient(supabase, { receiptCode }).then((snapshot) => {
       if (current && snapshot) setHydratedReceipt(toSeatReceiptData(snapshot, receiptRef.current));
     });
     return () => { current = false; };
-  }, [open, receipt?.receiptCode]);
+  }, [open, receipt?.receiptCode, supabase]);
 
   const displayReceipt = useMemo(() => hydratedReceipt ?? receipt, [hydratedReceipt, receipt]);
 
