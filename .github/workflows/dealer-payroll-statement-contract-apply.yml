@@ -84,7 +84,7 @@ jobs:
         working-directory: control-plane/VinPoker
         env:
           SUPABASE_PROJECT_REF: ${{ env.PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESTOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
           CONFIRM_APPLY_DEALER_PAYROLL_STATEMENT_CONTRACT: ${{ inputs.confirmation }}
         shell: bash
         run: |

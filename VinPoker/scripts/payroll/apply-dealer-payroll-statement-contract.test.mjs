@@ -168,6 +168,8 @@ test("workflow uses the protected environment and the exact runner", () => {
   const workflow = readFileSync(resolve(import.meta.dirname, "../../../.github/workflows/dealer-payroll-statement-contract-apply.yml"), "utf8");
   assert.match(workflow, /dealer-swing-production-critical/);
   assert.match(workflow, /apply-dealer-payroll-statement-contract\.mjs/);
+  assert.match(workflow, /secrets\.SUPABASEACCESSTOKEN/);
+  assert.doesNotMatch(workflow, /secrets\.SUPABASEACCESTOKEN/);
   assert.match(workflow, /actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/);
   assert.doesNotMatch(workflow, /db push|include-all|SUPABASE_DB_PASSWORD/i);
 });
