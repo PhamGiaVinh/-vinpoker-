@@ -192,6 +192,7 @@ SET game_table_id = '00000000-0000-0000-0000-000000000504',
 WHERE id = '00000000-0000-0000-0000-000000000700';
 
 \ir ../../supabase/migrations/20270113000003_floor_table_control_v3_server_contract.sql
+\ir ../../supabase/migrations/20270113000004_floor_table_control_v3_contract_hardening.sql
 
 INSERT INTO public.tournaments (id, club_id) VALUES
   ('00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000010'),
@@ -414,6 +415,14 @@ SELECT public.floor_table_v3_assert_permission_denied(
     (actor_id, operation_type, request_id, request_fingerprint, result)
     VALUES
     ('00000000-0000-0000-0000-000000000002', 'fixture', '00000000-0000-0000-0000-000000000950', 'x', '{}'::jsonb)$$
+);
+SELECT public.floor_table_v3_assert_permission_denied(
+  $$SELECT public.floor_open_tournament_table_v3(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000507',
+    'manual',
+    '00000000-0000-0000-0000-000000000951'
+  )$$
 );
 COMMIT;
 
@@ -645,6 +654,15 @@ BEGIN
     AND (SELECT released_at IS NOT NULL FROM public.dealer_assignments WHERE table_session_id = v_manual_session_id),
     'break ends the dealer assignment and session history together'
   );
+  BEGIN
+    INSERT INTO public.dealer_assignments (table_id, table_session_id, status)
+    VALUES ('00000000-0000-0000-0000-000000000503', v_manual_session_id, 'assigned');
+    RAISE EXCEPTION 'expected V3 dealer assignment guard for a closed session';
+  EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    IF SQLERRM <> 'floor_table_v3_dealer_assignment_session_not_active' THEN
+      RAISE;
+    END IF;
+  END;
 
   v_result := public.floor_open_tournament_table_v3(
     '00000000-0000-0000-0000-000000000101',
