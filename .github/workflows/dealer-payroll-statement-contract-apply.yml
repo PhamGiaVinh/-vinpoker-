@@ -1,0 +1,111 @@
+name: Dealer payroll statement contract - exact apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Exact reviewed source SHA containing the two payroll migrations"
+        required: true
+        type: string
+      mode:
+        description: "Read-only preflight or exact apply"
+        required: true
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - apply
+      confirmation:
+        description: "For apply: APPLY_DEALER_PAYROLL_STATEMENT_CONTRACT_20270113000000_20270113000001"
+        required: true
+        default: HOLD
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: dealer-payroll-statement-contract-apply
+  cancel-in-progress: false
+
+env:
+  CRITICAL_ENVIRONMENT: dealer-swing-production-critical
+  PROJECT_REF: orlesggcjamwuknxwcpk
+
+jobs:
+  require-protected-environment:
+    name: Require protected critical environment
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required reviewer protection
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          environment_json="$(gh api "repos/${GITHUB_REPOSITORY}/environments/${CRITICAL_ENVIRONMENT}")"
+          jq -e '.protection_rules | any(.type == "required_reviewers" and ((.reviewers // []) | length > 0))' <<<"$environment_json" >/dev/null
+
+  exact-run:
+    name: Payroll statement exact ${{ inputs.mode }}
+    needs: require-protected-environment
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: dealer-swing-production-critical
+    steps:
+      - name: Checkout reviewed runner
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          path: control-plane
+          fetch-depth: 0
+
+      - name: Checkout exact reviewed source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: payroll-source
+          fetch-depth: 0
+
+      - name: Verify source SHA and main ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.source_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git -C payroll-source rev-parse HEAD)" = "${{ inputs.source_sha }}"
+          git -C control-plane fetch --no-tags origin main
+          git -C control-plane merge-base --is-ancestor "${{ inputs.source_sha }}" origin/main
+
+      - name: Run exact protected payroll contract runner
+        working-directory: control-plane/VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ env.PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESTOKEN }}
+          CONFIRM_APPLY_DEALER_PAYROLL_STATEMENT_CONTRACT: ${{ inputs.confirmation }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mode="${{ inputs.mode }}"
+          if [[ "$mode" == "apply" ]]; then
+            node scripts/payroll/apply-dealer-payroll-statement-contract.mjs \
+              --apply --source-root "${GITHUB_WORKSPACE}/payroll-source/VinPoker"
+          else
+            node scripts/payroll/apply-dealer-payroll-statement-contract.mjs \
+              --preflight --source-root "${GITHUB_WORKSPACE}/payroll-source/VinPoker"
+          fi
+
+      - name: Publish sanitized summary
+        shell: bash
+        run: |
+          {
+            echo "## Payroll statement contract"
+            echo ""
+            echo "- Source SHA: `${{ inputs.source_sha }}`"
+            echo "- Mode: `${{ inputs.mode }}`"
+            echo "- Exact migrations only: `20270113000000`, `20270113000001`"
+            echo "- No broad migration replay or database password used."
+          } >> "$GITHUB_STEP_SUMMARY"
