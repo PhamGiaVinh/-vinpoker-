@@ -212,6 +212,12 @@ test("Storage bucket clients are not inferred as public database relations", () 
     ),
     false,
   );
+  assert.equal(
+    contracts.some((contract) =>
+      contract.type === "relation" && contract.name === "storage.objects"
+    ),
+    true,
+  );
 });
 
 test("probe reports a missing column and signature without converting them to success", () => {
