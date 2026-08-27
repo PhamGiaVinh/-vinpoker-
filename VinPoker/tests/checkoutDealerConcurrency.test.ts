@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { mapWithConcurrency } from "../supabase/functions/_shared/mapWithConcurrency.ts";
 import { summarizeDealerCheckoutBatch } from "../src/lib/dealerCheckoutResults";
-import { requiresStaleCheckoutCleanup } from "../supabase/functions/_shared/checkoutSafety.ts";
+import {
+  isFreshDealerPoolAttendance,
+  requiresStaleCheckoutCleanup,
+} from "../supabase/functions/_shared/checkoutSafety.ts";
 
 describe("checkout-dealer bounded concurrency", () => {
   it("keeps a 27-dealer batch at or below the configured concurrency", async () => {
@@ -66,6 +69,11 @@ describe("checkout-dealer stale attendance guard", () => {
 
   it("allows a normal current shift", () => {
     expect(requiresStaleCheckoutCleanup("2026-08-23T18:00:00Z", now)).toBe(false);
+    expect(requiresStaleCheckoutCleanup("2026-08-23T02:00:01Z", now)).toBe(false);
+  });
+
+  it("routes a shift at the exact 24-hour boundary to cleanup", () => {
+    expect(requiresStaleCheckoutCleanup("2026-08-23T02:00:00Z", now)).toBe(true);
   });
 
   it("routes an attendance older than 24 hours to cleanup", () => {
@@ -76,5 +84,21 @@ describe("checkout-dealer stale attendance guard", () => {
     expect(requiresStaleCheckoutCleanup(null, now)).toBe(true);
     expect(requiresStaleCheckoutCleanup("not-a-date", now)).toBe(true);
     expect(requiresStaleCheckoutCleanup("2026-08-24T03:00:00Z", now)).toBe(true);
+  });
+});
+
+describe("dealer pool attendance freshness", () => {
+  const now = Date.parse("2026-08-24T02:00:00Z");
+
+  it("only accepts valid check-ins strictly newer than 24 hours", () => {
+    expect(isFreshDealerPoolAttendance("2026-08-23T02:00:01Z", now)).toBe(true);
+    expect(isFreshDealerPoolAttendance("2026-08-23T02:00:00Z", now)).toBe(false);
+    expect(isFreshDealerPoolAttendance("2026-08-23T01:59:59Z", now)).toBe(false);
+  });
+
+  it("fails closed for missing, invalid, or future check-ins", () => {
+    expect(isFreshDealerPoolAttendance(null, now)).toBe(false);
+    expect(isFreshDealerPoolAttendance("not-a-date", now)).toBe(false);
+    expect(isFreshDealerPoolAttendance("2026-08-24T03:00:00Z", now)).toBe(false);
   });
 });

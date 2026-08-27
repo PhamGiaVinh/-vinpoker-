@@ -21,6 +21,10 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadCandidateActiveBreaks } from "./candidateBreaks.ts";
 import { candidateSnapshotFailureDiagnostic } from "./candidateSnapshotTelemetry.ts";
+import {
+  isFreshDealerPoolAttendance,
+  NORMAL_CHECKOUT_MAX_AGE_HOURS,
+} from "./checkoutSafety.ts";
 import { getFeatureTablePoolIds, getReservedDealerIds } from "./featureTableGate.ts"; // Patch 5b/5d: feature/final pool gate + reserved exclusivity
 import { classifyPostgrestError } from "./postgrestError.ts";
 import { SWING_POLICY } from "./swingPolicy.ts";
@@ -429,6 +433,10 @@ export async function buildDealerCandidates(
   // they can be pulled back for swing. This protects lunch breaks (e.g. 30min).
   // Available dealers always pass this guard since they're not on_break.
   const minBreakMinutes = options.clubBreakDurationMinutes ?? SWING_POLICY.fatigue.minBreakGuardFallbackMinutes;
+  const candidateNowMs = Date.now();
+  const attendanceFreshnessCutoff = new Date(
+    candidateNowMs - NORMAL_CHECKOUT_MAX_AGE_HOURS * 60 * 60 * 1000,
+  ).toISOString();
 
   const { data: rawRows, error } = (await admin
     .from("dealer_attendance")
@@ -443,6 +451,7 @@ export async function buildDealerCandidates(
     )
     .eq("status", "checked_in")
     .is("check_out_time", null)
+    .gt("check_in_time", attendanceFreshnessCutoff)
     .in("dealer_id", dealerIds)
     .or(`current_state.eq.available,current_state.eq.on_break`)) as unknown as {
       data: AttendancePoolRow[] | null;
@@ -452,9 +461,12 @@ export async function buildDealerCandidates(
   // Step 2 edge case: query error or empty rows
   if (error) return candidateQueryFailure(error, "attendance_pool");
 
+  const freshRows = ((rawRows ?? []) as AttendancePoolRow[]).filter((row) =>
+    isFreshDealerPoolAttendance(row.check_in_time, candidateNowMs)
+  );
   const rowsByDealer = new Map<string, AttendancePoolRow>();
   let duplicateDealerRows = 0;
-  for (const row of (rawRows ?? []) as AttendancePoolRow[]) {
+  for (const row of freshRows) {
     const current = rowsByDealer.get(row.dealer_id);
     if (!current) {
       rowsByDealer.set(row.dealer_id, row);
