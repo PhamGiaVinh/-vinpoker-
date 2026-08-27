@@ -33,6 +33,8 @@ const jsonHeaders = {
   "content-type": "application/json; charset=utf-8",
 };
 
+let checkoutRequests: Array<Record<string, unknown>> = [];
+
 function todayInClub(): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
@@ -196,6 +198,26 @@ async function installFixtureRoutes(page: Page) {
         assigned_this_run: 6,
         operation_status: "waiting_for_dealer",
         outcomes: [],
+      });
+      return;
+    }
+    if (path.startsWith("/functions/v1/checkout-dealer")) {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      checkoutRequests.push(payload);
+      const attendanceIds = Array.isArray(payload.attendance_ids)
+        ? payload.attendance_ids as string[]
+        : typeof payload.attendance_id === "string"
+          ? [payload.attendance_id]
+          : [];
+      await fulfill(route, {
+        results: attendanceIds.map((attendanceId) => payload.mode === "stale_cleanup"
+          ? { attendance_id: attendanceId, success: true }
+          : {
+              attendance_id: attendanceId,
+              success: false,
+              code: "STALE_ATTENDANCE_REQUIRES_CLEANUP",
+              error: "Ca check-in quá 24 giờ hoặc thiếu giờ vào; hãy dùng chế độ dọn ca treo để không tính lại lương/OT",
+            }),
       });
       return;
     }
@@ -375,10 +397,44 @@ async function assertFitsViewport(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
+  checkoutRequests = [];
   await installFixtureRoutes(page);
   await page.addInitScript((session) => {
     localStorage.setItem("sb-127-auth-token", JSON.stringify(session));
   }, localSession());
+});
+
+test("desktop checkout exposes guarded stale cleanup only after the server rejects the row", async ({ page }, testInfo) => {
+  test.setTimeout(150_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/dealer-swing", { waitUntil: "domcontentloaded", timeout: 120_000 });
+  await expect(page.getByText("DEALER SWING", { exact: true })).toBeVisible();
+
+  await page.getByText("ĐỘI HÌNH / CHECK-IN", { exact: true }).click();
+  await page.getByRole("button", { name: /Check-out \(2\)/ }).click();
+  await expect(page.getByRole("heading", { name: "Check-out thủ công" })).toBeVisible();
+  await page.getByRole("combobox").last().click();
+  await page.getByRole("option", { name: "An Nguyen" }).click();
+  await page.getByRole("button", { name: "Check-out", exact: true }).click();
+
+  await expect(page.getByText("1 ca không thể check-out thường", { exact: true })).toBeVisible();
+  expect(checkoutRequests).toEqual([{ attendance_id: ATTENDANCE_ONE }]);
+
+  await page.getByRole("button", { name: "Dọn 1 ca treo", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Dọn 1 ca treo?" })).toBeVisible();
+  await expect(page.getByText(/giữ nguyên lương\/OT và để riêng ca thiếu bằng chứng/)).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("dealer-stale-cleanup-confirm.png"),
+    fullPage: true,
+  });
+
+  await page.getByRole("button", { name: "Dọn 1 ca treo", exact: true }).click();
+  await expect(page.getByText("1 ca không thể check-out thường", { exact: true })).toHaveCount(0);
+  expect(checkoutRequests).toEqual([
+    { attendance_id: ATTENDANCE_ONE },
+    { attendance_ids: [ATTENDANCE_ONE], mode: "stale_cleanup" },
+  ]);
+  await assertFitsViewport(page);
 });
 
 test("phone completion handles camera fallback, manual batch, close conflict, and reconcile race", async ({ page }, testInfo) => {
