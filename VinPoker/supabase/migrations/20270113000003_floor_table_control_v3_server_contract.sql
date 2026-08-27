@@ -87,8 +87,42 @@ $$;
 CREATE SCHEMA IF NOT EXISTS floor_private;
 REVOKE ALL ON SCHEMA floor_private FROM PUBLIC, anon, authenticated, service_role;
 
+-- V3 writers are deliberately server-gated as well as hidden by the planned
+-- frontend flag.  A browser can invoke an authenticated RPC directly, so a
+-- UI-only flag would not keep this pre-convergence contract OFF.  This row is
+-- private, defaults to false, and has no browser-writable setter.  A later
+-- owner-gated rollout runbook may enable it only after writer convergence and
+-- authenticated TEST UAT; this migration never enables it.
+CREATE TABLE IF NOT EXISTS floor_private.floor_table_v3_runtime_gate (
+  singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+  writes_enabled boolean NOT NULL DEFAULT false,
+  updated_at timestamptz NOT NULL DEFAULT pg_catalog.now()
+);
+ALTER TABLE floor_private.floor_table_v3_runtime_gate ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE floor_private.floor_table_v3_runtime_gate FROM PUBLIC, anon, authenticated, service_role;
+INSERT INTO floor_private.floor_table_v3_runtime_gate (singleton, writes_enabled)
+VALUES (true, false)
+ON CONFLICT (singleton) DO NOTHING;
+
 -- Internal helpers are deliberately not granted to browser roles.  Public V3
 -- RPCs derive actor/club server-side and call these helpers transactionally.
+CREATE OR REPLACE FUNCTION floor_private.floor_table_v3_writes_enabled()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT COALESCE(
+    (
+      SELECT runtime_gate.writes_enabled
+      FROM floor_private.floor_table_v3_runtime_gate runtime_gate
+      WHERE runtime_gate.singleton
+    ),
+    false
+  );
+$$;
+
 CREATE OR REPLACE FUNCTION floor_private.floor_table_v3_actor_is_tournament_operator(
   p_actor_id uuid,
   p_club_id uuid
@@ -265,6 +299,57 @@ AS $$
   );
 $$;
 
+-- A V3 dealer assignment can never be created or reactivated for a closed
+-- table session.  The row lock makes close-vs-assignment deterministic: an
+-- assignment that wins the lock is released by close; one arriving after the
+-- close sees closed_at and is rejected.  Legacy rows with no explicit V3
+-- session remain untouched until the later cutover.
+CREATE OR REPLACE FUNCTION floor_private.floor_table_v3_guard_dealer_assignment_session()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_session public.table_sessions%ROWTYPE;
+BEGIN
+  IF NEW.table_session_id IS NULL
+     OR NEW.released_at IS NOT NULL
+     OR NEW.status NOT IN ('assigned', 'on_break') THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT * INTO v_session
+  FROM public.table_sessions session_row
+  WHERE session_row.id = NEW.table_session_id
+  FOR SHARE;
+
+  IF NOT FOUND OR v_session.closed_at IS NOT NULL THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P0001',
+      MESSAGE = 'floor_table_v3_dealer_assignment_session_not_active';
+  END IF;
+
+  IF NEW.table_id IS DISTINCT FROM v_session.game_table_id THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P0001',
+      MESSAGE = 'floor_table_v3_dealer_assignment_table_mismatch';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS floor_table_v3_guard_dealer_assignment_session
+  ON public.dealer_assignments;
+CREATE TRIGGER floor_table_v3_guard_dealer_assignment_session
+BEFORE INSERT OR UPDATE OF table_session_id, table_id, status, released_at
+ON public.dealer_assignments
+FOR EACH ROW
+EXECUTE FUNCTION floor_private.floor_table_v3_guard_dealer_assignment_session();
+
+ALTER TABLE floor_private.floor_table_v3_runtime_gate OWNER TO postgres;
+ALTER FUNCTION floor_private.floor_table_v3_writes_enabled() OWNER TO postgres;
 ALTER FUNCTION floor_private.floor_table_v3_actor_is_tournament_operator(uuid, uuid) OWNER TO postgres;
 ALTER FUNCTION floor_private.floor_table_v3_actor_is_dealer_operator(uuid, uuid) OWNER TO postgres;
 ALTER FUNCTION floor_private.floor_table_v3_lock_receipt(uuid, text, uuid) OWNER TO postgres;
@@ -272,7 +357,9 @@ ALTER FUNCTION floor_private.floor_table_v3_existing_receipt(uuid, text, uuid) O
 ALTER FUNCTION floor_private.floor_table_v3_save_receipt(uuid, text, uuid, text, jsonb) OWNER TO postgres;
 ALTER FUNCTION floor_private.floor_table_v3_has_active_hand(uuid, uuid, uuid) OWNER TO postgres;
 ALTER FUNCTION floor_private.floor_table_v3_assert_tracker_context(uuid, uuid, uuid, bigint) OWNER TO postgres;
+ALTER FUNCTION floor_private.floor_table_v3_guard_dealer_assignment_session() OWNER TO postgres;
 
+REVOKE ALL ON FUNCTION floor_private.floor_table_v3_writes_enabled() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION floor_private.floor_table_v3_actor_is_tournament_operator(uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION floor_private.floor_table_v3_actor_is_dealer_operator(uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION floor_private.floor_table_v3_lock_receipt(uuid, text, uuid) FROM PUBLIC, anon, authenticated, service_role;
@@ -280,6 +367,7 @@ REVOKE ALL ON FUNCTION floor_private.floor_table_v3_existing_receipt(uuid, text,
 REVOKE ALL ON FUNCTION floor_private.floor_table_v3_save_receipt(uuid, text, uuid, text, jsonb) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION floor_private.floor_table_v3_has_active_hand(uuid, uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION floor_private.floor_table_v3_assert_tracker_context(uuid, uuid, uuid, bigint) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION floor_private.floor_table_v3_guard_dealer_assignment_session() FROM PUBLIC, anon, authenticated, service_role;
 
 -- Shared Floor/Dealer Swing inventory.  This read does not expose a route to
 -- mutate game_tables directly; availability is derived from operational state
@@ -396,6 +484,9 @@ BEGIN
      OR p_request_id IS NULL
      OR p_control_mode NOT IN ('manual', 'tracker') THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'invalid_request');
+  END IF;
+  IF NOT floor_private.floor_table_v3_writes_enabled() THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'FLOOR_TABLE_CONTROL_V3_DISABLED');
   END IF;
 
   v_fingerprint := pg_catalog.jsonb_build_object(
@@ -550,6 +641,9 @@ BEGIN
      OR EXISTS (SELECT 1 FROM pg_catalog.unnest(p_game_table_ids) item WHERE item IS NULL) THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'invalid_request');
   END IF;
+  IF NOT floor_private.floor_table_v3_writes_enabled() THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'FLOOR_TABLE_CONTROL_V3_DISABLED');
+  END IF;
 
   SELECT pg_catalog.array_agg(DISTINCT item ORDER BY item)
   INTO v_table_ids
@@ -698,6 +792,9 @@ BEGIN
      OR p_request_id IS NULL THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'invalid_request');
   END IF;
+  IF NOT floor_private.floor_table_v3_writes_enabled() THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'FLOOR_TABLE_CONTROL_V3_DISABLED');
+  END IF;
 
   v_fingerprint := pg_catalog.jsonb_build_object(
     'table_session_id', p_table_session_id,
@@ -812,6 +909,10 @@ DECLARE
   v_actor uuid := auth.uid();
   v_club_id uuid;
 BEGIN
+  IF NOT floor_private.floor_table_v3_writes_enabled() THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'FLOOR_TABLE_CONTROL_V3_DISABLED');
+  END IF;
+
   SELECT t.club_id INTO v_club_id
   FROM public.tournaments t
   WHERE t.id = p_tournament_id;
@@ -937,6 +1038,9 @@ BEGIN
      OR p_expected_revision IS NULL
      OR p_request_id IS NULL THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'invalid_request');
+  END IF;
+  IF NOT floor_private.floor_table_v3_writes_enabled() THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'FLOOR_TABLE_CONTROL_V3_DISABLED');
   END IF;
 
   SELECT entry_row.tournament_id INTO v_entry_tournament_id
@@ -1137,6 +1241,9 @@ BEGIN
      OR p_control_mode NOT IN ('manual', 'tracker') THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'invalid_request');
   END IF;
+  IF NOT floor_private.floor_table_v3_writes_enabled() THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'FLOOR_TABLE_CONTROL_V3_DISABLED');
+  END IF;
 
   SELECT tt.tournament_id, tt.game_table_id
   INTO v_tournament_id, v_game_table_id
@@ -1273,6 +1380,9 @@ BEGIN
      OR p_expected_destination_revision IS NULL
      OR p_request_id IS NULL THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'invalid_request');
+  END IF;
+  IF NOT floor_private.floor_table_v3_writes_enabled() THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'FLOOR_TABLE_CONTROL_V3_DISABLED');
   END IF;
 
   SELECT entry_row.tournament_id INTO v_tournament_id
@@ -1556,6 +1666,9 @@ BEGIN
      OR p_request_id IS NULL THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'invalid_request');
   END IF;
+  IF NOT floor_private.floor_table_v3_writes_enabled() THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'FLOOR_TABLE_CONTROL_V3_DISABLED');
+  END IF;
   SELECT tt.tournament_id, tt.game_table_id
   INTO v_tournament_id, v_game_table_id
   FROM public.tournament_tables tt
@@ -1694,6 +1807,9 @@ BEGIN
      OR p_draw_mode NOT IN ('fill_lowest_table', 'redraw_balanced') THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'invalid_request');
   END IF;
+  IF NOT floor_private.floor_table_v3_writes_enabled() THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'FLOOR_TABLE_CONTROL_V3_DISABLED');
+  END IF;
   SELECT tt.tournament_id, tt.game_table_id
   INTO v_tournament_id, v_game_table_id
   FROM public.tournament_tables tt
@@ -1744,9 +1860,14 @@ BEGIN
   WHERE gt.id = ANY(v_game_table_ids)
     AND gt.club_id = v_tournament.club_id
   ORDER BY gt.id FOR UPDATE;
-  PERFORM 1 FROM public.table_sessions session_row
+  -- Sessions are locked in their physical-table order, matching move/bust/
+  -- restore.  Session UUID order alone could invert two multi-table actions.
+  PERFORM 1
+  FROM public.table_sessions session_row
+  JOIN public.game_tables gt ON gt.id = session_row.game_table_id
   WHERE session_row.id = ANY(v_session_ids)
-  ORDER BY session_row.id FOR UPDATE;
+  ORDER BY gt.id, session_row.id
+  FOR UPDATE;
 
   SELECT * INTO v_source_table
   FROM public.tournament_tables tt
@@ -1971,6 +2092,9 @@ BEGIN
      OR p_request_id IS NULL THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'invalid_request');
   END IF;
+  IF NOT floor_private.floor_table_v3_writes_enabled() THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'FLOOR_TABLE_CONTROL_V3_DISABLED');
+  END IF;
   SELECT entry_row.tournament_id INTO v_tournament_id
   FROM public.tournament_entries entry_row
   WHERE entry_row.id = p_entry_id;
@@ -2184,6 +2308,9 @@ BEGIN
      OR p_expected_control_epoch IS NULL
      OR p_request_id IS NULL THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'invalid_request');
+  END IF;
+  IF NOT floor_private.floor_table_v3_writes_enabled() THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'FLOOR_TABLE_CONTROL_V3_DISABLED');
   END IF;
   SELECT entry_row.tournament_id INTO v_tournament_id
   FROM public.tournament_entries entry_row

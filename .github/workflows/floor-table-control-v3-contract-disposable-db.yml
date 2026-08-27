@@ -49,4 +49,8 @@ jobs:
           PGPORT: 5432
           PGUSER: postgres
           PGDATABASE: floor_table_control_v3_contract
-        run: psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.sql
+        run: |
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.sql
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.authenticated.sql
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.concurrent.setup.sql
+          bash tests/floorTableControlV3/runServerContractConcurrency.sh

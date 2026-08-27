@@ -415,7 +415,41 @@ SELECT public.floor_table_v3_assert_permission_denied(
     VALUES
     ('00000000-0000-0000-0000-000000000002', 'fixture', '00000000-0000-0000-0000-000000000950', 'x', '{}'::jsonb)$$
 );
+SELECT public.floor_table_v3_assert_permission_denied(
+  $$UPDATE floor_private.floor_table_v3_runtime_gate SET writes_enabled = true$$
+);
 COMMIT;
+
+-- V3 is server-gated by default.  This checks the real authenticated caller
+-- path before the disposable suite explicitly enables the gate for controlled
+-- contract coverage; production remains false until a later owner-gated
+-- rollout runbook after writer convergence/UAT.
+BEGIN;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
+DO $$
+DECLARE
+  v_result jsonb;
+BEGIN
+  v_result := public.floor_open_tournament_table_v3(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000507',
+    'manual',
+    '00000000-0000-0000-0000-000000000951'
+  );
+  IF v_result ->> 'error' IS DISTINCT FROM 'FLOOR_TABLE_CONTROL_V3_DISABLED' THEN
+    RAISE EXCEPTION 'expected server gate to block V3 write, got %', v_result;
+  END IF;
+END;
+$$;
+COMMIT;
+
+-- Disposable-only setup.  No browser role can set this private row; it is
+-- enabled here solely to exercise the intended future owner-gated UAT path.
+UPDATE floor_private.floor_table_v3_runtime_gate
+SET writes_enabled = true,
+    updated_at = now()
+WHERE singleton;
 
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000099', false);
 SELECT public.floor_table_v3_assert(
@@ -645,6 +679,15 @@ BEGIN
     AND (SELECT released_at IS NOT NULL FROM public.dealer_assignments WHERE table_session_id = v_manual_session_id),
     'break ends the dealer assignment and session history together'
   );
+  BEGIN
+    INSERT INTO public.dealer_assignments (table_id, table_session_id, status)
+    VALUES ('00000000-0000-0000-0000-000000000503', v_manual_session_id, 'assigned');
+    RAISE EXCEPTION 'expected V3 dealer assignment guard for a closed session';
+  EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    IF SQLERRM <> 'floor_table_v3_dealer_assignment_session_not_active' THEN
+      RAISE;
+    END IF;
+  END;
 
   v_result := public.floor_open_tournament_table_v3(
     '00000000-0000-0000-0000-000000000101',
