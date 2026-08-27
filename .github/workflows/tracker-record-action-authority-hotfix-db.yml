@@ -108,6 +108,10 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
             -f supabase/migrations/20270112000004_tracker_record_action_authority_binding.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
+            -f supabase/migrations/20270112000008_tracker_voice_gemini_live_provider.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
+            -f supabase/migrations/20270113000005_tracker_voice_transcribe35_binding.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
             -f tests/trackerVoice/disposableDb.integration.sql
           echo "TRACKER_RECORD_ACTION_VOICE_CHAIN=PASS"
 
