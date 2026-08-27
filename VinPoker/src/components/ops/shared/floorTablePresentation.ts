@@ -2,16 +2,21 @@ export const FLOOR_TABLE_NUMBER_MIN = 1;
 export const FLOOR_TABLE_NUMBER_MAX = 100;
 export const FIXED_FLOOR_TABLE_SEATS = 9;
 
-export type FloorTableNumberState = "available" | "active" | "closed";
+export type FloorTableNumberState = "available" | "active" | "closed" | "unavailable";
 
 export interface FloorTableCatalogRow {
   table_number: number | null;
   status: string | null;
+  /** V3 inventory fields are optional while the legacy picker remains live. */
+  availability_status?: string | null;
+  session_type?: string | null;
+  operational_status?: string | null;
 }
 
 export interface FloorTableNumberOption {
   number: number;
   state: FloorTableNumberState;
+  detail?: string;
 }
 
 export interface FloorRosterSeat {
@@ -33,8 +38,9 @@ export interface FloorRosterSlot {
  */
 export function buildFloorTableNumberOptions(
   rows: readonly FloorTableCatalogRow[],
+  missingState: FloorTableNumberState = "available",
 ): FloorTableNumberOption[] {
-  const stateByNumber = new Map<number, FloorTableNumberState>();
+  const stateByNumber = new Map<number, FloorTableNumberOption>();
 
   for (const row of rows) {
     const number = row.table_number;
@@ -47,9 +53,27 @@ export function buildFloorTableNumberOptions(
       continue;
     }
 
-    const nextState: FloorTableNumberState = row.status === "active" ? "active" : "closed";
-    if (nextState === "active" || !stateByNumber.has(number)) {
-      stateByNumber.set(number, nextState);
+    const availability = row.availability_status;
+    const next: FloorTableNumberOption = availability === "available"
+      ? { number, state: "available" }
+      : availability === "in_use"
+        ? {
+          number,
+          state: "active",
+          detail: row.session_type === "tournament"
+            ? "Đang dùng · Giải"
+            : row.session_type === "cash"
+              ? "Đang dùng · Cash"
+              : row.session_type === "vip"
+                ? "Đang dùng · VIP"
+                : "Đang dùng",
+        }
+        : availability
+          ? { number, state: "unavailable", detail: availability === "maintenance" ? "Bảo trì" : "Không khả dụng" }
+          : { number, state: row.status === "active" ? "active" : "closed" };
+    const current = stateByNumber.get(number);
+    if (!current || next.state === "active" || (next.state === "unavailable" && current.state !== "active")) {
+      stateByNumber.set(number, next);
     }
   }
 
@@ -57,7 +81,7 @@ export function buildFloorTableNumberOptions(
     { length: FLOOR_TABLE_NUMBER_MAX },
     (_, index): FloorTableNumberOption => {
       const number = index + FLOOR_TABLE_NUMBER_MIN;
-      return { number, state: stateByNumber.get(number) ?? "available" };
+      return stateByNumber.get(number) ?? { number, state: missingState };
     },
   );
 }

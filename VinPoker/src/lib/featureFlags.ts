@@ -855,6 +855,15 @@ export const FEATURES = {
    */
   floorTableOps: true,
   /**
+   * Session-based Floor/Dealer/Tracker table-control convergence.
+   *
+   * Default OFF: V3 writers are additionally revoked at the database boundary
+   * until the additive contract is applied, authenticated Preview UAT passes,
+   * and an owner-gated rollout explicitly re-grants the exact writers.  This
+   * switch must never be used as an authorization mechanism.
+   */
+  floorTableControlV3: false,
+  /**
    * Ops phone app (mobileOpsV2) — Dealer Swing action wiring. The `/ops/dealer-swing`
    * page renders every operator action (swing 1 table, assign a specific dealer via the
    * picker, send-to-break, single + batch check-out) but keeps each button on a stub

@@ -728,26 +728,6 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
     setProcessing("create_table");
     const request = ++openOperationRequestRef.current;
     try {
-      if (massOpenGate === "legacy") {
-        let success = 0;
-        let fail = 0;
-        for (const tableId of selectedPoolTableIds) {
-          await supabase.rpc("release_dealer_from_table", { p_table_id: tableId });
-          const { error } = await supabase.from("game_tables").update({
-            shift_id: selectedTour ?? null,
-            status: "active",
-            table_type: newTableType,
-          }).eq("id", tableId);
-          if (error) fail++;
-          else success++;
-        }
-        if (fail > 0) toast.warning(`Đã mở ${success} bàn; ${fail} bàn chưa mở được.`);
-        else toast.success(`Đã mở ${success} bàn.`);
-        if (success > 0) await massAssign();
-        setCreateTableOpen(false);
-        return;
-      }
-
       const operationId = crypto.randomUUID();
       const { data, error } = await dealerMassOpenRpc<unknown>("operator_open_dealer_tables", {
         p_request_id: operationId,
