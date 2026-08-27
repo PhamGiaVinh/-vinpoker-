@@ -154,8 +154,25 @@ COMMIT;
 SQL
 ) >"$tmp_dir/close" 2>&1 &
 close_table=$!
-wait "$dealer_assignment"
-wait "$close_table"
+dealer_assignment_exit=0
+close_table_exit=0
+wait "$dealer_assignment" || dealer_assignment_exit=$?
+wait "$close_table" || close_table_exit=$?
+if [[ "$close_table_exit" != "0" ]]; then
+  echo 'FLOOR_TABLE_CONTROL_V3_CONCURRENCY_ASSERTION_FAILED close process failed' >&2
+  cat "$tmp_dir/close" >&2
+  exit 1
+fi
+# Either transaction may acquire the session first.  If close wins, the trigger
+# must reject the late assignment with the explicit closed-session code; if the
+# assignment wins, close must release it before committing.  Any other failure
+# remains a test failure with the original psql diagnostic preserved.
+if [[ "$dealer_assignment_exit" != "0" ]] \
+  && ! grep -q 'floor_table_v3_dealer_assignment_session_not_active' "$tmp_dir/dealer-assignment"; then
+  echo 'FLOOR_TABLE_CONTROL_V3_CONCURRENCY_ASSERTION_FAILED dealer assignment failed unexpectedly' >&2
+  cat "$tmp_dir/dealer-assignment" >&2
+  exit 1
+fi
 if ! grep -q '"ok": true' "$tmp_dir/close"; then
   echo 'FLOOR_TABLE_CONTROL_V3_CONCURRENCY_ASSERTION_FAILED close did not succeed' >&2
   cat "$tmp_dir/close" >&2
