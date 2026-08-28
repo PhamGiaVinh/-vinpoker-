@@ -8,11 +8,14 @@ import type { VoiceProposalContext } from "./types";
 const READY: VoiceProposalContext = {
   handId: "hand-1",
   street: "flop",
+  workflowState: "flop_action",
+  actionOrder: 2,
   expectedStateVersion: "state-v1",
   actor: {
     playerId: "player-a",
     playerName: "Player A",
     seatNumber: 3,
+    entryNumber: 1,
     currentStack: 10_000,
     currentBet: 1_000,
   },

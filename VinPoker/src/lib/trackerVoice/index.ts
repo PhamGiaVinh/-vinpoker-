@@ -5,5 +5,6 @@ export * from "./proposal";
 export * from "./providers";
 export * from "./previewRoute";
 export * from "./api";
+export * from "./canonicalRequest";
 export * from "./types";
 export * from "./analytics";

@@ -38,6 +38,7 @@ export async function validateTrackerVoiceEvent(
       expected_state_version: input.expectedStateVersion,
       idempotency_key: input.idempotencyKey,
       trace_id: input.traceId,
+      voice_request: input.canonicalRequest,
     },
   });
   if (error) {
