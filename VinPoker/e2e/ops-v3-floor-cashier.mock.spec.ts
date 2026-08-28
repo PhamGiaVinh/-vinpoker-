@@ -5,6 +5,16 @@ const tournamentId = "20000000-0000-4000-8000-000000000001";
 const userId = "00000000-0000-4000-8000-000000000001";
 const futureExpiry = 4_102_444_800;
 const mockJwt = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjQxMDI0NDQ4MDAsInN1YiI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSJ9.";
+const mockUser = {
+  id: userId,
+  aud: "authenticated",
+  role: "authenticated",
+  email: "operator@example.test",
+  app_metadata: {},
+  user_metadata: {},
+  identities: [],
+  created_at: "2026-08-09T00:00:00.000Z",
+};
 
 const operatorScope = [{
   club_id: clubId,
@@ -68,6 +78,7 @@ async function installMockOpsSession(page: Page) {
       contentType: "application/json",
       body: JSON.stringify(body),
     });
+    if (path.endsWith("/auth/v1/user")) return json(mockUser);
     if (path.endsWith("/rpc/get_my_ops_capability_scope")) return json(operatorScope);
     if (path.endsWith("/rpc/get_my_ops_global_capability")) return json([{ is_super_admin: false }]);
     if (path.endsWith("/clubs")) return json([{ id: clubId, name: "HSOP TEST" }]);
