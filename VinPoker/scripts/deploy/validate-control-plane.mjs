@@ -195,7 +195,10 @@ for (const snippet of [
 }
 for (const snippet of [
   "workflow_dispatch:",
-  "source_sha:",
+  "control_sha:",
+  "frontend_receipt_sha:",
+  "render_receipt_sha:",
+  "sender_receipt_sha:",
   "enable_hsop",
   "disable_hsop",
   "dealer-swing-production-critical",
@@ -212,7 +215,9 @@ for (const snippet of [
 for (const snippet of [
   "workflow_dispatch:",
   "control_sha:",
-  "runtime_receipt_sha:",
+  "frontend_receipt_sha:",
+  "render_receipt_sha:",
+  "sender_receipt_sha:",
   "REPAIR_AND_ENABLE_DEALER_PAYROLL_DELIVERY_HSOP",
   "dealer-swing-production-critical",
   "required_reviewers",

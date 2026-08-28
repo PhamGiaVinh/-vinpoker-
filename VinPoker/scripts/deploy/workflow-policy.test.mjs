@@ -176,7 +176,10 @@ test("pinned actionlint validation is read-only and uses no production secret", 
 test("payroll Telegram HSOP runtime gate stays manual, exact-source, and narrowly scoped", () => {
   assert.match(payrollDeliveryHsopGateWorkflow, /workflow_dispatch:/);
   assert.doesNotMatch(payrollDeliveryHsopGateWorkflow, /pull_request:/);
-  assert.match(payrollDeliveryHsopGateWorkflow, /source_sha:/);
+  assert.match(payrollDeliveryHsopGateWorkflow, /control_sha:/);
+  assert.match(payrollDeliveryHsopGateWorkflow, /frontend_receipt_sha:/);
+  assert.match(payrollDeliveryHsopGateWorkflow, /render_receipt_sha:/);
+  assert.match(payrollDeliveryHsopGateWorkflow, /sender_receipt_sha:/);
   assert.match(payrollDeliveryHsopGateWorkflow, /enable_hsop/);
   assert.match(payrollDeliveryHsopGateWorkflow, /disable_hsop/);
   assert.match(payrollDeliveryHsopGateWorkflow, /dealer-swing-production-critical/);
@@ -193,7 +196,9 @@ test("payroll Telegram forward repair is protected, exact, and cannot replay his
   assert.match(payrollDeliveryRepairWorkflow, /workflow_dispatch:/);
   assert.doesNotMatch(payrollDeliveryRepairWorkflow, /pull_request:/);
   assert.match(payrollDeliveryRepairWorkflow, /control_sha:/);
-  assert.match(payrollDeliveryRepairWorkflow, /runtime_receipt_sha:/);
+  assert.match(payrollDeliveryRepairWorkflow, /frontend_receipt_sha:/);
+  assert.match(payrollDeliveryRepairWorkflow, /render_receipt_sha:/);
+  assert.match(payrollDeliveryRepairWorkflow, /sender_receipt_sha:/);
   assert.match(payrollDeliveryRepairWorkflow, /REPAIR_AND_ENABLE_DEALER_PAYROLL_DELIVERY_HSOP/);
   assert.match(payrollDeliveryRepairWorkflow, /dealer-swing-production-critical/);
   assert.match(payrollDeliveryRepairWorkflow, /required_reviewers/);

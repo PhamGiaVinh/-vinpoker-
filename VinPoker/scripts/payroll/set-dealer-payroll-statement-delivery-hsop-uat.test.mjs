@@ -5,7 +5,10 @@ import {
   safeRuntimeGateState,
   transitionDecision,
 } from "./set-dealer-payroll-statement-delivery-hsop-uat.mjs";
-import { receiptProblems } from "./verify-dealer-payroll-statement-delivery-receipts.mjs";
+import {
+  expectedReceiptShas,
+  receiptProblems,
+} from "./verify-dealer-payroll-statement-delivery-receipts.mjs";
 
 const targetSha = "a".repeat(40);
 
@@ -66,6 +69,30 @@ test("sanitized gate state never includes raw club identifiers", () => {
 });
 
 test("requires exact successful receipts for the frontend and both payroll Edge functions", () => {
+  const frontendSha = "c".repeat(40);
+  const receipts = {
+    frontend: { sha: frontendSha },
+    functions: {
+      "render-payroll-statement": { sha: targetSha },
+      "send-payroll-statement": { sha: targetSha },
+    },
+  };
+  const expected = {
+    frontend: frontendSha,
+    "render-payroll-statement": targetSha,
+    "send-payroll-statement": targetSha,
+  };
+  assert.deepEqual(receiptProblems(receipts, expected), []);
+  assert.deepEqual(
+    receiptProblems(
+      { ...receipts, functions: { ...receipts.functions, "send-payroll-statement": { sha: "b".repeat(40) } } },
+      expected,
+    ),
+    ["send-payroll-statement receipt SHA mismatch"],
+  );
+});
+
+test("legacy shared receipt expectation remains supported for existing callers", () => {
   const receipts = {
     frontend: { sha: targetSha },
     functions: {
@@ -74,8 +101,22 @@ test("requires exact successful receipts for the frontend and both payroll Edge 
     },
   };
   assert.deepEqual(receiptProblems(receipts, targetSha), []);
-  assert.deepEqual(
-    receiptProblems({ ...receipts, functions: { ...receipts.functions, "send-payroll-statement": { sha: "b".repeat(40) } } }, targetSha),
-    ["send-payroll-statement receipt SHA mismatch"],
+});
+
+test("component receipt expectations fail closed when a SHA is missing or invalid", () => {
+  assert.throws(
+    () => expectedReceiptShas({
+      frontend: targetSha,
+      "render-payroll-statement": targetSha,
+    }),
+    /source SHA must be 40 lowercase hexadecimal characters/,
+  );
+  assert.throws(
+    () => expectedReceiptShas({
+      frontend: targetSha.toUpperCase(),
+      "render-payroll-statement": targetSha,
+      "send-payroll-statement": targetSha,
+    }),
+    /source SHA must be 40 lowercase hexadecimal characters/,
   );
 });
