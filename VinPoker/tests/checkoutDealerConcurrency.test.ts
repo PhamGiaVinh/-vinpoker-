@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mapWithConcurrency } from "../supabase/functions/_shared/mapWithConcurrency.ts";
 import {
+  staleCleanupCandidateAttendanceIds,
   staleCleanupAttendanceIds,
   summarizeDealerCheckoutBatch,
   unresolvedCheckoutAttendanceIds,
@@ -90,6 +91,15 @@ describe("checkout-dealer result reporting", () => {
 
 describe("checkout-dealer stale attendance guard", () => {
   const now = Date.parse("2026-08-24T02:00:00Z");
+
+  it("exposes reload-safe cleanup candidates without including fresh shifts", () => {
+    expect(staleCleanupCandidateAttendanceIds([
+      { id: "fresh", check_in_time: "2026-08-23T02:00:01Z" },
+      { id: "boundary", check_in_time: "2026-08-23T02:00:00Z" },
+      { id: "missing", check_in_time: null },
+      { id: "invalid", check_in_time: "not-a-date" },
+    ], now)).toEqual(["boundary", "missing", "invalid"]);
+  });
 
   it("allows a normal current shift", () => {
     expect(requiresStaleCheckoutCleanup("2026-08-23T18:00:00Z", now)).toBe(false);

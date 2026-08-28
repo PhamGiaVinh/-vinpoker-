@@ -11,6 +11,35 @@ export interface DealerCheckoutResult {
 }
 
 export const STALE_ATTENDANCE_REQUIRES_CLEANUP = "STALE_ATTENDANCE_REQUIRES_CLEANUP";
+export const NORMAL_CHECKOUT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+export interface CheckoutCandidateAttendance {
+  id: string;
+  check_in_time: string | null;
+}
+
+/**
+ * Client-side prefilter for the cleanup affordance.
+ *
+ * This mirrors the server's fail-closed age check only to make the action
+ * discoverable after a reload. The cleanup RPC remains authoritative: it
+ * re-checks the row, assignments, and historical end evidence before any
+ * mutation.
+ */
+export function staleCleanupCandidateAttendanceIds(
+  attendance: CheckoutCandidateAttendance[],
+  nowMs = Date.now(),
+): string[] {
+  return attendance
+    .filter(({ id, check_in_time }) => {
+      if (!id || !check_in_time) return Boolean(id);
+      const checkInMs = new Date(check_in_time).getTime();
+      return !Number.isFinite(checkInMs)
+        || checkInMs > nowMs
+        || nowMs - checkInMs >= NORMAL_CHECKOUT_MAX_AGE_MS;
+    })
+    .map(({ id }) => id);
+}
 
 export interface DealerCheckoutBatchSummary {
   results: DealerCheckoutResult[];
