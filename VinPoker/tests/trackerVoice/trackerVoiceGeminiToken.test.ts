@@ -68,12 +68,10 @@ describe("tracker voice Gemini Preview token endpoint", () => {
       uses: 1,
       newSessionExpireTime: "1970-01-01T00:01:01.000Z",
       expireTime: "1970-01-01T00:20:01.000Z",
-      liveConnectConstraints: {
+      bidiGenerateContentSetup: {
         model: "models/gemini-3.5-transcribe-live",
-        config: {
-          responseModalities: ["TEXT"],
-          inputAudioTranscription: { languageCodes: [], mode: "VERBATIM" },
-        },
+        generationConfig: { responseModalities: ["TEXT"] },
+        inputAudioTranscription: { languageCodes: [], mode: "VERBATIM" },
       },
     });
   });
