@@ -1,0 +1,58 @@
+name: Floor V3 migration promotion guard
+
+on:
+  pull_request:
+    paths:
+      - "VinPoker/supabase/migrations/**"
+      - "VinPoker/supabase/migration-archive/never-apply/**"
+      - "VinPoker/scripts/security/check-migration-catalog.mjs"
+      - "VinPoker/scripts/security/check-floor-v3-migration-promotion.mjs"
+      - "VinPoker/tests/security/check-migration-catalog.test.mjs"
+      - "VinPoker/tests/security/check-floor-v3-migration-promotion.test.mjs"
+      - "VinPoker/package.json"
+      - "VinPoker/package-lock.json"
+      - ".github/workflows/floor-v3-migration-promotion.yml"
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  catalog-and-preflight:
+    name: Floor V3 catalog and promotion preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+
+      - name: Install locked dependencies without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+
+      - name: Check migration catalog
+        working-directory: VinPoker
+        run: npm run check:migration-catalog
+
+      - name: Check Floor V3 promotion manifest (static)
+        working-directory: VinPoker
+        run: npm run check:migration-promotion -- --static
+
+      - name: Run catalog security tests
+        working-directory: VinPoker
+        run: node --test tests/security/check-migration-catalog.test.mjs tests/security/check-floor-v3-migration-promotion.test.mjs
+
+      - name: Credential-context guard
+        working-directory: VinPoker
+        run: npm run check:credential-context
+
+      - name: Check patch formatting
+        run: git diff --check

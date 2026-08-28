@@ -3,9 +3,12 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MIGRATION_FILE_PATTERN = /^(\d{14})_.+\.sql$/u;
-const CREDENTIAL_LIKE_JWT_LITERAL = /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b/u;
-const DIRECT_PRODUCTION_FUNCTION_TARGET = /https:\/\/orlesggcjamwuknxwcpk\.supabase\.co\/functions\/v1\//u;
-const MANAGED_REALTIME_OWNERSHIP_DDL = /\b(?:ALTER\s+TABLE\s+realtime\.[A-Za-z_][A-Za-z0-9_]*\s+(?:ENABLE|DISABLE|FORCE|NO\s+FORCE)\s+ROW\s+LEVEL\s+SECURITY|(?:CREATE|DROP|ALTER)\s+POLICY\b[\s\S]{0,512}?\bON\s+realtime\.[A-Za-z_][A-Za-z0-9_]*)/iu;
+const CREDENTIAL_LIKE_JWT_LITERAL =
+  /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b/u;
+const DIRECT_PRODUCTION_FUNCTION_TARGET =
+  /https:\/\/orlesggcjamwuknxwcpk\.supabase\.co\/functions\/v1\//u;
+const MANAGED_REALTIME_OWNERSHIP_DDL =
+  /\b(?:ALTER\s+TABLE\s+realtime\.[A-Za-z_][A-Za-z0-9_]*\s+(?:ENABLE|DISABLE|FORCE|NO\s+FORCE)\s+ROW\s+LEVEL\s+SECURITY|(?:CREATE|DROP|ALTER)\s+POLICY\b[\s\S]{0,512}?\bON\s+realtime\.[A-Za-z_][A-Za-z0-9_]*)/iu;
 const SAFE_BOOTSTRAP_MIGRATIONS = new Set([
   "20260516123400_push_notification_dispatch.sql",
   "20260525000001_schedule_enforce_break_balance.sql",
@@ -15,6 +18,18 @@ const SAFE_BOOTSTRAP_MIGRATIONS = new Set([
   "20261115000000_sepay_reconcile.sql",
 ]);
 const FORBIDDEN_ACTIVE_MIGRATION_FILENAMES = new Map([
+  [
+    "20270113000000_dealer_payroll_statement_pdf_storage.sql",
+    "historical Payroll source is preserved; inspect live lineage before any delta migration",
+  ],
+  [
+    "20270113000001_dealer_payroll_statement_ft_ui_contract.sql",
+    "Payroll migration has alias history; do not replay the archived source",
+  ],
+  [
+    "20270113000004_dealer_payroll_statement_telegram_delivery.sql",
+    "Payroll/Telegram migration has alias history; do not replay the archived source",
+  ],
   [
     "20260429060607_237b4d96-a7ca-445d-bfc6-4593e118f887.sql",
     "replay-unsafe managed Realtime DDL belongs in migration-archive/removed-sensitive",
@@ -73,7 +88,9 @@ export function findMigrationCatalogProblems(migrationDirectory) {
   const versions = new Map();
   const invalidFiles = [];
 
-  for (const entry of readdirSync(migrationDirectory, { withFileTypes: true })) {
+  for (const entry of readdirSync(migrationDirectory, {
+    withFileTypes: true,
+  })) {
     if (!entry.isFile() || !entry.name.endsWith(".sql")) continue;
 
     const match = entry.name.match(MIGRATION_FILE_PATTERN);
@@ -89,27 +106,46 @@ export function findMigrationCatalogProblems(migrationDirectory) {
     versions.set(version, files);
 
     const reason = FORBIDDEN_ACTIVE_MIGRATION_FILENAMES.get(entry.name);
-    if (reason) invalidFiles.push(`forbidden active migration ${entry.name}: ${reason}`);
+    if (reason)
+      invalidFiles.push(`forbidden active migration ${entry.name}: ${reason}`);
 
-    const source = readFileSync(resolve(migrationDirectory, entry.name), "utf8");
+    const source = readFileSync(
+      resolve(migrationDirectory, entry.name),
+      "utf8",
+    );
     if (CREDENTIAL_LIKE_JWT_LITERAL.test(source)) {
-      invalidFiles.push(`credential-like JWT literal in active migration ${entry.name}`);
+      invalidFiles.push(
+        `credential-like JWT literal in active migration ${entry.name}`,
+      );
     }
     const sourceWithoutLineComments = source.replace(/--[^\r\n]*/gu, "");
     if (DIRECT_PRODUCTION_FUNCTION_TARGET.test(sourceWithoutLineComments)) {
-      invalidFiles.push(`direct production function target in active migration ${entry.name}`);
+      invalidFiles.push(
+        `direct production function target in active migration ${entry.name}`,
+      );
     }
     if (MANAGED_REALTIME_OWNERSHIP_DDL.test(sourceWithoutLineComments)) {
-      invalidFiles.push(`managed Realtime ownership DDL in active migration ${entry.name}`);
+      invalidFiles.push(
+        `managed Realtime ownership DDL in active migration ${entry.name}`,
+      );
     }
-    if (SAFE_BOOTSTRAP_MIGRATIONS.has(entry.name) && /\bnet\.http_post\b/u.test(source)) {
-      invalidFiles.push(`unsafe HTTP side effect in contained bootstrap migration ${entry.name}`);
+    if (
+      SAFE_BOOTSTRAP_MIGRATIONS.has(entry.name) &&
+      /\bnet\.http_post\b/u.test(source)
+    ) {
+      invalidFiles.push(
+        `unsafe HTTP side effect in contained bootstrap migration ${entry.name}`,
+      );
     }
   }
 
-  for (const [version, files] of [...versions.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+  for (const [version, files] of [...versions.entries()].sort(
+    ([left], [right]) => left.localeCompare(right),
+  )) {
     if (files.length > 1) {
-      invalidFiles.push(`duplicate migration version ${version}: ${files.sort().join(", ")}`);
+      invalidFiles.push(
+        `duplicate migration version ${version}: ${files.sort().join(", ")}`,
+      );
     }
   }
 
@@ -119,7 +155,8 @@ export function findMigrationCatalogProblems(migrationDirectory) {
 export function runMigrationCatalogCheck(migrationDirectory) {
   const problems = findMigrationCatalogProblems(migrationDirectory);
   if (problems.length > 0) {
-    for (const problem of problems) console.error(`MIGRATION_CATALOG_FAIL ${problem}`);
+    for (const problem of problems)
+      console.error(`MIGRATION_CATALOG_FAIL ${problem}`);
     return 1;
   }
 
@@ -129,7 +166,12 @@ export function runMigrationCatalogCheck(migrationDirectory) {
 
 const scriptPath = fileURLToPath(import.meta.url);
 if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
-  const defaultDirectory = resolve(dirname(scriptPath), "../../supabase/migrations");
-  const migrationDirectory = process.argv[2] ? resolve(process.argv[2]) : defaultDirectory;
+  const defaultDirectory = resolve(
+    dirname(scriptPath),
+    "../../supabase/migrations",
+  );
+  const migrationDirectory = process.argv[2]
+    ? resolve(process.argv[2])
+    : defaultDirectory;
   process.exitCode = runMigrationCatalogCheck(migrationDirectory);
 }

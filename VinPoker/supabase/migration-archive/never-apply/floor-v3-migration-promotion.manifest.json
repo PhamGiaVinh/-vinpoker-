@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "promotion": "floor-v3",
+  "targetProjectRef": "orlesggcjamwuknxwcpk",
+  "createdFrom": "b64c6e2705af6b8e6325995f2065554f91500220",
+  "floorActiveAllowlist": [
+    {
+      "version": "20270113000002",
+      "filename": "20270113000002_floor_table_control_v3_foundation.sql",
+      "sha256": "bde87962fef151abd0030dcaadce71b7ee2e6a827afdfa4fbcd3198ccb3ef56c",
+      "dependencies": [],
+      "runtimeEdgeDependency": false
+    },
+    {
+      "version": "20270113000003",
+      "filename": "20270113000003_floor_table_control_v3_server_contract.sql",
+      "sha256": "6aa40b46833eb3918f5036ea08c28db42b177f193ec63737255a8027c4b0f425",
+      "dependencies": ["20270113000002"],
+      "runtimeEdgeDependency": false
+    },
+    {
+      "version": "20270113000005",
+      "filename": "20270113000005_floor_table_control_v3_contract_hardening.sql",
+      "sha256": "c8a0ffcddc91c1ccdb38f0698a598efb027f22dad73206c77453475f6e022d49",
+      "dependencies": ["20270113000003"],
+      "runtimeEdgeDependency": false
+    },
+    {
+      "version": "20270113000006",
+      "filename": "20270113000006_floor_table_control_v3_roster_read_contract.sql",
+      "sha256": "b0044bebd92430332a48a0ae9f62e22365b3c871eede8b1293e4df08dadb4ab6",
+      "dependencies": ["20270113000005"],
+      "runtimeEdgeDependency": false
+    }
+  ],
+  "heldSources": [
+    {
+      "originalVersion": "20270113000000",
+      "filename": "20270113000000_dealer_payroll_statement_pdf_storage.sql",
+      "originalPath": "supabase/migrations/20270113000000_dealer_payroll_statement_pdf_storage.sql",
+      "archivePath": "supabase/migration-archive/never-apply/20270113000000_dealer_payroll_statement_pdf_storage.sql",
+      "sha256": "e5a35741cdf313c13f2be0fed4b9d2fa9a49439c334eba7f81ec2e69af29fe2b",
+      "domain": "payroll",
+      "lineageEvidence": {
+        "exactLedgerVersion": null,
+        "aliasLedgerVersion": null,
+        "schemaEffects": "PRESENT_IN_READ_ONLY_SCHEMA_CAPTURE",
+        "provenance": "UNKNOWN"
+      },
+      "reason": "historical Payroll source preserved; live schema effects exist but exact migration provenance is not canonical",
+      "classification": "DO_NOT_REPLAY_REMOTE_EQUIVALENT_SCHEMA_PROVENANCE_UNKNOWN",
+      "replacementStatus": "ACTUAL_DELTA_ONLY",
+      "restoreCondition": "inspect live contract first; create a new migration only for a verified delta"
+    },
+    {
+      "originalVersion": "20270113000001",
+      "filename": "20270113000001_dealer_payroll_statement_ft_ui_contract.sql",
+      "originalPath": "supabase/migrations/20270113000001_dealer_payroll_statement_ft_ui_contract.sql",
+      "archivePath": "supabase/migration-archive/never-apply/20270113000001_dealer_payroll_statement_ft_ui_contract.sql",
+      "sha256": "1bbf588918b3c15d084c29b3600d87ddbdcc60379986ac679517bfd39b297848",
+      "domain": "payroll",
+      "lineageEvidence": {
+        "exactLedgerVersion": null,
+        "aliasLedgerVersion": "20260827181742",
+        "schemaEffects": "PRESENT_WITH_ALIAS_LEDGER_EVIDENCE",
+        "provenance": "ALIAS_APPLIED"
+      },
+      "reason": "remote migration history contains an alias row with this source name",
+      "classification": "ALIAS_APPLIED_DO_NOT_REPLAY_HISTORICAL_SOURCE_PRESERVED",
+      "replacementStatus": "ACTUAL_DELTA_ONLY",
+      "restoreCondition": "inspect live contract first; create a new migration only for a verified delta"
+    },
+    {
+      "originalVersion": "20270113000004",
+      "filename": "20270113000004_dealer_payroll_statement_telegram_delivery.sql",
+      "originalPath": "supabase/migrations/20270113000004_dealer_payroll_statement_telegram_delivery.sql",
+      "archivePath": "supabase/migration-archive/never-apply/20270113000004_dealer_payroll_statement_telegram_delivery.sql",
+      "sha256": "991428a6a30717e5825757a3102b2558e7e5c0569f9accc1130d4b3d292ca5b2",
+      "domain": "payroll-telegram",
+      "lineageEvidence": {
+        "exactLedgerVersion": null,
+        "aliasLedgerVersion": "20260828104811",
+        "schemaEffects": "PRESENT_WITH_ALIAS_LEDGER_EVIDENCE",
+        "provenance": "ALIAS_APPLIED"
+      },
+      "reason": "remote migration history contains an alias row with this source name",
+      "classification": "ALIAS_APPLIED_DO_NOT_REPLAY_HISTORICAL_SOURCE_PRESERVED",
+      "replacementStatus": "ACTUAL_DELTA_ONLY",
+      "restoreCondition": "inspect live contract first; create a new migration only for a verified delta"
+    }
+  ]
+}
