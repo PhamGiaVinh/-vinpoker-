@@ -84,6 +84,7 @@ jobs:
             .github/workflows/dealer-pt-wage-disposable-validation.yml \
             .github/workflows/dealer-pt-wage-global-continuous-accrual-apply.yml \
             .github/workflows/dealer-pt-wage-readiness-acl-apply.yml \
+            .github/workflows/dealer-payroll-statement-contract-apply.yml \
             .github/workflows/deployment-control-plane-validation.yml
 
       - name: Setup Node.js 20 for Floor runner tests
