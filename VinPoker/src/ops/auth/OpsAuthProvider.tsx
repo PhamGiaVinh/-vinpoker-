@@ -10,6 +10,7 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { SupabaseClientProvider } from "@/integrations/supabase/SupabaseClientContext";
 import { opsClient } from "@/integrations/supabase/opsClient";
+import { loadVerifiedOpsSession } from "@/ops/auth/opsSessionValidation";
 
 type OpsAuthContextValue = {
   session: Session | null;
@@ -26,17 +27,32 @@ export function OpsAuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let validationRevision = 0;
 
-    void opsClient.auth.getSession().then(({ data, error }) => {
-      if (!active) return;
-      setSession(error ? null : data.session);
-      setLoading(false);
-    });
+    const validateCurrentSession = () => {
+      const revision = ++validationRevision;
+      setLoading(true);
+      void loadVerifiedOpsSession(opsClient).then((nextSession) => {
+        if (!active || revision !== validationRevision) return;
+        setSession(nextSession);
+        setLoading(false);
+      });
+    };
+
+    validateCurrentSession();
 
     const {
       data: { subscription },
-    } = opsClient.auth.onAuthStateChange((_event, nextSession) => {
+    } = opsClient.auth.onAuthStateChange((event, nextSession) => {
       if (!active) return;
+      // The initial callback mirrors browser storage. The bootstrap above is
+      // the only path that may accept it, after an Auth server check.
+      if (event === "INITIAL_SESSION") return;
+      if (nextSession) {
+        validateCurrentSession();
+        return;
+      }
+      validationRevision += 1;
       setSession(nextSession);
       setLoading(false);
     });
