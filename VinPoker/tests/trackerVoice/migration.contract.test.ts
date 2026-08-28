@@ -12,7 +12,7 @@ const migrationName =
 const geminiMigrationName =
   "20270112000008_tracker_voice_gemini_live_provider.sql";
 const transcribeBindingMigrationName =
-  "20270113000005_tracker_voice_transcribe35_binding.sql";
+  "20270113000007_tracker_voice_transcribe35_binding.sql";
 const migration = readFileSync(
   resolve(root, "supabase/migrations", migrationName),
   "utf8",
@@ -88,7 +88,7 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(names.filter((name) => name.startsWith("20270112000008_"))).toEqual([
       geminiMigrationName,
     ]);
-    expect(names.filter((name) => name.startsWith("20270113000005_"))).toEqual([
+    expect(names.filter((name) => name.startsWith("20270113000007_"))).toEqual([
       transcribeBindingMigrationName,
     ]);
     expect(names).toContain(migrationName);

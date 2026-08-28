@@ -1,4 +1,5 @@
 -- Source-only forward migration. Apply only after a separately approved controlled rollout.
+-- Catalog version reassigned from 20270113000005 because Floor V3 now owns that active version.
 BEGIN;
 
 DO $migration$
