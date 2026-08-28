@@ -1,0 +1,204 @@
+name: Dealer payroll Telegram delivery - repair and enable HSOP
+
+on:
+  workflow_dispatch:
+    inputs:
+      control_sha:
+        description: "Exact merge SHA containing the reviewed forward repair control plane"
+        required: true
+        type: string
+      runtime_receipt_sha:
+        description: "Exact SHA already live for frontend, renderer, and sender"
+        required: true
+        type: string
+      mode:
+        description: "Read-only preflight or one-shot repair and HSOP enable"
+        required: true
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - repair_enable_hsop
+      confirmation:
+        description: "For mutation: REPAIR_AND_ENABLE_DEALER_PAYROLL_DELIVERY_HSOP"
+        required: true
+        default: HOLD
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  deployments: read
+
+concurrency:
+  group: dealer-payroll-statement-delivery-forward-repair-hsop
+  cancel-in-progress: false
+
+env:
+  CRITICAL_ENVIRONMENT: dealer-swing-production-critical
+  PROJECT_REF: orlesggcjamwuknxwcpk
+
+jobs:
+  require-protected-environment:
+    name: Require protected critical environment
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify required reviewer protection
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          environment_json="$(gh api "repos/${GITHUB_REPOSITORY}/environments/${CRITICAL_ENVIRONMENT}")"
+          jq -e '.protection_rules | any(.type == "required_reviewers" and ((.reviewers // []) | length > 0))' \
+            <<<"$environment_json" >/dev/null
+
+  exact-run:
+    name: Forward repair ${{ inputs.mode }}
+    needs: require-protected-environment
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: dealer-swing-production-critical
+    steps:
+      - name: Checkout exact reviewed control SHA
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.control_sha }}
+          fetch-depth: 0
+
+      - name: Verify exact source, ancestry, mode and confirmation
+        shell: bash
+        env:
+          CONTROL_SHA: ${{ inputs.control_sha }}
+          RUNTIME_RECEIPT_SHA: ${{ inputs.runtime_receipt_sha }}
+          MODE: ${{ inputs.mode }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$CONTROL_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RUNTIME_RECEIPT_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$CONTROL_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$CONTROL_SHA" origin/main
+          case "$MODE" in
+            preflight) test "$CONFIRMATION" = "HOLD" ;;
+            repair_enable_hsop) test "$CONFIRMATION" = "REPAIR_AND_ENABLE_DEALER_PAYROLL_DELIVERY_HSOP" ;;
+            *) exit 1 ;;
+          esac
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "20"
+
+      - name: Test forward repair and runtime gate runners
+        working-directory: VinPoker
+        run: >-
+          node --test
+          scripts/payroll/repair-dealer-payroll-statement-delivery.test.mjs
+          scripts/payroll/set-dealer-payroll-statement-delivery-hsop-uat.test.mjs
+
+      - name: Install pinned Supabase CLI for read-only schema capture
+        shell: bash
+        run: npm install --global supabase@2.101.0
+
+      - name: Capture sanitized current schema without data rows
+        working-directory: VinPoker
+        shell: bash
+        env:
+          SUPABASE_PROJECT_REF: ${{ env.PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          raw_schema_path="${RUNNER_TEMP}/payroll-delivery-live.raw.sql"
+          schema_path="${RUNNER_TEMP}/payroll-delivery-live.sql"
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          supabase db dump --linked --schema public,storage --file "$raw_schema_path"
+          node scripts/deploy/sanitize-live-public-schema-artifact.mjs \
+            --input "$raw_schema_path" --output "$schema_path"
+          rm -f "$raw_schema_path"
+
+      - name: Prove repair on disposable PostgreSQL 16 and 17
+        working-directory: VinPoker
+        shell: pwsh
+        run: |
+          ./scripts/deploy/test-dealer-pt-wage-disposable.ps1 -PostgresMajor 16 -SchemaPath "${{ runner.temp }}/payroll-delivery-live.sql"
+          ./scripts/deploy/test-dealer-pt-wage-disposable.ps1 -PostgresMajor 17 -SchemaPath "${{ runner.temp }}/payroll-delivery-live.sql"
+
+      - name: Verify exact production deployment receipts before DB mutation
+        working-directory: VinPoker
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/payroll/verify-dealer-payroll-statement-delivery-receipts.mjs
+          --repository "${GITHUB_REPOSITORY}"
+          --sha "${{ inputs.runtime_receipt_sha }}"
+
+      - name: Preflight, repair once, enable only HSOP, and monitor HSOP gate
+        working-directory: VinPoker
+        shell: bash
+        env:
+          MODE: ${{ inputs.mode }}
+          SUPABASE_PROJECT_REF: ${{ env.PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          CONFIRM_PAYROLL_DELIVERY_REPAIR: REPAIR_DEALER_PAYROLL_DELIVERY_CONTRACT_20270113000008
+          CONFIRM_DEALER_PAYROLL_DELIVERY_HSOP: ENABLE_DEALER_PAYROLL_STATEMENT_DELIVERY_HSOP
+        run: |
+          set -euo pipefail
+          node scripts/payroll/repair-dealer-payroll-statement-delivery.mjs --preflight
+          if [[ "$MODE" == "preflight" ]]; then
+            exit 0
+          fi
+
+          enabled=false
+          emergency_disable() {
+            status=$?
+            if [[ "$status" -ne 0 && "$enabled" == "true" ]]; then
+              CONFIRM_DEALER_PAYROLL_DELIVERY_HSOP=DISABLE_DEALER_PAYROLL_STATEMENT_DELIVERY_HSOP \
+                node scripts/payroll/set-dealer-payroll-statement-delivery-hsop-uat.mjs --disable-hsop || true
+            fi
+            exit "$status"
+          }
+          trap emergency_disable EXIT
+
+          node scripts/payroll/repair-dealer-payroll-statement-delivery.mjs --repair
+          node scripts/payroll/set-dealer-payroll-statement-delivery-hsop-uat.mjs --preflight
+          enabled=true
+          node scripts/payroll/set-dealer-payroll-statement-delivery-hsop-uat.mjs --enable-hsop
+
+          # Fifteen read-only ticks prove that the gate remains HSOP-only. This
+          # workflow never creates an operation and never invokes Telegram.
+          for tick in $(seq 1 15); do
+            node scripts/payroll/set-dealer-payroll-statement-delivery-hsop-uat.mjs --preflight
+            if [[ "$tick" -lt 15 ]]; then sleep 60; fi
+          done
+          trap - EXIT
+
+      - name: Publish sanitized result
+        shell: bash
+        env:
+          CONTROL_SHA: ${{ inputs.control_sha }}
+          RUNTIME_RECEIPT_SHA: ${{ inputs.runtime_receipt_sha }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          {
+            echo "## Payroll Telegram delivery forward repair"
+            echo ""
+            printf '%s\n' "- Control SHA: $CONTROL_SHA"
+            printf '%s\n' "- Runtime receipt SHA: $RUNTIME_RECEIPT_SHA"
+            printf '%s\n' "- Mode: $MODE"
+            echo "- Exact migration allowlist: 20270113000008 only"
+            echo "- No frontend or Edge deploy; no Telegram send; no payout; no all-clubs rollout."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove runner-local schema artifact
+        if: always()
+        shell: bash
+        run: |
+          rm -f "${RUNNER_TEMP}/payroll-delivery-live.sql"
+          rm -f "${RUNNER_TEMP}/payroll-delivery-live.raw.sql"

@@ -27,6 +27,10 @@ const payrollDeliveryHsopGateWorkflow = readFileSync(
   resolve(root, ".github/workflows/dealer-payroll-statement-delivery-hsop-uat.yml"),
   "utf8",
 );
+const payrollDeliveryRepairWorkflow = readFileSync(
+  resolve(root, ".github/workflows/dealer-payroll-statement-delivery-repair-hsop.yml"),
+  "utf8",
+);
 const payrollStatementHsopGateWorkflow = readFileSync(
   resolve(root, ".github/workflows/dealer-payroll-statement-hsop-uat.yml"),
   "utf8",
@@ -161,6 +165,7 @@ test("pinned actionlint validation is read-only and uses no production secret", 
   assert.match(validationWorkflow, /\.github\/workflows\/dealer-payroll-statement-contract-apply\.yml/);
   assert.match(validationWorkflow, /\.github\/workflows\/dealer-payroll-statement-hsop-uat\.yml/);
   assert.match(validationWorkflow, /\.github\/workflows\/dealer-payroll-statement-delivery-hsop-uat\.yml/);
+  assert.match(validationWorkflow, /\.github\/workflows\/dealer-payroll-statement-delivery-repair-hsop\.yml/);
   assert.match(validationWorkflow, /\.github\/workflows\/deployment-control-plane-validation\.yml/);
   assert.doesNotMatch(validationWorkflow, /find \.github\/workflows/);
   assert.doesNotMatch(validationWorkflow, /\bsecrets\./);
@@ -182,6 +187,24 @@ test("payroll Telegram HSOP runtime gate stays manual, exact-source, and narrowl
   assert.doesNotMatch(payrollDeliveryHsopGateWorkflow, /all_clubs_enabled\s*=\s*true/);
   assert.doesNotMatch(payrollDeliveryHsopGateWorkflow, /supabase\s+(?:db\s+(?:push|reset)|functions\s+deploy)/i);
   assert.doesNotMatch(payrollDeliveryHsopGateWorkflow, /vercel\s+(?:deploy|--prod)/i);
+});
+
+test("payroll Telegram forward repair is protected, exact, and cannot replay historical migrations", () => {
+  assert.match(payrollDeliveryRepairWorkflow, /workflow_dispatch:/);
+  assert.doesNotMatch(payrollDeliveryRepairWorkflow, /pull_request:/);
+  assert.match(payrollDeliveryRepairWorkflow, /control_sha:/);
+  assert.match(payrollDeliveryRepairWorkflow, /runtime_receipt_sha:/);
+  assert.match(payrollDeliveryRepairWorkflow, /REPAIR_AND_ENABLE_DEALER_PAYROLL_DELIVERY_HSOP/);
+  assert.match(payrollDeliveryRepairWorkflow, /dealer-swing-production-critical/);
+  assert.match(payrollDeliveryRepairWorkflow, /required_reviewers/);
+  assert.match(payrollDeliveryRepairWorkflow, /merge-base --is-ancestor/);
+  assert.match(payrollDeliveryRepairWorkflow, /repair-dealer-payroll-statement-delivery\.mjs --repair/);
+  assert.match(payrollDeliveryRepairWorkflow, /verify-dealer-payroll-statement-delivery-receipts\.mjs/);
+  assert.match(payrollDeliveryRepairWorkflow, /set-dealer-payroll-statement-delivery-hsop-uat\.mjs --enable-hsop/);
+  assert.doesNotMatch(payrollDeliveryRepairWorkflow, /2027011300000(?:0|1|4)/);
+  assert.doesNotMatch(payrollDeliveryRepairWorkflow, /all_clubs_enabled\s*=\s*true/);
+  assert.doesNotMatch(payrollDeliveryRepairWorkflow, /supabase\s+(?:db\s+(?:push|reset)|functions\s+deploy)/i);
+  assert.doesNotMatch(payrollDeliveryRepairWorkflow, /vercel\s+(?:deploy|--prod)/i);
 });
 
 test("payroll statement HSOP runtime gate stays manual, exact-source, and narrowly scoped", () => {

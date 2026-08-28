@@ -1,4 +1,4 @@
-name: Dealer payroll statement contract - exact apply
+name: Dealer payroll statement contract - legacy read-only preflight
 
 on:
   workflow_dispatch:
@@ -6,19 +6,6 @@ on:
       source_sha:
         description: "Exact reviewed source SHA containing the payroll PDF, FT UI, and delivery migrations"
         required: true
-        type: string
-      mode:
-        description: "Read-only preflight or exact apply"
-        required: true
-        default: preflight
-        type: choice
-        options:
-          - preflight
-          - apply
-      confirmation:
-        description: "For apply: APPLY_DEALER_PAYROLL_STATEMENT_CONTRACT_20270113000000_20270113000001_20270113000004"
-        required: true
-        default: HOLD
         type: string
 
 permissions:
@@ -49,7 +36,7 @@ jobs:
           jq -e '.protection_rules | any(.type == "required_reviewers" and ((.reviewers // []) | length > 0))' <<<"$environment_json" >/dev/null
 
   exact-run:
-    name: Payroll statement exact ${{ inputs.mode }}
+    name: Payroll statement legacy preflight
     needs: require-protected-environment
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -80,35 +67,27 @@ jobs:
           git -C control-plane fetch --no-tags origin main
           git -C control-plane merge-base --is-ancestor "${{ inputs.source_sha }}" origin/main
 
-      - name: Run exact protected payroll contract runner
+      - name: Run legacy read-only catalog preflight
         working-directory: control-plane/VinPoker
         env:
           SUPABASE_PROJECT_REF: ${{ env.PROJECT_REF }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
-          CONFIRM_APPLY_DEALER_PAYROLL_STATEMENT_CONTRACT: ${{ inputs.confirmation }}
         shell: bash
         run: |
           set -euo pipefail
-          mode="${{ inputs.mode }}"
-          if [[ "$mode" == "apply" ]]; then
-            node scripts/payroll/apply-dealer-payroll-statement-contract.mjs \
-              --apply --source-root "${GITHUB_WORKSPACE}/payroll-source/VinPoker"
-          else
-            node scripts/payroll/apply-dealer-payroll-statement-contract.mjs \
-              --preflight --source-root "${GITHUB_WORKSPACE}/payroll-source/VinPoker"
-          fi
+          node scripts/payroll/apply-dealer-payroll-statement-contract.mjs \
+            --preflight --source-root "${GITHUB_WORKSPACE}/payroll-source/VinPoker"
 
       - name: Publish sanitized summary
         shell: bash
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
-          MODE: ${{ inputs.mode }}
         run: |
           {
             echo "## Payroll statement contract"
             echo ""
             printf '%s\n' "- Source SHA: $SOURCE_SHA"
-            printf '%s\n' "- Mode: $MODE"
-            echo "- Exact migrations only: 20270113000000, 20270113000001, 20270113000004"
+            echo "- Mode: legacy read-only preflight"
+            echo "- Historical apply path is retired; use the forward repair workflow."
             echo "- No broad migration replay or database password used."
           } >> "$GITHUB_STEP_SUMMARY"

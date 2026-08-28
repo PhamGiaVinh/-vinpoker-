@@ -6,26 +6,26 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const PROJECT_REF = "orlesggcjamwuknxwcpk";
-export const CONFIRMATION = "APPLY_DEALER_PAYROLL_STATEMENT_CONTRACT_20270113000000_20270113000001_20270113000004";
+export const CONFIRMATION = "LEGACY_PAYROLL_STATEMENT_APPLY_RETIRED";
 export const MANAGEMENT_REQUEST_TIMEOUT_MS = 90_000;
 
 export const MIGRATIONS = Object.freeze([
   {
     version: "20270113000000",
     name: "20270113000000_dealer_payroll_statement_pdf_storage",
-    path: "supabase/migrations/20270113000000_dealer_payroll_statement_pdf_storage.sql",
+    path: "supabase/migration-archive/never-apply/20270113000000_dealer_payroll_statement_pdf_storage.sql",
     sha256: "e5a35741cdf313c13f2be0fed4b9d2fa9a49439c334eba7f81ec2e69af29fe2b",
   },
   {
     version: "20270113000001",
     name: "20270113000001_dealer_payroll_statement_ft_ui_contract",
-    path: "supabase/migrations/20270113000001_dealer_payroll_statement_ft_ui_contract.sql",
+    path: "supabase/migration-archive/never-apply/20270113000001_dealer_payroll_statement_ft_ui_contract.sql",
     sha256: "1bbf588918b3c15d084c29b3600d87ddbdcc60379986ac679517bfd39b297848",
   },
   {
     version: "20270113000004",
     name: "20270113000004_dealer_payroll_statement_telegram_delivery",
-    path: "supabase/migrations/20270113000004_dealer_payroll_statement_telegram_delivery.sql",
+    path: "supabase/migration-archive/never-apply/20270113000004_dealer_payroll_statement_telegram_delivery.sql",
     sha256: "991428a6a30717e5825757a3102b2558e7e5c0569f9accc1130d4b3d292ca5b2",
   },
 ]);
@@ -498,6 +498,11 @@ export async function run(argv = process.argv.slice(2), env = process.env, fetch
   const apply = argv.includes("--apply");
   const preflight = argv.includes("--preflight");
   if (apply === preflight) throw new Error("Choose exactly one of --preflight or --apply");
+  if (apply) {
+    throw new Error(
+      "LEGACY_PAYROLL_STATEMENT_APPLY_RETIRED: use the exact forward-only migration workflow; historical 00000/00001/00004 cannot be replayed",
+    );
+  }
   const sourceRoot = sourceRootFromArgv(argv);
   const sourceIssues = sourceProblems(sourceRoot);
   if (sourceIssues.length) throw new Error(`Source policy failed: ${sourceIssues.join("; ")}`);

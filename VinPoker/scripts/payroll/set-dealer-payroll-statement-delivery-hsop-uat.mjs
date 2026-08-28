@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 
 import { fileURLToPath } from "node:url";
-import { PROJECT_REF, deliveryPostProblems, readState } from "./apply-dealer-payroll-statement-contract.mjs";
+import {
+  PROJECT_REF,
+  catalogClass,
+  contractProblems,
+  readEvidence,
+} from "./repair-dealer-payroll-statement-delivery.mjs";
 
 export const HSOP_CLUB_ID = "22222222-2222-2222-2222-222222222222";
 export const ENABLE_CONFIRMATION = "ENABLE_DEALER_PAYROLL_STATEMENT_DELIVERY_HSOP";
@@ -72,12 +77,9 @@ export function safeRuntimeGateState(state) {
   };
 }
 
-function isDeliveryRuntimeDefaultProblem(problem) {
-  return /^(?:delivery_)?rollout_(?:master_enabled_count|all_clubs_enabled_count|allowlist_count) expected 0$/.test(problem);
-}
-
 export function deliveryRuntimeContractProblems(state) {
-  return deliveryPostProblems(state).filter((problem) => !isDeliveryRuntimeDefaultProblem(problem));
+  if (catalogClass(state) !== "complete") return ["delivery contract is not complete"];
+  return contractProblems(state);
 }
 
 export function transitionDecision(mode, value) {
@@ -164,13 +166,13 @@ export async function run(argv = process.argv.slice(2), env = process.env, fetch
   }
 
   const credentials = { projectRef: env.SUPABASE_PROJECT_REF, token: env.SUPABASE_ACCESS_TOKEN };
-  const [contractState, gateState] = await Promise.all([
-    readState(credentials, fetchImpl),
+  const [evidence, gateState] = await Promise.all([
+    readEvidence(credentials, fetchImpl),
     readRuntimeGateState(credentials, fetchImpl),
   ]);
-  const contractProblems = deliveryRuntimeContractProblems(contractState);
-  if (contractProblems.length) {
-    throw new Error(`Payroll delivery contract is not ready: ${contractProblems.join("; ")}`);
+  const runtimeContractProblems = deliveryRuntimeContractProblems(evidence.catalog);
+  if (runtimeContractProblems.length) {
+    throw new Error(`Payroll delivery contract is not ready: ${runtimeContractProblems.join("; ")}`);
   }
 
   const before = safeRuntimeGateState(gateState);

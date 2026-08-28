@@ -37,6 +37,12 @@ const payrollStatementHsopGateWorkflowPath = resolve(
   "workflows",
   "dealer-payroll-statement-hsop-uat.yml",
 );
+const payrollDeliveryRepairWorkflowPath = resolve(
+  repositoryRoot,
+  ".github",
+  "workflows",
+  "dealer-payroll-statement-delivery-repair-hsop.yml",
+);
 const workflow = readFileSync(workflowPath, "utf8");
 const validationWorkflow = readFileSync(validationWorkflowPath, "utf8");
 const shortageAlertApplyWorkflow = readFileSync(shortageAlertApplyWorkflowPath, "utf8");
@@ -44,6 +50,7 @@ const schemaCaptureWorkflow = readFileSync(schemaCaptureWorkflowPath, "utf8");
 const payrollDisposableWorkflow = readFileSync(payrollDisposableWorkflowPath, "utf8");
 const payrollDeliveryHsopGateWorkflow = readFileSync(payrollDeliveryHsopGateWorkflowPath, "utf8");
 const payrollStatementHsopGateWorkflow = readFileSync(payrollStatementHsopGateWorkflowPath, "utf8");
+const payrollDeliveryRepairWorkflow = readFileSync(payrollDeliveryRepairWorkflowPath, "utf8");
 const manifest = loadDeploymentManifest();
 validateDeploymentManifest(manifest, repositoryRoot);
 
@@ -149,6 +156,18 @@ for (const [pattern, label] of [
 }
 for (const [pattern, label] of [
   [/pull_request:/, "automatic pull request trigger"],
+  [/2027011300000(?:0|1|4)/, "historical payroll migration replay"],
+  [/all_clubs_enabled\s*=\s*true/i, "broad payroll delivery rollout"],
+  [/supabase\s+(?:db\s+(?:push|reset)|functions\s+deploy)/i, "direct production mutation"],
+  [/vercel\s+(?:deploy|--prod)/i, "frontend deployment"],
+  [/(?:echo|printf)\b[^\n]*(?:SUPABASE|TOKEN|PASSWORD)|\bprintenv\b/i, "secret logging"],
+]) {
+  if (pattern.test(payrollDeliveryRepairWorkflow)) {
+    throw new Error(`payroll delivery repair workflow contains forbidden ${label}`);
+  }
+}
+for (const [pattern, label] of [
+  [/pull_request:/, "automatic pull request trigger"],
   [/all_clubs_enabled\s*=\s*true/i, "broad payroll statement rollout"],
   [/supabase\s+(?:db\s+(?:push|reset)|functions\s+deploy)/i, "direct production mutation"],
   [/vercel\s+(?:deploy|--prod)/i, "frontend deployment"],
@@ -188,6 +207,23 @@ for (const snippet of [
 ]) {
   if (!payrollDeliveryHsopGateWorkflow.includes(snippet)) {
     throw new Error(`payroll delivery HSOP runtime gate is missing required control: ${snippet}`);
+  }
+}
+for (const snippet of [
+  "workflow_dispatch:",
+  "control_sha:",
+  "runtime_receipt_sha:",
+  "REPAIR_AND_ENABLE_DEALER_PAYROLL_DELIVERY_HSOP",
+  "dealer-swing-production-critical",
+  "required_reviewers",
+  "merge-base --is-ancestor",
+  "repair-dealer-payroll-statement-delivery.mjs --repair",
+  "verify-dealer-payroll-statement-delivery-receipts.mjs",
+  "set-dealer-payroll-statement-delivery-hsop-uat.mjs --enable-hsop",
+  "secrets.SUPABASEACCESSTOKEN",
+]) {
+  if (!payrollDeliveryRepairWorkflow.includes(snippet)) {
+    throw new Error(`payroll delivery repair workflow is missing required control: ${snippet}`);
   }
 }
 for (const snippet of [

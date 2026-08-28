@@ -221,47 +221,13 @@ test("private storage bucket is reported with the correct boolean polarity", () 
   assert.match(STATE_SQL, /select\s+not\s+bucket\.public\s+from\s+storage\.buckets\s+bucket/i);
 });
 
-test("apply sends only the exact migrations in order and verifies each post-state", async () => {
-  let reads = 0;
-  const calls = [];
-  const states = [preState(), pdfState(), finalState(), finalState()];
-  const fetchImpl = async (url, options = {}) => {
-    calls.push({ url, options });
-    if (url.endsWith("/database/migrations") && options.method === "GET") {
-      return { ok: true, status: 200, json: async () => [] };
-    }
-    if (url.endsWith("/database/migrations") && options.method === "POST") {
-      return { ok: true, status: 200, json: async () => ({ ok: true }) };
-    }
-    if (url.endsWith("/database/query/read-only")) {
-      const query = JSON.parse(options.body).query;
-      if (query === ROLLOUT_STATE_SQL) {
-        return { ok: true, status: 200, json: async () => [finalState()] };
-      }
-      if (query === DELIVERY_STATE_SQL) {
-        return { ok: true, status: 200, json: async () => [reads >= states.length ? deliveryState() : deliveryPreState()] };
-      }
-      if (query === DELIVERY_ROLLOUT_STATE_SQL) {
-        return { ok: true, status: 200, json: async () => [deliveryState()] };
-      }
-      return { ok: true, status: 200, json: async () => [states[Math.min(reads++, states.length - 1)]] };
-    }
-    throw new Error(`unexpected URL ${url}`);
-  };
-
-  const result = await run(
-    ["--apply", "--source-root", resolve(import.meta.dirname, "../..")],
-    {
-      SUPABASE_ACCESS_TOKEN: "test-only-token",
-      SUPABASE_PROJECT_REF: "orlesggcjamwuknxwcpk",
-      CONFIRM_APPLY_DEALER_PAYROLL_STATEMENT_CONTRACT: CONFIRMATION,
-    },
-    fetchImpl,
+test("legacy broad apply is retired before any network request", async () => {
+  let called = false;
+  await assert.rejects(
+    () => run(["--apply"], {}, async () => { called = true; throw new Error("unexpected network"); }),
+    /LEGACY_PAYROLL_STATEMENT_APPLY_RETIRED/,
   );
-  assert.equal(result.applied, true);
-  const applyCalls = calls.filter((call) => call.url.endsWith("/database/migrations") && call.options.method === "POST");
-  assert.equal(applyCalls.length, 3);
-  assert.deepEqual(applyCalls.map((call) => JSON.parse(call.options.body).name), MIGRATIONS.map((migration) => migration.name));
+  assert.equal(called, false);
 });
 
 test("workflow uses the protected environment and the exact runner", () => {
@@ -274,6 +240,8 @@ test("workflow uses the protected environment and the exact runner", () => {
   assert.doesNotMatch(workflow, /db push|include-all|SUPABASE_DB_PASSWORD/i);
   assert.match(workflow, /SOURCE_SHA: \$\{\{ inputs\.source_sha \}\}/);
   assert.match(workflow, /printf '%s\\n' "- Source SHA: \$SOURCE_SHA"/);
+  assert.doesNotMatch(workflow, /--apply/);
+  assert.match(workflow, /legacy read-only preflight/);
   assert.doesNotMatch(workflow, /`\$\{\{ inputs\.source_sha \}\}`/);
 });
 
