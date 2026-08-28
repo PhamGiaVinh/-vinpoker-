@@ -85,6 +85,7 @@ jobs:
             .github/workflows/dealer-pt-wage-global-continuous-accrual-apply.yml \
             .github/workflows/dealer-pt-wage-readiness-acl-apply.yml \
             .github/workflows/dealer-payroll-statement-contract-apply.yml \
+            .github/workflows/dealer-payroll-statement-hsop-uat.yml \
             .github/workflows/dealer-payroll-statement-delivery-hsop-uat.yml \
             .github/workflows/deployment-control-plane-validation.yml
 

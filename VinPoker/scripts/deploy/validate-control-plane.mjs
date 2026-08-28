@@ -31,12 +31,19 @@ const payrollDeliveryHsopGateWorkflowPath = resolve(
   "workflows",
   "dealer-payroll-statement-delivery-hsop-uat.yml",
 );
+const payrollStatementHsopGateWorkflowPath = resolve(
+  repositoryRoot,
+  ".github",
+  "workflows",
+  "dealer-payroll-statement-hsop-uat.yml",
+);
 const workflow = readFileSync(workflowPath, "utf8");
 const validationWorkflow = readFileSync(validationWorkflowPath, "utf8");
 const shortageAlertApplyWorkflow = readFileSync(shortageAlertApplyWorkflowPath, "utf8");
 const schemaCaptureWorkflow = readFileSync(schemaCaptureWorkflowPath, "utf8");
 const payrollDisposableWorkflow = readFileSync(payrollDisposableWorkflowPath, "utf8");
 const payrollDeliveryHsopGateWorkflow = readFileSync(payrollDeliveryHsopGateWorkflowPath, "utf8");
+const payrollStatementHsopGateWorkflow = readFileSync(payrollStatementHsopGateWorkflowPath, "utf8");
 const manifest = loadDeploymentManifest();
 validateDeploymentManifest(manifest, repositoryRoot);
 
@@ -138,6 +145,33 @@ for (const [pattern, label] of [
 ]) {
   if (pattern.test(payrollDeliveryHsopGateWorkflow)) {
     throw new Error(`payroll delivery HSOP runtime gate contains forbidden ${label}`);
+  }
+}
+for (const [pattern, label] of [
+  [/pull_request:/, "automatic pull request trigger"],
+  [/all_clubs_enabled\s*=\s*true/i, "broad payroll statement rollout"],
+  [/supabase\s+(?:db\s+(?:push|reset)|functions\s+deploy)/i, "direct production mutation"],
+  [/vercel\s+(?:deploy|--prod)/i, "frontend deployment"],
+  [/(?:echo|printf)\b[^\n]*(?:SUPABASE|TOKEN|PASSWORD)|\bprintenv\b/i, "secret logging"],
+]) {
+  if (pattern.test(payrollStatementHsopGateWorkflow)) {
+    throw new Error(`payroll statement HSOP runtime gate contains forbidden ${label}`);
+  }
+}
+for (const snippet of [
+  "workflow_dispatch:",
+  "source_sha:",
+  "enable_hsop",
+  "disable_hsop",
+  "dealer-swing-production-critical",
+  "required_reviewers",
+  "merge-base --is-ancestor",
+  "verify-dealer-payroll-statement-delivery-receipts.mjs",
+  "set-dealer-payroll-statement-hsop-uat.mjs",
+  "secrets.SUPABASEACCESSTOKEN",
+]) {
+  if (!payrollStatementHsopGateWorkflow.includes(snippet)) {
+    throw new Error(`payroll statement HSOP runtime gate is missing required control: ${snippet}`);
   }
 }
 for (const snippet of [
