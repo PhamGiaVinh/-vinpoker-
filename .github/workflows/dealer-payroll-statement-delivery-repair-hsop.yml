@@ -7,8 +7,16 @@ on:
         description: "Exact merge SHA containing the reviewed forward repair control plane"
         required: true
         type: string
-      runtime_receipt_sha:
-        description: "Exact SHA already live for frontend, renderer, and sender"
+      frontend_receipt_sha:
+        description: "Exact SHA currently live for the frontend"
+        required: true
+        type: string
+      render_receipt_sha:
+        description: "Exact SHA currently live for render-payroll-statement"
+        required: true
+        type: string
+      sender_receipt_sha:
+        description: "Exact SHA currently live for send-payroll-statement"
         required: true
         type: string
       mode:
@@ -74,13 +82,17 @@ jobs:
         shell: bash
         env:
           CONTROL_SHA: ${{ inputs.control_sha }}
-          RUNTIME_RECEIPT_SHA: ${{ inputs.runtime_receipt_sha }}
+          FRONTEND_RECEIPT_SHA: ${{ inputs.frontend_receipt_sha }}
+          RENDER_RECEIPT_SHA: ${{ inputs.render_receipt_sha }}
+          SENDER_RECEIPT_SHA: ${{ inputs.sender_receipt_sha }}
           MODE: ${{ inputs.mode }}
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
           [[ "$CONTROL_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$RUNTIME_RECEIPT_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$FRONTEND_RECEIPT_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RENDER_RECEIPT_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SENDER_RECEIPT_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$CONTROL_SHA"
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$CONTROL_SHA" origin/main
@@ -137,7 +149,9 @@ jobs:
         run: >-
           node scripts/payroll/verify-dealer-payroll-statement-delivery-receipts.mjs
           --repository "${GITHUB_REPOSITORY}"
-          --sha "${{ inputs.runtime_receipt_sha }}"
+          --frontend-sha "${{ inputs.frontend_receipt_sha }}"
+          --render-sha "${{ inputs.render_receipt_sha }}"
+          --sender-sha "${{ inputs.sender_receipt_sha }}"
 
       - name: Preflight, repair once, enable only HSOP, and monitor HSOP gate
         working-directory: VinPoker
@@ -183,14 +197,18 @@ jobs:
         shell: bash
         env:
           CONTROL_SHA: ${{ inputs.control_sha }}
-          RUNTIME_RECEIPT_SHA: ${{ inputs.runtime_receipt_sha }}
+          FRONTEND_RECEIPT_SHA: ${{ inputs.frontend_receipt_sha }}
+          RENDER_RECEIPT_SHA: ${{ inputs.render_receipt_sha }}
+          SENDER_RECEIPT_SHA: ${{ inputs.sender_receipt_sha }}
           MODE: ${{ inputs.mode }}
         run: |
           {
             echo "## Payroll Telegram delivery forward repair"
             echo ""
             printf '%s\n' "- Control SHA: $CONTROL_SHA"
-            printf '%s\n' "- Runtime receipt SHA: $RUNTIME_RECEIPT_SHA"
+            printf '%s\n' "- Frontend receipt SHA: $FRONTEND_RECEIPT_SHA"
+            printf '%s\n' "- Renderer receipt SHA: $RENDER_RECEIPT_SHA"
+            printf '%s\n' "- Sender receipt SHA: $SENDER_RECEIPT_SHA"
             printf '%s\n' "- Mode: $MODE"
             echo "- Exact migration allowlist: 20270113000008 only"
             echo "- No frontend or Edge deploy; no Telegram send; no payout; no all-clubs rollout."
