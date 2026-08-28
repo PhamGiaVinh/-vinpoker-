@@ -32,6 +32,10 @@ const FORBIDDEN_ACTIVE_MIGRATION_FILENAMES = new Map([
     "superseded payroll migration belongs in migration-archive/never-apply",
   ],
   [
+    "20270113000004_floor_table_control_v3_contract_hardening.sql",
+    "duplicate-version Floor contract belongs in migration-archive/never-apply",
+  ],
+  [
     "20260428144425_53b3e896-323b-45b5-82e3-921bdaccaa91.sql",
     "credential-bearing production cron belongs in migration-archive/removed-sensitive",
   ],

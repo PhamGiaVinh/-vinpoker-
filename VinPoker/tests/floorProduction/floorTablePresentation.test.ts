@@ -36,6 +36,27 @@ describe("Floor table picker presentation", () => {
     expect(roster.slots[8].seat?.playerName).toBe("Player I");
   });
 
+  it("keeps another session's physical table disabled in the V3 inventory picker", () => {
+    const options = buildFloorTableNumberOptions([
+      {
+        table_number: 5,
+        status: "active",
+        availability_status: "in_use",
+        session_type: "tournament",
+      },
+      {
+        table_number: 6,
+        status: null,
+        availability_status: "maintenance",
+        session_type: null,
+      },
+    ], "unavailable");
+
+    expect(options[4]).toMatchObject({ number: 5, state: "active", detail: "Đang dùng · Giải" });
+    expect(options[5]).toMatchObject({ number: 6, state: "unavailable", detail: "Bảo trì" });
+    expect(options[6]).toEqual({ number: 7, state: "unavailable" });
+  });
+
   it("fails visibly on duplicate seats instead of choosing a hidden winner", () => {
     const roster = buildFloorSeatRoster([
       { seatNumber: 4, playerName: "First", chipsLabel: "10" },
