@@ -416,6 +416,17 @@ test("shows the stale cleanup action after reload before a checkout attempt", as
   expect(checkoutRequests).toEqual([]);
 });
 
+test("keeps the stale cleanup action visible when no candidate rows are detected", async ({ page }) => {
+  test.setTimeout(150_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/dealer-swing", { waitUntil: "domcontentloaded", timeout: 120_000 });
+  await expect(page.getByRole("region", { name: "Ca treo cần xử lý" })).toBeVisible();
+  const cleanupButton = page.getByRole("button", { name: "Không có ca treo", exact: true });
+  await expect(cleanupButton).toBeVisible();
+  await expect(cleanupButton).toBeDisabled();
+  expect(checkoutRequests).toEqual([]);
+});
+
 test("desktop checkout exposes guarded stale cleanup only after the server rejects the row", async ({ page }, testInfo) => {
   test.setTimeout(150_000);
   await page.setViewportSize({ width: 1440, height: 900 });

@@ -1929,16 +1929,14 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
           </AlertDialogContent>
         </AlertDialog>
 
-        {(staleCleanupIds.length > 0 || staleCleanupCandidateIds.length > 0) && (
-          <StaleCleanupCard
-            attendanceIds={staleCleanupIds.length > 0 ? staleCleanupIds : staleCleanupCandidateIds}
-            processing={processing}
-            onRequestCleanup={(ids) => {
-              setStaleCleanupIds(ids);
-              setStaleCleanupConfirmOpen(true);
-            }}
-          />
-        )}
+        <StaleCleanupCard
+          attendanceIds={staleCleanupIds.length > 0 ? staleCleanupIds : staleCleanupCandidateIds}
+          processing={processing}
+          onRequestCleanup={(ids) => {
+            setStaleCleanupIds(ids);
+            setStaleCleanupConfirmOpen(true);
+          }}
+        />
 
         {/* Mobile tab bar (<md only). Tablet (md–lg) stacks all 3; desktop = 3-col. */}
         <div className="md:hidden mb-3 flex gap-1 rounded-xl border border-border/60 bg-card/70 p-1">
@@ -3098,28 +3096,39 @@ function StaleCleanupCard({
   processing: string | null;
   onRequestCleanup: (ids: string[]) => void;
 }) {
-  if (attendanceIds.length === 0) return null;
+  const hasCandidates = attendanceIds.length > 0;
 
   return (
-    <Card className="mt-3 border-warning/40 bg-warning/10 p-3" role="region" aria-label="Ca treo cần xử lý">
+    <Card
+      className={hasCandidates ? "mt-3 border-warning/40 bg-warning/10 p-3" : "mt-3 border-border/60 bg-card/40 p-3"}
+      role="region"
+      aria-label="Ca treo cần xử lý"
+    >
       <div className="flex items-start gap-2">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+        <AlertTriangle className={hasCandidates ? "mt-0.5 h-4 w-4 shrink-0 text-warning" : "mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"} aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-foreground">
-            {attendanceIds.length} ca có thể là ca treo
+            {hasCandidates ? `${attendanceIds.length} ca có thể là ca treo` : "Không có ca treo hiện tại"}
           </p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Ca quá 24 giờ hoặc thiếu giờ vào. Máy chủ sẽ kiểm tra lại bằng chứng kết thúc,
-            giữ nguyên lương/OT và để riêng ca không đủ bằng chứng.
+            {hasCandidates
+              ? "Ca quá 24 giờ hoặc thiếu giờ vào. Máy chủ sẽ kiểm tra lại bằng chứng kết thúc, giữ nguyên lương/OT và để riêng ca không đủ bằng chứng."
+              : "Nút này luôn sẵn để dọn ca cũ sau khi dữ liệu check-in được tải lại."}
           </p>
           <Button
             size="sm"
             variant="outline"
-            className="mt-3 min-h-10 w-full border-warning/50 text-sm text-warning hover:bg-warning/10"
-            disabled={processing === "checkout"}
+            className={hasCandidates
+              ? "mt-3 min-h-10 w-full border-warning/50 text-sm text-warning hover:bg-warning/10"
+              : "mt-3 min-h-10 w-full border-border/60 text-sm text-muted-foreground"}
+            disabled={!hasCandidates || processing === "checkout"}
             onClick={() => onRequestCleanup(attendanceIds)}
           >
-            {processing === "checkout" ? "Đang dọn..." : `Dọn ${attendanceIds.length} ca treo`}
+            {processing === "checkout"
+              ? "Đang dọn..."
+              : hasCandidates
+                ? `Dọn ${attendanceIds.length} ca treo`
+                : "Không có ca treo"}
           </Button>
         </div>
       </div>
