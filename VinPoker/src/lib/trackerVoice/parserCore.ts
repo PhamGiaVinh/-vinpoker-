@@ -1,3 +1,12 @@
+import {
+  hardenDealerTranscript,
+  normalizeTrackerVoiceTranscript,
+  type TranscriptRepair,
+  type TranscriptRiskTier,
+} from "./transcriptHardener";
+
+export { normalizeTrackerVoiceTranscript } from "./transcriptHardener";
+
 /**
  * Pure parser shared by the browser and Edge runtime. It recognizes intent
  * only; legal action and chip-range checks remain in the Tracker engine.
@@ -24,6 +33,9 @@ export interface TrackerVoiceCoreCommand {
   normalizedTranscript: string;
   amount: TrackerVoiceCoreAmount | null;
   spokenSeatNumber: number | null;
+  riskTier: Exclude<TranscriptRiskTier, "REJECT">;
+  repairs: readonly TranscriptRepair[];
+  requiresConfirmation: boolean;
 }
 
 export interface TrackerVoiceAmountOptions {
@@ -57,11 +69,6 @@ const NUMBER_STARTS = new Set([
   ...Object.keys(VI_DIGITS), ...Object.keys(EN_DIGITS), "muoi", "tram", "ruoi", "hundred",
 ]);
 
-const NUMBER_START_PATTERN = [
-  "\\d",
-  ...NUMBER_STARTS,
-].join("|");
-
 const SEAT_NUMBERS: Record<string, number> = {
   "1": 1, one: 1, mot: 1, mode: 1,
   "2": 2, two: 2, hai: 2, high: 2,
@@ -76,26 +83,20 @@ const SEAT_NUMBERS: Record<string, number> = {
 };
 
 const SEAT_PREFIX = new RegExp(
-  `^(?:oen\\s+)?(?:(?:seat|sit|see|set|ghe|ve)\\s+(?:(?:number|so)\\s+)?)+(${Object.keys(SEAT_NUMBERS).join("|")})\\b\\s*(.*)$`,
+  `^(?:seat|ghe)\\s+(?:(?:number|so)\\s+)?(${Object.keys(SEAT_NUMBERS).join("|")})\\b\\s*(.*)$`,
 );
 
-const RAISE_PATTERN = new RegExp(
-  `\\b(?:raise(?:\\s+to)?|to(?:\\s+len)?|nang(?:\\s+len)?)\\b(?=$|\\s+(?:${NUMBER_START_PATTERN}))`,
-);
+const RAISE_PATTERN = /^(?:raise(?:\s+to)?|to(?:\s+len)?|nang(?:\s+len)?)\s+(.+)$/;
 
-const BET_PATTERN = new RegExp(
-  `\\b(?:bet(?:\\s+to)?|cuoc(?:\\s+(?:den|len))?)\\b(?=$|\\s+(?:${NUMBER_START_PATTERN}))`,
-);
+const BET_PATTERN = /^(?:bet(?:\s+to)?|cuoc(?:\s+(?:den|len))?)\s+(.+)$/;
 
-const COMMANDS: Array<{ kind: TrackerVoiceCoreCommandKind; pattern: RegExp }> = [
-  { kind: "report_wrong_action", pattern: /\b(bao sai|sai action|wrong action|action sai|tracker(?:\s+ghi)?\s+sai|sai hanh dong)\b/ },
-  { kind: "call_floor", pattern: /\b(goi floor|call floor|floor oi|can floor|floor ho tro|floor toi ban)\b/ },
-  { kind: "all_in", pattern: /\b(all[ -]?in|tat tay|tat ca(?:\s+chip)?)(?!\s+(?:nguoi\s+choi|nhan\s+vien))\b/ },
-  { kind: "raise_to", pattern: RAISE_PATTERN },
-  { kind: "bet_to", pattern: BET_PATTERN },
-  { kind: "call", pattern: /\b(call(?!\s+dien\s+thoai)|theo|theo bai)\b/ },
-  { kind: "check", pattern: /\b(check(?!\s+camera)|xem|qua|check bai)\b/ },
-  { kind: "fold", pattern: /\b(fold|up bai|bo bai|bo(?!\s+cai\b))\b/ },
+const EXACT_COMMANDS: Array<{ kind: Exclude<TrackerVoiceCoreCommandKind, "raise_to" | "bet_to">; pattern: RegExp }> = [
+  { kind: "report_wrong_action", pattern: /^(?:bao sai(?: action)?|sai action|wrong action|action sai|tracker(?:\s+ghi)?\s+sai|sai hanh dong)$/ },
+  { kind: "call_floor", pattern: /^(?:goi floor|call floor|floor oi|can floor|floor ho tro|floor toi ban)$/ },
+  { kind: "all_in", pattern: /^(?:all[ -]?in|tat tay|tat ca chip)$/ },
+  { kind: "call", pattern: /^(?:call|theo|theo bai)$/ },
+  { kind: "check", pattern: /^(?:check|kiem|xem|check bai|qua)$/ },
+  { kind: "fold", pattern: /^(?:fold|up bai|bo bai|bo)$/ },
 ];
 
 const NOISE_PATTERNS = [
@@ -142,15 +143,6 @@ function extractSpokenSeatPrefix(value: string): { actionText: string; spokenSea
     actionText: matched[2]?.trim() ?? "",
     spokenSeatNumber: SEAT_NUMBERS[matched[1]] ?? null,
   };
-}
-
-function normalizeDealerActionPronunciation(value: string, hasSeatPrefix: boolean): string {
-  let normalized = value.trim();
-  normalized = normalized.replace(/^(?:ray|race)\b/, "raise");
-  if (hasSeatPrefix) normalized = normalized.replace(/^right\b/, "raise");
-  normalized = normalized.replace(/^(?:o[ -]?in|olin)\b/, "all-in");
-  normalized = normalized.replace(/^phau\b/, "fold");
-  return normalized;
 }
 
 function parseSmallNumber(tokens: string[], start: number): ParsedSmallNumber {
@@ -244,17 +236,21 @@ function parseExplicitAmount(tokens: string[], start: number): number | null {
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
-export function normalizeTrackerVoiceTranscript(value: string): string {
-  return normalizeFormattedThousands(value)
-    .trim()
-    .toLocaleLowerCase("vi-VN")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\u0111/g, "d")
-    .replace(/[!?;:,]/g, " ")
-    .replace(/\.(?=\s|$)/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+function isStrictAmountExpression(rawInput: string): boolean {
+  const tokens = normalizeTrackerVoiceTranscript(rawInput)
+    .replace(/,/g, ".")
+    .replace(/[^a-z0-9.\s-]/g, " ")
+    .split(" ")
+    .filter(Boolean);
+  return tokens.length > 0 && tokens.every((token) => (
+    NUMBER_STARTS.has(token)
+    || THOUSAND_UNITS.has(token)
+    || MILLION_UNITS.has(token)
+    || token === "linh"
+    || token === "le"
+    || token === "and"
+    || /^\d+(?:\.\d+)?(?:[km])?$/.test(token)
+  ));
 }
 
 export function parseTrackerVoiceAmount(
@@ -295,27 +291,32 @@ export function parseTrackerVoiceCommandCore(
   transcript: string,
   options: TrackerVoiceAmountOptions = {},
 ): TrackerVoiceCoreCommand | null {
-  const inputTranscript = normalizeTrackerVoiceTranscript(transcript);
+  const hardened = hardenDealerTranscript(transcript);
+  if (hardened.riskTier === "REJECT") return null;
+  const inputTranscript = normalizeFormattedThousands(hardened.normalizedTranscript);
   if (!inputTranscript) return null;
   if (NOISE_PATTERNS.some((pattern) => pattern.test(inputTranscript))) return null;
 
   const seat = extractSpokenSeatPrefix(inputTranscript);
-  const actionText = normalizeDealerActionPronunciation(seat.actionText, seat.spokenSeatNumber !== null);
-  const matched = COMMANDS
-    .map((command) => ({ command, match: command.pattern.exec(actionText) }))
-    .filter((candidate): candidate is { command: (typeof COMMANDS)[number]; match: RegExpExecArray } => candidate.match !== null)
-    .sort((left, right) => left.match.index - right.match.index)[0];
-  if (!matched?.match) return null;
-  const amount = matched.command.kind === "bet_to" || matched.command.kind === "raise_to"
-    ? parseTrackerVoiceAmount(actionText.slice(matched.match.index + matched.match[0].length), options)
-    : null;
+  const actionText = seat.actionText;
+  const raiseMatch = actionText.match(RAISE_PATTERN);
+  const betMatch = actionText.match(BET_PATTERN);
+  const exact = EXACT_COMMANDS.find((candidate) => candidate.pattern.test(actionText));
+  const kind = raiseMatch ? "raise_to" : betMatch ? "bet_to" : exact?.kind;
+  if (!kind) return null;
+  const amountRaw = raiseMatch?.[1] ?? betMatch?.[1] ?? null;
+  if (amountRaw !== null && !isStrictAmountExpression(amountRaw)) return null;
+  const amount = amountRaw === null ? null : parseTrackerVoiceAmount(amountRaw, options);
   const normalizedTranscript = seat.spokenSeatNumber === null
     ? actionText
     : `seat ${seat.spokenSeatNumber} ${actionText}`.trim();
   return {
-    kind: matched.command.kind,
+    kind,
     normalizedTranscript,
     amount,
     spokenSeatNumber: seat.spokenSeatNumber,
+    riskTier: hardened.riskTier,
+    repairs: hardened.repairs,
+    requiresConfirmation: hardened.requiresConfirmation,
   };
 }

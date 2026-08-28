@@ -16,6 +16,9 @@ export interface TrackerVoiceParsedCommand {
   amount: number | null;
   amountAmbiguous: boolean;
   spokenSeatNumber: number | null;
+  riskTier: "EXACT" | "BOUNDED_REPAIR";
+  repairs: readonly { rule: "seat_prefix_fit_to_seat"; from: "fit" | "feet"; to: "seat" }[];
+  requiresConfirmation: boolean;
 }
 
 /**
@@ -34,5 +37,8 @@ export function parseTrackerVoiceCommand(
     amount: parsed.amount?.value ?? null,
     amountAmbiguous: parsed.amount?.ambiguous ?? false,
     spokenSeatNumber: parsed.spokenSeatNumber,
+    riskTier: parsed.riskTier,
+    repairs: parsed.repairs,
+    requiresConfirmation: parsed.requiresConfirmation,
   };
 }

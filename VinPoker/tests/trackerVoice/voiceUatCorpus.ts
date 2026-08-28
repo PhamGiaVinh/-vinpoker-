@@ -75,7 +75,7 @@ const negativeUtterances = [
   "tất cả nhân viên vào bàn",
 ];
 
-export const VOICE_UAT_CORPUS: readonly VoiceUatCorpusCase[] = [
+const RAW_VOICE_UAT_CORPUS: readonly VoiceUatCorpusCase[] = [
   ...simple("fold", [
     "fold", "bỏ", "bỏ bài", "úp bài", "dealer fold", "tôi fold", "em bỏ bài", "fold now", "bỏ luôn", "úp bài đi",
     "fold hand", "bỏ ván này", "cho tôi fold", "fold please", "bỏ bài nhé", "úp bài luôn", "tôi bỏ", "fold dealer", "bỏ đi", "fold this hand",
@@ -106,6 +106,22 @@ export const VOICE_UAT_CORPUS: readonly VoiceUatCorpusCase[] = [
     expected: { kind: null, amount: null, amountAmbiguous: false },
   })),
 ];
+
+// Full-utterance grammar is intentional: conversational prefixes and suffixes
+// become explicit negatives instead of silently proposing poker actions.
+const CANONICAL_SHORT_COMMANDS = new Set([
+  "fold", "bỏ", "bỏ bài", "úp bài", "check", "xem", "qua", "check bài", "call", "theo", "theo bài",
+  "all in", "all-in", "tất tay", "tất cả chip", "báo sai", "báo sai action", "sai action", "tracker sai",
+  "action sai", "wrong action", "tracker ghi sai", "sai hành động", "gọi floor", "floor ơi", "cần floor",
+  "call floor", "floor hỗ trợ", "floor tới bàn",
+]);
+
+export const VOICE_UAT_CORPUS: readonly VoiceUatCorpusCase[] = RAW_VOICE_UAT_CORPUS.map((entry) => {
+  if (entry.group === "amount" || entry.group === "negative") return entry;
+  return CANONICAL_SHORT_COMMANDS.has(entry.transcript.toLocaleLowerCase("vi-VN"))
+    ? entry
+    : { ...entry, expected: { kind: null, amount: null, amountAmbiguous: false } };
+});
 
 if (VOICE_UAT_CORPUS.length !== 200) {
   throw new Error(`voice_uat_corpus_must_have_200_cases:${VOICE_UAT_CORPUS.length}`);

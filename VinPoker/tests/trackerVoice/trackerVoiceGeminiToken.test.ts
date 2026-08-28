@@ -59,16 +59,33 @@ describe("tracker voice Gemini Preview token endpoint", () => {
       body: {
         ephemeral_token: "ephemeral-preview-token",
         expires_at: "1970-01-01T00:20:01.000Z",
-        model: "gemini-3.1-flash-live-preview",
+        model: "gemini-3.5-transcribe-live",
       },
     });
     expect(JSON.stringify(result)).not.toContain(PREVIEW_ENV.GEMINI_API_KEY);
-    expect(tokenCreator).toHaveBeenCalledWith(PREVIEW_ENV, 1_000);
-    expect(buildGeminiAuthTokenRequest(1_000)).toEqual({
+    expect(tokenCreator).toHaveBeenCalledWith(PREVIEW_ENV, 1_000, expect.objectContaining({ model: "gemini-3.5-transcribe-live" }));
+    expect(buildGeminiAuthTokenRequest(1_000)).toMatchObject({
       uses: 1,
       newSessionExpireTime: "1970-01-01T00:01:01.000Z",
       expireTime: "1970-01-01T00:20:01.000Z",
+      liveConnectConstraints: {
+        model: "gemini-3.5-transcribe-live",
+        config: {
+          responseModalities: ["TEXT"],
+          inputAudioTranscription: { languageCodes: [], mode: "VERBATIM" },
+        },
+      },
     });
+  });
+
+  it("only accepts an exact protected Preview profile enum", async () => {
+    const tokenCreator = vi.fn();
+    await expect(createTrackerVoiceGeminiCredential(
+      PREVIEW_ENV,
+      { method: "POST", clientIp: "198.51.100.6", languageProfile: "TRUE" },
+      { tokenCreator },
+    )).resolves.toEqual({ status: 400, body: { error: "preview_language_profile_invalid" } });
+    expect(tokenCreator).not.toHaveBeenCalled();
   });
 
   it("classifies an upstream token rejection without exposing its response body", async () => {

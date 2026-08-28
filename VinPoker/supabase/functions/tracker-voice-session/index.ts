@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
           "Content-Type": "application/json",
           "x-goog-api-key": geminiKey,
         },
-        body: JSON.stringify(buildTrackerVoiceGeminiAuthTokenRequest(now)),
+        body: JSON.stringify(buildTrackerVoiceGeminiAuthTokenRequest(now, model)),
       });
       if (!providerResponse.ok) return jsonResp(req, { error: "GEMINI_SESSION_FAILED" }, 502);
       const credential = normalizeTrackerVoiceGeminiCredential(

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canRecoverGeminiLiveConnection,
   EMPTY_GEMINI_LIVE_AUDIO_READINESS,
   expireGeminiTranscriptFlush,
   GEMINI_LIVE_INPUT_LANGUAGE_CODES,
   isGeminiLiveConnectionCurrent,
   isGeminiLiveListeningReady,
   isTrackerVoiceGeminiLiveModel,
+  isTrackerVoiceGeminiTranscribeModel,
   reduceGeminiTranscriptMessage,
   resolveGeminiFlushStatus,
   resumeGeminiLiveAudioContext,
@@ -23,31 +25,28 @@ const emptyState = (): GeminiTranscriptState => ({
 });
 
 describe("Tracker Voice provider selection", () => {
-  it("selects Gemini only for the server allowlisted Live model", () => {
+  it("selects only reviewed Gemini Live models", () => {
     expect(isTrackerVoiceGeminiLiveModel(TRACKER_VOICE_GEMINI_LIVE_MODEL)).toBe(true);
+    expect(isTrackerVoiceGeminiLiveModel("gemini-3.1-flash-live-preview")).toBe(true);
     expect(isTrackerVoiceGeminiLiveModel("gemini-3.1-flash-live-preview-extra")).toBe(false);
     expect(isTrackerVoiceGeminiLiveModel("gpt-live-transcribe")).toBe(false);
     expect(isTrackerVoiceGeminiLiveModel(null)).toBe(false);
   });
 
-  it("finalizes when confirmed transcription arrives before turnComplete", () => {
+  it("finalizes dedicated Transcribe input immediately without promoting interim text", () => {
     const transcript = reduceGeminiTranscriptMessage(emptyState(), {
       serverContent: { inputTranscription: { text: "raise 120k" } },
     }, "2026-08-24T00:00:00.000Z");
-    expect(transcript.events).toMatchObject([{ transcript: "raise 120k", isFinal: false }]);
-
-    const completed = reduceGeminiTranscriptMessage(transcript.state, {
-      serverContent: { turnComplete: true },
-    }, "2026-08-24T00:00:01.000Z");
-    expect(completed.events).toEqual([{
+    expect(isTrackerVoiceGeminiTranscribeModel(TRACKER_VOICE_GEMINI_LIVE_MODEL)).toBe(true);
+    expect(transcript.events).toEqual([{
       providerEventId: "gemini-live:1",
       transcript: "raise 120k",
       isFinal: true,
-      capturedAt: "2026-08-24T00:00:01.000Z",
+      capturedAt: "2026-08-24T00:00:00.000Z",
     }]);
   });
 
-  it("finalizes when turnComplete arrives before the independent transcription", () => {
+  it("keeps the legacy model guarded by turnComplete for compatibility", () => {
     const completed = reduceGeminiTranscriptMessage(emptyState(), {
       serverContent: { turnComplete: true },
     }, "2026-08-24T00:00:00.000Z");
@@ -55,7 +54,7 @@ describe("Tracker Voice provider selection", () => {
 
     const transcript = reduceGeminiTranscriptMessage(completed.state, {
       serverContent: { inputTranscription: { text: "bỏ bài" } },
-    }, "2026-08-24T00:00:01.000Z");
+    }, "2026-08-24T00:00:01.000Z", "gemini-3.1-flash-live-preview");
     expect(transcript.events).toEqual([{
       providerEventId: "gemini-live:1",
       transcript: "bỏ bài",
@@ -73,6 +72,15 @@ describe("Tracker Voice provider selection", () => {
     }, "2026-08-24T00:00:00.000Z");
     expect(partial.events).toMatchObject([{ transcript: "all", isFinal: false }]);
     expect(partial.state.confirmedTranscript).toBe("");
+  });
+
+  it("processes transcription from nested server content parts without treating model text as an action", () => {
+    const nested = reduceGeminiTranscriptMessage(emptyState(), {
+      serverContent: {
+        modelTurn: { parts: [{ inputTranscription: { text: "call" } }, { text: "ignored model text" }] },
+      },
+    }, "2026-08-24T00:00:00.000Z");
+    expect(nested.events).toMatchObject([{ transcript: "call", isFinal: true }]);
   });
 });
 
@@ -115,26 +123,22 @@ describe("Gemini Live microphone readiness", () => {
 });
 
 describe("Gemini Live final transcript flush", () => {
-  it("preserves a delayed final transcript after the microphone stops", () => {
+  it("preserves the direct Transcribe final after the microphone stops", () => {
     const pending = reduceGeminiTranscriptMessage(emptyState(), {
       serverContent: { inputTranscription: { text: "raise 120k" } },
     }, "2026-08-24T00:00:00.000Z");
-    const delayedFinal = reduceGeminiTranscriptMessage(pending.state, {
-      serverContent: { turnComplete: true },
-    }, "2026-08-24T00:00:01.000Z");
-
-    expect(delayedFinal.events).toHaveLength(1);
-    expect(delayedFinal.events[0]).toMatchObject({ transcript: "raise 120k", isFinal: true });
-    expect(resolveGeminiFlushStatus("flushing", delayedFinal.events)).toBe("paused");
+    expect(pending.events).toHaveLength(1);
+    expect(pending.events[0]).toMatchObject({ transcript: "raise 120k", isFinal: true });
+    expect(resolveGeminiFlushStatus("flushing", pending.events)).toBe("paused");
   });
 
-  it("handles turnComplete before the delayed final transcript exactly once", () => {
+  it("handles legacy turnComplete before a delayed final transcript exactly once", () => {
     const completed = reduceGeminiTranscriptMessage(emptyState(), {
       serverContent: { turnComplete: true },
     }, "2026-08-24T00:00:00.000Z");
     const delayedFinal = reduceGeminiTranscriptMessage(completed.state, {
       serverContent: { inputTranscription: { text: "bỏ bài" } },
-    }, "2026-08-24T00:00:01.000Z");
+    }, "2026-08-24T00:00:01.000Z", "gemini-3.1-flash-live-preview");
 
     expect(delayedFinal.events).toHaveLength(1);
     expect(delayedFinal.events[0]).toMatchObject({ transcript: "bỏ bài", isFinal: true });
@@ -155,19 +159,21 @@ describe("Gemini Live final transcript flush", () => {
 });
 
 describe("Gemini Live dealer phrase adaptation", () => {
-  it("uses only the supported language hint and custom vocabulary fields", () => {
+  it("uses only canonical dealer phrases in the bounded vocabulary", () => {
     expect(GEMINI_LIVE_INPUT_LANGUAGE_CODES).toEqual(["vi-VN", "en-US"]);
     expect(TRACKER_VOICE_GEMINI_CUSTOM_VOCABULARY).toEqual(expect.arrayContaining([
       "raise 120k",
-      "rây một trăm hai mươi nghìn",
       "seat five",
-      "seat number five",
-      "sít năm",
       "ghế số năm",
-      "ô in",
       "tất tay",
     ]));
-    expect(TRACKER_VOICE_GEMINI_CUSTOM_VOCABULARY.length).toBeGreaterThanOrEqual(40);
-    expect(TRACKER_VOICE_GEMINI_CUSTOM_VOCABULARY.length).toBeLessThanOrEqual(80);
+    expect(TRACKER_VOICE_GEMINI_CUSTOM_VOCABULARY).not.toEqual(expect.arrayContaining(["fit", "feet", "rây", "phâu", "ô in"]));
+    expect(TRACKER_VOICE_GEMINI_CUSTOM_VOCABULARY.length).toBeLessThan(100);
+  });
+
+  it("allows exactly one fresh-token reconnect after GoAway or expiry", () => {
+    expect(canRecoverGeminiLiveConnection(true, true, 0)).toBe(true);
+    expect(canRecoverGeminiLiveConnection(true, true, 1)).toBe(false);
+    expect(canRecoverGeminiLiveConnection(true, false, 0)).toBe(false);
   });
 });

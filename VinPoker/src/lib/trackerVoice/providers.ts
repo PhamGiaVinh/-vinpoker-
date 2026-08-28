@@ -3,7 +3,20 @@ import type {
   VoiceProviderHandlers,
   VoiceTranscriptEvent,
 } from "./types";
-import { createGeminiLiveAudioPayload, pcm16ToLittleEndianBytes, resampleMonoToPcm16 } from "./geminiPcm";
+import {
+  createGeminiLiveAudioPayload,
+  Pcm16FrameAccumulator,
+  pcm16ToLittleEndianBytes,
+  resampleMonoToPcm16,
+} from "./geminiPcm";
+import {
+  buildGeminiLiveConnectConfig,
+  buildGeminiVoiceProfile,
+  TRACKER_VOICE_GEMINI_LEGACY_MODEL,
+  TRACKER_VOICE_GEMINI_TRANSCRIBE_MODEL,
+  TRACKER_VOICE_GEMINI_TRANSCRIBE_VOCABULARY,
+  type GeminiTranscribeLanguageProfile,
+} from "./geminiTranscribeProfile";
 
 export class MockRealtimeTranscriptionProvider implements RealtimeTranscriptionProvider {
   readonly kind = "mock" as const;
@@ -108,85 +121,12 @@ export interface GeminiLiveSessionCredential {
   ephemeralToken: string;
   model: string;
   expiresAt: string;
+  languageProfile?: GeminiTranscribeLanguageProfile;
 }
 
-export const TRACKER_VOICE_GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview";
-
+export const TRACKER_VOICE_GEMINI_LIVE_MODEL = TRACKER_VOICE_GEMINI_TRANSCRIBE_MODEL;
 export const GEMINI_LIVE_INPUT_LANGUAGE_CODES = ["vi-VN", "en-US"] as const;
-
-/**
- * Gemini Live supports explicit ASR custom vocabulary. These are bounded
- * dealer utterances that bias transcription only; they do not change the
- * deterministic poker parser or create new action aliases.
- */
-export const TRACKER_VOICE_GEMINI_CUSTOM_VOCABULARY = [
-  "fold",
-  "bỏ bài",
-  "phâu",
-  "check",
-  "kiểm",
-  "check bài",
-  "call",
-  "theo",
-  "all in",
-  "all-in",
-  "ô in",
-  "o-in",
-  "tất tay",
-  "bet fifty thousand",
-  "bet fifty k",
-  "bet 50k",
-  "cược năm mươi nghìn",
-  "cược một trăm nghìn",
-  "raise to",
-  "raise to fifty thousand",
-  "raise to one hundred thousand",
-  "raise to one twenty",
-  "raise 50k",
-  "raise 100k",
-  "raise 120k",
-  "race 120k",
-  "rây",
-  "rây năm mươi nghìn",
-  "rây một trăm nghìn",
-  "rây một trăm hai mươi nghìn",
-  "seat one",
-  "seat two",
-  "seat three",
-  "seat four",
-  "seat five",
-  "seat six",
-  "seat seven",
-  "seat eight",
-  "seat nine",
-  "seat number one",
-  "seat number two",
-  "seat number three",
-  "seat number four",
-  "seat number five",
-  "seat number six",
-  "seat number seven",
-  "seat number eight",
-  "seat number nine",
-  "sít một",
-  "sít hai",
-  "sít ba",
-  "sít bốn",
-  "sít năm",
-  "sít sáu",
-  "sít bảy",
-  "sít tám",
-  "sít chín",
-  "ghế số một",
-  "ghế số hai",
-  "ghế số ba",
-  "ghế số bốn",
-  "ghế số năm",
-  "ghế số sáu",
-  "ghế số bảy",
-  "ghế số tám",
-  "ghế số chín",
-] as const;
+export const TRACKER_VOICE_GEMINI_CUSTOM_VOCABULARY = TRACKER_VOICE_GEMINI_TRANSCRIBE_VOCABULARY;
 
 /** A short bounded wait prevents Stop from dropping Gemini's final transcript. */
 export const GEMINI_LIVE_FINAL_FLUSH_TIMEOUT_MS = 2_500;
@@ -239,7 +179,24 @@ export async function resumeGeminiLiveAudioContext(audioContext: ResumableAudioC
 }
 
 export function isTrackerVoiceGeminiLiveModel(model: string | null | undefined): boolean {
-  return model === TRACKER_VOICE_GEMINI_LIVE_MODEL;
+  return model === TRACKER_VOICE_GEMINI_TRANSCRIBE_MODEL || model === TRACKER_VOICE_GEMINI_LEGACY_MODEL;
+}
+
+/** A closed or GoAway generation may obtain one fresh credential, never replay buffered audio. */
+export function canRecoverGeminiLiveConnection(
+  active: boolean,
+  acceptingMicrophoneFrames: boolean,
+  reconnectAttempts: number,
+): boolean {
+  return active && acceptingMicrophoneFrames && reconnectAttempts < 1;
+}
+
+export function isTrackerVoiceGeminiTranscribeModel(model: string | null | undefined): boolean {
+  return model === TRACKER_VOICE_GEMINI_TRANSCRIBE_MODEL;
+}
+
+function hasGeminiGoAway(message: unknown): boolean {
+  return Boolean(message && typeof message === "object" && "goAway" in message && (message as { goAway?: unknown }).goAway);
 }
 
 interface GeminiLiveSession {
@@ -281,21 +238,13 @@ export function reduceGeminiTranscriptMessage(
   state: GeminiTranscriptState,
   message: unknown,
   capturedAt: string,
+  model = TRACKER_VOICE_GEMINI_LIVE_MODEL,
 ): { state: GeminiTranscriptState; events: VoiceTranscriptEvent[] } {
   if (!message || typeof message !== "object") return { state, events: [] };
   const serverContent = (message as { serverContent?: unknown }).serverContent;
   if (!serverContent || typeof serverContent !== "object") return { state, events: [] };
-  const content = serverContent as {
-    interimInputTranscription?: { text?: unknown };
-    inputTranscription?: { text?: unknown };
-    turnComplete?: unknown;
-  };
-  const partial = typeof content.interimInputTranscription?.text === "string"
-    ? content.interimInputTranscription.text.trim()
-    : "";
-  const confirmed = typeof content.inputTranscription?.text === "string"
-    ? content.inputTranscription.text.trim()
-    : "";
+  const content = serverContent as { turnComplete?: unknown };
+  const { partial, confirmed } = collectGeminiTranscriptionTexts(serverContent);
   let workingTranscript = partial
     ? joinTranscript(state.workingTranscript, partial)
     : state.workingTranscript;
@@ -306,11 +255,14 @@ export function reduceGeminiTranscriptMessage(
   const turnCompleteSeen = state.turnCompleteSeen || content.turnComplete === true;
   const events: VoiceTranscriptEvent[] = [];
 
-  if (turnCompleteSeen && confirmedTranscript) {
+  const finalIsReady = isTrackerVoiceGeminiTranscribeModel(model)
+    ? Boolean(confirmed)
+    : turnCompleteSeen && Boolean(confirmedTranscript);
+  if (finalIsReady) {
     const finalCount = state.finalCount + 1;
     events.push({
       providerEventId: `gemini-live:${finalCount}`,
-      transcript: confirmedTranscript,
+      transcript: isTrackerVoiceGeminiTranscribeModel(model) ? confirmed : confirmedTranscript,
       isFinal: true,
       capturedAt,
     });
@@ -341,19 +293,51 @@ export function reduceGeminiTranscriptMessage(
 
 export interface GeminiLiveTranscriptionProviderOptions {
   getSessionCredential: () => Promise<GeminiLiveSessionCredential>;
+  languageProfile?: GeminiTranscribeLanguageProfile;
+}
+
+/** Gemini can nest content parts; inspect every provided part without treating model text as a poker command. */
+function collectGeminiTranscriptionTexts(content: object): { partial: string; confirmed: string } {
+  const partials: string[] = [];
+  const confirmed: string[] = [];
+  const visited = new Set<object>();
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== "object" || visited.has(value)) return;
+    visited.add(value);
+    const record = value as Record<string, unknown>;
+    const partial = record.interimInputTranscription;
+    const final = record.inputTranscription;
+    if (partial && typeof partial === "object" && typeof (partial as { text?: unknown }).text === "string") {
+      partials.push((partial as { text: string }).text.trim());
+    }
+    if (final && typeof final === "object" && typeof (final as { text?: unknown }).text === "string") {
+      confirmed.push((final as { text: string }).text.trim());
+    }
+    const parts = record.parts;
+    if (Array.isArray(parts)) parts.forEach(visit);
+    visit(record.modelTurn);
+  };
+  visit(content);
+  return {
+    partial: partials.filter(Boolean).reduce(joinTranscript, ""),
+    confirmed: confirmed.filter(Boolean).reduce(joinTranscript, ""),
+  };
 }
 
 /**
  * Preview-only Gemini Live provider. It transcribes microphone input; all poker
  * parsing, legal-action checks, and write paths stay in the existing Tracker flow.
  */
-export function createTrackerVoicePreviewGeminiProvider(): RealtimeTranscriptionProvider {
+export function createTrackerVoicePreviewGeminiProvider(
+  languageProfile: GeminiTranscribeLanguageProfile = "auto",
+): RealtimeTranscriptionProvider {
   return new GeminiLiveTranscriptionProvider({
     getSessionCredential: async () => {
       const response = await fetch("/api/tracker-voice-gemini-token", {
         method: "POST",
-        headers: { Accept: "application/json" },
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
         credentials: "same-origin",
+        body: JSON.stringify({ languageProfile }),
       });
       const payload = await response.json().catch(() => null) as {
         ephemeral_token?: unknown;
@@ -368,8 +352,10 @@ export function createTrackerVoicePreviewGeminiProvider(): RealtimeTranscription
         ephemeralToken: payload.ephemeral_token,
         model: payload.model,
         expiresAt: payload.expires_at,
+        languageProfile,
       };
     },
+    languageProfile,
   });
 }
 
@@ -400,8 +386,10 @@ export function createTrackerVoiceGeminiProvider(
         ephemeralToken: data.ephemeral_token,
         model: data.model,
         expiresAt: data.expires_at,
+        languageProfile: "auto",
       };
     },
+    languageProfile: "auto",
   });
 }
 
@@ -422,6 +410,10 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
   private transcriptState: GeminiTranscriptState = EMPTY_GEMINI_TRANSCRIPT_STATE;
   private readiness: GeminiLiveAudioReadiness = { ...EMPTY_GEMINI_LIVE_AUDIO_READINESS };
   private flush: { generation: number; timer: number; resolve: () => void } | null = null;
+  private readonly pcmFrames = new Pcm16FrameAccumulator();
+  private sessionModel = TRACKER_VOICE_GEMINI_LIVE_MODEL;
+  private reconnectAttempts = 0;
+  private sessionResumptionHandle: string | null = null;
 
   constructor(private readonly options: GeminiLiveTranscriptionProviderOptions) {}
 
@@ -435,58 +427,10 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
 
     const generation = ++this.activeGeneration;
     this.active = true;
+    this.reconnectAttempts = 0;
     this.readiness = { ...EMPTY_GEMINI_LIVE_AUDIO_READINESS };
     try {
-      await this.beginMicrophoneCapture(generation);
-      if (!this.isCurrentGeneration(generation)) return;
-
-      handlers.onStatus("connecting");
-      const credential = await this.options.getSessionCredential();
-      if (!this.isCurrentGeneration(generation)) return;
-      handlers.onSession?.({ model: credential.model, expiresAt: credential.expiresAt });
-
-      const { GoogleGenAI, Modality } = await import("@google/genai");
-      const client = new GoogleGenAI({
-        apiKey: credential.ephemeralToken,
-        httpOptions: { apiVersion: "v1beta" },
-      });
-      const session = await client.live.connect({
-        model: credential.model,
-        config: {
-          responseModalities: [Modality.AUDIO],
-          inputAudioTranscription: {
-            languageCodes: [...GEMINI_LIVE_INPUT_LANGUAGE_CODES],
-            customVocabulary: [...TRACKER_VOICE_GEMINI_CUSTOM_VOCABULARY],
-          },
-          realtimeInputConfig: {
-            automaticActivityDetection: {
-              disabled: false,
-              prefixPaddingMs: 300,
-              silenceDurationMs: 600,
-            },
-          },
-        },
-        callbacks: {
-          onopen: () => {
-            if (this.isCurrentGeneration(generation)) this.readiness.socketReady = true;
-          },
-          onmessage: (message) => this.handleGeminiMessage(generation, message),
-          onerror: () => {
-            if (this.isCurrentGeneration(generation)) {
-              this.handlers?.onStatus("error", "Gemini Live bị lỗi. Hãy kết nối lại microphone.");
-            }
-          },
-          onclose: () => this.handleGeminiClose(generation),
-        },
-      });
-      if (!this.isCurrentGeneration(generation)) {
-        (session as unknown as GeminiLiveSession).close();
-        return;
-      }
-      this.session = session as unknown as GeminiLiveSession;
-      this.readiness.socketReady = true;
-      this.handlers?.onStatus("connected");
-      this.emitAudioReadyStatus();
+      await this.openLiveSession(generation);
     } catch (error) {
       if (this.isCurrentGeneration(generation)) {
         this.active = false;
@@ -497,6 +441,53 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
       }
       throw error;
     }
+  }
+
+  private async openLiveSession(generation: number): Promise<void> {
+    await this.beginMicrophoneCapture(generation);
+    if (!this.isCurrentGeneration(generation)) return;
+
+    this.handlers?.onStatus("connecting");
+    const credential = await this.options.getSessionCredential();
+    if (!this.isCurrentGeneration(generation)) return;
+    const languageProfile = credential.languageProfile ?? this.options.languageProfile ?? "auto";
+    const profile = buildGeminiVoiceProfile(credential.model, languageProfile);
+    if (!profile || profile.model !== credential.model) {
+      throw new Error("GEMINI_PROFILE_MISMATCH: phiên Voice không khớp profile server đã duyệt.");
+    }
+    this.sessionModel = credential.model;
+    this.handlers?.onSession?.({ model: credential.model, expiresAt: credential.expiresAt });
+
+    const { GoogleGenAI } = await import("@google/genai");
+    const client = new GoogleGenAI({
+      apiKey: credential.ephemeralToken,
+      httpOptions: { apiVersion: "v1beta" },
+    });
+    const session = await client.live.connect({
+      model: credential.model,
+      // The profile comes only from the shared builder, never an arbitrary browser payload.
+      config: buildGeminiLiveConnectConfig(profile, this.sessionResumptionHandle) as never,
+      callbacks: {
+        onopen: () => {
+          if (this.isCurrentGeneration(generation)) this.readiness.socketReady = true;
+        },
+        onmessage: (message) => this.handleGeminiMessage(generation, message),
+        onerror: () => {
+          if (this.isCurrentGeneration(generation)) {
+            this.handlers?.onStatus("error", "Gemini Live bị lỗi. Hãy kết nối lại microphone.");
+          }
+        },
+        onclose: () => this.handleGeminiClose(generation),
+      },
+    });
+    if (!this.isCurrentGeneration(generation)) {
+      (session as unknown as GeminiLiveSession).close();
+      return;
+    }
+    this.session = session as unknown as GeminiLiveSession;
+    this.readiness.socketReady = true;
+    this.handlers?.onStatus("connected");
+    this.emitAudioReadyStatus();
   }
 
   /**
@@ -515,6 +506,7 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
     this.handlers?.onStatus("flushing", "Đang hoàn tất câu cuối từ Gemini Live.");
     const flushComplete = this.beginFlush(generation);
     try {
+      this.flushPendingPcmFrame(generation);
       this.session.sendRealtimeInput({ audioStreamEnd: true });
     } catch (error) {
       this.finishFlush("error", "FINAL_TRANSCRIPT_FLUSH_FAILED: không thể hoàn tất câu cuối.");
@@ -536,6 +528,8 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
     }
     this.session?.close();
     this.session = null;
+    this.pcmFrames.clear();
+    this.sessionResumptionHandle = null;
     await this.releaseMicrophoneCapture();
     this.transcriptState = EMPTY_GEMINI_TRANSCRIPT_STATE;
     this.readiness = { ...EMPTY_GEMINI_LIVE_AUDIO_READINESS };
@@ -604,17 +598,7 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
       if (!this.isCurrentGeneration(generation) || !this.acceptingMicrophoneFrames || !this.session) return;
       const samples = resampleMonoToPcm16(event.inputBuffer.getChannelData(0), audioContext.sampleRate);
       if (samples.length === 0) return;
-      const bytes = pcm16ToLittleEndianBytes(samples);
-      try {
-        this.session.sendRealtimeInput({ audio: createGeminiLiveAudioPayload(bytes) });
-        if (!this.readiness.pcmFrameDelivered) {
-          this.readiness.pcmFrameDelivered = true;
-          this.emitListeningIfReady();
-        }
-      } catch {
-        this.acceptingMicrophoneFrames = false;
-        this.handlers?.onStatus("error", "PCM_FRAME_DELIVERY_FAILED: Gemini chưa nhận được âm thanh.");
-      }
+      this.pcmFrames.push(samples).forEach((frame) => this.sendPcmFrame(generation, frame));
     };
     this.audioContext = audioContext;
     this.mediaSource = source;
@@ -663,25 +647,101 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
 
   private handleGeminiMessage(generation: number, message: unknown): void {
     if (!this.isCurrentGeneration(generation) || !this.handlers) return;
-    const result = reduceGeminiTranscriptMessage(this.transcriptState, message, new Date().toISOString());
+    this.captureGeminiSessionResumption(message);
+    const result = reduceGeminiTranscriptMessage(
+      this.transcriptState,
+      message,
+      new Date().toISOString(),
+      this.sessionModel,
+    );
     this.transcriptState = result.state;
     result.events.forEach((event) => this.handlers?.onTranscript(event));
     if (this.flush?.generation === generation && resolveGeminiFlushStatus("flushing", result.events) === "paused") {
       this.finishFlush("paused", "Voice đã tạm dừng sau khi hoàn tất câu cuối.");
     }
+    if (hasGeminiGoAway(message)) {
+      this.beginGeminiRecovery(generation, "Gemini Live sắp hết phiên. Đang kết nối lại bằng credential mới.");
+    }
   }
 
   private handleGeminiClose(generation: number): void {
     if (!this.isCurrentGeneration(generation)) return;
-    this.session = null;
-    this.acceptingMicrophoneFrames = false;
-    this.active = false;
-    void this.releaseMicrophoneCapture();
     if (this.flush?.generation === generation) {
+      this.session = null;
+      this.acceptingMicrophoneFrames = false;
+      this.active = false;
+      void this.releaseMicrophoneCapture();
       this.finishFlush("offline", "Gemini Live ngắt trước khi nhận được final transcript.");
       return;
     }
-    this.handlers?.onStatus("offline", "Gemini Live đã ngắt kết nối.");
+    this.beginGeminiRecovery(generation, "Gemini Live đã ngắt kết nối.");
+  }
+
+  private beginGeminiRecovery(generation: number, message: string): void {
+    const shouldRecover = canRecoverGeminiLiveConnection(
+      this.active,
+      this.acceptingMicrophoneFrames,
+      this.reconnectAttempts,
+    );
+    this.session = null;
+    this.acceptingMicrophoneFrames = false;
+    if (!shouldRecover) {
+      this.active = false;
+      void this.releaseMicrophoneCapture();
+      this.handlers?.onStatus("offline", message);
+      return;
+    }
+    this.reconnectAttempts += 1;
+    const nextGeneration = ++this.activeGeneration;
+    this.handlers?.onStatus("recovering", `${message} Âm thanh cũ sẽ không được gửi lại.`);
+    void this.reconnectAfterClose(nextGeneration);
+  }
+
+  private async reconnectAfterClose(generation: number): Promise<void> {
+    await this.releaseMicrophoneCapture();
+    if (!this.isCurrentGeneration(generation)) return;
+    this.readiness = { ...EMPTY_GEMINI_LIVE_AUDIO_READINESS };
+    try {
+      await this.openLiveSession(generation);
+    } catch {
+      if (!this.isCurrentGeneration(generation)) return;
+      this.active = false;
+      this.acceptingMicrophoneFrames = false;
+      await this.releaseMicrophoneCapture();
+      this.handlers?.onStatus("offline", "Gemini Live không thể kết nối lại. Hãy bấm Kết nối microphone.");
+    }
+  }
+
+  private sendPcmFrame(generation: number, frame: Int16Array): void {
+    if (!this.isCurrentGeneration(generation) || !this.session || frame.length === 0) return;
+    try {
+      this.session.sendRealtimeInput({ audio: createGeminiLiveAudioPayload(pcm16ToLittleEndianBytes(frame)) });
+      if (!this.readiness.pcmFrameDelivered) {
+        this.readiness.pcmFrameDelivered = true;
+        this.emitListeningIfReady();
+      }
+    } catch {
+      this.acceptingMicrophoneFrames = false;
+      this.handlers?.onStatus("error", "PCM_FRAME_DELIVERY_FAILED: Gemini chưa nhận được âm thanh.");
+    }
+  }
+
+  private flushPendingPcmFrame(generation: number): void {
+    const tail = this.pcmFrames.flush();
+    if (tail) this.sendPcmFrame(generation, tail);
+  }
+
+  private captureGeminiSessionResumption(message: unknown): void {
+    if (!message || typeof message !== "object") return;
+    const update = (message as { sessionResumptionUpdate?: unknown }).sessionResumptionUpdate;
+    if (!update || typeof update !== "object") return;
+    const candidate = update as { resumable?: unknown; newHandle?: unknown };
+    this.sessionResumptionHandle = candidate.resumable === true
+      && typeof candidate.newHandle === "string"
+      && candidate.newHandle.length > 0
+      && candidate.newHandle.length <= 4_096
+      ? candidate.newHandle
+      : null;
   }
 
   private beginFlush(generation: number): Promise<void> {
@@ -714,6 +774,7 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
 
   private async releaseMicrophoneCapture(): Promise<void> {
     this.acceptingMicrophoneFrames = false;
+    this.pcmFrames.clear();
     this.stream?.getTracks().forEach((track) => track.stop());
     if (this.levelFrame !== null) cancelAnimationFrame(this.levelFrame);
     this.levelFrame = null;

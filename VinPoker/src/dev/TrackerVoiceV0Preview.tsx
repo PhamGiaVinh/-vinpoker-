@@ -16,6 +16,7 @@ import {
   type VoiceActionMetadata,
   type VoiceActionProposal,
 } from "@/lib/trackerVoice";
+import type { GeminiTranscribeLanguageProfile } from "@/lib/trackerVoice/geminiTranscribeProfile";
 
 const TOURNAMENT_ID = "71000000-0000-4000-8000-000000000001";
 const TABLE_ID = "72000000-0000-4000-8000-000000000001";
@@ -30,7 +31,7 @@ const READY_RUNTIME: TrackerVoiceRuntimeContext = {
   config: {
     enabled: true,
     configured_mode: "assist",
-    provider_model: "gemini-3.1-flash-live-preview",
+    provider_model: "gemini-3.5-transcribe-live",
     spoken_amount_unit: 1,
     amount_unit_confirmed: false,
     provider_confidence_threshold: null,
@@ -164,6 +165,7 @@ function providerLabel(provider: "mock" | "gemini" | "openai"): string {
 
 export default function TrackerVoiceV0Preview() {
   const [providerKind, setProviderKind] = useState<"mock" | "gemini" | "openai">("gemini");
+  const [geminiLanguageProfile, setGeminiLanguageProfile] = useState<GeminiTranscribeLanguageProfile>("auto");
   const [scenario, setScenario] = useState<FixtureScenario>("facing_bet");
   const [snapshot, setSnapshot] = useState<TrackerVoiceDiagnosticSnapshot | null>(null);
   const [actions, setActions] = useState<PreviewAction[]>([]);
@@ -190,9 +192,9 @@ export default function TrackerVoiceV0Preview() {
 
   const provider = useMemo(() => {
     if (providerKind === "mock") return new MockRealtimeTranscriptionProvider();
-    if (providerKind === "gemini") return createTrackerVoicePreviewGeminiProvider();
+    if (providerKind === "gemini") return createTrackerVoicePreviewGeminiProvider(geminiLanguageProfile);
     return createTrackerVoicePreviewOpenAiProvider();
-  }, [providerKind]);
+  }, [geminiLanguageProfile, providerKind]);
 
   const runtime = useMemo<TrackerVoiceRuntimeContext>(() => ({
     ...READY_RUNTIME,
@@ -369,6 +371,7 @@ export default function TrackerVoiceV0Preview() {
   const exportJson = () => downloadArtifact("tracker-voice-uat.json", JSON.stringify({
     generatedAt: new Date().toISOString(),
     provider: providerKind,
+    geminiLanguageProfile: providerKind === "gemini" ? geminiLanguageProfile : null,
     measurements,
     connectionDrops,
     reconnects,
@@ -413,6 +416,21 @@ export default function TrackerVoiceV0Preview() {
                   </button>
                 ))}
               </div>
+              {providerKind === "gemini" && (
+                <label className="mt-4 block text-[11px] font-semibold text-zinc-300" htmlFor="tracker-voice-language-profile">
+                  Profile nhận dạng Gemini (Preview A/B)
+                  <select
+                    id="tracker-voice-language-profile"
+                    value={geminiLanguageProfile}
+                    onChange={(event) => setGeminiLanguageProfile(event.target.value === "vi_en" ? "vi_en" : "auto")}
+                    className="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+                  >
+                    <option value="auto">Auto detect Vietnamese/English</option>
+                    <option value="vi_en">Ưu tiên tiếng Việt + English poker</option>
+                  </select>
+                  <span className="mt-1 block font-normal leading-relaxed text-zinc-500">Chỉ gửi enum A/B; model, vocabulary, VAD và VERBATIM luôn do server profile đã khóa quyết định.</span>
+                </label>
+              )}
               <p className="mt-3 text-[11px] text-zinc-500">Gemini Live là mặc định cho UAT thật. Browser chỉ nhận token Preview ngắn hạn sau khi kết nối microphone; không nhận API key lâu dài. Mock vẫn dùng cho luồng tự động; OpenAI là tùy chọn đối chiếu.</p>
               <label className="mt-4 block text-[11px] font-semibold text-zinc-300" htmlFor="tracker-voice-fixture">Tình huống engine fixture</label>
               <select

@@ -1,11 +1,26 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildTrackerVoiceGeminiAuthTokenRequest,
   buildTrackerVoiceRealtimeSession,
+  isTrackerVoiceGeminiLiveModel,
   normalizeTrackerVoiceCredential,
 } from "../../supabase/functions/tracker-voice-session/protocol";
 
 describe("tracker voice realtime session protocol", () => {
+  it("binds Gemini token constraints to the configured reviewed model", () => {
+    expect(isTrackerVoiceGeminiLiveModel("gemini-3.5-transcribe-live")).toBe(true);
+    expect(isTrackerVoiceGeminiLiveModel("gemini-3.1-flash-live-preview")).toBe(true);
+    expect(isTrackerVoiceGeminiLiveModel("gemini-3.5-transcribe-live-extra")).toBe(false);
+    expect(buildTrackerVoiceGeminiAuthTokenRequest(1_000, "gemini-3.5-transcribe-live")).toMatchObject({
+      uses: 1,
+      liveConnectConstraints: {
+        model: "gemini-3.5-transcribe-live",
+        config: { responseModalities: ["TEXT"], inputAudioTranscription: { mode: "VERBATIM" } },
+      },
+    });
+  });
+
   it("builds a transcription-only, short-lived session without an API key", () => {
     const payload = buildTrackerVoiceRealtimeSession("gpt-live-transcribe");
     expect(payload).toMatchObject({

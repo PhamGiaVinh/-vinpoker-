@@ -26,13 +26,13 @@ describe("Dealer Voice UAT corpus", () => {
     }
   });
 
-  it("accepts only bounded phonetic raise forms with an amount", () => {
+  it("rejects raw phonetic raise text until the transcription service emits a canonical final transcript", () => {
     const phoneticDealerSpeech = DEALER_VOICE_CORPUS
       .filter((entry) => entry.spoken.startsWith("rây"))
       .map((entry) => entry.spoken);
 
     for (const spoken of phoneticDealerSpeech) {
-      expect(parseVoiceCommand(spoken, { amountUnitConfirmed: true }), spoken).toMatchObject({ kind: "raise_to" });
+      expect(parseVoiceCommand(spoken, { amountUnitConfirmed: true }), spoken).toBeNull();
     }
     expect(parseVoiceCommand("rây your hand")).toBeNull();
     expect(parseVoiceCommand("race tomorrow")).toBeNull();

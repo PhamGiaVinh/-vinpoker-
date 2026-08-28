@@ -421,6 +421,12 @@ Deno.serve(async (req) => {
         let normalizedCommand: Record<string, unknown> = {
           kind: command.kind,
           normalized_transcript: command.normalizedTranscript,
+          risk_tier: command.riskTier,
+          repairs: command.repairs,
+          hardener_version: "dealer-hardener-v1",
+          grammar_version: "dealer-command-v2",
+          vocabulary_version: "poker-dealer-v2",
+          requires_confirmation: command.requiresConfirmation,
         };
 
         if (command.kind !== "report_wrong_action" && command.kind !== "call_floor") {
@@ -484,6 +490,9 @@ Deno.serve(async (req) => {
         }
 
         const mode = execution_mode === "auto" ? "auto" : execution_mode === "assist" ? "assist" : "shadow";
+        if (command.requiresConfirmation && mode !== "shadow") {
+          return validationError("VOICE_REPAIR_SHADOW_ONLY", "Lệnh đã sửa nhận dạng chỉ được hiển thị Shadow để xác nhận lại.");
+        }
         if (mode === "auto" && (
           !VOICE_AUTO_ENABLED
           || VALIDATION_MODE !== "enforce"

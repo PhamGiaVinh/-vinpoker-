@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   createGeminiLiveAudioPayload,
+  GEMINI_LIVE_PCM_BATCH_SAMPLES,
   GEMINI_LIVE_PCM_SAMPLE_RATE,
+  Pcm16FrameAccumulator,
   pcm16ToLittleEndianBytes,
   pcmBytesToBase64,
   resampleMonoToPcm16,
@@ -33,5 +35,15 @@ describe("Gemini Live PCM conversion", () => {
       data: "NBL+/w==",
       mimeType: "audio/pcm;rate=16000",
     });
+  });
+
+  it("sends only bounded 100 ms batches and flushes a final nonempty tail", () => {
+    const accumulator = new Pcm16FrameAccumulator();
+    expect(accumulator.push(new Int16Array(GEMINI_LIVE_PCM_BATCH_SAMPLES - 1))).toEqual([]);
+    const frames = accumulator.push(new Int16Array(2));
+    expect(frames).toHaveLength(1);
+    expect(frames[0]).toHaveLength(GEMINI_LIVE_PCM_BATCH_SAMPLES);
+    expect(accumulator.flush()).toHaveLength(1);
+    expect(accumulator.flush()).toBeNull();
   });
 });

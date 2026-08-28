@@ -1,5 +1,12 @@
+import {
+  buildGeminiEphemeralTokenRequest,
+  buildGeminiVoiceProfile,
+  TRACKER_VOICE_GEMINI_LEGACY_MODEL,
+  TRACKER_VOICE_GEMINI_TRANSCRIBE_MODEL,
+} from "../../../src/lib/trackerVoice/geminiTranscribeProfile.ts";
+
 export const TRACKER_VOICE_DEFAULT_MODEL = "gpt-live-transcribe";
-export const TRACKER_VOICE_GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview";
+export const TRACKER_VOICE_GEMINI_LIVE_MODEL = TRACKER_VOICE_GEMINI_TRANSCRIBE_MODEL;
 
 export interface TrackerVoiceSessionCredential {
   client_secret: string;
@@ -18,17 +25,16 @@ export interface TrackerVoiceGeminiSessionCredential {
  * prefix. The config row remains the authority for which session is minted.
  */
 export function isTrackerVoiceGeminiLiveModel(model: string): boolean {
-  return model === TRACKER_VOICE_GEMINI_LIVE_MODEL;
+  return model === TRACKER_VOICE_GEMINI_LEGACY_MODEL || model === TRACKER_VOICE_GEMINI_TRANSCRIBE_MODEL;
 }
 
 export function buildTrackerVoiceGeminiAuthTokenRequest(
   now: number,
+  model = TRACKER_VOICE_GEMINI_LIVE_MODEL,
 ): Record<string, unknown> {
-  return {
-    uses: 1,
-    newSessionExpireTime: new Date(now + 60_000).toISOString(),
-    expireTime: new Date(now + 20 * 60_000).toISOString(),
-  };
+  const profile = buildGeminiVoiceProfile(model, "auto");
+  if (!profile) throw new Error("tracker_voice_gemini_model_not_allowlisted");
+  return buildGeminiEphemeralTokenRequest(now, profile);
 }
 
 export function normalizeTrackerVoiceGeminiCredential(

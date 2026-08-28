@@ -13,6 +13,9 @@ function browserShape(transcript: string, options: { spokenAmountUnit?: number; 
         amount: parsed.amount?.value ?? null,
         amountAmbiguous: parsed.amount?.ambiguous ?? false,
         spokenSeatNumber: parsed.spokenSeatNumber,
+        riskTier: parsed.riskTier,
+        requiresConfirmation: parsed.requiresConfirmation,
+        repairs: parsed.repairs,
       }
     : null;
 }
@@ -53,13 +56,25 @@ describe("Tracker Voice browser and Edge parser parity", () => {
   });
 
   it.each([
-    ["seat number two race four thousand", 2, 4_000],
-    ["see number three fold", 3, null],
-    ["seat number seat number five all in", 5, null],
-    ["về số 6 raise 20.000", 6, 20_000],
-  ])("keeps browser and Edge seat/pronunciation metadata identical for %s", (transcript, seat, amount) => {
+    ["seat number two raise four thousand", 2, 4_000],
+    ["seat number three fold", 3, null],
+    ["ghế số 6 raise 20.000", 6, 20_000],
+  ])("keeps browser and Edge seat metadata identical for %s", (transcript, seat, amount) => {
     const options = { spokenAmountUnit: 1, amountUnitConfirmed: false };
     expect(browserShape(transcript, options)).toEqual(serverShape(transcript, options));
     expect(browserShape(transcript, options)).toMatchObject({ spokenSeatNumber: seat, amount });
+  });
+
+  it("keeps one bounded repair identical and prevents naked all-in parsing", () => {
+    const options = { spokenAmountUnit: 1, amountUnitConfirmed: false };
+    expect(browserShape("fit 9 all in", options)).toEqual(serverShape("fit 9 all in", options));
+    expect(browserShape("fit 9 all in", options)).toMatchObject({
+      kind: "all_in",
+      spokenSeatNumber: 9,
+      riskTier: "BOUNDED_REPAIR",
+      requiresConfirmation: true,
+    });
+    expect(browserShape("dealer fit 9 all in", options)).toBeNull();
+    expect(serverShape("fit feet 9 all in", options)).toBeNull();
   });
 });
