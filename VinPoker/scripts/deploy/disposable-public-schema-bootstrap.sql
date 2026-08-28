@@ -85,3 +85,7 @@ BEGIN
   END IF;
 END;
 $$;
+
+-- Supabase service_role bypasses RLS. The disposable role must preserve that
+-- worker authority for contracts that force RLS on service-owned tables.
+ALTER ROLE service_role BYPASSRLS;

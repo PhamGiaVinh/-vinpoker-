@@ -264,6 +264,10 @@ select pg_temp.assert_true(
   and not has_table_privilege('authenticated', 'public.dealer_payroll_delivery_targets', 'SELECT'),
   'Telegram delivery entrypoints and worker internals are separated by ACL'
 );
+select pg_temp.assert_true(
+  (select rolbypassrls from pg_roles where rolname = 'service_role'),
+  'disposable service role must match Supabase worker RLS authority'
+);
 
 update public.dealers
 set telegram_user_id = 123456789
