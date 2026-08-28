@@ -1545,7 +1545,7 @@ export const FEATURES = {
    * Deck. It resolves a trusted club before mounting any source reader. Keep
    * dark through source merge; Preview and production activation are separate.
    */
-  opsIntelligenceCommandCenterV1: true,
+  opsIntelligenceCommandCenterV1: false,
   /**
    * cockpitFloorActions — nâng cấp cockpit giải trên điện thoại (`OpsTournamentCockpit`): tab "Bàn"
    * hiện sơ đồ bàn INLINE (thay redirect) + tab "Người chơi" 3 tab Tất cả/Đang chơi/Busted, người
