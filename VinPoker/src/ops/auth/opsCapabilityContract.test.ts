@@ -7,6 +7,7 @@ import {
 } from "./opsCapabilityContract";
 
 const clubId = "10000000-0000-4000-8000-000000000001";
+const legacyPostgresClubId = "10000000-0000-0000-0000-000000000001";
 const validRow = {
   club_id: clubId,
   can_owner: false,
@@ -25,6 +26,12 @@ const validRow = {
 describe("Ops V3 capability contract", () => {
   it("accepts a complete multi-role row without collapsing F&B facets", () => {
     expect(parseOpsCapabilityScope([validRow])).toEqual([validRow]);
+  });
+
+  it("accepts a canonical PostgreSQL UUID without an RFC version or variant", () => {
+    expect(parseOpsCapabilityScope([{ ...validRow, club_id: legacyPostgresClubId }])).toEqual([
+      { ...validRow, club_id: legacyPostgresClubId },
+    ]);
   });
 
   it.each([
@@ -50,6 +57,9 @@ describe("Ops V3 capability contract", () => {
     expect(parseOpsSuperAdminClubs([{ club_id: clubId, club_name: "HSOP" }])).toEqual([
       { club_id: clubId, club_name: "HSOP" },
     ]);
+    expect(
+      parseOpsSuperAdminClubs([{ club_id: legacyPostgresClubId, club_name: "Legacy club" }]),
+    ).toEqual([{ club_id: legacyPostgresClubId, club_name: "Legacy club" }]);
     expect(() =>
       parseOpsSuperAdminClubs([
         { club_id: clubId, club_name: "HSOP" },

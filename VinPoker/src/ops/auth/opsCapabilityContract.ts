@@ -1,5 +1,5 @@
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const POSTGRES_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 const CAPABILITY_KEYS = [
   "club_id",
@@ -64,7 +64,7 @@ function assertExactKeys(row: Record<string, unknown>, keys: readonly string[], 
 }
 
 function assertUuid(value: unknown, label: string): asserts value is string {
-  if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
+  if (typeof value !== "string" || !POSTGRES_UUID_PATTERN.test(value)) {
     throw new OpsCapabilityContractError(`${label}: invalid uuid`);
   }
 }
