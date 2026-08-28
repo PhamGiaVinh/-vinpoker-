@@ -34,7 +34,12 @@ describe("Gemini Transcribe profile", () => {
     const profile = buildGeminiTranscribeProfile("vi_en");
     expect(buildGeminiEphemeralTokenRequest(1_000, profile)).toMatchObject({
       uses: 1,
-      liveConnectConstraints: { model: `models/${TRACKER_VOICE_GEMINI_TRANSCRIBE_MODEL}`, config: profile.config },
+      bidiGenerateContentSetup: {
+        model: `models/${TRACKER_VOICE_GEMINI_TRANSCRIBE_MODEL}`,
+        generationConfig: { responseModalities: ["TEXT"] },
+        inputAudioTranscription: profile.config.inputAudioTranscription,
+        realtimeInputConfig: profile.config.realtimeInputConfig,
+      },
     });
   });
 });

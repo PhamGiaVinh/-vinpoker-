@@ -83,15 +83,19 @@ export function buildGeminiEphemeralTokenRequest(
   now: number,
   profile: GeminiLiveConnectionProfile,
 ): Record<string, unknown> {
+  const { responseModalities, ...liveConfig } = profile.config;
   return {
     uses: 1,
     newSessionExpireTime: new Date(now + 60_000).toISOString(),
     expireTime: new Date(now + 20 * 60_000).toISOString(),
-    liveConnectConstraints: {
-      // The REST auth_tokens endpoint requires the resource-name form, while
-      // the JS Live SDK connects with the unprefixed model returned to clients.
+    // This is the auth_tokens wire format. The JS SDK accepts
+    // liveConnectConstraints and serializes it to bidiGenerateContentSetup.
+    bidiGenerateContentSetup: {
       model: `models/${profile.model}`,
-      config: profile.config,
+      ...(Array.isArray(responseModalities)
+        ? { generationConfig: { responseModalities } }
+        : {}),
+      ...liveConfig,
     },
   };
 }
