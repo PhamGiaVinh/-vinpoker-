@@ -30,6 +30,11 @@ Deno.test("Gemini Voice credentials are single-use, time-bounded, and allowliste
     request.expireTime === new Date(now + 20 * 60_000).toISOString(),
     "session expiry mismatch",
   );
+  const constraints = request.bidiGenerateContentSetup as Record<string, unknown>;
+  assert(
+    constraints.model === `models/${TRACKER_VOICE_GEMINI_LIVE_MODEL}`,
+    "REST token constraint must use the Gemini model resource name",
+  );
 });
 
 Deno.test("Gemini Voice credential normalization fails closed", () => {
