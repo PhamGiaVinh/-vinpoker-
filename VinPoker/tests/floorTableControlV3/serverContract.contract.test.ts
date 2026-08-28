@@ -8,7 +8,15 @@ const migration = readFileSync(
   "utf8",
 );
 const hardeningMigration = readFileSync(
-  resolve(root, "supabase/migrations/20270113000004_floor_table_control_v3_contract_hardening.sql"),
+  resolve(root, "supabase/migrations/20270113000005_floor_table_control_v3_contract_hardening.sql"),
+  "utf8",
+);
+const rosterMigration = readFileSync(
+  resolve(root, "supabase/migrations/20270113000006_floor_table_control_v3_roster_read_contract.sql"),
+  "utf8",
+);
+const previewOnlyWriterGrants = readFileSync(
+  resolve(root, "tests/floorTableControlV3/previewOnlyWriterGrants.sql"),
   "utf8",
 );
 const disposable = readFileSync(
@@ -98,6 +106,28 @@ describe("Floor Table Control V3 server contract", () => {
     expect(migration).not.toMatch(/sepay|staking|buy.?in|prize_payment/i);
   });
 
+  it("adds a caller-bound canonical active-session roster without guessing legacy ids", () => {
+    expect(rosterMigration).toContain("get_floor_tournament_table_roster_v3");
+    expect(rosterMigration).toContain("get_floor_restorable_entries_v3");
+    expect(rosterMigration).toContain("seat_row.tournament_table_id = table_row.id");
+    expect(rosterMigration).toContain("seat_row.table_session_id = session_row.id");
+    expect(rosterMigration).toContain("session_row.closed_at IS NULL");
+    expect(rosterMigration).toContain("floor_table_v3_roster_access_denied");
+    expect(rosterMigration).toContain("SET search_path = ''");
+    expect(rosterMigration).not.toMatch(/UPDATE\s+public\.|DELETE\s+FROM\s+public\./i);
+    expect(rosterMigration).not.toMatch(/legacy\s+table_id.*=/i);
+  });
+
+  it("keeps V3 writers revoked in the active catalog and confines test grants", () => {
+    expect(hardeningMigration).toContain("REVOKE ALL ON FUNCTION public.floor_open_tournament_table_v3(uuid, uuid, text, uuid) FROM authenticated");
+    expect(hardeningMigration).not.toMatch(/GRANT EXECUTE ON FUNCTION public\.floor_open_tournament_table_v3/i);
+    expect(previewOnlyWriterGrants).toContain("Preview/disposable-only authenticated writer grants");
+    expect(previewOnlyWriterGrants).toContain("GRANT EXECUTE ON FUNCTION public.floor_open_tournament_table_v3");
+    expect(previewOnlyWriterGrants).toContain("GRANT EXECUTE ON FUNCTION public.floor_restore_busted_player_to_seat_v3");
+    expect(previewOnlyWriterGrants).not.toMatch(/GRANT\s+(SELECT|INSERT|UPDATE|DELETE)\s+ON\s+TABLE/i);
+    expect(previewOnlyWriterGrants).not.toMatch(/GRANT\s+USAGE\s+ON\s+SCHEMA/i);
+  });
+
   it("proves lifecycle, fencing, ACL, authenticated callers and real races in isolated PostgreSQL 17", () => {
     expect(workflow).toContain("image: postgres:17");
     expect(workflow).toContain("tests/floorTableControlV3/disposableDb.serverContract.sql");
@@ -107,6 +137,8 @@ describe("Floor Table Control V3 server contract", () => {
     expect(workflow).toContain("vitest.serverContract.config.ts");
     expect(workflow).not.toMatch(/db push|functions deploy|vercel --prod|orlesggcjamwuknxwcpk/i);
     expect(disposable).toContain("FLOOR_TABLE_CONTROL_V3_SERVER_CONTRACT_DISPOSABLE_PASS");
+    expect(disposable).toContain("20270113000006_floor_table_control_v3_roster_read_contract.sql");
+    expect(authenticatedDisposable).toContain("previewOnlyWriterGrants.sql");
     expect(disposable).toContain("same idempotency request returns the original open result");
     expect(disposable).toContain("pre-mode-change Tracker context is fenced");
     expect(disposable).toContain("Tracker request from a closed session is fenced after physical-table reuse");

@@ -7,18 +7,20 @@ import {
   type FloorTableNumberState,
 } from "./floorTablePresentation";
 
-type PickerFilter = "all" | "available" | "closed";
+type PickerFilter = "all" | "available" | "closed" | "unavailable";
 
 const FILTERS: readonly { value: PickerFilter; label: string }[] = [
   { value: "all", label: "Tất cả" },
   { value: "available", label: "Có thể mở" },
   { value: "closed", label: "Đã đóng" },
+  { value: "unavailable", label: "Không khả dụng" },
 ];
 
 const stateLabel: Record<FloorTableNumberState, string> = {
   available: "Có thể mở",
   active: "Đang mở",
   closed: "Mở lại",
+  unavailable: "Chưa sẵn sàng",
 };
 
 export function FloorTableNumberPicker({
@@ -26,15 +28,17 @@ export function FloorTableNumberPicker({
   value,
   onChange,
   disabled = false,
+  missingState = "available",
 }: {
   rows: readonly FloorTableCatalogRow[];
   value: number | null;
   onChange: (tableNumber: number) => void;
   disabled?: boolean;
+  missingState?: FloorTableNumberState;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<PickerFilter>("all");
-  const options = useMemo(() => buildFloorTableNumberOptions(rows), [rows]);
+  const options = useMemo(() => buildFloorTableNumberOptions(rows, missingState), [missingState, rows]);
   const visible = useMemo(() => {
     const needle = query.trim();
     return options.filter((option) => {
@@ -92,7 +96,7 @@ export function FloorTableNumberPicker({
         aria-label="Danh sách số bàn từ 1 đến 100"
       >
         {visible.map((option) => {
-          const active = option.state === "active";
+          const blocked = option.state === "active" || option.state === "unavailable";
           const selected = option.number === value;
           return (
             <button
@@ -101,21 +105,22 @@ export function FloorTableNumberPicker({
               data-ops-action="floor.tables.select_number"
               data-testid="floor-table-number-option"
               data-floor-table-number={option.number}
-              disabled={disabled || active}
-              aria-label={`Bàn ${option.number} — ${stateLabel[option.state]}`}
+              disabled={disabled || blocked}
+              aria-label={`Bàn ${option.number} — ${option.detail ?? stateLabel[option.state]}`}
               aria-pressed={selected}
               onClick={() => onChange(option.number)}
               className={cn(
                 "relative min-h-14 rounded-xl border px-1 py-2 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
                 option.state === "available" && "border-border bg-card/70 text-foreground hover:border-primary/45",
                 option.state === "closed" && "border-amber-400/35 bg-amber-400/8 text-amber-100 hover:border-amber-300/70",
-                active && "cursor-not-allowed border-border/60 bg-muted/30 text-muted-foreground opacity-55",
+                option.state === "active" && "cursor-not-allowed border-border/60 bg-muted/30 text-muted-foreground opacity-55",
+                option.state === "unavailable" && "cursor-not-allowed border-amber-400/25 bg-amber-400/5 text-amber-200/60 opacity-70",
                 selected && "border-primary bg-primary/15 text-primary ring-2 ring-primary/30",
               )}
             >
               <span className="block font-mono text-base font-semibold">{option.number}</span>
               <span className="mt-0.5 block truncate text-[9px] leading-3">
-                {stateLabel[option.state]}
+                {option.detail ?? stateLabel[option.state]}
               </span>
             </button>
           );
