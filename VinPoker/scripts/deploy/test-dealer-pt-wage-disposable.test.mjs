@@ -37,6 +37,7 @@ test("PT wage disposable runner applies the exact payroll migration chain", () =
   assert.match(runner, /Invoke-ContainerPsql '\/tmp\/support\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-baseline\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/activation-gap\.sql'/);
   assert.match(runner, /Invoke-ContainerPsql '\/tmp\/payroll-statements-v1\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-statements-v1\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-statements\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-statements-concurrency\.sql'/);
   assert.match(runner, /Invoke-ContainerPsql '\/tmp\/payroll-pdf-storage\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-ft-ui\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-ft-ui\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-ft-ui-test\.sql'[\s\S]*Invoke-ContainerPsql '\/tmp\/payroll-ft-ui-concurrency\.sql'/);
+  assert.match(runner, /Assert-ContainerPsqlFailsWith '\/tmp\/payroll-telegram-delivery\.sql' 'PAYROLL_DELIVERY_PARTIAL_DRIFT'/);
   assert.equal(
     [...runner.matchAll(/Invoke-ContainerPsql '\/tmp\/readiness-acl-repair\.sql'/g)].length,
     2,

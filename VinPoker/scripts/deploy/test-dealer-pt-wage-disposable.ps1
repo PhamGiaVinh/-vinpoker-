@@ -25,6 +25,18 @@ function Invoke-ContainerPsql {
   Invoke-Docker exec $containerName psql -X -q -v ON_ERROR_STOP=1 -U postgres -d vinpoker -f $FilePath
 }
 
+function Assert-ContainerPsqlFailsWith {
+  param(
+    [string]$FilePath,
+    [string]$StableCode
+  )
+  $output = & docker exec $containerName psql -X -q -v ON_ERROR_STOP=1 -U postgres -d vinpoker -f $FilePath 2>&1
+  if ($LASTEXITCODE -eq 0) { throw "Expected disposable SQL failure: $StableCode" }
+  if (-not (($output | Out-String).Contains($StableCode))) {
+    throw "Disposable SQL failed without expected stable code: $StableCode"
+  }
+}
+
 if (-not (Test-Path -LiteralPath $SchemaPath -PathType Leaf)) {
   throw "Schema dump not found: $SchemaPath"
 }
@@ -72,9 +84,9 @@ try {
     '/tmp/lifecycle.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual.sql'
     '/tmp/concurrency.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_pt_global_continuous_accrual_concurrency.sql'
     '/tmp/payroll-statements-v1.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270112000000_dealer_payroll_statements_v1.sql'
-    '/tmp/payroll-pdf-storage.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270113000000_dealer_payroll_statement_pdf_storage.sql'
-    '/tmp/payroll-ft-ui.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270113000001_dealer_payroll_statement_ft_ui_contract.sql'
-    '/tmp/payroll-telegram-delivery.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270113000004_dealer_payroll_statement_telegram_delivery.sql'
+    '/tmp/payroll-pdf-storage.sql' = Join-Path $vinPokerRoot 'supabase\migration-archive\never-apply\20270113000000_dealer_payroll_statement_pdf_storage.sql'
+    '/tmp/payroll-ft-ui.sql' = Join-Path $vinPokerRoot 'supabase\migration-archive\never-apply\20270113000001_dealer_payroll_statement_ft_ui_contract.sql'
+    '/tmp/payroll-telegram-delivery.sql' = Join-Path $vinPokerRoot 'supabase\migrations\20270113000008_dealer_payroll_statement_telegram_delivery_contract_repair.sql'
     '/tmp/payroll-statements.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_payroll_statements.sql'
     '/tmp/payroll-statements-concurrency.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_payroll_statements_concurrency.sql'
     '/tmp/payroll-ft-ui-test.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_payroll_statement_ft_ui.sql'
@@ -112,7 +124,13 @@ try {
   Invoke-ContainerPsql '/tmp/payroll-ft-ui-test.sql'
   Invoke-ContainerPsql '/tmp/payroll-ft-ui-concurrency.sql'
 
-  Write-Host "Dealer PT wage PG$PostgresMajor current-schema restore, ordered migration apply/reapply, ACL, lifecycle, immutable FT statement/PDF/Telegram delivery state machines, PT reservation, payout bridge, and concurrency suites passed."
+  # Prove the forward repair refuses a partial catalog instead of recreating
+  # the missing object and silently accepting drift.
+  Invoke-Docker exec $containerName psql -X -q -v ON_ERROR_STOP=1 -U postgres -d vinpoker `
+    -c 'drop index public.dealer_payroll_delivery_targets_operation_state_idx'
+  Assert-ContainerPsqlFailsWith '/tmp/payroll-telegram-delivery.sql' 'PAYROLL_DELIVERY_PARTIAL_DRIFT'
+
+  Write-Host "Dealer PT wage PG$PostgresMajor current-schema restore, ordered migration apply/reapply, partial-drift rejection, ACL, lifecycle, immutable FT statement/PDF/Telegram delivery state machines, PT reservation, payout bridge, and concurrency suites passed."
 } finally {
   if (Test-Path -LiteralPath $preparedSchemaPath) { Remove-Item -LiteralPath $preparedSchemaPath -Force }
   $existing = & docker ps -a --format '{{.Names}}' | Where-Object { $_ -eq $containerName }
