@@ -12,7 +12,7 @@ export const MANAGEMENT_REQUEST_TIMEOUT_MS = 90_000;
 export const REPAIR_MIGRATION = Object.freeze({
   version: "20270113000008",
   name: "20270113000008_dealer_payroll_statement_telegram_delivery_contract_repair",
-  path: "supabase/migrations/20270113000008_dealer_payroll_statement_telegram_delivery_contract_repair.sql",
+  path: "supabase/pending-migrations/20270113000008_dealer_payroll_statement_telegram_delivery_contract_repair.sql",
   sha256: "7de847754cd68436ced5d641db1cbbdd9ec5c1ae305852582b778c40a853c77c",
 });
 export const RETIRED_MIGRATION_NAMES = Object.freeze([

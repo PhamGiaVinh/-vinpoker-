@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
-const migrationPath = resolve(root, "supabase/migrations/20270107000002_close_dealer_tables_rpc_lineage_v1.sql");
+const migrationPath = resolve(root, "supabase/migration-archive/superseded/remote-alias/20270107000002_close_dealer_tables_rpc_lineage_v1.sql");
 const phoneCallerPath = resolve(root, "src/components/ops/dealer-swing/DealerPhoneCloseTablesSheet.tsx");
 const desktopCallerPath = resolve(root, "src/components/cashier/DealerSwingTab.tsx");
 const phoneBoundaryPath = resolve(root, "src/components/ops/dealer-swing/dealerPhoneCloseRpc.ts");

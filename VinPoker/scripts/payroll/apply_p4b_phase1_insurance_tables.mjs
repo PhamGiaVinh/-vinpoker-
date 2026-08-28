@@ -33,7 +33,7 @@ import { dirname, resolve } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..", ".."); // scripts/payroll → VinPoker root
 
-const ALLOWLISTED_MIGRATION = "supabase/migrations/20260910000000_payroll_p4b_insurance_layer_phase1.sql";
+const ALLOWLISTED_MIGRATION = "supabase/migration-archive/historical-never-replay/20260910000000_payroll_p4b_insurance_layer_phase1.sql";
 const MIGRATION_VERSION = "20260910000000";
 const P4B_TABLES = ["insurance_policy_rates", "dealer_insurance_profiles"];
 const EXPECTED = { tables: 2, policies: 5, triggers: 2 };

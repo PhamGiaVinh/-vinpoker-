@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const repo = resolve(import.meta.dirname, "../..");
 const migration = readFileSync(
-  resolve(repo, "supabase/migrations/20270110000000_ops_unified_capability_scope.sql"),
+  resolve(repo, "supabase/migration-archive/historical-never-replay/20270110000000_ops_unified_capability_scope.sql"),
   "utf8",
 );
 

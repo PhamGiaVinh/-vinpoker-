@@ -26,7 +26,7 @@ import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..", "..");
-const MIG = "supabase/migrations/20260906000001_dealer_self_service_rpcs.sql";
+const MIG = "supabase/migration-archive/historical-never-replay/20260906000001_dealer_self_service_rpcs.sql";
 const CONFIRM_ENV = "CONFIRM_APPLY_DEALER_SS";
 const CONFIRM_VAL = "APPLY_DEALER_SELF_SERVICE";
 const RPCS = ["dealer_confirm_shift", "dealer_check_in", "dealer_check_out", "dealer_submit_availability", "dealer_request_leave_or_swap"];

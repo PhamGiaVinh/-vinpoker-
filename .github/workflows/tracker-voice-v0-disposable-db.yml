@@ -4,9 +4,9 @@ on:
   pull_request:
     paths:
       - ".github/workflows/tracker-voice-v0-disposable-db.yml"
-      - "VinPoker/supabase/migrations/20260928000000_tracker_lock_activation_idempotency_trace.sql"
-      - "VinPoker/supabase/migrations/20261221000000_tracker_lock_takeover.sql"
-      - "VinPoker/supabase/migrations/20270105000004_floor_table_control_mode.sql"
+      - "VinPoker/supabase/migration-archive/historical-never-replay/20260928000000_tracker_lock_activation_idempotency_trace.sql"
+      - "VinPoker/supabase/migration-archive/historical-never-replay/20261221000000_tracker_lock_takeover.sql"
+      - "VinPoker/supabase/migration-archive/historical-never-replay/20270105000004_floor_table_control_mode.sql"
       - "VinPoker/supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql"
       - "VinPoker/supabase/migrations/20270112000003_tracker_voice_player_analytics_v0.sql"
       - "VinPoker/supabase/migrations/20270112000004_tracker_record_action_authority_binding.sql"
@@ -14,7 +14,7 @@ on:
       - "VinPoker/supabase/migrations/20270112000006_tracker_terminal_hand_rpc_authority.sql"
       - "VinPoker/supabase/migrations/20270112000007_tracker_p0_authority_closure.sql"
       - "VinPoker/supabase/migrations/20270112000008_tracker_voice_gemini_live_provider.sql"
-      - "VinPoker/supabase/migrations/20270113000007_tracker_voice_transcribe35_binding.sql"
+      - "VinPoker/supabase/pending-migrations/20270113000007_tracker_voice_transcribe35_binding.sql"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
       - "VinPoker/supabase/functions/tracker-player-analytics/**"
@@ -74,11 +74,11 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f tests/trackerVoice/disposableDb.dependencies.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
-            -f supabase/migrations/20260928000000_tracker_lock_activation_idempotency_trace.sql
+            -f supabase/migration-archive/historical-never-replay/20260928000000_tracker_lock_activation_idempotency_trace.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
-            -f supabase/migrations/20270105000004_floor_table_control_mode.sql
+            -f supabase/migration-archive/historical-never-replay/20270105000004_floor_table_control_mode.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
-            -f supabase/migrations/20261221000000_tracker_lock_takeover.sql
+            -f supabase/migration-archive/historical-never-replay/20261221000000_tracker_lock_takeover.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f supabase/migrations/20270112000004_tracker_record_action_authority_binding.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
@@ -152,7 +152,7 @@ jobs:
           echo "TRACKER_VOICE_12008_APPLY=PASS"
           createdb tracker_voice_v0_before_13000007 -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
-            -f supabase/migrations/20270113000007_tracker_voice_transcribe35_binding.sql
+            -f supabase/pending-migrations/20270113000007_tracker_voice_transcribe35_binding.sql
           test "$(psql -X -At -d tracker_voice_v0 -c \
             "SELECT position('gemini-3.5-transcribe-live' IN pg_get_functiondef(
               'public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure
@@ -236,7 +236,7 @@ jobs:
           echo "TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS"
           failing="$RUNNER_TEMP/tracker-voice-13000007-failing.sql"
           awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
-            supabase/migrations/20270113000007_tracker_voice_transcribe35_binding.sql > "$failing"
+            supabase/pending-migrations/20270113000007_tracker_voice_transcribe35_binding.sql > "$failing"
           before_helper="$(psql -X -At -d tracker_voice_v0_before_13000007 -c \
             "SELECT md5(pg_get_functiondef('public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure))")"
           if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_13000007 -f "$failing"; then

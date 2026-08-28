@@ -55,7 +55,7 @@ export function buildReadinessReport({ read, has, env = {}, gatePhrase = '' }) {
     ck('Action drill harness present', has('scripts/ge2-online-poker-drill.mjs')),
     ck('Timeout-sweep edge source present', has('supabase/functions/online-poker-timeout-sweep/index.ts')),
     ck('Timeout-sweep CRON migration source present (NOT assumed live — apply at Phase D)',
-      has('supabase/migrations/20260903000000_online_poker_timeout_sweep_cron.sql')),
+      has('supabase/migration-archive/historical-never-replay/20260903000000_online_poker_timeout_sweep_cron.sql')),
     ck('Player UI #197 (ActionBar) present', has('src/components/poker/ActionBar.tsx')),
     ck('Player UI #201 (SeatRing + CardBack) present',
       has('src/components/poker/SeatRing.tsx') && has('src/components/poker/CardBack.tsx')),

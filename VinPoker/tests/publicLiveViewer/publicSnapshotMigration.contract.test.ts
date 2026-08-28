@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 const migration = readFileSync(
-  resolve(root, "supabase/migrations/20270111000002_public_tournament_event_snapshot.sql"),
+  resolve(root, "supabase/migration-archive/historical-never-replay/20270111000002_public_tournament_event_snapshot.sql"),
   "utf8",
 );
 const workflow = readFileSync(

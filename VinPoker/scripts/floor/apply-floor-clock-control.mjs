@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 export const PROJECT_REF = "orlesggcjamwuknxwcpk";
 export const MIGRATION_VERSION = "20270104000004";
 export const MIGRATION_PATH =
-  "supabase/migrations/20270104000004_floor_clock_control_atomic.sql";
+  "supabase/migration-archive/historical-never-replay/20270104000004_floor_clock_control_atomic.sql";
 export const PREDECESSOR_START_MIGRATION_PATH =
   "supabase/migrations/20261241000000_floor_clock_start_atomic.sql";
 export const PREDECESSOR_GET_MIGRATION_PATH =

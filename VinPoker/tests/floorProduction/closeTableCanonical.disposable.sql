@@ -4,7 +4,7 @@
 -- the forward Close Table definition under test. This database has no project
 -- ref, application credentials, or remote connection string.
 \ir disposableDb.integration.sql
-\ir ../../supabase/migrations/20270106000003_close_table_canonical_contract.sql
+\ir ../../supabase/migration-archive/superseded/replaced/20270106000003_close_table_canonical_contract.sql
 
 CREATE TABLE public.floor_test_dealer_release_log (
   table_id uuid NOT NULL,

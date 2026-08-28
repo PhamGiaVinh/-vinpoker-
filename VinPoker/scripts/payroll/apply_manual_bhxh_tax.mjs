@@ -24,8 +24,8 @@ import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..", "..");
-const COL_MIG = "supabase/migrations/20261001000000_dealers_manual_bhxh_tax.sql";
-const FN_MIG = "supabase/migrations/20261001000001_payroll_manual_bhxh_tax_override.sql";
+const COL_MIG = "supabase/migration-archive/historical-never-replay/20261001000000_dealers_manual_bhxh_tax.sql";
+const FN_MIG = "supabase/migration-archive/historical-never-replay/20261001000001_payroll_manual_bhxh_tax_override.sql";
 const FN = "public.calculate_dealer_payroll(uuid,date,date,integer)";
 const CONFIRM_ENV = "CONFIRM_APPLY_MANUAL_BHXH_TAX", CONFIRM_VAL = "APPLY_MANUAL_BHXH_TAX";
 // Golden-diff period (a recent month with attendance). Date strings are passed verbatim.

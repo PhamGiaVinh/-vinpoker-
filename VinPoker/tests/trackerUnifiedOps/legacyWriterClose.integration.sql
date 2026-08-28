@@ -102,7 +102,7 @@ ALTER TABLE public.tournaments
   ADD COLUMN IF NOT EXISTS current_level_id uuid;
 
 \ir ../../supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql
-\ir ../../supabase/migrations/20270108000004_tracker_unified_ops_writer_lock_containment.sql
+\ir ../../supabase/migration-archive/superseded/replaced/20270108000004_tracker_unified_ops_writer_lock_containment.sql
 CREATE TABLE public.floor_test_dealer_release_log (
   table_id uuid NOT NULL,
   released_at timestamptz NOT NULL DEFAULT now()

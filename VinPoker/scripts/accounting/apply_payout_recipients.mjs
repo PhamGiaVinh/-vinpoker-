@@ -26,7 +26,7 @@ import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..", "..");
-const MIG = "supabase/migrations/20261217000000_get_tournament_payout_recipients.sql";
+const MIG = "supabase/migration-archive/historical-never-replay/20261217000000_get_tournament_payout_recipients.sql";
 const CONFIRM_ENV = "CONFIRM_APPLY_PAYOUT_RECIPIENTS";
 const CONFIRM_VAL = "APPLY_PAYOUT_RECIPIENTS";
 const RPC = "get_tournament_payout_recipients";

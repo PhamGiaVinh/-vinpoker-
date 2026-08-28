@@ -17,8 +17,8 @@ import { dirname, resolve } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..", "..");
 const FILES = {
-  enum: "supabase/migrations/20261212000000_staking_refund_enum.sql",
-  schema: "supabase/migrations/20261212000001_staking_refund_schema.sql",
+  enum: "supabase/migration-archive/historical-never-replay/20261212000000_staking_refund_enum.sql",
+  schema: "supabase/migration-archive/historical-never-replay/20261212000001_staking_refund_schema.sql",
 };
 const MARQUEE = {
   enum: /ALTER TYPE public\.staking_deal_status ADD VALUE IF NOT EXISTS 'deal_refunded'/,

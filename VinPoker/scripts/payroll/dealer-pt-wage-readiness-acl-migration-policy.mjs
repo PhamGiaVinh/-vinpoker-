@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 export const PROJECT_REF = "orlesggcjamwuknxwcpk";
@@ -7,7 +7,7 @@ export const BASELINE_MIGRATION_VERSION = "20270105000001";
 export const V2_MIGRATION_VERSION = "20270106000001";
 export const MIGRATION_VERSION = "20270106000002";
 export const MIGRATION_BASENAME = `${MIGRATION_VERSION}_dealer_pt_wage_readiness_acl.sql`;
-export const MIGRATION_PATH = `supabase/migrations/${MIGRATION_BASENAME}`;
+export const MIGRATION_PATH = `supabase/migration-archive/superseded/remote-alias/${MIGRATION_BASENAME}`;
 export const MIGRATION_NAME = `${MIGRATION_VERSION}_dealer_pt_wage_readiness_acl`;
 export const MIGRATION_SHA256 = "d57b53ce40b45b74d27adeea99349a2700e1fcbf687ca2c566a8591f8e87dee4";
 
@@ -35,11 +35,12 @@ export function migrationInventory(vinPokerRoot) {
 export function sourcePolicyProblems(vinPokerRoot) {
   const problems = [];
   const { byVersion } = migrationInventory(vinPokerRoot);
-  const candidates = byVersion.get(MIGRATION_VERSION) ?? [];
-  if (candidates.length !== 1 || candidates[0] !== MIGRATION_BASENAME) {
-    problems.push("candidate migration selector is not unique");
+  const sourcePath = resolve(vinPokerRoot, MIGRATION_PATH);
+  if (!existsSync(sourcePath)) {
+    problems.push("candidate migration source file missing");
+    return problems;
   }
-  const source = readFileSync(resolve(vinPokerRoot, MIGRATION_PATH), "utf8");
+  const source = readFileSync(sourcePath, "utf8");
   if (sha256(normalizeLineEndings(source)) !== MIGRATION_SHA256) problems.push("candidate migration checksum mismatch");
   if (!/\bbegin\s*;/iu.test(source) || !/commit\s*;\s*$/iu.test(source)) {
     problems.push("candidate migration is not transaction-wrapped");
@@ -55,7 +56,7 @@ export function sourcePolicyProblems(vinPokerRoot) {
     if (!source.includes(expected)) problems.push(`candidate migration misses ${expected}`);
   }
   for (const version of [V2_MIGRATION_VERSION, MIGRATION_VERSION]) {
-    if ((byVersion.get(version) ?? []).length !== 1) problems.push(`source migration version collision: ${version}`);
+    if ((byVersion.get(version) ?? []).length > 0) problems.push(`source migration must remain archived: ${version}`);
   }
   return problems;
 }

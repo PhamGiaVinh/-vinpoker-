@@ -5,9 +5,9 @@ on:
     paths:
       - ".github/workflows/tracker-pr2a-disposable-db.yml"
       - "VinPoker/supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql"
-      - "VinPoker/supabase/migrations/20270108000004_tracker_unified_ops_writer_lock_containment.sql"
-      - "VinPoker/supabase/migrations/20270110000002_hand_players_identity_columns_forward_fix.sql"
-      - "VinPoker/supabase/migrations/20270110000005_tracker_hand_completion_projection_sync.sql"
+      - "VinPoker/supabase/migration-archive/superseded/replaced/20270108000004_tracker_unified_ops_writer_lock_containment.sql"
+      - "VinPoker/supabase/migration-archive/historical-never-replay/20270110000002_hand_players_identity_columns_forward_fix.sql"
+      - "VinPoker/supabase/migration-archive/historical-never-replay/20270110000005_tracker_hand_completion_projection_sync.sql"
       - "VinPoker/tests/trackerHandCompletion/**"
       - "VinPoker/tests/trackerUnifiedOps/**"
   workflow_dispatch:
@@ -74,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a \
-            -f supabase/migrations/20270108000004_tracker_unified_ops_writer_lock_containment.sql
+            -f supabase/migration-archive/superseded/replaced/20270108000004_tracker_unified_ops_writer_lock_containment.sql
 
       - name: Prove containment dependency fails closed
         working-directory: VinPoker
@@ -84,7 +84,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a_missing_helper \
             -f tests/trackerUnifiedOps/disposableDb.baseline.sql
           if psql -X -v ON_ERROR_STOP=1 -d tracker_pr2a_missing_helper \
-            -f supabase/migrations/20270108000004_tracker_unified_ops_writer_lock_containment.sql; then
+            -f supabase/migration-archive/superseded/replaced/20270108000004_tracker_unified_ops_writer_lock_containment.sql; then
             echo "Containment unexpectedly applied without PR2A helper" >&2
             exit 1
           fi
@@ -166,12 +166,12 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_hand4 \
             -f tests/trackerHandCompletion/disposableDb.dependencies.sql
           for migration in \
-            supabase/migrations/20261122000000_treg_source_entry_id.sql \
-            supabase/migrations/20261208000000_player_identity_canonical.sql \
-            supabase/migrations/20261209000000_player_entry_link.sql \
+            supabase/migration-archive/historical-never-replay/20261122000000_treg_source_entry_id.sql \
+            supabase/migration-archive/historical-never-replay/20261208000000_player_identity_canonical.sql \
+            supabase/migration-archive/historical-never-replay/20261209000000_player_entry_link.sql \
             supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql \
-            supabase/migrations/20270108000004_tracker_unified_ops_writer_lock_containment.sql \
-            supabase/migrations/20270109000001_tracker_pr2a_reentry_helper_canonicalization.sql; do
+            supabase/migration-archive/superseded/replaced/20270108000004_tracker_unified_ops_writer_lock_containment.sql \
+            supabase/migration-archive/superseded/replaced/20270109000001_tracker_pr2a_reentry_helper_canonicalization.sql; do
             psql -X -v ON_ERROR_STOP=1 -d tracker_hand4 -f "$migration"
           done
           createdb tracker_hand4_rollback -T tracker_hand4
@@ -181,7 +181,7 @@ jobs:
         run: |
           set -euo pipefail
           psql -X -v ON_ERROR_STOP=1 -d tracker_hand4 \
-            -f supabase/migrations/20270110000005_tracker_hand_completion_projection_sync.sql
+            -f supabase/migration-archive/historical-never-replay/20270110000005_tracker_hand_completion_projection_sync.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_hand4 \
             -f tests/trackerUnifiedOps/reentryHelper.integration.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_hand4 \
@@ -196,7 +196,7 @@ jobs:
                     || '|' || md5(pg_get_functiondef('public.auto_finalize_on_last_bust()'::regprocedure))")"
           failing="$RUNNER_TEMP/tracker-hand4-failing.sql"
           awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_hand4_injected_failure;"; print }' \
-            supabase/migrations/20270110000005_tracker_hand_completion_projection_sync.sql > "$failing"
+            supabase/migration-archive/historical-never-replay/20270110000005_tracker_hand_completion_projection_sync.sql > "$failing"
           if psql -X -v ON_ERROR_STOP=1 -d tracker_hand4_rollback -f "$failing"; then
             echo "Injected Hand 4 migration unexpectedly committed" >&2
             exit 1

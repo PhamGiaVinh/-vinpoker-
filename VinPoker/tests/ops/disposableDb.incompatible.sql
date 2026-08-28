@@ -23,4 +23,4 @@ VALUES ('10000000-0000-0000-0000-000000000010', '10000000-0000-0000-0000-0000000
 INSERT INTO public.club_cashiers (club_id, user_id)
 VALUES ('10000000-0000-0000-0000-000000000010', '10000000-0000-0000-0000-000000000001');
 
-\ir ../../supabase/migrations/20270108000000_ops_operator_membership_baseline.sql
+\ir ../../supabase/migration-archive/superseded/remote-alias/20270108000000_ops_operator_membership_baseline.sql

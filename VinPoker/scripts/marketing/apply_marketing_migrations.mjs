@@ -42,14 +42,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..", ".."); // scripts/marketing → VinPoker root
 
 const MIG = {
-  enum: "supabase/migrations/20261101000000_app_role_add_marketing.sql",
-  role: "supabase/migrations/20261101000001_marketing_role.sql",
-  core: "supabase/migrations/20261101000002_marketing_core.sql",
+  enum: "supabase/migration-archive/historical-never-replay/20261101000000_app_role_add_marketing.sql",
+  role: "supabase/migration-archive/historical-never-replay/20261101000001_marketing_role.sql",
+  core: "supabase/migration-archive/historical-never-replay/20261101000002_marketing_core.sql",
   cron: "supabase/migrations/20261101000003_schedule_marketing_dispatch.sql",
-  tg:   "supabase/migrations/20261101000004_marketing_telegram_dedicated.sql",
-  acct: "supabase/migrations/20261101000005_marketing_account_search.sql",
-  fb:   "supabase/migrations/20261101000006_marketing_facebook.sql",
-  auto: "supabase/migrations/20261101000007_marketing_autocontent.sql",
+  tg:   "supabase/migration-archive/historical-never-replay/20261101000004_marketing_telegram_dedicated.sql",
+  acct: "supabase/migration-archive/historical-never-replay/20261101000005_marketing_account_search.sql",
+  fb:   "supabase/migration-archive/historical-never-replay/20261101000006_marketing_facebook.sql",
+  auto: "supabase/migration-archive/historical-never-replay/20261101000007_marketing_autocontent.sql",
   autocron: "supabase/migrations/20261101000008_schedule_marketing_autocontent.sql",
 };
 const REQUIRED = {

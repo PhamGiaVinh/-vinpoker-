@@ -6,7 +6,7 @@ import { getOpsModule } from "../../src/ops/registry/opsModuleRegistry";
 
 const repo = resolve(import.meta.dirname, "../..");
 const migration = readFileSync(
-  resolve(repo, "supabase/migrations/20270110000001_ops_accountant_payroll_approval_guard.sql"),
+  resolve(repo, "supabase/migration-archive/historical-never-replay/20270110000001_ops_accountant_payroll_approval_guard.sql"),
   "utf8",
 );
 const opsApp = readFileSync(resolve(repo, "src/OpsApp.tsx"), "utf8");

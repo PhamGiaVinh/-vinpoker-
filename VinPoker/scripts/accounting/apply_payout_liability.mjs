@@ -33,7 +33,7 @@ import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..", "..");
-const MIG = "supabase/migrations/20261216000000_accounting_payout_liability.sql";
+const MIG = "supabase/migration-archive/superseded/replaced/20261216000000_accounting_payout_liability.sql";
 const CONFIRM_ENV = "CONFIRM_APPLY_PAYOUT_LIABILITY";
 const CONFIRM_VAL = "APPLY_PAYOUT_LIABILITY";
 const RPCS = ["get_club_payout_liability", "record_tournament_prize_payment"];

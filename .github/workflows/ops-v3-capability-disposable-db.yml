@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/ops-v3-capability-disposable-db.yml"
-      - "VinPoker/supabase/migrations/20270110000000_ops_unified_capability_scope.sql"
+      - "VinPoker/supabase/migration-archive/historical-never-replay/20270110000000_ops_unified_capability_scope.sql"
       - "VinPoker/src/ops/auth/opsCapabilityContract.ts"
       - "VinPoker/src/ops/auth/opsCapabilityContract.test.ts"
       - "VinPoker/tests/opsV3Capability/**"
@@ -86,7 +86,7 @@ jobs:
         working-directory: VinPoker
         env:
           PGPASSWORD: ""
-        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270110000000_ops_unified_capability_scope.sql
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migration-archive/historical-never-replay/20270110000000_ops_unified_capability_scope.sql
 
       - name: Run PostgreSQL 17 capability assertions
         working-directory: VinPoker

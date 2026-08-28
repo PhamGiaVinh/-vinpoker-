@@ -4,8 +4,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/ops-club-operator-invites-disposable-db.yml"
-      - "VinPoker/supabase/migrations/20270108000000_ops_operator_membership_baseline.sql"
-      - "VinPoker/supabase/migrations/20270108000001_ops_club_operator_invites.sql"
+      - "VinPoker/supabase/migration-archive/superseded/remote-alias/20270108000000_ops_operator_membership_baseline.sql"
+      - "VinPoker/supabase/migration-archive/superseded/remote-alias/20270108000001_ops_club_operator_invites.sql"
       - "VinPoker/supabase/functions/ops-club-accounts/**"
       - "VinPoker/src/ops/auth/**"
       - "VinPoker/src/ops/pages/OpsAccount.tsx"
