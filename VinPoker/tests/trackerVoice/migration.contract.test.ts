@@ -40,6 +40,10 @@ const workflow = readFileSync(
   resolve(root, "../.github/workflows/tracker-voice-v0-disposable-db.yml"),
   "utf8",
 ).replace(/\r\n/g, "\n");
+const recordActionAuthorityWorkflow = readFileSync(
+  resolve(root, "../.github/workflows/tracker-record-action-authority-hotfix-db.yml"),
+  "utf8",
+).replace(/\r\n/g, "\n");
 const flags = readFileSync(resolve(root, "src/lib/featureFlags.ts"), "utf8");
 const sessionEdge = readFileSync(
   resolve(root, "supabase/functions/tracker-voice-session/index.ts"),
@@ -167,6 +171,7 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(workflow).toContain("20270108000003_tracker_unified_ops_v2_context_safe_start.sql");
     expect(workflow).toContain(geminiMigrationName);
     expect(workflow).toContain(transcribeBindingMigrationName);
+    expect(recordActionAuthorityWorkflow).toContain(transcribeBindingMigrationName);
     expect(workflow).toContain("TRACKER_VOICE_P0_CATALOG_UNCHANGED=PASS");
     expect(workflow).toContain("TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS");
     expect(workflow).not.toMatch(/--linked|db push|migration repair|functions deploy|vercel --prod/i);
