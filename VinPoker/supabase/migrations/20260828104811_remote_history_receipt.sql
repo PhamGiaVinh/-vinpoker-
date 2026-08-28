@@ -1,0 +1,6 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20260828104811
+-- Remote ledger name: 20270113000004_dealer_payroll_statement_telegram_delivery
+-- This version already exists in the linked production migration ledger.
+-- The historical source is not replayable from the active catalog.
+-- This comment-only file preserves local lineage metadata and MUST NOT represent a schema change.

@@ -1,0 +1,6 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20260428144425
+-- Remote ledger name: 53b3e896-323b-45b5-82e3-921bdaccaa91
+-- This version already exists in the linked production migration ledger.
+-- The historical source is not replayable from the active catalog.
+-- This comment-only file preserves local lineage metadata and MUST NOT represent a schema change.

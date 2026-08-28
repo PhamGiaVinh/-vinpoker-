@@ -109,6 +109,72 @@ function runFixture(options, appliedVersions, pushPlan = null) {
   }
 }
 
+function runReconciliationFixture({ activeHistorical = false, activePending = false } = {}) {
+  const paths = fixture({});
+  const historicalFilename = "20260605000001_legacy.sql";
+  const historicalSource = "-- preserved historical source\n";
+  const historicalArchive = join(paths.archive, historicalFilename);
+  writeFileSync(historicalArchive, historicalSource, "utf8");
+  if (activeHistorical)
+    writeFileSync(join(paths.migrations, historicalFilename), historicalSource, "utf8");
+
+  const pendingFilename = "20270113000007_pending.sql";
+  const pendingSource = "-- pending owner-gated source\n";
+  const pendingDirectory = join(paths.root, "pending");
+  mkdirSync(pendingDirectory);
+  const pendingPath = join(pendingDirectory, pendingFilename);
+  writeFileSync(pendingPath, pendingSource, "utf8");
+  if (activePending)
+    writeFileSync(join(paths.migrations, pendingFilename), pendingSource, "utf8");
+
+  const remoteVersion = "20260428144425";
+  const remoteReceiptFilename = `${remoteVersion}_remote_history_receipt.sql`;
+  const remoteReceiptSource = `-- remote history receipt\n-- version ${remoteVersion}\n`;
+  writeFileSync(join(paths.migrations, remoteReceiptFilename), remoteReceiptSource, "utf8");
+  const reconciliationPath = join(paths.root, "reconciliation.json");
+  writeFileSync(
+    reconciliationPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      kind: "floor-v3-catalog-reconciliation",
+      registeredProductionHead: "20270112000008",
+      remoteLedgerVersions: [{ version: remoteVersion, name: "legacy-remote" }],
+      remoteHistoryReceipts: [{
+        remoteVersion,
+        remoteName: "legacy-remote",
+        receiptFilename: remoteReceiptFilename,
+        receiptSha256: hash(remoteReceiptSource),
+      }],
+      historicalSources: [{
+        originalVersion: "20260605000001",
+        filename: historicalFilename,
+        archivePath: historicalArchive,
+        sha256: hash(historicalSource),
+      }],
+      pendingSources: [{
+        version: "20270113000007",
+        filename: pendingFilename,
+        pendingPath,
+        sha256: hash(pendingSource),
+      }],
+      floorActiveAllowlist: FLOOR.map(([version, filename]) => ({ version, filename })),
+      counts: { historicalSources: 1 },
+    }),
+    "utf8",
+  );
+  try {
+    return evaluatePromotion({
+      migrationDirectory: paths.migrations,
+      archiveDirectory: paths.archive,
+      manifestPath: paths.manifestPath,
+      reconciliationManifestPath: reconciliationPath,
+      pushPlan: exactPlan,
+    });
+  } finally {
+    rmSync(paths.root, { recursive: true, force: true });
+  }
+}
+
 const exactPlan = {
   commandMode: "dry-run",
   includeAll: false,
@@ -237,4 +303,21 @@ test("classifies canonical, alias, schema-only and absent lineage separately", (
     }).classification,
     "NOT_APPLIED",
   );
+});
+
+test("fails when a historical migration remains replayable", () => {
+  const result = runReconciliationFixture({ activeHistorical: true });
+  assert.equal(result.pass, false);
+  assert.match(result.failures.join("\n"), /historical migration remains replayable/);
+});
+
+test("accepts a comment-only remote history receipt with ledger evidence", () => {
+  const result = runReconciliationFixture();
+  assert.equal(result.pass, true);
+});
+
+test("fails when an unrelated pending migration is active", () => {
+  const result = runReconciliationFixture({ activePending: true });
+  assert.equal(result.pass, false);
+  assert.match(result.failures.join("\n"), /pending migration is active/);
 });

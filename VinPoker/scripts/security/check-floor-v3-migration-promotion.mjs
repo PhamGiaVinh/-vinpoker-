@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const VERSIONED_MIGRATION = /^(\d{14})_.+\.sql$/u;
+const CLI_VISIBLE_NON_VERSIONED_MIGRATION = /^\d+_.+\.sql$/u;
 const SOURCE_READY = "FLOOR_V3_MIGRATION_PROMOTION_SOURCE_READY";
 const STATIC_READY = "PROMOTION_STATIC_PASS";
 const CLI_BLOCKED = "FLOOR_V3_PROMOTION_BLOCKED_SUPABASE_CLI";
@@ -48,6 +49,41 @@ function readManifest(manifestPath) {
     );
   }
   return manifest;
+}
+
+function readReconciliationManifest(manifestPath) {
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  if (manifest.schemaVersion !== 1 || manifest.kind !== "floor-v3-catalog-reconciliation") {
+    throw new Error("unsupported Floor V3 reconciliation manifest schema");
+  }
+  for (const field of [
+    "remoteLedgerVersions",
+    "remoteHistoryReceipts",
+    "historicalSources",
+    "pendingSources",
+    "floorActiveAllowlist",
+  ]) {
+    if (!Array.isArray(manifest[field])) {
+      throw new Error(`reconciliation manifest must contain ${field}[]`);
+    }
+  }
+  if (!/^\d{14}$/u.test(manifest.registeredProductionHead ?? "")) {
+    throw new Error("reconciliation manifest registeredProductionHead is required");
+  }
+  return manifest;
+}
+
+function isCommentOnly(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//gu, "")
+    .replace(/--[^\r\n]*/gu, "")
+    .trim().length === 0;
+}
+
+function reconciliationPath(root, value) {
+  return value && resolve(value).startsWith(resolve(root))
+    ? resolve(value)
+    : resolve(root, value);
 }
 
 function normalizePushPlanEntry(entry) {
@@ -140,6 +176,7 @@ function evaluatePromotion({
   manifestPath,
   appliedVersions = null,
   pushPlan = null,
+  reconciliationManifestPath = null,
 }) {
   const failures = [];
   let manifest;
@@ -159,6 +196,11 @@ function evaluatePromotion({
   }
 
   const active = listActiveMigrations(migrationDirectory);
+  for (const entry of readdirSync(migrationDirectory, { withFileTypes: true })) {
+    if (entry.isFile() && CLI_VISIBLE_NON_VERSIONED_MIGRATION.test(entry.name) && !VERSIONED_MIGRATION.test(entry.name)) {
+      failures.push(`CLI-visible non-versioned migration remains active: ${entry.name}`);
+    }
+  }
   const activeByFilename = new Map(active.map((row) => [row.filename, row]));
   const activeByVersion = new Map();
   for (const row of active) {
@@ -225,6 +267,98 @@ function evaluatePromotion({
   const expectedFloorFilenames = manifest.floorActiveAllowlist.map(
     (entry) => entry.filename,
   );
+
+  if (reconciliationManifestPath) {
+    try {
+      const reconciliation = readReconciliationManifest(reconciliationManifestPath);
+      const reconciliationRoot = resolve(
+        dirname(reconciliationManifestPath),
+        "..",
+        "..",
+      );
+      const remoteVersions = new Set(
+        reconciliation.remoteLedgerVersions.map((entry) => entry.version),
+      );
+      const floorAllowlist = new Set(expectedFloorFilenames);
+      const receiptByVersion = new Map();
+      for (const receipt of reconciliation.remoteHistoryReceipts) {
+        if (receiptByVersion.has(receipt.remoteVersion)) {
+          failures.push(`duplicate remote history receipt: ${receipt.remoteVersion}`);
+        }
+        receiptByVersion.set(receipt.remoteVersion, receipt);
+        const activeReceipt = activeByFilename.get(receipt.receiptFilename);
+        if (!activeReceipt || activeReceipt.version !== receipt.remoteVersion) {
+          failures.push(`remote history receipt is not active at its ledger version: ${receipt.receiptFilename}`);
+        } else {
+          const source = readFileSync(activeReceipt.path, "utf8");
+          if (!isCommentOnly(source)) {
+            failures.push(`remote history receipt is not comment-only: ${receipt.receiptFilename}`);
+          }
+          if (sha256(activeReceipt.path) !== receipt.receiptSha256) {
+            failures.push(`remote history receipt hash drift: ${receipt.receiptFilename}`);
+          }
+        }
+        if (!remoteVersions.has(receipt.remoteVersion)) {
+          failures.push(`remote history receipt lacks remote ledger evidence: ${receipt.remoteVersion}`);
+        }
+      }
+
+      for (const source of reconciliation.historicalSources) {
+        if (activeByFilename.has(source.filename)) {
+          failures.push(`historical migration remains replayable: ${source.filename}`);
+        }
+        const archivePath = reconciliationPath(reconciliationRoot, source.archivePath);
+        if (!existsSync(archivePath)) {
+          failures.push(`historical archive missing: ${source.filename}`);
+        } else if (sha256(archivePath) !== source.sha256) {
+          failures.push(`historical archive hash drift: ${source.filename}`);
+        }
+      }
+
+      for (const pending of reconciliation.pendingSources) {
+        if (activeByFilename.has(pending.filename) || activeByVersion.has(pending.version)) {
+          failures.push(`pending migration is active: ${pending.filename}`);
+        }
+        const pendingPath = reconciliationPath(reconciliationRoot, pending.pendingPath);
+        if (!existsSync(pendingPath)) {
+          failures.push(`pending migration source missing: ${pending.filename}`);
+        } else if (sha256(pendingPath) !== pending.sha256) {
+          failures.push(`pending migration hash drift: ${pending.filename}`);
+        }
+      }
+      for (const historical of reconciliation.nonVersionedSources ?? []) {
+        if (existsSync(join(migrationDirectory, historical.filename))) {
+          failures.push(`CLI-visible historical helper remains active: ${historical.filename}`);
+        }
+      }
+
+      const head = reconciliation.registeredProductionHead;
+      for (const row of active) {
+        if (floorAllowlist.has(row.filename)) continue;
+        if (!remoteVersions.has(row.version)) {
+          failures.push(
+            row.version < head
+              ? `replayable historical migration not reconciled: ${row.filename}`
+              : `unexpected active migration outside Floor allowlist: ${row.filename}`,
+          );
+        }
+      }
+      const expectedRemoteOnly = reconciliation.remoteLedgerVersions.filter(
+        (entry) => !active.some((row) => row.version === entry.version && !row.filename.includes("_remote_history_receipt.sql")),
+      );
+      for (const entry of expectedRemoteOnly) {
+        const receipt = receiptByVersion.get(entry.version);
+        if (!receipt) failures.push(`missing remote history receipt: ${entry.version}`);
+      }
+      if (reconciliation.counts?.historicalSources !== reconciliation.historicalSources.length) {
+        failures.push("reconciliation historical source count mismatch");
+      }
+    } catch (error) {
+      failures.push(
+        `reconciliation manifest invalid: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
   const historicalLedgerGaps = appliedVersions
     ? active
         .filter((row) => !appliedVersions.has(row.version))
@@ -332,6 +466,7 @@ export {
   listActiveMigrations,
   normalizePushPlanEntry,
   readManifest,
+  readReconciliationManifest,
   readPushPlanReceipt,
 };
 
@@ -349,6 +484,10 @@ if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
   const manifestPath = resolve(
     args.get("manifest") ??
       join(archiveDirectory, "floor-v3-migration-promotion.manifest.json"),
+  );
+  const reconciliationManifestPath = resolve(
+    args.get("reconciliation") ??
+      join(repoRoot, "supabase", "migration-archive", "floor-v3-catalog-reconciliation.manifest.json"),
   );
   let appliedVersions = null;
   let pushPlan = null;
@@ -399,7 +538,15 @@ if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
       manifestPath,
       appliedVersions,
       pushPlan,
+      reconciliationManifestPath: existsSync(reconciliationManifestPath)
+        ? reconciliationManifestPath
+        : null,
     });
+    if (args.has("static") && !existsSync(reconciliationManifestPath)) {
+      result.pass = false;
+      result.failures.push("reconciliation manifest is required for static catalog checks");
+      result.status = "FLOOR_V3_PROMOTION_RECONCILIATION_FAIL";
+    }
     if (!args.has("static") && !pushPlan) {
       result.status = CLI_BLOCKED;
       result.pass = false;

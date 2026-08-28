@@ -3,6 +3,7 @@
   "promotion": "floor-v3",
   "targetProjectRef": "orlesggcjamwuknxwcpk",
   "createdFrom": "b64c6e2705af6b8e6325995f2065554f91500220",
+  "reconciliationManifest": "supabase/migration-archive/floor-v3-catalog-reconciliation.manifest.json",
   "floorActiveAllowlist": [
     {
       "version": "20270113000002",

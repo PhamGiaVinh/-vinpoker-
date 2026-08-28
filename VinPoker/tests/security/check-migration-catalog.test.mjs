@@ -273,3 +273,37 @@ test("guards scheduler-free payment containment from HTTP regressions", () => {
     },
   );
 });
+
+test("fails a replayable historical migration when reconciliation is supplied", () => {
+  const root = mkdtempSync(join(tmpdir(), "vinpoker-migration-reconciliation-"));
+  const migrations = join(root, "migrations");
+  const reconciliation = join(root, "reconciliation.json");
+  mkdirSync(migrations);
+  try {
+    writeFileSync(
+      join(migrations, "20260605000001_unreconciled.sql"),
+      "-- old source\n",
+      "utf8",
+    );
+    writeFileSync(
+      reconciliation,
+      JSON.stringify({
+        schemaVersion: 1,
+        kind: "floor-v3-catalog-reconciliation",
+        registeredProductionHead: "20270112000008",
+        remoteLedgerVersions: [],
+        remoteHistoryReceipts: [],
+        historicalSources: [],
+        pendingSources: [],
+        floorActiveAllowlist: [],
+      }),
+      "utf8",
+    );
+    assert.deepEqual(
+      findMigrationCatalogProblems(migrations, reconciliation),
+      ["replayable historical migration not reconciled 20260605000001_unreconciled.sql"],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -5,6 +5,12 @@ on:
     paths:
       - "VinPoker/supabase/migrations/**"
       - "VinPoker/supabase/migration-archive/never-apply/**"
+      - "VinPoker/supabase/migration-archive/historical-never-replay/**"
+      - "VinPoker/supabase/migration-archive/legacy-unapplied/**"
+      - "VinPoker/supabase/migration-archive/superseded/**"
+      - "VinPoker/supabase/migration-archive/remote-history/**"
+      - "VinPoker/supabase/migration-archive/floor-v3-catalog-reconciliation.manifest.json"
+      - "VinPoker/supabase/pending-migrations/**"
       - "VinPoker/scripts/security/check-migration-catalog.mjs"
       - "VinPoker/scripts/security/check-floor-v3-migration-promotion.mjs"
       - "VinPoker/tests/security/check-migration-catalog.test.mjs"
