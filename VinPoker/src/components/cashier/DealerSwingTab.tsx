@@ -54,6 +54,7 @@ import DealerSwingSummaryStrip from "./dealer-swing/DealerSwingSummaryStrip";
 import { TierBadge, TableTypeBadge, StatusPill } from "./dealer-swing/SwingBadges";
 import DealerSwingInfraHealth from "./dealer-swing/DealerSwingInfraHealth";
 import {
+  staleCleanupCandidateAttendanceIds,
   staleCleanupAttendanceIds,
   summarizeDealerCheckoutBatch,
   unresolvedCheckoutAttendanceIds,
@@ -274,6 +275,12 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       (dealer) => dealer.current_state !== "on_break" && !restingAttendanceIds.has(dealer.id),
     ),
     [dealers, restingAttendanceIds],
+  );
+  // Read-only, reload-safe prefilter for the stale cleanup affordance. The
+  // server still owns the final decision and evidence checks when cleanup runs.
+  const staleCleanupCandidateIds = useMemo(
+    () => staleCleanupCandidateAttendanceIds(dealers ?? [], nowMs),
+    [dealers, nowMs],
   );
 
   // Manual "Gán dealer" dropdown: only dealers eligible to be assigned right now —
@@ -1922,6 +1929,17 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
           </AlertDialogContent>
         </AlertDialog>
 
+        {(staleCleanupIds.length > 0 || staleCleanupCandidateIds.length > 0) && (
+          <StaleCleanupCard
+            attendanceIds={staleCleanupIds.length > 0 ? staleCleanupIds : staleCleanupCandidateIds}
+            processing={processing}
+            onRequestCleanup={(ids) => {
+              setStaleCleanupIds(ids);
+              setStaleCleanupConfirmOpen(true);
+            }}
+          />
+        )}
+
         {/* Mobile tab bar (<md only). Tablet (md–lg) stacks all 3; desktop = 3-col. */}
         <div className="md:hidden mb-3 flex gap-1 rounded-xl border border-border/60 bg-card/70 p-1">
           {([
@@ -2035,8 +2053,6 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                   onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
                   onCheckoutOpen={() => setCheckoutOpen(true)}
                   onBatchCheckout={handleBatchCheckoutClick}
-                  staleCleanupIds={staleCleanupIds}
-                  onRequestStaleCleanup={() => setStaleCleanupConfirmOpen(true)}
                   onReCheckin={doReCheckin}
                   breakPolicies={breakPolicies ?? []}
                   onMealBreak={handleMealBreak}
@@ -3073,10 +3089,48 @@ function BreakDurationDialog({
   );
 }
 
+function StaleCleanupCard({
+  attendanceIds,
+  processing,
+  onRequestCleanup,
+}: {
+  attendanceIds: string[];
+  processing: string | null;
+  onRequestCleanup: (ids: string[]) => void;
+}) {
+  if (attendanceIds.length === 0) return null;
+
+  return (
+    <Card className="mt-3 border-warning/40 bg-warning/10 p-3" role="region" aria-label="Ca treo cần xử lý">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground">
+            {attendanceIds.length} ca có thể là ca treo
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Ca quá 24 giờ hoặc thiếu giờ vào. Máy chủ sẽ kiểm tra lại bằng chứng kết thúc,
+            giữ nguyên lương/OT và để riêng ca không đủ bằng chứng.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-3 min-h-10 w-full border-warning/50 text-sm text-warning hover:bg-warning/10"
+            disabled={processing === "checkout"}
+            onClick={() => onRequestCleanup(attendanceIds)}
+          >
+            {processing === "checkout" ? "Đang dọn..." : `Dọn ${attendanceIds.length} ca treo`}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function RosterPanel({
   dealers, assignments, swingConfigs, processing, totalDealers, checkedInCount,
   checkedOutDealers, onSendToBreak, onCheckinOpen, onCheckoutOpen,
-  onBatchCheckout, staleCleanupIds, onRequestStaleCleanup, onReCheckin, breakPolicies, onMealBreak, mealBreakAvailability,
+  onBatchCheckout, onReCheckin, breakPolicies, onMealBreak, mealBreakAvailability,
 }: {
   dealers: DealerAttendance[];
   assignments: DealerAssignment[];
@@ -3089,8 +3143,6 @@ function RosterPanel({
   onCheckinOpen: () => void;
   onCheckoutOpen: () => void;
   onBatchCheckout: (ids: string[]) => void;
-  staleCleanupIds: string[];
-  onRequestStaleCleanup: () => void;
   onReCheckin: (dealerId: string) => void;
   breakPolicies: ShiftBreakPolicy[];
   onMealBreak: (attendanceId: string) => void;
@@ -3410,32 +3462,6 @@ function RosterPanel({
           />
         )}
       </div>
-
-      {/* ── Sticky batch action footer ── */}
-      {staleCleanupIds.length > 0 && (
-        <div className="mt-2 border border-warning/40 bg-warning/10 p-2.5">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-foreground">
-                {staleCleanupIds.length} ca không thể check-out thường
-              </p>
-              <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-                Ca quá 24 giờ hoặc thiếu giờ vào. Dọn riêng để không tính lại lương/OT.
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-2 h-8 w-full border-warning/50 text-xs text-warning"
-                disabled={processing === "checkout"}
-                onClick={onRequestStaleCleanup}
-              >
-                Dọn {staleCleanupIds.length} ca treo
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {batchMode && selectedIds.size > 0 && (
         <div className="sticky bottom-0 bg-card border-t border-border p-2 mt-2 flex items-center gap-2 rounded-b-lg">

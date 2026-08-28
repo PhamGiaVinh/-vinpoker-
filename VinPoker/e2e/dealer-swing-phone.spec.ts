@@ -34,6 +34,7 @@ const jsonHeaders = {
 };
 
 let checkoutRequests: Array<Record<string, unknown>> = [];
+let staleFixture = false;
 
 function todayInClub(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -101,7 +102,7 @@ function attendanceRows() {
       dealer_id: DEALER_ONE,
       shift_date: todayInClub(),
       status: "checked_in",
-      check_in_time: isoAt(9),
+      check_in_time: staleFixture ? new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString() : isoAt(9),
       check_out_time: null,
       overtime_minutes: 0,
       current_state: "assigned",
@@ -398,10 +399,21 @@ async function assertFitsViewport(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   checkoutRequests = [];
+  staleFixture = false;
   await installFixtureRoutes(page);
   await page.addInitScript((session) => {
     localStorage.setItem("sb-127-auth-token", JSON.stringify(session));
   }, localSession());
+});
+
+test("shows the stale cleanup action after reload before a checkout attempt", async ({ page }) => {
+  test.setTimeout(150_000);
+  staleFixture = true;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/dealer-swing", { waitUntil: "domcontentloaded", timeout: 120_000 });
+  await expect(page.getByText("1 ca có thể là ca treo", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Dọn 1 ca treo", exact: true })).toBeVisible();
+  expect(checkoutRequests).toEqual([]);
 });
 
 test("desktop checkout exposes guarded stale cleanup only after the server rejects the row", async ({ page }, testInfo) => {
@@ -417,7 +429,7 @@ test("desktop checkout exposes guarded stale cleanup only after the server rejec
   await page.getByRole("option", { name: "An Nguyen" }).click();
   await page.getByRole("button", { name: "Check-out", exact: true }).click();
 
-  await expect(page.getByText("1 ca không thể check-out thường", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 ca có thể là ca treo", { exact: true })).toBeVisible();
   expect(checkoutRequests).toEqual([{ attendance_id: ATTENDANCE_ONE }]);
 
   await page.getByRole("button", { name: "Dọn 1 ca treo", exact: true }).click();
@@ -429,7 +441,7 @@ test("desktop checkout exposes guarded stale cleanup only after the server rejec
   });
 
   await page.getByRole("button", { name: "Dọn 1 ca treo", exact: true }).click();
-  await expect(page.getByText("1 ca không thể check-out thường", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("1 ca có thể là ca treo", { exact: true })).toHaveCount(0);
   expect(checkoutRequests).toEqual([
     { attendance_id: ATTENDANCE_ONE },
     { attendance_ids: [ATTENDANCE_ONE], mode: "stale_cleanup" },
