@@ -4,6 +4,7 @@ const migration = await Deno.readTextFile(new URL("../migrations/20270113000008_
 const edge = await Deno.readTextFile(new URL("../functions/send-payroll-statement/index.ts", import.meta.url));
 const config = await Deno.readTextFile(new URL("../config.toml", import.meta.url));
 const disposableScript = await Deno.readTextFile(new URL("../../scripts/deploy/test-dealer-pt-wage-disposable.ps1", import.meta.url));
+const disposableBootstrap = await Deno.readTextFile(new URL("../../scripts/deploy/disposable-public-schema-bootstrap.sql", import.meta.url));
 const lifecycleSql = await Deno.readTextFile(new URL("dealer_payroll_statement_ft_ui.sql", import.meta.url));
 
 Deno.test("delivery contract is dark by default and requires the statement rollout", () => {
@@ -16,6 +17,10 @@ Deno.test("delivery contract is dark by default and requires the statement rollo
   assertStringIncludes(migration, "_assert_dealer_payroll_statement_finalizer(p_club_id)");
   assert(!/grant\s+execute\s+on\s+function\s+public\.claim_dealer_payroll_statement_delivery_target[^;]+authenticated/i.test(migration));
   assertStringIncludes(migration, "grant execute on function public.claim_dealer_payroll_statement_delivery_target(uuid) to service_role");
+});
+
+Deno.test("disposable service worker preserves Supabase RLS authority", () => {
+  assertStringIncludes(disposableBootstrap, "ALTER ROLE service_role BYPASSRLS");
 });
 
 Deno.test("delivery is operation-idempotent and has a per-statement send guard", () => {
