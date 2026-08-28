@@ -1,0 +1,127 @@
+name: Dealer payroll Telegram HSOP - controlled runtime gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Exact SHA already deployed for payroll frontend and both payroll Edge functions"
+        required: true
+        type: string
+      mode:
+        description: "Read-only preflight, enable HSOP, or emergency disable HSOP"
+        required: true
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - enable_hsop
+          - disable_hsop
+      confirmation:
+        description: "ENABLE_DEALER_PAYROLL_STATEMENT_DELIVERY_HSOP or DISABLE_DEALER_PAYROLL_STATEMENT_DELIVERY_HSOP"
+        required: true
+        default: HOLD
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  deployments: read
+
+concurrency:
+  group: dealer-payroll-statement-delivery-hsop-runtime-gate
+  cancel-in-progress: false
+
+env:
+  CRITICAL_ENVIRONMENT: dealer-swing-production-critical
+  PROJECT_REF: orlesggcjamwuknxwcpk
+
+jobs:
+  validate-critical-environment:
+    name: Require protected critical environment
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail closed unless required reviewers are configured
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          environment_json="$(gh api "repos/${GITHUB_REPOSITORY}/environments/${CRITICAL_ENVIRONMENT}")"
+          jq -e '
+            .protection_rules
+            | any(.type == "required_reviewers" and ((.reviewers // []) | length > 0))
+          ' <<<"$environment_json" >/dev/null
+
+  runtime-gate:
+    needs: validate-critical-environment
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: dealer-swing-production-critical
+    steps:
+      - name: Checkout reviewed runtime-gate runner
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          path: control-plane
+          fetch-depth: 0
+
+      - name: Checkout exact deployed payroll source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: deployed-source
+          fetch-depth: 0
+
+      - name: Verify exact deployed source and mode confirmation
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.source_sha }}
+          MODE: ${{ inputs.mode }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git -C deployed-source rev-parse HEAD)" = "$TARGET_SHA"
+          git -C control-plane fetch --no-tags origin main
+          git -C control-plane merge-base --is-ancestor "$TARGET_SHA" origin/main
+          case "$MODE" in
+            preflight) test "$CONFIRMATION" = "HOLD" ;;
+            enable_hsop) test "$CONFIRMATION" = "ENABLE_DEALER_PAYROLL_STATEMENT_DELIVERY_HSOP" ;;
+            disable_hsop) test "$CONFIRMATION" = "DISABLE_DEALER_PAYROLL_STATEMENT_DELIVERY_HSOP" ;;
+            *) exit 1 ;;
+          esac
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "20"
+
+      - name: Test exact runtime-gate runner
+        working-directory: control-plane/VinPoker
+        run: node --test scripts/payroll/set-dealer-payroll-statement-delivery-hsop-uat.test.mjs
+
+      - name: Verify exact production deployment receipts
+        working-directory: control-plane/VinPoker
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/payroll/verify-dealer-payroll-statement-delivery-receipts.mjs
+          --repository "${GITHUB_REPOSITORY}"
+          --sha "${{ inputs.source_sha }}"
+
+      - name: Preflight or change the exact HSOP delivery runtime gate
+        working-directory: control-plane/VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ env.PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          CONFIRM_DEALER_PAYROLL_DELIVERY_HSOP: ${{ inputs.confirmation }}
+        run: |
+          case "${{ inputs.mode }}" in
+            preflight) node scripts/payroll/set-dealer-payroll-statement-delivery-hsop-uat.mjs --preflight ;;
+            enable_hsop) node scripts/payroll/set-dealer-payroll-statement-delivery-hsop-uat.mjs --enable-hsop ;;
+            disable_hsop) node scripts/payroll/set-dealer-payroll-statement-delivery-hsop-uat.mjs --disable-hsop ;;
+            *) exit 1 ;;
+          esac

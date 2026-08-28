@@ -23,6 +23,10 @@ const payrollReadinessAclApplyWorkflow = readFileSync(
   resolve(root, ".github/workflows/dealer-pt-wage-readiness-acl-apply.yml"),
   "utf8",
 );
+const payrollDeliveryHsopGateWorkflow = readFileSync(
+  resolve(root, ".github/workflows/dealer-payroll-statement-delivery-hsop-uat.yml"),
+  "utf8",
+);
 
 test("frontend cannot run after a required critical deployment failure", () => {
   assert.match(workflow, /needs\.plan\.outputs\.critical_functions == '\[\]' \|\| needs\.deploy-critical-edge\.result == 'success'/);
@@ -151,11 +155,28 @@ test("pinned actionlint validation is read-only and uses no production secret", 
   assert.match(validationWorkflow, /sha256sum --check --strict/);
   assert.match(validationWorkflow, /\.github\/workflows\/vbackerworkflowmain\.yml/);
   assert.match(validationWorkflow, /\.github\/workflows\/dealer-payroll-statement-contract-apply\.yml/);
+  assert.match(validationWorkflow, /\.github\/workflows\/dealer-payroll-statement-delivery-hsop-uat\.yml/);
   assert.match(validationWorkflow, /\.github\/workflows\/deployment-control-plane-validation\.yml/);
   assert.doesNotMatch(validationWorkflow, /find \.github\/workflows/);
   assert.doesNotMatch(validationWorkflow, /\bsecrets\./);
   assert.doesNotMatch(validationWorkflow, /supabase\s+(?:functions\s+deploy|db\s+(?:push|reset))/i);
   assert.doesNotMatch(validationWorkflow, /vercel\s+(?:deploy|--prod)/i);
+});
+
+test("payroll Telegram HSOP runtime gate stays manual, exact-source, and narrowly scoped", () => {
+  assert.match(payrollDeliveryHsopGateWorkflow, /workflow_dispatch:/);
+  assert.doesNotMatch(payrollDeliveryHsopGateWorkflow, /pull_request:/);
+  assert.match(payrollDeliveryHsopGateWorkflow, /source_sha:/);
+  assert.match(payrollDeliveryHsopGateWorkflow, /enable_hsop/);
+  assert.match(payrollDeliveryHsopGateWorkflow, /disable_hsop/);
+  assert.match(payrollDeliveryHsopGateWorkflow, /dealer-swing-production-critical/);
+  assert.match(payrollDeliveryHsopGateWorkflow, /required_reviewers/);
+  assert.match(payrollDeliveryHsopGateWorkflow, /merge-base --is-ancestor/);
+  assert.match(payrollDeliveryHsopGateWorkflow, /verify-dealer-payroll-statement-delivery-receipts\.mjs/);
+  assert.match(payrollDeliveryHsopGateWorkflow, /set-dealer-payroll-statement-delivery-hsop-uat\.mjs/);
+  assert.doesNotMatch(payrollDeliveryHsopGateWorkflow, /all_clubs_enabled\s*=\s*true/);
+  assert.doesNotMatch(payrollDeliveryHsopGateWorkflow, /supabase\s+(?:db\s+(?:push|reset)|functions\s+deploy)/i);
+  assert.doesNotMatch(payrollDeliveryHsopGateWorkflow, /vercel\s+(?:deploy|--prod)/i);
 });
 
 test("schema capture is manual, protected, schema-only, and retains no raw output in summaries", () => {
