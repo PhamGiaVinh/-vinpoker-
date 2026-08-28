@@ -66,6 +66,8 @@ import SwingTableCard, { type ConfirmSwingRequest } from "./dealer-swing/SwingTa
 import { deriveTableSwingView, deriveDealerTableStatus, formatTimeHHmm, type TableTimeline } from "./dealer-swing/swingTableView";
 import DealerStatusLegend from "./dealer-swing/DealerStatusLegend";
 import DealerSearchPanel from "./dealer-swing/DealerSearchPanel";
+import TableAllocationBoard from "./dealer-swing/TableAllocationBoard";
+import { DealerSwingTableViews } from "./dealer-swing/DealerSwingTableViews";
 import { FeatureTablePoolBox } from "./dealer-swing/FeatureTablePoolBox";
 import { StaffingOptimizerCard } from "./dealer-swing/StaffingOptimizerCard";
 import CloseTourDialog, { type CloseTourPreview } from "./dealer-swing/CloseTourDialog";
@@ -235,9 +237,21 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   const { data: tables, loading: tablesLoading, error: tablesError, refetch: refetchTables } = useActiveTables(filteredClubIds);
   const { data: availableTables, error: availableTablesError, refetch: refetchAvailableTables } = useAvailableTables(filteredClubIds);
   const { data: poolTables, loading: poolLoading, error: poolError, refetch: refetchPoolTables } = usePoolTables(filteredClubIds);
-  const { data: assignments, loading: assignsLoading, refetch: refetchAssignments } = useActiveAssignmentsWithTimeline(filteredClubIds);
+  const {
+    data: assignments,
+    activeRawData,
+    loading: assignsLoading,
+    error: assignmentsError,
+    refetch: refetchAssignments,
+  } = useActiveAssignmentsWithTimeline(filteredClubIds);
   const preAssignedMap = usePreAssignedDealers(assignments);
-  const { byTableId: scheduleByTableId } = useRotationSchedule(filteredClubIds);
+  const {
+    rows: scheduleRows,
+    byTableId: scheduleByTableId,
+    loading: scheduleLoading,
+    error: scheduleError,
+    refetch: refetchSchedule,
+  } = useRotationSchedule(filteredClubIds);
   const { data: swingConfigs, refetch: refetchSwingConfigs } = useSwingConfigs(filteredClubIds);
   const { data: tournaments } = useActiveTournaments(clubFilter ?? filteredClubIds[0]);
   const tablesById = useMemo(() => {
@@ -1971,39 +1985,61 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
                 <DealerManagementTab clubIds={filteredClubIds} clubFilter={clubFilter} />
               </>
             ) : (
-                  <TableGrid
-                    tables={tables ?? []}
-                    tableAssignmentMap={tableAssignmentMap}
-                    nextDealerMap={nextDealerMap}
-                    preAssignedMap={preAssignedMap}
-                    scheduleByTableId={scheduleByTableId}
-                    timelineByTableId={timelineByTableId}
-                    swingConfigs={swingConfigs ?? []}
-                    tournaments={tournaments}
-                  processing={processing}
-                  onAssign={openAssignModal}
-onSendToBreak={(attId) => setBreakDurationOpen(attId)}
-                   onAutoBreak={(attId) => sendToBreak(attId, defaultBreakMinutesRef.current)}
-                   selectedTour={selectedTour}
-                  searchTerm={tableSearch}
-                  onCreateTable={() => setCreateTableOpen(true)}
-                  onCloseTables={closeTables}
-                  closeTableConfirmId={closeTableConfirmId}
-                  onCloseTableClick={setCloseTableConfirmId}
-                  onCloseTableConfirm={closeTable}
-                  onCloseTableCancel={() => setCloseTableConfirmId(null)}
-                  closingTable={closingTable}
-                  onManualSwing={openAssignModal}
-                  onForceClose={setCloseTableConfirmId}
-                  isAnimating={isAnimating}
-                  focusedTableId={focusedTableId}
-                  onSwingTable={performSwingForTable}
-                  swingingAssignmentId={swingingTableId}
-                  dealers={dealers ?? []}
-                  onChangePredicted={setChangePredictedTableId}
-                  onCorrectWrongTable={setCorrectWrongTableId}
-                  onOpenRoomReconcile={() => setRoomReconcileOpen(true)}
-                />
+                  <DealerSwingTableViews
+                    mapContent={(
+                      <TableGrid
+                        tables={tables ?? []}
+                        tableAssignmentMap={tableAssignmentMap}
+                        nextDealerMap={nextDealerMap}
+                        preAssignedMap={preAssignedMap}
+                        scheduleByTableId={scheduleByTableId}
+                        timelineByTableId={timelineByTableId}
+                        swingConfigs={swingConfigs ?? []}
+                        tournaments={tournaments}
+                        processing={processing}
+                        onAssign={openAssignModal}
+                        onSendToBreak={(attId) => setBreakDurationOpen(attId)}
+                        onAutoBreak={(attId) => sendToBreak(attId, defaultBreakMinutesRef.current)}
+                        selectedTour={selectedTour}
+                        searchTerm={tableSearch}
+                        onCreateTable={() => setCreateTableOpen(true)}
+                        onCloseTables={closeTables}
+                        closeTableConfirmId={closeTableConfirmId}
+                        onCloseTableClick={setCloseTableConfirmId}
+                        onCloseTableConfirm={closeTable}
+                        onCloseTableCancel={() => setCloseTableConfirmId(null)}
+                        closingTable={closingTable}
+                        onManualSwing={openAssignModal}
+                        onForceClose={setCloseTableConfirmId}
+                        isAnimating={isAnimating}
+                        focusedTableId={focusedTableId}
+                        onSwingTable={performSwingForTable}
+                        swingingAssignmentId={swingingTableId}
+                        dealers={dealers ?? []}
+                        onChangePredicted={setChangePredictedTableId}
+                        onCorrectWrongTable={setCorrectWrongTableId}
+                        onOpenRoomReconcile={() => setRoomReconcileOpen(true)}
+                      />
+                    )}
+                    allocationContent={(
+                      <TableAllocationBoard
+                        tables={tables ?? []}
+                        canonicalAssignments={assignments ?? []}
+                        activeRawData={activeRawData ?? []}
+                        scheduleRows={scheduleRows}
+                        selectedTour={selectedTour}
+                        searchTerm={tableSearch}
+                        nowMs={nowMs}
+                        loading={tablesLoading || assignsLoading || scheduleLoading}
+                        error={tablesError ?? assignmentsError ?? scheduleError}
+                        onRetry={() => {
+                          refetchTables();
+                          refetchAssignments();
+                          refetchSchedule();
+                        }}
+                      />
+                    )}
+                  />
             )}
           </div>
 

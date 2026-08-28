@@ -130,6 +130,10 @@ export interface GameTableRow {
   shift_id: string | null;
   status: string;
   table_name: string;
+  /** Current-session evidence only. Nullable for legacy tables. */
+  opened_at?: string | null;
+  /** Durable marker set by the existing table-open workflow. */
+  dealer_open_operation_id?: string | null;
   name?: string | null;
   table_type?: string | null;
   table_priority?: number | null;
@@ -589,7 +593,9 @@ export function useActiveAssignmentsWithTimeline(clubIds: string[]) {
     });
   }, [canonicalAssignments, now]);
 
-  return { ...result, data: enriched };
+  // Keep the raw active-query rows available for read-only consumers that need
+  // to surface duplicate assignments. `data` stays canonical for Battle Map.
+  return { ...result, data: enriched, activeRawData: result.data };
 }
 
 export function useActiveTables(clubIds: string[]) {
