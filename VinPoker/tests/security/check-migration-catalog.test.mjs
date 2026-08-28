@@ -63,6 +63,36 @@ test("rejects the duplicate-version Floor contract in the active catalog", () =>
   });
 });
 
+test("rejects held Payroll PDF migration in the active catalog", () => {
+  withCatalog([
+    "20270113000000_dealer_payroll_statement_pdf_storage.sql",
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "forbidden active migration 20270113000000_dealer_payroll_statement_pdf_storage.sql: unapplied Payroll migration belongs in migration-archive/never-apply until a separate restore PR",
+    ]);
+  });
+});
+
+test("rejects held Payroll FT migration in the active catalog", () => {
+  withCatalog([
+    "20270113000001_dealer_payroll_statement_ft_ui_contract.sql",
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "forbidden active migration 20270113000001_dealer_payroll_statement_ft_ui_contract.sql: unapplied Payroll migration belongs in migration-archive/never-apply until a separate restore PR",
+    ]);
+  });
+});
+
+test("rejects held Payroll Telegram migration in the active catalog", () => {
+  withCatalog([
+    "20270113000004_dealer_payroll_statement_telegram_delivery.sql",
+  ], (migrations) => {
+    assert.deepEqual(findMigrationCatalogProblems(migrations), [
+      "forbidden active migration 20270113000004_dealer_payroll_statement_telegram_delivery.sql: unapplied Payroll/Telegram migration belongs in migration-archive/never-apply until a separate restore PR",
+    ]);
+  });
+});
+
 test("rejects a retired credential-bearing scheduler by filename", () => {
   withCatalog([
     "20260428144425_53b3e896-323b-45b5-82e3-921bdaccaa91.sql",

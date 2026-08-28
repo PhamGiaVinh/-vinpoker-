@@ -16,6 +16,18 @@ const SAFE_BOOTSTRAP_MIGRATIONS = new Set([
 ]);
 const FORBIDDEN_ACTIVE_MIGRATION_FILENAMES = new Map([
   [
+    "20270113000000_dealer_payroll_statement_pdf_storage.sql",
+    "unapplied Payroll migration belongs in migration-archive/never-apply until a separate restore PR",
+  ],
+  [
+    "20270113000001_dealer_payroll_statement_ft_ui_contract.sql",
+    "unapplied Payroll migration belongs in migration-archive/never-apply until a separate restore PR",
+  ],
+  [
+    "20270113000004_dealer_payroll_statement_telegram_delivery.sql",
+    "unapplied Payroll/Telegram migration belongs in migration-archive/never-apply until a separate restore PR",
+  ],
+  [
     "20260429060607_237b4d96-a7ca-445d-bfc6-4593e118f887.sql",
     "replay-unsafe managed Realtime DDL belongs in migration-archive/removed-sensitive",
   ],
