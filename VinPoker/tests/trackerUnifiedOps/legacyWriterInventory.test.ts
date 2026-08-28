@@ -1,18 +1,35 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { legacyWriterInventory } from "./legacyWriterInventory";
 
 const migrationsRoot = resolve(process.cwd(), "supabase", "migrations");
+const archiveRoot = resolve(process.cwd(), "supabase", "migration-archive");
+function resolveMigrationSource(filename: string) {
+  const activePath = resolve(migrationsRoot, filename);
+  if (existsSync(activePath)) return activePath;
+
+  const pending = [archiveRoot];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    if (!directory) continue;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = resolve(directory, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(entryPath);
+      } else if (entry.name === filename) {
+        return entryPath;
+      }
+    }
+  }
+  return activePath;
+}
 const pr2aMigration = readFileSync(
   resolve(migrationsRoot, "20270108000003_tracker_unified_ops_v2_context_safe_start.sql"),
   "utf8",
 );
 const containmentMigration = readFileSync(
-  resolve(
-    migrationsRoot,
-    "20270108000004_tracker_unified_ops_writer_lock_containment.sql",
-  ),
+  resolveMigrationSource("20270108000004_tracker_unified_ops_writer_lock_containment.sql"),
   "utf8",
 );
 const remainingWriterIntegration = readFileSync(
@@ -45,7 +62,7 @@ describe("Tracker PR2A legacy-writer inventory", () => {
 
   it("points every row at an existing current-main migration", () => {
     for (const row of legacyWriterInventory) {
-      expect(existsSync(resolve(migrationsRoot, row.sourceMigration))).toBe(true);
+      expect(existsSync(resolveMigrationSource(row.sourceMigration))).toBe(true);
       expect(row.signature).toContain(`${row.writer}(`);
     }
   });
@@ -110,18 +127,15 @@ describe("Tracker PR2A legacy-writer inventory", () => {
       (row) => row.writer === "close_tournament_table",
     );
     const mode = readFileSync(
-      resolve(migrationsRoot, "20270105000004_floor_table_control_mode.sql"),
+      resolveMigrationSource("20270105000004_floor_table_control_mode.sql"),
       "utf8",
     );
     const close = readFileSync(
-      resolve(migrationsRoot, "20270106000003_close_table_canonical_contract.sql"),
+      resolveMigrationSource("20270106000003_close_table_canonical_contract.sql"),
       "utf8",
     );
     const containment = readFileSync(
-      resolve(
-        migrationsRoot,
-        "20270108000004_tracker_unified_ops_writer_lock_containment.sql",
-      ),
+      resolveMigrationSource("20270108000004_tracker_unified_ops_writer_lock_containment.sql"),
       "utf8",
     );
 
