@@ -22,7 +22,7 @@ const geminiMigration = readFileSync(
   "utf8",
 ).replace(/\r\n/g, "\n");
 const transcribeBindingMigration = readFileSync(
-  resolve(root, "supabase/migrations", transcribeBindingMigrationName),
+  resolve(root, "supabase/pending-migrations", transcribeBindingMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const unifiedOpsMigration = readFileSync(
