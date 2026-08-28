@@ -15,7 +15,7 @@ describe("tracker voice realtime session protocol", () => {
     expect(buildTrackerVoiceGeminiAuthTokenRequest(1_000, "gemini-3.5-transcribe-live")).toMatchObject({
       uses: 1,
       liveConnectConstraints: {
-        model: "gemini-3.5-transcribe-live",
+        model: "models/gemini-3.5-transcribe-live",
         config: { responseModalities: ["TEXT"], inputAudioTranscription: { mode: "VERBATIM" } },
       },
     });

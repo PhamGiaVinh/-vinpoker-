@@ -88,7 +88,9 @@ export function buildGeminiEphemeralTokenRequest(
     newSessionExpireTime: new Date(now + 60_000).toISOString(),
     expireTime: new Date(now + 20 * 60_000).toISOString(),
     liveConnectConstraints: {
-      model: profile.model,
+      // The REST auth_tokens endpoint requires the resource-name form, while
+      // the JS Live SDK connects with the unprefixed model returned to clients.
+      model: `models/${profile.model}`,
       config: profile.config,
     },
   };
