@@ -122,6 +122,63 @@ describe("TrackerVoicePanel", () => {
     expect(screen.getByText(/Auto bị khóa/)).toBeInTheDocument();
   });
 
+  it("keeps a Board transcript as a draft until the Dealer confirms one atomic receipt", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const applyVoiceBoardReceipt = vi.fn(() => true);
+    const commitBoardOverride = vi.fn(async () => ({
+      ok: true as const,
+      voice_event_id: "voice-board-1",
+      canonical_receipt_event_id: "board-receipt-1",
+      idempotency_key: "voice:request-1",
+      trace_id: "voice-trace:request-1",
+      street: "flop" as const,
+      previous_board: [],
+      community_cards: ["Ah", "5s", "2d"],
+      state_version_before: "a".repeat(64),
+      state_version_after: "b".repeat(64),
+    }));
+    const validateEventOverride = vi.fn(async () => ({
+      ...validatedReceipt,
+      execution_mode: "assist" as const,
+      voice_event_id: "voice-board-1",
+    }));
+    const hook = {
+      ...hookFixture(),
+      currentStreet: "flop",
+      workflowState: "enter_flop",
+      showActionStep: false,
+      persistedBoardCount: 0,
+      communityCards: [null, null, null, null, null],
+      applyVoiceBoardReceipt,
+    } as StandaloneHandInput;
+    render(
+      <TrackerVoicePanel
+        hook={hook}
+        providerOverride={provider}
+        runtimeOverride={runtimeFixture}
+        validateEventOverride={validateEventOverride}
+        commitBoardOverride={commitBoardOverride}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "assist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("Flop ace hearts five spades two diamonds", { final: true, id: "board-final" }));
+
+    expect(await screen.findByText("CẦN CHẠM XÁC NHẬN · CHƯA GHI BOARD")).toBeInTheDocument();
+    expect(applyVoiceBoardReceipt).not.toHaveBeenCalled();
+    expect(commitBoardOverride).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận Flop" }));
+    await waitFor(() => expect(commitBoardOverride).toHaveBeenCalledOnce());
+    expect(commitBoardOverride.mock.calls[0][0].canonicalRequest).toMatchObject({
+      intentDomain: "board",
+      payload: { cumulativeCards: ["Ah", "5s", "2d"], expectedExistingBoardCount: 0 },
+    });
+    expect(applyVoiceBoardReceipt).toHaveBeenCalledOnce();
+  });
+
   it("keys each diagnostic proposal to its own final transcript", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const snapshots: TrackerVoiceDiagnosticSnapshot[] = [];

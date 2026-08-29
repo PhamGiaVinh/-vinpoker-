@@ -15,11 +15,15 @@ on:
       - "VinPoker/supabase/migrations/20270112000007_tracker_p0_authority_closure.sql"
       - "VinPoker/supabase/migrations/20270112000008_tracker_voice_gemini_live_provider.sql"
       - "VinPoker/supabase/pending-migrations/20270113000007_tracker_voice_transcribe35_binding.sql"
+      - "VinPoker/supabase/pending-migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
       - "VinPoker/supabase/functions/tracker-player-analytics/**"
       - "VinPoker/supabase/functions/tracker-voice-session/**"
       - "VinPoker/supabase/functions/tournament-live-update/index.ts"
+      - "VinPoker/src/lib/trackerVoice/**"
+      - "VinPoker/src/components/tracker/voice/**"
+      - "VinPoker/src/components/cashier/tournament-live/handinput/**"
       - "VinPoker/tests/trackerVoice/**"
   workflow_dispatch:
 
@@ -161,6 +165,14 @@ jobs:
               'public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure
             )) > 0")" = "t"
           echo "TRACKER_VOICE_13000007_APPLY=PASS"
+          createdb tracker_voice_v0_before_13000009 -T tracker_voice_v0
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/pending-migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql
+          test "$(psql -X -At -d tracker_voice_v0 -c \
+            "SELECT to_regprocedure('public.commit_tracker_voice_board_v0(uuid,text,text)') IS NOT NULL
+                    AND to_regprocedure('public._tracker_voice_register_validated_board_event(uuid,uuid,uuid,uuid,text,text,text,text,jsonb,text,text,text,text)') IS NOT NULL
+                    AND to_regprocedure('public._tracker_update_community_cards_core(uuid,jsonb,uuid,integer,jsonb)') IS NULL")" = "t"
+          echo "TRACKER_VOICE_13000009_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f tests/trackerVoice/currentP0VoiceChain.integration.sql
 
@@ -171,6 +183,8 @@ jobs:
           createdb tracker_voice_v0_runtime -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_runtime \
             -f tests/trackerVoice/disposableDb.integration.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_runtime \
+            -f tests/trackerVoice/boardAssist.integration.sql
           createdb tracker_voice_v0_start_runtime -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_start_runtime \
             -f tests/trackerStartHandAuthority/disposableDb.integration.sql
@@ -247,6 +261,20 @@ jobs:
             "SELECT md5(pg_get_functiondef('public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure))")"
           test "$before_helper" = "$after_helper"
           echo "TRACKER_VOICE_13000007_ROLLBACK=PASS"
+          failing="$RUNNER_TEMP/tracker-voice-13000009-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
+            supabase/pending-migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql > "$failing"
+          before_board_core="$(psql -X -At -d tracker_voice_v0_before_13000009 -c \
+            "SELECT to_regprocedure('public.commit_tracker_voice_board_v0(uuid,text,text)') IS NULL")"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_13000009 -f "$failing"; then
+            echo "Injected 13000009 migration unexpectedly committed" >&2
+            exit 1
+          fi
+          after_board_core="$(psql -X -At -d tracker_voice_v0_before_13000009 -c \
+            "SELECT to_regprocedure('public.commit_tracker_voice_board_v0(uuid,text,text)') IS NULL")"
+          test "$before_board_core" = "t"
+          test "$after_board_core" = "t"
+          echo "TRACKER_VOICE_13000009_ROLLBACK=PASS"
 
       - name: Run focused Voice, Analytics and contract tests
         working-directory: VinPoker
@@ -254,7 +282,10 @@ jobs:
           set -euo pipefail
           node ./node_modules/vitest/vitest.mjs run \
             src/lib/trackerVoice/trackerVoice.test.ts \
+            src/lib/trackerVoice/boardParser.test.ts \
+            src/lib/trackerVoice/canonicalRequest.test.ts \
             src/components/tracker/voice/TrackerVoicePanel.test.tsx \
+            tests/trackerVoice/boardAssist.contract.test.ts \
             tests/trackerVoice/trackerVoiceSessionProtocol.test.ts \
             tests/trackerVoice/trackerPlayerAnalytics.test.ts \
             tests/trackerVoice/trackerPlayerAnalyticsPage.test.tsx \

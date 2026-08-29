@@ -1,7 +1,9 @@
 import type {
+  CommitVoiceBoardInput,
   TrackerVoiceRuntimeContext,
   ValidateVoiceEventInput,
   ValidatedVoiceEventReceipt,
+  VoiceBoardCommitReceipt,
 } from "./types";
 
 export async function loadTrackerVoiceRuntimeContext(
@@ -56,6 +58,34 @@ export async function validateTrackerVoiceEvent(
   const receipt = envelope?.data as ValidatedVoiceEventReceipt | null;
   if (!receipt?.ok || typeof receipt.voice_event_id !== "string") {
     throw new Error("Voice validation không trả receipt hợp lệ.");
+  }
+  return receipt;
+}
+
+/** Commits one already-validated Board proposal through the atomic RPC Edge seam. */
+export async function commitTrackerVoiceBoard(
+  input: CommitVoiceBoardInput,
+): Promise<VoiceBoardCommitReceipt> {
+  const { supabase } = await import("@/integrations/supabase/client");
+  const { data, error } = await supabase.functions.invoke("tournament-live-update", {
+    body: {
+      tournament_id: input.tournamentId,
+      action: "commit_voice_board",
+      tournament_table_id: input.tournamentTableId,
+      hand_id: input.handId,
+      voice_event_id: input.voiceEventId,
+      idempotency_key: input.idempotencyKey,
+      trace_id: input.traceId,
+      // Diagnostic only. The Edge/RPC reconstruct from the immutable root.
+      voice_request: input.canonicalRequest,
+    },
+  });
+  if (error) throw new Error(error.message);
+  const envelope = data as { data?: VoiceBoardCommitReceipt; error?: string } | null;
+  if (envelope?.error) throw new Error(envelope.error);
+  const receipt = envelope?.data;
+  if (!receipt?.ok || !Array.isArray(receipt.community_cards)) {
+    throw new Error("Voice Board không trả canonical receipt hợp lệ.");
   }
   return receipt;
 }

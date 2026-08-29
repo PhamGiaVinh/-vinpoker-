@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildVoiceActionCanonicalRequest,
+  buildVoiceBoardCanonicalRequest,
   voiceCanonicalRequestsMatch,
 } from "./canonicalRequest";
 
@@ -46,4 +47,25 @@ describe("VoiceCanonicalRequest", () => {
       payload: { ...request.payload, actionAmount: 2_000 },
     }, request)).toBe(false);
   });
+});
+
+it("creates a deterministic Board request and fails closed on a changed street or card", async () => {
+  const request = await buildVoiceBoardCanonicalRequest({
+    rawTranscript: "Flop Át cơ, năm bích, hai rô",
+    expectedStateVersion: "b".repeat(64),
+    expectedWorkflowState: "enter_flop",
+    expectedStreet: "flop",
+    payload: {
+      street: "flop",
+      newCards: ["Ah", "5s", "2d"],
+      cumulativeCards: ["Ah", "5s", "2d"],
+      expectedExistingBoardCount: 0,
+    },
+  });
+  expect(request.intentDomain).toBe("board");
+  expect(voiceCanonicalRequestsMatch(request, request)).toBe(true);
+  expect(voiceCanonicalRequestsMatch({
+    ...request,
+    payload: { ...request.payload, cumulativeCards: ["Ah", "5s", "2c"] },
+  }, request)).toBe(false);
 });

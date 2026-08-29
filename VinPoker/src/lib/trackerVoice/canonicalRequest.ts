@@ -4,7 +4,7 @@ import type { TrackerWorkflowState, WorkflowStreet } from "@/components/cashier/
  * Wire contract for the only Assist domain enabled by PR A. Later PRs extend
  * this discriminated union instead of accepting dormant optional payloads.
  */
-export type VoiceIntentDomain = "action";
+export type VoiceIntentDomain = "action" | "board";
 
 export type VoiceActionIntentPayload = {
   canonicalAction: "fold" | "check" | "call" | "bet" | "raise" | "all_in";
@@ -30,7 +30,20 @@ export type VoiceActionCanonicalRequest = {
   payload: VoiceActionIntentPayload;
 };
 
-export type VoiceCanonicalRequest = VoiceActionCanonicalRequest;
+export type VoiceBoardIntentPayload = {
+  street: "flop" | "turn" | "river";
+  newCards: readonly string[];
+  cumulativeCards: readonly string[];
+  expectedExistingBoardCount: 0 | 3 | 4;
+};
+
+export type VoiceBoardCanonicalRequest = {
+  intentDomain: "board";
+  envelope: VoiceCanonicalEnvelope;
+  payload: VoiceBoardIntentPayload;
+};
+
+export type VoiceCanonicalRequest = VoiceActionCanonicalRequest | VoiceBoardCanonicalRequest;
 
 export function actionWorkflowForStreet(street: WorkflowStreet): TrackerWorkflowState | null {
   switch (street) {
@@ -84,6 +97,30 @@ export async function buildVoiceActionCanonicalRequest(input: {
   ]);
   return {
     intentDomain: "action",
+    envelope: {
+      expectedStateVersion: input.expectedStateVersion,
+      expectedWorkflowState: input.expectedWorkflowState,
+      expectedStreet: input.expectedStreet,
+      payloadHash,
+      rawTranscriptHash,
+    },
+    payload: input.payload,
+  };
+}
+
+export async function buildVoiceBoardCanonicalRequest(input: {
+  rawTranscript: string;
+  expectedStateVersion: string;
+  expectedWorkflowState: TrackerWorkflowState;
+  expectedStreet: "flop" | "turn" | "river";
+  payload: VoiceBoardIntentPayload;
+}): Promise<VoiceBoardCanonicalRequest> {
+  const [payloadHash, rawTranscriptHash] = await Promise.all([
+    sha256VoiceCanonical({ intentDomain: "board", payload: input.payload }),
+    sha256VoiceText(input.rawTranscript),
+  ]);
+  return {
+    intentDomain: "board",
     envelope: {
       expectedStateVersion: input.expectedStateVersion,
       expectedWorkflowState: input.expectedWorkflowState,
