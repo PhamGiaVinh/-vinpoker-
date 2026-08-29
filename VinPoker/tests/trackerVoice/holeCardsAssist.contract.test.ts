@@ -20,6 +20,9 @@ describe("Tracker Voice Hole Cards Assist contract", () => {
     expect(migration).toContain("voice_hole_card_correction_required");
     expect(migration).toContain("REVOKE ALL ON FUNCTION public.commit_tracker_voice_hole_cards_v0");
     expect(migration).toContain("TO service_role");
+    expect(migration).toMatch(
+      /FUNCTION public\.show_hole_cards\([\s\S]*?LANGUAGE plpgsql\s+SECURITY INVOKER\s+SET search_path = public/,
+    );
   });
 
   it("makes root, card mutation, and receipt one transaction with a redacted audit row", () => {

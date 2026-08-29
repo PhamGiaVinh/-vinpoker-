@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION public._tracker_apply_hole_cards_core_v0(
 )
 RETURNS JSONB
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = public
 AS $function$
 DECLARE
@@ -119,7 +120,7 @@ CREATE OR REPLACE FUNCTION public.show_hole_cards(
 )
 RETURNS JSONB
 LANGUAGE plpgsql
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = public
 AS $function$
 DECLARE
