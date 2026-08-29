@@ -6,5 +6,8 @@ export * from "./providers";
 export * from "./previewRoute";
 export * from "./api";
 export * from "./canonicalRequest";
+export * from "./boardParser";
+export * from "./boardProposal";
+export * from "./intentRouter";
 export * from "./types";
 export * from "./analytics";

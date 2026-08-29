@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { parseSpokenAmount } from "./amount";
 import { parseVoiceCommand } from "./parser";
 import { resolveVoiceProposal } from "./proposal";
+import { resolveVoiceBoardProposal } from "./boardProposal";
+import { parseVoiceBoardCommand } from "./boardParser";
 import { MockRealtimeTranscriptionProvider } from "./providers";
 import type { VoiceProposalContext } from "./types";
 
@@ -149,6 +151,35 @@ describe("resolveVoiceProposal", () => {
       ok: true,
       controlAction: "call_floor",
     });
+  });
+});
+
+describe("resolveVoiceBoardProposal", () => {
+  it("keeps the proposed flop separate from persisted Board state", () => {
+    const command = parseVoiceBoardCommand("flop ace hearts five spades two diamonds");
+    expect(command).not.toBeNull();
+    expect(resolveVoiceBoardProposal(command!, {
+      ...READY,
+      street: "preflop",
+      workflowState: "enter_flop",
+      actionStepActive: false,
+      persistedBoardCards: [],
+    })).toMatchObject({
+      ok: true,
+      expectedExistingBoardCount: 0,
+      cumulativeCards: ["Ah", "5s", "2d"],
+    });
+  });
+
+  it("refuses a stale Board prefix instead of offering an overwrite", () => {
+    const command = parseVoiceBoardCommand("turn queen clubs");
+    expect(resolveVoiceBoardProposal(command!, {
+      ...READY,
+      street: "flop",
+      workflowState: "enter_turn",
+      actionStepActive: false,
+      persistedBoardCards: ["Ah", "5s"],
+    })).toMatchObject({ ok: false, code: "board_already_persisted" });
   });
 });
 

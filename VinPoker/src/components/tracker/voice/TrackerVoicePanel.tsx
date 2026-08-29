@@ -5,11 +5,14 @@ import { FEATURES } from "@/lib/featureFlags";
 import {
   loadTrackerVoiceRuntimeContext,
   buildVoiceActionCanonicalRequest,
+  buildVoiceBoardCanonicalRequest,
+  commitTrackerVoiceBoard,
   createTrackerVoiceGeminiProvider,
   createTrackerVoiceOpenAiProvider,
   isTrackerVoiceGeminiLiveModel,
   MockRealtimeTranscriptionProvider,
-  parseVoiceCommand,
+  routeTrackerVoiceIntent,
+  resolveVoiceBoardProposal,
   resolveVoiceProposal,
   validateTrackerVoiceEvent,
   type RealtimeTranscriptionProvider,
@@ -18,6 +21,9 @@ import {
   type ValidatedVoiceEventReceipt,
   type VoiceExecutionMode,
   type VoiceActionProposal,
+  type VoiceBoardProposal,
+  type VoiceCanonicalRequest,
+  type VoiceBoardCommitReceipt,
   type VoiceProposal,
   type VoiceProviderKind,
   type VoiceProviderStatus,
@@ -30,6 +36,7 @@ interface TrackerVoicePanelProps {
   providerOverride?: RealtimeTranscriptionProvider;
   runtimeOverride?: TrackerVoiceRuntimeContext;
   validateEventOverride?: (input: ValidateVoiceEventInput) => Promise<ValidatedVoiceEventReceipt>;
+  commitBoardOverride?: (input: Parameters<typeof commitTrackerVoiceBoard>[0]) => Promise<VoiceBoardCommitReceipt>;
   spokenAmountUnit?: number;
   amountUnitConfirmed?: boolean;
   onDiagnosticSnapshot?: (snapshot: TrackerVoiceDiagnosticSnapshot) => void;
@@ -104,6 +111,7 @@ export function TrackerVoicePanel({
   providerOverride,
   runtimeOverride,
   validateEventOverride = validateTrackerVoiceEvent,
+  commitBoardOverride = commitTrackerVoiceBoard,
   spokenAmountUnit = 1,
   amountUnitConfirmed = false,
   onDiagnosticSnapshot,
@@ -158,6 +166,30 @@ export function TrackerVoicePanel({
     runtimeRef.current = runtime;
   }, [runtime]);
 
+  // A Board draft is tied to one exact server state/prefix. Any manual write,
+  // workflow change, lock/correction change, or hand switch makes it unusable.
+  useEffect(() => {
+    if (!proposal?.ok || !("intentDomain" in proposal) || proposal.intentDomain !== "board") return;
+    const persistedBoardCount = Number.isInteger(hook.persistedBoardCount) ? hook.persistedBoardCount : 0;
+    const persisted = (hook.communityCards ?? [])
+      .slice(0, persistedBoardCount)
+      .filter((card): card is string => card !== null);
+    const stale = proposal.expectedStateVersion !== runtime?.active_hand?.state_version
+      || proposal.expectedWorkflowState !== hook.workflowState
+      || proposal.expectedStreet !== (hook.currentStreet === "flop" || hook.currentStreet === "turn" || hook.currentStreet === "river" ? hook.currentStreet : null)
+      || proposal.persistedBoardCards.join("|") !== persisted.join("|")
+      || runtime?.correction_pending === true
+      || hook.isReadOnly
+      || runtime?.active_hand?.hand_id !== hook.handId;
+    if (!stale) return;
+    validationGenerationRef.current += 1;
+    setProposal(null);
+    setValidatedProposal(null);
+    setValidatedReceipt(null);
+    setValidationState("idle");
+    setValidationError("Đề xuất Board đã hết hiệu lực vì trạng thái bàn thay đổi.");
+  }, [hook.communityCards, hook.currentStreet, hook.handId, hook.isReadOnly, hook.persistedBoardCount, hook.workflowState, proposal, runtime?.active_hand?.hand_id, runtime?.active_hand?.state_version, runtime?.correction_pending]);
+
   const proposalContext = useMemo(
     () => ({
       handId: hook.handId,
@@ -191,6 +223,9 @@ export function TrackerVoicePanel({
       readOnly: hook.isReadOnly,
       syncBlocked: hook.actionSyncBlocked,
       correctionPending: runtime?.correction_pending ?? false,
+      persistedBoardCards: (hook.communityCards ?? [])
+        .slice(0, Number.isInteger(hook.persistedBoardCount) ? hook.persistedBoardCount : 0)
+        .filter((card): card is string => card !== null),
     }),
     [
       hook.actionSyncBlocked,
@@ -198,10 +233,12 @@ export function TrackerVoicePanel({
       hook.actorViewData,
       hook.actions,
       hook.currentStreet,
+      hook.communityCards,
       hook.handId,
       hook.handStarted,
       hook.isReadOnly,
       hook.showActionStep,
+      hook.persistedBoardCount,
       hook.workflowState,
       runtime?.active_hand?.hand_id,
       runtime?.active_hand?.state_version,
@@ -304,17 +341,38 @@ export function TrackerVoicePanel({
     const attemptMode = finalAttempt.executionMode ?? mode;
     const unit = attemptRuntime?.config.spoken_amount_unit ?? spokenAmountUnit;
     const unitConfirmed = attemptRuntime?.config.amount_unit_confirmed ?? amountUnitConfirmed;
-    const command = parseVoiceCommand(finalEvent.transcript, {
-      spokenAmountUnit: unit,
-      amountUnitConfirmed: unitConfirmed,
-    });
-    const nextProposal = resolveVoiceProposal(command, {
+    const localContext = {
       ...proposalContext,
       expectedStateVersion: attemptRuntime?.active_hand?.hand_id === hook.handId
         ? attemptRuntime.active_hand.state_version
         : null,
       correctionPending: attemptRuntime?.correction_pending ?? false,
+    };
+    const route = routeTrackerVoiceIntent(finalEvent.transcript, localContext.workflowState, {
+      spokenAmountUnit: unit,
+      amountUnitConfirmed: unitConfirmed,
     });
+    const nextProposal: VoiceProposal = !route.ok
+      ? {
+          ok: false,
+          command: null,
+          code: route.code,
+          message: route.code === "wrong_workflow"
+            ? "Câu Voice không hợp lệ ở bước Tracker hiện tại."
+            : "Chưa nhận ra một lệnh Voice duy nhất.",
+        }
+      : route.intentDomain === "board"
+        ? resolveVoiceBoardProposal(route.command, localContext)
+        : resolveVoiceProposal({
+            kind: route.command.kind,
+            transcript: finalEvent.transcript.trim(),
+            normalizedTranscript: route.command.normalizedTranscript,
+            amount: route.command.amount,
+            spokenSeatNumber: route.command.spokenSeatNumber,
+            riskTier: route.command.riskTier,
+            repairs: route.command.repairs,
+            requiresConfirmation: route.command.requiresConfirmation,
+          }, localContext);
     const receivedAt = finalReceivedAtRef.current.get(finalEvent.providerEventId);
     setProposalLatencyMs(receivedAt === undefined ? null : Math.max(0, performance.now() - receivedAt));
     setProposal(nextProposal);
@@ -358,7 +416,7 @@ export function TrackerVoicePanel({
         requestIdentitiesRef.current.set(finalEvent.providerEventId, identity);
       }
       const generation = ++validationGenerationRef.current;
-      const canonicalRequest = "canonicalAction" in nextProposal
+      const canonicalRequest: VoiceCanonicalRequest | undefined = "canonicalAction" in nextProposal
         ? await buildVoiceActionCanonicalRequest({
             rawTranscript: finalEvent.transcript,
             expectedStateVersion: activeHand.state_version,
@@ -374,6 +432,19 @@ export function TrackerVoicePanel({
               actionOrder: nextProposal.expectedActionOrder,
             },
           })
+        : nextProposal.ok && "intentDomain" in nextProposal && nextProposal.intentDomain === "board"
+          ? await buildVoiceBoardCanonicalRequest({
+              rawTranscript: finalEvent.transcript,
+              expectedStateVersion: activeHand.state_version,
+              expectedWorkflowState: nextProposal.expectedWorkflowState,
+              expectedStreet: nextProposal.expectedStreet,
+              payload: {
+                street: nextProposal.expectedStreet,
+                newCards: nextProposal.command.newCards,
+                cumulativeCards: nextProposal.cumulativeCards,
+                expectedExistingBoardCount: nextProposal.expectedExistingBoardCount,
+              },
+            })
         : undefined;
       // A final transcript may finish hashing after navigation or a hand change.
       // Never register a Voice event for the context that has already been left.
@@ -733,8 +804,71 @@ export function TrackerVoicePanel({
     }
   };
 
+  const confirmBoardAssist = async () => {
+    if (
+      !hook.tournamentTableId
+      || validationState !== "validated"
+      || !validatedReceipt
+      || !validatedProposal?.ok
+      || !("intentDomain" in validatedProposal && validatedProposal.intentDomain === "board")
+      || assistCommitRef.current
+    ) return;
+    setValidationState("committing");
+    setValidationError(null);
+    const boardProposal = validatedProposal as VoiceBoardProposal;
+    const canonicalRequest = await buildVoiceBoardCanonicalRequest({
+      rawTranscript: boardProposal.command.rawTranscript,
+      expectedStateVersion: validatedReceipt.state_version,
+      expectedWorkflowState: boardProposal.expectedWorkflowState,
+      expectedStreet: boardProposal.expectedStreet,
+      payload: {
+        street: boardProposal.expectedStreet,
+        newCards: boardProposal.command.newCards,
+        cumulativeCards: boardProposal.cumulativeCards,
+        expectedExistingBoardCount: boardProposal.expectedExistingBoardCount,
+      },
+    });
+    const commit = (async () => {
+      const receipt = await commitBoardOverride({
+        tournamentId: hook.tournamentId,
+        tournamentTableId: hook.tournamentTableId!,
+        handId: hook.handId!,
+        voiceEventId: validatedReceipt.voice_event_id,
+        idempotencyKey: validatedReceipt.idempotency_key,
+        traceId: validatedReceipt.trace_id,
+        canonicalRequest,
+      });
+      if (!hook.applyVoiceBoardReceipt(receipt)) {
+        throw new Error("Receipt Board không khớp hand đang mở. Hãy tải lại bàn.");
+      }
+      const readBack = await refreshRuntime();
+      if (!readBack || readBack.active_hand?.hand_id !== hook.handId
+        || (!runtimeOverride && readBack.active_hand.state_version !== receipt.state_version_after)) {
+        throw new Error("Board đã gửi nhưng không đọc lại được trạng thái server. Hãy tải lại trước khi tiếp tục.");
+      }
+      return true;
+    })();
+    assistCommitRef.current = commit;
+    try {
+      await commit;
+      setProposal(null);
+      setValidatedProposal(null);
+      setValidatedReceipt(null);
+      setValidationState("committed");
+    } catch (error) {
+      // Preserve the immutable event/idempotency key. A retry uses the same
+      // key, and the transactional RPC returns its receipt instead of writing twice.
+      setValidationState("validated");
+      setValidationError(error instanceof Error ? error.message : "Không thể xác nhận Board Voice.");
+    } finally {
+      assistCommitRef.current = null;
+    }
+  };
+
   const proposalLabel = proposal?.ok
-    ? "controlAction" in proposal
+    ? "intentDomain" in proposal && proposal.intentDomain === "board"
+      ? `${proposal.expectedStreet.toUpperCase()} · ${proposal.command.newCards.join(" ")}`
+      : "controlAction" in proposal
       ? proposal.controlAction === "call_floor" ? "Gọi Floor" : "Báo sai action"
       : `${proposal.actor.playerName} · ${proposal.canonicalAction}${proposal.betToTotal ? ` tới ${proposal.betToTotal.toLocaleString("vi-VN")}` : ""}`
     : proposal?.message ?? "Nói một lệnh để tạo đề xuất Shadow.";
@@ -979,10 +1113,17 @@ export function TrackerVoicePanel({
         <div className={`rounded-xl border p-3 ${proposalTone(proposal)}`} aria-live="polite" aria-atomic="true">
           <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] opacity-75">
             {proposal?.ok ? <ShieldCheck className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-            Shadow proposal
+            Voice Assist proposal
           </div>
           <div className="text-sm font-semibold">{proposalLabel}</div>
           {finalTranscript && <div className="mt-1 text-[11px] opacity-65">“{finalTranscript}”</div>}
+          {proposal?.ok && "intentDomain" in proposal && proposal.intentDomain === "board" && (
+            <div className="mt-2 space-y-1 text-[11px] opacity-80">
+              <div>Board đã lưu: {proposal.persistedBoardCards.join(" ") || "chưa có"}</div>
+              <div>Board đề xuất: {proposal.cumulativeCards.join(" ")}</div>
+              <div className="font-semibold text-amber-100">CẦN CHẠM XÁC NHẬN · CHƯA GHI BOARD</div>
+            </div>
+          )}
           {providerConfidence === null && finalTranscript && (
             <div className="mt-2 text-[10px] opacity-70">Provider không trả confidence tương thích: Auto bị khóa.</div>
           )}
@@ -1016,14 +1157,43 @@ export function TrackerVoicePanel({
               Xác nhận action
             </button>
           )}
+        {mode === "assist"
+          && validationState === "validated"
+          && validatedProposal?.ok
+          && "intentDomain" in validatedProposal
+          && validatedProposal.intentDomain === "board" && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={confirmBoardAssist}
+                className="min-h-11 rounded-xl bg-emerald-300 px-4 text-sm font-bold text-emerald-950 outline-none focus-visible:ring-2 focus-visible:ring-emerald-100"
+              >
+                Xác nhận {validatedProposal.expectedStreet === "flop" ? "Flop" : validatedProposal.expectedStreet === "turn" ? "Turn" : "River"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  validationGenerationRef.current += 1;
+                  setProposal(null);
+                  setValidatedProposal(null);
+                  setValidatedReceipt(null);
+                  setValidationError(null);
+                  setValidationState("idle");
+                }}
+                className="min-h-11 rounded-xl border border-white/15 bg-white/[0.04] px-4 text-sm font-bold text-zinc-200 outline-none focus-visible:ring-2 focus-visible:ring-emerald-100"
+              >
+                Hủy
+              </button>
+            </div>
+          )}
         {validationState === "committing" && (
           <div className="flex min-h-11 items-center justify-center gap-2 text-xs text-zinc-300">
-            <Loader2 className="h-4 w-4 animate-spin" /> Đang ghi qua canonical action writer
+            <Loader2 className="h-4 w-4 animate-spin" /> Đang ghi qua canonical writer
           </div>
         )}
         {validationState === "committed" && (
           <div className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-300/10 text-xs font-semibold text-emerald-200">
-            <Check className="h-4 w-4" /> Action đã được Viewer/Replay nhận qua luồng hiện tại
+            <Check className="h-4 w-4" /> Canonical receipt đã được Viewer/Replay nhận qua luồng hiện tại
           </div>
         )}
         {runtimeError && (

@@ -16,6 +16,29 @@ AS $$
   )::JSONB;
 $$;
 
+-- This legacy production helper is a prerequisite of the canonical Board
+-- writer. Keep its actual format and duplicate-card semantics in the fixture.
+CREATE OR REPLACE FUNCTION public.validate_cards(p_cards JSONB)
+RETURNS TEXT LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+  IF p_cards IS NULL OR p_cards = '[]'::jsonb THEN
+    RETURN 'ok';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements_text(p_cards) AS c
+    WHERE c !~ '^[AKQJT2-9][shdc]$'
+  ) THEN
+    RETURN 'Invalid card format';
+  END IF;
+  IF jsonb_array_length(p_cards) != (
+    SELECT COUNT(DISTINCT val) FROM jsonb_array_elements_text(p_cards) AS val
+  ) THEN
+    RETURN 'Duplicate cards in array';
+  END IF;
+  RETURN 'ok';
+END;
+$$;
+
 -- The shared PR2A baseline intentionally uses lightweight invoker stubs. Voice
 -- RLS exercises the production helper shape, where club membership checks run
 -- as fixed-search-path SECURITY DEFINER functions and include the club owner.

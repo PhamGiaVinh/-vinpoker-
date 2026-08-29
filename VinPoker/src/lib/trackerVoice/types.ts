@@ -1,5 +1,5 @@
 import type { TrackerWorkflowState, WorkflowStreet } from "@/components/cashier/tournament-live/handinput/trackerWorkflow";
-import type { VoiceActionCanonicalRequest } from "./canonicalRequest";
+import type { VoiceCanonicalRequest } from "./canonicalRequest";
 
 export type VoiceCommandKind =
   | "fold"
@@ -106,6 +106,7 @@ export interface VoiceProposalContext {
   readOnly: boolean;
   syncBlocked: boolean;
   correctionPending: boolean;
+  persistedBoardCards?: readonly string[];
 }
 
 export type VoiceProposalFailureCode =
@@ -121,7 +122,30 @@ export type VoiceProposalFailureCode =
   | "correction_pending"
   | "illegal_action"
   | "amount_out_of_range"
-  | "raise_too_small";
+  | "raise_too_small"
+  | "wrong_workflow"
+  | "intent_ambiguous"
+  | "board_already_persisted"
+  | "duplicate_card";
+
+export interface ParsedVoiceBoardCommand {
+  street: "flop" | "turn" | "river";
+  rawTranscript: string;
+  normalizedTranscript: string;
+  newCards: readonly string[];
+}
+
+export interface VoiceBoardProposal {
+  ok: true;
+  intentDomain: "board";
+  command: ParsedVoiceBoardCommand;
+  expectedStateVersion: string | null;
+  expectedWorkflowState: TrackerWorkflowState;
+  expectedStreet: "flop" | "turn" | "river";
+  expectedExistingBoardCount: 0 | 3 | 4;
+  persistedBoardCards: readonly string[];
+  cumulativeCards: readonly string[];
+}
 
 export interface VoiceActionProposal {
   ok: true;
@@ -145,12 +169,12 @@ export interface VoiceControlProposal {
 
 export interface VoiceRejectedProposal {
   ok: false;
-  command: ParsedVoiceCommand | null;
+  command: ParsedVoiceCommand | ParsedVoiceBoardCommand | null;
   code: VoiceProposalFailureCode;
   message: string;
 }
 
-export type VoiceProposal = VoiceActionProposal | VoiceControlProposal | VoiceRejectedProposal;
+export type VoiceProposal = VoiceActionProposal | VoiceControlProposal | VoiceBoardProposal | VoiceRejectedProposal;
 
 export interface VoiceActionMetadata {
   source: "voice";
@@ -214,5 +238,29 @@ export interface ValidateVoiceEventInput {
   idempotencyKey: string;
   traceId: string;
   /** Required for poker action proposals; Floor alert controls retain their existing path. */
-  canonicalRequest?: VoiceActionCanonicalRequest;
+  canonicalRequest?: VoiceCanonicalRequest;
+}
+
+export interface CommitVoiceBoardInput {
+  tournamentId: string;
+  tournamentTableId: string;
+  handId: string;
+  voiceEventId: string;
+  idempotencyKey: string;
+  traceId: string;
+  canonicalRequest: VoiceCanonicalRequest;
+}
+
+export interface VoiceBoardCommitReceipt {
+  ok: true;
+  voice_event_id: string;
+  canonical_receipt_event_id: string;
+  idempotency_key: string;
+  trace_id: string;
+  street: "flop" | "turn" | "river";
+  previous_board: string[];
+  community_cards: string[];
+  state_version_before: string;
+  state_version_after: string;
+  duplicate?: boolean;
 }

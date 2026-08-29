@@ -6505,6 +6505,14 @@
       "pendingPath": "supabase/pending-migrations/20270113000008_dealer_payroll_statement_telegram_delivery_contract_repair.sql",
       "sha256": "7de847754cd68436ced5d641db1cbbdd9ec5c1ae305852582b778c40a853c77c",
       "reason": "post-production-head migration is not part of Floor V3 promotion; owner-gated separate work"
+    },
+    {
+      "version": "20270113000009",
+      "filename": "20270113000009_tracker_voice_board_atomic_commit_v0.sql",
+      "originalPath": "supabase/migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql",
+      "pendingPath": "supabase/pending-migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql",
+      "sha256": "d28908052e16431cf321a4d3e39f4bc69799427ba9c6b551f15ea3981fb63acc",
+      "reason": "post-production-head Tracker Voice Board Assist migration; source-only pending owner-gated rollout"
     }
   ],
   "floorActiveAllowlist": [
@@ -6536,7 +6544,7 @@
     "neverReplay": 216,
     "legacyUnappliedNotForReplay": 2,
     "remoteHistoryReceipts": 22,
-    "pendingSources": 2,
+    "pendingSources": 3,
     "unresolved": 0,
     "nonVersionedSources": 1
   },

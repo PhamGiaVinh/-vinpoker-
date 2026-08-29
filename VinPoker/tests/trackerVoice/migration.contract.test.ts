@@ -13,6 +13,8 @@ const geminiMigrationName =
   "20270112000008_tracker_voice_gemini_live_provider.sql";
 const transcribeBindingMigrationName =
   "20270113000007_tracker_voice_transcribe35_binding.sql";
+const boardAssistMigrationName =
+  "20270113000009_tracker_voice_board_atomic_commit_v0.sql";
 const migration = readFileSync(
   resolve(root, "supabase/migrations", migrationName),
   "utf8",
@@ -23,6 +25,10 @@ const geminiMigration = readFileSync(
 ).replace(/\r\n/g, "\n");
 const transcribeBindingMigration = readFileSync(
   resolve(root, "supabase/pending-migrations", transcribeBindingMigrationName),
+  "utf8",
+).replace(/\r\n/g, "\n");
+const boardAssistMigration = readFileSync(
+  resolve(root, "supabase/pending-migrations", boardAssistMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const unifiedOpsMigration = readFileSync(
@@ -98,9 +104,13 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(pendingNames.filter((name) => name.startsWith("20270113000007_"))).toEqual([
       transcribeBindingMigrationName,
     ]);
+    expect(pendingNames.filter((name) => name.startsWith("20270113000009_"))).toEqual([
+      boardAssistMigrationName,
+    ]);
     expect(activeNames).toContain(migrationName);
     expect(activeNames).toContain(geminiMigrationName);
     expect(pendingNames).toContain(transcribeBindingMigrationName);
+    expect(pendingNames).toContain(boardAssistMigrationName);
   });
 
   it("enables the Voice build gate only for the exact approved Vite value", () => {
@@ -217,6 +227,18 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(transcribeBindingMigration).toMatch(
       /GRANT EXECUTE ON FUNCTION public\._tracker_voice_register_validated_event\([\s\S]+?TO service_role;/,
     );
+  });
+
+  it("keeps Board Assist pending, atomic, and bounded to the existing event stream", () => {
+    expect(boardAssistMigration).toContain("commit_tracker_voice_board_v0");
+    expect(boardAssistMigration).toContain("_tracker_voice_register_validated_board_event");
+    expect(boardAssistMigration).toContain("v_result := public.update_community_cards(v_root.hand_id, v_cards, v_actor);");
+    expect(boardAssistMigration).toContain("current_user <> pg_get_userbyid");
+    expect(boardAssistMigration).toContain("board_already_persisted");
+    expect(boardAssistMigration).toContain("voice_provider_config_mismatch");
+    expect(boardAssistMigration).toContain("FROM PUBLIC, anon, authenticated");
+    expect(boardAssistMigration).toContain("TO service_role");
+    expect(workflow).toContain(boardAssistMigrationName);
   });
 
   it("keeps the Unified Ops dependency explicit and lets Gemini Auto fail closed without provider confidence", () => {

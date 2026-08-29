@@ -98,7 +98,7 @@ import {
   playTrackerSoundOnce,
 } from "@/lib/trackerSound";
 import type { PokerLiveSound } from "@/lib/pokerLiveSound";
-import type { VoiceActionMetadata, VoiceActionProposal } from "@/lib/trackerVoice";
+import type { VoiceActionMetadata, VoiceActionProposal, VoiceBoardCommitReceipt } from "@/lib/trackerVoice";
 import { resolveHandLockClaim } from "./handLockClaim";
 
 type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
@@ -2261,6 +2261,32 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
   };
 
+  /** Applies only an authoritative atomic Voice Board receipt, never a draft. */
+  const applyVoiceBoardReceipt = useCallback((receipt: VoiceBoardCommitReceipt) => {
+    if (!handId || receipt.community_cards.length < 3 || receipt.community_cards.length > 5) return false;
+    const cards = receipt.community_cards as Card[];
+    const street = receipt.street as Street;
+    setCommunityCards([
+      cards[0] ?? null,
+      cards[1] ?? null,
+      cards[2] ?? null,
+      cards[3] ?? null,
+      cards[4] ?? null,
+    ]);
+    setPersistedBoardCount(cards.length);
+    setSentCommunityStreets((previous) => new Set(previous).add(street));
+    setPlayers((previous) => previous.map((player) => ({ ...player, current_bet: 0 })));
+    playTrackerSoundOnce(playedSoundsRef.current, handId, street, "pot_collect");
+    playTrackerSoundOnce(
+      playedSoundsRef.current,
+      handId,
+      street,
+      cards.length >= 5 ? "deal_river" : cards.length === 4 ? "deal_turn" : "deal_flop",
+    );
+    markSync("sent", `Voice Assist ${STREET_LABELS[street]} (${cards.length} lá)`);
+    return true;
+  }, [handId, markSync]);
+
   // B2 — all-in runout ONE-SCREEN: persist EVERY remaining board street in one
   // operator gesture. Sends the SAME cumulative update_community_cards payload as
   // handleUpdateCommunityCards, but staged (flop → turn → river, ~0.9s apart) so the
@@ -2781,6 +2807,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleSeatNumberTap,
     handleUndo,
     handleUpdateCommunityCards,
+    applyVoiceBoardReceipt,
     handleRunoutDealAll,
     // C2 (trackerStreetRollback)
     streetRollbackUi,

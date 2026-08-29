@@ -3,18 +3,20 @@ import {
   nextToAct,
   reconcileSidePots,
   reduceHand,
+  isBettingRoundComplete,
   validateAction,
   type ActionRow,
   type PlayerSeed,
   type ProposedAction,
   type Street,
 } from "../_shared/trackerEngine/index.ts";
-import { parseTrackerVoiceCommand } from "../_shared/trackerVoiceParser.ts";
 import {
   actionWorkflowForStreet,
   buildVoiceActionCanonicalRequest,
+  buildVoiceBoardCanonicalRequest,
   voiceCanonicalRequestsMatch,
 } from "../../../src/lib/trackerVoice/canonicalRequest.ts";
+import { routeTrackerVoiceIntent } from "../../../src/lib/trackerVoice/intentRouter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -53,6 +55,24 @@ function streetForBoard(board: string[]): Street {
   if (board.length === 4) return "turn";
   if (board.length === 3) return "flop";
   return "preflop";
+}
+
+function workflowForVoiceSnapshot(snapshot: VoiceSnapshot):
+  | "preflop_action" | "flop_action" | "turn_action" | "river_action"
+  | "enter_flop" | "enter_turn" | "enter_river" | null {
+  const runtime = reduceHand(snapshot.players, snapshot.actions, snapshot.button_seat);
+  const boardCount = snapshot.community_cards.length;
+  if (!isBettingRoundComplete(runtime)) {
+    const actionWorkflow = actionWorkflowForStreet(streetForBoard(snapshot.community_cards));
+    return actionWorkflow === "preflop_action" || actionWorkflow === "flop_action"
+      || actionWorkflow === "turn_action" || actionWorkflow === "river_action"
+      ? actionWorkflow
+      : null;
+  }
+  if (boardCount === 0 && runtime.street === "preflop") return "enter_flop";
+  if (boardCount === 3 && runtime.street === "flop") return "enter_turn";
+  if (boardCount === 4 && runtime.street === "turn") return "enter_river";
+  return null;
 }
 
 function clockwiseAfter<T extends { seat_number: number }>(players: T[], seat: number): T | null {
@@ -412,15 +432,94 @@ Deno.serve(async (req) => {
           return validationError("CORRECTION_PENDING", "Đang chờ Floor sửa action trước đó.");
         }
 
-        const command = parseTrackerVoiceCommand(final_transcript, {
+        const expectedWorkflowState = workflowForVoiceSnapshot(snapshot);
+        if (!expectedWorkflowState) {
+          return validationError("wrong_workflow", "Voice chưa có bước nhập Board hoặc Action hợp lệ.");
+        }
+        // The route evaluates every enabled grammar independently. It never
+        // trusts the browser's intentDomain and never falls back after an
+        // Action parse/validation failure.
+        const route = routeTrackerVoiceIntent(final_transcript, expectedWorkflowState, {
           spokenAmountUnit: snapshot.spoken_amount_unit,
           amountUnitConfirmed: snapshot.amount_unit_confirmed,
         });
-        if (!command) return validationError("VOICE_COMMAND_UNKNOWN", "Không nhận ra lệnh poker.");
-        if (command.amountAmbiguous) {
-          return validationError("VOICE_AMOUNT_AMBIGUOUS", "Số chip chưa rõ đơn vị.");
+        if (!route.ok) {
+          return validationError(route.code, route.code === "wrong_workflow"
+            ? "Câu Voice không hợp lệ ở bước Tracker hiện tại."
+            : "Không nhận ra một lệnh Voice duy nhất.");
+        }
+        const mode = execution_mode === "assist" ? "assist" : "shadow";
+        if (route.intentDomain === "board") {
+          if (execution_mode === "auto") {
+            return validationError("AUTO_CAPABILITY_MISSING", "Voice Board không hỗ trợ Auto.");
+          }
+          const command = route.command;
+          const expectedExistingBoardCount = snapshot.community_cards.length;
+          if (
+            (command.street === "flop" && expectedExistingBoardCount !== 0)
+            || (command.street === "turn" && expectedExistingBoardCount !== 3)
+            || (command.street === "river" && expectedExistingBoardCount !== 4)
+          ) {
+            return validationError("board_already_persisted", "Street này đã có Board trên server. Hãy dùng luồng sửa thủ công.");
+          }
+          const cumulativeCards = [...snapshot.community_cards, ...command.newCards];
+          if (new Set(cumulativeCards).size !== cumulativeCards.length) {
+            return validationError("duplicate_card", "Board có lá bài trùng với bài đã xác nhận.");
+          }
+          const canonicalRequest = await buildVoiceBoardCanonicalRequest({
+            rawTranscript: final_transcript,
+            expectedStateVersion: snapshot.state_version,
+            expectedWorkflowState,
+            expectedStreet: command.street,
+            payload: {
+              street: command.street,
+              newCards: command.newCards,
+              cumulativeCards,
+              expectedExistingBoardCount: expectedExistingBoardCount as 0 | 3 | 4,
+            },
+          });
+          if (!voiceCanonicalRequestsMatch(voice_request, canonicalRequest)) {
+            return validationError("intent_mismatch", "Đề xuất Board không còn khớp trạng thái server.");
+          }
+          if (mode !== "shadow" && mode !== "assist") {
+            return validationError("AUTO_CAPABILITY_MISSING", "Voice Board chỉ hỗ trợ Shadow hoặc Assist.");
+          }
+          const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+          const supabaseUrl = Deno.env.get("SUPABASE_URL");
+          if (!serviceKey || !supabaseUrl) throw new Error("tracker_voice_service_not_configured");
+          const service = createClient(supabaseUrl, serviceKey, {
+            auth: { persistSession: false, autoRefreshToken: false },
+          });
+          result = await service.rpc("_tracker_voice_register_validated_board_event", {
+            p_actor_user_id: user.id,
+            p_tournament_id: tournament_id,
+            p_tournament_table_id: tournament_table_id,
+            p_hand_id: hand_id,
+            p_provider_name: provider_name === "gemini_live" ? "gemini_live" : "openai_realtime",
+            p_provider_model: typeof provider_model === "string" ? provider_model : snapshot.provider_model,
+            p_provider_event_id: typeof provider_event_id === "string" ? provider_event_id : null,
+            p_final_transcript: final_transcript,
+            p_normalized_command: {
+              kind: "board",
+              intent_domain: "board",
+              normalized_transcript: command.normalizedTranscript,
+              grammar_version: "dealer-board-v1",
+              vocabulary_version: "poker-dealer-v2",
+              requires_confirmation: true,
+              canonical_request: canonicalRequest,
+            },
+            p_expected_state_version: snapshot.state_version,
+            p_execution_mode: mode,
+            p_idempotency_key: idempotency_key,
+            p_trace_id: trace_id,
+          });
+          break;
         }
 
+        const command = route.command;
+        if (command.amount?.ambiguous) {
+          return validationError("VOICE_AMOUNT_AMBIGUOUS", "Số chip chưa rõ đơn vị.");
+        }
         const street = streetForBoard(snapshot.community_cards ?? []);
         const actionOrder = (snapshot.actions.at(-1)?.action_order ?? 0) + 1;
         let normalizedCommand: Record<string, unknown> = {
@@ -454,8 +553,10 @@ Deno.serve(async (req) => {
           } else if (canonicalAction === "all_in") {
             actionAmount = actor.stack;
           } else if (canonicalAction === "bet" || canonicalAction === "raise") {
-            if (command.amount === null) return validationError("VOICE_AMOUNT_REQUIRED", "Bet/raise cần số chip.");
-            actionAmount = command.amount - actor.currentBet;
+            if (!command.amount || command.amount.value === null) {
+              return validationError("VOICE_AMOUNT_REQUIRED", "Bet/raise cần số chip.");
+            }
+            actionAmount = command.amount.value - actor.currentBet;
           }
 
           const proposed: ProposedAction = {
@@ -485,14 +586,14 @@ Deno.serve(async (req) => {
           // PR A intentionally recognizes only the Action domain. The browser's
           // request is diagnostic input, never authority: recompute every field
           // from the raw transcript and locked server snapshot before persistence.
-          const expectedWorkflowState = actionWorkflowForStreet(street);
-          if (!expectedWorkflowState) {
+          const expectedActionWorkflowState = actionWorkflowForStreet(street);
+          if (!expectedActionWorkflowState || expectedActionWorkflowState !== expectedWorkflowState) {
             return validationError("intent_mismatch", "Voice Action chỉ hợp lệ trong vòng cược.");
           }
           const canonicalRequest = await buildVoiceActionCanonicalRequest({
             rawTranscript: final_transcript,
             expectedStateVersion: snapshot.state_version,
-            expectedWorkflowState,
+            expectedWorkflowState: expectedActionWorkflowState,
             expectedStreet: street,
             payload: {
               canonicalAction,
@@ -521,11 +622,11 @@ Deno.serve(async (req) => {
           };
         }
 
-        const mode = execution_mode === "auto" ? "auto" : execution_mode === "assist" ? "assist" : "shadow";
-        if (command.requiresConfirmation && mode !== "shadow") {
+        const actionMode = execution_mode === "auto" ? "auto" : execution_mode === "assist" ? "assist" : "shadow";
+        if (command.requiresConfirmation && actionMode !== "shadow") {
           return validationError("VOICE_REPAIR_SHADOW_ONLY", "Lệnh đã sửa nhận dạng chỉ được hiển thị Shadow để xác nhận lại.");
         }
-        if (mode === "auto" && (
+        if (actionMode === "auto" && (
           !VOICE_AUTO_ENABLED
           || VALIDATION_MODE !== "enforce"
           || !ENFORCE_TURN_ORDER
@@ -559,7 +660,7 @@ Deno.serve(async (req) => {
           p_final_transcript: final_transcript,
           p_normalized_command: normalizedCommand,
           p_expected_state_version: expected_state_version,
-          p_execution_mode: mode,
+          p_execution_mode: actionMode,
           p_idempotency_key: idempotency_key,
           p_trace_id: trace_id,
           p_validation_mode: "enforce",
@@ -574,6 +675,25 @@ Deno.serve(async (req) => {
           p_hand_id: hand_id,
           p_player_hole_cards: player_hole_cards,
           p_user_id: user.id,
+        });
+        break;
+      }
+      case "commit_voice_board": {
+        const { hand_id, voice_event_id, idempotency_key, trace_id } = body;
+        if (
+          typeof hand_id !== "string"
+          || typeof voice_event_id !== "string"
+          || typeof idempotency_key !== "string"
+          || typeof trace_id !== "string"
+        ) {
+          return validationError("VOICE_BOARD_METADATA_REQUIRED", "Voice Board thiếu receipt hoặc idempotency proof.");
+        }
+        // The authenticated RPC owns the complete transaction. This Edge path
+        // deliberately performs no Board DML and makes no second RPC call.
+        result = await supabase.rpc("commit_tracker_voice_board_v0", {
+          p_voice_event_id: voice_event_id,
+          p_idempotency_key: idempotency_key,
+          p_trace_id: trace_id,
         });
         break;
       }
@@ -608,7 +728,7 @@ Deno.serve(async (req) => {
     }
     // A JSONB denial from the canonical action RPC is an authoritative failure,
     // not a successful Edge envelope. This keeps non-Voice callers fail-closed too.
-    if (action === "record_action" && result.data && typeof result.data === "object") {
+    if ((action === "record_action" || action === "commit_voice_board") && result.data && typeof result.data === "object") {
       const verdict = result.data as { error?: unknown };
       if (typeof verdict.error === "string") {
         return new Response(JSON.stringify({ error: verdict.error, code: verdict.error }), {
