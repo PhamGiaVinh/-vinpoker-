@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/public-live-viewer-v2-disposable-db.yml"
-      - "VinPoker/supabase/migrations/20270111000002_public_tournament_event_snapshot.sql"
+      - "VinPoker/supabase/migration-archive/historical-never-replay/20270111000002_public_tournament_event_snapshot.sql"
       - "VinPoker/tests/publicLiveViewer/**"
 
 permissions:
@@ -47,7 +47,7 @@ jobs:
         working-directory: VinPoker
         run: >-
           psql -v ON_ERROR_STOP=1
-          -f supabase/migrations/20270111000002_public_tournament_event_snapshot.sql
+          -f supabase/migration-archive/historical-never-replay/20270111000002_public_tournament_event_snapshot.sql
 
       - name: Verify sanitized anonymous contract and clock phases
         working-directory: VinPoker

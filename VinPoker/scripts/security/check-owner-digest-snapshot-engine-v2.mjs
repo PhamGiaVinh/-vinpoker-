@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..", "..");
 const migration = readFileSync(
-  resolve(root, "supabase/migrations/20270110000011_owner_daily_digest_snapshot_engine_v2.sql"),
+  resolve(root, "supabase/migration-archive/historical-never-replay/20270110000011_owner_daily_digest_snapshot_engine_v2.sql"),
   "utf8",
 );
 const contract = readFileSync(

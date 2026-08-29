@@ -77,7 +77,7 @@ BEGIN
 END;
 $$;
 
-\ir ../../supabase/migrations/20270110000002_hand_players_identity_columns_forward_fix.sql
+\ir ../../supabase/migration-archive/historical-never-replay/20270110000002_hand_players_identity_columns_forward_fix.sql
 
 DO $$
 DECLARE
@@ -151,7 +151,7 @@ END;
 $$;
 
 -- The exact migration must be safe to retry on an already-repaired schema.
-\ir ../../supabase/migrations/20270110000002_hand_players_identity_columns_forward_fix.sql
+\ir ../../supabase/migration-archive/historical-never-replay/20270110000002_hand_players_identity_columns_forward_fix.sql
 
 DO $$
 BEGIN

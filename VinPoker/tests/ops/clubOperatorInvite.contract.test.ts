@@ -6,14 +6,14 @@ const root = resolve(__dirname, "../..");
 const baseline = readFileSync(
   resolve(
     root,
-    "supabase/migrations/20270108000000_ops_operator_membership_baseline.sql",
+    "supabase/migration-archive/superseded/remote-alias/20270108000000_ops_operator_membership_baseline.sql",
   ),
   "utf8",
 );
 const migration = readFileSync(
   resolve(
     root,
-    "supabase/migrations/20270108000001_ops_club_operator_invites.sql",
+    "supabase/migration-archive/superseded/remote-alias/20270108000001_ops_club_operator_invites.sql",
   ),
   "utf8",
 );

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const migration = readFileSync(
-  resolve(process.cwd(), "supabase/migrations/20270105000000_floor_active_table_number_unique.sql"),
+  resolve(process.cwd(), "supabase/migration-archive/historical-never-replay/20270105000000_floor_active_table_number_unique.sql"),
   "utf8",
 );
 

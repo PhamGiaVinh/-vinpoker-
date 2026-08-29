@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 export const PROJECT_REF = "orlesggcjamwuknxwcpk";
 export const MIGRATION_VERSION = "20270106000001";
 export const MIGRATION_BASENAME =
   `${MIGRATION_VERSION}_dealer_pt_wage_global_continuous_accrual_v2.sql`;
-export const MIGRATION_PATH = `supabase/migrations/${MIGRATION_BASENAME}`;
+export const MIGRATION_PATH = `supabase/migration-archive/superseded/remote-alias/${MIGRATION_BASENAME}`;
 export const MIGRATION_NAME = `${MIGRATION_VERSION}_dealer_pt_wage_global_continuous_accrual_v2`;
 // The apply runner hashes normalized LF source so the exact migration identity
 // is stable between Windows authoring and the Linux protected runner.
@@ -55,11 +55,16 @@ export function selectedMigrationProblems(vinPokerRoot) {
   const problems = [];
   const { byVersion } = migrationInventory(vinPokerRoot);
   const candidates = byVersion.get(MIGRATION_VERSION) ?? [];
-  if (candidates.length !== 1 || candidates[0] !== MIGRATION_BASENAME) {
-    problems.push("candidate migration selector is not unique");
+  if (candidates.length > 0) {
+    problems.push("candidate migration must remain outside active catalog");
   }
 
-  const source = readFileSync(resolve(vinPokerRoot, MIGRATION_PATH), "utf8");
+  const sourcePath = resolve(vinPokerRoot, MIGRATION_PATH);
+  if (!existsSync(sourcePath)) {
+    problems.push("candidate migration source file missing");
+    return problems;
+  }
+  const source = readFileSync(sourcePath, "utf8");
   if (sha256(normalizeLineEndings(source)) !== MIGRATION_SHA256) {
     problems.push("candidate migration checksum mismatch");
   }

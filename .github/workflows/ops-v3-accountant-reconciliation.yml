@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/ops-v3-accountant-reconciliation.yml"
-      - "VinPoker/supabase/migrations/20270110000001_ops_accountant_payroll_approval_guard.sql"
+      - "VinPoker/supabase/migration-archive/historical-never-replay/20270110000001_ops_accountant_payroll_approval_guard.sql"
       - "VinPoker/src/ops/accountant/**"
       - "VinPoker/src/ops/registry/opsModuleRegistry.ts"
       - "VinPoker/tests/opsAccountantReconciliation/**"
@@ -86,7 +86,7 @@ jobs:
         working-directory: VinPoker
         env:
           PGPASSWORD: ""
-        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270110000001_ops_accountant_payroll_approval_guard.sql
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migration-archive/historical-never-replay/20270110000001_ops_accountant_payroll_approval_guard.sql
 
       - name: Run authority and cross-club assertions
         working-directory: VinPoker
@@ -105,7 +105,7 @@ jobs:
           psql -h localhost -U postgres -d ops_accountant_missing_prerequisite -v ON_ERROR_STOP=1 \
             -c "DROP FUNCTION public._is_payroll_accountant(uuid) CASCADE;"
           if psql -h localhost -U postgres -d ops_accountant_missing_prerequisite -v ON_ERROR_STOP=1 \
-            -f supabase/migrations/20270110000001_ops_accountant_payroll_approval_guard.sql; then
+            -f supabase/migration-archive/historical-never-replay/20270110000001_ops_accountant_payroll_approval_guard.sql; then
             echo "Migration unexpectedly accepted a missing prerequisite"
             exit 1
           fi

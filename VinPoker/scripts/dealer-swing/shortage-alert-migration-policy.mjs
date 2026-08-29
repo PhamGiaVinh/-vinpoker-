@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 export const PROJECT_REF = "orlesggcjamwuknxwcpk";
 export const MIGRATION_VERSION = "20270104000006";
 export const MIGRATION_BASENAME = `${MIGRATION_VERSION}_dealer_shortage_alert_lifecycle.sql`;
-export const MIGRATION_PATH = `supabase/migrations/${MIGRATION_BASENAME}`;
+export const MIGRATION_PATH = `supabase/migration-archive/superseded/remote-alias/${MIGRATION_BASENAME}`;
 export const MIGRATION_NAME = `${MIGRATION_VERSION}_dealer_shortage_alert_lifecycle`;
 export const MIGRATION_SHA256 = "80bb44a66f9341b709821fed7d67208c82c05d6e6125a42a8fe91079de79a549";
 
@@ -13,7 +13,7 @@ export const NEVER_APPLY = Object.freeze([
   "supabase/migration-archive/never-apply/20270104000005_dealer_shortage_alert_lifecycle.sql",
 ]);
 export const FLOOR_OWNED = Object.freeze([
-  "supabase/migrations/20270104000005_floor_operator_scope_acl.sql",
+  "supabase/migration-archive/historical-never-replay/20270104000005_floor_operator_scope_acl.sql",
 ]);
 export const SUPERSEDED_ALERT_PATH = NEVER_APPLY[0];
 
@@ -142,17 +142,30 @@ export function migrationInventory(vinPokerRoot) {
   return { entries, byVersion };
 }
 
+function resolvedMigrationPath(vinPokerRoot) {
+  const archivedPath = resolve(vinPokerRoot, MIGRATION_PATH);
+  const activePath = resolve(vinPokerRoot, "supabase/migrations", MIGRATION_BASENAME);
+  if (existsSync(archivedPath) && existsSync(activePath)) {
+    throw new Error(`${MIGRATION_VERSION} has both archived and active sources`);
+  }
+  return existsSync(archivedPath) ? archivedPath : activePath;
+}
+
 export function selectedMigrationProblems(vinPokerRoot) {
   const problems = [];
   const { entries, byVersion } = migrationInventory(vinPokerRoot);
   const candidateFiles = byVersion.get(MIGRATION_VERSION) ?? [];
-  if (candidateFiles.length !== 1) {
-    problems.push(`candidate version ${MIGRATION_VERSION} resolves to ${candidateFiles.length} files`);
-  } else if (candidateFiles[0] !== MIGRATION_BASENAME) {
-    problems.push(`candidate version selects unexpected file ${candidateFiles[0]}`);
+  const sourcePath = resolvedMigrationPath(vinPokerRoot);
+  const activeSource = resolve(vinPokerRoot, "supabase/migrations", MIGRATION_BASENAME);
+  const archivedSource = resolve(vinPokerRoot, MIGRATION_PATH);
+  if (candidateFiles.length > 0 && existsSync(activeSource) && existsSync(archivedSource)) {
+    problems.push(`candidate version ${MIGRATION_VERSION} has duplicate active and archived sources`);
   }
-
-  const source = readFileSync(resolve(vinPokerRoot, MIGRATION_PATH), "utf8");
+  if (!existsSync(sourcePath)) {
+    problems.push(`candidate version ${MIGRATION_VERSION} source is missing`);
+    return problems;
+  }
+  const source = readFileSync(sourcePath, "utf8");
   if (sha256(normalizeLineEndings(source)) !== MIGRATION_SHA256) {
     problems.push("candidate migration checksum mismatch");
   }
@@ -178,7 +191,7 @@ export function selectedMigrationProblems(vinPokerRoot) {
 
 export function migrationEquivalenceProblems(vinPokerRoot) {
   const oldSql = readFileSync(resolve(vinPokerRoot, SUPERSEDED_ALERT_PATH), "utf8");
-  const candidateSql = readFileSync(resolve(vinPokerRoot, MIGRATION_PATH), "utf8");
+  const candidateSql = readFileSync(resolvedMigrationPath(vinPokerRoot), "utf8");
   return normalizeExecutableSql(oldSql) === normalizeExecutableSql(candidateSql)
     ? []
     : ["superseding migration executable SQL differs from the reviewed alert migration"];

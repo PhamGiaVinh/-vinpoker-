@@ -10,7 +10,7 @@ const disposableBootstrap = readFileSync(
   "utf8",
 );
 const readinessAclMigration = readFileSync(
-  resolve(root, "supabase/migrations/20270106000002_dealer_pt_wage_readiness_acl.sql"),
+  resolve(root, "supabase/migration-archive/superseded/remote-alias/20270106000002_dealer_pt_wage_readiness_acl.sql"),
   "utf8",
 );
 const payrollFixtures = [
@@ -48,7 +48,7 @@ test("PT wage disposable runner applies the exact payroll migration chain", () =
 
 test("payroll statement disposable fixtures exercise immutable statement and PT reservation paths", () => {
   const migration = readFileSync(
-    resolve(root, "supabase/migrations/20270112000000_dealer_payroll_statements_v1.sql"),
+    resolve(root, "supabase/migration-archive/historical-never-replay/20270112000000_dealer_payroll_statements_v1.sql"),
     "utf8",
   );
   const lifecycle = readFileSync(resolve(root, "supabase/tests/dealer_payroll_statements.sql"), "utf8");

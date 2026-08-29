@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 export const PROJECT_REF = "orlesggcjamwuknxwcpk";
@@ -39,24 +39,29 @@ export function sha256(value) {
 }
 
 export function migrationPath(migration) {
-  return `supabase/migrations/${migration.basename}`;
+  return `supabase/migration-archive/superseded/remote-alias/${migration.basename}`;
+}
+
+function resolvedMigrationPath(vinPokerRoot, migration) {
+  const archivedPath = resolve(vinPokerRoot, migrationPath(migration));
+  const activePath = resolve(vinPokerRoot, "supabase/migrations", migration.basename);
+  if (existsSync(archivedPath) && existsSync(activePath)) {
+    throw new Error(`${migration.version} has both archived and active sources`);
+  }
+  return existsSync(archivedPath) ? archivedPath : activePath;
 }
 
 export function sourcePolicyProblems(vinPokerRoot) {
-  const migrationDirectory = resolve(vinPokerRoot, "supabase/migrations");
-  const files = readdirSync(migrationDirectory, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
-    .map((entry) => entry.name);
   const problems = [];
 
   for (const migration of MIGRATIONS) {
-    const candidates = files.filter((file) => file.startsWith(`${migration.version}_`));
-    if (candidates.length !== 1 || candidates[0] !== migration.basename) {
+    const sourcePath = resolvedMigrationPath(vinPokerRoot, migration);
+    if (!existsSync(sourcePath)) {
       problems.push(`${migration.version} does not resolve to its exact migration file`);
       continue;
     }
 
-    const source = readFileSync(resolve(vinPokerRoot, migrationPath(migration)), "utf8");
+    const source = readFileSync(sourcePath, "utf8");
     if (sha256(normalizeLineEndings(source)) !== migration.sha256) {
       problems.push(`${migration.version} checksum mismatch`);
     }

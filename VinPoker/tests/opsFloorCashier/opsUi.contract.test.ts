@@ -29,7 +29,7 @@ describe("Ops production safety affordances", () => {
   });
 
   it("keeps registration actor spoof protection in the canonical migration", () => {
-    const guard = readFileSync(resolve(repo, "supabase/migrations/20260811000000_p0_guard_v2_bind_actor_to_auth_uid.sql"), "utf8");
+    const guard = readFileSync(resolve(repo, "supabase/migration-archive/historical-never-replay/20260811000000_p0_guard_v2_bind_actor_to_auth_uid.sql"), "utf8");
     expect(guard).toContain("p_actor_user_id IS DISTINCT FROM auth.uid()");
     expect(guard).toContain("REVOKE EXECUTE ON FUNCTION public.confirm_registration_and_assign_seat");
   });

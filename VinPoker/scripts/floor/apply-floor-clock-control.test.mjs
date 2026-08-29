@@ -291,7 +291,7 @@ test("workflow is manual-only, exact-SHA, protected and contains no broad deploy
   for (const exactValidationPath of [
     "VinPoker/scripts/floor/apply-floor-clock-control.mjs",
     "VinPoker/scripts/floor/apply-floor-clock-control.test.mjs",
-    "VinPoker/supabase/migrations/20270104000004_floor_clock_control_atomic.sql",
+    "VinPoker/supabase/migration-archive/historical-never-replay/20270104000004_floor_clock_control_atomic.sql",
   ]) {
     assert.match(validationWorkflow, new RegExp(exactValidationPath.replaceAll(".", "\\.")));
   }

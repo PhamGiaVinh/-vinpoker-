@@ -1,11 +1,16 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 const migrationsDir = resolve(root, "supabase/migrations");
 const migrationName = "20270110000005_tracker_hand_completion_projection_sync.sql";
-const migration = readFileSync(resolve(migrationsDir, migrationName), "utf8");
+const migrationArchivePath = resolve(
+  root,
+  "supabase/migration-archive/historical-never-replay",
+  migrationName,
+);
+const migration = readFileSync(migrationArchivePath, "utf8");
 const edge = readFileSync(
   resolve(root, "supabase/functions/tournament-live-update/index.ts"),
   "utf8",
@@ -25,7 +30,8 @@ describe("Tracker hand completion projection migration", () => {
       .filter((version): version is string => Boolean(version));
     const version = migrationName.slice(0, 14);
 
-    expect(versions.filter((candidate) => candidate === version)).toHaveLength(1);
+    expect(versions.filter((candidate) => candidate === version)).toHaveLength(0);
+    expect(existsSync(migrationArchivePath)).toBe(true);
     expect(Number(version)).toBeGreaterThan(Number("20270110000004"));
   });
 

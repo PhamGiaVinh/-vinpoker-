@@ -317,17 +317,17 @@ $$;
 
 \ir ../../supabase/migrations/20261240000000_floor_production_hardening.sql
 \ir ../../supabase/migrations/20261241000000_floor_clock_start_atomic.sql
-\ir ../../supabase/migrations/20261242000000_floor_operator_scope.sql
-\ir ../../supabase/migrations/20270104000001_floor_chip_cas_rpc.sql
-\ir ../../supabase/migrations/20270104000004_floor_clock_control_atomic.sql
+\ir ../../supabase/migration-archive/historical-never-replay/20261242000000_floor_operator_scope.sql
+\ir ../../supabase/migration-archive/historical-never-replay/20270104000001_floor_chip_cas_rpc.sql
+\ir ../../supabase/migration-archive/historical-never-replay/20270104000004_floor_clock_control_atomic.sql
 
 -- Reproduce the exact reviewed live predecessor drift. Vanilla PostgreSQL does
 -- not include Supabase's direct service_role function grant by default, so the
 -- forward migration must prove that it removes this grant rather than passing
 -- only because the disposable database started stricter than production.
 GRANT EXECUTE ON FUNCTION public.get_my_floor_operator_scope() TO service_role;
-\ir ../../supabase/migrations/20270104000005_floor_operator_scope_acl.sql
-\ir ../../supabase/migrations/20270105000004_floor_table_control_mode.sql
+\ir ../../supabase/migration-archive/historical-never-replay/20270104000005_floor_operator_scope_acl.sql
+\ir ../../supabase/migration-archive/historical-never-replay/20270105000004_floor_table_control_mode.sql
 \ir ../../supabase/migrations/20270106000000_floor_open_table_picker_mode_v2.sql
 
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);

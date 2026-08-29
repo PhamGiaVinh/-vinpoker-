@@ -15,11 +15,11 @@ import {
 
 export const MIGRATION_VERSION = "20270104000005";
 export const MIGRATION_PATH =
-  "supabase/migrations/20270104000005_floor_operator_scope_acl.sql";
+  "supabase/migration-archive/historical-never-replay/20270104000005_floor_operator_scope_acl.sql";
 export const MIGRATION_SHA256 =
   "6d6fbfa8b6f50e7203e6eb885a8980390fbfe7c8d3e45150e86521fa64a8081f";
 export const SCOPE_SOURCE_PATH =
-  "supabase/migrations/20261242000000_floor_operator_scope.sql";
+  "supabase/migration-archive/historical-never-replay/20261242000000_floor_operator_scope.sql";
 export const CONFIRMATION = "APPLY_FLOOR_OPERATOR_SCOPE_ACL_20270104000005";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));

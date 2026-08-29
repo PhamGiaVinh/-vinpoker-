@@ -11,8 +11,8 @@ const APP_ROOT = resolve(HERE, "../..");
 const MIGRATIONS = [
   join(APP_ROOT, "supabase/migrations/20270110000004_series_v_candidate_and_rate_limit_v1.sql"),
   join(APP_ROOT, "supabase/migrations/20270111000000_series_v_candidate_authoring_v1.sql"),
-  join(APP_ROOT, "supabase/migrations/20270112000001_series_v_candidate_authoring_source_state_compatibility.sql"),
-  join(APP_ROOT, "supabase/migrations/20270112000002_series_v_candidate_authoring_live_registration_compatibility.sql"),
+  join(APP_ROOT, "supabase/migration-archive/historical-never-replay/20270112000001_series_v_candidate_authoring_source_state_compatibility.sql"),
+  join(APP_ROOT, "supabase/migration-archive/historical-never-replay/20270112000002_series_v_candidate_authoring_live_registration_compatibility.sql"),
 ];
 const BOOTSTRAP = join(HERE, "disposable-series-club-pulse-pg17-bootstrap.sql");
 const CONTAINER = process.env.SERIES_V_PG17_DOCKER_CONTAINER ?? "supabase_db_vinpoker-test-canonical-v1";

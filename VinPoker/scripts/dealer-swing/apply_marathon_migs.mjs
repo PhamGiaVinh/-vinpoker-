@@ -35,10 +35,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..", ".."); // scripts/dealer-swing → VinPoker root
 
 const MIGS = [
-  "supabase/migrations/20261007000000_lock_legacy_grant_hardening.sql",
-  "supabase/migrations/20261008000000_get_dealer_swing_health.sql",
-  "supabase/migrations/20261009000000_edge_idempotency_keys.sql",
-  "supabase/migrations/20261010000000_swing_run_metrics.sql",
+  "supabase/migration-archive/historical-never-replay/20261007000000_lock_legacy_grant_hardening.sql",
+  "supabase/migration-archive/historical-never-replay/20261008000000_get_dealer_swing_health.sql",
+  "supabase/migration-archive/historical-never-replay/20261009000000_edge_idempotency_keys.sql",
+  "supabase/migration-archive/historical-never-replay/20261010000000_swing_run_metrics.sql",
 ];
 const CONFIRM_ENV = "CONFIRM_APPLY_MARATHON";
 const CONFIRM_VAL = "APPLY_DEALER_SWING_MARATHON";

@@ -1,8 +1,9 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MIGRATION_FILE_PATTERN = /^(\d{14})_.+\.sql$/u;
+const CLI_VISIBLE_NON_VERSIONED_MIGRATION = /^\d+_.+\.sql$/u;
 const CREDENTIAL_LIKE_JWT_LITERAL =
   /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b/u;
 const DIRECT_PRODUCTION_FUNCTION_TARGET =
@@ -84,14 +85,43 @@ const FORBIDDEN_ACTIVE_MIGRATION_FILENAMES = new Map([
   ],
 ]);
 
-export function findMigrationCatalogProblems(migrationDirectory) {
+function readReconciliationManifest(manifestPath) {
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  if (manifest.schemaVersion !== 1 || manifest.kind !== "floor-v3-catalog-reconciliation") {
+    throw new Error("unsupported Floor V3 reconciliation manifest schema");
+  }
+  return manifest;
+}
+
+function isCommentOnly(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//gu, "")
+    .replace(/--[^\r\n]*/gu, "")
+    .trim().length === 0;
+}
+
+export function findMigrationCatalogProblems(
+  migrationDirectory,
+  reconciliationManifestPath = null,
+) {
   const versions = new Map();
   const invalidFiles = [];
+  const activeRows = [];
 
   for (const entry of readdirSync(migrationDirectory, {
     withFileTypes: true,
   })) {
     if (!entry.isFile() || !entry.name.endsWith(".sql")) continue;
+
+    if (
+      CLI_VISIBLE_NON_VERSIONED_MIGRATION.test(entry.name) &&
+      !MIGRATION_FILE_PATTERN.test(entry.name)
+    ) {
+      invalidFiles.push(
+        `CLI-visible non-versioned migration remains active ${entry.name}`,
+      );
+      continue;
+    }
 
     const match = entry.name.match(MIGRATION_FILE_PATTERN);
     if (!match) {
@@ -113,6 +143,11 @@ export function findMigrationCatalogProblems(migrationDirectory) {
       resolve(migrationDirectory, entry.name),
       "utf8",
     );
+    activeRows.push({
+      version,
+      filename: entry.name,
+      source,
+    });
     if (CREDENTIAL_LIKE_JWT_LITERAL.test(source)) {
       invalidFiles.push(
         `credential-like JWT literal in active migration ${entry.name}`,
@@ -149,11 +184,87 @@ export function findMigrationCatalogProblems(migrationDirectory) {
     }
   }
 
+  if (reconciliationManifestPath) {
+    if (!existsSync(reconciliationManifestPath)) {
+      invalidFiles.push("Floor V3 reconciliation manifest is missing");
+    } else {
+      try {
+        const reconciliation = readReconciliationManifest(
+          reconciliationManifestPath,
+        );
+        const remoteVersions = new Set(
+          reconciliation.remoteLedgerVersions.map((entry) => entry.version),
+        );
+        const floorFiles = new Set(
+          reconciliation.floorActiveAllowlist.map((entry) => entry.filename),
+        );
+        const activeByFilename = new Set(activeRows.map((row) => row.filename));
+        const activeByVersion = new Set(activeRows.map((row) => row.version));
+
+        for (const historical of reconciliation.historicalSources) {
+          if (activeByFilename.has(historical.filename)) {
+            invalidFiles.push(
+              `historical migration remains replayable ${historical.filename}`,
+            );
+          }
+        }
+        for (const pending of reconciliation.pendingSources) {
+          if (activeByFilename.has(pending.filename) || activeByVersion.has(pending.version)) {
+            invalidFiles.push(`pending migration is active ${pending.filename}`);
+          }
+        }
+        const receiptVersions = new Set();
+        for (const receipt of reconciliation.remoteHistoryReceipts) {
+          if (receiptVersions.has(receipt.remoteVersion)) {
+            invalidFiles.push(`duplicate remote history receipt ${receipt.remoteVersion}`);
+          }
+          receiptVersions.add(receipt.remoteVersion);
+          const row = activeRows.find((candidate) => candidate.filename === receipt.receiptFilename);
+          if (!row || row.version !== receipt.remoteVersion) {
+            invalidFiles.push(`remote history receipt is not active at ledger version ${receipt.receiptFilename}`);
+          } else if (!isCommentOnly(row.source)) {
+            invalidFiles.push(`remote history receipt is not comment-only ${receipt.receiptFilename}`);
+          }
+          if (!remoteVersions.has(receipt.remoteVersion)) {
+            invalidFiles.push(`remote history receipt lacks remote ledger evidence ${receipt.remoteVersion}`);
+          }
+        }
+        const head = reconciliation.registeredProductionHead;
+        for (const row of activeRows) {
+          if (floorFiles.has(row.filename) || remoteVersions.has(row.version)) continue;
+          invalidFiles.push(
+            row.version < head
+              ? `replayable historical migration not reconciled ${row.filename}`
+              : `unexpected active migration outside Floor allowlist ${row.filename}`,
+          );
+        }
+        for (const remote of reconciliation.remoteLedgerVersions) {
+          const hasCanonical = activeRows.some(
+            (row) => row.version === remote.version && !row.filename.includes("_remote_history_receipt.sql"),
+          );
+          if (!hasCanonical && !receiptVersions.has(remote.version)) {
+            invalidFiles.push(`missing remote history receipt ${remote.version}`);
+          }
+        }
+      } catch (error) {
+        invalidFiles.push(
+          `Floor V3 reconciliation manifest invalid ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+
   return invalidFiles.sort();
 }
 
-export function runMigrationCatalogCheck(migrationDirectory) {
-  const problems = findMigrationCatalogProblems(migrationDirectory);
+export function runMigrationCatalogCheck(
+  migrationDirectory,
+  reconciliationManifestPath = null,
+) {
+  const problems = findMigrationCatalogProblems(
+    migrationDirectory,
+    reconciliationManifestPath,
+  );
   if (problems.length > 0) {
     for (const problem of problems)
       console.error(`MIGRATION_CATALOG_FAIL ${problem}`);
@@ -173,5 +284,12 @@ if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
   const migrationDirectory = process.argv[2]
     ? resolve(process.argv[2])
     : defaultDirectory;
-  process.exitCode = runMigrationCatalogCheck(migrationDirectory);
+  const reconciliationManifestPath = resolve(
+    dirname(scriptPath),
+    "../../supabase/migration-archive/floor-v3-catalog-reconciliation.manifest.json",
+  );
+  process.exitCode = runMigrationCatalogCheck(
+    migrationDirectory,
+    reconciliationManifestPath,
+  );
 }

@@ -42,14 +42,14 @@ const identityColumnsIntegration = readFileSync(
 const legacyModeSource = readFileSync(
   resolve(
     process.cwd(),
-    "supabase/migrations/20270105000004_floor_table_control_mode.sql",
+    "supabase/migration-archive/historical-never-replay/20270105000004_floor_table_control_mode.sql",
   ),
   "utf8",
 );
 const containmentMigration = readFileSync(
   resolve(
     process.cwd(),
-    "supabase/migrations/20270108000004_tracker_unified_ops_writer_lock_containment.sql",
+    "supabase/migration-archive/superseded/replaced/20270108000004_tracker_unified_ops_writer_lock_containment.sql",
   ),
   "utf8",
 );
@@ -72,7 +72,7 @@ describe("Tracker PR2A disposable database contract", () => {
       "supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql",
     );
     expect(workflow).toContain(
-      "supabase/migrations/20270108000004_tracker_unified_ops_writer_lock_containment.sql",
+      "supabase/migration-archive/superseded/replaced/20270108000004_tracker_unified_ops_writer_lock_containment.sql",
     );
     expect(workflow).toContain("createdb tracker_pr2a_rollback -T tracker_pr2a");
     expect(workflow).toContain("tracker_pr2a_injected_failure");
@@ -81,7 +81,7 @@ describe("Tracker PR2A disposable database contract", () => {
 
   it("runs the identity-column forward repair against the runtime drift shape", () => {
     expect(workflow).toContain(
-      "supabase/migrations/20270110000002_hand_players_identity_columns_forward_fix.sql",
+      "supabase/migration-archive/historical-never-replay/20270110000002_hand_players_identity_columns_forward_fix.sql",
     );
     expect(workflow).toContain("createdb tracker_hand_player_identity");
     expect(workflow).toContain(

@@ -22,7 +22,7 @@ const geminiMigration = readFileSync(
   "utf8",
 ).replace(/\r\n/g, "\n");
 const transcribeBindingMigration = readFileSync(
-  resolve(root, "supabase/migrations", transcribeBindingMigrationName),
+  resolve(root, "supabase/pending-migrations", transcribeBindingMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const unifiedOpsMigration = readFileSync(
@@ -83,21 +83,24 @@ function runtimeFixture(
 
 describe("Tracker Voice V0 migration contract", () => {
   it("uses a unique migration version at the repository maximum", () => {
-    const names = readdirSync(resolve(root, "supabase/migrations"))
+    const activeNames = readdirSync(resolve(root, "supabase/migrations"))
       .filter((name) => /^\d{14}_.+\.sql$/.test(name))
       .sort();
-    expect(names.filter((name) => name.startsWith("20270112000003_"))).toEqual([
+    const pendingNames = readdirSync(resolve(root, "supabase/pending-migrations"))
+      .filter((name) => /^\d{14}_.+\.sql$/.test(name))
+      .sort();
+    expect(activeNames.filter((name) => name.startsWith("20270112000003_"))).toEqual([
       migrationName,
     ]);
-    expect(names.filter((name) => name.startsWith("20270112000008_"))).toEqual([
+    expect(activeNames.filter((name) => name.startsWith("20270112000008_"))).toEqual([
       geminiMigrationName,
     ]);
-    expect(names.filter((name) => name.startsWith("20270113000007_"))).toEqual([
+    expect(pendingNames.filter((name) => name.startsWith("20270113000007_"))).toEqual([
       transcribeBindingMigrationName,
     ]);
-    expect(names).toContain(migrationName);
-    expect(names).toContain(geminiMigrationName);
-    expect(names).toContain(transcribeBindingMigrationName);
+    expect(activeNames).toContain(migrationName);
+    expect(activeNames).toContain(geminiMigrationName);
+    expect(pendingNames).toContain(transcribeBindingMigrationName);
   });
 
   it("enables the Voice build gate only for the exact approved Vite value", () => {

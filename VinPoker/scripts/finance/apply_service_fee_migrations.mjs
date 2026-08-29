@@ -31,8 +31,8 @@ import { dirname, resolve } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..", ".."); // scripts/finance → VinPoker root
 
-const COL_MIG = "supabase/migrations/20260915000000_tournaments_service_fee.sql";
-const RPC_MIG = "supabase/migrations/20260916000000_finance_summary_service_fee.sql";
+const COL_MIG = "supabase/migration-archive/historical-never-replay/20260915000000_tournaments_service_fee.sql";
+const RPC_MIG = "supabase/migration-archive/superseded/replaced/20260916000000_finance_summary_service_fee.sql";
 const FN = "public.get_club_finance_summary(timestamptz,timestamptz,uuid)";
 const CONFIRM_ENV = "CONFIRM_APPLY_SERVICE_FEE";
 const CONFIRM_VAL = "APPLY_SERVICE_FEE_MIGRATIONS";

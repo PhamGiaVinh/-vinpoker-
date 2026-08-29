@@ -37,8 +37,8 @@ BEGIN
 END;
 $$;
 
-\ir ../../supabase/migrations/20270108000000_ops_operator_membership_baseline.sql
-\ir ../../supabase/migrations/20270108000001_ops_club_operator_invites.sql
+\ir ../../supabase/migration-archive/superseded/remote-alias/20270108000000_ops_operator_membership_baseline.sql
+\ir ../../supabase/migration-archive/superseded/remote-alias/20270108000001_ops_club_operator_invites.sql
 
 INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
   ('00000000-0000-0000-0000-000000000001', 'owner@example.com', now()),
@@ -298,7 +298,7 @@ SELECT public.ops_test_assert(
 -- Re-applying the baseline validates existing canonical contracts without loss.
 INSERT INTO public.club_cashiers (club_id, user_id, granted_by)
 VALUES ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000006', '00000000-0000-0000-0000-000000000001');
-\ir ../../supabase/migrations/20270108000000_ops_operator_membership_baseline.sql
+\ir ../../supabase/migration-archive/superseded/remote-alias/20270108000000_ops_operator_membership_baseline.sql
 SELECT public.ops_test_assert(
   EXISTS (SELECT 1 FROM public.club_cashiers
           WHERE club_id = '00000000-0000-0000-0000-000000000010'

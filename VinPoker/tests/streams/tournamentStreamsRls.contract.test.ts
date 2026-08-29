@@ -3,11 +3,11 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const ownerWriteMigration = readFileSync(
-  resolve(process.cwd(), "supabase/migrations/20270110000009_tournament_streams_owner_write_policy.sql"),
+  resolve(process.cwd(), "supabase/migration-archive/historical-never-replay/20270110000009_tournament_streams_owner_write_policy.sql"),
   "utf8",
 );
 const customStreamMigration = readFileSync(
-  resolve(process.cwd(), "supabase/migrations/20270110000010_owner_custom_stream_authorization.sql"),
+  resolve(process.cwd(), "supabase/migration-archive/historical-never-replay/20270110000010_owner_custom_stream_authorization.sql"),
   "utf8",
 );
 const streamLinkManager = readFileSync(resolve(process.cwd(), "src/components/admin/StreamLinkManager.tsx"), "utf8");
