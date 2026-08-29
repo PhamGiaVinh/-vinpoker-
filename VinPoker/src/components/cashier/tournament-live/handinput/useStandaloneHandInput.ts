@@ -98,7 +98,12 @@ import {
   playTrackerSoundOnce,
 } from "@/lib/trackerSound";
 import type { PokerLiveSound } from "@/lib/pokerLiveSound";
-import type { VoiceActionMetadata, VoiceActionProposal, VoiceBoardCommitReceipt } from "@/lib/trackerVoice";
+import type {
+  VoiceActionMetadata,
+  VoiceActionProposal,
+  VoiceBoardCommitReceipt,
+  VoiceHoleCardsCommitReceipt,
+} from "@/lib/trackerVoice";
 import { resolveHandLockClaim } from "./handLockClaim";
 
 type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
@@ -2287,6 +2292,31 @@ export function useStandaloneHandInput(tournamentId: string) {
     return true;
   }, [handId, markSync]);
 
+  /** Mirrors a redacted server receipt for one seat only; it never writes or replaces other drafts. */
+  const applyVoiceHoleCardsReceipt = useCallback((input: {
+    receipt: VoiceHoleCardsCommitReceipt;
+    playerId: string;
+    entryNumber: number;
+    cards: readonly [Card, Card];
+  }) => {
+    if (!handId || input.receipt.player_id !== input.playerId || input.receipt.entry_number !== input.entryNumber) {
+      return false;
+    }
+    const target = players.find((player) => (
+      player.player_id === input.playerId
+      && player.entry_number === input.entryNumber
+      && player.seat_number === input.receipt.seat_number
+    ));
+    if (!target) return false;
+    const existing = playerHoleCards[input.playerId]?.filter((card): card is Card => card !== null) ?? [];
+    if (existing.length > 0 && (existing.length !== 2 || existing[0] !== input.cards[0] || existing[1] !== input.cards[1])) {
+      return false;
+    }
+    setPlayerHoleCards((previous) => ({ ...previous, [input.playerId]: [...input.cards] }));
+    markSync("sent", `Voice Assist lật bài Ghế ${input.receipt.seat_number}`);
+    return true;
+  }, [handId, markSync, playerHoleCards, players]);
+
   // B2 — all-in runout ONE-SCREEN: persist EVERY remaining board street in one
   // operator gesture. Sends the SAME cumulative update_community_cards payload as
   // handleUpdateCommunityCards, but staged (flop → turn → river, ~0.9s apart) so the
@@ -2808,6 +2838,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleUndo,
     handleUpdateCommunityCards,
     applyVoiceBoardReceipt,
+    applyVoiceHoleCardsReceipt,
     handleRunoutDealAll,
     // C2 (trackerStreetRollback)
     streetRollbackUi,

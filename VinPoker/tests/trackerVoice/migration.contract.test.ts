@@ -15,6 +15,8 @@ const transcribeBindingMigrationName =
   "20270113000007_tracker_voice_transcribe35_binding.sql";
 const boardAssistMigrationName =
   "20270113000009_tracker_voice_board_atomic_commit_v0.sql";
+const holeCardsAssistMigrationName =
+  "20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql";
 const migration = readFileSync(
   resolve(root, "supabase/migrations", migrationName),
   "utf8",
@@ -29,6 +31,10 @@ const transcribeBindingMigration = readFileSync(
 ).replace(/\r\n/g, "\n");
 const boardAssistMigration = readFileSync(
   resolve(root, "supabase/pending-migrations", boardAssistMigrationName),
+  "utf8",
+).replace(/\r\n/g, "\n");
+const holeCardsAssistMigration = readFileSync(
+  resolve(root, "supabase/pending-migrations", holeCardsAssistMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const unifiedOpsMigration = readFileSync(
@@ -107,10 +113,14 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(pendingNames.filter((name) => name.startsWith("20270113000009_"))).toEqual([
       boardAssistMigrationName,
     ]);
+    expect(pendingNames.filter((name) => name.startsWith("20270114000001_"))).toEqual([
+      holeCardsAssistMigrationName,
+    ]);
     expect(activeNames).toContain(migrationName);
     expect(activeNames).toContain(geminiMigrationName);
     expect(pendingNames).toContain(transcribeBindingMigrationName);
     expect(pendingNames).toContain(boardAssistMigrationName);
+    expect(pendingNames).toContain(holeCardsAssistMigrationName);
   });
 
   it("enables the Voice build gate only for the exact approved Vite value", () => {
@@ -184,6 +194,7 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(workflow).toContain("20270108000003_tracker_unified_ops_v2_context_safe_start.sql");
     expect(workflow).toContain(geminiMigrationName);
     expect(workflow).toContain(transcribeBindingMigrationName);
+    expect(workflow).toContain(holeCardsAssistMigrationName);
     expect(recordActionAuthorityWorkflow).toContain(transcribeBindingMigrationName);
     expect(workflow).toContain("TRACKER_VOICE_P0_CATALOG_UNCHANGED=PASS");
     expect(workflow).toContain("TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS");
@@ -239,6 +250,18 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(boardAssistMigration).toContain("FROM PUBLIC, anon, authenticated");
     expect(boardAssistMigration).toContain("TO service_role");
     expect(workflow).toContain(boardAssistMigrationName);
+  });
+
+  it("keeps Hole Cards Assist private before confirmation and service-only after it", () => {
+    expect(holeCardsAssistMigration).toContain("_tracker_apply_hole_cards_core_v0");
+    expect(holeCardsAssistMigration).toContain("commit_tracker_voice_hole_cards_v0");
+    expect(holeCardsAssistMigration).toContain("Seat %s [HOLE_CARDS_REDACTED]");
+    expect(holeCardsAssistMigration).toContain("hole_cards_already_persisted");
+    expect(holeCardsAssistMigration).toContain("voice_hole_card_correction_required");
+    expect(holeCardsAssistMigration).toContain("FROM PUBLIC, anon, authenticated");
+    expect(holeCardsAssistMigration).toContain("TO service_role");
+    expect(holeCardsAssistMigration).not.toContain("commit_tracker_voice_finish");
+    expect(workflow).toContain("holeCardsAssist.integration.sql");
   });
 
   it("keeps the Unified Ops dependency explicit and lets Gemini Auto fail closed without provider confidence", () => {

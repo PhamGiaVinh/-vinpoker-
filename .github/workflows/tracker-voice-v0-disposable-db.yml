@@ -16,6 +16,7 @@ on:
       - "VinPoker/supabase/migrations/20270112000008_tracker_voice_gemini_live_provider.sql"
       - "VinPoker/supabase/pending-migrations/20270113000007_tracker_voice_transcribe35_binding.sql"
       - "VinPoker/supabase/pending-migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql"
+      - "VinPoker/supabase/pending-migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
       - "VinPoker/supabase/functions/tracker-player-analytics/**"
@@ -173,6 +174,14 @@ jobs:
                     AND to_regprocedure('public._tracker_voice_register_validated_board_event(uuid,uuid,uuid,uuid,text,text,text,text,jsonb,text,text,text,text)') IS NOT NULL
                     AND to_regprocedure('public._tracker_update_community_cards_core(uuid,jsonb,uuid,integer,jsonb)') IS NULL")" = "t"
           echo "TRACKER_VOICE_13000009_APPLY=PASS"
+          createdb tracker_voice_v0_before_14000001 -T tracker_voice_v0
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/pending-migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql
+          test "$(psql -X -At -d tracker_voice_v0 -c \
+            "SELECT to_regprocedure('public._tracker_apply_hole_cards_core_v0(uuid,jsonb,uuid,boolean)') IS NOT NULL
+                    AND to_regprocedure('public.commit_tracker_voice_hole_cards_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,integer,jsonb)') IS NOT NULL
+                    AND NOT has_function_privilege('authenticated', 'public.commit_tracker_voice_hole_cards_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,integer,jsonb)', 'EXECUTE')")" = "t"
+          echo "TRACKER_VOICE_14000001_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f tests/trackerVoice/currentP0VoiceChain.integration.sql
 
@@ -185,6 +194,8 @@ jobs:
             -f tests/trackerVoice/disposableDb.integration.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_runtime \
             -f tests/trackerVoice/boardAssist.integration.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_runtime \
+            -f tests/trackerVoice/holeCardsAssist.integration.sql
           createdb tracker_voice_v0_start_runtime -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_start_runtime \
             -f tests/trackerStartHandAuthority/disposableDb.integration.sql
@@ -275,6 +286,17 @@ jobs:
           test "$before_board_core" = "t"
           test "$after_board_core" = "t"
           echo "TRACKER_VOICE_13000009_ROLLBACK=PASS"
+          failing="$RUNNER_TEMP/tracker-voice-14000001-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
+            supabase/pending-migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql > "$failing"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_14000001 -f "$failing"; then
+            echo "Injected 14000001 migration unexpectedly committed" >&2
+            exit 1
+          fi
+          test "$(psql -X -At -d tracker_voice_v0_before_14000001 -c \
+            "SELECT to_regprocedure('public._tracker_apply_hole_cards_core_v0(uuid,jsonb,uuid,boolean)') IS NULL
+                    AND to_regprocedure('public.commit_tracker_voice_hole_cards_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,integer,jsonb)') IS NULL")" = "t"
+          echo "TRACKER_VOICE_14000001_ROLLBACK=PASS"
 
       - name: Run focused Voice, Analytics and contract tests
         working-directory: VinPoker
@@ -283,9 +305,11 @@ jobs:
           node ./node_modules/vitest/vitest.mjs run \
             src/lib/trackerVoice/trackerVoice.test.ts \
             src/lib/trackerVoice/boardParser.test.ts \
+            src/lib/trackerVoice/holeCardsParser.test.ts \
             src/lib/trackerVoice/canonicalRequest.test.ts \
             src/components/tracker/voice/TrackerVoicePanel.test.tsx \
             tests/trackerVoice/boardAssist.contract.test.ts \
+            tests/trackerVoice/holeCardsAssist.contract.test.ts \
             tests/trackerVoice/trackerVoiceSessionProtocol.test.ts \
             tests/trackerVoice/trackerPlayerAnalytics.test.ts \
             tests/trackerVoice/trackerPlayerAnalyticsPage.test.tsx \

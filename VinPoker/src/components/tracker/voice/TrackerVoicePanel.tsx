@@ -6,13 +6,18 @@ import {
   loadTrackerVoiceRuntimeContext,
   buildVoiceActionCanonicalRequest,
   buildVoiceBoardCanonicalRequest,
+  buildVoiceHoleCardsCanonicalRequest,
   commitTrackerVoiceBoard,
+  commitTrackerVoiceHoleCards,
   createTrackerVoiceGeminiProvider,
   createTrackerVoiceOpenAiProvider,
   isTrackerVoiceGeminiLiveModel,
+  looksLikePrivateHoleCardsTranscript,
   MockRealtimeTranscriptionProvider,
+  parseVoiceHoleCardsCommand,
   routeTrackerVoiceIntent,
   resolveVoiceBoardProposal,
+  resolveVoiceHoleCardsProposal,
   resolveVoiceProposal,
   validateTrackerVoiceEvent,
   type RealtimeTranscriptionProvider,
@@ -24,6 +29,8 @@ import {
   type VoiceBoardProposal,
   type VoiceCanonicalRequest,
   type VoiceBoardCommitReceipt,
+  type VoiceHoleCardsCommitReceipt,
+  type VoiceHoleCardsProposal,
   type VoiceProposal,
   type VoiceProviderKind,
   type VoiceProviderStatus,
@@ -37,6 +44,7 @@ interface TrackerVoicePanelProps {
   runtimeOverride?: TrackerVoiceRuntimeContext;
   validateEventOverride?: (input: ValidateVoiceEventInput) => Promise<ValidatedVoiceEventReceipt>;
   commitBoardOverride?: (input: Parameters<typeof commitTrackerVoiceBoard>[0]) => Promise<VoiceBoardCommitReceipt>;
+  commitHoleCardsOverride?: (input: Parameters<typeof commitTrackerVoiceHoleCards>[0]) => Promise<VoiceHoleCardsCommitReceipt>;
   spokenAmountUnit?: number;
   amountUnitConfirmed?: boolean;
   onDiagnosticSnapshot?: (snapshot: TrackerVoiceDiagnosticSnapshot) => void;
@@ -65,6 +73,13 @@ interface VoiceEventAttempt {
   event: VoiceTranscriptEvent;
   runtimeSnapshot: TrackerVoiceRuntimeContext | null;
   executionMode?: VoiceExecutionMode;
+}
+
+/** Deliberately excluded from diagnostics, exports, and generic Voice events. */
+interface PrivateHoleCardsAttempt {
+  event: VoiceTranscriptEvent;
+  proposal: VoiceHoleCardsProposal;
+  runtimeSnapshot: TrackerVoiceRuntimeContext;
 }
 
 export const MIC_TEST_DURATION_MS = 30_000;
@@ -106,12 +121,19 @@ function proposalTone(proposal: VoiceProposal | null): string {
     : "border-amber-400/35 bg-amber-400/10 text-amber-100";
 }
 
+function formatPrivateCard(card: string): string {
+  const suit = card.at(-1);
+  const symbol = suit === "h" ? "♥" : suit === "d" ? "♦" : suit === "c" ? "♣" : suit === "s" ? "♠" : "";
+  return `${card.slice(0, -1)}${symbol}`;
+}
+
 export function TrackerVoicePanel({
   hook,
   providerOverride,
   runtimeOverride,
   validateEventOverride = validateTrackerVoiceEvent,
   commitBoardOverride = commitTrackerVoiceBoard,
+  commitHoleCardsOverride = commitTrackerVoiceHoleCards,
   spokenAmountUnit = 1,
   amountUnitConfirmed = false,
   onDiagnosticSnapshot,
@@ -142,6 +164,8 @@ export function TrackerVoicePanel({
   const [validatedReceipt, setValidatedReceipt] = useState<ValidatedVoiceEventReceipt | null>(null);
   const [validatedProposal, setValidatedProposal] = useState<VoiceProposal | null>(null);
   const [finalAttempt, setFinalAttempt] = useState<VoiceEventAttempt | null>(null);
+  const [privateHoleCardsAttempt, setPrivateHoleCardsAttempt] = useState<PrivateHoleCardsAttempt | null>(null);
+  const [confirmedHoleSeat, setConfirmedHoleSeat] = useState<number | null>(null);
   const [bufferedEvents, setBufferedEvents] = useState<VoiceTranscriptEvent[]>([]);
   const [bufferStatus, setBufferStatus] = useState<string | null>(null);
   const validationGenerationRef = useRef(0);
@@ -189,6 +213,21 @@ export function TrackerVoicePanel({
     setValidationState("idle");
     setValidationError("Đề xuất Board đã hết hiệu lực vì trạng thái bàn thay đổi.");
   }, [hook.communityCards, hook.currentStreet, hook.handId, hook.isReadOnly, hook.persistedBoardCount, hook.workflowState, proposal, runtime?.active_hand?.hand_id, runtime?.active_hand?.state_version, runtime?.correction_pending]);
+
+  // Private card speech is invalidated on any authoritative hand transition.
+  // The raw text stays in this state only until cancellation or successful commit.
+  useEffect(() => {
+    if (!privateHoleCardsAttempt) return;
+    const stale = privateHoleCardsAttempt.proposal.expectedStateVersion !== runtime?.active_hand?.state_version
+      || hook.workflowState !== "runout_reveal"
+      || runtime?.correction_pending === true
+      || hook.isReadOnly
+      || runtime?.active_hand?.hand_id !== hook.handId;
+    if (!stale) return;
+    setPrivateHoleCardsAttempt(null);
+    setValidationState("idle");
+    setValidationError("Đề xuất bài tẩy đã hết hiệu lực vì trạng thái bàn thay đổi.");
+  }, [hook.handId, hook.isReadOnly, hook.workflowState, privateHoleCardsAttempt, runtime?.active_hand?.hand_id, runtime?.active_hand?.state_version, runtime?.correction_pending]);
 
   const proposalContext = useMemo(
     () => ({
@@ -246,6 +285,36 @@ export function TrackerVoicePanel({
     ],
   );
 
+  const holeCardsProposalContext = useMemo(() => ({
+    handId: hook.handId,
+    workflowState: hook.workflowState,
+    expectedStateVersion: runtime?.active_hand?.hand_id === hook.handId
+      ? runtime.active_hand.state_version
+      : null,
+    handStarted: hook.handStarted,
+    readOnly: hook.isReadOnly,
+    syncBlocked: hook.actionSyncBlocked,
+    correctionPending: runtime?.correction_pending ?? false,
+    players: (hook.players ?? []).map((player) => ({
+      playerId: player.player_id,
+      playerName: player.display_name,
+      seatNumber: player.seat_number,
+      entryNumber: player.entry_number,
+    })),
+    localCardsByPlayerId: hook.playerHoleCards ?? {},
+  }), [
+    hook.actionSyncBlocked,
+    hook.handId,
+    hook.handStarted,
+    hook.isReadOnly,
+    hook.playerHoleCards,
+    hook.players,
+    hook.workflowState,
+    runtime?.active_hand?.hand_id,
+    runtime?.active_hand?.state_version,
+    runtime?.correction_pending,
+  ]);
+
   const refreshRuntime = useCallback(async () => {
     if (!hook.tournamentTableId && !runtimeOverride) {
       setRuntime(null);
@@ -277,6 +346,8 @@ export function TrackerVoicePanel({
   useEffect(() => {
     validationGenerationRef.current += 1;
     setFinalAttempt(null);
+    setPrivateHoleCardsAttempt(null);
+    setConfirmedHoleSeat(null);
     setFinalTranscript("");
     setProposal(null);
     setValidatedProposal(null);
@@ -352,6 +423,42 @@ export function TrackerVoicePanel({
       spokenAmountUnit: unit,
       amountUnitConfirmed: unitConfirmed,
     });
+    const privateCommand = route.ok && route.intentDomain === "hole_cards"
+      ? route.command
+      : parseVoiceHoleCardsCommand(finalEvent.transcript);
+    if (privateCommand || looksLikePrivateHoleCardsTranscript(finalEvent.transcript)) {
+      const privateProposal = privateCommand
+        ? resolveVoiceHoleCardsProposal(privateCommand, {
+        ...holeCardsProposalContext,
+        expectedStateVersion: attemptRuntime?.active_hand?.hand_id === hook.handId
+          ? attemptRuntime.active_hand.state_version
+          : null,
+        correctionPending: attemptRuntime?.correction_pending ?? false,
+        })
+        : {
+            ok: false as const,
+            command: null,
+            code: "command_not_supported" as const,
+            message: "Câu Voice bài tẩy phải có đúng Seat/Ghế, một số ghế và hai lá bài.",
+          };
+      const receivedAt = finalReceivedAtRef.current.get(finalEvent.providerEventId);
+      setProposalLatencyMs(receivedAt === undefined ? null : Math.max(0, performance.now() - receivedAt));
+      setFinalTranscript("");
+      setProposal(null);
+      setValidatedProposal(null);
+      setValidatedReceipt(null);
+      setValidationError(null);
+      setProposalProviderEventId(null);
+      if (!privateProposal.ok || !attemptRuntime) {
+        setPrivateHoleCardsAttempt(null);
+        setProposal(privateProposal);
+        setValidationState("idle");
+        return;
+      }
+      setPrivateHoleCardsAttempt({ event: finalEvent, proposal: privateProposal, runtimeSnapshot: attemptRuntime });
+      setValidationState("validated");
+      return;
+    }
     const nextProposal: VoiceProposal = !route.ok
       ? {
           ok: false,
@@ -359,6 +466,8 @@ export function TrackerVoicePanel({
           code: route.code,
           message: route.code === "wrong_workflow"
             ? "Câu Voice không hợp lệ ở bước Tracker hiện tại."
+            : route.code === "showdown_hole_cards_deferred_muck_authority"
+              ? "Showdown Voice chưa mở vì muck chưa có bằng chứng server-authoritative."
             : "Chưa nhận ra một lệnh Voice duy nhất.",
         }
       : route.intentDomain === "board"
@@ -375,6 +484,8 @@ export function TrackerVoicePanel({
           }, localContext);
     const receivedAt = finalReceivedAtRef.current.get(finalEvent.providerEventId);
     setProposalLatencyMs(receivedAt === undefined ? null : Math.max(0, performance.now() - receivedAt));
+    setFinalTranscript(finalEvent.transcript);
+    setPrivateHoleCardsAttempt(null);
     setProposal(nextProposal);
     setProposalProviderEventId(finalEvent.providerEventId);
     setValidatedProposal(null);
@@ -496,6 +607,7 @@ export function TrackerVoicePanel({
     hook.tournamentId,
     hook.tournamentTableId,
     mode,
+    holeCardsProposalContext,
     proposalContext,
     runtime,
     runtimeError,
@@ -580,14 +692,17 @@ export function TrackerVoicePanel({
         },
         onTranscript: (event) => {
           if (!event.isFinal) {
-            setPartial(event.transcript);
+            setPartial(looksLikePrivateHoleCardsTranscript(event.transcript)
+              ? "Đang nhận diện đề xuất bài tẩy riêng tư..."
+              : event.transcript);
             return;
           }
           setPartial("");
           setProposal(null);
           setProposalProviderEventId(null);
           setProposalLatencyMs(null);
-          setFinalTranscript(event.transcript);
+          setFinalTranscript("");
+          setPrivateHoleCardsAttempt(null);
           setLastFinalProviderEventId(event.providerEventId);
           setLastFinalCapturedAt(event.capturedAt);
           finalReceivedAtRef.current.set(event.providerEventId, performance.now());
@@ -863,6 +978,93 @@ export function TrackerVoicePanel({
     } finally {
       assistCommitRef.current = null;
     }
+  };
+
+  const confirmHoleCardsAssist = async () => {
+    const privateAttempt = privateHoleCardsAttempt;
+    const expectedStateVersion = privateAttempt?.proposal.expectedStateVersion;
+    if (
+      !privateAttempt
+      || !expectedStateVersion
+      || !hook.tournamentTableId
+      || mode !== "assist"
+      || assistCommitRef.current
+    ) return;
+    setValidationState("committing");
+    setValidationError(null);
+    let identity = requestIdentitiesRef.current.get(privateAttempt.event.providerEventId);
+    if (!identity) {
+      identity = {
+        idempotencyKey: `voice:${crypto.randomUUID()}`,
+        traceId: `voice-trace:${crypto.randomUUID()}`,
+      };
+      requestIdentitiesRef.current.set(privateAttempt.event.providerEventId, identity);
+    }
+    const commit = (async () => {
+      const canonicalRequest = await buildVoiceHoleCardsCanonicalRequest({
+        rawTranscript: privateAttempt.event.transcript,
+        expectedStateVersion,
+        payload: {
+          seatNumber: privateAttempt.proposal.player.seatNumber,
+          expectedPlayerId: privateAttempt.proposal.player.playerId,
+          expectedEntryNumber: privateAttempt.proposal.player.entryNumber,
+          cards: privateAttempt.proposal.command.cards,
+        },
+      });
+      const receipt = await commitHoleCardsOverride({
+        tournamentId: hook.tournamentId,
+        tournamentTableId: hook.tournamentTableId,
+        handId: hook.handId!,
+        finalTranscript: privateAttempt.event.transcript,
+        providerName: providerRef.current?.kind ?? "openai_realtime",
+        providerModel: privateAttempt.runtimeSnapshot.config.provider_model,
+        providerEventId: privateAttempt.event.providerEventId,
+        expectedStateVersion,
+        ...identity,
+        canonicalRequest,
+      });
+      if (!hook.applyVoiceHoleCardsReceipt({
+        receipt,
+        playerId: privateAttempt.proposal.player.playerId,
+        entryNumber: privateAttempt.proposal.player.entryNumber,
+        cards: privateAttempt.proposal.command.cards,
+      })) {
+        throw new Error("Receipt bài tẩy không khớp hand đang mở. Hãy tải lại bàn.");
+      }
+      const readBack = await refreshRuntime();
+      if (!readBack || readBack.active_hand?.hand_id !== hook.handId
+        || (!runtimeOverride && readBack.active_hand.state_version !== receipt.state_version_after)) {
+        throw new Error("Bài tẩy đã gửi nhưng không đọc lại được trạng thái server. Hãy tải lại trước khi tiếp tục.");
+      }
+      return receipt;
+    })();
+    // Keep the single-flight guard settled even when the receipt request fails.
+    // The original promise below still preserves the proposal and idempotency key for retry.
+    assistCommitRef.current = commit.then(() => true, () => false);
+    try {
+      const receipt = await commit;
+      // Purge the only React copy of raw speech immediately after authoritative success.
+      setPrivateHoleCardsAttempt(null);
+      setConfirmedHoleSeat(receipt.seat_number);
+      setProposal(null);
+      setValidatedProposal(null);
+      setValidatedReceipt(null);
+      setValidationState("committed");
+    } catch (error) {
+      // Preserve the same private proposal and key so a later retry cannot create
+      // a second card mutation after an uncertain network response.
+      setValidationState("validated");
+      setValidationError(error instanceof Error ? error.message : "Không thể xác nhận bài tẩy Voice.");
+    } finally {
+      assistCommitRef.current = null;
+    }
+  };
+
+  const cancelHoleCardsAssist = () => {
+    if (validationState === "committing") return;
+    setPrivateHoleCardsAttempt(null);
+    setValidationError(null);
+    setValidationState("idle");
   };
 
   const proposalLabel = proposal?.ok
@@ -1145,6 +1347,51 @@ export function TrackerVoicePanel({
           {validationError && <div className="mt-2 text-[11px] text-rose-200">{validationError}</div>}
         </div>
 
+        {privateHoleCardsAttempt && (
+          <div
+            className="rounded-xl border border-fuchsia-300/35 bg-fuchsia-300/[0.07] p-3 text-fuchsia-50"
+            data-testid="voice-private-hole-cards-proposal"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-fuchsia-200/80">Voice Hole Cards</div>
+            <div className="mt-1 text-sm font-semibold">
+              Ghế {privateHoleCardsAttempt.proposal.player.seatNumber} · {privateHoleCardsAttempt.proposal.player.playerName}
+            </div>
+            <div className="mt-3 flex gap-2" aria-label={`Bài tẩy đề xuất cho Ghế ${privateHoleCardsAttempt.proposal.player.seatNumber}`}>
+              {privateHoleCardsAttempt.proposal.command.cards.map((card) => (
+                <span key={card} className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-fuchsia-200/35 bg-black/25 px-3 font-mono text-lg font-black">
+                  {formatPrivateCard(card)}
+                </span>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] font-semibold text-amber-100">CẦN CHẠM XÁC NHẬN · CHƯA GHI BÀI</p>
+            <p className="mt-1 text-[11px] text-fuchsia-100/70">Transcript chỉ giữ tạm trong trình duyệt cho tới khi xác nhận hoặc hủy.</p>
+            {mode === "assist" ? (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void confirmHoleCardsAssist()}
+                  disabled={validationState === "committing"}
+                  className="min-h-11 rounded-xl bg-fuchsia-200 px-3 text-sm font-bold text-fuchsia-950 outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50"
+                >
+                  {validationState === "committing" ? "Đang xác nhận..." : `Xác nhận bài Ghế ${privateHoleCardsAttempt.proposal.player.seatNumber}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelHoleCardsAssist}
+                  disabled={validationState === "committing"}
+                  className="min-h-11 rounded-xl border border-white/15 bg-black/20 px-3 text-sm font-bold text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-100 disabled:opacity-50"
+                >
+                  Hủy
+                </button>
+              </div>
+            ) : (
+              <p className="mt-3 text-[11px] text-fuchsia-100/70">SHADOW · Không tự ghi bài. Chuyển Assist mới có thể xác nhận.</p>
+            )}
+          </div>
+        )}
+
         {mode === "assist"
           && validationState === "validated"
           && validatedProposal?.ok
@@ -1193,7 +1440,9 @@ export function TrackerVoicePanel({
         )}
         {validationState === "committed" && (
           <div className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-300/10 text-xs font-semibold text-emerald-200">
-            <Check className="h-4 w-4" /> Canonical receipt đã được Viewer/Replay nhận qua luồng hiện tại
+            <Check className="h-4 w-4" /> {confirmedHoleSeat === null
+              ? "Canonical receipt đã được Viewer/Replay nhận qua luồng hiện tại"
+              : `Đã xác nhận bài Ghế ${confirmedHoleSeat}`}
           </div>
         )}
         {runtimeError && (
