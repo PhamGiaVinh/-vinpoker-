@@ -17,6 +17,8 @@ import {
   type OpsSupplementalSourceInputV1,
 } from "./opsIntelligenceReadModel";
 import { shouldReadTrackerAlerts } from "./opsIntelligenceGate";
+import { OpsQuantDataHealthQ0Panel } from "./OpsQuantDataHealthQ0Panel";
+import { isOpsQuantDataHealthQ0Enabled } from "./opsQuantDataHealthGate";
 
 type ReadEnvelope<T> = {
   readonly value: T | null;
@@ -29,6 +31,7 @@ const PENDING_OBSERVED_AT = "1970-01-01T00:00:00.000Z";
 
 export function OpsIntelligenceCommandCenterV1({ clubId, clubName }: { clubId: string; clubName: string | null }) {
   const client = useSupabaseClient();
+  const q0Enabled = isOpsQuantDataHealthQ0Enabled();
   const range = useMemo(() => currentMonthFinanceRange(), []);
   const pulse = useQuery({
     queryKey: ["ops", clubId, "intelligence", "pulse"],
@@ -41,8 +44,8 @@ export function OpsIntelligenceCommandCenterV1({ clubId, clubName }: { clubId: s
     },
   });
   const operations = useQuery({
-    queryKey: ["ops", clubId, "intelligence", "operations"],
-    queryFn: () => loadOpsLiveOperations(client, clubId),
+    queryKey: ["ops", clubId, "intelligence", "operations", q0Enabled ? "q0" : "v1"],
+    queryFn: () => loadOpsLiveOperations(client, clubId, { q0CapacityTruth: q0Enabled }),
   });
   const finance = useQuery({
     queryKey: ["ops", clubId, "intelligence", "finance", range.from, range.to],
@@ -146,7 +149,7 @@ export function OpsIntelligenceCommandCenterV1({ clubId, clubName }: { clubId: s
               <h2 id="ops-intelligence-board" className="text-sm font-semibold text-white">Operations Board</h2>
               <p className="mt-0.5 text-xs text-[#73867c]">Liên kết bàn, giải và assignment hiện có. Không tự suy luận số thiếu.</p>
             </div>
-            <span className="font-mono text-xs tabular-nums text-[#91a49b]">{model.operations.length} bàn</span>
+            <span className="font-mono text-xs tabular-nums text-[#91a49b]">{q0Enabled && operations.data?.configuredTableCount !== null && operations.data?.configuredTableCount !== undefined ? `${operations.data.openTableCount ?? "—"} bàn đang mở · ${operations.data.configuredTableCount} bàn cấu hình` : `${model.operations.length} bàn`}</span>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-xs">
@@ -194,6 +197,7 @@ export function OpsIntelligenceCommandCenterV1({ clubId, clubName }: { clubId: s
           {model.sources.map((source) => <article key={source.sourceId} className="min-w-0 p-3"><div className="flex items-center justify-between gap-2"><span className="truncate text-xs font-medium text-[#d7e3dc]">{source.label}</span><AvailabilityBadge availability={source.availability} /></div><p className="mt-2 font-mono text-[10px] leading-4 text-[#73867c]">as-of {source.asOf ?? "không do source cung cấp"}<br />receipt {formatTimestamp(source.observedAt)}</p>{source.reasonCode && <p className="mt-1 font-mono text-[10px] text-amber-200">{source.reasonCode}</p>}</article>)}
         </div>
       </section>
+      {q0Enabled && <OpsQuantDataHealthQ0Panel clubId={clubId} baselineSources={model.sources} />}
     </main>
   );
 }
@@ -213,7 +217,7 @@ function unavailableSource(sourceId: string, label: string, observedAt: string, 
 }
 
 function emptyOperations() {
-  return Object.freeze({ observedAt: PENDING_OBSERVED_AT, asOf: null, availability: "unavailable" as const, reasonCode: "OPS_LIVE_PENDING", rows: Object.freeze([]), runningTournamentIds: Object.freeze([]), openTableCount: null, dealersOnDutyCount: null, countComparisonEligible: false });
+  return Object.freeze({ observedAt: PENDING_OBSERVED_AT, asOf: null, availability: "unavailable" as const, reasonCode: "OPS_LIVE_PENDING", rows: Object.freeze([]), runningTournamentIds: Object.freeze([]), openTableCount: null, configuredTableCount: null, operationalTableCount: null, dealersOnDutyCount: null, countComparisonEligible: false });
 }
 
 function HeadlineStatus({ status }: { status: OpsHeadlineStatusV1 }) {

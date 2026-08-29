@@ -18,7 +18,7 @@ type TournamentRow = {
   status: string;
   current_level: number | null;
   average_stack: number | null;
-  tournament_tables: { table_id: string }[] | null;
+  tournament_tables: { table_id: string; status: string }[] | null;
 };
 
 type AssignmentRow = AssignmentShadowLike & {
@@ -48,6 +48,7 @@ type QueryOutcome<T> = { readonly data: readonly T[]; readonly error: string | n
 export async function loadOpsLiveOperations(
   client: OpsClient,
   clubId: string,
+  options: { readonly q0CapacityTruth?: boolean } = {},
 ): Promise<OpsLiveOperationInputV1> {
   const [tablesResult, tournamentsResult, assignmentsResult, attendanceResult] = await Promise.all([
     client.from("game_tables")
@@ -55,7 +56,7 @@ export async function loadOpsLiveOperations(
       .eq("club_id", clubId)
       .order("table_name"),
     client.from("tournaments")
-      .select("id,name,status,current_level,average_stack,tournament_tables(table_id)")
+      .select("id,name,status,current_level,average_stack,tournament_tables(table_id,status)")
       .eq("club_id", clubId)
       .in("status", ["drawing", "live", "break", "final_table"]),
     client.from("dealer_assignments")
@@ -84,6 +85,8 @@ export async function loadOpsLiveOperations(
     rows: Object.freeze([]),
     runningTournamentIds: Object.freeze([]),
     openTableCount: null,
+    configuredTableCount: null,
+    operationalTableCount: null,
     dealersOnDutyCount: null,
     countComparisonEligible: false,
   });
@@ -95,7 +98,12 @@ export async function loadOpsLiveOperations(
   ]);
   const assignmentByTable = canonicalAssignments(assignments.data, Date.parse(observedAt));
   const tournamentByTable = mapTournamentsByTable(tournaments.data);
-  const rows = tables.data.map((table) => toOperationRow(
+  const capacity = deriveOpsTableCapacityQ0(tables.data.map((table) => table.id), tournaments.data);
+  const activeTournamentTableIds = new Set(capacity.activeTableIds);
+  const rowTables = options.q0CapacityTruth
+    ? tables.data.filter((table) => activeTournamentTableIds.has(table.id))
+    : tables.data;
+  const rows = rowTables.map((table) => toOperationRow(
     table,
     tournamentByTable.get(table.id) ?? null,
     assignments.error ? null : assignmentByTable.get(table.id) ?? null,
@@ -110,11 +118,28 @@ export async function loadOpsLiveOperations(
     reasonCode: availability === "exact" ? null : firstErrorCode({ tournaments, assignments, attendance }),
     rows: Object.freeze(rows),
     runningTournamentIds: Object.freeze(tournaments.data.map((tournament) => tournament.id).sort()),
-    openTableCount: tables.data.filter((table) => isOpenTable(table.status)).length,
+    openTableCount: options.q0CapacityTruth
+      ? activeTournamentTableIds.size
+      : tables.data.filter((table) => isOpenTable(table.status)).length,
+    configuredTableCount: capacity.configuredTableCount,
+    operationalTableCount: options.q0CapacityTruth ? capacity.operationalTableCount : rows.length,
     dealersOnDutyCount: attendance.error ? null : dedupeCheckedInAttendance(attendance.data).length,
-    // V1 intentionally does not reconcile detail counts with Club Pulse.
-    countComparisonEligible: false,
+    countComparisonEligible: Boolean(options.q0CapacityTruth) && !tournaments.error,
   });
+}
+
+export function deriveOpsTableCapacityQ0(
+  configuredTableIds: readonly string[],
+  tournaments: readonly Pick<TournamentRow, "tournament_tables">[],
+): { readonly configuredTableCount: number; readonly operationalTableCount: number; readonly activeTableIds: readonly string[] } {
+  const configured = new Set(configuredTableIds);
+  const active = new Set<string>();
+  for (const tournament of tournaments) {
+    for (const link of tournament.tournament_tables ?? []) {
+      if (link.status === "active" && configured.has(link.table_id)) active.add(link.table_id);
+    }
+  }
+  return Object.freeze({ configuredTableCount: configured.size, operationalTableCount: active.size, activeTableIds: Object.freeze([...active].sort()) });
 }
 
 function normalize<T>(result: { data: unknown; error: { message?: string } | null }): QueryOutcome<T> {
@@ -127,7 +152,9 @@ function normalize<T>(result: { data: unknown; error: { message?: string } | nul
 function mapTournamentsByTable(tournaments: readonly TournamentRow[]): ReadonlyMap<string, TournamentRow> {
   const result = new Map<string, TournamentRow>();
   for (const tournament of tournaments) {
-    for (const item of tournament.tournament_tables ?? []) result.set(item.table_id, tournament);
+    for (const item of tournament.tournament_tables ?? []) {
+      if (item.status === "active") result.set(item.table_id, tournament);
+    }
   }
   return result;
 }

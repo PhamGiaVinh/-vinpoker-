@@ -1546,6 +1546,8 @@ export const FEATURES = {
    * dark through source merge; Preview and production activation are separate.
    */
   opsIntelligenceCommandCenterV1: true,
+  /** Quant Data Health Q0 stays dark until its read RPCs are reviewed and applied. */
+  opsQuantDataHealthQ0: false,
   /**
    * cockpitFloorActions — nâng cấp cockpit giải trên điện thoại (`OpsTournamentCockpit`): tab "Bàn"
    * hiện sơ đồ bàn INLINE (thay redirect) + tab "Người chơi" 3 tab Tất cả/Đang chơi/Busted, người
