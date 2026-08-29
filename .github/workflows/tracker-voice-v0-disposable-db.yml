@@ -178,7 +178,9 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f supabase/pending-migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql
           test "$(psql -X -At -d tracker_voice_v0 -c \
-            "SELECT to_regprocedure('public._tracker_apply_hole_cards_core_v0(uuid,jsonb,uuid,boolean)') IS NOT NULL
+            "SELECT position('v_service_voice_call' IN pg_get_functiondef(
+                      'public.show_hole_cards(uuid,jsonb,uuid)'::regprocedure
+                    )) > 0
                     AND to_regprocedure('public.commit_tracker_voice_hole_cards_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,integer,jsonb)') IS NOT NULL
                     AND NOT has_function_privilege('authenticated', 'public.commit_tracker_voice_hole_cards_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,integer,jsonb)', 'EXECUTE')")" = "t"
           echo "TRACKER_VOICE_14000001_APPLY=PASS"
@@ -294,7 +296,9 @@ jobs:
             exit 1
           fi
           test "$(psql -X -At -d tracker_voice_v0_before_14000001 -c \
-            "SELECT to_regprocedure('public._tracker_apply_hole_cards_core_v0(uuid,jsonb,uuid,boolean)') IS NULL
+            "SELECT position('v_service_voice_call' IN pg_get_functiondef(
+                      'public.show_hole_cards(uuid,jsonb,uuid)'::regprocedure
+                    )) = 0
                     AND to_regprocedure('public.commit_tracker_voice_hole_cards_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,integer,jsonb)') IS NULL")" = "t"
           echo "TRACKER_VOICE_14000001_ROLLBACK=PASS"
 
