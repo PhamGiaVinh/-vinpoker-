@@ -147,13 +147,6 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'voice_config_scope_mismatch');
   END IF;
   IF v_config.provider_model IN ('gemini-3.1-flash-live-preview', 'gemini-3.5-transcribe-live') THEN
-    IF v_root.provider_name <> 'gemini_live' OR v_root.provider_model <> v_config.provider_model THEN
-      RETURN jsonb_build_object('ok', false, 'error', 'voice_provider_config_mismatch');
-    END IF;
-  ELSIF v_root.provider_name <> 'openai_realtime' OR v_root.provider_model <> v_config.provider_model THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'voice_provider_config_mismatch');
-  END IF;
-  IF v_config.provider_model IN ('gemini-3.1-flash-live-preview', 'gemini-3.5-transcribe-live') THEN
     IF p_provider_name <> 'gemini_live' OR p_provider_model <> v_config.provider_model THEN
       RETURN jsonb_build_object('ok', false, 'error', 'voice_provider_config_mismatch');
     END IF;
@@ -266,6 +259,13 @@ BEGIN
   IF v_config.physical_table_id <> (v_assignment->>'physical_table_id')::UUID
      OR v_config.club_id <> (v_assignment->>'club_id')::UUID THEN
     RETURN jsonb_build_object('ok', false, 'error', 'voice_config_scope_mismatch');
+  END IF;
+  IF v_config.provider_model IN ('gemini-3.1-flash-live-preview', 'gemini-3.5-transcribe-live') THEN
+    IF v_root.provider_name <> 'gemini_live' OR v_root.provider_model <> v_config.provider_model THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'voice_provider_config_mismatch');
+    END IF;
+  ELSIF v_root.provider_name <> 'openai_realtime' OR v_root.provider_model <> v_config.provider_model THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'voice_provider_config_mismatch');
   END IF;
   SELECT h.* INTO v_hand FROM public.tournament_hands h WHERE h.id = v_root.hand_id FOR UPDATE;
   IF NOT FOUND OR v_hand.tournament_id IS DISTINCT FROM v_root.tournament_id

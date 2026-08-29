@@ -43,4 +43,16 @@ describe("Tracker Voice Board Assist contract", () => {
     expect(edge).toContain('case "commit_voice_board"');
     expect(edge).not.toMatch(/from\("tournament_hands"\)\.update\(/);
   });
+
+  it("binds provider values at both the service-only root and the later commit", () => {
+    const root = migration.slice(
+      migration.indexOf("CREATE OR REPLACE FUNCTION public._tracker_voice_register_validated_board_event"),
+      migration.indexOf("CREATE OR REPLACE FUNCTION public.commit_tracker_voice_board_v0"),
+    );
+    const commit = migration.slice(migration.indexOf("CREATE OR REPLACE FUNCTION public.commit_tracker_voice_board_v0"));
+    expect(root).toContain("p_provider_name <> 'gemini_live'");
+    expect(root).not.toContain("v_root.provider_name");
+    expect(commit).toContain("v_root.provider_name <> 'gemini_live'");
+    expect(commit).toContain("v_root.provider_model <> v_config.provider_model");
+  });
 });
