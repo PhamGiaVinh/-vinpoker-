@@ -17,10 +17,11 @@ function hookFixture(): StandaloneHandInput {
     handId: "hand-1",
     currentStreet: "flop",
     actorPlayer: {
-      player_id: "player-a",
-      display_name: "Player A",
-      seat_number: 3,
-      current_stack: 10_000,
+    player_id: "player-a",
+    display_name: "Player A",
+    seat_number: 3,
+    entry_number: 1,
+    current_stack: 10_000,
       current_bet: 1_000,
     },
     actorViewData: {
@@ -222,6 +223,35 @@ describe("TrackerVoicePanel", () => {
       voiceEventId: "voice-event-1",
       expectedStateVersion: "a".repeat(64),
     });
+    expect(validateEventOverride.mock.calls[0][0].canonicalRequest).toMatchObject({
+      intentDomain: "action",
+      payload: {
+        canonicalAction: "call",
+        actorPlayerId: "player-a",
+        entryNumber: 1,
+        seatNumber: 3,
+      },
+    });
+  });
+
+  it("single-flights two rapid Assist confirmations", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    let resolveCommit: ((value: boolean) => void) | null = null;
+    const handleVoiceAction = vi.fn(() => new Promise<boolean>((resolve) => {
+      resolveCommit = resolve;
+    }));
+    const hook = { ...hookFixture(), handleVoiceAction };
+    renderPanel(hook, provider, vi.fn(async () => ({ ...validatedReceipt, execution_mode: "assist" as const })));
+    fireEvent.click(screen.getByRole("button", { name: "assist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("call", { final: true, id: "assist-race" }));
+    const confirm = await screen.findByRole("button", { name: "Xác nhận action" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(handleVoiceAction).toHaveBeenCalledOnce();
+    resolveCommit?.(true);
+    expect(await screen.findByText(/Action đã được Viewer\/Replay nhận/)).toBeInTheDocument();
   });
 
   it("deduplicates duplicate provider completion callbacks", async () => {

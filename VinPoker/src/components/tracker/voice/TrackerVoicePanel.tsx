@@ -4,6 +4,7 @@ import { useWakeLock } from "@/hooks/useWakeLock";
 import { FEATURES } from "@/lib/featureFlags";
 import {
   loadTrackerVoiceRuntimeContext,
+  buildVoiceActionCanonicalRequest,
   createTrackerVoiceGeminiProvider,
   createTrackerVoiceOpenAiProvider,
   isTrackerVoiceGeminiLiveModel,
@@ -138,6 +139,7 @@ export function TrackerVoicePanel({
   const validationGenerationRef = useRef(0);
   const validationPromisesRef = useRef(new Map<string, Promise<ValidatedVoiceEventReceipt>>());
   const requestIdentitiesRef = useRef(new Map<string, { idempotencyKey: string; traceId: string }>());
+  const assistCommitRef = useRef<Promise<boolean> | null>(null);
   const micTestMaxLevelRef = useRef(0);
   const micTestFinalCountRef = useRef(0);
   const micTestActiveRef = useRef(false);
@@ -160,6 +162,10 @@ export function TrackerVoicePanel({
     () => ({
       handId: hook.handId,
       street: hook.currentStreet,
+      workflowState: hook.workflowState,
+      // `actions` is present in the live hook. Keep the panel fail-closed but
+      // mountable while an older/read-only adapter has not loaded it yet.
+      actionOrder: (hook.actions?.at(-1)?.action_order ?? 0) + 1,
       expectedStateVersion: runtime?.active_hand?.hand_id === hook.handId
         ? runtime.active_hand.state_version
         : null,
@@ -168,6 +174,7 @@ export function TrackerVoicePanel({
             playerId: hook.actorPlayer.player_id,
             playerName: hook.actorPlayer.display_name,
             seatNumber: hook.actorPlayer.seat_number,
+            entryNumber: hook.actorPlayer.entry_number,
             currentStack: hook.actorPlayer.current_stack,
             currentBet: hook.actorPlayer.current_bet,
           }
@@ -189,11 +196,13 @@ export function TrackerVoicePanel({
       hook.actionSyncBlocked,
       hook.actorPlayer,
       hook.actorViewData,
+      hook.actions,
       hook.currentStreet,
       hook.handId,
       hook.handStarted,
       hook.isReadOnly,
       hook.showActionStep,
+      hook.workflowState,
       runtime?.active_hand?.hand_id,
       runtime?.active_hand?.state_version,
       runtime?.correction_pending,
@@ -339,51 +348,76 @@ export function TrackerVoicePanel({
       return;
     }
 
-    let identity = requestIdentitiesRef.current.get(finalEvent.providerEventId);
-    if (!identity) {
-      identity = {
-        idempotencyKey: `voice:${crypto.randomUUID()}`,
-        traceId: `voice-trace:${crypto.randomUUID()}`,
-      };
-      requestIdentitiesRef.current.set(finalEvent.providerEventId, identity);
-    }
-    const generation = ++validationGenerationRef.current;
-    const input: ValidateVoiceEventInput = {
-      tournamentId: hook.tournamentId,
-      tournamentTableId: hook.tournamentTableId,
-      handId: activeHand.hand_id,
-      finalTranscript: finalEvent.transcript,
-      providerName: providerRef.current?.kind ?? "openai_realtime",
-      providerModel: attemptRuntime.config.provider_model,
-      providerEventId: finalEvent.providerEventId,
-      ...(finalEvent.providerConfidence === undefined
-        ? {}
-        : { providerConfidence: finalEvent.providerConfidence }),
-      executionMode: attemptMode,
-      expectedStateVersion: activeHand.state_version,
-      ...identity,
-    };
-    let pending = validationPromisesRef.current.get(finalEvent.providerEventId);
-    if (!pending) {
-      pending = validateEventOverride(input);
-      validationPromisesRef.current.set(finalEvent.providerEventId, pending);
-    }
-    setValidationState("validating");
-    void pending.then((receipt) => {
-      if (validationGenerationRef.current !== generation) return;
-      setValidatedReceipt(receipt);
-      setValidatedProposal(nextProposal);
-      setValidationState("validated");
-      if (receipt.correction_pending) {
-        setRuntime((current) => current && !current.correction_pending
-          ? { ...current, correction_pending: true }
-          : current);
+    const validateFinal = async () => {
+      let identity = requestIdentitiesRef.current.get(finalEvent.providerEventId);
+      if (!identity) {
+        identity = {
+          idempotencyKey: `voice:${crypto.randomUUID()}`,
+          traceId: `voice-trace:${crypto.randomUUID()}`,
+        };
+        requestIdentitiesRef.current.set(finalEvent.providerEventId, identity);
       }
-    }).catch((error) => {
+      const generation = ++validationGenerationRef.current;
+      const canonicalRequest = "canonicalAction" in nextProposal
+        ? await buildVoiceActionCanonicalRequest({
+            rawTranscript: finalEvent.transcript,
+            expectedStateVersion: activeHand.state_version,
+            expectedWorkflowState: nextProposal.expectedWorkflowState,
+            expectedStreet: nextProposal.expectedStreet,
+            payload: {
+              canonicalAction: nextProposal.canonicalAction,
+              actorPlayerId: nextProposal.actor.playerId,
+              entryNumber: nextProposal.actor.entryNumber,
+              seatNumber: nextProposal.actor.seatNumber,
+              street: nextProposal.expectedStreet,
+              actionAmount: nextProposal.expectedActionAmount,
+              actionOrder: nextProposal.expectedActionOrder,
+            },
+          })
+        : undefined;
+      // A final transcript may finish hashing after navigation or a hand change.
+      // Never register a Voice event for the context that has already been left.
       if (validationGenerationRef.current !== generation) return;
-      setValidationState("error");
-      setValidationError(error instanceof Error ? error.message : "Voice validation thất bại.");
-    });
+      const input: ValidateVoiceEventInput = {
+        tournamentId: hook.tournamentId,
+        tournamentTableId: hook.tournamentTableId,
+        handId: activeHand.hand_id,
+        finalTranscript: finalEvent.transcript,
+        providerName: providerRef.current?.kind ?? "openai_realtime",
+        providerModel: attemptRuntime.config.provider_model,
+        providerEventId: finalEvent.providerEventId,
+        ...(finalEvent.providerConfidence === undefined
+          ? {}
+          : { providerConfidence: finalEvent.providerConfidence }),
+        executionMode: attemptMode,
+        expectedStateVersion: activeHand.state_version,
+        ...identity,
+        ...(canonicalRequest ? { canonicalRequest } : {}),
+      };
+      let pending = validationPromisesRef.current.get(finalEvent.providerEventId);
+      if (!pending) {
+        pending = validateEventOverride(input);
+        validationPromisesRef.current.set(finalEvent.providerEventId, pending);
+      }
+      setValidationState("validating");
+      try {
+        const receipt = await pending;
+        if (validationGenerationRef.current !== generation) return;
+        setValidatedReceipt(receipt);
+        setValidatedProposal(nextProposal);
+        setValidationState("validated");
+        if (receipt.correction_pending) {
+          setRuntime((current) => current && !current.correction_pending
+            ? { ...current, correction_pending: true }
+            : current);
+        }
+      } catch (error) {
+        if (validationGenerationRef.current !== generation) return;
+        setValidationState("error");
+        setValidationError(error instanceof Error ? error.message : "Voice validation thất bại.");
+      }
+    };
+    void validateFinal();
   }, [
     amountUnitConfirmed,
     finalAttempt,
@@ -654,10 +688,11 @@ export function TrackerVoicePanel({
       || !validatedProposal?.ok
       || !("canonicalAction" in validatedProposal)
     ) return;
+    if (assistCommitRef.current) return;
     setValidationState("committing");
     setValidationError(null);
     const actionProposal = validatedProposal as VoiceActionProposal;
-    const committed = await hook.handleVoiceAction(actionProposal, {
+    const commit = hook.handleVoiceAction(actionProposal, {
       source: "voice",
       tournamentTableId: hook.tournamentTableId,
       voiceEventId: validatedReceipt.voice_event_id,
@@ -665,13 +700,37 @@ export function TrackerVoicePanel({
       traceId: validatedReceipt.trace_id,
       expectedStateVersion: validatedReceipt.state_version,
     });
-    if (!committed) {
+    assistCommitRef.current = commit;
+    try {
+      const committed = await commit;
+      if (!committed) {
+        setValidationState("error");
+        setValidationError("Action không được canonical writer xác nhận. Hãy tải lại trạng thái bàn.");
+        return;
+      }
+      const readBack = await refreshRuntime();
+      if (!readBack || readBack.active_hand?.hand_id !== hook.handId) {
+        setValidationState("error");
+        setValidationError("Action đã gửi nhưng không đọc lại được trạng thái bàn. Hãy tải lại trước khi tiếp tục.");
+        return;
+      }
+      if (!runtimeOverride && readBack.active_hand.state_version === validatedReceipt.state_version) {
+        setValidationState("error");
+        setValidationError("Server chưa xác nhận state version mới. Hãy tải lại trước khi tiếp tục.");
+        return;
+      }
+      setProposal(null);
+      setValidatedProposal(null);
+      setValidatedReceipt(null);
+      setValidationState("committed");
+    } catch (error) {
       setValidationState("error");
-      setValidationError("Action không được canonical writer xác nhận. Hãy tải lại trạng thái bàn.");
-      return;
+      setValidationError(error instanceof Error
+        ? error.message
+        : "Không thể xác nhận action Voice. Hãy tải lại trạng thái bàn.");
+    } finally {
+      assistCommitRef.current = null;
     }
-    setValidationState("committed");
-    await refreshRuntime();
   };
 
   const proposalLabel = proposal?.ok

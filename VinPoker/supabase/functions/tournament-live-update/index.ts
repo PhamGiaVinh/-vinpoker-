@@ -10,6 +10,11 @@ import {
   type Street,
 } from "../_shared/trackerEngine/index.ts";
 import { parseTrackerVoiceCommand } from "../_shared/trackerVoiceParser.ts";
+import {
+  actionWorkflowForStreet,
+  buildVoiceActionCanonicalRequest,
+  voiceCanonicalRequestsMatch,
+} from "../../../src/lib/trackerVoice/canonicalRequest.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -372,7 +377,7 @@ Deno.serve(async (req) => {
         const {
           tournament_table_id, hand_id, final_transcript, provider_name,
           provider_model, provider_event_id, provider_confidence,
-          execution_mode, expected_state_version, idempotency_key, trace_id,
+          execution_mode, expected_state_version, idempotency_key, trace_id, voice_request,
         } = body;
         if (
           typeof tournament_table_id !== "string"
@@ -477,8 +482,35 @@ Deno.serve(async (req) => {
             });
             return validationError(verdict.code, verdict.message);
           }
+          // PR A intentionally recognizes only the Action domain. The browser's
+          // request is diagnostic input, never authority: recompute every field
+          // from the raw transcript and locked server snapshot before persistence.
+          const expectedWorkflowState = actionWorkflowForStreet(street);
+          if (!expectedWorkflowState) {
+            return validationError("intent_mismatch", "Voice Action chỉ hợp lệ trong vòng cược.");
+          }
+          const canonicalRequest = await buildVoiceActionCanonicalRequest({
+            rawTranscript: final_transcript,
+            expectedStateVersion: snapshot.state_version,
+            expectedWorkflowState,
+            expectedStreet: street,
+            payload: {
+              canonicalAction,
+              actorPlayerId: actor.playerId,
+              entryNumber: actor.entryNumber,
+              seatNumber: actor.seatNumber,
+              street,
+              actionAmount: verdict.normalizedAmount,
+              actionOrder,
+            },
+          });
+          if (!voiceCanonicalRequestsMatch(voice_request, canonicalRequest)) {
+            return validationError("intent_mismatch", "Đề xuất Voice không còn khớp trạng thái bàn trên server.");
+          }
           normalizedCommand = {
             ...normalizedCommand,
+            intent_domain: canonicalRequest.intentDomain,
+            canonical_request: canonicalRequest,
             canonical_action: canonicalAction,
             actor_player_id: actor.playerId,
             spoken_seat_number: command.spokenSeatNumber,

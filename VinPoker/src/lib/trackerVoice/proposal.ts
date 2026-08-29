@@ -60,6 +60,12 @@ export function resolveVoiceProposal(
   }
 
   let betToTotal: number | undefined;
+  let expectedActionAmount = 0;
+  if (canonicalAction === "call") {
+    expectedActionAmount = Math.min(context.actor.currentStack, context.actorView.toCall);
+  } else if (canonicalAction === "all_in") {
+    expectedActionAmount = context.actor.currentStack;
+  }
   if (canonicalAction === "bet" || canonicalAction === "raise") {
     if (!command.amount || command.amount.value === null) {
       return reject(command, "amount_missing", "Lệnh bet/raise cần số chip đích.");
@@ -75,6 +81,7 @@ export function resolveVoiceProposal(
     if (betToTotal < context.actorView.minRaiseTo && betToTotal !== maxTotal) {
       return reject(command, "raise_too_small", "Mức raise chưa đủ tối thiểu và không phải all-in.");
     }
+    expectedActionAmount = betToTotal - context.actor.currentBet;
   }
 
   const proposal: VoiceActionProposal = {
@@ -83,6 +90,10 @@ export function resolveVoiceProposal(
     actor: context.actor,
     canonicalAction,
     expectedStateVersion: context.expectedStateVersion,
+    expectedWorkflowState: context.workflowState,
+    expectedStreet: context.street,
+    expectedActionOrder: context.actionOrder,
+    expectedActionAmount,
     ...(betToTotal === undefined ? {} : { betToTotal }),
   };
   return proposal;

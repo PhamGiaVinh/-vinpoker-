@@ -1,3 +1,6 @@
+import type { TrackerWorkflowState, WorkflowStreet } from "@/components/cashier/tournament-live/handinput/trackerWorkflow";
+import type { VoiceActionCanonicalRequest } from "./canonicalRequest";
+
 export type VoiceCommandKind =
   | "fold"
   | "check"
@@ -72,6 +75,7 @@ export interface VoiceActorSnapshot {
   playerId: string;
   playerName: string;
   seatNumber: number;
+  entryNumber: number;
   currentStack: number;
   currentBet: number;
 }
@@ -91,7 +95,9 @@ export interface VoiceLegalSnapshot {
 
 export interface VoiceProposalContext {
   handId: string | null;
-  street: string;
+  street: WorkflowStreet;
+  workflowState: TrackerWorkflowState;
+  actionOrder: number;
   expectedStateVersion: string | null;
   actor: VoiceActorSnapshot | null;
   actorView: VoiceLegalSnapshot | null;
@@ -124,6 +130,10 @@ export interface VoiceActionProposal {
   canonicalAction: "fold" | "check" | "call" | "bet" | "raise" | "all_in";
   betToTotal?: number;
   expectedStateVersion: string | null;
+  expectedWorkflowState: TrackerWorkflowState;
+  expectedStreet: WorkflowStreet;
+  expectedActionOrder: number;
+  expectedActionAmount: number;
 }
 
 export interface VoiceControlProposal {
@@ -203,4 +213,6 @@ export interface ValidateVoiceEventInput {
   expectedStateVersion: string;
   idempotencyKey: string;
   traceId: string;
+  /** Required for poker action proposals; Floor alert controls retain their existing path. */
+  canonicalRequest?: VoiceActionCanonicalRequest;
 }
