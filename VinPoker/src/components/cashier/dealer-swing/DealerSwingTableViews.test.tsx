@@ -22,4 +22,16 @@ describe("DealerSwingTableViews", () => {
     expect(screen.getByText("table allocation board")).toBeInTheDocument();
     expect(screen.queryByText("canonical battle map")).not.toBeInTheDocument();
   });
+
+  it("scopes the Times typography utility to the toggle instead of Battle Map content", () => {
+    render(
+      <DealerSwingTableViews
+        mapContent={<div data-testid="battle-map">canonical battle map</div>}
+        allocationContent={<div>table allocation board</div>}
+      />,
+    );
+
+    expect(screen.getByRole("tablist")).toHaveClass("font-table-allocation");
+    expect(screen.getByTestId("battle-map")).not.toHaveClass("font-table-allocation");
+  });
 });

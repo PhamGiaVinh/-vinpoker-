@@ -11,6 +11,7 @@ import {
   buildTableAllocationRows,
   TABLE_ALLOCATION_WINDOW_MINUTES,
   type TableAllocationCoverage,
+  type TableAllocationMarker,
   type TableAllocationRow,
   type TableAllocationSegment,
 } from "./tableAllocationProjection";
@@ -49,28 +50,63 @@ function coveragePresentation(coverage: TableAllocationCoverage): { label: strin
 function segmentClasses(segment: TableAllocationSegment): string {
   switch (segment.status) {
     case "active":
-      return "border-primary bg-primary/15 text-primary";
+      return "border-primary bg-primary/20 text-primary";
     case "locked":
       return "border-success bg-success/15 text-success";
     case "executing":
-      return "border-success bg-success/15 text-success";
+      return "border-success bg-success/25 text-success";
     case "predicted":
-      return "border-dashed border-warning bg-warning/10 text-warning";
+      return "border-warning bg-[repeating-linear-gradient(135deg,transparent_0,transparent_6px,rgba(245,158,11,0.18)_6px,rgba(245,158,11,0.18)_12px)] text-warning";
+    case "shortage":
+      return "border-warning bg-[repeating-linear-gradient(135deg,transparent_0,transparent_5px,rgba(245,158,11,0.26)_5px,rgba(245,158,11,0.26)_10px)] text-warning";
+    case "scheduled":
+      return "border-border bg-muted/70 text-muted-foreground";
+    case "conflict":
+      return "border-destructive bg-destructive/20 text-destructive";
     default:
       return "border-destructive bg-destructive/10 text-destructive";
   }
 }
 
-function segmentPosition(segment: TableAllocationSegment, windowStartMs: number): number {
-  const timestamp = segment.startAt ? new Date(segment.startAt).getTime() : windowStartMs;
+function markerClasses(marker: TableAllocationMarker): string {
+  if (marker.status === "conflict") return "border-destructive/60 bg-destructive/15 text-destructive";
+  if (marker.status === "shortage") return "border-warning/70 bg-warning/15 text-warning";
+  if (marker.status === "predicted") return "border-warning/60 bg-warning/10 text-warning";
+  return "border-success/60 bg-success/10 text-success";
+}
+
+function segmentPosition(segment: Pick<TableAllocationSegment, "startAt">, windowStartMs: number): number {
+  const timestamp = new Date(segment.startAt).getTime();
   if (!Number.isFinite(timestamp)) return 0;
   return Math.max(0, Math.min(TIMELINE_WIDTH_PX, ((timestamp - windowStartMs) / 60_000) * PIXELS_PER_MINUTE));
 }
 
+function segmentWidth(segment: TableAllocationSegment, windowStartMs: number): number {
+  const start = segmentPosition(segment, windowStartMs);
+  const endMs = segment.endAt ? new Date(segment.endAt).getTime() : windowStartMs + TABLE_ALLOCATION_WINDOW_MINUTES * 60_000;
+  const end = Number.isFinite(endMs)
+    ? Math.max(0, Math.min(TIMELINE_WIDTH_PX, ((endMs - windowStartMs) / 60_000) * PIXELS_PER_MINUTE))
+    : TIMELINE_WIDTH_PX;
+  return Math.max(0, end - start);
+}
+
+function markerPosition(marker: TableAllocationMarker, windowStartMs: number): number {
+  const atMs = marker.at ? new Date(marker.at).getTime() : windowStartMs;
+  if (!Number.isFinite(atMs)) return 0;
+  return Math.max(0, Math.min(TIMELINE_WIDTH_PX, ((atMs - windowStartMs) / 60_000) * PIXELS_PER_MINUTE));
+}
+
 function segmentAriaLabel(row: TableAllocationRow, segment: TableAllocationSegment): string {
-  const when = segment.startAt ? ` lúc ${formatTimeHHmm(new Date(segment.startAt).getTime())}` : "";
+  const start = formatTimeHHmm(new Date(segment.startAt).getTime());
+  const end = segment.endAt ? ` đến ${formatTimeHHmm(new Date(segment.endAt).getTime())}` : " · chưa rõ thời điểm kết thúc";
   const person = segment.dealerName ? `, dealer ${segment.dealerName}` : "";
-  return `${row.tableName}${person}, ${segment.label}${when}`;
+  return `${row.tableName}${person}, ${segment.label}, từ ${start}${end}`;
+}
+
+function markerAriaLabel(row: TableAllocationRow, marker: TableAllocationMarker): string {
+  const when = marker.at ? ` lúc ${formatTimeHHmm(new Date(marker.at).getTime())}` : " · chưa có giờ";
+  const person = marker.dealerName ? `, dealer ${marker.dealerName}` : "";
+  return `${row.tableName}${person}, ${marker.label}${when}`;
 }
 
 function AllocationSkeleton() {
@@ -86,10 +122,16 @@ function TimelineHeader({ windowStartMs }: { windowStartMs: number }) {
   return (
     <div className="relative h-12" style={{ width: TIMELINE_WIDTH_PX }}>
       {ticks.map((minute) => (
-        <div key={minute} className="absolute top-0 h-full border-l border-border/70 pl-1" style={{ left: minute * PIXELS_PER_MINUTE }}>
-          <span className="text-[10px] tabular-nums text-muted-foreground">
-            {minute === 0 ? `NOW · ${formatTimeHHmm(windowStartMs)}` : formatTimeHHmm(windowStartMs + minute * 60_000)}
-          </span>
+        <div
+          key={minute}
+          className={`absolute top-0 h-full border-l pl-1 ${minute % 30 === 0 ? "border-border/90" : "border-border/40"}`}
+          style={{ left: minute * PIXELS_PER_MINUTE }}
+        >
+          {minute % 30 === 0 && (
+            <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+              {minute === 0 ? `NOW · ${formatTimeHHmm(windowStartMs)}` : formatTimeHHmm(windowStartMs + minute * 60_000)}
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -98,28 +140,44 @@ function TimelineHeader({ windowStartMs }: { windowStartMs: number }) {
 
 function TimelineRow({ row, windowStartMs }: { row: TableAllocationRow; windowStartMs: number }) {
   return (
-    <div className="relative h-[68px]" style={{ width: TIMELINE_WIDTH_PX }}>
+    <div className="relative h-[60px]" style={{ width: TIMELINE_WIDTH_PX }}>
       {Array.from({ length: TABLE_ALLOCATION_WINDOW_MINUTES / 15 + 1 }, (_, index) => (
-        <span key={index} aria-hidden="true" className="absolute inset-y-0 border-l border-border/40" style={{ left: index * 15 * PIXELS_PER_MINUTE }} />
+        <span
+          key={index}
+          aria-hidden="true"
+          className={`absolute inset-y-0 border-l ${index % 2 === 0 ? "border-border/50" : "border-border/25"}`}
+          style={{ left: index * 15 * PIXELS_PER_MINUTE }}
+        />
       ))}
       <span aria-hidden="true" className="absolute inset-y-0 left-0 z-10 border-l-2 border-primary" />
-      {row.segments.map((segment, index) => (
-        <div
-          key={segment.id}
-          aria-label={segmentAriaLabel(row, segment)}
-          className={`absolute z-10 max-w-[164px] -translate-x-px rounded-r border-l-2 px-1.5 py-0.5 text-[10px] leading-4 shadow-sm ${segmentClasses(segment)}`}
-          style={{ left: segmentPosition(segment, windowStartMs), top: index % 2 === 0 ? 7 : 35 }}
-          title={segmentAriaLabel(row, segment)}
+      {row.segments.map((segment) => {
+        const width = segmentWidth(segment, windowStartMs);
+        if (width === 0) return null;
+        const value = segment.dealerName ?? segment.label;
+        return (
+          <div
+            key={segment.id}
+            aria-label={segmentAriaLabel(row, segment)}
+            className={`absolute top-[17px] z-10 flex h-9 min-w-0 items-center border px-2 text-[11px] leading-tight shadow-sm ${segment.openEnded ? "table-allocation-open-edge" : ""} ${segmentClasses(segment)}`}
+            style={{ left: segmentPosition(segment, windowStartMs), width }}
+            title={segmentAriaLabel(row, segment)}
+          >
+            <span className="min-w-0 truncate font-semibold">{value}</span>
+            {segment.dealerName && <span className="ml-1.5 shrink-0 text-[9px] opacity-80">{segment.label}</span>}
+          </div>
+        );
+      })}
+      {row.markers.map((marker) => (
+        <span
+          key={marker.id}
+          aria-label={markerAriaLabel(row, marker)}
+          className={`absolute top-0 z-20 max-w-40 -translate-x-1/2 truncate rounded border px-1.5 py-0.5 text-[9px] font-semibold leading-3 shadow-sm ${markerClasses(marker)}`}
+          style={{ left: markerPosition(marker, windowStartMs) }}
+          title={markerAriaLabel(row, marker)}
         >
-          <span className="block truncate font-semibold">{segment.dealerName ?? segment.label}</span>
-          {segment.dealerName && <span className="block truncate text-[9px] opacity-80">{segment.label}</span>}
-        </div>
-      ))}
-      {row.unplacedSlots.length > 0 && (
-        <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning">
-          Lịch chưa có giờ
+          {marker.label}
         </span>
-      )}
+      ))}
     </div>
   );
 }
@@ -155,10 +213,10 @@ export default function TableAllocationBoard({
       : "Không có bàn nào cần theo dõi lúc này.";
 
   return (
-    <Card className="h-full p-3">
+    <Card className="font-table-allocation h-full p-3">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Table2 className="h-4 w-4 text-primary" aria-hidden="true" />
-        <h2 className="font-display text-sm tracking-wider">BẢNG THEO BÀN</h2>
+        <h2 className="text-sm font-semibold tracking-wide">BẢNG THEO BÀN</h2>
         <Badge variant="outline" className="ml-auto text-xs">{rows.length} bàn theo dõi</Badge>
       </div>
 
@@ -198,7 +256,7 @@ export default function TableAllocationBoard({
                       <div className="flex items-start gap-2">
                         {row.coverage === "conflict" && <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" aria-label="Có xung đột dữ liệu" />}
                         <div className="min-w-0">
-                          <span className="block truncate font-semibold text-foreground">{row.tableName}</span>
+                          <span className="block truncate font-semibold text-foreground" title={row.tableName}>{row.tableName}</span>
                           <span className={`mt-1 inline-flex rounded border px-1.5 py-0.5 text-[10px] font-semibold ${coverage.className}`}>{coverage.label}</span>
                           {row.coverage === "gap" && (
                             <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
