@@ -248,7 +248,6 @@ BEGIN
   v_cards := v_payload->'cumulativeCards';
   BEGIN v_expected_count := (v_payload->>'expectedExistingBoardCount')::INTEGER; EXCEPTION WHEN invalid_text_representation THEN
     RETURN jsonb_build_object('ok', false, 'error', 'invalid_voice_board_payload'); END;
-  END;
   IF v_street NOT IN ('flop', 'turn', 'river') OR jsonb_typeof(v_cards) <> 'array'
      OR v_expected_count NOT IN (0, 3, 4) THEN RETURN jsonb_build_object('ok', false, 'error', 'invalid_voice_board_payload'); END IF;
   IF (v_street = 'flop' AND (v_expected_count <> 0 OR jsonb_array_length(v_cards) <> 3))

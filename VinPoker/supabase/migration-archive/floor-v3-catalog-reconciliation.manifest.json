@@ -6511,7 +6511,7 @@
       "filename": "20270113000009_tracker_voice_board_atomic_commit_v0.sql",
       "originalPath": "supabase/migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql",
       "pendingPath": "supabase/pending-migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql",
-      "sha256": "ccfd6032c1e475c2f4efadf0a14801e62e7c2fd157a42f0adccb404a38c36863",
+      "sha256": "ea9b2901885b0f136d1e98758da5b70bec4b69c0712d42217191ae8d212f53ee",
       "reason": "post-production-head Tracker Voice Board Assist migration; source-only pending owner-gated rollout"
     }
   ],
