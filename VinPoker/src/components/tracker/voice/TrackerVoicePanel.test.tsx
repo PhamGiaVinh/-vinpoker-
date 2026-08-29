@@ -16,6 +16,7 @@ function hookFixture(): StandaloneHandInput {
     tournamentTableId: "canonical-table-1",
     handId: "hand-1",
     currentStreet: "flop",
+    workflowState: "flop_action",
     actorPlayer: {
     player_id: "player-a",
     display_name: "Player A",
@@ -272,7 +273,7 @@ describe("TrackerVoicePanel", () => {
     act(() => provider.emit("call", { final: true, id: "assist-final" }));
     const confirm = await screen.findByRole("button", { name: "Xác nhận action" });
     fireEvent.click(confirm);
-    expect(await screen.findByText(/Action đã được Viewer\/Replay nhận/)).toBeInTheDocument();
+    expect(await screen.findByText(/Canonical receipt đã được Viewer\/Replay nhận/)).toBeInTheDocument();
     expect(handleVoiceAction).toHaveBeenCalledOnce();
     expect(handleVoiceAction.mock.calls[0][1]).toMatchObject({
       source: "voice",
@@ -308,7 +309,7 @@ describe("TrackerVoicePanel", () => {
     fireEvent.click(confirm);
     expect(handleVoiceAction).toHaveBeenCalledOnce();
     resolveCommit?.(true);
-    expect(await screen.findByText(/Action đã được Viewer\/Replay nhận/)).toBeInTheDocument();
+    expect(await screen.findByText(/Canonical receipt đã được Viewer\/Replay nhận/)).toBeInTheDocument();
   });
 
   it("deduplicates duplicate provider completion callbacks", async () => {
@@ -363,7 +364,7 @@ describe("TrackerVoicePanel", () => {
       executionMode: "assist",
     });
     fireEvent.click(confirm);
-    expect(await screen.findByText(/Action đã được Viewer\/Replay nhận/)).toBeInTheDocument();
+    expect(await screen.findByText(/Canonical receipt đã được Viewer\/Replay nhận/)).toBeInTheDocument();
     expect(handleVoiceAction).toHaveBeenCalledOnce();
   });
 
