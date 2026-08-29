@@ -338,6 +338,18 @@
 }
 
 @layer utilities {
+  /* Scoped to the allocation timeline; do not change Battle Map typography. */
+  .font-table-allocation,
+  .font-table-allocation button,
+  .font-table-allocation table {
+    font-family: "Times New Roman", Times, serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .table-allocation-open-edge {
+    border-right-color: currentColor;
+    border-right-style: dashed;
+    border-right-width: 2px;
+  }
   .gradient-neon { background: var(--gradient-neon); }
   .gradient-gold { background: var(--gradient-neon); } /* alias kept for legacy */
   .gradient-card { background: var(--gradient-card); }

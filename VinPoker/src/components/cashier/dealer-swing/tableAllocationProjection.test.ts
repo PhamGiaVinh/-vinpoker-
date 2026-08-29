@@ -81,25 +81,20 @@ function project(overrides: Partial<Parameters<typeof buildTableAllocationRows>[
 }
 
 describe("buildTableAllocationRows", () => {
-  it("marks one canonical active assignment as covered", () => {
+  it("marks one canonical active assignment as covered and open-ended", () => {
     const current = assignment();
     const [row] = project({ canonicalAssignments: [current], activeRawData: [current] });
     expect(row.coverage).toBe("covered");
-    expect(row.segments[0]).toMatchObject({ status: "active", dealerName: "Dealer A" });
-    expect(row.segments[0].startAt).toBe(new Date(nowMs).toISOString());
+    expect(row.segments[0]).toMatchObject({ status: "active", dealerName: "Dealer A", startAt: new Date(nowMs).toISOString(), endAt: null, openEnded: true });
   });
 
-  it("uses opened_at as the only V1 gap evidence", () => {
-    const [row] = project({ tables: [table({ opened_at: "2026-08-28T11:40:00.000Z" })] });
-    expect(row.coverage).toBe("gap");
-    expect(row.gapStartedAt).toBe("2026-08-28T11:40:00.000Z");
-  });
+  it("uses opened_at as the only gap evidence and keeps legacy gaps unknown", () => {
+    const [known] = project({ tables: [table({ opened_at: "2026-08-28T11:40:00.000Z" })] });
+    expect(known.gapStartedAt).toBe("2026-08-28T11:40:00.000Z");
 
-  it("keeps a gap timestamp unknown without current-session evidence", () => {
-    const [row] = project();
-    expect(row.coverage).toBe("gap");
-    expect(row.gapStartedAt).toBeNull();
-    expect(row.segments[0]).toMatchObject({ status: "gap", startAt: null });
+    const [unknown] = project();
+    expect(unknown.gapStartedAt).toBeNull();
+    expect(unknown.segments[0]).toMatchObject({ status: "gap", endAt: null, openEnded: true });
   });
 
   it("surfaces two active assignments as a conflict", () => {
@@ -107,46 +102,149 @@ describe("buildTableAllocationRows", () => {
     const b = assignment({ id: "assignment-2", attendance_id: "attendance-2", dealer_attendance: { current_state: "assigned", dealers: { full_name: "Dealer B" } } });
     const [row] = project({ canonicalAssignments: [a], activeRawData: [a, b] });
     expect(row.coverage).toBe("conflict");
+    expect(row.segments[0].status).toBe("conflict");
     expect(row.conflicts.some((conflict) => conflict.code === "multiple_assignments")).toBe(true);
   });
 
-  it("excludes inactive pool and maintenance tables unless a canonical opening signal exists", () => {
+  it("excludes inactive pool and maintenance tables unless there is opening evidence", () => {
     expect(project({ tables: [table({ status: "inactive" })] })).toEqual([]);
     expect(project({ tables: [table({ status: "maintenance" })] })).toEqual([]);
     const [scheduled] = project({ tables: [table({ status: "inactive", dealer_open_operation_id: "operation-1" })] });
-    expect(scheduled.coverage).toBe("scheduled");
-    expect(scheduled.requiresCoverage).toBe(false);
+    expect(scheduled).toMatchObject({ coverage: "scheduled", requiresCoverage: false });
   });
 
   it("does not let predicted-only data add an inactive table", () => {
     expect(project({ tables: [table({ status: "inactive" })], scheduleRows: [schedule({ status: "predicted" })] })).toEqual([]);
   });
 
-  it("adds an inactive table only for an announced or executing slot inside the forward window", () => {
-    const [announced] = project({ tables: [table({ status: "inactive" })], scheduleRows: [schedule()] });
-    expect(announced).toMatchObject({ coverage: "scheduled", requiresCoverage: false });
-
-    expect(project({
-      tables: [table({ status: "inactive" })],
-      scheduleRows: [schedule({ planned_relief_at: "2026-08-28T13:31:00.000Z" })],
-    })).toEqual([]);
+  it("scheduled inactive uses a neutral pre-band instead of a gap", () => {
+    const [row] = project({ tables: [table({ status: "inactive" })], scheduleRows: [schedule({ out_attendance_id: null })] });
+    expect(row).toMatchObject({ coverage: "scheduled", tableState: "scheduled" });
+    expect(row.segments[0]).toMatchObject({ status: "scheduled", label: "SẮP MỞ", dealerName: null });
   });
 
-  it("labels announced and executing slots without turning predictions into coverage", () => {
+  it("creates adjacent bands only for a monotonic identity-continuous chain", () => {
+    const current = assignment();
     const [row] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
       scheduleRows: [
         schedule(),
-        schedule({ id: "slot-2", slot_index: 1, status: "executing", planned_relief_at: "2026-08-28T12:45:00.000Z" }),
-        schedule({ id: "slot-3", slot_index: 2, status: "predicted", planned_relief_at: "2026-08-28T13:00:00.000Z" }),
+        schedule({ id: "slot-2", slot_index: 1, out_attendance_id: "attendance-2", in_attendance_id: "attendance-3", in_dealer_name: "Dealer C", planned_relief_at: "2026-08-28T12:45:00.000Z", status: "executing" }),
       ],
     });
-    expect(row.coverage).toBe("gap");
-    expect(row.segments.map((segment) => segment.label)).toEqual(expect.arrayContaining(["CHỐT", "ĐANG THỰC HIỆN ĐỔI DEALER", "DỰ ĐOÁN"]));
+    expect(row.segments).toHaveLength(3);
+    expect(row.segments.map((segment) => [segment.dealerName, segment.startAt, segment.endAt, segment.openEnded])).toEqual([
+      ["Dealer A", "2026-08-28T12:00:00.000Z", "2026-08-28T12:30:00.000Z", false],
+      ["Dealer B", "2026-08-28T12:30:00.000Z", "2026-08-28T12:45:00.000Z", false],
+      ["Dealer C", "2026-08-28T12:45:00.000Z", null, true],
+    ]);
   });
 
-  it("keeps a schedule without a time as a marker record, not a fake duration", () => {
-    const [row] = project({ scheduleRows: [schedule({ planned_relief_at: null })] });
-    expect(row.unplacedSlots).toHaveLength(1);
-    expect(row.unplacedSlots[0].startAt).toBeNull();
+  it("past-due announced keeps current dealer", () => {
+    const current = assignment();
+    const [row] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
+      scheduleRows: [schedule({ planned_relief_at: "2026-08-28T11:30:00.000Z" })],
+    });
+    expect(row.segments).toHaveLength(1);
+    expect(row.segments[0]).toMatchObject({ dealerName: "Dealer A", endAt: null, openEnded: true });
+    expect(row.markers).toMatchObject([{ label: "CHỐT QUÁ GIỜ", at: "2026-08-28T12:00:00.000Z" }]);
+  });
+
+  it("slot0 out mismatch breaks chain", () => {
+    const current = assignment();
+    const [row] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
+      scheduleRows: [schedule({ out_attendance_id: "attendance-other" })],
+    });
+    expect(row.segments).toHaveLength(1);
+    expect(row.segments[0].dealerName).toBe("Dealer A");
+    expect(row.markers[0].label).toBe("LỊCH KHÔNG KHỚP DEALER");
+  });
+
+  it("slot1 identity mismatch breaks chain", () => {
+    const current = assignment();
+    const [row] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
+      scheduleRows: [
+        schedule(),
+        schedule({ id: "slot-2", slot_index: 1, out_attendance_id: "attendance-other", in_attendance_id: "attendance-3", in_dealer_name: "Dealer C", planned_relief_at: "2026-08-28T12:45:00.000Z" }),
+      ],
+    });
+    expect(row.segments.map((segment) => segment.dealerName)).toEqual(["Dealer A", "Dealer B"]);
+    expect(row.segments[1]).toMatchObject({ endAt: null, openEnded: true });
+    expect(row.markers[0].label).toBe("LỊCH KHÔNG KHỚP DEALER");
+  });
+
+  it("shortage renders shortage and never becomes an unnamed locked dealer", () => {
+    const current = assignment();
+    const [row] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
+      scheduleRows: [schedule({ in_attendance_id: null, in_dealer_name: null, is_shortage: true })],
+    });
+    expect(row.coverage).toBe("covered");
+    expect(row.segments[1]).toMatchObject({ status: "shortage", label: "THIẾU DEALER DỰ KIẾN", dealerName: null });
+  });
+
+  it("does not call a missing incoming dealer a shortage without is_shortage", () => {
+    const current = assignment();
+    const [row] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
+      scheduleRows: [schedule({ in_attendance_id: null, in_dealer_name: null, is_shortage: false })],
+    });
+    expect(row.segments).toHaveLength(1);
+    expect(row.markers[0]).toMatchObject({ status: "conflict", label: "LỊCH XUNG ĐỘT · THIẾU DEALER" });
+  });
+
+  it("missing middle boundary does not bridge", () => {
+    const current = assignment();
+    const [row] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
+      scheduleRows: [
+        schedule(),
+        schedule({ id: "slot-2", slot_index: 1, out_attendance_id: "attendance-2", in_attendance_id: "attendance-3", in_dealer_name: "Dealer C", planned_relief_at: null }),
+        schedule({ id: "slot-3", slot_index: 2, out_attendance_id: "attendance-3", in_attendance_id: "attendance-4", in_dealer_name: "Dealer D", planned_relief_at: "2026-08-28T13:00:00.000Z" }),
+      ],
+    });
+    expect(row.segments.map((segment) => segment.dealerName)).toEqual(["Dealer A", "Dealer B"]);
+    expect(row.segments[1]).toMatchObject({ endAt: null, openEnded: true });
+    expect(row.markers.map((marker) => marker.label)).toEqual(["LỊCH CHƯA CÓ GIỜ", "LỊCH KHÔNG LIÊN TỤC"]);
+  });
+
+  it("keeps a valid chain across sticky rows from different plan runs", () => {
+    const current = assignment();
+    const [row] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
+      scheduleRows: [
+        schedule({ plan_run_id: "run-1" }),
+        schedule({ id: "slot-2", slot_index: 1, out_attendance_id: "attendance-2", in_attendance_id: "attendance-3", in_dealer_name: "Dealer C", planned_relief_at: "2026-08-28T12:45:00.000Z", plan_run_id: "run-2" }),
+      ],
+    });
+    expect(row.segments.map((segment) => segment.dealerName)).toEqual(["Dealer A", "Dealer B", "Dealer C"]);
+  });
+
+  it("keeps past executing and predicted rows as markers", () => {
+    const current = assignment();
+    const [executing] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
+      scheduleRows: [schedule({ status: "executing", planned_relief_at: "2026-08-28T11:30:00.000Z" })],
+    });
+    expect(executing.markers[0].label).toBe("ĐANG THỰC HIỆN");
+
+    const [predicted] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
+      scheduleRows: [schedule({ status: "predicted", planned_relief_at: "2026-08-28T11:30:00.000Z" })],
+    });
+    expect(predicted.markers[0].label).toBe("DỰ ĐOÁN QUÁ GIỜ");
   });
 });
