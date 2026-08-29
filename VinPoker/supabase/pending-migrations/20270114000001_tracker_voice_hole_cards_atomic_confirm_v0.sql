@@ -35,7 +35,7 @@ BEGIN
   IF NOT v_service_voice_call AND p_user_id IS NOT NULL AND p_user_id <> v_actor THEN
     RETURN jsonb_build_object('error', 'actor_mismatch');
   END IF;
-  IF jsonb_typeof(p_player_hole_cards) <> 'array' OR jsonb_array_length(p_player_hole_cards) < 1 THEN
+  IF jsonb_typeof(p_player_hole_cards) <> 'array' THEN
     RETURN jsonb_build_object('error', 'invalid_hole_cards_payload');
   END IF;
   SELECT h.status, h.locked_by_user_id, h.locked_at, h.tournament_id, h.table_id,
