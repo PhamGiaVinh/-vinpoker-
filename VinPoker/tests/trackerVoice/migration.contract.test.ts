@@ -253,8 +253,8 @@ describe("Tracker Voice V0 migration contract", () => {
   });
 
   it("keeps Hole Cards Assist private before confirmation and service-only after it", () => {
-    expect(holeCardsAssistMigration).toContain("_tracker_apply_hole_cards_core_v0");
     expect(holeCardsAssistMigration).toContain("commit_tracker_voice_hole_cards_v0");
+    expect(holeCardsAssistMigration).toContain("v_core_result := public.show_hole_cards(");
     expect(holeCardsAssistMigration).toContain("Seat %s [HOLE_CARDS_REDACTED]");
     expect(holeCardsAssistMigration).toContain("hole_cards_already_persisted");
     expect(holeCardsAssistMigration).toContain("voice_hole_card_correction_required");

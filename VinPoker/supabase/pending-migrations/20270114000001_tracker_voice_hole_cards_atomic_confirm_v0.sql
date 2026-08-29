@@ -1,118 +1,12 @@
 -- Source-only pending migration for Tracker Voice Hole Cards Assist.
 -- Requires the qualified 080 -> 12003 -> 12008 -> 13000007 -> 13000009 chain.
--- This keeps manual show_hole_cards as the public ABI and routes both manual
--- batches and one-seat Voice confirms through one private mutation core.
+-- This keeps manual show_hole_cards as the public ABI and routes one-seat
+-- Voice confirms through that same canonical writer.
 BEGIN;
 
-CREATE OR REPLACE FUNCTION public._tracker_apply_hole_cards_core_v0(
-  p_hand_id UUID,
-  p_player_hole_cards JSONB,
-  p_actor_user_id UUID,
-  p_voice_strict BOOLEAN DEFAULT FALSE
-)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $function$
-DECLARE
-  v_hand RECORD;
-  v_item JSONB;
-  v_player_id UUID;
-  v_entry_number INTEGER;
-  v_cards JSONB;
-  v_existing_cards JSONB;
-  v_validation TEXT;
-  v_entry_count INTEGER := 0;
-BEGIN
-  IF p_actor_user_id IS NULL
-     OR jsonb_typeof(p_player_hole_cards) <> 'array'
-     OR jsonb_array_length(p_player_hole_cards) < 1 THEN
-    RETURN jsonb_build_object('error', 'invalid_hole_cards_payload');
-  END IF;
-
-  SELECT h.id, h.community_cards
-  INTO v_hand
-  FROM public.tournament_hands h
-  WHERE h.id = p_hand_id
-  FOR UPDATE;
-  IF NOT FOUND THEN RETURN jsonb_build_object('error', 'hand_not_found'); END IF;
-
-  -- Serialize every entry for this hand. The outer public writer has already
-  -- proven actor/lock scope; the private core owns card and partial-write rules.
-  PERFORM 1 FROM public.hand_players hp WHERE hp.hand_id = p_hand_id FOR UPDATE;
-
-  FOR v_item IN SELECT value FROM jsonb_array_elements(p_player_hole_cards) LOOP
-    BEGIN
-      v_player_id := (v_item->>'player_id')::UUID;
-      v_entry_number := (v_item->>'entry_number')::INTEGER;
-    EXCEPTION WHEN invalid_text_representation THEN
-      RETURN jsonb_build_object('error', 'invalid_hole_cards_payload');
-    END;
-    v_cards := v_item->'hole_cards';
-    IF v_player_id IS NULL OR v_entry_number IS NULL OR v_entry_number < 1 THEN
-      RETURN jsonb_build_object('error', 'invalid_hole_cards_payload');
-    END IF;
-    IF jsonb_typeof(v_cards) <> 'array' THEN
-      RETURN jsonb_build_object('error', 'invalid_hole_cards_payload');
-    END IF;
-    v_validation := public.validate_cards(v_cards);
-    IF v_validation <> 'ok' OR jsonb_array_length(v_cards) <> 2 THEN
-      RETURN jsonb_build_object('error', COALESCE(NULLIF(v_validation, 'ok'), 'invalid_hole_cards_payload'));
-    END IF;
-
-    SELECT hp.hole_cards INTO v_existing_cards
-    FROM public.hand_players hp
-    WHERE hp.hand_id = p_hand_id
-      AND hp.player_id = v_player_id
-      AND hp.entry_number = v_entry_number;
-    IF NOT FOUND THEN RETURN jsonb_build_object('error', 'player_not_in_hand'); END IF;
-
-    IF p_voice_strict AND COALESCE(v_existing_cards, '[]'::JSONB) <> '[]'::JSONB THEN
-      IF v_existing_cards = v_cards THEN
-        RETURN jsonb_build_object('error', 'hole_cards_already_persisted');
-      END IF;
-      RETURN jsonb_build_object('error', 'voice_hole_card_correction_required');
-    END IF;
-
-    IF EXISTS (
-      SELECT 1
-      FROM jsonb_array_elements_text(v_cards) AS proposed(card)
-      WHERE proposed.card IN (
-        SELECT jsonb_array_elements_text(COALESCE(v_hand.community_cards, '[]'::JSONB))
-        UNION
-        SELECT jsonb_array_elements_text(COALESCE(other_hp.hole_cards, '[]'::JSONB))
-        FROM public.hand_players other_hp
-        WHERE other_hp.hand_id = p_hand_id
-          AND (other_hp.player_id, other_hp.entry_number) <> (v_player_id, v_entry_number)
-          AND COALESCE(other_hp.hole_cards, '[]'::JSONB) <> '[]'::JSONB
-      )
-    ) THEN
-      RETURN jsonb_build_object('error', 'card_already_used_by_board_or_hole_cards');
-    END IF;
-
-    UPDATE public.hand_players
-    SET hole_cards = v_cards
-    WHERE hand_id = p_hand_id
-      AND player_id = v_player_id
-      AND entry_number = v_entry_number;
-    v_entry_count := v_entry_count + 1;
-  END LOOP;
-
-  UPDATE public.tournament_hands
-  SET updated_at = now(), locked_at = now()
-  WHERE id = p_hand_id;
-
-  RETURN jsonb_build_object('status', 'success', 'entry_count', v_entry_count);
-END;
-$function$;
-
-REVOKE ALL ON FUNCTION public._tracker_apply_hole_cards_core_v0(UUID, JSONB, UUID, BOOLEAN)
-  FROM PUBLIC, anon, authenticated, service_role;
-
--- The original manual ABI remains the only public hole-card writer. It has the
--- existing tracker/assigned Dealer authorization and delegates the exact batch
--- entries to the shared private core.
+-- The original manual ABI remains the one canonical Hole Cards writer. It is
+-- SECURITY INVOKER under the current P0 contract, so it cannot call an
+-- ungranted SECURITY DEFINER helper without creating a browser bypass.
 CREATE OR REPLACE FUNCTION public.show_hole_cards(
   p_hand_id UUID,
   p_player_hole_cards JSONB,
@@ -125,11 +19,27 @@ SET search_path = public
 AS $function$
 DECLARE
   v_actor UUID := auth.uid();
+  v_service_voice_call BOOLEAN := COALESCE(auth.jwt()->>'role', '') = 'service_role';
   v_hand RECORD;
+  v_item JSONB;
+  v_player_id UUID;
+  v_entry_number INTEGER;
+  v_cards JSONB;
+  v_validation TEXT;
+  v_entry_count INTEGER := 0;
 BEGIN
+  -- The service-only Voice transaction supplies the already-authenticated
+  -- Dealer identity. Direct callers still bind p_user_id to auth.uid().
+  IF v_service_voice_call THEN v_actor := p_user_id; END IF;
   IF v_actor IS NULL THEN RETURN jsonb_build_object('error', 'unauthenticated'); END IF;
-  IF p_user_id IS NOT NULL AND p_user_id <> v_actor THEN RETURN jsonb_build_object('error', 'actor_mismatch'); END IF;
-  SELECT h.status, h.locked_by_user_id, h.locked_at, h.tournament_id, h.table_id, t.club_id
+  IF NOT v_service_voice_call AND p_user_id IS NOT NULL AND p_user_id <> v_actor THEN
+    RETURN jsonb_build_object('error', 'actor_mismatch');
+  END IF;
+  IF jsonb_typeof(p_player_hole_cards) <> 'array' OR jsonb_array_length(p_player_hole_cards) < 1 THEN
+    RETURN jsonb_build_object('error', 'invalid_hole_cards_payload');
+  END IF;
+  SELECT h.status, h.locked_by_user_id, h.locked_at, h.tournament_id, h.table_id,
+         h.community_cards, t.club_id
   INTO v_hand
   FROM public.tournament_hands h
   JOIN public.tournaments t ON t.id = h.tournament_id
@@ -154,7 +64,54 @@ BEGIN
   IF public.tracker_lock_blocks(v_hand.locked_by_user_id, v_hand.locked_at, v_actor) THEN
     RETURN jsonb_build_object('error', 'lock_lost');
   END IF;
-  RETURN public._tracker_apply_hole_cards_core_v0(p_hand_id, p_player_hole_cards, v_actor, FALSE);
+
+  -- Lock every existing entry for this hand before enforcing deck uniqueness
+  -- and applying the explicit additive batch.
+  PERFORM 1 FROM public.hand_players hp WHERE hp.hand_id = p_hand_id FOR UPDATE;
+  FOR v_item IN SELECT value FROM jsonb_array_elements(p_player_hole_cards) LOOP
+    BEGIN
+      v_player_id := (v_item->>'player_id')::UUID;
+      v_entry_number := (v_item->>'entry_number')::INTEGER;
+    EXCEPTION WHEN invalid_text_representation THEN
+      RETURN jsonb_build_object('error', 'invalid_hole_cards_payload');
+    END;
+    v_cards := v_item->'hole_cards';
+    IF v_player_id IS NULL OR v_entry_number IS NULL OR v_entry_number < 1
+       OR jsonb_typeof(v_cards) <> 'array' THEN
+      RETURN jsonb_build_object('error', 'invalid_hole_cards_payload');
+    END IF;
+    v_validation := public.validate_cards(v_cards);
+    IF v_validation <> 'ok' OR jsonb_array_length(v_cards) <> 2 THEN
+      RETURN jsonb_build_object('error', COALESCE(NULLIF(v_validation, 'ok'), 'invalid_hole_cards_payload'));
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM public.hand_players hp
+      WHERE hp.hand_id = p_hand_id
+        AND hp.player_id = v_player_id
+        AND hp.entry_number = v_entry_number
+    ) THEN RETURN jsonb_build_object('error', 'player_not_in_hand'); END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements_text(v_cards) AS proposed(card)
+      WHERE proposed.card IN (
+        SELECT jsonb_array_elements_text(COALESCE(v_hand.community_cards, '[]'::JSONB))
+        UNION
+        SELECT jsonb_array_elements_text(COALESCE(other_hp.hole_cards, '[]'::JSONB))
+        FROM public.hand_players other_hp
+        WHERE other_hp.hand_id = p_hand_id
+          AND (other_hp.player_id, other_hp.entry_number) <> (v_player_id, v_entry_number)
+          AND COALESCE(other_hp.hole_cards, '[]'::JSONB) <> '[]'::JSONB
+      )
+    ) THEN RETURN jsonb_build_object('error', 'card_already_used_by_board_or_hole_cards'); END IF;
+    UPDATE public.hand_players
+    SET hole_cards = v_cards
+    WHERE hand_id = p_hand_id
+      AND player_id = v_player_id
+      AND entry_number = v_entry_number;
+    v_entry_count := v_entry_count + 1;
+  END LOOP;
+  UPDATE public.tournament_hands SET updated_at = now(), locked_at = now() WHERE id = p_hand_id;
+  RETURN jsonb_build_object('status', 'success', 'entry_count', v_entry_count);
 END;
 $function$;
 
@@ -162,8 +119,8 @@ REVOKE ALL ON FUNCTION public.show_hole_cards(UUID, JSONB, UUID)
   FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.show_hole_cards(UUID, JSONB, UUID) TO authenticated;
 
--- Only Edge (service_role) can create the redacted root, invoke the shared
--- mutation core, and append its immutable receipt in one transaction. Raw card
+-- Only Edge (service_role) can create the redacted root, invoke the canonical
+-- manual writer, and append its immutable receipt in one transaction. Raw card
 -- speech is parsed transiently in Edge and never reaches this SQL function.
 CREATE OR REPLACE FUNCTION public.commit_tracker_voice_hole_cards_v0(
   p_actor_user_id UUID,
@@ -337,17 +294,23 @@ BEGIN
       AND ha.action_type = 'fold'
   ) THEN RETURN jsonb_build_object('ok', false, 'error', 'player_folded'); END IF;
 
-  -- The core mutates exactly one explicit entry. A later root/receipt failure
-  -- raises and rolls this mutation back with the enclosing transaction.
-  v_core_result := public._tracker_apply_hole_cards_core_v0(
+  IF COALESCE(v_target.hole_cards, '[]'::JSONB) <> '[]'::JSONB THEN
+    IF v_target.hole_cards = p_hole_cards THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'hole_cards_already_persisted');
+    END IF;
+    RETURN jsonb_build_object('ok', false, 'error', 'voice_hole_card_correction_required');
+  END IF;
+
+  -- The canonical public writer mutates exactly one explicit entry. A later
+  -- root/receipt failure raises and rolls this mutation back atomically.
+  v_core_result := public.show_hole_cards(
     p_hand_id,
     jsonb_build_array(jsonb_build_object(
       'player_id', v_target.player_id,
       'entry_number', v_target.entry_number,
       'hole_cards', p_hole_cards
     )),
-    p_actor_user_id,
-    TRUE
+    p_actor_user_id
   );
   IF v_core_result->>'error' IS NOT NULL THEN
     RETURN v_core_result || jsonb_build_object('ok', false);

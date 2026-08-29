@@ -11,11 +11,11 @@ const edge = readFileSync(resolve(root, "supabase/functions/tournament-live-upda
 const panel = readFileSync(resolve(root, "src/components/tracker/voice/TrackerVoicePanel.tsx"), "utf8");
 
 describe("Tracker Voice Hole Cards Assist contract", () => {
-  it("uses one private core for the public manual ABI and service-only Voice receipt", () => {
-    expect(migration).toContain("_tracker_apply_hole_cards_core_v0");
+  it("uses the canonical manual writer inside the service-only Voice receipt", () => {
     expect(migration).toContain("CREATE OR REPLACE FUNCTION public.show_hole_cards(");
     expect(migration).toContain("CREATE OR REPLACE FUNCTION public.commit_tracker_voice_hole_cards_v0(");
-    expect(migration).toContain("p_voice_strict BOOLEAN DEFAULT FALSE");
+    expect(migration).toContain("v_core_result := public.show_hole_cards(");
+    expect(migration).toContain("v_service_voice_call BOOLEAN");
     expect(migration).toContain("hole_cards_already_persisted");
     expect(migration).toContain("voice_hole_card_correction_required");
     expect(migration).toContain("REVOKE ALL ON FUNCTION public.commit_tracker_voice_hole_cards_v0");
@@ -23,6 +23,7 @@ describe("Tracker Voice Hole Cards Assist contract", () => {
     expect(migration).toMatch(
       /FUNCTION public\.show_hole_cards\([\s\S]*?LANGUAGE plpgsql\s+SECURITY INVOKER\s+SET search_path = public/,
     );
+    expect(migration).not.toContain("_tracker_apply_hole_cards_core_v0");
   });
 
   it("makes root, card mutation, and receipt one transaction with a redacted audit row", () => {
