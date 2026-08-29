@@ -24,7 +24,7 @@ SELECT public.commit_tracker_voice_hole_cards_v0(
   '85000000-0000-4000-8000-000000000001',
   '84000000-0000-4000-8000-000000000001',
   '86000000-0000-4000-8000-000000000001',
-  'gemini_live', 'gemini-3.5-transcribe-live', 'hole-provider-seat-one-retry',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'hole-provider-seat-one',
   :'hole_state_initial_value', 'voice-hole-seat-one-0001', 'trace-hole-seat-one-retry',
   1, '["Kh", "Ks"]'::JSONB
 )::TEXT AS payload \gset hole_commit_one_retry_
