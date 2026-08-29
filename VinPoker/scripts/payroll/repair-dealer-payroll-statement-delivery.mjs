@@ -15,10 +15,12 @@ export const REPAIR_MIGRATION = Object.freeze({
   path: "supabase/pending-migrations/20270113000008_dealer_payroll_statement_telegram_delivery_contract_repair.sql",
   sha256: "7de847754cd68436ced5d641db1cbbdd9ec5c1ae305852582b778c40a853c77c",
 });
+export const LEGACY_DELIVERY_MIGRATION_NAME =
+  "20270113000004_dealer_payroll_statement_telegram_delivery";
 export const RETIRED_MIGRATION_NAMES = Object.freeze([
   "20270113000000_dealer_payroll_statement_pdf_storage",
   "20270113000001_dealer_payroll_statement_ft_ui_contract",
-  "20270113000004_dealer_payroll_statement_telegram_delivery",
+  LEGACY_DELIVERY_MIGRATION_NAME,
 ]);
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -297,7 +299,7 @@ export function historyDiagnostics(history) {
   return RETIRED_MIGRATION_NAMES.map((name) => ({ name, matches: history.filter((entry) => entry.name === name).length }));
 }
 
-export function repairDecision({ catalog, history, parentGate }) {
+export function repairDecision({ catalog, history, parentGate, deliveryGate = null }) {
   const dependencies = dependencyProblems(catalog);
   if (dependencies.length) return { action: "block", reason: "dependency_unavailable", problems: dependencies };
   const parentProblems = parentGateProblems(parentGate);
@@ -310,7 +312,25 @@ export function repairDecision({ catalog, history, parentGate }) {
     return { action: "block", reason: "repair_tracked_but_absent", problems: ["repair name exists but contract is absent"] };
   }
   if (matching.length === 0 && state === "complete") {
-    return { action: "block", reason: "untracked_complete_contract", problems: ["complete contract has no repair migration name"] };
+    const legacyMatches = history.filter((entry) => entry.name === LEGACY_DELIVERY_MIGRATION_NAME);
+    if (legacyMatches.length !== 1) {
+      return {
+        action: "block",
+        reason: legacyMatches.length > 1 ? "legacy_history_duplicate" : "untracked_complete_contract",
+        problems: [legacyMatches.length > 1
+          ? "legacy delivery migration name is duplicated"
+          : "complete contract has no authoritative migration name"],
+      };
+    }
+    const gateClass = deliveryGateClass(deliveryGate);
+    if (gateClass !== "dark" && gateClass !== "hsop") {
+      return {
+        action: "block",
+        reason: "legacy_delivery_gate_unexpected",
+        problems: ["legacy delivery rollout must be dark or exact HSOP-only"],
+      };
+    }
+    return { action: "skip", reason: `legacy_contract_verified_${gateClass}` };
   }
   if (matching.length === 1 && state === "complete") return { action: "skip", reason: "repair_already_verified" };
   return { action: "apply", reason: "exact_absent_contract" };
@@ -352,6 +372,7 @@ export async function run(argv = process.argv.slice(2), env = process.env, fetch
   log("PARENT_GATE_PRE", JSON.stringify(safeCounts(before.parentGate)));
   log("AGGREGATES_PRE", JSON.stringify(safeCounts(before.aggregates)));
   log("HISTORY_DIAGNOSTICS", JSON.stringify(historyDiagnostics(before.history)));
+  if (before.deliveryGate) log("DELIVERY_GATE_PRE", JSON.stringify(safeCounts(before.deliveryGate)));
   const decision = repairDecision(before);
   log(`DECISION_${decision.action.toUpperCase()}`, decision.reason);
   if (decision.action === "block") throw new Error(`PAYROLL_DELIVERY_REPAIR_BLOCKED: ${decision.reason}; ${decision.problems.join("; ")}`);
