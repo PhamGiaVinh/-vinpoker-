@@ -4,7 +4,7 @@ import {
   parseSeriesClubLivePulseV1,
   type SeriesClubPulseMetricKey,
 } from "@/lib/series-intelligence/seriesClubLivePulseV1";
-import { deriveDealerAssignmentState } from "./opsLiveOperationsAdapter";
+import { deriveDealerAssignmentState, deriveOpsTableCapacityQ0 } from "./opsLiveOperationsAdapter";
 import { buildOpsIntelligenceReadModelV1, deriveHeadlineStatus } from "./opsIntelligenceReadModel";
 
 const CLUB_ID = "10000000-0000-4000-8000-000000000001";
@@ -27,7 +27,7 @@ function operations(overrides: Record<string, unknown> = {}) {
   return {
     observedAt: OBSERVED_AT, asOf: AS_OF, availability: "exact" as const, reasonCode: null,
     rows: Object.freeze([{ tableId: "table-1", tableName: "Bàn 1", tableStatus: "active", tournamentName: "Main", currentLevel: null, averageStack: null, dealerName: "Duy", dealerAssignmentState: "assigned" as const, sourceAvailability: "exact" as const }]),
-    runningTournamentIds: Object.freeze(["event-1"]), openTableCount: 5, dealersOnDutyCount: 5, countComparisonEligible: false, ...overrides,
+    runningTournamentIds: Object.freeze(["event-1"]), openTableCount: 5, configuredTableCount: 101, operationalTableCount: 5, dealersOnDutyCount: 5, countComparisonEligible: false, ...overrides,
   };
 }
 
@@ -57,6 +57,13 @@ describe("Ops Intelligence read model", () => {
     const model = buildOpsIntelligenceReadModelV1({ clubId: CLUB_ID, pulse: { value: pulse(), observedAt: OBSERVED_AT }, pulseError: null, operations: operations({ openTableCount: 4, countComparisonEligible: true }), supplemental: [], verifiedTrackerAlertCount: null });
     expect(model.alerts.some((alert) => alert.kind === "source_count_mismatch")).toBe(true);
     expect(model.metrics.find((item) => item.metricId === "open_tables")?.value).toBe(5);
+  });
+
+  it("keeps configured capacity distinct from active tournament tables", () => {
+    const configured = Array.from({ length: 101 }, (_, index) => `table-${index + 1}`);
+    const capacity = deriveOpsTableCapacityQ0(configured, [{ tournament_tables: configured.slice(0, 4).map((table_id) => ({ table_id, status: "active" })) }]);
+    expect(capacity).toMatchObject({ configuredTableCount: 101, operationalTableCount: 4 });
+    expect(capacity.activeTableIds).toHaveLength(4);
   });
 
   it("does not coerce a missing count to zero for a mismatch diagnostic", () => {

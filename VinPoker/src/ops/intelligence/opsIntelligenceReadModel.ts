@@ -54,6 +54,8 @@ export interface OpsLiveOperationInputV1 {
   readonly rows: readonly OpsOperationRowV1[];
   readonly runningTournamentIds: readonly string[];
   readonly openTableCount: number | null;
+  readonly configuredTableCount: number | null;
+  readonly operationalTableCount: number | null;
   readonly dealersOnDutyCount: number | null;
   /** Count comparisons are legal only after source contracts prove matching grain. */
   readonly countComparisonEligible: boolean;
