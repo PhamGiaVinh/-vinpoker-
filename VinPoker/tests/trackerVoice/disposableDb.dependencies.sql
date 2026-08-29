@@ -126,7 +126,7 @@ GRANT SELECT ON public.dealers, public.dealer_assignments TO authenticated;
 GRANT USAGE ON SCHEMA auth TO authenticated;
 GRANT SELECT, UPDATE ON public.tournament_hands TO authenticated;
 GRANT SELECT, UPDATE ON public.hand_players TO authenticated;
-GRANT SELECT ON public.tournaments TO authenticated;
+GRANT SELECT ON public.tournaments, public.tournament_tables TO authenticated;
 
 CREATE TABLE public.audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
