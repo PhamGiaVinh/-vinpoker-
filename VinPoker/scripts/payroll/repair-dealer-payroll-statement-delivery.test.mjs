@@ -8,6 +8,7 @@ import {
   CATALOG_SQL,
   CONFIRMATION,
   DELIVERY_GATE_SQL,
+  LEGACY_DELIVERY_MIGRATION_NAME,
   PARENT_GATE_SQL,
   REPAIR_MIGRATION,
   catalogClass,
@@ -68,6 +69,7 @@ const parentGate = { row_count: 1, master_count: 1, all_clubs_count: 0, hsop_onl
 const darkGate = { row_count: 1, master_count: 0, all_clubs_count: 0, hsop_only_count: 0, empty_allowlist_count: 1 };
 const aggregates = { statement_rows: 10, pdf_ready_rows: 4, delivery_attempt_rows: 0, full_time_payment_rows: 3, part_time_payment_rows: 2 };
 const repairHistory = [{ version: "20260828150000", name: REPAIR_MIGRATION.name }];
+const legacyDeliveryHistory = [{ version: "20260828140000", name: LEGACY_DELIVERY_MIGRATION_NAME }];
 
 test("source policy pins only the forward repair migration", () => {
   assert.deepEqual(sourceProblems(root), []);
@@ -93,6 +95,35 @@ test("remote ledger versions are ignored while exact names remain authoritative"
   assert.equal(historyDiagnostics(history).find((entry) => entry.name.includes("00001"))?.matches, 1);
 });
 
+test("exact legacy migration plus complete contract is a verified no-op", () => {
+  assert.deepEqual(repairDecision({
+    catalog: catalog(true),
+    history: legacyDeliveryHistory,
+    parentGate,
+    deliveryGate: darkGate,
+  }), {
+    action: "skip",
+    reason: "legacy_contract_verified_dark",
+  });
+});
+
+test("legacy-complete adoption fails closed for missing, duplicate or unexpected rollout evidence", () => {
+  assert.equal(repairDecision({ catalog: catalog(true), history: [], parentGate, deliveryGate: darkGate }).reason,
+    "untracked_complete_contract");
+  assert.equal(repairDecision({
+    catalog: catalog(true),
+    history: [...legacyDeliveryHistory, ...legacyDeliveryHistory],
+    parentGate,
+    deliveryGate: darkGate,
+  }).reason, "legacy_history_duplicate");
+  assert.equal(repairDecision({
+    catalog: catalog(true),
+    history: legacyDeliveryHistory,
+    parentGate,
+    deliveryGate: { ...darkGate, all_clubs_count: 1 },
+  }).reason, "legacy_delivery_gate_unexpected");
+});
+
 test("partial schema, tracked-but-absent, duplicate repair name, dependency drift and wrong parent gate fail closed", () => {
   assert.equal(repairDecision({ catalog: { ...catalog(false), rollout_table_exists: true }, history: [], parentGate }).reason, "partial_catalog_drift");
   assert.equal(repairDecision({ catalog: catalog(false), history: repairHistory, parentGate }).reason, "repair_tracked_but_absent");
@@ -112,12 +143,17 @@ test("ACL or overload drift makes an otherwise complete catalog partial", () => 
   assert.equal(catalogClass({ ...catalog(true), claim_overloads: 2 }), "partial");
 });
 
-function mockFetch({ loseApplyResponse = false, mutateAggregates = false } = {}) {
-  let applied = false;
+function mockFetch({
+  loseApplyResponse = false,
+  mutateAggregates = false,
+  initialCatalogComplete = false,
+  initialHistory = [],
+} = {}) {
+  let applied = initialCatalogComplete;
   let migrationPosts = 0;
   const fetchImpl = async (url, options = {}) => {
     if (url.endsWith("/database/migrations") && options.method === "GET") {
-      return { ok: true, status: 200, json: async () => applied ? repairHistory : [] };
+      return { ok: true, status: 200, json: async () => applied ? (initialHistory.length ? initialHistory : repairHistory) : [] };
     }
     if (url.endsWith("/database/migrations") && options.method === "POST") {
       migrationPosts += 1;
@@ -151,6 +187,20 @@ test("repair posts only 00008 and verifies catalog, history, gates and unchanged
   }, mock.fetchImpl);
   assert.equal(result.applied, true);
   assert.equal(mock.migrationPosts(), 1);
+});
+
+test("preflight and repair both preserve an exact legacy-complete contract without migration POST", async () => {
+  for (const mode of ["--preflight", "--repair"]) {
+    const mock = mockFetch({ initialCatalogComplete: true, initialHistory: legacyDeliveryHistory });
+    const result = await run([mode, "--source-root", root], {
+      SUPABASE_ACCESS_TOKEN: "test-only-token",
+      SUPABASE_PROJECT_REF: "orlesggcjamwuknxwcpk",
+      CONFIRM_PAYROLL_DELIVERY_REPAIR: CONFIRMATION,
+    }, mock.fetchImpl);
+    assert.equal(result.applied, false);
+    assert.equal(result.decision.reason, "legacy_contract_verified_dark");
+    assert.equal(mock.migrationPosts(), 0);
+  }
 });
 
 test("lost apply response performs catalog readback and never posts a second time", async () => {
