@@ -55,7 +55,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_takeover_authority \
             -f tests/trackerUnifiedOps/disposableDb.baseline.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_takeover_authority \
-            -f supabase/migrations/20260928000000_tracker_lock_activation_idempotency_trace.sql
+            -f supabase/migration-archive/historical-never-replay/20260928000000_tracker_lock_activation_idempotency_trace.sql
           createdb tracker_takeover_authority_rollback -T tracker_takeover_authority
           psql -X -v ON_ERROR_STOP=1 -d tracker_takeover_authority \
             -f supabase/migrations/20270112000007_tracker_p0_authority_closure.sql

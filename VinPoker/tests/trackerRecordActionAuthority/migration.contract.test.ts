@@ -86,7 +86,11 @@ describe("Tracker record_action authority hotfix", () => {
     expect(edge).toContain("headers: { Authorization: authHeader }");
     expect(edge).toContain("supabase.auth.getUser()");
     expect(edge).toContain("p_user_id: user.id");
-    expect(edge).toContain('if (action === "record_action" && result.data && typeof result.data === "object")');
+    // Board Assist shares this denial envelope. Keep the record_action proof
+    // semantic so extending the guarded action set cannot weaken it silently.
+    expect(edge).toContain('action === "record_action"');
+    expect(edge).toContain('result.data && typeof result.data === "object"');
+    expect(edge).toContain('if (typeof verdict.error === "string")');
     expect(edge).toContain("status: 409");
   });
 
