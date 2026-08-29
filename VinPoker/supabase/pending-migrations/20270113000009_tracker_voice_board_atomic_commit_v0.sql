@@ -191,7 +191,7 @@ GRANT EXECUTE ON FUNCTION public._tracker_voice_register_validated_board_event(U
   TO service_role;
 
 -- This is the only authenticated Board Assist writer. It consumes an already
--- immutable root event, calls the same core as manual Board input, then appends
+-- immutable root event, calls the existing canonical manual Board writer, then appends
 -- exactly one receipt in the same transaction.
 CREATE OR REPLACE FUNCTION public.commit_tracker_voice_board_v0(
   p_voice_event_id UUID,

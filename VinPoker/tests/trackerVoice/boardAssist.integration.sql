@@ -122,19 +122,13 @@ SELECT set_config('request.jwt.claims', '{"sub":"81200000-0000-4000-8000-0000000
 SELECT set_config('tracker_voice.board_root', (:'board_root_turn_payload'::JSONB->>'voice_event_id'), false);
 SELECT set_config('tracker_voice.board_key', 'voice-board-turn-0001', false);
 SELECT set_config('tracker_voice.board_trace', 'trace-board-turn-0001', false);
-CREATE OR REPLACE FUNCTION public.tracker_voice_try_failed_board_commit()
-RETURNS VOID LANGUAGE plpgsql AS $$
-BEGIN
-  PERFORM public.commit_tracker_voice_board_v0(
-    current_setting('tracker_voice.board_root')::UUID,
-    current_setting('tracker_voice.board_key'), current_setting('tracker_voice.board_trace')
-  );
-END;
-$$;
 DO $$
 BEGIN
   BEGIN
-    PERFORM public.tracker_voice_try_failed_board_commit();
+    PERFORM public.commit_tracker_voice_board_v0(
+      current_setting('tracker_voice.board_root')::UUID,
+      current_setting('tracker_voice.board_key'), current_setting('tracker_voice.board_trace')
+    );
     RAISE EXCEPTION 'expected injected Board receipt failure';
   EXCEPTION WHEN OTHERS THEN
     IF SQLERRM <> 'TRACKER_VOICE_BOARD_RECEIPT_INJECTED_FAILURE' THEN RAISE; END IF;
@@ -144,7 +138,6 @@ $$;
 RESET ROLE;
 DROP TRIGGER trg_tracker_voice_board_receipt_fail ON public.tracker_voice_events;
 DROP FUNCTION public.tracker_voice_board_receipt_fail();
-DROP FUNCTION public.tracker_voice_try_failed_board_commit();
 SELECT public.tracker_voice_test_assert(
   (SELECT community_cards = '["Ah", "5s", "2d"]'::JSONB FROM public.tournament_hands WHERE id = '86000000-0000-4000-8000-000000000001')
   AND NOT EXISTS (SELECT 1 FROM public.tracker_voice_events WHERE root_event_id = (:'board_root_turn_payload'::JSONB->>'voice_event_id')::UUID),
