@@ -1,9 +1,11 @@
 import type {
+  CommitVoiceHoleCardsInput,
   CommitVoiceBoardInput,
   TrackerVoiceRuntimeContext,
   ValidateVoiceEventInput,
   ValidatedVoiceEventReceipt,
   VoiceBoardCommitReceipt,
+  VoiceHoleCardsCommitReceipt,
 } from "./types";
 
 export async function loadTrackerVoiceRuntimeContext(
@@ -86,6 +88,40 @@ export async function commitTrackerVoiceBoard(
   const receipt = envelope?.data;
   if (!receipt?.ok || !Array.isArray(receipt.community_cards)) {
     throw new Error("Voice Board không trả canonical receipt hợp lệ.");
+  }
+  return receipt;
+}
+
+/**
+ * Confirms one private hole-card proposal. Unlike generic Voice validation,
+ * this sends the raw speech only at touch-confirm and expects a redacted receipt.
+ */
+export async function commitTrackerVoiceHoleCards(
+  input: CommitVoiceHoleCardsInput,
+): Promise<VoiceHoleCardsCommitReceipt> {
+  const { supabase } = await import("@/integrations/supabase/client");
+  const { data, error } = await supabase.functions.invoke("tournament-live-update", {
+    body: {
+      tournament_id: input.tournamentId,
+      action: "commit_voice_hole_cards",
+      tournament_table_id: input.tournamentTableId,
+      hand_id: input.handId,
+      final_transcript: input.finalTranscript,
+      provider_name: input.providerName,
+      provider_model: input.providerModel,
+      provider_event_id: input.providerEventId,
+      expected_state_version: input.expectedStateVersion,
+      idempotency_key: input.idempotencyKey,
+      trace_id: input.traceId,
+      voice_request: input.canonicalRequest,
+    },
+  });
+  if (error) throw new Error(error.message);
+  const envelope = data as { data?: VoiceHoleCardsCommitReceipt; error?: string } | null;
+  if (envelope?.error) throw new Error(envelope.error);
+  const receipt = envelope?.data;
+  if (!receipt?.ok || receipt.redacted !== true || typeof receipt.player_id !== "string") {
+    throw new Error("Voice bài tẩy không trả redacted canonical receipt hợp lệ.");
   }
   return receipt;
 }

@@ -180,6 +180,76 @@ describe("TrackerVoicePanel", () => {
     expect(applyVoiceBoardReceipt).toHaveBeenCalledOnce();
   });
 
+  it("keeps Hole Cards speech outside generic diagnostics until the Dealer confirms", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const applyVoiceHoleCardsReceipt = vi.fn(() => true);
+    const commitHoleCardsOverride = vi.fn(async () => ({
+      ok: true as const,
+      voice_event_id: "voice-hole-8",
+      canonical_receipt_event_id: "hole-receipt-8",
+      idempotency_key: "voice:hole-8",
+      trace_id: "voice-trace:hole-8",
+      seat_number: 8,
+      player_id: "player-eight",
+      entry_number: 2,
+      redacted: true as const,
+      state_version_before: "a".repeat(64),
+      state_version_after: "b".repeat(64),
+    }));
+    const snapshots: TrackerVoiceDiagnosticSnapshot[] = [];
+    const hook = {
+      ...hookFixture(),
+      workflowState: "runout_reveal",
+      showActionStep: false,
+      players: [
+        { player_id: "player-eight", display_name: "Player Eight", seat_number: 8, entry_number: 2 },
+        { player_id: "player-nine", display_name: "Player Nine", seat_number: 9, entry_number: 1 },
+      ],
+      playerHoleCards: {},
+      applyVoiceHoleCardsReceipt,
+    } as unknown as StandaloneHandInput;
+    render(
+      <TrackerVoicePanel
+        hook={hook}
+        providerOverride={provider}
+        runtimeOverride={runtimeFixture}
+        commitHoleCardsOverride={commitHoleCardsOverride}
+        onDiagnosticSnapshot={(snapshot) => snapshots.push(snapshot)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "assist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("Seat 8 ace hearts ace spades", { final: true, id: "private-hole-8" }));
+
+    expect(await screen.findByTestId("voice-private-hole-cards-proposal")).toBeInTheDocument();
+    expect(screen.getByText("A♥")).toBeInTheDocument();
+    expect(screen.getByText("A♠")).toBeInTheDocument();
+    expect(screen.queryByText("Seat 8 ace hearts ace spades")).not.toBeInTheDocument();
+    expect(snapshots.some((snapshot) => (
+      snapshot.finalTranscript === "Seat 8 ace hearts ace spades"
+      || JSON.stringify(snapshot.proposal).includes("ace hearts")
+    ))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận bài Ghế 8" }));
+    await waitFor(() => expect(commitHoleCardsOverride).toHaveBeenCalledOnce());
+    expect(commitHoleCardsOverride.mock.calls[0][0]).toMatchObject({
+      finalTranscript: "Seat 8 ace hearts ace spades",
+      canonicalRequest: {
+        intentDomain: "hole_cards",
+        payload: { seatNumber: 8, expectedPlayerId: "player-eight", expectedEntryNumber: 2, cards: ["Ah", "As"] },
+      },
+    });
+    expect(applyVoiceHoleCardsReceipt).toHaveBeenCalledWith(expect.objectContaining({
+      playerId: "player-eight",
+      entryNumber: 2,
+      cards: ["Ah", "As"],
+    }));
+    expect(await screen.findByText("Đã xác nhận bài Ghế 8")).toBeInTheDocument();
+    expect(screen.queryByTestId("voice-private-hole-cards-proposal")).not.toBeInTheDocument();
+  });
+
   it("keys each diagnostic proposal to its own final transcript", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const snapshots: TrackerVoiceDiagnosticSnapshot[] = [];

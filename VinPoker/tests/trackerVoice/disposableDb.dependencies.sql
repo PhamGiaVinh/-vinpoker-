@@ -120,6 +120,14 @@ CREATE TABLE public.dealer_assignments (
 -- predicates still need the same base SELECT grants to resolve assignments.
 GRANT SELECT ON public.dealers, public.dealer_assignments TO authenticated;
 
+-- Current P0 Tracker writers are SECURITY INVOKER functions. Mirror the
+-- authenticated runtime's narrow schema/table grants so their direct writer
+-- path, including show_hole_cards, is exercised under the real role boundary.
+GRANT USAGE ON SCHEMA auth TO authenticated;
+GRANT SELECT, UPDATE ON public.tournament_hands TO authenticated;
+GRANT SELECT, UPDATE ON public.hand_players TO authenticated;
+GRANT SELECT ON public.tournaments, public.tournament_tables TO authenticated;
+
 CREATE TABLE public.audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   club_id UUID REFERENCES public.clubs(id),

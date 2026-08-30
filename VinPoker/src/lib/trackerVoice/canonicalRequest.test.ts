@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildVoiceActionCanonicalRequest,
   buildVoiceBoardCanonicalRequest,
+  buildVoiceHoleCardsCanonicalRequest,
   voiceCanonicalRequestsMatch,
 } from "./canonicalRequest";
 
@@ -67,5 +68,31 @@ it("creates a deterministic Board request and fails closed on a changed street o
   expect(voiceCanonicalRequestsMatch({
     ...request,
     payload: { ...request.payload, cumulativeCards: ["Ah", "5s", "2c"] },
+  }, request)).toBe(false);
+});
+
+it("creates a deterministic private Hole Cards request and fails closed on identity or cards", async () => {
+  const request = await buildVoiceHoleCardsCanonicalRequest({
+    rawTranscript: "Seat 8 ace hearts ace spades",
+    expectedStateVersion: "c".repeat(64),
+    payload: {
+      seatNumber: 8,
+      expectedPlayerId: "player-eight",
+      expectedEntryNumber: 3,
+      cards: ["Ah", "As"],
+    },
+  });
+  expect(request).toMatchObject({
+    intentDomain: "hole_cards",
+    envelope: { expectedWorkflowState: "runout_reveal", expectedStreet: "showdown" },
+  });
+  expect(voiceCanonicalRequestsMatch(request, request)).toBe(true);
+  expect(voiceCanonicalRequestsMatch({
+    ...request,
+    payload: { ...request.payload, expectedPlayerId: "another-player" },
+  }, request)).toBe(false);
+  expect(voiceCanonicalRequestsMatch({
+    ...request,
+    payload: { ...request.payload, cards: ["Kh", "Ks"] },
   }, request)).toBe(false);
 });

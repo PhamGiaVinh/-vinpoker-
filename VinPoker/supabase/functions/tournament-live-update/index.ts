@@ -14,6 +14,7 @@ import {
   actionWorkflowForStreet,
   buildVoiceActionCanonicalRequest,
   buildVoiceBoardCanonicalRequest,
+  buildVoiceHoleCardsCanonicalRequest,
   voiceCanonicalRequestsMatch,
 } from "../../../src/lib/trackerVoice/canonicalRequest.ts";
 import { routeTrackerVoiceIntent } from "../../../src/lib/trackerVoice/intentRouter.ts";
@@ -59,9 +60,16 @@ function streetForBoard(board: string[]): Street {
 
 function workflowForVoiceSnapshot(snapshot: VoiceSnapshot):
   | "preflop_action" | "flop_action" | "turn_action" | "river_action"
-  | "enter_flop" | "enter_turn" | "enter_river" | null {
+  | "enter_flop" | "enter_turn" | "enter_river" | "runout_reveal" | null {
   const runtime = reduceHand(snapshot.players, snapshot.actions, snapshot.button_seat);
   const boardCount = snapshot.community_cards.length;
+  const livePlayers = runtime.players.filter((player) => !player.is_folded);
+  if (
+    boardCount < 5
+    && livePlayers.length >= 2
+    && livePlayers.every((player) => player.is_all_in)
+    && isBettingRoundComplete(runtime)
+  ) return "runout_reveal";
   if (!isBettingRoundComplete(runtime)) {
     const actionWorkflow = actionWorkflowForStreet(streetForBoard(snapshot.community_cards));
     return actionWorkflow === "preflop_action" || actionWorkflow === "flop_action"
@@ -448,6 +456,14 @@ Deno.serve(async (req) => {
             ? "Câu Voice không hợp lệ ở bước Tracker hiện tại."
             : "Không nhận ra một lệnh Voice duy nhất.");
         }
+        // Hole-card speech is private until a Dealer explicitly confirms it.
+        // It must never enter the generic final-transcript event path.
+        if (route.intentDomain === "hole_cards") {
+          return validationError(
+            "VOICE_HOLE_CARDS_CONFIRM_ONLY",
+            "Bài tẩy Voice chỉ gửi khi Dealer chạm xác nhận bài của ghế.",
+          );
+        }
         const mode = execution_mode === "assist" ? "assist" : "shadow";
         if (route.intentDomain === "board") {
           if (execution_mode === "auto") {
@@ -666,6 +682,100 @@ Deno.serve(async (req) => {
           p_validation_mode: "enforce",
           p_turn_order_enforced: true,
           p_capability_version: VOICE_CAPABILITY_VERSION,
+        });
+        break;
+      }
+      case "commit_voice_hole_cards": {
+        const {
+          tournament_table_id, hand_id, final_transcript, provider_name,
+          provider_model, provider_event_id, expected_state_version,
+          idempotency_key, trace_id, voice_request,
+        } = body;
+        if (
+          typeof tournament_table_id !== "string"
+          || typeof hand_id !== "string"
+          || typeof final_transcript !== "string"
+          || final_transcript.length < 1
+          || final_transcript.length > 500
+          || typeof expected_state_version !== "string"
+          || typeof idempotency_key !== "string"
+          || typeof trace_id !== "string"
+        ) {
+          return validationError("VOICE_HOLE_CARDS_REQUEST_INVALID", "Voice bài tẩy thiếu dữ liệu xác nhận.");
+        }
+        const { data: rawSnapshot, error: snapshotError } = await supabase.rpc(
+          "get_tracker_voice_validation_snapshot",
+          {
+            p_tournament_id: tournament_id,
+            p_tournament_table_id: tournament_table_id,
+            p_hand_id: hand_id,
+          },
+        );
+        const snapshot = rawSnapshot as VoiceSnapshot | null;
+        if (snapshotError || !snapshot?.ok) {
+          return validationError("VOICE_SNAPSHOT_UNAVAILABLE", "Không thể xác minh hand trước khi lật bài.");
+        }
+        if (snapshot.state_version !== expected_state_version) {
+          return validationError("STALE_STATE_VERSION", "Trạng thái bàn đã thay đổi. Hãy đọc lại bài.");
+        }
+        if (snapshot.correction_pending || snapshot.configured_mode === "shadow") {
+          return validationError("ASSIST_NOT_ALLOWED", "Voice bài tẩy chưa được phép xác nhận ở bàn này.");
+        }
+        const expectedWorkflowState = workflowForVoiceSnapshot(snapshot);
+        if (expectedWorkflowState !== "runout_reveal") {
+          return validationError(
+            "SHOWDOWN_HOLE_CARDS_DEFERRED_MUCK_AUTHORITY",
+            "Voice bài tẩy chỉ mở khi server xác nhận all-in runout; Showdown vẫn nhập tay.",
+          );
+        }
+        const route = routeTrackerVoiceIntent(final_transcript, expectedWorkflowState, {
+          spokenAmountUnit: snapshot.spoken_amount_unit,
+          amountUnitConfirmed: snapshot.amount_unit_confirmed,
+        });
+        if (!route.ok || route.intentDomain !== "hole_cards") {
+          return validationError("VOICE_HOLE_CARDS_GRAMMAR_INVALID", "Cần đọc đúng: Seat/Ghế N + đúng hai lá bài.");
+        }
+        const target = snapshot.players.find((player) => player.seat_number === route.command.seatNumber);
+        const runtime = reduceHand(snapshot.players, snapshot.actions, snapshot.button_seat);
+        const runtimePlayer = runtime.players.find((player) => player.seat_number === route.command.seatNumber);
+        if (!target || !runtimePlayer) {
+          return validationError("HOLE_CARDS_SEAT_NOT_FOUND", "Ghế được đọc không có người chơi trong hand.");
+        }
+        if (runtimePlayer.is_folded) {
+          return validationError("PLAYER_FOLDED", "Người chơi đã fold, không được Voice lật bài.");
+        }
+        const canonicalRequest = await buildVoiceHoleCardsCanonicalRequest({
+          rawTranscript: final_transcript,
+          expectedStateVersion: snapshot.state_version,
+          payload: {
+            seatNumber: target.seat_number,
+            expectedPlayerId: target.player_id,
+            expectedEntryNumber: target.entry_number,
+            cards: route.command.cards,
+          },
+        });
+        if (!voiceCanonicalRequestsMatch(voice_request, canonicalRequest)) {
+          return validationError("intent_mismatch", "Đề xuất bài tẩy không còn khớp trạng thái server.");
+        }
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        const supabaseUrl = Deno.env.get("SUPABASE_URL");
+        if (!serviceKey || !supabaseUrl) throw new Error("tracker_voice_service_not_configured");
+        const service = createClient(supabaseUrl, serviceKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        result = await service.rpc("commit_tracker_voice_hole_cards_v0", {
+          p_actor_user_id: user.id,
+          p_tournament_id: tournament_id,
+          p_tournament_table_id: tournament_table_id,
+          p_hand_id: hand_id,
+          p_provider_name: provider_name === "gemini_live" ? "gemini_live" : "openai_realtime",
+          p_provider_model: typeof provider_model === "string" ? provider_model : snapshot.provider_model,
+          p_provider_event_id: typeof provider_event_id === "string" ? provider_event_id : null,
+          p_expected_state_version: snapshot.state_version,
+          p_idempotency_key: idempotency_key,
+          p_trace_id: trace_id,
+          p_seat_number: route.command.seatNumber,
+          p_hole_cards: route.command.cards,
         });
         break;
       }

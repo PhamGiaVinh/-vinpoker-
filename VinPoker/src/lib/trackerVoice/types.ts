@@ -126,13 +126,24 @@ export type VoiceProposalFailureCode =
   | "wrong_workflow"
   | "intent_ambiguous"
   | "board_already_persisted"
-  | "duplicate_card";
+  | "duplicate_card"
+  | "hole_cards_seat_not_found"
+  | "hole_cards_local_draft_exists"
+  | "showdown_hole_cards_deferred_muck_authority";
 
 export interface ParsedVoiceBoardCommand {
   street: "flop" | "turn" | "river";
   rawTranscript: string;
   normalizedTranscript: string;
   newCards: readonly string[];
+}
+
+export interface ParsedVoiceHoleCardsCommand {
+  kind: "hole_cards";
+  rawTranscript: string;
+  normalizedTranscript: string;
+  seatNumber: number;
+  cards: readonly [string, string];
 }
 
 export interface VoiceBoardProposal {
@@ -160,6 +171,36 @@ export interface VoiceActionProposal {
   expectedActionAmount: number;
 }
 
+export interface VoiceHoleCardsPlayer {
+  playerId: string;
+  playerName: string;
+  seatNumber: number;
+  entryNumber: number;
+}
+
+export interface VoiceHoleCardsProposalContext {
+  handId: string | null;
+  workflowState: TrackerWorkflowState;
+  expectedStateVersion: string | null;
+  handStarted: boolean;
+  readOnly: boolean;
+  syncBlocked: boolean;
+  correctionPending: boolean;
+  players: readonly VoiceHoleCardsPlayer[];
+  localCardsByPlayerId: Readonly<Record<string, readonly (string | null)[]>>;
+}
+
+/** Private browser-memory proposal. Do not place this in telemetry snapshots. */
+export interface VoiceHoleCardsProposal {
+  ok: true;
+  intentDomain: "hole_cards";
+  command: ParsedVoiceHoleCardsCommand;
+  player: VoiceHoleCardsPlayer;
+  expectedStateVersion: string | null;
+  expectedWorkflowState: "runout_reveal";
+  expectedStreet: "showdown";
+}
+
 export interface VoiceControlProposal {
   ok: true;
   command: ParsedVoiceCommand;
@@ -169,7 +210,7 @@ export interface VoiceControlProposal {
 
 export interface VoiceRejectedProposal {
   ok: false;
-  command: ParsedVoiceCommand | ParsedVoiceBoardCommand | null;
+  command: ParsedVoiceCommand | ParsedVoiceBoardCommand | ParsedVoiceHoleCardsCommand | null;
   code: VoiceProposalFailureCode;
   message: string;
 }
@@ -260,6 +301,37 @@ export interface VoiceBoardCommitReceipt {
   street: "flop" | "turn" | "river";
   previous_board: string[];
   community_cards: string[];
+  state_version_before: string;
+  state_version_after: string;
+  duplicate?: boolean;
+}
+
+/** Raw hole-card speech is sent only when the Dealer touches confirm. */
+export interface CommitVoiceHoleCardsInput {
+  tournamentId: string;
+  tournamentTableId: string;
+  handId: string;
+  finalTranscript: string;
+  providerName: VoiceProviderKind;
+  providerModel: string;
+  providerEventId: string;
+  expectedStateVersion: string;
+  idempotencyKey: string;
+  traceId: string;
+  canonicalRequest: VoiceCanonicalRequest;
+}
+
+/** The receipt intentionally excludes sensitive card codes and raw speech. */
+export interface VoiceHoleCardsCommitReceipt {
+  ok: true;
+  voice_event_id: string;
+  canonical_receipt_event_id: string;
+  idempotency_key: string;
+  trace_id: string;
+  seat_number: number;
+  player_id: string;
+  entry_number: number;
+  redacted: true;
   state_version_before: string;
   state_version_after: string;
   duplicate?: boolean;

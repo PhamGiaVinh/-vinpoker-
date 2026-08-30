@@ -4,7 +4,7 @@ import type { TrackerWorkflowState, WorkflowStreet } from "@/components/cashier/
  * Wire contract for the only Assist domain enabled by PR A. Later PRs extend
  * this discriminated union instead of accepting dormant optional payloads.
  */
-export type VoiceIntentDomain = "action" | "board";
+export type VoiceIntentDomain = "action" | "board" | "hole_cards";
 
 export type VoiceActionIntentPayload = {
   canonicalAction: "fold" | "check" | "call" | "bet" | "raise" | "all_in";
@@ -43,7 +43,23 @@ export type VoiceBoardCanonicalRequest = {
   payload: VoiceBoardIntentPayload;
 };
 
-export type VoiceCanonicalRequest = VoiceActionCanonicalRequest | VoiceBoardCanonicalRequest;
+export type VoiceHoleCardsIntentPayload = {
+  seatNumber: number;
+  expectedPlayerId: string;
+  expectedEntryNumber: number;
+  cards: readonly [string, string];
+};
+
+export type VoiceHoleCardsCanonicalRequest = {
+  intentDomain: "hole_cards";
+  envelope: VoiceCanonicalEnvelope;
+  payload: VoiceHoleCardsIntentPayload;
+};
+
+export type VoiceCanonicalRequest =
+  | VoiceActionCanonicalRequest
+  | VoiceBoardCanonicalRequest
+  | VoiceHoleCardsCanonicalRequest;
 
 export function actionWorkflowForStreet(street: WorkflowStreet): TrackerWorkflowState | null {
   switch (street) {
@@ -125,6 +141,28 @@ export async function buildVoiceBoardCanonicalRequest(input: {
       expectedStateVersion: input.expectedStateVersion,
       expectedWorkflowState: input.expectedWorkflowState,
       expectedStreet: input.expectedStreet,
+      payloadHash,
+      rawTranscriptHash,
+    },
+    payload: input.payload,
+  };
+}
+
+export async function buildVoiceHoleCardsCanonicalRequest(input: {
+  rawTranscript: string;
+  expectedStateVersion: string;
+  payload: VoiceHoleCardsIntentPayload;
+}): Promise<VoiceHoleCardsCanonicalRequest> {
+  const [payloadHash, rawTranscriptHash] = await Promise.all([
+    sha256VoiceCanonical({ intentDomain: "hole_cards", payload: input.payload }),
+    sha256VoiceText(input.rawTranscript),
+  ]);
+  return {
+    intentDomain: "hole_cards",
+    envelope: {
+      expectedStateVersion: input.expectedStateVersion,
+      expectedWorkflowState: "runout_reveal",
+      expectedStreet: "showdown",
       payloadHash,
       rawTranscriptHash,
     },

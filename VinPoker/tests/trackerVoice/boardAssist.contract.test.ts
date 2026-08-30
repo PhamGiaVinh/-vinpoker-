@@ -23,10 +23,8 @@ describe("Tracker Voice Board Assist contract", () => {
     expect(migration).toContain("p_execution_mode NOT IN ('shadow', 'assist')");
   });
 
-  it("does not create dormant Hole Card or Finish writer domains", () => {
-    expect(migration).not.toContain("commit_tracker_voice_hole");
+  it("keeps Finish absent while later approved domains can extend the router", () => {
     expect(migration).not.toContain("commit_tracker_voice_finish");
-    expect(edge).not.toContain('intent_domain: "hole_cards"');
     expect(edge).not.toContain('intent_domain: "finish_hand"');
   });
 

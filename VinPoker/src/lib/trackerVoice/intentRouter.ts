@@ -1,12 +1,21 @@
 import type { TrackerWorkflowState } from "@/components/cashier/tournament-live/handinput/trackerWorkflow";
 import { parseTrackerVoiceCommandCore, type TrackerVoiceAmountOptions } from "./parserCore";
 import { parseVoiceBoardCommand } from "./boardParser";
-import type { ParsedVoiceBoardCommand } from "./types";
+import { parseVoiceHoleCardsCommand } from "./holeCardsParser";
+import type { ParsedVoiceBoardCommand, ParsedVoiceHoleCardsCommand } from "./types";
 
 export type TrackerVoiceIntentRoute =
   | { ok: true; intentDomain: "action"; command: NonNullable<ReturnType<typeof parseTrackerVoiceCommandCore>> }
   | { ok: true; intentDomain: "board"; command: ParsedVoiceBoardCommand }
-  | { ok: false; code: "command_not_supported" | "intent_ambiguous" | "wrong_workflow" };
+  | { ok: true; intentDomain: "hole_cards"; command: ParsedVoiceHoleCardsCommand }
+  | {
+      ok: false;
+      code:
+        | "command_not_supported"
+        | "intent_ambiguous"
+        | "wrong_workflow"
+        | "showdown_hole_cards_deferred_muck_authority";
+    };
 
 /**
  * Domains are parsed independently. Never try Board only because Action
@@ -19,9 +28,11 @@ export function routeTrackerVoiceIntent(
 ): TrackerVoiceIntentRoute {
   const action = parseTrackerVoiceCommandCore(rawTranscript, amountOptions);
   const board = parseVoiceBoardCommand(rawTranscript);
+  const holeCards = parseVoiceHoleCardsCommand(rawTranscript);
   const candidates = [
     ...(action ? [{ intentDomain: "action" as const, command: action }] : []),
     ...(board ? [{ intentDomain: "board" as const, command: board }] : []),
+    ...(holeCards ? [{ intentDomain: "hole_cards" as const, command: holeCards }] : []),
   ];
   if (candidates.length === 0) return { ok: false, code: "command_not_supported" };
   if (candidates.length > 1) return { ok: false, code: "intent_ambiguous" };
@@ -37,7 +48,13 @@ export function routeTrackerVoiceIntent(
   ));
   const controls = selected.intentDomain === "action"
     && (selected.command.kind === "report_wrong_action" || selected.command.kind === "call_floor");
-  if (!(controls || (selected.intentDomain === "action" && actionAllowed) || boardAllowed)) {
+  if (selected.intentDomain === "hole_cards" && workflowState === "showdown_input") {
+    // The browser-only muck Set is not authority for a private card reveal.
+    // Keep the server-enforceable V0 constrained to all-in runouts.
+    return { ok: false, code: "showdown_hole_cards_deferred_muck_authority" };
+  }
+  const holeCardsAllowed = selected.intentDomain === "hole_cards" && workflowState === "runout_reveal";
+  if (!(controls || (selected.intentDomain === "action" && actionAllowed) || boardAllowed || holeCardsAllowed)) {
     return { ok: false, code: "wrong_workflow" };
   }
   return { ok: true, ...selected };
