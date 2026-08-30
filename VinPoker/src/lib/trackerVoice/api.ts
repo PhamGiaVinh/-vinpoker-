@@ -1,11 +1,15 @@
 import type {
   CommitVoiceHoleCardsInput,
   CommitVoiceBoardInput,
+  CommitVoiceFinishInput,
+  PrepareVoiceFinishInput,
   TrackerVoiceRuntimeContext,
   ValidateVoiceEventInput,
   ValidatedVoiceEventReceipt,
   VoiceBoardCommitReceipt,
   VoiceHoleCardsCommitReceipt,
+  VoiceFinishCommitReceipt,
+  VoiceFinishProposalReceipt,
 } from "./types";
 
 export async function loadTrackerVoiceRuntimeContext(
@@ -122,6 +126,65 @@ export async function commitTrackerVoiceHoleCards(
   const receipt = envelope?.data;
   if (!receipt?.ok || receipt.redacted !== true || typeof receipt.player_id !== "string") {
     throw new Error("Voice bài tẩy không trả redacted canonical receipt hợp lệ.");
+  }
+  return receipt;
+}
+
+/** Reads a server-recomputed settlement preview. It never writes poker state. */
+export async function prepareTrackerVoiceFinish(
+  input: PrepareVoiceFinishInput,
+): Promise<VoiceFinishProposalReceipt> {
+  const { supabase } = await import("@/integrations/supabase/client");
+  const { data, error } = await supabase.functions.invoke("tournament-live-update", {
+    body: {
+      tournament_id: input.tournamentId,
+      action: "prepare_voice_finish",
+      tournament_table_id: input.tournamentTableId,
+      hand_id: input.handId,
+      final_transcript: input.finalTranscript,
+      provider_name: input.providerName,
+      provider_model: input.providerModel,
+      provider_event_id: input.providerEventId,
+      expected_state_version: input.expectedStateVersion,
+    },
+  });
+  if (error) throw new Error(error.message);
+  const envelope = data as { data?: VoiceFinishProposalReceipt; error?: string } | null;
+  if (envelope?.error) throw new Error(envelope.error);
+  const receipt = envelope?.data;
+  if (!receipt?.ok || typeof receipt.settlement_digest !== "string") {
+    throw new Error("Voice Finish không trả proposal settlement hợp lệ.");
+  }
+  return receipt;
+}
+
+/** Touch-confirmed server recomputation followed by the atomic canonical writer. */
+export async function commitTrackerVoiceFinish(
+  input: CommitVoiceFinishInput,
+): Promise<VoiceFinishCommitReceipt> {
+  const { supabase } = await import("@/integrations/supabase/client");
+  const { data, error } = await supabase.functions.invoke("tournament-live-update", {
+    body: {
+      tournament_id: input.tournamentId,
+      action: "commit_voice_finish",
+      tournament_table_id: input.tournamentTableId,
+      hand_id: input.handId,
+      final_transcript: input.finalTranscript,
+      provider_name: input.providerName,
+      provider_model: input.providerModel,
+      provider_event_id: input.providerEventId,
+      expected_state_version: input.expectedStateVersion,
+      idempotency_key: input.idempotencyKey,
+      trace_id: input.traceId,
+      voice_request: input.canonicalRequest,
+    },
+  });
+  if (error) throw new Error(error.message);
+  const envelope = data as { data?: VoiceFinishCommitReceipt; error?: string } | null;
+  if (envelope?.error) throw new Error(envelope.error);
+  const receipt = envelope?.data;
+  if (!receipt?.ok || typeof receipt.hand_id !== "string") {
+    throw new Error("Voice Finish không trả canonical receipt hợp lệ.");
   }
   return receipt;
 }

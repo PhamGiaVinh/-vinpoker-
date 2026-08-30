@@ -91,6 +91,29 @@ ALTER TABLE public.hand_actions
   ADD COLUMN IF NOT EXISTS idempotency_key TEXT,
   ADD COLUMN IF NOT EXISTS trace_id TEXT;
 
+-- The production record_hand writer updates these existing projections. Keep
+-- the lightweight current-P0 baseline executable when Finish confirms through
+-- that exact writer rather than a Voice-specific substitute.
+ALTER TABLE public.tournaments
+  ADD COLUMN IF NOT EXISTS players_remaining INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS average_stack INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE public.tournament_entries
+  ADD COLUMN IF NOT EXISTS busted_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE public.tournament_chip_counts
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+CREATE TABLE IF NOT EXISTS public.tournament_eliminations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tournament_id UUID NOT NULL,
+  player_id UUID NOT NULL,
+  entry_number INTEGER NOT NULL DEFAULT 1,
+  hand_id UUID NOT NULL,
+  position INTEGER NOT NULL,
+  prize NUMERIC DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_disposable_action_order
   ON public.hand_actions(hand_id, action_order);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_disposable_action_idempotency

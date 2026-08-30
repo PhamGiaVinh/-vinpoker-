@@ -102,6 +102,7 @@ import type {
   VoiceActionMetadata,
   VoiceActionProposal,
   VoiceBoardCommitReceipt,
+  VoiceFinishCommitReceipt,
   VoiceHoleCardsCommitReceipt,
 } from "@/lib/trackerVoice";
 import { resolveHandLockClaim } from "./handLockClaim";
@@ -2317,6 +2318,36 @@ export function useStandaloneHandInput(tournamentId: string) {
     return true;
   }, [handId, markSync, playerHoleCards, players]);
 
+  /** Applies a completed canonical Finish receipt without sending a second record_hand request. */
+  const applyVoiceFinishReceipt = useCallback(async (receipt: VoiceFinishCommitReceipt) => {
+    if (!handId || receipt.hand_id !== handId) return false;
+    const { data: refreshedSeats, error } = await supabase
+      .from("tournament_seats")
+      .select("seat_number, player_id, is_active, chip_count")
+      .eq("tournament_id", tournamentId)
+      .eq("table_id", tableId)
+      .order("seat_number");
+    if (error || !refreshedSeats) return false;
+    const activeRows = refreshedSeats.filter((seat) => seat.player_id && seat.is_active !== false);
+    const activeNums = activeRows.map((seat) => seat.seat_number).sort((left, right) => left - right);
+    const serverEndingStacks = Object.fromEntries(
+      refreshedSeats
+        .filter((seat) => seat.player_id)
+        .map((seat) => [seat.player_id!, Number(seat.chip_count ?? 0)]),
+    );
+    playTrackerSoundOnce(playedSoundsRef.current, handId, "hand_end", "pot_collect");
+    markSync("sent", `Voice Assist đã lưu Hand #${Number(handNumber)}`);
+    setLastHandId(receipt.hand_id);
+    setButtonSeat(nextButton(activeNums, buttonSeat));
+    setLastBbSeat(actions.find((action) => action.action_type === "post_bb")?.seat_number ?? null);
+    setButtonOverridden(false);
+    setPlayers((previous) => survivorsAfterHand(previous, activeNums, serverEndingStacks));
+    setHandId(null);
+    setHandStarted(false);
+    resetHand();
+    return true;
+  }, [actions, buttonSeat, handId, handNumber, markSync, resetHand, tableId, tournamentId]);
+
   // B2 — all-in runout ONE-SCREEN: persist EVERY remaining board street in one
   // operator gesture. Sends the SAME cumulative update_community_cards payload as
   // handleUpdateCommunityCards, but staged (flop → turn → river, ~0.9s apart) so the
@@ -2839,6 +2870,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleUpdateCommunityCards,
     applyVoiceBoardReceipt,
     applyVoiceHoleCardsReceipt,
+    applyVoiceFinishReceipt,
     handleRunoutDealAll,
     // C2 (trackerStreetRollback)
     streetRollbackUi,

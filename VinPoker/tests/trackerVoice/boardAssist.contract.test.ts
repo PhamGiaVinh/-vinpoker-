@@ -23,9 +23,9 @@ describe("Tracker Voice Board Assist contract", () => {
     expect(migration).toContain("p_execution_mode NOT IN ('shadow', 'assist')");
   });
 
-  it("keeps Finish absent while later approved domains can extend the router", () => {
+  it("keeps the Board migration specific even after a later Finish domain is approved", () => {
     expect(migration).not.toContain("commit_tracker_voice_finish");
-    expect(edge).not.toContain('intent_domain: "finish_hand"');
+    expect(edge).toContain('case "commit_voice_finish"');
   });
 
   it("keeps Voice Board proposal-only until a touch confirmation", () => {

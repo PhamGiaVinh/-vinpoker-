@@ -1,10 +1,10 @@
 import type { TrackerWorkflowState, WorkflowStreet } from "@/components/cashier/tournament-live/handinput/trackerWorkflow";
 
 /**
- * Wire contract for the only Assist domain enabled by PR A. Later PRs extend
- * this discriminated union instead of accepting dormant optional payloads.
+ * Wire contract for the explicitly enabled Assist domains. Each payload stays
+ * discriminated so no domain can smuggle optional fields from another writer.
  */
-export type VoiceIntentDomain = "action" | "board" | "hole_cards";
+export type VoiceIntentDomain = "action" | "board" | "hole_cards" | "finish_hand";
 
 export type VoiceActionIntentPayload = {
   canonicalAction: "fold" | "check" | "call" | "bet" | "raise" | "all_in";
@@ -56,10 +56,22 @@ export type VoiceHoleCardsCanonicalRequest = {
   payload: VoiceHoleCardsIntentPayload;
 };
 
+export type VoiceFinishIntentPayload = {
+  settlementOrigin: "engine_fold_win" | "engine_showdown";
+  settlementDigest: string;
+};
+
+export type VoiceFinishCanonicalRequest = {
+  intentDomain: "finish_hand";
+  envelope: VoiceCanonicalEnvelope;
+  payload: VoiceFinishIntentPayload;
+};
+
 export type VoiceCanonicalRequest =
   | VoiceActionCanonicalRequest
   | VoiceBoardCanonicalRequest
-  | VoiceHoleCardsCanonicalRequest;
+  | VoiceHoleCardsCanonicalRequest
+  | VoiceFinishCanonicalRequest;
 
 export function actionWorkflowForStreet(street: WorkflowStreet): TrackerWorkflowState | null {
   switch (street) {
@@ -162,6 +174,28 @@ export async function buildVoiceHoleCardsCanonicalRequest(input: {
     envelope: {
       expectedStateVersion: input.expectedStateVersion,
       expectedWorkflowState: "runout_reveal",
+      expectedStreet: "showdown",
+      payloadHash,
+      rawTranscriptHash,
+    },
+    payload: input.payload,
+  };
+}
+
+export async function buildVoiceFinishCanonicalRequest(input: {
+  rawTranscript: string;
+  expectedStateVersion: string;
+  payload: VoiceFinishIntentPayload;
+}): Promise<VoiceFinishCanonicalRequest> {
+  const [payloadHash, rawTranscriptHash] = await Promise.all([
+    sha256VoiceCanonical({ intentDomain: "finish_hand", payload: input.payload }),
+    sha256VoiceText(input.rawTranscript),
+  ]);
+  return {
+    intentDomain: "finish_hand",
+    envelope: {
+      expectedStateVersion: input.expectedStateVersion,
+      expectedWorkflowState: "submit_ready",
       expectedStreet: "showdown",
       payloadHash,
       rawTranscriptHash,

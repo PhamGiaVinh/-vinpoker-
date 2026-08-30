@@ -6,8 +6,10 @@ import {
   loadTrackerVoiceRuntimeContext,
   buildVoiceActionCanonicalRequest,
   buildVoiceBoardCanonicalRequest,
+  buildVoiceFinishCanonicalRequest,
   buildVoiceHoleCardsCanonicalRequest,
   commitTrackerVoiceBoard,
+  commitTrackerVoiceFinish,
   commitTrackerVoiceHoleCards,
   createTrackerVoiceGeminiProvider,
   createTrackerVoiceOpenAiProvider,
@@ -15,8 +17,10 @@ import {
   looksLikePrivateHoleCardsTranscript,
   MockRealtimeTranscriptionProvider,
   parseVoiceHoleCardsCommand,
+  prepareTrackerVoiceFinish,
   routeTrackerVoiceIntent,
   resolveVoiceBoardProposal,
+  resolveVoiceFinishProposal,
   resolveVoiceHoleCardsProposal,
   resolveVoiceProposal,
   validateTrackerVoiceEvent,
@@ -29,6 +33,9 @@ import {
   type VoiceBoardProposal,
   type VoiceCanonicalRequest,
   type VoiceBoardCommitReceipt,
+  type VoiceFinishCommitReceipt,
+  type VoiceFinishProposal,
+  type VoiceFinishProposalReceipt,
   type VoiceHoleCardsCommitReceipt,
   type VoiceHoleCardsProposal,
   type VoiceProposal,
@@ -45,6 +52,8 @@ interface TrackerVoicePanelProps {
   validateEventOverride?: (input: ValidateVoiceEventInput) => Promise<ValidatedVoiceEventReceipt>;
   commitBoardOverride?: (input: Parameters<typeof commitTrackerVoiceBoard>[0]) => Promise<VoiceBoardCommitReceipt>;
   commitHoleCardsOverride?: (input: Parameters<typeof commitTrackerVoiceHoleCards>[0]) => Promise<VoiceHoleCardsCommitReceipt>;
+  prepareFinishOverride?: (input: Parameters<typeof prepareTrackerVoiceFinish>[0]) => Promise<VoiceFinishProposalReceipt>;
+  commitFinishOverride?: (input: Parameters<typeof commitTrackerVoiceFinish>[0]) => Promise<VoiceFinishCommitReceipt>;
   spokenAmountUnit?: number;
   amountUnitConfirmed?: boolean;
   onDiagnosticSnapshot?: (snapshot: TrackerVoiceDiagnosticSnapshot) => void;
@@ -80,6 +89,13 @@ interface PrivateHoleCardsAttempt {
   event: VoiceTranscriptEvent;
   proposal: VoiceHoleCardsProposal;
   runtimeSnapshot: TrackerVoiceRuntimeContext;
+}
+
+interface VoiceFinishAttempt {
+  event: VoiceTranscriptEvent;
+  proposal: VoiceFinishProposal;
+  runtimeSnapshot: TrackerVoiceRuntimeContext;
+  receipt: VoiceFinishProposalReceipt;
 }
 
 export const MIC_TEST_DURATION_MS = 30_000;
@@ -134,6 +150,8 @@ export function TrackerVoicePanel({
   validateEventOverride = validateTrackerVoiceEvent,
   commitBoardOverride = commitTrackerVoiceBoard,
   commitHoleCardsOverride = commitTrackerVoiceHoleCards,
+  prepareFinishOverride = prepareTrackerVoiceFinish,
+  commitFinishOverride = commitTrackerVoiceFinish,
   spokenAmountUnit = 1,
   amountUnitConfirmed = false,
   onDiagnosticSnapshot,
@@ -165,6 +183,7 @@ export function TrackerVoicePanel({
   const [validatedProposal, setValidatedProposal] = useState<VoiceProposal | null>(null);
   const [finalAttempt, setFinalAttempt] = useState<VoiceEventAttempt | null>(null);
   const [privateHoleCardsAttempt, setPrivateHoleCardsAttempt] = useState<PrivateHoleCardsAttempt | null>(null);
+  const [finishAttempt, setFinishAttempt] = useState<VoiceFinishAttempt | null>(null);
   const [confirmedHoleSeat, setConfirmedHoleSeat] = useState<number | null>(null);
   const [bufferedEvents, setBufferedEvents] = useState<VoiceTranscriptEvent[]>([]);
   const [bufferStatus, setBufferStatus] = useState<string | null>(null);
@@ -228,6 +247,19 @@ export function TrackerVoicePanel({
     setValidationState("idle");
     setValidationError("Đề xuất bài tẩy đã hết hiệu lực vì trạng thái bàn thay đổi.");
   }, [hook.handId, hook.isReadOnly, hook.workflowState, privateHoleCardsAttempt, runtime?.active_hand?.hand_id, runtime?.active_hand?.state_version, runtime?.correction_pending]);
+
+  useEffect(() => {
+    if (!finishAttempt) return;
+    const stale = finishAttempt.proposal.expectedStateVersion !== runtime?.active_hand?.state_version
+      || hook.workflowState !== "submit_ready"
+      || runtime?.correction_pending === true
+      || hook.isReadOnly
+      || runtime?.active_hand?.hand_id !== hook.handId;
+    if (!stale) return;
+    setFinishAttempt(null);
+    setValidationState("idle");
+    setValidationError("Đề xuất Finish đã hết hiệu lực vì trạng thái hand thay đổi.");
+  }, [finishAttempt, hook.handId, hook.isReadOnly, hook.workflowState, runtime?.active_hand?.hand_id, runtime?.active_hand?.state_version, runtime?.correction_pending]);
 
   const proposalContext = useMemo(
     () => ({
@@ -423,6 +455,60 @@ export function TrackerVoicePanel({
       spokenAmountUnit: unit,
       amountUnitConfirmed: unitConfirmed,
     });
+    const finishCommand = route.ok && route.intentDomain === "finish_hand" ? route.command : null;
+    if (finishCommand) {
+      const finishProposal = resolveVoiceFinishProposal(finishCommand, {
+        handId: hook.handId,
+        workflowState: localContext.workflowState,
+        expectedStateVersion: localContext.expectedStateVersion,
+        handStarted: localContext.handStarted,
+        readOnly: localContext.readOnly,
+        syncBlocked: localContext.syncBlocked,
+        correctionPending: localContext.correctionPending,
+      });
+      const receivedAt = finalReceivedAtRef.current.get(finalEvent.providerEventId);
+      setProposalLatencyMs(receivedAt === undefined ? null : Math.max(0, performance.now() - receivedAt));
+      setFinalTranscript(finalEvent.transcript);
+      setProposal(null);
+      setValidatedProposal(null);
+      setValidatedReceipt(null);
+      setPrivateHoleCardsAttempt(null);
+      setFinishAttempt(null);
+      setValidationError(null);
+      setProposalProviderEventId(finalEvent.providerEventId);
+      if (!finishProposal.ok || !finishProposal.expectedStateVersion || !attemptRuntime || !hook.tournamentTableId || !hook.handId) {
+        setValidationState("error");
+        setValidationError(finishProposal.ok
+          ? "Không xác minh được bàn canonical cho Voice Finish."
+          : finishProposal.message);
+        return;
+      }
+      const prepare = async () => {
+        const generation = ++validationGenerationRef.current;
+        setValidationState("validating");
+        try {
+          const receipt = await prepareFinishOverride({
+            tournamentId: hook.tournamentId,
+            tournamentTableId: hook.tournamentTableId,
+            handId: hook.handId,
+            finalTranscript: finalEvent.transcript,
+            providerName: providerRef.current?.kind ?? "openai_realtime",
+            providerModel: attemptRuntime.config.provider_model,
+            providerEventId: finalEvent.providerEventId,
+            expectedStateVersion: finishProposal.expectedStateVersion,
+          });
+          if (validationGenerationRef.current !== generation) return;
+          setFinishAttempt({ event: finalEvent, proposal: finishProposal, runtimeSnapshot: attemptRuntime, receipt });
+          setValidationState("validated");
+        } catch (error) {
+          if (validationGenerationRef.current !== generation) return;
+          setValidationState("error");
+          setValidationError(error instanceof Error ? error.message : "Không thể xác minh settlement Finish.");
+        }
+      };
+      void prepare();
+      return;
+    }
     const privateCommand = route.ok && route.intentDomain === "hole_cards"
       ? route.command
       : parseVoiceHoleCardsCommand(finalEvent.transcript);
@@ -447,6 +533,7 @@ export function TrackerVoicePanel({
       setProposal(null);
       setValidatedProposal(null);
       setValidatedReceipt(null);
+      setFinishAttempt(null);
       setValidationError(null);
       setProposalProviderEventId(null);
       if (!privateProposal.ok || !attemptRuntime) {
@@ -486,6 +573,7 @@ export function TrackerVoicePanel({
     setProposalLatencyMs(receivedAt === undefined ? null : Math.max(0, performance.now() - receivedAt));
     setFinalTranscript(finalEvent.transcript);
     setPrivateHoleCardsAttempt(null);
+    setFinishAttempt(null);
     setProposal(nextProposal);
     setProposalProviderEventId(finalEvent.providerEventId);
     setValidatedProposal(null);
@@ -612,6 +700,7 @@ export function TrackerVoicePanel({
     runtime,
     runtimeError,
     spokenAmountUnit,
+    prepareFinishOverride,
     validateEventOverride,
   ]);
 
@@ -1067,6 +1156,77 @@ export function TrackerVoicePanel({
     setValidationState("idle");
   };
 
+  const confirmFinishAssist = async () => {
+    const attempt = finishAttempt;
+    const expectedStateVersion = attempt?.proposal.expectedStateVersion;
+    if (
+      !attempt
+      || !expectedStateVersion
+      || !hook.tournamentTableId
+      || mode !== "assist"
+      || assistCommitRef.current
+    ) return;
+    setValidationState("committing");
+    setValidationError(null);
+    let identity = requestIdentitiesRef.current.get(attempt.event.providerEventId);
+    if (!identity) {
+      identity = {
+        idempotencyKey: `voice:${crypto.randomUUID()}`,
+        traceId: `voice-trace:${crypto.randomUUID()}`,
+      };
+      requestIdentitiesRef.current.set(attempt.event.providerEventId, identity);
+    }
+    const commit = (async () => {
+      const canonicalRequest = await buildVoiceFinishCanonicalRequest({
+        rawTranscript: attempt.event.transcript,
+        expectedStateVersion,
+        payload: {
+          settlementOrigin: attempt.receipt.settlement_origin,
+          settlementDigest: attempt.receipt.settlement_digest,
+        },
+      });
+      const receipt = await commitFinishOverride({
+        tournamentId: hook.tournamentId,
+        tournamentTableId: hook.tournamentTableId,
+        handId: hook.handId!,
+        finalTranscript: attempt.event.transcript,
+        providerName: providerRef.current?.kind ?? "openai_realtime",
+        providerModel: attempt.runtimeSnapshot.config.provider_model,
+        providerEventId: attempt.event.providerEventId,
+        expectedStateVersion,
+        ...identity,
+        canonicalRequest,
+      });
+      const readBack = await refreshRuntime();
+      if (!readBack || readBack.active_hand?.hand_id === receipt.hand_id) {
+        throw new Error("Hand đã gửi nhưng chưa đọc lại được trạng thái canonical. Hãy tải lại bàn.");
+      }
+      if (!await hook.applyVoiceFinishReceipt(receipt)) {
+        throw new Error("Receipt Finish không khớp hand đang mở. Hãy tải lại bàn.");
+      }
+      return receipt;
+    })();
+    assistCommitRef.current = commit.then(() => true, () => false);
+    try {
+      await commit;
+      setFinishAttempt(null);
+      setFinalTranscript("");
+      setValidationState("committed");
+    } catch (error) {
+      setValidationState("validated");
+      setValidationError(error instanceof Error ? error.message : "Không thể xác nhận lưu Hand bằng Voice.");
+    } finally {
+      assistCommitRef.current = null;
+    }
+  };
+
+  const cancelFinishAssist = () => {
+    if (validationState === "committing") return;
+    setFinishAttempt(null);
+    setValidationError(null);
+    setValidationState("idle");
+  };
+
   const proposalLabel = proposal?.ok
     ? "intentDomain" in proposal && proposal.intentDomain === "board"
       ? `${proposal.expectedStreet.toUpperCase()} · ${proposal.command.newCards.join(" ")}`
@@ -1388,6 +1548,50 @@ export function TrackerVoicePanel({
               </div>
             ) : (
               <p className="mt-3 text-[11px] text-fuchsia-100/70">SHADOW · Không tự ghi bài. Chuyển Assist mới có thể xác nhận.</p>
+            )}
+          </div>
+        )}
+
+        {finishAttempt && (
+          <div
+            className="rounded-xl border border-amber-300/35 bg-amber-300/[0.07] p-3 text-amber-50"
+            data-testid="voice-finish-proposal"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-200/80">VOICE FINISH ASSIST</div>
+            <div className="mt-1 text-sm font-semibold">
+              {finishAttempt.receipt.settlement_origin === "engine_fold_win" ? "Fold win đã được engine xác minh" : "Showdown đã được engine xác minh"}
+            </div>
+            <div className="mt-3 space-y-1 text-[11px] text-amber-50/85">
+              <div>Winner: {finishAttempt.receipt.summary.winners.map((winner) => `Ghế ${winner.seat_number}${winner.player_name ? ` · ${winner.player_name}` : ""} +${winner.amount.toLocaleString("vi-VN")}`).join(" | ") || "—"}</div>
+              <div>Pot: {finishAttempt.receipt.summary.pots.map((pot) => `${pot.kind === "main" ? "Main" : "Side"} ${pot.amount.toLocaleString("vi-VN")}`).join(" · ") || "—"}</div>
+              <div>Ending stack: {finishAttempt.receipt.summary.ending_stacks.map((stack) => `Ghế ${stack.seat_number} ${stack.amount.toLocaleString("vi-VN")}`).join(" | ") || "—"}</div>
+              <div>Conservation: {finishAttempt.receipt.summary.conservation_total.toLocaleString("vi-VN")} chip</div>
+            </div>
+            <p className="mt-3 text-[11px] font-semibold text-amber-100">CHƯA LƯU HAND</p>
+            <p className="mt-1 text-[11px] font-semibold text-amber-100">CẦN CHẠM XÁC NHẬN</p>
+            {mode === "assist" ? (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void confirmFinishAssist()}
+                  disabled={validationState === "committing"}
+                  className="min-h-11 rounded-xl bg-amber-200 px-3 text-sm font-bold text-amber-950 outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50"
+                >
+                  {validationState === "committing" ? "Đang xác nhận..." : "XÁC NHẬN LƯU HAND"}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelFinishAssist}
+                  disabled={validationState === "committing"}
+                  className="min-h-11 rounded-xl border border-white/15 bg-black/20 px-3 text-sm font-bold text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-amber-100 disabled:opacity-50"
+                >
+                  HỦY
+                </button>
+              </div>
+            ) : (
+              <p className="mt-3 text-[11px] text-amber-100/70">SHADOW · Không tự lưu Hand. Chuyển Assist mới có thể xác nhận.</p>
             )}
           </div>
         )}
