@@ -68,23 +68,28 @@ function streetForBoard(board: string[]): Street {
 
 function workflowForVoiceSnapshot(snapshot: VoiceSnapshot):
   | "preflop_action" | "flop_action" | "turn_action" | "river_action"
-  | "enter_flop" | "enter_turn" | "enter_river" | "runout_reveal" | null {
+  | "enter_flop" | "enter_turn" | "enter_river" | "runout_reveal" | "submit_ready" | null {
   const runtime = reduceHand(snapshot.players, snapshot.actions, snapshot.button_seat);
   const boardCount = snapshot.community_cards.length;
   const livePlayers = runtime.players.filter((player) => !player.is_folded);
+  const bettingComplete = isBettingRoundComplete(runtime);
   if (
     boardCount < 5
     && livePlayers.length >= 2
     && livePlayers.every((player) => player.is_all_in)
-    && isBettingRoundComplete(runtime)
+    && bettingComplete
   ) return "runout_reveal";
-  if (!isBettingRoundComplete(runtime)) {
+  if (!bettingComplete) {
     const actionWorkflow = actionWorkflowForStreet(streetForBoard(snapshot.community_cards));
     return actionWorkflow === "preflop_action" || actionWorkflow === "flop_action"
       || actionWorkflow === "turn_action" || actionWorkflow === "river_action"
       ? actionWorkflow
       : null;
   }
+  if (
+    livePlayers.length === 1
+    || (boardCount === 5 && livePlayers.length >= 2)
+  ) return "submit_ready";
   if (boardCount === 0 && runtime.street === "preflop") return "enter_flop";
   if (boardCount === 3 && runtime.street === "flop") return "enter_turn";
   if (boardCount === 4 && runtime.street === "turn") return "enter_river";
@@ -887,8 +892,12 @@ Deno.serve(async (req) => {
         if (snapshot.correction_pending) {
           return validationError("CORRECTION_PENDING", "Đang chờ Floor sửa action trước đó.");
         }
+        const expectedWorkflowState = workflowForVoiceSnapshot(snapshot);
+        if (expectedWorkflowState !== "submit_ready") {
+          return validationError("wrong_workflow", "Hand chưa đủ điều kiện engine để kết thúc.");
+        }
         // Every grammar runs even here; only one exact Finish phrase is accepted.
-        const route = routeTrackerVoiceIntent(final_transcript, "submit_ready", {
+        const route = routeTrackerVoiceIntent(final_transcript, expectedWorkflowState, {
           spokenAmountUnit: snapshot.spoken_amount_unit,
           amountUnitConfirmed: snapshot.amount_unit_confirmed,
         });
@@ -958,7 +967,11 @@ Deno.serve(async (req) => {
         if (snapshot.correction_pending || snapshot.configured_mode === "shadow") {
           return validationError("ASSIST_NOT_ALLOWED", "Voice Finish chỉ xác nhận khi bàn đang ở Assist và không có correction.");
         }
-        const route = routeTrackerVoiceIntent(final_transcript, "submit_ready", {
+        const expectedWorkflowState = workflowForVoiceSnapshot(snapshot);
+        if (expectedWorkflowState !== "submit_ready") {
+          return validationError("wrong_workflow", "Hand chưa đủ điều kiện engine để kết thúc.");
+        }
+        const route = routeTrackerVoiceIntent(final_transcript, expectedWorkflowState, {
           spokenAmountUnit: snapshot.spoken_amount_unit,
           amountUnitConfirmed: snapshot.amount_unit_confirmed,
         });

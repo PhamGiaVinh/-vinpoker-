@@ -33,6 +33,15 @@ describe("Tracker Voice Finish Assist contract", () => {
     expect(edge).not.toMatch(/case "commit_voice_finish"[\s\S]*?from\("tournament_hands"\)\.update\(/);
   });
 
+  it("derives submit_ready from the server snapshot before either Finish boundary", () => {
+    expect(edge).toMatch(
+      /case "prepare_voice_finish":[\s\S]*?const expectedWorkflowState = workflowForVoiceSnapshot\(snapshot\);[\s\S]*?expectedWorkflowState !== "submit_ready"/,
+    );
+    expect(edge).toMatch(
+      /case "commit_voice_finish":[\s\S]*?const expectedWorkflowState = workflowForVoiceSnapshot\(snapshot\);[\s\S]*?expectedWorkflowState !== "submit_ready"/,
+    );
+  });
+
   it("requires explicit touch confirmation and never presents an Auto Finish", () => {
     expect(panel).toContain("VOICE FINISH ASSIST");
     expect(panel).toContain("CHƯA LƯU HAND");
