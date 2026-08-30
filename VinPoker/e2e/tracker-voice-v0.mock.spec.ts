@@ -14,8 +14,8 @@ test("mock Voice keeps Shadow local, then flows through Assist, correction and V
   await page.goto("/__uat/tracker-voice");
   await page.getByRole("button", { name: "MOCK" }).click();
 
-  await page.getByRole("button", { name: "Kết nối microphone" }).click();
-  await expect(page.getByText("Đang nghe", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Cho phép microphone" }).click();
+  await expect(page.getByText("Microphone đã kết nối", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Bắt đầu phiên test" }).click();
   await expect(page.getByTestId("connection-drop-count")).toHaveText("0");
   await expect(page.getByTestId("reconnect-count")).toHaveText("0");
@@ -63,20 +63,36 @@ test("mock Voice keeps Shadow local, then flows through Assist, correction and V
 test("mock Voice recovers fail-closed after an offline event", async ({ page }) => {
   await page.goto("/__uat/tracker-voice");
   await page.getByRole("button", { name: "MOCK" }).click();
-  await page.getByRole("button", { name: "Kết nối microphone" }).click();
+  await page.getByRole("button", { name: "Cho phép microphone" }).click();
   await page.getByRole("button", { name: "Bắt đầu phiên test" }).click();
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
   await expect(page.getByText("Thiết bị mất mạng. Voice đã dừng ghi action.")).toBeVisible();
   await expect(page.getByTestId("connection-drop-count")).toHaveText("1");
-  await expect(page.getByRole("button", { name: "Kết nối lại" })).toBeVisible();
-  await page.getByRole("button", { name: "Kết nối lại" }).click();
+  await expect(page.getByTestId("canonical-action-count")).toHaveText("0");
+  const reconnect = page.getByRole("button", { name: "Kết nối lại" }).last();
+  await expect(reconnect).toBeVisible();
+  await reconnect.click();
   await expect(page.getByTestId("reconnect-count")).toHaveText("1");
+});
+
+test("repaired call remains a proposal until explicit confirmation", async ({ page }) => {
+  await page.goto("/__uat/tracker-voice");
+  await page.getByRole("button", { name: "MOCK" }).click();
+  await page.getByRole("button", { name: "Cho phép microphone" }).click();
+  await page.getByRole("button", { name: "Bắt đầu phiên test" }).click();
+  await page.getByRole("button", { name: "assist" }).click();
+  await page.getByRole("textbox", { name: "Mock transcript" }).fill("fit 4 call");
+  await page.getByRole("button", { name: "Phát final" }).click();
+
+  await expect(page.getByText("Player A · call", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Xác nhận action" })).toBeVisible();
+  await expect(page.getByTestId("canonical-action-count")).toHaveText("0");
 });
 
 test("mock call Floor creates only a local fixture alert", async ({ page }) => {
   await page.goto("/__uat/tracker-voice");
   await page.getByRole("button", { name: "MOCK" }).click();
-  await page.getByRole("button", { name: "Kết nối microphone" }).click();
+  await page.getByRole("button", { name: "Cho phép microphone" }).click();
   await page.getByRole("button", { name: "Bắt đầu phiên test" }).click();
   await page.getByRole("button", { name: "assist" }).click();
   await page.getByRole("textbox", { name: "Mock transcript" }).fill("gọi floor");

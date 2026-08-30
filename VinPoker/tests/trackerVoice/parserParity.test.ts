@@ -65,16 +65,43 @@ describe("Tracker Voice browser and Edge parser parity", () => {
     expect(browserShape(transcript, options)).toMatchObject({ spokenSeatNumber: seat, amount });
   });
 
-  it("keeps one bounded repair identical and prevents naked all-in parsing", () => {
+  it.each([
+    "fit 9 all in",
+    "feet 9 all in",
+    "FIT 9, ALL-IN!",
+    "Feet 9: all in.",
+  ])("rejects repaired all-in identically in browser and Edge: %s", (transcript) => {
     const options = { spokenAmountUnit: 1, amountUnitConfirmed: false };
-    expect(browserShape("fit 9 all in", options)).toEqual(serverShape("fit 9 all in", options));
-    expect(browserShape("fit 9 all in", options)).toMatchObject({
+    expect(browserShape(transcript, options)).toBeNull();
+    expect(serverShape(transcript, options)).toBeNull();
+  });
+
+  it("keeps exact and safe repaired commands identical", () => {
+    const options = { spokenAmountUnit: 1, amountUnitConfirmed: false };
+    expect(browserShape("seat 9 all in", options)).toEqual(serverShape("seat 9 all in", options));
+    expect(browserShape("seat 9 all in", options)).toMatchObject({
       kind: "all_in",
       spokenSeatNumber: 9,
+      riskTier: "EXACT",
+      requiresConfirmation: false,
+    });
+    expect(browserShape("fit 3 call", options)).toEqual(serverShape("fit 3 call", options));
+    expect(browserShape("fit 3 call", options)).toMatchObject({
+      kind: "call",
+      spokenSeatNumber: 3,
       riskTier: "BOUNDED_REPAIR",
       requiresConfirmation: true,
     });
     expect(browserShape("dealer fit 9 all in", options)).toBeNull();
     expect(serverShape("fit feet 9 all in", options)).toBeNull();
+  });
+
+  it("keeps the existing bet unit conversion and ambiguity identical", () => {
+    expect(browserShape("bet 9", { spokenAmountUnit: 1_000, amountUnitConfirmed: true }))
+      .toEqual(serverShape("bet 9", { spokenAmountUnit: 1_000, amountUnitConfirmed: true }));
+    expect(browserShape("bet 9", { spokenAmountUnit: 1_000, amountUnitConfirmed: true }))
+      .toMatchObject({ kind: "bet_to", amount: 9_000, amountAmbiguous: false });
+    expect(browserShape("bet 9", {})).toEqual(serverShape("bet 9", {}));
+    expect(browserShape("bet 9", {})).toMatchObject({ kind: "bet_to", amount: 9, amountAmbiguous: true });
   });
 });

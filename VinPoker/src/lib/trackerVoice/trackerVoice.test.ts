@@ -91,6 +91,31 @@ describe("parseVoiceCommand", () => {
     expect(parseVoiceCommand("90.000")).toBeNull();
   });
 
+  it.each([
+    "fit 9 all in",
+    "feet 9 all in",
+    "FIT 9, ALL-IN!",
+    "Feet 9: all in.",
+  ])("rejects repaired all-in commands before proposal creation: %s", (transcript) => {
+    expect(parseVoiceCommand(transcript)).toBeNull();
+    expect(resolveVoiceProposal(parseVoiceCommand(transcript), READY)).toMatchObject({
+      ok: false,
+      code: "command_not_supported",
+    });
+  });
+
+  it("keeps exact all-in valid and rejects multi-action or partial input", () => {
+    expect(parseVoiceCommand("seat 9 all in")).toMatchObject({
+      kind: "all_in",
+      spokenSeatNumber: 9,
+      riskTier: "EXACT",
+      repairs: [],
+    });
+    for (const transcript of ["fold call", "", "all", "seat 9 all"]) {
+      expect(parseVoiceCommand(transcript)).toBeNull();
+    }
+  });
+
   it("rejects partial/noise text", () => {
     expect(parseVoiceCommand("dealer talking about dinner")).toBeNull();
   });
@@ -106,10 +131,6 @@ describe("parseVoiceCommand", () => {
     expect(resolveVoiceProposal(parseVoiceCommand("feet 3 call"), READY)).toMatchObject({
       ok: true,
       command: { requiresConfirmation: true },
-    });
-    expect(resolveVoiceProposal(parseVoiceCommand("fit 9 all in"), READY)).toMatchObject({
-      ok: false,
-      code: "spoken_actor_mismatch",
     });
   });
 });
@@ -131,6 +152,24 @@ describe("resolveVoiceProposal", () => {
     expect(resolveVoiceProposal(parseVoiceCommand("call"), { ...READY, syncBlocked: true })).toMatchObject({ ok: false, code: "sync_blocked" });
     expect(resolveVoiceProposal(parseVoiceCommand("call"), { ...READY, correctionPending: true })).toMatchObject({ ok: false, code: "correction_pending" });
     expect(resolveVoiceProposal(parseVoiceCommand("check"), READY)).toMatchObject({ ok: false, code: "illegal_action" });
+  });
+
+  it("preserves the existing bet amount-unit contract", () => {
+    expect(parseVoiceCommand("bet 9", { spokenAmountUnit: 1_000, amountUnitConfirmed: true })).toMatchObject({
+      kind: "bet_to",
+      amount: { value: 9_000, ambiguous: false },
+    });
+    expect(parseVoiceCommand("bet 9")).toMatchObject({
+      kind: "bet_to",
+      amount: { value: 9, ambiguous: true },
+    });
+    expect(resolveVoiceProposal(parseVoiceCommand("bet 9"), {
+      ...READY,
+      actorView: {
+        ...READY.actorView!,
+        legal: { ...READY.actorView!.legal, bet: true },
+      },
+    })).toMatchObject({ ok: false, code: "amount_ambiguous" });
   });
 
   it("binds a spoken seat to the current actor instead of silently using another player", () => {

@@ -1,6 +1,7 @@
 import {
   hardenDealerTranscript,
   normalizeTrackerVoiceTranscript,
+  type HardenedTranscript,
   type TranscriptRepair,
   type TranscriptRiskTier,
 } from "./transcriptHardener";
@@ -20,6 +21,33 @@ export type TrackerVoiceCoreCommandKind =
   | "all_in"
   | "report_wrong_action"
   | "call_floor";
+
+export interface TrackerVoiceRepairSafetyDisposition {
+  originalTranscript: string;
+  repairApplied: boolean;
+  repairKinds: readonly TranscriptRepair["rule"][];
+  actionAfterRepair: TrackerVoiceCoreCommandKind;
+  disposition: "ALLOW" | "REJECT";
+  rejectReason: "repair_action_unsafe" | null;
+}
+
+/** Fail closed when ASR repair would elevate an utterance into an all-in action. */
+export function classifyTrackerVoiceRepairSafety(
+  hardened: HardenedTranscript,
+  actionAfterRepair: TrackerVoiceCoreCommandKind,
+): TrackerVoiceRepairSafetyDisposition {
+  const repairKinds = hardened.repairs.map((repair) => repair.rule);
+  const repairApplied = repairKinds.length > 0;
+  const unsafe = repairApplied && actionAfterRepair === "all_in";
+  return {
+    originalTranscript: hardened.rawTranscript,
+    repairApplied,
+    repairKinds,
+    actionAfterRepair,
+    disposition: unsafe ? "REJECT" : "ALLOW",
+    rejectReason: unsafe ? "repair_action_unsafe" : null,
+  };
+}
 
 export interface TrackerVoiceCoreAmount {
   value: number | null;
@@ -304,6 +332,7 @@ export function parseTrackerVoiceCommandCore(
   const exact = EXACT_COMMANDS.find((candidate) => candidate.pattern.test(actionText));
   const kind = raiseMatch ? "raise_to" : betMatch ? "bet_to" : exact?.kind;
   if (!kind) return null;
+  if (classifyTrackerVoiceRepairSafety(hardened, kind).disposition === "REJECT") return null;
   const amountRaw = raiseMatch?.[1] ?? betMatch?.[1] ?? null;
   if (amountRaw !== null && !isStrictAmountExpression(amountRaw)) return null;
   const amount = amountRaw === null ? null : parseTrackerVoiceAmount(amountRaw, options);

@@ -244,10 +244,12 @@ export default function TrackerVoiceV0Preview() {
     tournamentTableId: TABLE_ID,
     handId: HAND_ID,
     currentStreet: "flop",
+    workflowState: "flop_action",
     actorPlayer: {
       player_id: "74000000-0000-4000-8000-000000000001",
       display_name: "Player A",
       seat_number: 4,
+      entry_number: 1,
       current_stack: fixture.stack,
       current_bet: fixture.currentBet,
     },
