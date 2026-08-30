@@ -156,6 +156,19 @@ describe("Gemini Live final transcript flush", () => {
     expect(afterTimeout.events).toEqual([]);
     expect(resolveGeminiFlushStatus("flushing", afterTimeout.events)).toBe("flushing");
   });
+
+  it.each(["all", "seat 9 all", "fold call"])("keeps interrupted input non-final after timeout: %s", (text) => {
+    const partial = reduceGeminiTranscriptMessage(emptyState(), {
+      serverContent: { interimInputTranscription: { text } },
+    }, "2026-08-24T00:00:00.000Z");
+    const expired = expireGeminiTranscriptFlush(partial.state);
+    const afterTimeout = reduceGeminiTranscriptMessage(expired, {
+      serverContent: { turnComplete: true },
+    }, "2026-08-24T00:00:01.000Z");
+
+    expect(afterTimeout.events).toEqual([]);
+    expect(afterTimeout.state.confirmedTranscript).toBe("");
+  });
 });
 
 describe("Gemini Live dealer phrase adaptation", () => {
