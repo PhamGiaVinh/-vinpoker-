@@ -163,7 +163,7 @@ describe("buildTableAllocationRows", () => {
     expect(row.coverage).toBe("covered");
     expect(row.markers[0]).toMatchObject({
       status: "delayed",
-      label: "DỰ KIẾN TRỄ QUÁ GIỜ",
+      label: "CHỐT · TRỄ QUÁ GIỜ",
       dealerName: "Dealer B",
       at: "2026-08-28T12:00:00.000Z",
     });
@@ -191,6 +191,27 @@ describe("buildTableAllocationRows", () => {
     expect(row.segments).toHaveLength(1);
     expect(row.segments[0]).toMatchObject({ dealerName: "Dealer A", endAt: null, openEnded: true });
     expect(row.markers[0].label).toBe("LỊCH THUỘC ASSIGNMENT CŨ");
+  });
+
+  it("labels a past-due stale slot0 as stale rather than overdue", () => {
+    const current = assignment({ id: "assignment-current" });
+    const [row] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
+      scheduleRows: [schedule({ assignment_id: "assignment-old", planned_relief_at: "2026-08-28T11:30:00.000Z" })],
+    });
+    expect(row.segments[0]).toMatchObject({ dealerName: "Dealer A", endAt: null, openEnded: true });
+    expect(row.markers[0]).toMatchObject({ label: "LỊCH THUỘC ASSIGNMENT CŨ", at: "2026-08-28T12:00:00.000Z" });
+  });
+
+  it("labels a past-due wrong outgoing dealer as a mismatch rather than overdue", () => {
+    const current = assignment();
+    const [row] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
+      scheduleRows: [schedule({ out_attendance_id: "attendance-other", planned_relief_at: "2026-08-28T11:30:00.000Z" })],
+    });
+    expect(row.markers[0]).toMatchObject({ label: "LỊCH KHÔNG KHỚP DEALER", at: "2026-08-28T12:00:00.000Z" });
   });
 
   it("slot1 identity mismatch breaks chain", () => {
@@ -227,7 +248,17 @@ describe("buildTableAllocationRows", () => {
       scheduleRows: [schedule({ is_shortage: true })],
     });
     expect(row.coverage).toBe("covered");
-    expect(row.segments[1]).toMatchObject({ status: "delayed", label: "DỰ KIẾN TRỄ", dealerName: "Dealer B" });
+    expect(row.segments[1]).toMatchObject({ status: "delayed", label: "CHỐT · TRỄ", dealerName: "Dealer B" });
+  });
+
+  it("keeps executing semantics on a delayed selected incoming dealer", () => {
+    const current = assignment();
+    const [row] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
+      scheduleRows: [schedule({ is_shortage: true, status: "executing" })],
+    });
+    expect(row.segments[1]).toMatchObject({ status: "delayed", label: "ĐANG THỰC HIỆN · TRỄ", dealerName: "Dealer B" });
   });
 
   it("continues the identity chain through a delayed selected incoming dealer", () => {
@@ -272,6 +303,19 @@ describe("buildTableAllocationRows", () => {
     expect(row.segments.map((segment) => segment.dealerName)).toEqual(["Dealer A", "Dealer B"]);
     expect(row.segments[1]).toMatchObject({ endAt: null, openEnded: true });
     expect(row.markers.map((marker) => marker.label)).toEqual(["LỊCH CHƯA CÓ GIỜ", "LỊCH KHÔNG LIÊN TỤC"]);
+  });
+
+  it("keeps later past-due slots discontinuous after slot0 breaks", () => {
+    const current = assignment({ id: "assignment-current" });
+    const [row] = project({
+      canonicalAssignments: [current],
+      activeRawData: [current],
+      scheduleRows: [
+        schedule({ assignment_id: "assignment-old", planned_relief_at: "2026-08-28T11:30:00.000Z" }),
+        schedule({ id: "slot-2", assignment_id: null, slot_index: 1, out_attendance_id: "attendance-2", in_attendance_id: "attendance-3", in_dealer_name: "Dealer C", planned_relief_at: "2026-08-28T11:45:00.000Z" }),
+      ],
+    });
+    expect(row.markers.map((marker) => marker.label)).toEqual(["LỊCH THUỘC ASSIGNMENT CŨ", "LỊCH KHÔNG LIÊN TỤC"]);
   });
 
   it("keeps a valid chain across sticky rows from different plan runs", () => {
