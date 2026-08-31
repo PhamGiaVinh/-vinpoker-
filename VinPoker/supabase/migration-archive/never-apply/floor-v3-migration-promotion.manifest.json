@@ -6,6 +6,13 @@
   "reconciliationManifest": "supabase/migration-archive/floor-v3-catalog-reconciliation.manifest.json",
   "floorActiveAllowlist": [
     {
+      "version": "20270112000009",
+      "filename": "20270112000009_floor_table_control_v3_fixture_live_status_compat.sql",
+      "sha256": "fd9cf64612c04c10d2542849250266242803f8e104a6e04e86709f3e93bda41c",
+      "dependencies": [],
+      "runtimeEdgeDependency": false
+    },
+    {
       "version": "20270113000002",
       "filename": "20270113000002_floor_table_control_v3_foundation.sql",
       "sha256": "bde87962fef151abd0030dcaadce71b7ee2e6a827afdfa4fbcd3198ccb3ef56c",
