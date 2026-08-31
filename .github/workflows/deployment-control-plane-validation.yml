@@ -15,6 +15,7 @@ on:
       - ".github/workflows/dealer-pt-wage-global-continuous-accrual-apply.yml"
       - ".github/workflows/dealer-pt-wage-readiness-acl-apply.yml"
       - ".github/workflows/dealer-payroll-statement-contract-apply.yml"
+      - ".github/workflows/ops-sepay-scope-q0-apply.yml"
       - ".github/workflows/dealer-payroll-statement-delivery-repair-hsop.yml"
       - ".github/workflows/dealer-payroll-statement-delivery-hsop-uat.yml"
       - ".github/workflows/deployment-control-plane-validation.yml"
@@ -44,6 +45,10 @@ on:
       - "VinPoker/scripts/payroll/apply-dealer-pt-wage-readiness-acl.test.mjs"
       - "VinPoker/scripts/payroll/apply-dealer-payroll-statement-contract.mjs"
       - "VinPoker/scripts/payroll/apply-dealer-payroll-statement-contract.test.mjs"
+      - "VinPoker/scripts/ops/apply-sepay-scope-q0.mjs"
+      - "VinPoker/scripts/ops/apply-sepay-scope-q0.test.mjs"
+      - "VinPoker/scripts/ops/sepay-scope-q0-policy.mjs"
+      - "VinPoker/supabase/pending-migrations/20270114000000_ops_quant_data_health_q0.sql"
       - "VinPoker/scripts/payroll/repair-dealer-payroll-statement-delivery.mjs"
       - "VinPoker/scripts/payroll/repair-dealer-payroll-statement-delivery.test.mjs"
       - "VinPoker/scripts/payroll/set-dealer-payroll-statement-delivery-hsop-uat.mjs"
@@ -95,6 +100,7 @@ jobs:
             .github/workflows/dealer-pt-wage-global-continuous-accrual-apply.yml \
             .github/workflows/dealer-pt-wage-readiness-acl-apply.yml \
             .github/workflows/dealer-payroll-statement-contract-apply.yml \
+            .github/workflows/ops-sepay-scope-q0-apply.yml \
             .github/workflows/dealer-payroll-statement-hsop-uat.yml \
             .github/workflows/dealer-payroll-statement-delivery-hsop-uat.yml \
             .github/workflows/dealer-payroll-statement-delivery-repair-hsop.yml \
@@ -106,4 +112,4 @@ jobs:
           node-version: "20"
 
       - name: Test exact production apply runners
-        run: node --test VinPoker/scripts/floor/apply-floor-clock-control.test.mjs VinPoker/scripts/floor/apply-floor-operator-scope-acl.test.mjs VinPoker/scripts/dealer-swing/apply-shortage-alert-lifecycle.test.mjs VinPoker/scripts/dealer-swing/apply-phone-completion-migrations.test.mjs VinPoker/scripts/dealer-swing/set-phone-completion-hsop-uat.test.mjs VinPoker/scripts/payroll/apply-dealer-pt-global-accrual.test.mjs VinPoker/scripts/payroll/apply-dealer-pt-wage-readiness-acl.test.mjs VinPoker/scripts/payroll/apply-dealer-payroll-statement-contract.test.mjs VinPoker/scripts/payroll/repair-dealer-payroll-statement-delivery.test.mjs VinPoker/scripts/payroll/set-dealer-payroll-statement-delivery-hsop-uat.test.mjs VinPoker/scripts/deploy/validate-live-public-schema-artifact.test.mjs VinPoker/scripts/deploy/workflow-policy.test.mjs VinPoker/scripts/deploy/test-dealer-pt-wage-disposable.test.mjs VinPoker/scripts/deploy/verify-dealer-pt-wage-migration-inventory.test.mjs
+        run: node --test VinPoker/scripts/floor/apply-floor-clock-control.test.mjs VinPoker/scripts/floor/apply-floor-operator-scope-acl.test.mjs VinPoker/scripts/dealer-swing/apply-shortage-alert-lifecycle.test.mjs VinPoker/scripts/dealer-swing/apply-phone-completion-migrations.test.mjs VinPoker/scripts/dealer-swing/set-phone-completion-hsop-uat.test.mjs VinPoker/scripts/payroll/apply-dealer-pt-global-accrual.test.mjs VinPoker/scripts/payroll/apply-dealer-pt-wage-readiness-acl.test.mjs VinPoker/scripts/payroll/apply-dealer-payroll-statement-contract.test.mjs VinPoker/scripts/payroll/repair-dealer-payroll-statement-delivery.test.mjs VinPoker/scripts/payroll/set-dealer-payroll-statement-delivery-hsop-uat.test.mjs VinPoker/scripts/deploy/validate-live-public-schema-artifact.test.mjs VinPoker/scripts/deploy/workflow-policy.test.mjs VinPoker/scripts/deploy/test-dealer-pt-wage-disposable.test.mjs VinPoker/scripts/deploy/verify-dealer-pt-wage-migration-inventory.test.mjs VinPoker/scripts/ops/apply-sepay-scope-q0.test.mjs
