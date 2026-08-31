@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildVoiceActionCanonicalRequest,
   buildVoiceBoardCanonicalRequest,
+  buildVoiceFinishCanonicalRequest,
   buildVoiceHoleCardsCanonicalRequest,
   voiceCanonicalRequestsMatch,
 } from "./canonicalRequest";
@@ -94,5 +95,25 @@ it("creates a deterministic private Hole Cards request and fails closed on ident
   expect(voiceCanonicalRequestsMatch({
     ...request,
     payload: { ...request.payload, cards: ["Kh", "Ks"] },
+  }, request)).toBe(false);
+});
+
+it("creates a deterministic Finish request and fails closed on settlement tampering", async () => {
+  const request = await buildVoiceFinishCanonicalRequest({
+    rawTranscript: "kết thúc hand",
+    expectedStateVersion: "d".repeat(64),
+    payload: {
+      settlementOrigin: "engine_showdown",
+      settlementDigest: "e".repeat(64),
+    },
+  });
+  expect(request).toMatchObject({
+    intentDomain: "finish_hand",
+    envelope: { expectedWorkflowState: "submit_ready", expectedStreet: "showdown" },
+  });
+  expect(voiceCanonicalRequestsMatch(request, request)).toBe(true);
+  expect(voiceCanonicalRequestsMatch({
+    ...request,
+    payload: { ...request.payload, settlementDigest: "f".repeat(64) },
   }, request)).toBe(false);
 });

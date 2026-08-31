@@ -11,6 +11,8 @@ export * from "./boardProposal";
 export * from "./cardLexicon";
 export * from "./holeCardsParser";
 export * from "./holeCardsProposal";
+export * from "./finishParser";
+export * from "./finishProposal";
 export * from "./intentRouter";
 export * from "./types";
 export * from "./analytics";

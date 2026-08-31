@@ -44,9 +44,9 @@ describe("Tracker Voice Hole Cards Assist contract", () => {
     expect(panel).toContain("CẦN CHẠM XÁC NHẬN · CHƯA GHI BÀI");
   });
 
-  it("keeps Finish and a muck writer absent", () => {
-    expect(edge).not.toContain('case "commit_voice_finish"');
-    expect(edge).not.toContain('intent_domain: "finish_hand"');
+  it("keeps the Hole Cards migration specific while Finish is added separately", () => {
+    expect(edge).toContain('case "commit_voice_finish"');
+    expect(edge).toContain("buildVoiceFinishCanonicalRequest");
     expect(migration).not.toContain("commit_tracker_voice_finish");
     expect(migration).not.toContain("commit_tracker_voice_muck");
   });

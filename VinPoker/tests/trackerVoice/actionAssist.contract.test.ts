@@ -18,7 +18,7 @@ describe("Tracker Voice Action and Board Assist contract", () => {
     expect(edge).toContain('intent_domain: "board"');
     expect(edge).toContain("routeTrackerVoiceIntent(final_transcript");
     expect(edge).toContain("commit_tracker_voice_board_v0");
-    expect(edge).not.toContain('intent_domain: "hole_cards"');
-    expect(edge).not.toContain('intent_domain: "finish_hand"');
+    expect(edge).toContain("buildVoiceHoleCardsCanonicalRequest");
+    expect(edge).toContain("buildVoiceFinishCanonicalRequest");
   });
 });

@@ -250,6 +250,76 @@ describe("TrackerVoicePanel", () => {
     expect(screen.queryByTestId("voice-private-hole-cards-proposal")).not.toBeInTheDocument();
   });
 
+  it("keeps Finish as a server summary until one Dealer touch confirms it", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const runtime: TrackerVoiceRuntimeContext = {
+      ...runtimeFixture,
+      active_hand: { ...runtimeFixture.active_hand },
+    };
+    const applyVoiceFinishReceipt = vi.fn(async () => true);
+    const prepareFinishOverride = vi.fn(async () => ({
+      ok: true as const,
+      settlement_origin: "engine_showdown" as const,
+      settlement_digest: "b".repeat(64),
+      state_version: "a".repeat(64),
+      summary: {
+        winners: [{ player_id: "player-a", seat_number: 3, player_name: "Player A", amount: 20_000 }],
+        pots: [{ kind: "main" as const, amount: 20_000, winner_ids: ["player-a"] }],
+        ending_stacks: [{ player_id: "player-a", seat_number: 3, amount: 20_000 }],
+        conservation_total: 20_000,
+      },
+    }));
+    const commitFinishOverride = vi.fn(async () => {
+      runtime.active_hand = null;
+      return {
+        ok: true as const,
+        voice_event_id: "voice-finish-1",
+        canonical_receipt_event_id: "finish-receipt-1",
+        idempotency_key: "voice:finish-1",
+        trace_id: "voice-trace:finish-1",
+        settlement_origin: "engine_showdown" as const,
+        settlement_digest: "b".repeat(64),
+        state_version_before: "a".repeat(64),
+        state_version_after: "c".repeat(64),
+        hand_id: "hand-1",
+      };
+    });
+    const hook = {
+      ...hookFixture(),
+      currentStreet: "showdown",
+      workflowState: "submit_ready",
+      showActionStep: false,
+      applyVoiceFinishReceipt,
+    } as StandaloneHandInput;
+    render(
+      <TrackerVoicePanel
+        hook={hook}
+        providerOverride={provider}
+        runtimeOverride={runtime}
+        prepareFinishOverride={prepareFinishOverride}
+        commitFinishOverride={commitFinishOverride}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "assist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("kết thúc hand", { final: true, id: "finish-final" }));
+
+    expect(await screen.findByTestId("voice-finish-proposal")).toBeInTheDocument();
+    expect(screen.getByText("CHƯA LƯU HAND")).toBeInTheDocument();
+    expect(screen.getByText(/Ending stack: Ghế 3 20\.000/)).toBeInTheDocument();
+    expect(commitFinishOverride).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "XÁC NHẬN LƯU HAND" }));
+    await waitFor(() => expect(commitFinishOverride).toHaveBeenCalledOnce());
+    expect(commitFinishOverride.mock.calls[0][0].canonicalRequest).toMatchObject({
+      intentDomain: "finish_hand",
+      payload: { settlementOrigin: "engine_showdown", settlementDigest: "b".repeat(64) },
+    });
+    expect(applyVoiceFinishReceipt).toHaveBeenCalledWith(expect.objectContaining({ hand_id: "hand-1" }));
+  });
+
   it("keys each diagnostic proposal to its own final transcript", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const snapshots: TrackerVoiceDiagnosticSnapshot[] = [];

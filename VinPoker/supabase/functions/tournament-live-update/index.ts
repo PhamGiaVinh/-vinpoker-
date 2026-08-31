@@ -14,10 +14,12 @@ import {
   actionWorkflowForStreet,
   buildVoiceActionCanonicalRequest,
   buildVoiceBoardCanonicalRequest,
+  buildVoiceFinishCanonicalRequest,
   buildVoiceHoleCardsCanonicalRequest,
   voiceCanonicalRequestsMatch,
 } from "../../../src/lib/trackerVoice/canonicalRequest.ts";
 import { routeTrackerVoiceIntent } from "../../../src/lib/trackerVoice/intentRouter.ts";
+import { computeVoiceFinishSettlement } from "../_shared/trackerSettlement/finishAssist.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,6 +53,12 @@ type VoiceSnapshot = {
   actions: ActionRow[];
 };
 
+type AuthoritativeVoiceFinish = {
+  handNumber: number;
+  handTime: string;
+  settlement: Awaited<ReturnType<typeof computeVoiceFinishSettlement>>;
+};
+
 function streetForBoard(board: string[]): Street {
   if (board.length >= 5) return "river";
   if (board.length === 4) return "turn";
@@ -60,23 +68,28 @@ function streetForBoard(board: string[]): Street {
 
 function workflowForVoiceSnapshot(snapshot: VoiceSnapshot):
   | "preflop_action" | "flop_action" | "turn_action" | "river_action"
-  | "enter_flop" | "enter_turn" | "enter_river" | "runout_reveal" | null {
+  | "enter_flop" | "enter_turn" | "enter_river" | "runout_reveal" | "submit_ready" | null {
   const runtime = reduceHand(snapshot.players, snapshot.actions, snapshot.button_seat);
   const boardCount = snapshot.community_cards.length;
   const livePlayers = runtime.players.filter((player) => !player.is_folded);
+  const bettingComplete = isBettingRoundComplete(runtime);
   if (
     boardCount < 5
     && livePlayers.length >= 2
     && livePlayers.every((player) => player.is_all_in)
-    && isBettingRoundComplete(runtime)
+    && bettingComplete
   ) return "runout_reveal";
-  if (!isBettingRoundComplete(runtime)) {
+  if (!bettingComplete) {
     const actionWorkflow = actionWorkflowForStreet(streetForBoard(snapshot.community_cards));
     return actionWorkflow === "preflop_action" || actionWorkflow === "flop_action"
       || actionWorkflow === "turn_action" || actionWorkflow === "river_action"
       ? actionWorkflow
       : null;
   }
+  if (
+    livePlayers.length === 1
+    || (boardCount === 5 && livePlayers.length >= 2)
+  ) return "submit_ready";
   if (boardCount === 0 && runtime.street === "preflop") return "enter_flop";
   if (boardCount === 3 && runtime.street === "flop") return "enter_turn";
   if (boardCount === 4 && runtime.street === "turn") return "enter_river";
@@ -117,6 +130,66 @@ function resolveVoiceActor(snapshot: VoiceSnapshot, street: Street): {
     currentBet: newStreet ? 0 : player.street_bet,
     stack: player.stack,
     highestBet: newStreet ? 0 : runtime.highestBet,
+  };
+}
+
+function providerForVoiceRequest(providerName: unknown): "mock" | "openai_realtime" | "gemini_live" {
+  return providerName === "mock" ? "mock" : providerName === "gemini_live" ? "gemini_live" : "openai_realtime";
+}
+
+async function loadAuthoritativeVoiceFinish(input: {
+  tournamentId: string;
+  tournamentTableId: string;
+  handId: string;
+  snapshot: VoiceSnapshot;
+}): Promise<AuthoritativeVoiceFinish> {
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  if (!serviceKey || !supabaseUrl) throw new Error("tracker_voice_service_not_configured");
+  const service = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const [{ data: hand, error: handError }, { data: players, error: playersError }, { data: actions, error: actionsError }] = await Promise.all([
+    service.from("tournament_hands").select("id, hand_number, created_at, button_seat, community_cards, status, is_voided")
+      .eq("id", input.handId).eq("tournament_id", input.tournamentId).eq("table_id", input.tournamentTableId).maybeSingle(),
+    service.from("hand_players").select("player_id, entry_number, seat_number, starting_stack, hole_cards, player_name")
+      .eq("hand_id", input.handId).order("seat_number"),
+    service.from("hand_actions").select("player_id, entry_number, street, action_type, action_amount, action_order")
+      .eq("hand_id", input.handId).order("action_order"),
+  ]);
+  if (handError || playersError || actionsError || !hand || hand.status !== "in_progress" || hand.is_voided) {
+    throw new Error("finish_snapshot_unavailable");
+  }
+  const runtime = reduceHand(input.snapshot.players, input.snapshot.actions, input.snapshot.button_seat);
+  const settlement = await computeVoiceFinishSettlement({
+    handId: input.handId,
+    stateVersion: input.snapshot.state_version,
+    buttonSeat: Number(hand.button_seat),
+    communityCards: Array.isArray(hand.community_cards) ? hand.community_cards as string[] : [],
+    players: (players ?? []).map((player: Record<string, unknown>) => ({
+      player_id: String(player.player_id),
+      entry_number: Number(player.entry_number),
+      seat_number: Number(player.seat_number),
+      starting_stack: Number(player.starting_stack),
+      hole_cards: Array.isArray(player.hole_cards) ? player.hole_cards as string[] : [],
+      player_name: typeof player.player_name === "string" ? player.player_name : null,
+    })),
+    actions: (actions ?? []).map((action: Record<string, unknown>) => ({
+      player_id: String(action.player_id),
+      entry_number: Number(action.entry_number),
+      street: typeof action.street === "string" ? action.street : "preflop",
+      action_type: String(action.action_type),
+      action_amount: typeof action.action_amount === "number" ? action.action_amount : 0,
+      action_order: Number(action.action_order),
+    })),
+    bettingComplete: isBettingRoundComplete(runtime),
+  });
+  return {
+    handNumber: Number(hand.hand_number),
+    handTime: typeof hand.created_at === "string" ? hand.created_at : (() => {
+      throw new Error("finish_snapshot_unavailable");
+    })(),
+    settlement,
   };
 }
 
@@ -464,6 +537,12 @@ Deno.serve(async (req) => {
             "Bài tẩy Voice chỉ gửi khi Dealer chạm xác nhận bài của ghế.",
           );
         }
+        if (route.intentDomain === "finish_hand") {
+          return validationError(
+            "VOICE_FINISH_CONFIRM_ONLY",
+            "Finish Voice chỉ gửi khi Dealer chạm xác nhận lưu hand.",
+          );
+        }
         const mode = execution_mode === "assist" ? "assist" : "shadow";
         if (route.intentDomain === "board") {
           if (execution_mode === "auto") {
@@ -532,6 +611,9 @@ Deno.serve(async (req) => {
           break;
         }
 
+        if (route.intentDomain !== "action") {
+          return validationError("intent_mismatch", "Voice intent không khớp writer hiện tại.");
+        }
         const command = route.command;
         if (command.amount?.ambiguous) {
           return validationError("VOICE_AMOUNT_AMBIGUOUS", "Số chip chưa rõ đơn vị.");
@@ -599,9 +681,8 @@ Deno.serve(async (req) => {
             });
             return validationError(verdict.code, verdict.message);
           }
-          // PR A intentionally recognizes only the Action domain. The browser's
-          // request is diagnostic input, never authority: recompute every field
-          // from the raw transcript and locked server snapshot before persistence.
+          // The browser request is diagnostic input, never authority: recompute
+          // every field from raw speech and the locked server snapshot first.
           const expectedActionWorkflowState = actionWorkflowForStreet(street);
           if (!expectedActionWorkflowState || expectedActionWorkflowState !== expectedWorkflowState) {
             return validationError("intent_mismatch", "Voice Action chỉ hợp lệ trong vòng cược.");
@@ -779,6 +860,182 @@ Deno.serve(async (req) => {
         });
         break;
       }
+      case "prepare_voice_finish": {
+        const {
+          tournament_table_id, hand_id, final_transcript, expected_state_version,
+        } = body;
+        if (
+          typeof tournament_table_id !== "string"
+          || typeof hand_id !== "string"
+          || typeof final_transcript !== "string"
+          || final_transcript.length < 1
+          || final_transcript.length > 500
+          || typeof expected_state_version !== "string"
+        ) {
+          return validationError("VOICE_FINISH_REQUEST_INVALID", "Voice Finish thiếu dữ liệu xác nhận.");
+        }
+        const { data: rawSnapshot, error: snapshotError } = await supabase.rpc(
+          "get_tracker_voice_validation_snapshot",
+          {
+            p_tournament_id: tournament_id,
+            p_tournament_table_id: tournament_table_id,
+            p_hand_id: hand_id,
+          },
+        );
+        const snapshot = rawSnapshot as VoiceSnapshot | null;
+        if (snapshotError || !snapshot?.ok) {
+          return validationError(snapshot?.error ?? "VOICE_SNAPSHOT_UNAVAILABLE", "Không thể xác minh hand trước khi kết thúc.");
+        }
+        if (snapshot.state_version !== expected_state_version) {
+          return validationError("STALE_STATE_VERSION", "Trạng thái bàn đã thay đổi. Hãy nói lại kết thúc hand.");
+        }
+        if (snapshot.correction_pending) {
+          return validationError("CORRECTION_PENDING", "Đang chờ Floor sửa action trước đó.");
+        }
+        const expectedWorkflowState = workflowForVoiceSnapshot(snapshot);
+        if (expectedWorkflowState !== "submit_ready") {
+          return validationError("wrong_workflow", "Hand chưa đủ điều kiện engine để kết thúc.");
+        }
+        // Every grammar runs even here; only one exact Finish phrase is accepted.
+        const route = routeTrackerVoiceIntent(final_transcript, expectedWorkflowState, {
+          spokenAmountUnit: snapshot.spoken_amount_unit,
+          amountUnitConfirmed: snapshot.amount_unit_confirmed,
+        });
+        if (!route.ok || route.intentDomain !== "finish_hand") {
+          return validationError(route.ok ? "intent_mismatch" : route.code, "Cần đọc đúng duy nhất: kết thúc hand.");
+        }
+        let finish: AuthoritativeVoiceFinish;
+        try {
+          finish = await loadAuthoritativeVoiceFinish({
+            tournamentId: tournament_id,
+            tournamentTableId: tournament_table_id,
+            handId: hand_id,
+            snapshot,
+          });
+        } catch (error) {
+          const code = error instanceof Error ? error.message : "finish_requires_manual_showdown";
+          return validationError(
+            code === "finish_requires_manual_showdown" ? code : "finish_requires_manual_showdown",
+            "Server chưa đủ bằng chứng showdown/fold-win để lưu hand. Hãy dùng luồng sửa thủ công.",
+          );
+        }
+        result = {
+          data: {
+            ok: true,
+            settlement_origin: finish.settlement.settlementOrigin,
+            settlement_digest: finish.settlement.settlementDigest,
+            state_version: snapshot.state_version,
+            summary: finish.settlement.summary,
+          },
+          error: null,
+        };
+        break;
+      }
+      case "commit_voice_finish": {
+        const {
+          tournament_table_id, hand_id, final_transcript, provider_name,
+          provider_model, provider_event_id, expected_state_version,
+          idempotency_key, trace_id, voice_request,
+        } = body;
+        if (
+          typeof tournament_table_id !== "string"
+          || typeof hand_id !== "string"
+          || typeof final_transcript !== "string"
+          || final_transcript.length < 1
+          || final_transcript.length > 500
+          || typeof expected_state_version !== "string"
+          || typeof idempotency_key !== "string"
+          || typeof trace_id !== "string"
+        ) {
+          return validationError("VOICE_FINISH_REQUEST_INVALID", "Voice Finish thiếu dữ liệu chạm xác nhận.");
+        }
+        const { data: rawSnapshot, error: snapshotError } = await supabase.rpc(
+          "get_tracker_voice_validation_snapshot",
+          {
+            p_tournament_id: tournament_id,
+            p_tournament_table_id: tournament_table_id,
+            p_hand_id: hand_id,
+          },
+        );
+        const snapshot = rawSnapshot as VoiceSnapshot | null;
+        if (snapshotError || !snapshot?.ok) {
+          return validationError(snapshot?.error ?? "VOICE_SNAPSHOT_UNAVAILABLE", "Không thể xác minh hand trước khi lưu.");
+        }
+        if (snapshot.state_version !== expected_state_version) {
+          return validationError("finish_proposal_stale", "Kết quả đã thay đổi. Hãy tạo lại đề xuất Finish.");
+        }
+        if (snapshot.correction_pending || snapshot.configured_mode === "shadow") {
+          return validationError("ASSIST_NOT_ALLOWED", "Voice Finish chỉ xác nhận khi bàn đang ở Assist và không có correction.");
+        }
+        const expectedWorkflowState = workflowForVoiceSnapshot(snapshot);
+        if (expectedWorkflowState !== "submit_ready") {
+          return validationError("wrong_workflow", "Hand chưa đủ điều kiện engine để kết thúc.");
+        }
+        const route = routeTrackerVoiceIntent(final_transcript, expectedWorkflowState, {
+          spokenAmountUnit: snapshot.spoken_amount_unit,
+          amountUnitConfirmed: snapshot.amount_unit_confirmed,
+        });
+        if (!route.ok || route.intentDomain !== "finish_hand") {
+          return validationError(route.ok ? "intent_mismatch" : route.code, "Cần đọc đúng duy nhất: kết thúc hand.");
+        }
+        let finish: AuthoritativeVoiceFinish;
+        try {
+          finish = await loadAuthoritativeVoiceFinish({
+            tournamentId: tournament_id,
+            tournamentTableId: tournament_table_id,
+            handId: hand_id,
+            snapshot,
+          });
+        } catch (error) {
+          const code = error instanceof Error ? error.message : "finish_requires_manual_showdown";
+          return validationError(
+            code === "finish_requires_manual_showdown" ? code : "finish_requires_manual_showdown",
+            "Server chưa đủ bằng chứng showdown/fold-win để lưu hand. Hãy dùng luồng sửa thủ công.",
+          );
+        }
+        const canonicalRequest = await buildVoiceFinishCanonicalRequest({
+          rawTranscript: final_transcript,
+          expectedStateVersion: snapshot.state_version,
+          payload: {
+            settlementOrigin: finish.settlement.settlementOrigin,
+            settlementDigest: finish.settlement.settlementDigest,
+          },
+        });
+        if (!voiceCanonicalRequestsMatch(voice_request, canonicalRequest)) {
+          return validationError("finish_proposal_stale", "Đề xuất Finish không còn khớp settlement server.");
+        }
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        const supabaseUrl = Deno.env.get("SUPABASE_URL");
+        if (!serviceKey || !supabaseUrl) throw new Error("tracker_voice_service_not_configured");
+        const service = createClient(supabaseUrl, serviceKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        result = await service.rpc("commit_tracker_voice_finish_v0", {
+          p_actor_user_id: user.id,
+          p_tournament_id: tournament_id,
+          p_tournament_table_id: tournament_table_id,
+          p_hand_id: hand_id,
+          p_provider_name: providerForVoiceRequest(provider_name),
+          p_provider_model: typeof provider_model === "string" ? provider_model : snapshot.provider_model,
+          p_provider_event_id: typeof provider_event_id === "string" ? provider_event_id : null,
+          p_final_transcript: final_transcript,
+          p_expected_state_version: snapshot.state_version,
+          p_idempotency_key: idempotency_key,
+          p_trace_id: trace_id,
+          p_settlement_origin: finish.settlement.settlementOrigin,
+          p_settlement_digest: finish.settlement.settlementDigest,
+          p_record_payload: {
+            hand_number: finish.handNumber,
+            hand_time: finish.handTime,
+            players: finish.settlement.recordPlayers,
+            actions: finish.settlement.recordActions,
+            side_pots: finish.settlement.sidePots,
+            community_cards: snapshot.community_cards,
+            pot_size: finish.settlement.potSize,
+          },
+        });
+        break;
+      }
       case "show_hole_cards": {
         const { hand_id, player_hole_cards } = body;
         result = await supabase.rpc("show_hole_cards", {
@@ -838,7 +1095,7 @@ Deno.serve(async (req) => {
     }
     // A JSONB denial from the canonical action RPC is an authoritative failure,
     // not a successful Edge envelope. This keeps non-Voice callers fail-closed too.
-    if ((action === "record_action" || action === "commit_voice_board") && result.data && typeof result.data === "object") {
+    if ((action === "record_action" || action === "commit_voice_board" || action === "commit_voice_finish") && result.data && typeof result.data === "object") {
       const verdict = result.data as { error?: unknown };
       if (typeof verdict.error === "string") {
         return new Response(JSON.stringify({ error: verdict.error, code: verdict.error }), {

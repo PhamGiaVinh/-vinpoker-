@@ -129,7 +129,9 @@ export type VoiceProposalFailureCode =
   | "duplicate_card"
   | "hole_cards_seat_not_found"
   | "hole_cards_local_draft_exists"
-  | "showdown_hole_cards_deferred_muck_authority";
+  | "showdown_hole_cards_deferred_muck_authority"
+  | "finish_requires_manual_showdown"
+  | "finish_proposal_stale";
 
 export interface ParsedVoiceBoardCommand {
   street: "flop" | "turn" | "river";
@@ -144,6 +146,12 @@ export interface ParsedVoiceHoleCardsCommand {
   normalizedTranscript: string;
   seatNumber: number;
   cards: readonly [string, string];
+}
+
+export interface ParsedVoiceFinishCommand {
+  kind: "finish_hand";
+  rawTranscript: string;
+  normalizedTranscript: string;
 }
 
 export interface VoiceBoardProposal {
@@ -198,6 +206,25 @@ export interface VoiceHoleCardsProposal {
   player: VoiceHoleCardsPlayer;
   expectedStateVersion: string | null;
   expectedWorkflowState: "runout_reveal";
+  expectedStreet: "showdown";
+}
+
+export interface VoiceFinishProposalContext {
+  handId: string | null;
+  workflowState: TrackerWorkflowState;
+  expectedStateVersion: string | null;
+  handStarted: boolean;
+  readOnly: boolean;
+  syncBlocked: boolean;
+  correctionPending: boolean;
+}
+
+export interface VoiceFinishProposal {
+  ok: true;
+  intentDomain: "finish_hand";
+  command: ParsedVoiceFinishCommand;
+  expectedStateVersion: string | null;
+  expectedWorkflowState: "submit_ready";
   expectedStreet: "showdown";
 }
 
@@ -319,6 +346,52 @@ export interface CommitVoiceHoleCardsInput {
   idempotencyKey: string;
   traceId: string;
   canonicalRequest: VoiceCanonicalRequest;
+}
+
+export interface PrepareVoiceFinishInput {
+  tournamentId: string;
+  tournamentTableId: string;
+  handId: string;
+  finalTranscript: string;
+  providerName: VoiceProviderKind;
+  providerModel: string;
+  providerEventId: string;
+  expectedStateVersion: string;
+}
+
+export interface VoiceFinishSummary {
+  winners: Array<{ player_id: string; seat_number: number; player_name: string | null; amount: number }>;
+  pots: Array<{ kind: "main" | "side"; amount: number; winner_ids: string[] }>;
+  ending_stacks: Array<{ player_id: string; seat_number: number; amount: number }>;
+  conservation_total: number;
+}
+
+export interface VoiceFinishProposalReceipt {
+  ok: true;
+  settlement_origin: "engine_fold_win" | "engine_showdown";
+  settlement_digest: string;
+  state_version: string;
+  summary: VoiceFinishSummary;
+}
+
+export interface CommitVoiceFinishInput extends PrepareVoiceFinishInput {
+  idempotencyKey: string;
+  traceId: string;
+  canonicalRequest: VoiceCanonicalRequest;
+}
+
+export interface VoiceFinishCommitReceipt {
+  ok: true;
+  voice_event_id: string;
+  canonical_receipt_event_id: string;
+  idempotency_key: string;
+  trace_id: string;
+  settlement_origin: "engine_fold_win" | "engine_showdown";
+  settlement_digest: string;
+  state_version_before: string;
+  state_version_after: string;
+  hand_id: string;
+  duplicate?: boolean;
 }
 
 /** The receipt intentionally excludes sensitive card codes and raw speech. */
