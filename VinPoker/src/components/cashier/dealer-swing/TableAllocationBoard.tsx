@@ -59,6 +59,8 @@ function segmentClasses(segment: TableAllocationSegment): string {
       return "border-warning bg-[repeating-linear-gradient(135deg,transparent_0,transparent_6px,rgba(245,158,11,0.18)_6px,rgba(245,158,11,0.18)_12px)] text-warning";
     case "shortage":
       return "border-warning bg-[repeating-linear-gradient(135deg,transparent_0,transparent_5px,rgba(245,158,11,0.26)_5px,rgba(245,158,11,0.26)_10px)] text-warning";
+    case "delayed":
+      return "border-warning bg-warning/20 text-warning";
     case "scheduled":
       return "border-border bg-muted/70 text-muted-foreground";
     case "conflict":
@@ -71,6 +73,7 @@ function segmentClasses(segment: TableAllocationSegment): string {
 function markerClasses(marker: TableAllocationMarker): string {
   if (marker.status === "conflict") return "border-destructive/60 bg-destructive/15 text-destructive";
   if (marker.status === "shortage") return "border-warning/70 bg-warning/15 text-warning";
+  if (marker.status === "delayed") return "border-warning/70 bg-warning/20 text-warning";
   if (marker.status === "predicted") return "border-warning/60 bg-warning/10 text-warning";
   return "border-success/60 bg-success/10 text-success";
 }
@@ -90,10 +93,16 @@ function segmentWidth(segment: TableAllocationSegment, windowStartMs: number): n
   return Math.max(0, end - start);
 }
 
-function markerPosition(marker: TableAllocationMarker, windowStartMs: number): number {
-  const atMs = marker.at ? new Date(marker.at).getTime() : windowStartMs;
-  if (!Number.isFinite(atMs)) return 0;
-  return Math.max(0, Math.min(TIMELINE_WIDTH_PX, ((atMs - windowStartMs) / 60_000) * PIXELS_PER_MINUTE));
+function markerPosition(marker: TableAllocationMarker, windowStartMs: number): number | null {
+  if (!marker.at) return null;
+  const atMs = new Date(marker.at).getTime();
+  const windowEndMs = windowStartMs + TABLE_ALLOCATION_WINDOW_MINUTES * 60_000;
+  if (!Number.isFinite(atMs) || atMs < windowStartMs || atMs > windowEndMs) return null;
+  return ((atMs - windowStartMs) / 60_000) * PIXELS_PER_MINUTE;
+}
+
+function markerText(marker: TableAllocationMarker): string {
+  return marker.dealerName ? `${marker.label} · ${marker.dealerName}` : marker.label;
 }
 
 function segmentAriaLabel(row: TableAllocationRow, segment: TableAllocationSegment): string {
@@ -139,8 +148,9 @@ function TimelineHeader({ windowStartMs }: { windowStartMs: number }) {
 }
 
 function TimelineRow({ row, windowStartMs }: { row: TableAllocationRow; windowStartMs: number }) {
+  const untimedMarkers = row.markers.filter((marker) => marker.at == null);
   return (
-    <div className="relative h-[60px]" style={{ width: TIMELINE_WIDTH_PX }}>
+    <div className="relative h-[76px]" style={{ width: TIMELINE_WIDTH_PX }}>
       {Array.from({ length: TABLE_ALLOCATION_WINDOW_MINUTES / 15 + 1 }, (_, index) => (
         <span
           key={index}
@@ -158,7 +168,7 @@ function TimelineRow({ row, windowStartMs }: { row: TableAllocationRow; windowSt
           <div
             key={segment.id}
             aria-label={segmentAriaLabel(row, segment)}
-            className={`absolute top-[17px] z-10 flex h-9 min-w-0 items-center border px-2 text-[11px] leading-tight shadow-sm ${segment.openEnded ? "table-allocation-open-edge" : ""} ${segmentClasses(segment)}`}
+            className={`absolute top-[20px] z-10 flex h-9 min-w-0 items-center border px-2 text-[11px] leading-tight shadow-sm ${segment.openEnded ? "table-allocation-open-edge" : ""} ${segmentClasses(segment)}`}
             style={{ left: segmentPosition(segment, windowStartMs), width }}
             title={segmentAriaLabel(row, segment)}
           >
@@ -167,17 +177,35 @@ function TimelineRow({ row, windowStartMs }: { row: TableAllocationRow; windowSt
           </div>
         );
       })}
-      {row.markers.map((marker) => (
-        <span
-          key={marker.id}
-          aria-label={markerAriaLabel(row, marker)}
-          className={`absolute top-0 z-20 max-w-40 -translate-x-1/2 truncate rounded border px-1.5 py-0.5 text-[9px] font-semibold leading-3 shadow-sm ${markerClasses(marker)}`}
-          style={{ left: markerPosition(marker, windowStartMs) }}
-          title={markerAriaLabel(row, marker)}
-        >
-          {marker.label}
-        </span>
-      ))}
+      {row.markers.map((marker) => {
+        const position = markerPosition(marker, windowStartMs);
+        if (position == null) return null;
+        return (
+          <span
+            key={marker.id}
+            aria-label={markerAriaLabel(row, marker)}
+            className={`absolute top-0 z-20 max-w-40 -translate-x-1/2 truncate rounded border px-1.5 py-0.5 text-[9px] font-semibold leading-3 shadow-sm ${markerClasses(marker)}`}
+            style={{ left: position }}
+            title={markerAriaLabel(row, marker)}
+          >
+            {markerText(marker)}
+          </span>
+        );
+      })}
+      {untimedMarkers.length > 0 && (
+        <div data-testid="untimed-marker-rail" className="absolute inset-x-2 bottom-1 z-20 flex gap-1 overflow-hidden">
+          {untimedMarkers.map((marker) => (
+            <span
+              key={marker.id}
+              aria-label={markerAriaLabel(row, marker)}
+              className={`max-w-40 truncate rounded border px-1.5 py-0.5 text-[9px] font-semibold leading-3 shadow-sm ${markerClasses(marker)}`}
+              title={markerAriaLabel(row, marker)}
+            >
+              {markerText(marker)}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

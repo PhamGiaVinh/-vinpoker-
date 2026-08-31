@@ -121,6 +121,57 @@ describe("TableAllocationBoard", () => {
     expect(screen.getByTitle(/Dealer A/)).toHaveAttribute("aria-label", expect.stringContaining("Dealer A"));
   });
 
+  it("renders untimed markers in a separate rail instead of anchoring them at NOW", () => {
+    render(
+      <TableAllocationBoard
+        tables={[table]}
+        canonicalAssignments={[current]}
+        activeRawData={[current]}
+        scheduleRows={[{ ...next, planned_relief_at: null }]}
+        selectedTour={null}
+        nowMs={nowMs}
+        loading={false}
+        error={null}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("untimed-marker-rail")).toHaveTextContent("LỊCH CHƯA CÓ GIỜ");
+    expect(screen.getByTitle(/LỊCH CHƯA CÓ GIỜ/)).not.toHaveStyle({ left: "0px" });
+  });
+
+  it("does not clamp out-of-window markers, while an overdue marker stays visible at NOW", () => {
+    const { rerender } = render(
+      <TableAllocationBoard
+        tables={[table]}
+        canonicalAssignments={[current]}
+        activeRawData={[current]}
+        scheduleRows={[{ ...next, out_attendance_id: "attendance-other", planned_relief_at: "2026-08-28T14:00:00.000Z" }]}
+        selectedTour={null}
+        nowMs={nowMs}
+        loading={false}
+        error={null}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTitle(/LỊCH KHÔNG KHỚP DEALER/)).not.toBeInTheDocument();
+
+    rerender(
+      <TableAllocationBoard
+        tables={[table]}
+        canonicalAssignments={[current]}
+        activeRawData={[current]}
+        scheduleRows={[{ ...next, planned_relief_at: "2026-08-28T11:30:00.000Z" }]}
+        selectedTour={null}
+        nowMs={nowMs}
+        loading={false}
+        error={null}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.getByTitle(/CHỐT QUÁ GIỜ/)).toHaveStyle({ left: "0px" });
+  });
+
   it("keeps the error visible and retries through the supplied parent flow", () => {
     const onRetry = vi.fn();
     render(

@@ -13,7 +13,8 @@ export type TableAllocationSegmentStatus =
   | "gap"
   | "scheduled"
   | "conflict"
-  | "shortage";
+  | "shortage"
+  | "delayed";
 
 export interface TableAllocationSegment {
   id: string;
@@ -131,7 +132,12 @@ function hasOpeningEvidence(
     });
 }
 
+function hasDelayedIncomingDealer(row: RotationScheduleRow): boolean {
+  return row.is_shortage && Boolean(row.in_attendance_id);
+}
+
 function futureSegmentStatus(row: RotationScheduleRow): TableAllocationSegmentStatus {
+  if (hasDelayedIncomingDealer(row)) return "delayed";
   if (row.is_shortage) return "shortage";
   if (row.status === "predicted") return "predicted";
   if (row.status === "executing") return "executing";
@@ -139,6 +145,7 @@ function futureSegmentStatus(row: RotationScheduleRow): TableAllocationSegmentSt
 }
 
 function futureSegmentLabel(row: RotationScheduleRow): string {
+  if (hasDelayedIncomingDealer(row)) return "DỰ KIẾN TRỄ";
   if (row.is_shortage) return "THIẾU DEALER DỰ KIẾN";
   if (row.status === "predicted") return "DỰ ĐOÁN";
   if (row.status === "executing") return "ĐANG THỰC HIỆN";
@@ -146,6 +153,7 @@ function futureSegmentLabel(row: RotationScheduleRow): string {
 }
 
 function overdueLabel(row: RotationScheduleRow): string {
+  if (hasDelayedIncomingDealer(row)) return "DỰ KIẾN TRỄ QUÁ GIỜ";
   if (row.is_shortage) return "THIẾU DEALER DỰ KIẾN QUÁ GIỜ";
   if (row.status === "predicted") return "DỰ ĐOÁN QUÁ GIỜ";
   if (row.status === "executing") return "ĐANG THỰC HIỆN";
@@ -161,7 +169,7 @@ function markerFor(
   return {
     id: `marker:${row.id}:${label}`,
     tableId: row.table_id,
-    dealerName: row.is_shortage ? null : row.in_dealer_name,
+    dealerName: row.in_attendance_id ? row.in_dealer_name : null,
     at,
     status,
     label,
@@ -256,10 +264,15 @@ function buildTimeline(
 
   for (const slot of slots) {
     const plannedMs = parseTimestamp(slot.planned_relief_at);
-    const visibleAt = plannedMs == null ? null : toIso(Math.max(plannedMs, nowMs));
+    const markerAt = plannedMs == null ? null : toIso(plannedMs <= nowMs ? nowMs : plannedMs);
 
     if (chainBroken || slot.slot_index !== expectedSlotIndex) {
-      markers.push(markerFor(slot, visibleAt, plannedMs == null ? "LỊCH CHƯA CÓ GIỜ" : "LỊCH KHÔNG LIÊN TỤC", "conflict"));
+      const label = plannedMs == null
+        ? "LỊCH CHƯA CÓ GIỜ"
+        : plannedMs <= nowMs
+          ? overdueLabel(slot)
+          : "LỊCH KHÔNG LIÊN TỤC";
+      markers.push(markerFor(slot, markerAt, label, plannedMs != null && plannedMs <= nowMs ? futureSegmentStatus(slot) : "conflict"));
       chainBroken = true;
       continue;
     }
@@ -277,6 +290,11 @@ function buildTimeline(
     }
     if (plannedMs <= priorBoundaryMs) {
       markers.push(markerFor(slot, toIso(plannedMs), "MỐC ĐỔI CA KHÔNG HỢP LỆ", "conflict"));
+      chainBroken = true;
+      continue;
+    }
+    if (slot.slot_index === 0 && canonical && slot.assignment_id && slot.assignment_id !== canonical.id) {
+      markers.push(markerFor(slot, toIso(plannedMs), "LỊCH THUỘC ASSIGNMENT CŨ", "conflict"));
       chainBroken = true;
       continue;
     }
@@ -303,7 +321,7 @@ function buildTimeline(
     segments.push({
       id: `rotation:${slot.id}`,
       tableId: table.id,
-      dealerName: slot.is_shortage ? null : slot.in_dealer_name,
+      dealerName: slot.in_attendance_id ? slot.in_dealer_name : null,
       startAt: toIso(plannedMs),
       endAt: null,
       openEnded: true,
