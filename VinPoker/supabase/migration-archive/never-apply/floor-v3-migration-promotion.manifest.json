@@ -13,24 +13,17 @@
       "runtimeEdgeDependency": false
     },
     {
-      "version": "20270113000003",
-      "filename": "20270113000003_floor_table_control_v3_server_contract.sql",
-      "sha256": "6aa40b46833eb3918f5036ea08c28db42b177f193ec63737255a8027c4b0f425",
+      "version": "20270113000010",
+      "filename": "20270113000010_floor_table_control_v3_final_live_bridge.sql",
+      "sha256": "6c3cb7020e5bde8b058749eedd640b0fd5315d00345a77ffc6d5da5e2439d66c",
       "dependencies": ["20270113000002"],
       "runtimeEdgeDependency": false
     },
     {
-      "version": "20270113000005",
-      "filename": "20270113000005_floor_table_control_v3_contract_hardening.sql",
-      "sha256": "c8a0ffcddc91c1ccdb38f0698a598efb027f22dad73206c77453475f6e022d49",
-      "dependencies": ["20270113000003"],
-      "runtimeEdgeDependency": false
-    },
-    {
-      "version": "20270113000006",
-      "filename": "20270113000006_floor_table_control_v3_roster_read_contract.sql",
-      "sha256": "b0044bebd92430332a48a0ae9f62e22365b3c871eede8b1293e4df08dadb4ab6",
-      "dependencies": ["20270113000005"],
+      "version": "20270113000011",
+      "filename": "20270113000011_floor_table_control_v3_final_contract.sql",
+      "sha256": "0b342eebd5eeabe1e648969921005dfd34d22e733dedf7b1acf38fd860895db4",
+      "dependencies": ["20270113000010"],
       "runtimeEdgeDependency": false
     }
   ],
@@ -88,6 +81,60 @@
       "classification": "ALIAS_APPLIED_DO_NOT_REPLAY_HISTORICAL_SOURCE_PRESERVED",
       "replacementStatus": "ACTUAL_DELTA_ONLY",
       "restoreCondition": "inspect live contract first; create a new migration only for a verified delta"
+    },
+    {
+      "originalVersion": "20270113000003",
+      "filename": "20270113000003_floor_table_control_v3_server_contract.sql",
+      "originalPath": "supabase/migrations/20270113000003_floor_table_control_v3_server_contract.sql",
+      "archivePath": "supabase/migration-archive/never-apply/20270113000003_floor_table_control_v3_server_contract.sql",
+      "sha256": "6aa40b46833eb3918f5036ea08c28db42b177f193ec63737255a8027c4b0f425",
+      "domain": "floor-v3",
+      "lineageEvidence": {
+        "exactLedgerVersion": null,
+        "aliasLedgerVersion": null,
+        "schemaEffects": "FAILED_BEFORE_LEDGER",
+        "provenance": "FAILED_BEFORE_LEDGER"
+      },
+      "reason": "historical Floor V3 server contract failed before a migration ledger row and is superseded by the final bridge plus consolidated contract",
+      "classification": "FAILED_BEFORE_LEDGER / REPLAY_FORBIDDEN",
+      "replacementStatus": "SUPERSEDED_BY_20270113000010_AND_20270113000011",
+      "restoreCondition": "never replay this historical source; use the final source-only bridge and contract"
+    },
+    {
+      "originalVersion": "20270113000005",
+      "filename": "20270113000005_floor_table_control_v3_contract_hardening.sql",
+      "originalPath": "supabase/migrations/20270113000005_floor_table_control_v3_contract_hardening.sql",
+      "archivePath": "supabase/migration-archive/never-apply/20270113000005_floor_table_control_v3_contract_hardening.sql",
+      "sha256": "c8a0ffcddc91c1ccdb38f0698a598efb027f22dad73206c77453475f6e022d49",
+      "domain": "floor-v3",
+      "lineageEvidence": {
+        "exactLedgerVersion": null,
+        "aliasLedgerVersion": null,
+        "schemaEffects": "NOT_APPLIED",
+        "provenance": "NEVER_APPLIED"
+      },
+      "reason": "historical Floor V3 hardening was never applied and is consolidated into the final V3 contract",
+      "classification": "NEVER_APPLIED / SUPERSEDED",
+      "replacementStatus": "SUPERSEDED_BY_20270113000011",
+      "restoreCondition": "never replay this historical source; use the final consolidated contract"
+    },
+    {
+      "originalVersion": "20270113000006",
+      "filename": "20270113000006_floor_table_control_v3_roster_read_contract.sql",
+      "originalPath": "supabase/migrations/20270113000006_floor_table_control_v3_roster_read_contract.sql",
+      "archivePath": "supabase/migration-archive/never-apply/20270113000006_floor_table_control_v3_roster_read_contract.sql",
+      "sha256": "b0044bebd92430332a48a0ae9f62e22365b3c871eede8b1293e4df08dadb4ab6",
+      "domain": "floor-v3",
+      "lineageEvidence": {
+        "exactLedgerVersion": null,
+        "aliasLedgerVersion": null,
+        "schemaEffects": "NOT_APPLIED",
+        "provenance": "NEVER_APPLIED"
+      },
+      "reason": "historical Floor V3 roster reader was never applied and is consolidated into the final V3 contract",
+      "classification": "NEVER_APPLIED / SUPERSEDED",
+      "replacementStatus": "SUPERSEDED_BY_20270113000011",
+      "restoreCondition": "never replay this historical source; use the final consolidated contract"
     }
   ]
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -14,9 +14,8 @@ import {
 
 const FLOOR = [
   ["20270113000002", "20270113000002_floor.sql", "floor two"],
-  ["20270113000003", "20270113000003_floor.sql", "floor three"],
-  ["20270113000005", "20270113000005_floor.sql", "floor five"],
-  ["20270113000006", "20270113000006_floor.sql", "floor six"],
+  ["20270113000010", "20270113000010_floor_bridge.sql", "floor bridge"],
+  ["20270113000011", "20270113000011_floor_contract.sql", "floor contract"],
 ];
 const HELD = [
   ["20270113000000", "20270113000000_payroll.sql", "payroll zero"],
@@ -189,7 +188,7 @@ test("historical ledger gaps are diagnostic, not executable pending migrations",
   const result = runFixture({}, ["20270101000000"], exactPlan);
   assert.equal(result.pass, true);
   assert.equal(result.status, "FLOOR_V3_MIGRATION_PROMOTION_SOURCE_READY");
-  assert.equal(result.historicalLedgerGaps.length, 4);
+  assert.equal(result.historicalLedgerGaps.length, 3);
   assert.deepEqual(
     result.actualDefaultPushPlan.map(({ filename }) => filename),
     FLOOR.map(([, filename]) => filename),
@@ -240,6 +239,51 @@ test("detects archival hash drift before any deployment can be planned", () => {
   assert.equal(result.pass, false);
   assert.equal(result.status, "PROMOTION_MANIFEST_HASH_DRIFT");
   assert.match(result.failures.join("\n"), /held migration hash drift/);
+});
+
+test("subtracts an already-applied Floor foundation from the expected linked dry-run", () => {
+  const result = runFixture(
+    {},
+    [FLOOR[0][0]],
+    {
+      ...exactPlan,
+      plannedMigrations: exactPlan.plannedMigrations.slice(1),
+    },
+  );
+  assert.equal(result.pass, true);
+  assert.deepEqual(
+    result.actualDefaultPushPlan.map(({ filename }) => filename),
+    FLOOR.slice(1).map(([, filename]) => filename),
+  );
+});
+
+test("allows only the explicit never-applied superseded containment classification", () => {
+  const paths = fixture();
+  try {
+    const manifest = JSON.parse(readFileSync(paths.manifestPath, "utf8"));
+    manifest.heldSources[1].classification = "NEVER_APPLIED / SUPERSEDED";
+    writeFileSync(paths.manifestPath, JSON.stringify(manifest), "utf8");
+    const accepted = evaluatePromotion({
+      migrationDirectory: paths.migrations,
+      archiveDirectory: paths.archive,
+      manifestPath: paths.manifestPath,
+      pushPlan: exactPlan,
+    });
+    assert.equal(accepted.pass, true);
+
+    manifest.heldSources[1].classification = "UNAPPLIED_UNSAFE";
+    writeFileSync(paths.manifestPath, JSON.stringify(manifest), "utf8");
+    const rejected = evaluatePromotion({
+      migrationDirectory: paths.migrations,
+      archiveDirectory: paths.archive,
+      manifestPath: paths.manifestPath,
+      pushPlan: exactPlan,
+    });
+    assert.equal(rejected.pass, false);
+    assert.match(rejected.failures.join("\n"), /obsolete unapplied classification/);
+  } finally {
+    rmSync(paths.root, { recursive: true, force: true });
+  }
 });
 
 test("normalizes a CLI path entry to its safe basename", () => {

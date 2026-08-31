@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Floor Table Control V3 — Preview/disposable-only authenticated writer grants
 -- ============================================================================
--- Depends on: 20270113000006_floor_table_control_v3_roster_read_contract.sql
+-- Depends on: 20270113000011_floor_table_control_v3_final_contract.sql
 --
 -- This file is deliberately outside supabase/migrations and must never be
 -- applied to production. It exists only for the disposable database suite and

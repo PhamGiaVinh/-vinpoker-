@@ -64,6 +64,30 @@ test("rejects the duplicate-version Floor contract in the active catalog", () =>
   );
 });
 
+test("rejects the contained Floor V3 server-contract chain in the active catalog", () => {
+  const cases = [
+    [
+      "20270113000003_floor_table_control_v3_server_contract.sql",
+      "failed-before-ledger Floor V3 contract belongs in migration-archive/never-apply",
+    ],
+    [
+      "20270113000005_floor_table_control_v3_contract_hardening.sql",
+      "never-applied superseded Floor V3 hardening belongs in migration-archive/never-apply",
+    ],
+    [
+      "20270113000006_floor_table_control_v3_roster_read_contract.sql",
+      "never-applied superseded Floor V3 roster contract belongs in migration-archive/never-apply",
+    ],
+  ];
+  for (const [filename, reason] of cases) {
+    withCatalog([filename], (migrations) => {
+      assert.deepEqual(findMigrationCatalogProblems(migrations), [
+        `forbidden active migration ${filename}: ${reason}`,
+      ]);
+    });
+  }
+});
+
 test("rejects held Payroll PDF migration in the active catalog", () => {
   withCatalog(
     ["20270113000000_dealer_payroll_statement_pdf_storage.sql"],

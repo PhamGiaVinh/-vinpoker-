@@ -52,6 +52,18 @@ const FORBIDDEN_ACTIVE_MIGRATION_FILENAMES = new Map([
     "duplicate-version Floor contract belongs in migration-archive/never-apply",
   ],
   [
+    "20270113000003_floor_table_control_v3_server_contract.sql",
+    "failed-before-ledger Floor V3 contract belongs in migration-archive/never-apply",
+  ],
+  [
+    "20270113000005_floor_table_control_v3_contract_hardening.sql",
+    "never-applied superseded Floor V3 hardening belongs in migration-archive/never-apply",
+  ],
+  [
+    "20270113000006_floor_table_control_v3_roster_read_contract.sql",
+    "never-applied superseded Floor V3 roster contract belongs in migration-archive/never-apply",
+  ],
+  [
     "20260428144425_53b3e896-323b-45b5-82e3-921bdaccaa91.sql",
     "credential-bearing production cron belongs in migration-archive/removed-sensitive",
   ],

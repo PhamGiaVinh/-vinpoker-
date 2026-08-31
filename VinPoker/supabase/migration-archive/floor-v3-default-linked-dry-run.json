@@ -7,24 +7,16 @@
   "cliExitCode": 0,
   "plannedMigrations": [
     {
-      "version": "20270113000002",
-      "filename": "20270113000002_floor_table_control_v3_foundation.sql"
+      "version": "20270113000010",
+      "filename": "20270113000010_floor_table_control_v3_final_live_bridge.sql"
     },
     {
-      "version": "20270113000003",
-      "filename": "20270113000003_floor_table_control_v3_server_contract.sql"
-    },
-    {
-      "version": "20270113000005",
-      "filename": "20270113000005_floor_table_control_v3_contract_hardening.sql"
-    },
-    {
-      "version": "20270113000006",
-      "filename": "20270113000006_floor_table_control_v3_roster_read_contract.sql"
+      "version": "20270113000011",
+      "filename": "20270113000011_floor_table_control_v3_final_contract.sql"
     }
   ],
   "extraPlannedCount": 0,
   "missingFloorCount": 0,
-  "source": "linked CLI dry-run output captured on reconciled source branch",
+  "source": "linked CLI dry-run output captured after final Floor V3 containment",
   "productionMutation": false
 }

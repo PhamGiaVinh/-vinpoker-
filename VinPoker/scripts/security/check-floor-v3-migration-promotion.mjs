@@ -10,6 +10,12 @@ const STATIC_READY = "PROMOTION_STATIC_PASS";
 const CLI_BLOCKED = "FLOOR_V3_PROMOTION_BLOCKED_SUPABASE_CLI";
 const ACTUAL_EXTRA_PUSH = "FLOOR_V3_PROMOTION_BLOCKED_ACTUAL_EXTRA_PUSH";
 const HISTORY_SYNC_BLOCKED = "FLOOR_V3_PROMOTION_BLOCKED_HISTORY_SYNC";
+// The catalog has two explicit historical sources that were never applied and
+// are now superseded by the final consolidated V3 contract.  Preserve that
+// provenance without treating the word "UNAPPLIED" as a replay instruction.
+const ALLOWED_HELD_UNAPPLIED_CLASSIFICATIONS = new Set([
+  "NEVER_APPLIED / SUPERSEDED",
+]);
 
 function sha256(path) {
   // Git stores these SQL files with LF; normalize checkout line endings so the
@@ -250,7 +256,8 @@ function evaluatePromotion({
     }
     if (
       typeof held.classification !== "string" ||
-      /UNAPPLIED/u.test(held.classification)
+      (/UNAPPLIED/u.test(held.classification) &&
+        !ALLOWED_HELD_UNAPPLIED_CLASSIFICATIONS.has(held.classification))
     ) {
       failures.push(
         `held migration has obsolete unapplied classification: ${held.filename}`,
@@ -267,6 +274,11 @@ function evaluatePromotion({
   const expectedFloorFilenames = manifest.floorActiveAllowlist.map(
     (entry) => entry.filename,
   );
+  const expectedPushFilenames = appliedVersions
+    ? manifest.floorActiveAllowlist
+        .filter((entry) => !appliedVersions.has(entry.version))
+        .map((entry) => entry.filename)
+    : expectedFloorFilenames;
 
   if (reconciliationManifestPath) {
     try {
@@ -387,9 +399,9 @@ function evaluatePromotion({
       actualDefaultPushPlan = plannedMigrations;
       const actualFilenames = plannedMigrations.map((entry) => entry.filename);
       const extra = actualFilenames.filter(
-        (filename) => !expectedFloorFilenames.includes(filename),
+        (filename) => !expectedPushFilenames.includes(filename),
       );
-      const missing = expectedFloorFilenames.filter(
+      const missing = expectedPushFilenames.filter(
         (filename) => !actualFilenames.includes(filename),
       );
       if (extra.length > 0) {
@@ -399,11 +411,11 @@ function evaluatePromotion({
       } else if (
         missing.length > 0 ||
         actualFilenames.some(
-          (filename, index) => filename !== expectedFloorFilenames[index],
+          (filename, index) => filename !== expectedPushFilenames[index],
         )
       ) {
         failures.push(
-          `actual default push plan mismatch: expected ${expectedFloorFilenames.join(", ")}, actual ${actualFilenames.join(", ")}`,
+          `actual default push plan mismatch: expected ${expectedPushFilenames.join(", ")}, actual ${actualFilenames.join(", ")}`,
         );
       }
     }

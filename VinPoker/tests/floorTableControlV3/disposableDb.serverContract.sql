@@ -24,8 +24,11 @@ CREATE TABLE public.clubs (
 CREATE TABLE public.tournaments (
   id uuid PRIMARY KEY,
   club_id uuid NOT NULL REFERENCES public.clubs(id),
+  name text NOT NULL DEFAULT 'TEST Tournament',
   status text NOT NULL DEFAULT 'registration',
-  players_remaining integer NOT NULL DEFAULT 0
+  players_remaining integer NOT NULL DEFAULT 0,
+  deleted_at timestamptz,
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.game_tables (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -38,9 +41,12 @@ CREATE TABLE public.tournament_tables (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id uuid NOT NULL REFERENCES public.tournaments(id),
   table_id uuid REFERENCES public.game_tables(id),
+  table_name text,
   table_number integer,
   max_seats integer NOT NULL DEFAULT 9,
   status text NOT NULL DEFAULT 'active',
+  floor_control_mode text NOT NULL DEFAULT 'manual',
+  floor_control_revision bigint NOT NULL DEFAULT 0,
   -- The V3 inventory contract orders historical tournament assignments by
   -- creation time. Keep the disposable schema aligned with that public read
   -- contract instead of weakening the production query for a fixture.
@@ -73,16 +79,20 @@ CREATE TABLE public.tournament_seats (
   is_active boolean NOT NULL DEFAULT true,
   status text NOT NULL DEFAULT 'active',
   assigned_by uuid,
-  assigned_at timestamptz
+  assigned_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.tournament_hands (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id uuid NOT NULL REFERENCES public.tournaments(id),
   table_id uuid NOT NULL,
-  status text NOT NULL DEFAULT 'in_progress'
+  status text NOT NULL DEFAULT 'in_progress',
+  is_voided boolean NOT NULL DEFAULT false,
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.dealer_assignments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_id uuid,
   table_id uuid NOT NULL REFERENCES public.game_tables(id),
   assigned_at timestamptz NOT NULL DEFAULT now(),
   status text NOT NULL DEFAULT 'assigned',
@@ -148,16 +158,24 @@ BEGIN
 END;
 $$;
 
--- Pre-migration fixtures deliberately model the legacy physical-table state:
--- table 7 is in maintenance and its tournament assignment still uses the
--- permanent UNIQUE(table_id) contract that PR2 must transition safely.
+-- Pre-migration fixtures deliberately model the legacy physical-table state.
+-- The exact STAGE_TEST rows are cross-club contamination and must be
+-- quarantined before the one real operational assignment is bridged.
 INSERT INTO public.clubs (id, owner_id) VALUES
   ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001'),
-  ('00000000-0000-0000-0000-000000000020', '00000000-0000-0000-0000-000000000099');
-INSERT INTO public.tournaments (id, club_id) VALUES
-  ('00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000010');
+  ('00000000-0000-0000-0000-000000000020', '00000000-0000-0000-0000-000000000099'),
+  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111'),
+  ('33333333-3333-3333-3333-333333333333', '33333333-3333-3333-3333-333333333333');
+INSERT INTO public.tournaments (id, club_id, name, status) VALUES
+  ('00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000010', 'Operational Tournament', 'active'),
+  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111', 'STAGE_TEST Tournament', 'active');
+UPDATE public.tournaments
+SET updated_at = '2026-06-13 03:57:08.065228+07'
+WHERE id = '11111111-1111-1111-1111-111111111111';
 INSERT INTO public.game_tables (id, club_id, table_name, status) VALUES
-  ('00000000-0000-0000-0000-000000000504', '00000000-0000-0000-0000-000000000010', 'Bàn 7', 'maintenance');
+  ('00000000-0000-0000-0000-000000000504', '00000000-0000-0000-0000-000000000010', 'Bàn 7', 'maintenance'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '33333333-3333-3333-3333-333333333333', 'TEST-T1', 'inactive'),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '33333333-3333-3333-3333-333333333333', 'TEST-T2', 'inactive');
 ALTER TABLE public.tournament_tables
   ADD CONSTRAINT tournament_tables_table_id_legacy_key UNIQUE (table_id);
 INSERT INTO public.tournament_tables (id, tournament_id, table_id, table_number, status) VALUES
@@ -169,35 +187,58 @@ INSERT INTO public.tournament_tables (id, tournament_id, table_id, table_number,
     'active'
   );
 
+INSERT INTO public.tournament_tables (id, tournament_id, table_id, table_number, status) VALUES
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 1, 'active'),
+  ('dddddddd-dddd-dddd-dddd-dddddddddddd', '11111111-1111-1111-1111-111111111111', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 2, 'active');
+INSERT INTO public.tournament_entries (id, tournament_id, player_id, entry_no, status, updated_at) VALUES
+  ('11111111-1111-1111-1111-111111111201', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111301', 1, 'seated', '2026-06-13 03:57:08.065228+07'),
+  ('11111111-1111-1111-1111-111111111202', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111302', 1, 'seated', '2026-06-13 03:57:08.065228+07'),
+  ('11111111-1111-1111-1111-111111111203', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111303', 1, 'registered', '2026-06-13 03:57:08.065228+07'),
+  ('11111111-1111-1111-1111-111111111204', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111304', 1, 'registered', '2026-06-13 03:57:08.065228+07'),
+  ('11111111-1111-1111-1111-111111111205', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111305', 1, 'registered', '2026-06-13 03:57:08.065228+07');
+INSERT INTO public.tournament_seats (tournament_id, player_id, entry_number, table_id, seat_number, entry_id, is_active, status, created_at) VALUES
+  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111301', 1, 'cccccccc-cccc-cccc-cccc-cccccccccccc', 1, '11111111-1111-1111-1111-111111111201', true, 'active', '2026-06-13 03:57:08.065228+07'),
+  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111302', 1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 1, '11111111-1111-1111-1111-111111111202', true, 'active', '2026-06-13 03:57:08.065228+07'),
+  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111303', 1, 'cccccccc-cccc-cccc-cccc-cccccccccccc', 2, '11111111-1111-1111-1111-111111111203', false, 'moved', '2026-06-13 03:57:08.065228+07'),
+  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111304', 1, 'cccccccc-cccc-cccc-cccc-cccccccccccc', 3, '11111111-1111-1111-1111-111111111204', false, 'moved', '2026-06-13 03:57:08.065228+07'),
+  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111305', 1, 'cccccccc-cccc-cccc-cccc-cccccccccccc', 4, '11111111-1111-1111-1111-111111111205', false, 'moved', '2026-06-13 03:57:08.065228+07'),
+  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111301', 1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 2, '11111111-1111-1111-1111-111111111201', false, 'moved', '2026-06-13 03:57:08.065228+07'),
+  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111302', 1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 3, '11111111-1111-1111-1111-111111111202', false, 'moved', '2026-06-13 03:57:08.065228+07'),
+  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111303', 1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 4, '11111111-1111-1111-1111-111111111203', false, 'moved', '2026-06-13 03:57:08.065228+07'),
+  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111304', 1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 5, '11111111-1111-1111-1111-111111111204', false, 'moved', '2026-06-13 03:57:08.065228+07');
+
 \ir ../../supabase/migrations/20270113000002_floor_table_control_v3_foundation.sql
 
--- Exact-ID fixture mapping for the one historical assignment.  This models
--- the owner-gated prerequisite that must be true before PR2 can replace the
--- permanent legacy UNIQUE(table_id) constraint; no automatic backfill exists.
-INSERT INTO public.table_sessions (
-  id, club_id, game_table_id, session_type, tournament_id, control_mode,
-  control_epoch, revision, opened_by, closed_at, closed_by
-) VALUES (
-  '00000000-0000-0000-0000-000000000600',
-  '00000000-0000-0000-0000-000000000010',
-  '00000000-0000-0000-0000-000000000504',
-  'tournament',
-  '00000000-0000-0000-0000-000000000100',
-  'manual',
-  1,
-  1,
-  '00000000-0000-0000-0000-000000000001',
-  now(),
-  '00000000-0000-0000-0000-000000000001'
-);
-UPDATE public.tournament_tables
-SET game_table_id = '00000000-0000-0000-0000-000000000504',
-    table_session_id = '00000000-0000-0000-0000-000000000600'
-WHERE id = '00000000-0000-0000-0000-000000000700';
+INSERT INTO public.tournament_entries (id, tournament_id, player_id, entry_no, current_stack, status) VALUES
+  ('00000000-0000-0000-0000-000000000711', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000911', 1, 40000, 'seated'),
+  ('00000000-0000-0000-0000-000000000712', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000912', 1, 50000, 'seated');
+INSERT INTO public.tournament_seats (tournament_id, player_id, entry_number, table_id, seat_number, chip_count, entry_id, is_active, status) VALUES
+  ('00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000911', 1, '00000000-0000-0000-0000-000000000700', 1, 40000, '00000000-0000-0000-0000-000000000711', true, 'active'),
+  ('00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000912', 1, '00000000-0000-0000-0000-000000000504', 2, 50000, '00000000-0000-0000-0000-000000000712', true, 'active');
+INSERT INTO public.tournament_hands (id, tournament_id, table_id, status, is_voided) VALUES
+  ('00000000-0000-0000-0000-000000000950', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000700', 'in_progress', false);
+INSERT INTO public.dealer_assignments (id, club_id, table_id, status, released_at) VALUES
+  ('00000000-0000-0000-0000-000000000960', '00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000504', 'assigned', null);
 
-\ir ../../supabase/migrations/20270113000003_floor_table_control_v3_server_contract.sql
-\ir ../../supabase/migrations/20270113000005_floor_table_control_v3_contract_hardening.sql
-\ir ../../supabase/migrations/20270113000006_floor_table_control_v3_roster_read_contract.sql
+\ir ../../supabase/migrations/20270113000010_floor_table_control_v3_final_live_bridge.sql
+
+SELECT public.floor_table_v3_assert(
+  (SELECT status = 'cancelled' AND deleted_at IS NOT NULL FROM public.tournaments WHERE id = '11111111-1111-1111-1111-111111111111')
+  AND (SELECT count(*) = 2 FROM public.tournament_tables WHERE id IN ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'dddddddd-dddd-dddd-dddd-dddddddddddd') AND status = 'closed')
+  AND (SELECT count(*) = 2 FROM public.game_tables WHERE id IN ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb') AND club_id = '33333333-3333-3333-3333-333333333333')
+  AND (SELECT count(*) = 5 FROM public.tournament_entries WHERE tournament_id = '11111111-1111-1111-1111-111111111111')
+  AND (SELECT count(*) = 9 FROM public.tournament_seats WHERE tournament_id = '11111111-1111-1111-1111-111111111111'),
+  'STAGE_TEST fixture is quarantined without mutating foreign physical tables'
+);
+SELECT public.floor_table_v3_assert(
+  (SELECT game_table_id = '00000000-0000-0000-0000-000000000504' AND table_session_id IS NOT NULL FROM public.tournament_tables WHERE id = '00000000-0000-0000-0000-000000000700')
+  AND (SELECT count(*) = 2 FROM public.tournament_seats WHERE tournament_id = '00000000-0000-0000-0000-000000000100' AND tournament_table_id = '00000000-0000-0000-0000-000000000700' AND table_session_id IS NOT NULL)
+  AND (SELECT status = 'in_progress' AND tournament_table_id = '00000000-0000-0000-0000-000000000700' AND table_session_id IS NOT NULL FROM public.tournament_hands WHERE id = '00000000-0000-0000-0000-000000000950')
+  AND (SELECT status = 'assigned' AND table_session_id IS NOT NULL FROM public.dealer_assignments WHERE id = '00000000-0000-0000-0000-000000000960'),
+  'real current assignment, seats, hand and dealer receive exact V3 links only'
+);
+
+\ir ../../supabase/migrations/20270113000011_floor_table_control_v3_final_contract.sql
 
 INSERT INTO public.tournaments (id, club_id) VALUES
   ('00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000010'),
@@ -488,6 +529,14 @@ COMMIT;
 -- changes the second to Tracker, seats/moves entries, applies tracker
 -- fencing, bust/restore rules, breaks a table, and reuses the released
 -- physical table for another tournament.  No legacy table_id is written.
+-- The bridged historical hand above is intentionally in progress to prove
+-- exact-ID linkage. Complete it before this independent break-table scenario:
+-- V3 correctly refuses to redistribute a table while any destination hand is
+-- still active.
+UPDATE public.tournament_hands
+SET status = 'completed'
+WHERE id = '00000000-0000-0000-0000-000000000950';
+
 INSERT INTO public.profiles (user_id, display_name) VALUES
   ('00000000-0000-0000-0000-000000000905', 'Entry Five'),
   ('00000000-0000-0000-0000-000000000906', 'Entry Six');
@@ -653,7 +702,10 @@ BEGIN
   v_result := public.floor_break_table_v3(
     v_manual_table_id, v_manual_revision, '00000000-0000-0000-0000-000000001013', 'fill_lowest_table'
   );
-  PERFORM public.floor_table_v3_assert((v_result ->> 'ok')::boolean AND (v_result ->> 'moved_count')::integer = 1, 'break atomically moves the active roster before closing its source session');
+  PERFORM public.floor_table_v3_assert(
+    (v_result ->> 'ok')::boolean AND (v_result ->> 'moved_count')::integer = 1,
+    'break atomically moves the active roster before closing its source session: result=' || v_result::text
+  );
   PERFORM public.floor_table_v3_assert(
     (SELECT closed_at IS NOT NULL FROM public.table_sessions WHERE id = v_manual_session_id)
     AND (SELECT released_at IS NOT NULL FROM public.dealer_assignments WHERE table_session_id = v_manual_session_id),
