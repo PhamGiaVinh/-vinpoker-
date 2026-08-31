@@ -249,30 +249,12 @@ WHERE tt.tournament_id = t.id
   AND tt.status = 'active'
   AND (tt.game_table_id IS NULL OR tt.table_session_id IS NULL);
 
--- Current seats have an entry-backed active state and may use either legacy
--- identity during the transition.  A current seat without exactly one active
--- assignment, or without its matching seated entry, aborts before updates.
+-- Current seats may use either legacy identity during the transition.  This
+-- one-time bridge only requires exactly one active assignment: legacy seats
+-- without an entry remain immutable to V3 writers, but must still receive
+-- their explicit table/session identity without changing hand state.
 DO $$
 BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM public.tournament_seats seat_row
-    JOIN public.tournaments t ON t.id = seat_row.tournament_id
-    LEFT JOIN public.tournament_entries entry_row
-      ON entry_row.id = seat_row.entry_id
-     AND entry_row.tournament_id = seat_row.tournament_id
-     AND entry_row.player_id = seat_row.player_id
-     AND entry_row.entry_no = seat_row.entry_number
-     AND entry_row.status = 'seated'
-    WHERE seat_row.is_active = true
-      AND seat_row.status = 'active'
-      AND t.deleted_at IS NULL
-      AND t.status NOT IN ('completed', 'cancelled')
-      AND entry_row.id IS NULL
-  ) THEN
-    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'floor_table_v3_final_live_bridge_seat_entry_preflight_failed';
-  END IF;
-
   IF EXISTS (
     SELECT 1
     FROM public.tournament_seats seat_row

@@ -90,6 +90,17 @@ CREATE TABLE public.tournament_hands (
   is_voided boolean NOT NULL DEFAULT false,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE public.hand_players (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  hand_id uuid NOT NULL REFERENCES public.tournament_hands(id),
+  tournament_id uuid NOT NULL REFERENCES public.tournaments(id),
+  player_id uuid NOT NULL,
+  entry_number integer NOT NULL,
+  seat_number integer NOT NULL,
+  starting_stack integer,
+  ending_stack integer,
+  is_eliminated boolean NOT NULL DEFAULT false
+);
 CREATE TABLE public.dealer_assignments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   club_id uuid,
@@ -210,13 +221,20 @@ INSERT INTO public.tournament_seats (tournament_id, player_id, entry_number, tab
 \ir ../../supabase/migrations/20270113000002_floor_table_control_v3_foundation.sql
 
 INSERT INTO public.tournament_entries (id, tournament_id, player_id, entry_no, current_stack, status) VALUES
-  ('00000000-0000-0000-0000-000000000711', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000911', 1, 40000, 'seated'),
-  ('00000000-0000-0000-0000-000000000712', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000912', 1, 50000, 'seated');
-INSERT INTO public.tournament_seats (tournament_id, player_id, entry_number, table_id, seat_number, chip_count, entry_id, is_active, status) VALUES
-  ('00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000911', 1, '00000000-0000-0000-0000-000000000700', 1, 40000, '00000000-0000-0000-0000-000000000711', true, 'active'),
-  ('00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000912', 1, '00000000-0000-0000-0000-000000000504', 2, 50000, '00000000-0000-0000-0000-000000000712', true, 'active');
+  ('00000000-0000-0000-0000-000000000711', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000911', 1, 40000, 'seated');
+-- The identity bridge must support a current legacy table with two active
+-- seats that predate entry-backed registrations. Their seat/player/chip
+-- fields, the in-progress hand and hand_players are all immutable here.
+INSERT INTO public.tournament_seats (id, tournament_id, player_id, entry_number, table_id, seat_number, chip_count, entry_id, is_active, status) VALUES
+  ('00000000-0000-0000-0000-000000000721', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000911', 1, '00000000-0000-0000-0000-000000000700', 5, 40000, '00000000-0000-0000-0000-000000000711', true, 'active'),
+  ('00000000-0000-0000-0000-000000000722', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000912', 1, '00000000-0000-0000-0000-000000000700', 1, 50000, NULL, true, 'active'),
+  ('00000000-0000-0000-0000-000000000723', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000913', 1, '00000000-0000-0000-0000-000000000700', 2, 60000, NULL, true, 'active');
 INSERT INTO public.tournament_hands (id, tournament_id, table_id, status, is_voided) VALUES
   ('00000000-0000-0000-0000-000000000950', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000700', 'in_progress', false);
+INSERT INTO public.hand_players (hand_id, tournament_id, player_id, entry_number, seat_number, starting_stack, ending_stack) VALUES
+  ('00000000-0000-0000-0000-000000000950', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000911', 1, 5, 40000, 40000),
+  ('00000000-0000-0000-0000-000000000950', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000912', 1, 1, 50000, 50000),
+  ('00000000-0000-0000-0000-000000000950', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000913', 1, 2, 60000, 60000);
 INSERT INTO public.dealer_assignments (id, club_id, table_id, status, released_at) VALUES
   ('00000000-0000-0000-0000-000000000960', '00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000504', 'assigned', null);
 
@@ -232,13 +250,36 @@ SELECT public.floor_table_v3_assert(
 );
 SELECT public.floor_table_v3_assert(
   (SELECT game_table_id = '00000000-0000-0000-0000-000000000504' AND table_session_id IS NOT NULL FROM public.tournament_tables WHERE id = '00000000-0000-0000-0000-000000000700')
-  AND (SELECT count(*) = 2 FROM public.tournament_seats WHERE tournament_id = '00000000-0000-0000-0000-000000000100' AND tournament_table_id = '00000000-0000-0000-0000-000000000700' AND table_session_id IS NOT NULL)
+  AND (SELECT count(*) = 3 FROM public.tournament_seats WHERE tournament_id = '00000000-0000-0000-0000-000000000100' AND tournament_table_id = '00000000-0000-0000-0000-000000000700' AND table_session_id IS NOT NULL)
+  AND (SELECT count(*) = 1 FROM public.tournament_seats WHERE id = '00000000-0000-0000-0000-000000000721' AND player_id = '00000000-0000-0000-0000-000000000911' AND entry_number = 1 AND table_id = '00000000-0000-0000-0000-000000000700' AND seat_number = 5 AND chip_count = 40000 AND entry_id = '00000000-0000-0000-0000-000000000711' AND is_active AND status = 'active')
+  AND (SELECT count(*) = 2 FROM public.tournament_seats WHERE id IN ('00000000-0000-0000-0000-000000000722', '00000000-0000-0000-0000-000000000723') AND entry_id IS NULL AND table_id = '00000000-0000-0000-0000-000000000700' AND ((id = '00000000-0000-0000-0000-000000000722' AND player_id = '00000000-0000-0000-0000-000000000912' AND seat_number = 1 AND chip_count = 50000) OR (id = '00000000-0000-0000-0000-000000000723' AND player_id = '00000000-0000-0000-0000-000000000913' AND seat_number = 2 AND chip_count = 60000)))
   AND (SELECT status = 'in_progress' AND tournament_table_id = '00000000-0000-0000-0000-000000000700' AND table_session_id IS NOT NULL FROM public.tournament_hands WHERE id = '00000000-0000-0000-0000-000000000950')
+  AND (SELECT count(*) = 3 FROM public.hand_players WHERE hand_id = '00000000-0000-0000-0000-000000000950')
+  AND (SELECT count(*) = 3 FROM public.hand_players WHERE hand_id = '00000000-0000-0000-0000-000000000950' AND ((player_id = '00000000-0000-0000-0000-000000000911' AND entry_number = 1 AND seat_number = 5 AND starting_stack = 40000 AND ending_stack = 40000 AND is_eliminated = false) OR (player_id = '00000000-0000-0000-0000-000000000912' AND entry_number = 1 AND seat_number = 1 AND starting_stack = 50000 AND ending_stack = 50000 AND is_eliminated = false) OR (player_id = '00000000-0000-0000-0000-000000000913' AND entry_number = 1 AND seat_number = 2 AND starting_stack = 60000 AND ending_stack = 60000 AND is_eliminated = false)))
   AND (SELECT status = 'assigned' AND table_session_id IS NOT NULL FROM public.dealer_assignments WHERE id = '00000000-0000-0000-0000-000000000960'),
-  'real current assignment, seats, hand and dealer receive exact V3 links only'
+  'identity bridge links legacy seats without changing orphan fields, hand or hand players'
 );
 
 \ir ../../supabase/migrations/20270113000011_floor_table_control_v3_final_contract.sql
+
+DO $$
+DECLARE
+  v_result jsonb;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
+  v_result := public.floor_bust_player_v3(
+    '00000000-0000-0000-0000-000000000722', 0, 0, 50000,
+    '00000000-0000-0000-0000-000000000952', 'legacy_orphan_must_not_mutate'
+  );
+  PERFORM public.floor_table_v3_assert_json(
+    v_result, 'entry_not_found', 'legacy orphan cannot be mutated by entry-backed V3 bust writer'
+  );
+  PERFORM public.floor_table_v3_assert(
+    (SELECT is_active AND status = 'active' AND entry_id IS NULL FROM public.tournament_seats WHERE id = '00000000-0000-0000-0000-000000000722'),
+    'entry-backed V3 writer leaves legacy orphan untouched'
+  );
+END;
+$$;
 
 INSERT INTO public.tournaments (id, club_id) VALUES
   ('00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000010'),

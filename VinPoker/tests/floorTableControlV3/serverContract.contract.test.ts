@@ -48,6 +48,9 @@ describe("Floor Table Control V3 server contract", () => {
   it("transitions the historical permanent physical-table uniqueness only after exact explicit mapping", () => {
     expect(bridgeMigration).toContain("floor_table_v3_stage_test_receipt_changed");
     expect(bridgeMigration).toContain("floor_table_v3_final_live_bridge_real_identity_preflight_failed");
+    expect(bridgeMigration).not.toContain("floor_table_v3_final_live_bridge_seat_entry_preflight_failed");
+    expect(bridgeMigration).toContain("one-time bridge only requires exactly one active assignment");
+    expect(bridgeMigration).toContain("without an entry remain immutable to V3 writers");
     expect(bridgeMigration).toContain("STAGE_TEST Tournament");
     expect(bridgeMigration).toContain("LOCK TABLE public.tournament_entries IN SHARE ROW EXCLUSIVE MODE");
     expect(bridgeMigration).toContain("LOCK TABLE public.game_tables IN SHARE ROW EXCLUSIVE MODE");
@@ -154,6 +157,8 @@ describe("Floor Table Control V3 server contract", () => {
     expect(disposable).toContain("STAGE_TEST fixture is quarantined");
     expect(disposable).toContain("count(*) = 5 FROM public.tournament_entries");
     expect(disposable).toContain("count(*) = 9 FROM public.tournament_seats");
+    expect(disposable).toContain("identity bridge links legacy seats without changing orphan fields, hand or hand players");
+    expect(disposable).toContain("legacy orphan cannot be mutated by entry-backed V3 bust writer");
     expect(authenticatedDisposable).toContain("previewOnlyWriterGrants.sql");
     expect(disposable).toContain("same idempotency request returns the original open result");
     expect(disposable).toContain("pre-mode-change Tracker context is fenced");

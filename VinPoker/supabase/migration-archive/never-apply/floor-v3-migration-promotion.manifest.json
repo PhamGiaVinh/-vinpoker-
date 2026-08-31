@@ -15,7 +15,7 @@
     {
       "version": "20270113000010",
       "filename": "20270113000010_floor_table_control_v3_final_live_bridge.sql",
-      "sha256": "6c3cb7020e5bde8b058749eedd640b0fd5315d00345a77ffc6d5da5e2439d66c",
+      "sha256": "3abb7d9e0763237e022c04a17be784f444f272c10d0dd7420007bf2d1ac31e95",
       "dependencies": ["20270113000002"],
       "runtimeEdgeDependency": false
     },
