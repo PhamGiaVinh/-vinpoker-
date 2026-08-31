@@ -28,13 +28,13 @@ export function LegacyPayrollPreviewDialog(props: {
             </Button>
           </div>
         </DialogHeader>
-        <div className="min-h-0 flex-1 bg-muted/60 p-2 sm:p-4">
+        <div className="min-h-0 flex-1 overflow-auto bg-[#dfe5e0] p-2 sm:p-4">
           {preview ? (
             <iframe
               title="Bản xem tạm tính phiếu lương"
               sandbox=""
-              srcDoc={`<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#dfe5e0">${preview.html}</body></html>`}
-              className="h-full w-full border-0 bg-white shadow-sm"
+              srcDoc={`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>${preview.html}</body></html>`}
+              className="h-full min-h-[620px] w-full border-0 bg-[#dfe5e0]"
             />
           ) : null}
         </div>

@@ -31,12 +31,20 @@ const row: DealerPayrollRow = {
 };
 
 describe("legacy payroll preview", () => {
-  it("uses explicit paper styling and escapes staff values", () => {
+  it("uses a complete A4 Times-style payslip and escapes staff values", () => {
     const html = buildPayrollPreviewHtml([row], "<b>HSOP</b>", "Tháng 08/2026", row.dealer_id);
 
     expect(html).toContain("background: #fff");
+    expect(html).toContain("width: 210mm");
+    expect(html).toContain("min-height: 297mm");
+    expect(html).toContain('font-family: "Times New Roman", Times, serif');
     expect(html).toContain("border: 1px solid #b9c5bb");
     expect(html).toContain("BẢN TẠM TÍNH");
+    expect(html).toContain("payroll-brand__lockup");
+    expect(html).toContain("payroll-table--single");
+    expect(html).toContain("THỰC LĨNH");
+    expect(html).not.toContain("<th>Tên</th>");
+    expect(html).not.toContain("Arial, Helvetica, sans-serif; font-size: 13px");
     expect(html).toContain("&lt;script&gt;not-a-name&lt;/script&gt;");
     expect(html).not.toContain("<script>not-a-name</script>");
     expect(html).toContain("&lt;b&gt;HSOP&lt;/b&gt;");
