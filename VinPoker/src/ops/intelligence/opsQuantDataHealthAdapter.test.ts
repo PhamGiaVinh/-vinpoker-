@@ -44,4 +44,19 @@ describe("Ops Quant Data Health Q0 adapters", () => {
     expect(malformed).toMatchObject({ value: null, reasonCode: "REGISTRATION_PACE_READ_FAILED_MALFORMED" });
     expect(failed).toMatchObject({ value: null, reasonCode: "owner scope denied" });
   });
+
+  it.each([
+    "SEPAY_ACCOUNT_MAPPING_MISSING",
+    "SEPAY_ACCOUNT_MAPPING_AMBIGUOUS",
+    "SEPAY_ACTIVE_CONFIG_ACCOUNT_CONFLICT",
+    "SEPAY_STORED_CLUB_CONFLICT",
+  ])("sanitizes the known SePay authority failure %s", async (reasonCode) => {
+    const receipt = await loadOpsSepayReadStateQ0(clientWith(null, { message: `database error: ${reasonCode}: private detail` }), CLUB_ID);
+    expect(receipt).toMatchObject({ value: null, reasonCode });
+  });
+
+  it("does not expose unknown PostgreSQL error text", async () => {
+    const receipt = await loadOpsSepayReadStateQ0(clientWith(null, { message: "account 123456 is invalid" }), CLUB_ID);
+    expect(receipt).toMatchObject({ value: null, reasonCode: "SEPAY_READ_FAILED" });
+  });
 });

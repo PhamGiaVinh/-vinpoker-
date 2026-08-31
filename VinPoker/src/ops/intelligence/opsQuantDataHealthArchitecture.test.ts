@@ -34,10 +34,20 @@ describe("Ops Quant Data Health Q0 architecture", () => {
 
   it("pins owner auth, search_path and least-privilege grants in pending DB source", () => {
     expect(migration.match(/SECURITY DEFINER/g)).toHaveLength(2);
-    expect(migration.match(/SET search_path = ''/g)).toHaveLength(2);
+    expect(migration.match(/SET search_path = ''/g)).toHaveLength(3);
     expect(migration.match(/public\.is_club_owner\(v_actor, p_club_id\)/g)).toHaveLength(2);
     expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.get_ops_registration_pace_q0(uuid) TO authenticated");
     expect(migration).not.toMatch(/GRANT\s+(?:SELECT|INSERT|UPDATE|DELETE).*bank_transactions/iu);
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.resolve_sepay_account_club_v1(text) FROM PUBLIC, anon, authenticated, service_role");
+    expect(migration).not.toContain("GRANT EXECUTE ON FUNCTION public.resolve_sepay_account_club_v1");
+  });
+
+  it("uses canonical SePay account authority and excludes future registration observations", () => {
+    expect(migration).toContain("public.resolve_sepay_account_club_v1(account.account_number)");
+    expect(migration).toContain("bt.provider = 'sepay'");
+    expect(migration).toContain("bt.account_number = ANY(v_account_numbers)");
+    expect(migration).toContain("tr.confirmed_at <= v_as_of");
+    expect(migration).toContain("FUTURE_CONFIRMED_AT");
   });
 
   it("does not return raw SePay or player identity fields", () => {

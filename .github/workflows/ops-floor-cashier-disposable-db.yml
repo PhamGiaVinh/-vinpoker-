@@ -17,6 +17,8 @@ on:
       - "VinPoker/e2e/ops-v3-floor-cashier.mock.spec.ts"
       - "VinPoker/tsconfig.ops-v3-floor-cashier.json"
       - "VinPoker/tests/opsFloorCashier/**"
+      - "VinPoker/tests/opsQuantDataHealthQ0/**"
+      - "VinPoker/supabase/pending-migrations/20270114000000_ops_quant_data_health_q0.sql"
   workflow_dispatch:
 
 permissions:
@@ -68,6 +70,14 @@ jobs:
           npx vitest run
           src/ops/opsMutations.test.ts
           tests/opsFloorCashier
+
+      - name: Run focused Quant Q0 source tests
+        working-directory: VinPoker
+        run: >-
+          npx vitest run
+          src/ops/intelligence/opsQuantDataHealthQ0.test.ts
+          src/ops/intelligence/opsQuantDataHealthAdapter.test.ts
+          src/ops/intelligence/opsQuantDataHealthArchitecture.test.ts
 
       - name: Lint targeted Ops source and tests
         working-directory: VinPoker
@@ -155,3 +165,27 @@ jobs:
           result=$(psql -At -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.tournament_registrations r JOIN public.ops_cashier_mutation_idempotency i ON (i.response->>'registration_id')::uuid = r.id WHERE i.idempotency_key = 'atomic-concurrent';")
           test "$result" = "1"
           echo OPS_FLOOR_CASHIER_CONCURRENCY_PASS
+
+      - name: Create Quant Q0 disposable database
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: createdb -h localhost -U postgres ops_quant_q0
+
+      - name: Create Quant Q0 synthetic baseline
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: psql -h localhost -U postgres -d ops_quant_q0 -v ON_ERROR_STOP=1 -f tests/opsQuantDataHealthQ0/disposableDb.fixture.sql
+
+      - name: Apply exact pending Quant Q0 source to disposable PostgreSQL only
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: psql -h localhost -U postgres -d ops_quant_q0 -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270114000000_ops_quant_data_health_q0.sql
+
+      - name: Run Quant Q0 PostgreSQL 17 authority assertions
+        working-directory: VinPoker
+        env:
+          PGPASSWORD: ""
+        run: psql -h localhost -U postgres -d ops_quant_q0 -v ON_ERROR_STOP=1 -f tests/opsQuantDataHealthQ0/disposableDb.integration.sql

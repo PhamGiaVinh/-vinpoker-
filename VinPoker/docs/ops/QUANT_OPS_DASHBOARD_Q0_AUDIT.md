@@ -1,7 +1,7 @@
 ---
 title: Quant Ops Dashboard Q0 Audit
-status: source-only-db-contract-review
-updated: 2026-08-29
+status: source-only-authority-hardening
+updated: 2026-08-31
 ---
 
 # Quant Ops Dashboard Q0 Audit
@@ -53,6 +53,10 @@ They are not in the active migration catalog and have not been applied.
 - `reentries`: exact count where the canonical `source_entry_id` is present.
 - Timeline: hourly buckets from `confirmed_at`. A confirmed row without that
   timestamp makes only the timeline `PARTIAL`; counts remain observed facts.
+- A `confirmed_at` after server `asOf` also makes the timeline `PARTIAL` with
+  `FUTURE_CONFIRMED_AT`. Future timestamps are excluded from first/last,
+  rolling windows, and timeline buckets while the status count remains an
+  observed stored fact. This reason takes precedence over a missing timestamp.
 - `last1h`, `last6h`, and `last24h` are deterministic filtered counts at the
   server receipt; `firstRegistrationAt` and `lastRegistrationAt` remain null
   when the source has no usable timestamp. Timeline buckets carry observed and
@@ -62,8 +66,10 @@ They are not in the active migration catalog and have not been applied.
 
 ### SePay states
 
-The proposed read contract returns only state counts and known inbound VND sum
-for rows whose stored `club_id` equals the verified club:
+The proposed read contract returns only state counts and known inbound VND sum.
+It resolves active account numbers from `platform_bank_accounts` and treats an
+exact, unique account-to-club mapping as authority. Stored
+`bank_transactions.club_id` is an integrity signal, not the scoping source.
 
 | Q0 state | Exact database expression |
 | --- | --- |
@@ -71,11 +77,22 @@ for rows whose stored `club_id` equals the verified club:
 | `resolved` | status in `('matched','ignored')` |
 | `quarantined` | status = `'quarantined'` |
 
-The time grain is `bank_transactions.created_at` in the prior 24 hours. If an
+Only `provider = 'sepay'` rows are eligible. The time grain is
+`bank_transactions.created_at` in the inclusive prior 24 hours through server
+`asOf`. If an
 inbound row has no amount, the count remains exact but the bucket amount is
 `PARTIAL` with `INBOUND_AMOUNT_MISSING`. The RPC never returns account number,
 transaction/provider ID, content/memo, raw body/payload, customer identity, or
 configuration. No SePay writer is imported or exported.
+
+The read fails closed before aggregation when the requested club has no active
+canonical account, an account maps to multiple clubs, another active SePay
+configuration claims the same account, or any historical SePay row for that
+account stores a different non-null club. The historical integrity probe is
+bounded by the existing `(provider, account_number, provider_txn_id)` index.
+These failures become stable sanitized reason codes in the browser; raw
+PostgreSQL text is never rendered. An exact zero is returned only after all
+authority checks pass.
 
 Q0 does not invent a stale threshold. Source `asOf` and accepted-response
 `observedAt` are shown separately; Q0 freshness remains `unknown` until a
@@ -86,9 +103,12 @@ reviewed per-source policy exists. Existing V1 `stale` states are preserved.
 - Browser code uses only the Ops-injected `useSupabaseClient()` context.
 - Both pending RPCs require an authenticated actor and canonical
   `is_club_owner(actor, club)`; that helper includes Super Admin authority.
-- Both functions pin an empty `search_path`, schema-qualify relations, revoke
+- Both readers pin an empty `search_path`, schema-qualify relations, revoke
   `PUBLIC`, `anon`, and `service_role`, and grant execute only to
   `authenticated`.
+- The shared account resolver is `STABLE`, read-only, pins an empty
+  `search_path`, and grants execution to no browser or service role. It is only
+  invoked inside the owner-authorized SePay reader.
 - Parsers reject unknown keys, malformed timestamps, unsafe integers,
   cross-club payloads, duplicate event/state identities, invalid count
   invariants, and raw sensitive fields.
@@ -108,7 +128,7 @@ reviewed per-source policy exists. Existing V1 `stale` states are preserved.
 
 ## Follow-up gates
 
-1. Review and disposable-test both pending RPCs against a schema matching live.
+1. Review the PostgreSQL 17 disposable authority and temporal proof.
 2. Apply only through a separate owner-authorized DB wave.
 3. Verify function ACLs, club isolation, and aggregate payloads live.
 4. Open a separate narrow Preview flag-on PR and run authenticated owner UAT.
