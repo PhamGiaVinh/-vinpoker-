@@ -59,6 +59,21 @@ describe("Ops Quant Data Health Q0 contracts", () => {
     expect(parseOpsRegistrationPaceQ0(value).events[0]).toMatchObject({ timelineAvailability: "partial", timelineReasonCode: "CONFIRMED_AT_MISSING" });
   });
 
+  it("accepts a future-timestamp partial timeline whose observed total is below the confirmed count", () => {
+    const value = registration();
+    Object.assign((value.events as Record<string, unknown>[])[0], {
+      confirmedEntries: 3,
+      uniquePlayers: 2,
+      timelineAvailability: "partial",
+      timelineReasonCode: "FUTURE_CONFIRMED_AT",
+    });
+    expect(parseOpsRegistrationPaceQ0(value).events[0]).toMatchObject({
+      confirmedEntries: 3,
+      timelineAvailability: "partial",
+      timelineReasonCode: "FUTURE_CONFIRMED_AT",
+    });
+  });
+
   it("rejects invented rolling-window and cumulative counts", () => {
     const windows = registration();
     (windows.events as Record<string, unknown>[])[0].last1h = 3;

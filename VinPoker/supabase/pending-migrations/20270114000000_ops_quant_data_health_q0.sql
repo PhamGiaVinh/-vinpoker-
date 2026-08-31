@@ -3,10 +3,33 @@
 --
 -- SOURCE-ONLY / PENDING: do not apply without a separate owner-gated DB review.
 -- No writer, trigger, raw bank payload, player identity, or autonomous action.
--- ROLLBACK (forward-only after apply): revoke and drop both Q0 functions in a
+-- ROLLBACK (forward-only after apply): revoke and drop the two Q0 readers and
+-- their internal resolver in a
 -- separately reviewed migration.
 
 BEGIN;
+
+CREATE OR REPLACE FUNCTION public.resolve_sepay_account_club_v1(p_account_number text)
+RETURNS TABLE(resolved_club_id uuid, resolution_state text)
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+  WITH matches AS (
+    SELECT DISTINCT pba.club_id
+    FROM public.platform_bank_accounts AS pba
+    WHERE pba.is_active = true
+      AND pba.account_number = p_account_number
+      AND pba.club_id IS NOT NULL
+  )
+  SELECT CASE WHEN pg_catalog.count(*) = 1 THEN (pg_catalog.array_agg(matches.club_id))[1] ELSE NULL END,
+         CASE pg_catalog.count(*)
+           WHEN 0 THEN 'UNRESOLVED_NO_MAPPING'
+           WHEN 1 THEN 'RESOLVED_UNIQUE'
+           ELSE 'AMBIGUOUS_MAPPING'
+         END
+  FROM matches;
+$$;
 
 CREATE OR REPLACE FUNCTION public.get_ops_registration_pace_q0(p_club_id uuid)
 RETURNS jsonb
@@ -44,11 +67,12 @@ BEGIN
            pg_catalog.count(DISTINCT r.player_id)::bigint AS unique_players,
            pg_catalog.count(r.id) FILTER (WHERE r.source_entry_id IS NOT NULL)::bigint AS reentries,
            pg_catalog.count(r.id) FILTER (WHERE r.confirmed_at IS NULL)::bigint AS missing_confirmed_at,
-           pg_catalog.min(r.confirmed_at) AS first_registration_at,
-           pg_catalog.max(r.confirmed_at) AS last_registration_at,
-           pg_catalog.count(r.id) FILTER (WHERE r.confirmed_at > v_as_of - interval '1 hour')::bigint AS last_1h,
-           pg_catalog.count(r.id) FILTER (WHERE r.confirmed_at > v_as_of - interval '6 hours')::bigint AS last_6h,
-           pg_catalog.count(r.id) FILTER (WHERE r.confirmed_at > v_as_of - interval '24 hours')::bigint AS last_24h
+           pg_catalog.count(r.id) FILTER (WHERE r.confirmed_at > v_as_of)::bigint AS future_confirmed_at,
+           pg_catalog.min(r.confirmed_at) FILTER (WHERE r.confirmed_at <= v_as_of) AS first_registration_at,
+           pg_catalog.max(r.confirmed_at) FILTER (WHERE r.confirmed_at <= v_as_of) AS last_registration_at,
+           pg_catalog.count(r.id) FILTER (WHERE r.confirmed_at >= v_as_of - interval '1 hour' AND r.confirmed_at <= v_as_of)::bigint AS last_1h,
+           pg_catalog.count(r.id) FILTER (WHERE r.confirmed_at >= v_as_of - interval '6 hours' AND r.confirmed_at <= v_as_of)::bigint AS last_6h,
+           pg_catalog.count(r.id) FILTER (WHERE r.confirmed_at >= v_as_of - interval '24 hours' AND r.confirmed_at <= v_as_of)::bigint AS last_24h
     FROM relevant_events AS e
     LEFT JOIN public.tournament_registrations AS r
       ON r.tournament_id = e.id
@@ -84,6 +108,7 @@ BEGIN
         WHERE tr.club_id = p_club_id
           AND tr.status = 'confirmed'
           AND tr.confirmed_at IS NOT NULL
+          AND tr.confirmed_at <= v_as_of
         GROUP BY tr.tournament_id, pg_catalog.date_trunc('hour', tr.confirmed_at)
       ) AS buckets
     ) AS r
@@ -103,8 +128,12 @@ BEGIN
       'last1h', c.last_1h,
       'last6h', c.last_6h,
       'last24h', c.last_24h,
-      'timelineAvailability', CASE WHEN c.missing_confirmed_at = 0 THEN 'exact' ELSE 'partial' END,
-      'timelineReasonCode', CASE WHEN c.missing_confirmed_at = 0 THEN NULL ELSE 'CONFIRMED_AT_MISSING' END,
+      'timelineAvailability', CASE WHEN c.missing_confirmed_at = 0 AND c.future_confirmed_at = 0 THEN 'exact' ELSE 'partial' END,
+      'timelineReasonCode', CASE
+        WHEN c.future_confirmed_at > 0 THEN 'FUTURE_CONFIRMED_AT'
+        WHEN c.missing_confirmed_at > 0 THEN 'CONFIRMED_AT_MISSING'
+        ELSE NULL
+      END,
       'timeline', COALESCE(tl.timeline, '[]'::jsonb)
     ) ORDER BY c.start_time, c.id
   ), '[]'::jsonb)
@@ -137,10 +166,56 @@ DECLARE
   v_from timestamptz := v_as_of - interval '24 hours';
   v_buckets jsonb;
   v_latest_observed_at timestamptz;
+  v_account_numbers text[];
+  v_has_ambiguous_mapping boolean;
 BEGIN
   IF v_actor IS NULL OR p_club_id IS NULL
      OR NOT COALESCE(public.is_club_owner(v_actor, p_club_id), false) THEN
     RAISE EXCEPTION 'ops_quant_owner_required' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT pg_catalog.array_agg(DISTINCT pba.account_number ORDER BY pba.account_number)
+  INTO v_account_numbers
+  FROM public.platform_bank_accounts AS pba
+  WHERE pba.club_id = p_club_id
+    AND pba.is_active = true
+    AND pba.account_number IS NOT NULL;
+
+  IF v_account_numbers IS NULL OR pg_catalog.cardinality(v_account_numbers) = 0 THEN
+    RAISE EXCEPTION 'SEPAY_ACCOUNT_MAPPING_MISSING' USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT COALESCE(pg_catalog.bool_or(resolution.resolution_state <> 'RESOLVED_UNIQUE'
+      OR resolution.resolved_club_id IS DISTINCT FROM p_club_id), false)
+  INTO v_has_ambiguous_mapping
+  FROM pg_catalog.unnest(v_account_numbers) AS account(account_number)
+  CROSS JOIN LATERAL public.resolve_sepay_account_club_v1(account.account_number) AS resolution;
+
+  IF v_has_ambiguous_mapping THEN
+    RAISE EXCEPTION 'SEPAY_ACCOUNT_MAPPING_AMBIGUOUS' USING ERRCODE = 'P0001';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.club_payment_config AS config
+    WHERE config.is_active = true
+      AND config.provider = 'sepay'
+      AND config.club_id <> p_club_id
+      AND config.master_account_number = ANY(v_account_numbers)
+  ) THEN
+    RAISE EXCEPTION 'SEPAY_ACTIVE_CONFIG_ACCOUNT_CONFLICT' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- The (provider, account_number, provider_txn_id) index bounds this all-history integrity check.
+  IF EXISTS (
+    SELECT 1
+    FROM public.bank_transactions AS stored
+    WHERE stored.provider = 'sepay'
+      AND stored.account_number = ANY(v_account_numbers)
+      AND stored.club_id IS NOT NULL
+      AND stored.club_id <> p_club_id
+  ) THEN
+    RAISE EXCEPTION 'SEPAY_STORED_CLUB_CONFLICT' USING ERRCODE = 'P0001';
   END IF;
 
   WITH states(state, statuses) AS (
@@ -159,7 +234,8 @@ BEGIN
            )::bigint AS missing_inbound_amount
     FROM states AS s
     LEFT JOIN public.bank_transactions AS bt
-      ON bt.club_id = p_club_id
+      ON bt.provider = 'sepay'
+     AND bt.account_number = ANY(v_account_numbers)
      AND bt.created_at >= v_from
      AND bt.created_at <= v_as_of
      AND bt.status = ANY(s.statuses)
@@ -179,7 +255,8 @@ BEGIN
   SELECT pg_catalog.max(COALESCE(bt.occurred_at, bt.created_at))
   INTO v_latest_observed_at
   FROM public.bank_transactions AS bt
-  WHERE bt.club_id = p_club_id
+  WHERE bt.provider = 'sepay'
+    AND bt.account_number = ANY(v_account_numbers)
     AND bt.created_at >= v_from
     AND bt.created_at <= v_as_of
     AND bt.status IN ('unmatched', 'matched', 'ignored', 'quarantined');
@@ -200,6 +277,7 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_ops_registration_pace_q0(uuid) FROM PUBLIC, anon, service_role;
 REVOKE ALL ON FUNCTION public.get_ops_sepay_read_state_q0(uuid) FROM PUBLIC, anon, service_role;
+REVOKE ALL ON FUNCTION public.resolve_sepay_account_club_v1(text) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.get_ops_registration_pace_q0(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_ops_sepay_read_state_q0(uuid) TO authenticated;
 
@@ -207,5 +285,7 @@ COMMENT ON FUNCTION public.get_ops_registration_pace_q0(uuid) IS
   'Owner-scoped observed registration counts and hourly receipt timeline; no forecast or identity export.';
 COMMENT ON FUNCTION public.get_ops_sepay_read_state_q0(uuid) IS
   'Owner-scoped sanitized SePay state aggregates; no raw bank fields or writer action.';
+COMMENT ON FUNCTION public.resolve_sepay_account_club_v1(text) IS
+  'Internal account-to-club authority resolver. Not callable by browser roles.';
 
 COMMIT;
