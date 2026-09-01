@@ -1,7 +1,7 @@
 // F1 — tests for the manual bulk-open centered stagger (pure helper).
 // Run: deno test supabase/functions/_shared/__tests__/bulkOpenStagger.test.ts
 import { assertEquals } from "jsr:@std/assert@1";
-import { bulkOpenStaggerMs } from "../openTableGrace.ts";
+import { bulkOpenStaggerMs, OPEN_TABLE_GRACE_MINUTES } from "../openTableGrace.ts";
 import { SWING_POLICY } from "../swingPolicy.ts";
 
 const STEP_MS = SWING_POLICY.bulkOpen.staggerStepMinutes * 60_000;   // 2 min
@@ -52,8 +52,12 @@ Deno.test("large batch (n=50) → offsets clamped, not silently pushed far", () 
   assertEquals(bulkOpenStaggerMs(n - 1, n), CAP_MS);
 });
 
-Deno.test("worst first-stint (grace 6 + duration 45 + max offset) stays under 90 for n=20/30", () => {
-  const graceMin = 6;
+Deno.test("owner-approved open-table grace is exactly 5 minutes", () => {
+  assertEquals(OPEN_TABLE_GRACE_MINUTES, 5);
+});
+
+Deno.test("worst first-stint (grace + duration 45 + max offset) stays under 90 for n=20/30", () => {
+  const graceMin = OPEN_TABLE_GRACE_MINUTES;
   const durationMin = 45;
   for (const n of [20, 30]) {
     const maxOffsetMin = bulkOpenStaggerMs(n - 1, n) / 60_000;

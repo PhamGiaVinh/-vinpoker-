@@ -1,6 +1,6 @@
 import { SWING_POLICY } from "./swingPolicy.ts";
 
-// Open-table warmup grace (owner policy 2026-06-14).
+// Open-table warmup grace (owner policy 2026-09-01).
 //
 // When a dealer is assigned to OPEN/staff a table (manual "Gán dealer" or the
 // mass-assign / fillEmptyTables open-empty-tables path), the swing clock must NOT
@@ -11,7 +11,7 @@ import { SWING_POLICY } from "./swingPolicy.ts";
 //
 // This applies ONLY to opening/staffing a table — NOT to perform_swing rotation
 // handoffs, which keep their existing timing. Set to 0 to disable the grace.
-export const OPEN_TABLE_GRACE_MINUTES = 6;
+export const OPEN_TABLE_GRACE_MINUTES = 5;
 
 /**
  * Centered stagger offset (ms) for table `index` of a MANUAL bulk-open of `count`

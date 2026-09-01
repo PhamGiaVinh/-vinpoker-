@@ -338,7 +338,7 @@ export async function fillEmptyTables(
     // re-seats a table mid-session after a dealer swings/breaks out — so it applies
     // NO grace and shows NO warmup, exactly like a rotation. (Owner 2026-07-06:
     // "warmup chỉ dành cho mở bàn"; before this, every post-swing auto re-fill
-    // re-flashed a fresh 6-min WARMUP → tables looked like they kept re-opening.)
+    // re-flashed a fresh 5-min WARMUP → tables looked like they kept re-opening.)
     const graceMs = availableOnly ? 0 : OPEN_TABLE_GRACE_MINUTES * 60_000;
     // Floor: a negative (earlier) stagger offset must never pull the first stint
     // below grace + minFirstStint — protects short-duration / large-batch corners.
@@ -401,7 +401,7 @@ export async function fillEmptyTables(
           p_swing_due_at: tableSwingDueAt,
           // Explicit assignment-origin marker (2026-07-07). "open_manual_*" =
           // operator opened/staffed the table (Gán / Gán loạt) and the row carries
-          // the 6-min open-table grace → the floor card shows WARMUP for it.
+          // the 5-min open-table grace → the floor card shows WARMUP for it.
           // "autostaff_*" = the cron auto re-fill (no grace since #722) → no WARMUP.
           // The card previously INFERRED warmup from (swing_due_at − assigned_at) >
           // swing_duration, which false-fired on every backend timing nuance

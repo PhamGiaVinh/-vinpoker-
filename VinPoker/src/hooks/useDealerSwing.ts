@@ -65,8 +65,8 @@ export interface DealerAssignment {
   swing_in_progress: boolean | null;
   swing_processed_at: string | null;
   swing_due_at: string | null;
-  /** Assignment-origin marker: "open_manual_*" = manual open with 6-min warmup
-   *  grace (Gán / Gán loạt); "autostaff_*" = cron auto re-fill (no grace).
+  /** Assignment-origin marker: "open_manual_*" / "open_operation_*" = open-table
+   *  assignment with 5-min warmup; "autostaff_*" = cron auto re-fill (no grace).
    *  Older/rotation rows have executor/reconcile keys or null. */
   idempotency_key?: string | null;
   /** Slot-0 read-cache ONLY — prefer the dealer_rotation_schedule row whenever one exists. */

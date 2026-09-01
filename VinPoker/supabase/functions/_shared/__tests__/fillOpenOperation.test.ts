@@ -99,6 +99,7 @@ async function exerciseBatch(
   let snapshotBuilds = 0;
   let snapshotAvailableOnly = false;
   let assignmentCalls = 0;
+  const assignmentPayloads: Record<string, unknown>[] = [];
   let refreshCalls = 0;
 
   class Query {
@@ -135,9 +136,10 @@ async function exerciseBatch(
 
   const admin = {
     from: (table: string) => new Query(table),
-    rpc: async (name: string) => {
+    rpc: async (name: string, args?: Record<string, unknown>) => {
       if (name === "assign_dealer_to_table") {
         assignmentCalls++;
+        assignmentPayloads.push(args ?? {});
         return { data: { outcome: "ok" }, error: null };
       }
       refreshCalls++;
@@ -171,7 +173,7 @@ async function exerciseBatch(
     reservedBuilder: async () => new Set(),
   });
 
-  return { result, snapshotBuilds, snapshotAvailableOnly, assignmentCalls };
+  return { result, snapshotBuilds, snapshotAvailableOnly, assignmentCalls, assignmentPayloads };
 }
 
 Deno.test("fillOpenOperation builds one eligibility snapshot for 30 tables", async () => {
@@ -183,6 +185,14 @@ Deno.test("fillOpenOperation builds one eligibility snapshot for 30 tables", asy
   assertEquals(result.assigned, 30);
   assertEquals(result.remaining, 0);
   assertEquals(result.operation_status, "completed");
+});
+
+Deno.test("fillOpenOperation stamps the durable open-table assignment marker", async () => {
+  const { assignmentPayloads } = await exerciseBatch(1, 1);
+  assertEquals(
+    assignmentPayloads[0]?.p_idempotency_key,
+    "open_operation_40000000-0000-4000-8000-000000000001_30000000-0000-4000-8000-000000000001",
+  );
 });
 
 Deno.test("fillOpenOperation completes the maximum 50-table batch", async () => {
