@@ -242,13 +242,13 @@ CREATE TABLE public.hand_actions (
   action_type TEXT
 );
 
-CREATE OR REPLACE FUNCTION public._series_canonical_json_v1(p_payload JSONB)
+CREATE OR REPLACE FUNCTION public._series_canonical_json_v1(p_value JSONB)
 RETURNS TEXT
 LANGUAGE SQL
 IMMUTABLE
 SET search_path = pg_catalog
 AS $$
-  SELECT p_payload::TEXT;
+  SELECT p_value::TEXT;
 $$;
 
 CREATE OR REPLACE FUNCTION public._series_sha256_jsonb_v1(p_payload JSONB)
