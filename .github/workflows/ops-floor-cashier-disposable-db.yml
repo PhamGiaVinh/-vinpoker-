@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/ops-floor-cashier-disposable-db.yml"
+      - ".github/workflows/ops-sepay-scope-q0-apply.yml"
       - "VinPoker/supabase/migrations/20270109000000_ops_floor_cashier_canonical_mutations.sql"
       - "VinPoker/src/ops/**"
       - "VinPoker/src/pages/ops/**"
@@ -18,6 +19,9 @@ on:
       - "VinPoker/tsconfig.ops-v3-floor-cashier.json"
       - "VinPoker/tests/opsFloorCashier/**"
       - "VinPoker/tests/opsQuantDataHealthQ0/**"
+      - "VinPoker/scripts/ops/apply-sepay-scope-q0.mjs"
+      - "VinPoker/scripts/ops/apply-sepay-scope-q0.test.mjs"
+      - "VinPoker/scripts/ops/sepay-scope-q0-policy.mjs"
       - "VinPoker/supabase/pending-migrations/20270114000000_ops_quant_data_health_q0.sql"
   workflow_dispatch:
 
