@@ -84,6 +84,25 @@ async function installMockOpsSession(page: Page) {
     if (path.endsWith("/rpc/get_series_club_live_pulse_v1")) return json(clubPulse());
     if (path.endsWith("/rpc/get_club_finance_summary")) return json({ revenue: { total: 12500000, rake: 0, serviceFee: 0, stakingFees: 0, payoutFees: 0, fnb: 0 }, cost: { payrollNet: 0, ptWagePaid: 0, fnbCogs: 0, compCogs: 0, clubExpenses: 0 }, net: 12500000 });
     if (path.endsWith("/rpc/get_latest_owner_daily_digest_artifact")) return json(null);
+    if (path.endsWith("/rpc/get_ops_registration_pace_q0")) return json({
+      version: "ops-registration-observed-q0",
+      clubId,
+      asOf,
+      window: { from: "2026-08-26T01:02:03.000Z", to: "2026-09-10T01:02:03.000Z" },
+      events: [],
+    });
+    if (path.endsWith("/rpc/get_ops_sepay_read_state_q0")) return json({
+      version: "ops-sepay-read-state-q0",
+      clubId,
+      asOf,
+      window: { from: "2026-08-26T01:02:03.000Z", to: asOf },
+      latestObservedTransactionAt: null,
+      buckets: [
+        { state: "actionable", transactionCount: 0, inboundAmountVnd: 0, amountAvailability: "exact", amountReasonCode: null },
+        { state: "resolved", transactionCount: 0, inboundAmountVnd: 0, amountAvailability: "exact", amountReasonCode: null },
+        { state: "quarantined", transactionCount: 0, inboundAmountVnd: 0, amountAvailability: "exact", amountReasonCode: null },
+      ],
+    });
     if (path.endsWith("/game_tables")) return json([{ id: "table-1", table_name: "Bàn 1", status: "active", current_blind_level: 4 }, { id: "table-2", table_name: "Bàn 2", status: "active", current_blind_level: 4 }]);
     if (path.endsWith("/tournaments")) return json([{ id: "event-1", name: "Main Event", status: "live", current_level: 4, average_stack: 42000, tournament_tables: [{ table_id: "table-1" }, { table_id: "table-2" }] }]);
     if (path.endsWith("/dealer_assignments")) return json([{ id: "assignment-1", attendance_id: "attendance-1", table_id: "table-1", assigned_at: asOf, released_at: null, status: "assigned", version: 1, updated_at: asOf, last_swing_attempted_at: null, swing_in_progress: false, swing_processed_at: null, swing_due_at: "2026-08-27T03:00:00.000Z", pre_assigned_attendance_id: null, pre_assigned_at: null, dealer_attendance: { current_state: "assigned", dealers: { full_name: "Dealer A" } } }]);
@@ -94,8 +113,15 @@ async function installMockOpsSession(page: Page) {
 
 test("Ops Control Deck renders the conservative registry without horizontal overflow", async ({ page }, testInfo) => {
   const consoleErrors: string[] = [];
+  const q0Requests: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.endsWith("/rpc/get_ops_registration_pace_q0") || pathname.endsWith("/rpc/get_ops_sepay_read_state_q0")) {
+      q0Requests.push(pathname);
+    }
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -126,6 +152,10 @@ test("Ops Control Deck renders the conservative registry without horizontal over
     .map((element) => ({ label: element.textContent?.trim(), rect: element.getBoundingClientRect() }))
     .filter(({ rect }) => rect.width < 44 || rect.height < 44));
   expect(undersizedTargets).toEqual([]);
+  expect(q0Requests.sort()).toEqual([
+    "/rest/v1/rpc/get_ops_registration_pace_q0",
+    "/rest/v1/rpc/get_ops_sepay_read_state_q0",
+  ]);
   expect(consoleErrors).toEqual([]);
   await expect(page.locator(".vite-error-overlay")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("ops-control-deck-mobile.png"), fullPage: true });
