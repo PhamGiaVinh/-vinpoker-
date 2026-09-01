@@ -565,11 +565,14 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
 
       - name: Build exact frontend source
-        run: npm run build
+        run: vercel env run --environment=production -- npm run build
         working-directory: target-source/VinPoker
         env:
           VITE_SUPABASE_URL: "https://orlesggcjamwuknxwcpk.supabase.co"
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.USERIDVERRCEL }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
 
       - name: Deploy prebuilt bundle to Vercel
         shell: bash

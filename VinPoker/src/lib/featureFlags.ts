@@ -9,16 +9,23 @@ export function isTrackerVoiceBuildEnabled(value: unknown): boolean {
 }
 
 /**
- * Floor Table Control V3 is dark unless an isolated UAT build supplies BOTH
- * exact values.  A production build with absent, truthy-looking, or partial
- * variables stays OFF.  This is presentation rollout only: database RPCs
- * remain caller-bound and their grants are independent.
+ * Floor Table Control V3 is dark unless the build supplies one exact approved
+ * flag/environment pair. Truthy-looking, partial, or mixed values stay OFF.
+ * This is presentation rollout only: database RPCs remain caller-bound and
+ * their grants are independent.
  */
 export function isFloorTableControlV3PreviewEnabled(
   flagValue: unknown = import.meta.env.VITE_FLOOR_TABLE_CONTROL_V3,
   environmentValue: unknown = import.meta.env.VITE_FLOOR_UAT_ENV,
 ): boolean {
   return flagValue === "preview" && environmentValue === "preview";
+}
+
+export function isFloorTableControlV3ProductionEnabled(
+  flagValue: unknown = import.meta.env.VITE_FLOOR_TABLE_CONTROL_V3,
+  environmentValue: unknown = import.meta.env.VITE_FLOOR_UAT_ENV,
+): boolean {
+  return flagValue === "production" && environmentValue === "production";
 }
 
 export const FEATURES = {
@@ -875,7 +882,8 @@ export const FEATURES = {
    * and an owner-gated rollout explicitly re-grants the exact writers.  This
    * switch must never be used as an authorization mechanism.
    */
-  floorTableControlV3: isFloorTableControlV3PreviewEnabled(),
+  floorTableControlV3:
+    isFloorTableControlV3PreviewEnabled() || isFloorTableControlV3ProductionEnabled(),
   /**
    * Ops phone app (mobileOpsV2) — Dealer Swing action wiring. The `/ops/dealer-swing`
    * page renders every operator action (swing 1 table, assign a specific dealer via the

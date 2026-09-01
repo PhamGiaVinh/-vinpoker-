@@ -6,12 +6,13 @@ const root = resolve(process.cwd());
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
 
 describe("Floor Table Control V3 writer convergence source guards", () => {
-  it("keeps the V3 source flag OFF and routes V3 browser calls through one fixed adapter", () => {
+  it("keeps the V3 source gate fail-closed and routes browser calls through one fixed adapter", () => {
     const flags = read("src/lib/featureFlags.ts");
     const adapter = read("src/lib/floorTableControlV3.ts");
 
-    expect(flags).toContain("floorTableControlV3: isFloorTableControlV3PreviewEnabled()");
+    expect(flags).toContain("isFloorTableControlV3PreviewEnabled() || isFloorTableControlV3ProductionEnabled()");
     expect(flags).toContain('return flagValue === "preview" && environmentValue === "preview"');
+    expect(flags).toContain('return flagValue === "production" && environmentValue === "production"');
     expect(adapter).toContain("FLOOR_TABLE_CONTROL_V3_DISABLED");
     expect(adapter).toContain('"floor_open_tournament_table_v3"');
     expect(adapter).toContain('"validate_tracker_table_writer_context_v3"');
