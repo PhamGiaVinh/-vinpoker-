@@ -32,6 +32,13 @@
       "sha256": "0b342eebd5eeabe1e648969921005dfd34d22e733dedf7b1acf38fd860895db4",
       "dependencies": ["20270113000010"],
       "runtimeEdgeDependency": false
+    },
+    {
+      "version": "20270113000012",
+      "filename": "20270113000012_floor_table_control_v3_production_enable.sql",
+      "sha256": "41eb61a7c9e23cedd3aa16fc61d9efe9d4aeedd01b749b452011e5a0f52519c4",
+      "dependencies": ["20270113000011"],
+      "runtimeEdgeDependency": false
     }
   ],
   "heldSources": [

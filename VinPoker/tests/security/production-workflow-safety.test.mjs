@@ -11,12 +11,14 @@ const workflow = readFileSync(
 test("production deployment workflow is main-only and keeps credentials in secrets context", () => {
   assert.match(workflow, /branches:\s*\n\s*- main\b/);
   assert.doesNotMatch(workflow, /- master\b/);
-  assert.match(workflow, /deploy:\s*\n\s*if: github\.ref == 'refs\/heads\/main'/);
+  assert.match(workflow, /test "\$GITHUB_REF" = "refs\/heads\/main"/);
+  assert.match(workflow, /deploy-frontend:\s*\n\s*name: Deploy exact reviewed frontend/);
+  assert.match(workflow, /github\.event_name == 'workflow_dispatch'/);
   assert.match(workflow, /VITE_SUPABASE_PUBLISHABLE_KEY:\s*\$\{\{ secrets\.SUPABASE_PUBLISHABLE_KEY \}\}/);
 });
 
-test("production-only commands remain behind the main-only deployment job", () => {
-  for (const command of ["supabase db push", "supabase functions deploy", "vercel deploy --prebuilt --prod"]) {
-    assert.ok(workflow.includes(command), `expected protected command ${command}`);
-  }
+test("production commands remain scoped to the reviewed deployment paths", () => {
+  assert.match(workflow, /deploy-critical-edge:/);
+  assert.ok(workflow.includes("vercel deploy --prebuilt --prod"));
+  assert.doesNotMatch(workflow, /supabase db push/);
 });
