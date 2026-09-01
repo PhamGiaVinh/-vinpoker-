@@ -14,8 +14,8 @@ describe("Ops Quant Data Health Q0 architecture", () => {
   const migration = read("supabase/pending-migrations/20270114000000_ops_quant_data_health_q0.sql");
   const flags = read("src/lib/featureFlags.ts");
 
-  it("keeps Q0 default dark and prevents browser reads when the panel is not mounted", () => {
-    expect(flags).toMatch(/opsQuantDataHealthQ0:\s*false/);
+  it("enables Q0 from source and prevents browser reads when the panel is not mounted", () => {
+    expect(flags).toMatch(/opsQuantDataHealthQ0:\s*true/);
     expect(read("src/ops/intelligence/OpsIntelligenceCommandCenterV1.tsx")).toContain("q0Enabled && <OpsQuantDataHealthQ0Panel");
     expect(read("src/ops/intelligence/opsQuantDataHealthGate.ts")).toMatch(/sourceFlag\s*\|\|\s*\(environment\.dev\s*&&\s*environment\.e2eFlag === "true"\)/u);
   });
