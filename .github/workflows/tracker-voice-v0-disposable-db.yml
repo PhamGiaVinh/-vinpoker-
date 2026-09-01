@@ -18,6 +18,7 @@ on:
       - "VinPoker/supabase/pending-migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql"
       - "VinPoker/supabase/pending-migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql"
       - "VinPoker/supabase/pending-migrations/20270114000002_tracker_voice_finish_atomic_commit_v0.sql"
+      - "VinPoker/supabase/pending-migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
@@ -196,14 +197,40 @@ jobs:
                     )) > 0
                     AND NOT has_function_privilege('authenticated', 'public.commit_tracker_voice_finish_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,text,text,text,jsonb)', 'EXECUTE')")" = "t"
           echo "TRACKER_VOICE_14000002_APPLY=PASS"
+          createdb tracker_voice_v0_before_14000003 -T tracker_voice_v0
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/pending-migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql
+          test "$(psql -X -At -d tracker_voice_v0 -c \
+            "SELECT to_regprocedure('public._tracker_voice_canonical_json_v2(jsonb)') IS NOT NULL
+                    AND to_regprocedure('public._tracker_voice_sha256_jsonb_v2(jsonb)') IS NOT NULL
+                    AND position('_tracker_unified_ops_request_hash_v2' IN pg_get_functiondef(
+                      'public._tracker_voice_request_hash(jsonb)'::regprocedure
+                    )) = 0")" = "t"
+          echo "TRACKER_VOICE_14000003_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f tests/trackerVoice/currentP0VoiceChain.integration.sql
+
+          # Voice runtime proof uses the exact strict Series canonicalizer. The
+          # existing start-hand suite stays on its prior baseline because the
+          # independent Unified Ops snake_case defect is outside this PR.
+          createdb tracker_voice_v0_strict -T tracker_voice_v0_before_14000003
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f tests/trackerVoice/strictSeriesCanonicalizer.fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f tests/trackerVoice/voiceHashV2.preFix.integration.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f supabase/pending-migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f tests/trackerVoice/voiceHashV2.integration.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f tests/trackerVoice/currentP0VoiceChain.integration.sql
+          echo "TRACKER_VOICE_STRICT_HASH_CHAIN=PASS"
 
       - name: Run Voice and start-hand runtime suites against the exact final chain
         working-directory: VinPoker
         run: |
           set -euo pipefail
-          createdb tracker_voice_v0_runtime -T tracker_voice_v0
+          createdb tracker_voice_v0_runtime -T tracker_voice_v0_strict
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_runtime \
             -f tests/trackerVoice/disposableDb.integration.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_runtime \
@@ -274,7 +301,7 @@ jobs:
             "SELECT md5(pg_get_functiondef('public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure))")"
           test "$before_constraint" = "$after_constraint"
           test "$before_helper" = "$after_helper"
-          echo "TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS"
+          echo "TRACKER_VOICE_12008_ROLLBACK=PASS"
           failing="$RUNNER_TEMP/tracker-voice-13000007-failing.sql"
           awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
             supabase/pending-migrations/20270113000007_tracker_voice_transcribe35_binding.sql > "$failing"
@@ -326,6 +353,23 @@ jobs:
             "SELECT to_regprocedure('public.commit_tracker_voice_finish_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,text,text,text,jsonb)') IS NULL
                     AND to_regprocedure('public.record_hand(uuid,uuid,integer,timestamp with time zone,jsonb,jsonb,jsonb,jsonb,integer,uuid)') IS NULL")" = "t"
           echo "TRACKER_VOICE_14000002_ROLLBACK=PASS"
+          failing="$RUNNER_TEMP/tracker-voice-14000003-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
+            supabase/pending-migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql > "$failing"
+          before_voice_hash="$(psql -X -At -d tracker_voice_v0_before_14000003 -c \
+            "SELECT md5(pg_get_functiondef('public._tracker_voice_request_hash(jsonb)'::regprocedure))")"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_14000003 -f "$failing"; then
+            echo "Injected 14000003 migration unexpectedly committed" >&2
+            exit 1
+          fi
+          after_voice_hash="$(psql -X -At -d tracker_voice_v0_before_14000003 -c \
+            "SELECT md5(pg_get_functiondef('public._tracker_voice_request_hash(jsonb)'::regprocedure))")"
+          test "$before_voice_hash" = "$after_voice_hash"
+          test "$(psql -X -At -d tracker_voice_v0_before_14000003 -c \
+            "SELECT to_regprocedure('public._tracker_voice_canonical_json_v2(jsonb)') IS NULL
+                    AND to_regprocedure('public._tracker_voice_sha256_jsonb_v2(jsonb)') IS NULL")" = "t"
+          echo "TRACKER_VOICE_14000003_ROLLBACK=PASS"
+          echo "TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS"
 
       - name: Run focused Voice, Analytics and contract tests
         working-directory: VinPoker

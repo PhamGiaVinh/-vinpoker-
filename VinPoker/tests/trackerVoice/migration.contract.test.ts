@@ -19,6 +19,8 @@ const holeCardsAssistMigrationName =
   "20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql";
 const finishAssistMigrationName =
   "20270114000002_tracker_voice_finish_atomic_commit_v0.sql";
+const voiceHashMigrationName =
+  "20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql";
 const migration = readFileSync(
   resolve(root, "supabase/migrations", migrationName),
   "utf8",
@@ -41,6 +43,18 @@ const holeCardsAssistMigration = readFileSync(
 ).replace(/\r\n/g, "\n");
 const finishAssistMigration = readFileSync(
   resolve(root, "supabase/pending-migrations", finishAssistMigrationName),
+  "utf8",
+).replace(/\r\n/g, "\n");
+const voiceHashMigration = readFileSync(
+  resolve(root, "supabase/pending-migrations", voiceHashMigrationName),
+  "utf8",
+).replace(/\r\n/g, "\n");
+const seriesMigration = readFileSync(
+  resolve(root, "supabase/migrations/20270107000001_series_decision_packet_v1.sql"),
+  "utf8",
+).replace(/\r\n/g, "\n");
+const strictSeriesFixture = readFileSync(
+  resolve(root, "tests/trackerVoice/strictSeriesCanonicalizer.fixture.sql"),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const unifiedOpsMigration = readFileSync(
@@ -99,6 +113,15 @@ function runtimeFixture(
   };
 }
 
+function functionDefinition(source: string, signature: string): string {
+  const start = source.indexOf(`CREATE OR REPLACE FUNCTION ${signature}`);
+  if (start < 0) throw new Error(`Missing function definition: ${signature}`);
+  const bodyStart = source.indexOf("AS $$", start);
+  const end = source.indexOf("$$;", bodyStart);
+  if (bodyStart < 0 || end < 0) throw new Error(`Incomplete function definition: ${signature}`);
+  return source.slice(start, end + 3).replace(/\s+/g, " ").trim();
+}
+
 describe("Tracker Voice V0 migration contract", () => {
   it("uses a unique migration version at the repository maximum", () => {
     const activeNames = readdirSync(resolve(root, "supabase/migrations"))
@@ -125,12 +148,16 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(pendingNames.filter((name) => name.startsWith("20270114000002_"))).toEqual([
       finishAssistMigrationName,
     ]);
+    expect(pendingNames.filter((name) => name.startsWith("20270114000003_"))).toEqual([
+      voiceHashMigrationName,
+    ]);
     expect(activeNames).toContain(migrationName);
     expect(activeNames).toContain(geminiMigrationName);
     expect(pendingNames).toContain(transcribeBindingMigrationName);
     expect(pendingNames).toContain(boardAssistMigrationName);
     expect(pendingNames).toContain(holeCardsAssistMigrationName);
     expect(pendingNames).toContain(finishAssistMigrationName);
+    expect(pendingNames).toContain(voiceHashMigrationName);
   });
 
   it("enables the Voice build gate only for the exact approved Vite value", () => {
@@ -207,6 +234,8 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(workflow).toContain(holeCardsAssistMigrationName);
     expect(workflow).toContain(finishAssistMigrationName);
     expect(recordActionAuthorityWorkflow).toContain(transcribeBindingMigrationName);
+    expect(recordActionAuthorityWorkflow).toContain(voiceHashMigrationName);
+    expect(recordActionAuthorityWorkflow).toContain("strictSeriesCanonicalizer.fixture.sql");
     expect(workflow).toContain("TRACKER_VOICE_P0_CATALOG_UNCHANGED=PASS");
     expect(workflow).toContain("TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS");
     expect(workflow).not.toMatch(/--linked|db push|migration repair|functions deploy|vercel --prod/i);
@@ -304,6 +333,45 @@ describe("Tracker Voice V0 migration contract", () => {
     }
     expect(integration).toContain("\\if :gemini_provider_available");
     expect(integration).toContain("Gemini Shadow is allowed while confidence-less Auto remains impossible");
+  });
+
+  it("decouples only Voice hashing while preserving strict Series and Unified Ops contracts", () => {
+    expect(voiceHashMigration).toContain("public._tracker_voice_canonical_json_v2");
+    expect(voiceHashMigration).toContain("public._tracker_voice_sha256_jsonb_v2");
+    expect(voiceHashMigration).toContain("^[A-Za-z][A-Za-z0-9]*(_[A-Za-z0-9]+)*$");
+    expect(voiceHashMigration).toMatch(
+      /CREATE OR REPLACE FUNCTION public\._tracker_voice_request_hash\([\s\S]+?_tracker_voice_sha256_jsonb_v2/,
+    );
+    expect(voiceHashMigration).not.toMatch(
+      /CREATE OR REPLACE FUNCTION public\._series_(canonical_json|sha256_jsonb)_v1/,
+    );
+    expect(voiceHashMigration).not.toContain(
+      "CREATE OR REPLACE FUNCTION public._tracker_unified_ops_request_hash_v2",
+    );
+    expect(voiceHashMigration).toMatch(
+      /REVOKE ALL ON FUNCTION public\._tracker_voice_canonical_json_v2\(JSONB\)[\s\S]+?FROM PUBLIC, anon, authenticated, service_role/,
+    );
+  });
+
+  it("uses the exact reviewed strict Series canonicalizer in the Voice PostgreSQL harness", () => {
+    expect(functionDefinition(
+      strictSeriesFixture,
+      "public._series_canonical_json_v1(p_value jsonb)",
+    )).toBe(functionDefinition(
+      seriesMigration,
+      "public._series_canonical_json_v1(p_value jsonb)",
+    ));
+    expect(functionDefinition(
+      strictSeriesFixture,
+      "public._series_sha256_jsonb_v1(p_payload jsonb)",
+    )).toBe(functionDefinition(
+      seriesMigration,
+      "public._series_sha256_jsonb_v1(p_payload jsonb)",
+    ));
+    expect(strictSeriesFixture).not.toContain("SELECT p_payload::TEXT");
+    expect(workflow).toContain("strictSeriesCanonicalizer.fixture.sql");
+    expect(workflow).toContain("voiceHashV2.preFix.integration.sql");
+    expect(workflow).toContain("voiceHashV2.integration.sql");
   });
 
   it("mints a Gemini credential only after the existing assignment and rate-limit gates", () => {

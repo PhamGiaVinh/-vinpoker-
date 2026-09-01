@@ -6,6 +6,7 @@ on:
       - ".github/workflows/tracker-record-action-authority-hotfix-db.yml"
       - "VinPoker/supabase/migrations/20270112000003_tracker_voice_player_analytics_v0.sql"
       - "VinPoker/supabase/migrations/20270112000004_tracker_record_action_authority_binding.sql"
+      - "VinPoker/supabase/pending-migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql"
       - "VinPoker/supabase/functions/tournament-live-update/index.ts"
       - "VinPoker/src/components/cashier/tournament-live/handinput/**"
       - "VinPoker/tests/trackerRecordActionAuthority/**"
@@ -100,6 +101,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
             -f tests/trackerUnifiedOps/disposableDb.baseline.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
+            -f tests/trackerVoice/strictSeriesCanonicalizer.fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
             -f supabase/migrations/20270108000003_tracker_unified_ops_v2_context_safe_start.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
             -f tests/trackerVoice/disposableDb.dependencies.sql
@@ -111,6 +114,8 @@ jobs:
             -f supabase/migrations/20270112000008_tracker_voice_gemini_live_provider.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
             -f supabase/pending-migrations/20270113000007_tracker_voice_transcribe35_binding.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
+            -f supabase/pending-migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
             -f tests/trackerVoice/disposableDb.integration.sql
           echo "TRACKER_RECORD_ACTION_VOICE_CHAIN=PASS"
