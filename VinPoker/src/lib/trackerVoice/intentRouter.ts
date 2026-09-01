@@ -1,9 +1,9 @@
 import type { TrackerWorkflowState } from "@/components/cashier/tournament-live/handinput/trackerWorkflow";
-import { parseTrackerVoiceCommandCore, type TrackerVoiceAmountOptions } from "./parserCore";
-import { parseVoiceBoardCommand } from "./boardParser";
-import { parseVoiceHoleCardsCommand } from "./holeCardsParser";
-import { parseVoiceFinishCommand } from "./finishParser";
-import type { ParsedVoiceBoardCommand, ParsedVoiceFinishCommand, ParsedVoiceHoleCardsCommand } from "./types";
+import { parseTrackerVoiceCommandCore, type TrackerVoiceAmountOptions } from "./parserCore.ts";
+import { parseVoiceBoardCommand } from "./boardParser.ts";
+import { parseVoiceHoleCardsCommand } from "./holeCardsParser.ts";
+import { parseVoiceFinishCommand } from "./finishParser.ts";
+import type { ParsedVoiceBoardCommand, ParsedVoiceFinishCommand, ParsedVoiceHoleCardsCommand } from "./types.ts";
 
 export type TrackerVoiceIntentRoute =
   | { ok: true; intentDomain: "action"; command: NonNullable<ReturnType<typeof parseTrackerVoiceCommandCore>> }

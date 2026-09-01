@@ -1,6 +1,6 @@
-import { parseVoiceCardPairs } from "./cardLexicon";
-import { normalizeTrackerVoiceTranscript } from "./transcriptHardener";
-import type { ParsedVoiceHoleCardsCommand } from "./types";
+import { parseVoiceCardPairs } from "./cardLexicon.ts";
+import { normalizeTrackerVoiceTranscript } from "./transcriptHardener.ts";
+import type { ParsedVoiceHoleCardsCommand } from "./types.ts";
 
 const SEAT_NUMBERS: Readonly<Record<string, number>> = {
   "1": 1, one: 1, mot: 1,

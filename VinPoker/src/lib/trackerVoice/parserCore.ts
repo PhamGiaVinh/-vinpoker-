@@ -4,9 +4,9 @@ import {
   type HardenedTranscript,
   type TranscriptRepair,
   type TranscriptRiskTier,
-} from "./transcriptHardener";
+} from "./transcriptHardener.ts";
 
-export { normalizeTrackerVoiceTranscript } from "./transcriptHardener";
+export { normalizeTrackerVoiceTranscript } from "./transcriptHardener.ts";
 
 /**
  * Pure parser shared by the browser and Edge runtime. It recognizes intent
