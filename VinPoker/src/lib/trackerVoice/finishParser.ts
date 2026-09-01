@@ -1,5 +1,5 @@
-import { normalizeTrackerVoiceTranscript } from "./transcriptHardener";
-import type { ParsedVoiceFinishCommand } from "./types";
+import { normalizeTrackerVoiceTranscript } from "./transcriptHardener.ts";
+import type { ParsedVoiceFinishCommand } from "./types.ts";
 
 /** Exact, whole-utterance grammar. Finish has no aliases or fuzzy repair. */
 export function parseVoiceFinishCommand(rawTranscript: string): ParsedVoiceFinishCommand | null {

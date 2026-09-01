@@ -1,6 +1,6 @@
-import { parseVoiceCardPairs } from "./cardLexicon";
-import { normalizeTrackerVoiceTranscript } from "./transcriptHardener";
-import type { ParsedVoiceBoardCommand } from "./types";
+import { parseVoiceCardPairs } from "./cardLexicon.ts";
+import { normalizeTrackerVoiceTranscript } from "./transcriptHardener.ts";
+import type { ParsedVoiceBoardCommand } from "./types.ts";
 
 const STREET_PREFIX: Readonly<Record<string, ParsedVoiceBoardCommand["street"]>> = {
   flop: "flop",

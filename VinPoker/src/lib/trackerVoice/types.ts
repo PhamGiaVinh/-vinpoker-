@@ -1,5 +1,5 @@
 import type { TrackerWorkflowState, WorkflowStreet } from "@/components/cashier/tournament-live/handinput/trackerWorkflow";
-import type { VoiceCanonicalRequest } from "./canonicalRequest";
+import type { VoiceCanonicalRequest } from "./canonicalRequest.ts";
 
 export type VoiceCommandKind =
   | "fold"
