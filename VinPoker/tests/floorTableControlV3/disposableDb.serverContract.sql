@@ -26,6 +26,7 @@ CREATE TABLE public.tournaments (
   club_id uuid NOT NULL REFERENCES public.clubs(id),
   name text NOT NULL DEFAULT 'TEST Tournament',
   status text NOT NULL DEFAULT 'registration',
+  live_status text NOT NULL DEFAULT 'registering',
   players_remaining integer NOT NULL DEFAULT 0,
   deleted_at timestamptz,
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -183,6 +184,23 @@ INSERT INTO public.tournaments (id, club_id, name, status) VALUES
 UPDATE public.tournaments
 SET updated_at = '2026-06-13 03:57:08.065228+07'
 WHERE id = '11111111-1111-1111-1111-111111111111';
+UPDATE public.tournaments
+SET live_status = 'running'
+WHERE id = '11111111-1111-1111-1111-111111111111';
+CREATE OR REPLACE FUNCTION public.validate_tournament_live_status()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.live_status NOT IN ('registering', 'playing', 'finished') THEN
+    RAISE EXCEPTION 'Invalid live_status: %', NEW.live_status;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_validate_tournament_live_status
+BEFORE UPDATE ON public.tournaments
+FOR EACH ROW EXECUTE FUNCTION public.validate_tournament_live_status();
 INSERT INTO public.game_tables (id, club_id, table_name, status) VALUES
   ('00000000-0000-0000-0000-000000000504', '00000000-0000-0000-0000-000000000010', 'Bàn 7', 'maintenance'),
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '33333333-3333-3333-3333-333333333333', 'TEST-T1', 'inactive'),
@@ -219,6 +237,13 @@ INSERT INTO public.tournament_seats (tournament_id, player_id, entry_number, tab
   ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111304', 1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 5, '11111111-1111-1111-1111-111111111204', false, 'moved', '2026-06-13 03:57:08.065228+07');
 
 \ir ../../supabase/migrations/20270113000002_floor_table_control_v3_foundation.sql
+
+\ir ../../supabase/migrations/20270112000009_floor_table_control_v3_fixture_live_status_compat.sql
+
+SELECT public.floor_table_v3_assert(
+  (SELECT live_status = 'registering' FROM public.tournaments WHERE id = '11111111-1111-1111-1111-111111111111'),
+  'stale STAGE_TEST live status is normalized before bridge quarantine'
+);
 
 INSERT INTO public.tournament_entries (id, tournament_id, player_id, entry_no, current_stack, status) VALUES
   ('00000000-0000-0000-0000-000000000711', '00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000911', 1, 40000, 'seated');

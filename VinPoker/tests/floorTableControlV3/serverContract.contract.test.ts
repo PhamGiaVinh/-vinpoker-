@@ -7,6 +7,10 @@ const bridgeMigration = readFileSync(
   resolve(root, "supabase/migrations/20270113000010_floor_table_control_v3_final_live_bridge.sql"),
   "utf8",
 );
+const fixtureCompatibilityMigration = readFileSync(
+  resolve(root, "supabase/migrations/20270112000009_floor_table_control_v3_fixture_live_status_compat.sql"),
+  "utf8",
+);
 const contractMigration = readFileSync(
   resolve(root, "supabase/migrations/20270113000011_floor_table_control_v3_final_contract.sql"),
   "utf8",
@@ -45,6 +49,16 @@ const workflow = readFileSync(
 );
 
 describe("Floor Table Control V3 server contract", () => {
+  it("normalizes only the stale fixture status required before bridge quarantine", () => {
+    expect(fixtureCompatibilityMigration).toContain("20270113000010");
+    expect(fixtureCompatibilityMigration).toContain("'11111111-1111-1111-1111-111111111111'::uuid");
+    expect(fixtureCompatibilityMigration).toContain("live_status IN ('running', 'registering')");
+    expect(fixtureCompatibilityMigration).toContain("SET live_status = 'registering'");
+    expect(fixtureCompatibilityMigration).toContain("live_status = 'running'");
+    expect(fixtureCompatibilityMigration).not.toMatch(/SET\s+(?:status|deleted_at)\s*=/i);
+    expect(fixtureCompatibilityMigration).not.toMatch(/DELETE\s+FROM\s+public\./i);
+  });
+
   it("transitions the historical permanent physical-table uniqueness only after exact explicit mapping", () => {
     expect(bridgeMigration).toContain("floor_table_v3_stage_test_receipt_changed");
     expect(bridgeMigration).toContain("floor_table_v3_final_live_bridge_real_identity_preflight_failed");
@@ -152,6 +166,7 @@ describe("Floor Table Control V3 server contract", () => {
     expect(workflow).toContain("vitest.serverContract.config.ts");
     expect(workflow).not.toMatch(/db push|functions deploy|vercel --prod|orlesggcjamwuknxwcpk/i);
     expect(disposable).toContain("FLOOR_TABLE_CONTROL_V3_SERVER_CONTRACT_DISPOSABLE_PASS");
+    expect(disposable).toContain("20270112000009_floor_table_control_v3_fixture_live_status_compat.sql");
     expect(disposable).toContain("20270113000010_floor_table_control_v3_final_live_bridge.sql");
     expect(disposable).toContain("20270113000011_floor_table_control_v3_final_contract.sql");
     expect(disposable).toContain("STAGE_TEST fixture is quarantined");
