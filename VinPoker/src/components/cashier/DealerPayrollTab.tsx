@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useOperatorClubs } from "@/hooks/useOperatorClubs";
 import { useFtPayrollStatements } from "@/hooks/useFtPayrollStatements";
+import { usePtPayrollStatements } from "@/hooks/usePtPayrollStatements";
 import { usePayrollStatementTelegramDelivery } from "@/hooks/usePayrollStatementTelegramDelivery";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +46,7 @@ import {
   FtPayrollStatementSummary,
 } from "@/components/cashier/FtPayrollStatementControls";
 import { PayrollStatementTelegramDeliveryControls } from "@/components/cashier/PayrollStatementTelegramDeliveryControls";
+import { PtPayrollStatementBulkControls } from "@/components/cashier/PtPayrollStatementBulkControls";
 import { LegacyPayrollPreviewDialog } from "@/components/cashier/LegacyPayrollPreviewDialog";
 
 type ClubRow = { id: string; name: string };
@@ -577,6 +579,13 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
     canFinalize: isAdmin || operatorScope.some((row) => row.club_id === activeClubId && row.can_owner),
     dealerIds: ftDealers.map((dealer) => dealer.dealer_id),
   });
+  const ptStatementController = usePtPayrollStatements({
+    clubId: activeClubId,
+    periodId: savedPeriodId,
+    periodStatus: payrollStatus,
+    canFinalize: isAdmin || operatorScope.some((row) => row.club_id === activeClubId && row.can_owner),
+    dealerIds: ptDealers.map((dealer) => dealer.dealer_id),
+  });
   const payrollDeliveryController = usePayrollStatementTelegramDelivery({
     clubId: activeClubId,
     periodId: savedPeriodId,
@@ -830,9 +839,10 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
           <div className="font-medium text-white text-sm">
             <div className="flex items-center gap-1">
               {r.full_name}
-              {isFullTime && (
-                <FtPayrollStatementBadge controller={ftStatementController} dealerId={r.dealer_id} />
-              )}
+              <FtPayrollStatementBadge
+                controller={isFullTime ? ftStatementController : ptStatementController}
+                dealerId={r.dealer_id}
+              />
               {canEditAdjustments && savedRecords[r.dealer_id] && (
                 <button
                   className="text-[10px] text-muted-foreground hover:text-success ml-1"
@@ -926,15 +936,17 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
         );
       case "net_pay":         return <span className={`${baseRight} font-semibold`}>{formatVND(r.net_pay_vnd)}</span>;
       case "actions":
-        if (isFullTime && ftStatementController.availability !== "legacy") {
+        if ((isFullTime ? ftStatementController : ptStatementController).availability !== "legacy") {
+          const statementController = isFullTime ? ftStatementController : ptStatementController;
           return (
             <FtPayrollStatementActions
               key={`${activeClubId}:${selectedMonth}:${r.dealer_id}`}
-              controller={ftStatementController}
+              controller={statementController}
               dealerId={r.dealer_id}
               dealerName={r.full_name}
               clubName={clubs.find((club) => club.id === activeClubId)?.name ?? "CLB"}
               periodLabel={currentRange?.label ?? selectedMonth}
+              kindLabel={isFullTime ? "FT" : "PT"}
             />
           );
         }
@@ -1014,7 +1026,7 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
           size="sm"
           variant="outline"
           className="h-8 text-xs"
-          onClick={() => void Promise.all([refreshAll(), ftStatementController.refresh()])}
+          onClick={() => void Promise.all([refreshAll(), ftStatementController.refresh(), ptStatementController.refresh()])}
           disabled={loading}
         >
           <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? "animate-spin" : ""}`} />
@@ -1027,6 +1039,15 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
             Xuất Excel
           </Button>
         )}
+
+        {savedPeriodId && ptDealers.length > 0 ? (
+          <PtPayrollStatementBulkControls
+            controller={ptStatementController}
+            clubName={clubs.find((club) => club.id === activeClubId)?.name ?? "CLB"}
+            periodLabel={currentRange?.label ?? selectedMonth}
+            totalDealers={ptDealers.length}
+          />
+        ) : null}
 
         {savedPeriodId ? (
           <PayrollStatementTelegramDeliveryControls
@@ -1066,7 +1087,10 @@ export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }
       </div>
 
       {ftDealers.length > 0 && (
-        <FtPayrollStatementSummary controller={ftStatementController} totalDealers={ftDealers.length} />
+        <FtPayrollStatementSummary controller={ftStatementController} totalDealers={ftDealers.length} kindLabel="FT" />
+      )}
+      {ptDealers.length > 0 && (
+        <FtPayrollStatementSummary controller={ptStatementController} totalDealers={ptDealers.length} kindLabel="PT" />
       )}
 
       <LegacyPayrollPreviewDialog

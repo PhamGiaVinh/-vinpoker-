@@ -87,10 +87,12 @@ try {
     '/tmp/payroll-pdf-storage.sql' = Join-Path $vinPokerRoot 'supabase\migration-archive\never-apply\20270113000000_dealer_payroll_statement_pdf_storage.sql'
     '/tmp/payroll-ft-ui.sql' = Join-Path $vinPokerRoot 'supabase\migration-archive\never-apply\20270113000001_dealer_payroll_statement_ft_ui_contract.sql'
     '/tmp/payroll-telegram-delivery.sql' = Join-Path $vinPokerRoot 'supabase\pending-migrations\20270113000008_dealer_payroll_statement_telegram_delivery_contract_repair.sql'
+    '/tmp/payroll-pt-statement-delivery.sql' = Join-Path $vinPokerRoot 'supabase\pending-migrations\20270114000004_dealer_payroll_pt_statement_delivery.sql'
     '/tmp/payroll-statements.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_payroll_statements.sql'
     '/tmp/payroll-statements-concurrency.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_payroll_statements_concurrency.sql'
     '/tmp/payroll-ft-ui-test.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_payroll_statement_ft_ui.sql'
     '/tmp/payroll-ft-ui-concurrency.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_payroll_statement_ft_ui_concurrency.sql'
+    '/tmp/payroll-pt-statement-delivery-test.sql' = Join-Path $vinPokerRoot 'supabase\tests\dealer_payroll_pt_statement_delivery.sql'
   }
   foreach ($destination in $files.Keys) { Invoke-Docker cp $files[$destination] "${containerName}:$destination" }
 
@@ -121,8 +123,11 @@ try {
   Invoke-ContainerPsql '/tmp/payroll-ft-ui.sql'
   Invoke-ContainerPsql '/tmp/payroll-telegram-delivery.sql'
   Invoke-ContainerPsql '/tmp/payroll-telegram-delivery.sql'
+  Invoke-ContainerPsql '/tmp/payroll-pt-statement-delivery.sql'
+  Invoke-ContainerPsql '/tmp/payroll-pt-statement-delivery.sql'
   Invoke-ContainerPsql '/tmp/payroll-ft-ui-test.sql'
   Invoke-ContainerPsql '/tmp/payroll-ft-ui-concurrency.sql'
+  Invoke-ContainerPsql '/tmp/payroll-pt-statement-delivery-test.sql'
 
   # Prove the forward repair refuses a partial catalog instead of recreating
   # the missing object and silently accepting drift.
@@ -130,7 +135,7 @@ try {
     -c 'drop index public.dealer_payroll_delivery_targets_operation_state_idx'
   Assert-ContainerPsqlFailsWith '/tmp/payroll-telegram-delivery.sql' 'PAYROLL_DELIVERY_PARTIAL_DRIFT'
 
-  Write-Host "Dealer PT wage PG$PostgresMajor current-schema restore, ordered migration apply/reapply, partial-drift rejection, ACL, lifecycle, immutable FT statement/PDF/Telegram delivery state machines, PT reservation, payout bridge, and concurrency suites passed."
+  Write-Host "Dealer PT wage PG$PostgresMajor current-schema restore, ordered migration apply/reapply, partial-drift rejection, ACL, lifecycle, immutable FT/PT statement/PDF/Telegram delivery state machines, PT reservation, payout bridge, and concurrency suites passed."
 } finally {
   if (Test-Path -LiteralPath $preparedSchemaPath) { Remove-Item -LiteralPath $preparedSchemaPath -Force }
   $existing = & docker ps -a --format '{{.Names}}' | Where-Object { $_ -eq $containerName }

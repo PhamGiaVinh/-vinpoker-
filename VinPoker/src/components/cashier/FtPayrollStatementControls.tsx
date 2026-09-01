@@ -20,13 +20,14 @@ import {
 } from "@/components/ui/sheet";
 import { PayrollStatementPreviewDialog } from "@/components/cashier/PayrollStatementPreviewDialog";
 import type { useFtPayrollStatements } from "@/hooks/useFtPayrollStatements";
+import type { usePtPayrollStatements } from "@/hooks/usePtPayrollStatements";
 import {
   FT_STATEMENT_STATUS_LABELS,
   type FtPayrollStatementStatus,
   type PayrollStatementOnlinePreview,
 } from "@/lib/payrollStatementUi";
 
-type Controller = ReturnType<typeof useFtPayrollStatements>;
+type Controller = ReturnType<typeof useFtPayrollStatements> | ReturnType<typeof usePtPayrollStatements>;
 type StatementActionKey = "draft" | "finalize" | "final-preview" | "pdf" | "refresh";
 type StatementAction = { key: StatementActionKey; label: string; icon: LucideIcon; disabled: boolean };
 
@@ -43,14 +44,15 @@ const STATUS_STYLE: Record<FtPayrollStatementStatus, string> = {
 export function FtPayrollStatementSummary(props: {
   controller: Controller;
   totalDealers: number;
+  kindLabel?: "FT" | "PT";
 }) {
-  const { controller, totalDealers } = props;
+  const { controller, totalDealers, kindLabel = "FT" } = props;
   if (controller.availability === "legacy") return null;
   if (controller.availability === "blocked") {
     return (
       <div className="flex min-h-12 items-center gap-2 border-y border-border/70 px-1 py-2 text-xs text-muted-foreground">
         <ShieldOff className="h-4 w-4" aria-hidden="true" />
-        Phiếu lương bất biến đang tắt cho CLB này.
+        Phiếu lương bất biến {kindLabel} đang tắt cho CLB này.
       </div>
     );
   }
@@ -68,7 +70,7 @@ export function FtPayrollStatementSummary(props: {
   if (controller.availability === "loading") {
     return (
       <div className="flex min-h-12 items-center gap-2 border-y border-border/70 px-1 py-2 text-xs text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Đang đối chiếu trạng thái phiếu lương...
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Đang đối chiếu trạng thái phiếu lương {kindLabel}...
       </div>
     );
   }
@@ -111,8 +113,9 @@ export function FtPayrollStatementActions(props: {
   dealerName: string;
   clubName: string;
   periodLabel: string;
+  kindLabel?: "FT" | "PT";
 }) {
-  const { controller, dealerId, dealerName, clubName, periodLabel } = props;
+  const { controller, dealerId, dealerName, clubName, periodLabel, kindLabel = "FT" } = props;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -216,7 +219,7 @@ export function FtPayrollStatementActions(props: {
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Chốt phiếu lương FT?</AlertDialogTitle>
+            <AlertDialogTitle>Chốt phiếu lương {kindLabel}?</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3 text-left">
                 <div className="grid grid-cols-[84px_1fr] gap-x-3 gap-y-1 text-sm">
@@ -227,6 +230,11 @@ export function FtPayrollStatementActions(props: {
                 <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-warning">
                   Sau khi chốt, phiếu trở thành bản ghi bất biến và không thể chỉnh sửa trực tiếp.
                 </p>
+                {kindLabel === "PT" ? (
+                  <p className="text-xs text-muted-foreground">
+                    Việc chốt giữ nguyên số dư PT tới thời điểm server xác nhận; giờ phát sinh sau đó thuộc đợt tiếp theo. Thao tác này chưa trả lương.
+                  </p>
+                ) : null}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
