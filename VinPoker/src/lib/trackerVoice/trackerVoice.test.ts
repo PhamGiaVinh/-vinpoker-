@@ -62,6 +62,18 @@ describe("parseSpokenAmount", () => {
   });
 
   it.each([
+    ["seat four raise 100", 100],
+    ["seat four raise 200", 200],
+    ["seat four raise 1000", 1_000],
+  ])("keeps confirmed spoken chip counts literal in %s", (input, expected) => {
+    expect(parseVoiceCommand(input, { spokenAmountUnit: 1, amountUnitConfirmed: true })).toMatchObject({
+      kind: "raise_to",
+      spokenSeatNumber: 4,
+      amount: { value: expected, ambiguous: false },
+    });
+  });
+
+  it.each([
     ["5.000", 5_000],
     ["11.300", 11_300],
     ["11.322", 11_322],

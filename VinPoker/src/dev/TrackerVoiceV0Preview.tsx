@@ -33,7 +33,7 @@ const READY_RUNTIME: TrackerVoiceRuntimeContext = {
     configured_mode: "assist",
     provider_model: "gemini-3.5-transcribe-live",
     spoken_amount_unit: 1,
-    amount_unit_confirmed: false,
+    amount_unit_confirmed: true,
     provider_confidence_threshold: null,
     server_auto_allowed: false,
     correction_state: "ready",
