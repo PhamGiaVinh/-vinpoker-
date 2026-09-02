@@ -14,7 +14,12 @@ export const TRACKER_VOICE_GEMINI_TRANSCRIBE_VOCABULARY = [
   "all in", "all-in", "tất tay", "bet", "cược", "raise", "raise to", "tố lên",
   "seat one", "seat two", "seat three", "seat four", "seat five", "seat six", "seat seven", "seat eight", "seat nine", "seat ten",
   "ghế số một", "ghế số hai", "ghế số ba", "ghế số bốn", "ghế số năm", "ghế số sáu", "ghế số bảy", "ghế số tám", "ghế số chín", "ghế số mười",
-  "raise 50k", "raise 100k", "raise 120k", "bet 50k", "bet 80k", "cược một trăm nghìn",
+  "nghìn", "ngàn", "triệu", "thousand", "million",
+  "raise 50k", "raise 80k", "raise 100k", "raise 120k", "raise 150k", "raise 200k", "raise 250k", "raise 500k",
+  "raise một trăm nghìn", "raise một trăm hai mươi nghìn", "raise hai trăm nghìn", "raise năm trăm nghìn",
+  "raise one hundred thousand", "raise one hundred twenty thousand",
+  "bet 50k", "bet 80k", "bet 100k", "bet 120k", "bet 200k", "bet 500k",
+  "cược năm mươi nghìn", "cược tám mươi nghìn", "cược một trăm nghìn", "cược hai trăm nghìn",
   "báo sai action", "gọi floor", "button", "small blind", "big blind",
 ] as const;
 
