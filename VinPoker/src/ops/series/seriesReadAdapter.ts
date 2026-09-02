@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { mapRpcRowToEvent, type ClubSeriesEventRow, type SeriesEvent } from "@/lib/series-intelligence/nativeData";
 
 export type SeriesEventRead = {
   id: string;
@@ -21,6 +22,18 @@ export type SeriesReadModel = {
 };
 
 type OpsClient = SupabaseClient<Database>;
+
+export async function loadSeriesEventsForQuant(client: OpsClient, clubId: string): Promise<readonly SeriesEvent[]> {
+  const result = await client.rpc("get_club_series_events", { p_club_id: clubId });
+  if (result.error) throw new Error("SERIES_READ_RPC_UNAVAILABLE");
+  const rows = (result.data ?? []) as ClubSeriesEventRow[];
+  if (rows.some((row) => row.club_id !== clubId)) throw new Error("SERIES_READ_SCOPE_MISMATCH");
+  try {
+    return Object.freeze(rows.map((row) => Object.freeze(mapRpcRowToEvent(row))));
+  } catch {
+    throw new Error("SERIES_READ_MALFORMED");
+  }
+}
 
 export async function loadSeriesReadModel(client: OpsClient, clubId: string): Promise<SeriesReadModel> {
   const result = await client.rpc("get_club_series_events", { p_club_id: clubId });

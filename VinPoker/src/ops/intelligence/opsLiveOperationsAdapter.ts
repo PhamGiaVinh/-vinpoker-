@@ -179,6 +179,7 @@ function toOperationRow(
     tableId: table.id,
     tableName: table.table_name,
     tableStatus: table.status,
+    tournamentId: tournament?.id ?? null,
     tournamentName: tournament?.name ?? null,
     currentLevel: tournament?.current_level ?? null,
     averageStack: tournament?.average_stack ?? null,

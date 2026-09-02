@@ -33,14 +33,18 @@ async function installMockOpsSession(page: Page) {
   await page.route("http://127.0.0.1:54321/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     const json = (body: unknown) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    if (path.endsWith("/auth/v1/user")) return json({ id: userId, aud: "authenticated", role: "authenticated", email: "owner@example.test", app_metadata: {}, user_metadata: {}, identities: [], created_at: asOf });
     if (path.endsWith("/rpc/get_my_ops_capability_scope")) return json(ownerScope);
     if (path.endsWith("/rpc/get_my_ops_global_capability")) return json([{ is_super_admin: false }]);
     if (path.endsWith("/clubs")) return json([{ id: clubId, name: "HSOP TEST" }]);
     if (path.endsWith("/rpc/get_series_club_live_pulse_v1")) return json(clubPulse());
+    if (path.endsWith("/rpc/get_ops_registration_pace_q0")) return json({ version: "ops-registration-observed-q0", clubId, asOf, window: { from: "2026-08-26T01:02:03.000Z", to: "2026-09-11T01:02:03.000Z" }, events: [] });
+    if (path.endsWith("/rpc/get_ops_sepay_read_state_q0")) return json({ version: "ops-sepay-read-state-q0", clubId, asOf, window: { from: "2026-08-26T01:02:03.000Z", to: asOf }, latestObservedTransactionAt: null, buckets: [{ state: "actionable", transactionCount: 0, inboundAmountVnd: 0, amountAvailability: "exact", amountReasonCode: null }, { state: "resolved", transactionCount: 0, inboundAmountVnd: 0, amountAvailability: "exact", amountReasonCode: null }, { state: "quarantined", transactionCount: 0, inboundAmountVnd: 0, amountAvailability: "exact", amountReasonCode: null }] });
+    if (path.endsWith("/rpc/get_club_series_events")) return json([]);
     if (path.endsWith("/rpc/get_club_finance_summary")) return json({ revenue: { total: 12500000, rake: 0, serviceFee: 0, stakingFees: 0, payoutFees: 0, fnb: 0 }, cost: { payrollNet: 0, ptWagePaid: 0, fnbCogs: 0, compCogs: 0, clubExpenses: 0 }, net: 12500000 });
     if (path.endsWith("/rpc/get_latest_owner_daily_digest_artifact")) return json(null);
     if (path.endsWith("/game_tables")) return json([{ id: "table-1", table_name: "Bàn 1", status: "active", current_blind_level: 4 }, { id: "table-2", table_name: "Bàn 2", status: "active", current_blind_level: 4 }]);
-    if (path.endsWith("/tournaments")) return json([{ id: "event-1", name: "Main Event", status: "live", current_level: 4, average_stack: 42000, tournament_tables: [{ table_id: "table-1" }, { table_id: "table-2" }] }]);
+    if (path.endsWith("/tournaments")) return json([{ id: "event-1", name: "Main Event", status: "live", current_level: 4, average_stack: 42000, tournament_tables: [{ table_id: "table-1", status: "active" }, { table_id: "table-2", status: "active" }] }]);
     if (path.endsWith("/dealer_assignments")) return json([{ id: "assignment-1", attendance_id: "attendance-1", table_id: "table-1", assigned_at: asOf, released_at: null, status: "assigned", version: 1, updated_at: asOf, last_swing_attempted_at: null, swing_in_progress: false, swing_processed_at: null, swing_due_at: "2026-08-27T03:00:00.000Z", pre_assigned_attendance_id: null, pre_assigned_at: null, dealer_attendance: { current_state: "assigned", dealers: { full_name: "Dealer A" } } }]);
     if (path.endsWith("/dealer_attendance")) return json([{ id: "attendance-1", dealer_id: "dealer-1", check_in_time: asOf }]);
     return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
@@ -56,9 +60,9 @@ test("desktop owner terminal respects source provenance and responsive fallback"
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/ops/select-module");
+  await page.getByRole("button", { name: "LIVE OPS" }).click();
   await expect(page.getByTestId("ops-intelligence-command-center")).toBeVisible();
-  await expect(page.getByText("Ops Intelligence Command Center", { exact: true })).toBeVisible();
-  await expect(page.getByText("LIVE", { exact: true })).toBeVisible();
+  await expect(page.getByText("Ops Intelligence Command Center", { exact: true })).toHaveCount(0);
   await expect(page.getByText("8", { exact: true })).toBeVisible();
   await expect(page.getByText("Chưa phân công", { exact: true })).toBeVisible();
   await expect(page.getByText("TRACKER_ALERT_ROLLOUT_DISABLED", { exact: true })).toHaveCount(2);
