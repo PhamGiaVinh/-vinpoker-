@@ -18,6 +18,8 @@ async function installMocks(page: Page) {
     if (path.endsWith("/rpc/get_series_club_live_pulse_v1")) return json(pulse());
     if (path.endsWith("/rpc/get_ops_registration_pace_q0")) return json({ version: "ops-registration-observed-q0", clubId, asOf, window: { from: "2026-08-28T10:00:00.000Z", to: "2026-09-12T10:00:00.000Z" }, events: [{ eventId, eventName: "Main Event", eventState: "scheduled", startTime: "2026-08-30T10:00:00.000Z", confirmedEntries: 2, uniquePlayers: 1, reentries: 1, firstRegistrationAt: "2026-08-29T09:00:00.000Z", lastRegistrationAt: "2026-08-29T09:30:00.000Z", last1h: 2, last6h: 2, last24h: 2, timelineAvailability: "exact", timelineReasonCode: null, timeline: [{ bucketStart: "2026-08-29T09:00:00.000Z", observedCount: 2, cumulativeCount: 2 }] }] });
     if (path.endsWith("/rpc/get_ops_sepay_read_state_q0")) return json({ version: "ops-sepay-read-state-q0", clubId, asOf, window: { from: "2026-08-28T10:00:00.000Z", to: asOf }, latestObservedTransactionAt: "2026-08-29T09:30:00.000Z", buckets: [{ state: "actionable", transactionCount: 0, inboundAmountVnd: 0, amountAvailability: "exact", amountReasonCode: null }, { state: "resolved", transactionCount: 2, inboundAmountVnd: 4_000_000, amountAvailability: "exact", amountReasonCode: null }, { state: "quarantined", transactionCount: 0, inboundAmountVnd: 0, amountAvailability: "exact", amountReasonCode: null }] });
+    if (path.endsWith("/rpc/get_club_series_events")) return json([]);
+    if (path.endsWith("/rpc/get_tournament_prize_pool")) return json([{ prize_pool: 0, confirmed_entry_count: 0 }]);
     if (path.endsWith("/rpc/get_club_finance_summary")) return json({ revenue: { total: 0, rake: 0, serviceFee: 0, stakingFees: 0, payoutFees: 0, fnb: 0 }, cost: { payrollNet: 0, ptWagePaid: 0, fnbCogs: 0, compCogs: 0, clubExpenses: 0 }, net: 0 });
     if (path.endsWith("/rpc/get_latest_owner_daily_digest_artifact")) return json(null);
     if (path.endsWith("/game_tables")) return json(Array.from({ length: 101 }, (_, index) => ({ id: `table-${index + 1}`, table_name: `Bàn ${index + 1}`, status: "active", current_blind_level: 4 })));
@@ -36,8 +38,8 @@ test("Q0 shows observed registration, sanitized SePay, capacity truth and explic
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/ops/select-module");
+  await page.getByRole("button", { name: "DATA HEALTH" }).click();
   await expect(page.getByTestId("ops-quant-data-health-q0")).toBeVisible();
-  await expect(page.getByText("4 bàn đang mở · 101 bàn cấu hình", { exact: true })).toBeVisible();
   await expect(page.getByText("Nhịp đăng ký quan sát", { exact: true })).toBeVisible();
   await expect(page.getByText("SePay read state", { exact: true })).toBeVisible();
   await expect(page.getByText(/EVENT_SOURCE_NOT_APPROVED/)).toHaveCount(2);

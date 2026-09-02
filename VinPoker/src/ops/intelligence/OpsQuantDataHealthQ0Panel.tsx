@@ -3,22 +3,16 @@ import { useQuery } from "@tanstack/react-query";
 import { Activity, Database, Landmark, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
-import { loadOpsRegistrationPaceQ0, loadOpsSepayReadStateQ0 } from "./opsQuantDataHealthAdapter";
 import { buildOpsDataHealthQ0, type OpsDataHealthRowQ0, type OpsRegistrationPaceQ0, type OpsSepayReadStateQ0 } from "./opsQuantDataHealthQ0";
 import type { OpsSourceStateV1 } from "./opsIntelligenceReadModel";
+import { registrationQ0QueryOptions, sepayQ0QueryOptions } from "./opsIntelligenceQueryOptions";
 
 const Q0_SOURCE_IDS = new Set(["registration-pace", "sepay", "event-stream"]);
 
-export function OpsQuantDataHealthQ0Panel({ clubId, baselineSources }: { clubId: string; baselineSources: readonly OpsSourceStateV1[] }) {
+export function OpsQuantDataHealthQ0Panel({ clubId, baselineSources = [], embedded = false }: { clubId: string; baselineSources?: readonly OpsSourceStateV1[]; embedded?: boolean }) {
   const client = useSupabaseClient();
-  const registration = useQuery({
-    queryKey: ["ops", clubId, "quant-q0", "registration"],
-    queryFn: () => loadOpsRegistrationPaceQ0(client, clubId),
-  });
-  const sepay = useQuery({
-    queryKey: ["ops", clubId, "quant-q0", "sepay"],
-    queryFn: () => loadOpsSepayReadStateQ0(client, clubId),
-  });
+  const registration = useQuery(registrationQ0QueryOptions(client, clubId));
+  const sepay = useQuery(sepayQ0QueryOptions(client, clubId));
   const observedFallback = registration.data?.observedAt ?? sepay.data?.observedAt ?? "1970-01-01T00:00:00.000Z";
   const q0Health = useMemo(() => buildOpsDataHealthQ0({
     registration: registration.data ?? { value: null, observedAt: observedFallback, reasonCode: registration.isPending ? "SOURCE_PENDING" : "REGISTRATION_PACE_READ_FAILED" },
@@ -31,7 +25,7 @@ export function OpsQuantDataHealthQ0Panel({ clubId, baselineSources }: { clubId:
   ], [baselineSources, q0Health]);
 
   return <section className="space-y-4" data-testid="ops-quant-data-health-q0">
-    <div className="flex items-center justify-between border border-sky-300/15 bg-[#07100c] px-4 py-3">
+    {!embedded && <div className="flex items-center justify-between border border-sky-300/15 bg-[#07100c] px-4 py-3">
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-300">Quant Data Health Q0</p>
         <h2 className="mt-1 text-sm font-semibold text-white">Dữ liệu quan sát, không dự báo</h2>
@@ -39,7 +33,7 @@ export function OpsQuantDataHealthQ0Panel({ clubId, baselineSources }: { clubId:
       <Button type="button" size="sm" variant="outline" onClick={() => void Promise.allSettled([registration.refetch(), sepay.refetch()])}>
         <RefreshCw className="mr-2 h-3.5 w-3.5" /> Làm mới Q0
       </Button>
-    </div>
+    </div>}
 
     <div className="grid grid-cols-12 gap-4">
       <RegistrationPanel value={registration.data?.value ?? null} reasonCode={registration.data?.reasonCode ?? (registration.isPending ? "SOURCE_PENDING" : "REGISTRATION_PACE_READ_FAILED")} />

@@ -7,9 +7,7 @@ import { currentMonthFinanceRange, loadFinanceSummary } from "@/ops/finance/fina
 import { createOwnerDailyDigestSupabaseSource } from "@/ops/digest/ownerDailyDigestSupabaseSource";
 import { loadOwnerDailyDigestReport } from "@/ops/digest/ownerDailyDigestReadAdapter";
 import { FEATURES } from "@/lib/featureFlags";
-import { getSeriesClubLivePulseV1WithClient } from "@/lib/series-intelligence/seriesClubLivePulseClient";
 import { listTrackerFloorAlerts } from "@/lib/tracker-floor-alerts/trackerFloorAlertsRead";
-import { loadOpsLiveOperations } from "./opsLiveOperationsAdapter";
 import {
   buildOpsIntelligenceReadModelV1,
   type OpsHeadlineStatusV1,
@@ -19,37 +17,29 @@ import {
 import { shouldReadTrackerAlerts } from "./opsIntelligenceGate";
 import { OpsQuantDataHealthQ0Panel } from "./OpsQuantDataHealthQ0Panel";
 import { isOpsQuantDataHealthQ0Enabled } from "./opsQuantDataHealthGate";
-
-type ReadEnvelope<T> = {
-  readonly value: T | null;
-  readonly availability: OpsSourceAvailabilityV1;
-  readonly observedAt: string;
-  readonly reasonCode: string | null;
-};
+import { operationsQueryOptions, pulseQueryOptions, type OpsReadEnvelope } from "./opsIntelligenceQueryOptions";
 
 const PENDING_OBSERVED_AT = "1970-01-01T00:00:00.000Z";
 
-export function OpsIntelligenceCommandCenterV1({ clubId, clubName }: { clubId: string; clubName: string | null }) {
+export function OpsIntelligenceCommandCenterV1({
+  clubId,
+  clubName,
+  embedded = false,
+  showDataHealth = true,
+}: {
+  clubId: string;
+  clubName: string | null;
+  embedded?: boolean;
+  showDataHealth?: boolean;
+}) {
   const client = useSupabaseClient();
   const q0Enabled = isOpsQuantDataHealthQ0Enabled();
   const range = useMemo(() => currentMonthFinanceRange(), []);
-  const pulse = useQuery({
-    queryKey: ["ops", clubId, "intelligence", "pulse"],
-    queryFn: async (): Promise<ReadEnvelope<Awaited<ReturnType<typeof getSeriesClubLivePulseV1WithClient>>>> => {
-      const result = await getSeriesClubLivePulseV1WithClient(client, clubId);
-      if ("error" in result) {
-        return Object.freeze({ value: result, availability: "unavailable", observedAt: new Date().toISOString(), reasonCode: result.error });
-      }
-      return Object.freeze({ value: result, availability: "exact", observedAt: new Date().toISOString(), reasonCode: null });
-    },
-  });
-  const operations = useQuery({
-    queryKey: ["ops", clubId, "intelligence", "operations", q0Enabled ? "q0" : "v1"],
-    queryFn: () => loadOpsLiveOperations(client, clubId, { q0CapacityTruth: q0Enabled }),
-  });
+  const pulse = useQuery(pulseQueryOptions(client, clubId));
+  const operations = useQuery(operationsQueryOptions(client, clubId, q0Enabled));
   const finance = useQuery({
     queryKey: ["ops", clubId, "intelligence", "finance", range.from, range.to],
-    queryFn: async (): Promise<ReadEnvelope<Awaited<ReturnType<typeof loadFinanceSummary>>>> => {
+    queryFn: async (): Promise<OpsReadEnvelope<Awaited<ReturnType<typeof loadFinanceSummary>>>> => {
       try {
         return Object.freeze({ value: await loadFinanceSummary(client, clubId, range), availability: "exact", observedAt: new Date().toISOString(), reasonCode: null });
       } catch (error) {
@@ -65,7 +55,7 @@ export function OpsIntelligenceCommandCenterV1({ clubId, clubName }: { clubId: s
           createOwnerDailyDigestSupabaseSource(client),
           { clubId },
         );
-        return Object.freeze({ value, availability: "exact", observedAt: new Date().toISOString(), reasonCode: value ? null : "OWNER_DIGEST_EMPTY" } satisfies ReadEnvelope<typeof value>);
+        return Object.freeze({ value, availability: "exact", observedAt: new Date().toISOString(), reasonCode: value ? null : "OWNER_DIGEST_EMPTY" } satisfies OpsReadEnvelope<typeof value>);
       } catch (error) {
         return Object.freeze({ value: null, availability: "unavailable", observedAt: new Date().toISOString(), reasonCode: error instanceof Error ? error.message : "OWNER_DIGEST_READ_FAILED" });
       }
@@ -74,7 +64,7 @@ export function OpsIntelligenceCommandCenterV1({ clubId, clubName }: { clubId: s
   const tracker = useQuery({
     queryKey: ["ops", clubId, "intelligence", "tracker-alerts", operations.data?.runningTournamentIds.join(",") ?? ""],
     enabled: shouldReadTrackerAlerts(FEATURES.trackerVoiceInput, operations.data?.runningTournamentIds ?? []),
-    queryFn: async (): Promise<ReadEnvelope<number>> => {
+    queryFn: async (): Promise<OpsReadEnvelope<number>> => {
       const results = await Promise.all(operations.data!.runningTournamentIds.map((tournamentId) => listTrackerFloorAlerts(client, tournamentId)));
       const failed = results.find((result) => !result.ok);
       if (failed && "error" in failed) return Object.freeze({ value: null, availability: "unavailable", observedAt: new Date().toISOString(), reasonCode: failed.error });
@@ -122,7 +112,7 @@ export function OpsIntelligenceCommandCenterV1({ clubId, clubName }: { clubId: s
 
   return (
     <main className="space-y-4" data-testid="ops-intelligence-command-center">
-      <header className="border border-emerald-300/20 bg-[#07100c] px-5 py-4 shadow-[0_0_32px_rgba(16,185,129,0.05)]">
+      {!embedded && <header className="border border-emerald-300/20 bg-[#07100c] px-5 py-4 shadow-[0_0_32px_rgba(16,185,129,0.05)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">Tổng quan điều hành</p>
@@ -136,7 +126,7 @@ export function OpsIntelligenceCommandCenterV1({ clubId, clubName }: { clubId: s
             </Button>
           </div>
         </div>
-      </header>
+      </header>}
 
       <section className="grid grid-cols-2 gap-px overflow-hidden border border-white/10 bg-white/10 xl:grid-cols-5" aria-label="Chỉ số sàn hiện tại">
         {model.metrics.map((metric) => <MetricTile key={metric.metricId} label={metric.label} value={metric.value} availability={metric.availability} />)}
@@ -197,16 +187,16 @@ export function OpsIntelligenceCommandCenterV1({ clubId, clubName }: { clubId: s
           {model.sources.map((source) => <article key={source.sourceId} className="min-w-0 p-3"><div className="flex items-center justify-between gap-2"><span className="truncate text-xs font-medium text-[#d7e3dc]">{source.label}</span><AvailabilityBadge availability={source.availability} /></div><p className="mt-2 font-mono text-[10px] leading-4 text-[#73867c]">as-of {source.asOf ?? "không do source cung cấp"}<br />receipt {formatTimestamp(source.observedAt)}</p>{source.reasonCode && <p className="mt-1 font-mono text-[10px] text-amber-200">{source.reasonCode}</p>}</article>)}
         </div>
       </section>
-      {q0Enabled && <OpsQuantDataHealthQ0Panel clubId={clubId} baselineSources={model.sources} />}
+      {showDataHealth && q0Enabled && <OpsQuantDataHealthQ0Panel clubId={clubId} baselineSources={model.sources} />}
     </main>
   );
 }
 
-function sourceFromRead(sourceId: string, label: string, result: ReadEnvelope<unknown> | undefined, fallbackObservedAt: string): OpsSupplementalSourceInputV1 {
+function sourceFromRead(sourceId: string, label: string, result: OpsReadEnvelope<unknown> | undefined, fallbackObservedAt: string): OpsSupplementalSourceInputV1 {
   return Object.freeze({ sourceId, label, availability: result?.availability ?? "unavailable", asOf: null, observedAt: result?.observedAt ?? fallbackObservedAt, reasonCode: result?.reasonCode ?? (result ? null : "SOURCE_PENDING") });
 }
 
-function trackerSource(enabled: boolean, result: ReadEnvelope<number> | undefined, fallbackObservedAt: string, tournamentCount: number): OpsSupplementalSourceInputV1 {
+function trackerSource(enabled: boolean, result: OpsReadEnvelope<number> | undefined, fallbackObservedAt: string, tournamentCount: number): OpsSupplementalSourceInputV1 {
   if (!enabled) return unavailableSource("tracker-alerts", "Tracker alerts", fallbackObservedAt, "TRACKER_ALERT_ROLLOUT_DISABLED");
   if (!tournamentCount) return unavailableSource("tracker-alerts", "Tracker alerts", fallbackObservedAt, "TRACKER_ALERT_NO_RUNNING_TOURNAMENT");
   return sourceFromRead("tracker-alerts", "Tracker alerts", result, fallbackObservedAt);

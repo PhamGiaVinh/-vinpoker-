@@ -29,6 +29,7 @@ export interface OpsOperationRowV1 {
   readonly tableId: string;
   readonly tableName: string;
   readonly tableStatus: string;
+  readonly tournamentId: string | null;
   readonly tournamentName: string | null;
   readonly currentLevel: number | null;
   readonly averageStack: number | null;

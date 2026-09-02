@@ -6,7 +6,9 @@ import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import type { OpsSuperAdminClub } from "@/ops/auth/opsCapabilityContract";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
 import { OpsIntelligenceCommandCenterV1 } from "./OpsIntelligenceCommandCenterV1";
+import { OpsIntelligenceWorkspaceQ1 } from "./OpsIntelligenceWorkspaceQ1";
 import { isOpsIntelligenceCommandCenterEnabled } from "./opsIntelligenceGate";
+import { isOpsQuantDashboardQ1Enabled } from "./opsQuantDashboardGate";
 
 const DESKTOP_QUERY = "(min-width: 1280px)";
 
@@ -61,11 +63,11 @@ export function OpsIntelligenceEntryGate({ fallback }: { fallback: ReactNode }) 
     if (ownerClubs.length === 0) return <>{fallback}</>;
     if (ownerClubs.length === 1) {
       const clubId = ownerClubs[0].club_id;
-      return <OpsIntelligenceCommandCenterV1 clubId={clubId} clubName={clubName(capabilities.clubs, clubId)} />;
+      return renderIntelligence(clubId, clubName(capabilities.clubs, clubId));
     }
     const selected = requestedClubId && ownerClubs.some((row) => row.club_id === requestedClubId) ? requestedClubId : null;
     if (!selected) return <OwnerClubPicker clubs={ownerClubs.map((row) => ({ id: row.club_id, name: clubName(capabilities.clubs, row.club_id) }))} onSelect={(clubId) => setClubParam(params, setParams, clubId)} />;
-    return <OpsIntelligenceCommandCenterV1 clubId={selected} clubName={clubName(capabilities.clubs, selected)} />;
+    return renderIntelligence(selected, clubName(capabilities.clubs, selected));
   }
 
   if (!requestedClubId) return <SuperAdminClubSearch search={search} searching={searching} results={searchResults} onSearch={async () => {
@@ -74,7 +76,13 @@ export function OpsIntelligenceEntryGate({ fallback }: { fallback: ReactNode }) 
   }} onChange={setSearch} onSelect={(clubId) => setClubParam(params, setParams, clubId)} />;
   if (verificationState === "checking") return <GateState icon={<Loader2 className="h-5 w-5 animate-spin" />} title="Đang xác thực CLB" detail="Chưa có nguồn Intelligence nào được mount trước khi quyền Super Admin được xác minh." />;
   if (!verifiedClub || verificationState === "failed") return <GateState icon={<ShieldAlert className="h-5 w-5" />} title="Không xác thực được CLB yêu cầu" detail="Không đọc dữ liệu vận hành cho đến khi server xác nhận đúng CLB." />;
-  return <OpsIntelligenceCommandCenterV1 clubId={verifiedClub.club_id} clubName={verifiedClub.club_name} />;
+  return renderIntelligence(verifiedClub.club_id, verifiedClub.club_name);
+}
+
+function renderIntelligence(clubId: string, name: string | null): ReactNode {
+  return isOpsQuantDashboardQ1Enabled()
+    ? <OpsIntelligenceWorkspaceQ1 clubId={clubId} clubName={name} />
+    : <OpsIntelligenceCommandCenterV1 clubId={clubId} clubName={name} />;
 }
 
 function useDesktopMediaQuery(query: string): boolean {

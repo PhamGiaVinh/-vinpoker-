@@ -26,7 +26,7 @@ function pulse(overrides: Record<string, unknown> = {}) {
 function operations(overrides: Record<string, unknown> = {}) {
   return {
     observedAt: OBSERVED_AT, asOf: AS_OF, availability: "exact" as const, reasonCode: null,
-    rows: Object.freeze([{ tableId: "table-1", tableName: "Bàn 1", tableStatus: "active", tournamentName: "Main", currentLevel: null, averageStack: null, dealerName: "Duy", dealerAssignmentState: "assigned" as const, sourceAvailability: "exact" as const }]),
+    rows: Object.freeze([{ tableId: "table-1", tableName: "Bàn 1", tableStatus: "active", tournamentId: "tournament-1", tournamentName: "Main", currentLevel: null, averageStack: null, dealerName: "Duy", dealerAssignmentState: "assigned" as const, sourceAvailability: "exact" as const }]),
     runningTournamentIds: Object.freeze(["event-1"]), openTableCount: 5, configuredTableCount: 101, operationalTableCount: 5, dealersOnDutyCount: 5, countComparisonEligible: false, ...overrides,
   };
 }
@@ -95,7 +95,7 @@ describe("Ops Intelligence read model", () => {
       clubId: CLUB_ID,
       pulse: { value: pulse(), observedAt: OBSERVED_AT },
       pulseError: null,
-      operations: operations({ rows: Object.freeze([{ tableId: "table-1", tableName: "Bàn 1", tableStatus: "active", tournamentName: "Main", currentLevel: null, averageStack: null, dealerName: null, dealerAssignmentState: "missing", sourceAvailability: "partial" as const }]) }),
+      operations: operations({ rows: Object.freeze([{ tableId: "table-1", tableName: "Bàn 1", tableStatus: "active", tournamentId: "tournament-1", tournamentName: "Main", currentLevel: null, averageStack: null, dealerName: null, dealerAssignmentState: "missing", sourceAvailability: "partial" as const }]) }),
       supplemental: [],
       verifiedTrackerAlertCount: null,
     });

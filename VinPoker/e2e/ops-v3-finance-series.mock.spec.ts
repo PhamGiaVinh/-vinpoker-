@@ -59,6 +59,7 @@ async function installMockOpsSession(page: Page, requests: string[], malformedFi
       contentType: "application/json",
       body: JSON.stringify(body),
     });
+    if (path.endsWith("/auth/v1/user")) return json({ id: userId, aud: "authenticated", role: "authenticated", email: "owner@example.test", app_metadata: {}, user_metadata: {}, identities: [], created_at: "2026-08-09T00:00:00.000Z" });
     if (path.endsWith("/rpc/get_my_ops_capability_scope")) return json(operatorScope);
     if (path.endsWith("/rpc/get_my_ops_global_capability")) return json([{ is_super_admin: false }]);
     if (path.endsWith("/clubs")) return json([{ id: clubId, name: "CODEX CONTROL TEST CLUB" }]);
