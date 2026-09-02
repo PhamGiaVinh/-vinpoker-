@@ -50,6 +50,25 @@ describe("parseSpokenAmount", () => {
       ambiguous: false,
     });
   });
+
+  it.each([
+    ["220.0", 220_000],
+  ])("applies a confirmed table unit to Gemini decimal-form output %s", (input, expected) => {
+    expect(parseSpokenAmount(input, { spokenAmountUnit: 1_000, amountUnitConfirmed: true })).toMatchObject({
+      value: expected,
+      ambiguous: false,
+      explicitUnit: false,
+    });
+  });
+
+  it.each([
+    ["5.000", 5_000],
+    ["11.300", 11_300],
+    ["11.322", 11_322],
+    ["101699", 101_699],
+  ])("keeps explicit formatted chip count %s exact", (input, expected) => {
+    expect(parseSpokenAmount(input)).toMatchObject({ value: expected, ambiguous: false, explicitUnit: true });
+  });
 });
 
 describe("parseVoiceCommand", () => {
@@ -114,6 +133,11 @@ describe("parseVoiceCommand", () => {
     for (const transcript of ["fold call", "", "all", "seat 9 all"]) {
       expect(parseVoiceCommand(transcript)).toBeNull();
     }
+  });
+
+  it("does not let a spoken call amount override the engine-derived call amount", () => {
+    expect(parseVoiceCommand("seat four call 30k")).toBeNull();
+    expect(parseVoiceCommand("seat four call 11.300")).toBeNull();
   });
 
   it("rejects partial/noise text", () => {

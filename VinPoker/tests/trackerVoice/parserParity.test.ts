@@ -104,4 +104,20 @@ describe("Tracker Voice browser and Edge parser parity", () => {
     expect(browserShape("bet 9", {})).toEqual(serverShape("bet 9", {}));
     expect(browserShape("bet 9", {})).toMatchObject({ kind: "bet_to", amount: 9, amountAmbiguous: true });
   });
+
+  it.each([
+    ["seat four raise 220.0", { spokenAmountUnit: 1_000, amountUnitConfirmed: true }, 220_000],
+    ["seat four raise 5.000", {}, 5_000],
+    ["seat four raise 11.300", {}, 11_300],
+    ["seat four raise 11.322", {}, 11_322],
+    ["seat four raise 101699", {}, 101_699],
+  ])("keeps Gemini-formatted amount parity for %s", (transcript, options, amount) => {
+    expect(browserShape(transcript, options)).toEqual(serverShape(transcript, options));
+    expect(browserShape(transcript, options)).toMatchObject({ kind: "raise_to", amount, amountAmbiguous: false });
+  });
+
+  it("rejects spoken call amounts identically because the engine derives the call amount", () => {
+    expect(browserShape("seat four call 30k", {})).toBeNull();
+    expect(serverShape("seat four call 30k", {})).toBeNull();
+  });
 });

@@ -27,6 +27,13 @@ describe("Gemini Transcribe profile", () => {
       },
     });
     expect(TRACKER_VOICE_GEMINI_TRANSCRIBE_VOCABULARY).not.toEqual(expect.arrayContaining(["fit", "feet", "rây", "phâu", "ô in"]));
+    expect(TRACKER_VOICE_GEMINI_TRANSCRIBE_VOCABULARY).toEqual(expect.arrayContaining([
+      "nghìn",
+      "triệu",
+      "raise một trăm hai mươi nghìn",
+      "raise one hundred twenty thousand",
+      "cược hai trăm nghìn",
+    ]));
     expect(TRACKER_VOICE_GEMINI_TRANSCRIBE_VOCABULARY.length).toBeLessThan(100);
   });
 

@@ -287,7 +287,7 @@ export function parseTrackerVoiceAmount(
 ): TrackerVoiceCoreAmount {
   const raw = rawInput.trim();
   if (!raw) return { value: null, raw: null, explicitUnit: false, ambiguous: false };
-  const tokens = normalizeTrackerVoiceTranscript(raw)
+  const tokens = normalizeFormattedThousands(normalizeTrackerVoiceTranscript(raw))
     .replace(/,/g, ".")
     .replace(/[^a-z0-9.\s-]/g, " ")
     .replace(/\s+/g, " ")
