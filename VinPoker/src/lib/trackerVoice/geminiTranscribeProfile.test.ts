@@ -32,6 +32,8 @@ describe("Gemini Transcribe profile", () => {
       "triệu",
       "raise một trăm hai mươi nghìn",
       "raise one hundred twenty thousand",
+      "raise 1000",
+      "seat four raise 1000",
       "cược hai trăm nghìn",
     ]));
     expect(TRACKER_VOICE_GEMINI_TRANSCRIBE_VOCABULARY.length).toBeLessThan(100);
