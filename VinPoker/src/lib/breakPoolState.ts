@@ -4,7 +4,23 @@ export const DEFAULT_BREAK_DURATION_MINUTES = 10;
 // Open-table warmup: when a dealer is assigned to open/staff a table, a
 // OPEN_TABLE_GRACE_MINUTES "warmup" runs before the swing clock starts counting.
 // MUST match the edge-function constant in supabase/functions/_shared/openTableGrace.ts.
-export const OPEN_TABLE_GRACE_MINUTES = 6;
+export const OPEN_TABLE_GRACE_MINUTES = 5;
+
+export function getOpenTableWarmupRemainingSeconds(
+  idempotencyKey: string | null | undefined,
+  assignedAt: string | null | undefined,
+  nowMs: number,
+): number | null {
+  const isOpenTableAssignment = idempotencyKey?.startsWith("open_manual_")
+    || idempotencyKey?.startsWith("open_operation_");
+  if (!isOpenTableAssignment || !assignedAt || !Number.isFinite(nowMs)) return null;
+
+  const assignedMs = new Date(assignedAt).getTime();
+  if (!Number.isFinite(assignedMs)) return null;
+
+  const remainingMs = assignedMs + OPEN_TABLE_GRACE_MINUTES * 60_000 - nowMs;
+  return remainingMs > 0 ? Math.floor(remainingMs / 1000) : null;
+}
 
 /** Per-club inter-swing rest minutes (max across table-types) — mirrors useBreakPool. */
 export function buildRestMinutesByClub(

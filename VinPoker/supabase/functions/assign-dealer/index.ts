@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
           p_swing_due_at: swingDueAt,
           p_club_id: table.club_id,
           // "open_manual_" marker (2026-07-07): tells the floor card this row was a
-          // manual open carrying the 6-min grace → show WARMUP. Deterministic wrap of
+          // manual open carrying the 5-min grace → show WARMUP. Deterministic wrap of
           // the client's idempotency key so client retries still replay-dedupe in the
           // RPC (same client key → same wrapped key).
           p_idempotency_key: idempotency_key

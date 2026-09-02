@@ -21,7 +21,7 @@ import { deriveTableSwingView, formatTimeHHmm, type TableTimeline } from "./swin
 import { dealerStatusStyle, type DealerTableStatus } from "./dealerStatusStyle";
 import { FeatureTableBadge, useFeatureTableBorder } from "./FeatureTableBadge";
 import { getPreAssignStatusLabel } from "@/lib/dealerSwingState";
-import { OPEN_TABLE_GRACE_MINUTES } from "@/lib/breakPoolState";
+import { getOpenTableWarmupRemainingSeconds } from "@/lib/breakPoolState";
 import type {
   DealerAssignment, DealerAttendance, PreAssignedInfo, NextDealerPrediction, SwingConfig,
 } from "@/hooks/useDealerSwing";
@@ -114,20 +114,20 @@ export default function SwingTableCard({
   const preAssignStatus = a?.pre_assign_status ?? "none";
   const preAssignLabel = getPreAssignStatusLabel(preAssignStatus);
 
-  // Open-table warmup: show "Vào swing sau M:SS" ONLY for a MANUAL open (Gán /
-  // Gán loạt), identified by the explicit "open_manual_*" idempotency-key marker
-  // the open paths now stamp (assign-dealer + fillEmptyTables manual). The old
+  // Open-table warmup: show "Vào swing sau M:SS" ONLY for an open-table assignment
+  // (single/manual or durable bulk-open), identified by the explicit assignment
+  // origin marker stamped by the open paths. The old
   // heuristic — (swing_due_at − assigned_at) > swing_duration — false-fired on
   // every backend timing nuance (rest-deficit compensation, sync-window rounding,
   // duration-fallback mismatches), flashing WARMUP after normal rotations
   // ("warmup chỉ dành cho mở bàn", owner 2026-07-07). Rotation/auto rows never
   // carry the marker, so they can never show WARMUP regardless of timing.
-  const assignedMs = a?.assigned_at ? new Date(a.assigned_at).getTime() : 0;
-  const isManualOpen = !!a?.idempotency_key?.startsWith("open_manual");
-  const warmupUntilMs = isManualOpen && assignedMs > 0
-    ? assignedMs + OPEN_TABLE_GRACE_MINUTES * 60_000
-    : 0;
-  const inWarmup = !!a && !isOt && !a.swing_processed_at && nowMs < warmupUntilMs;
+  const warmupRemainingSec = getOpenTableWarmupRemainingSeconds(
+    a?.idempotency_key,
+    a?.assigned_at,
+    nowMs,
+  );
+  const inWarmup = !!a && !isOt && !a.swing_processed_at && warmupRemainingSec !== null;
 
   // ── Rotation schedule (source of truth for relief plans) ──
   const slot0 = slots?.slot0;
@@ -187,7 +187,7 @@ export default function SwingTableCard({
     }
   }
   if (inWarmup) {
-    const warmSec = Math.max(0, Math.floor((warmupUntilMs - nowMs) / 1000));
+    const warmSec = warmupRemainingSec ?? 0;
     timerLabel = `${String(Math.floor(warmSec / 60)).padStart(2, "0")}:${String(warmSec % 60).padStart(2, "0")}`;
     timerColor = "text-[hsl(var(--ds-active))]";
   }

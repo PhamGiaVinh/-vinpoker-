@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   BREAK_SOON_WARNING_MINUTES,
+  OPEN_TABLE_GRACE_MINUTES,
   buildBreakPoolEntries,
   getBreakTiming,
   getBreakVisualState,
+  getOpenTableWarmupRemainingSeconds,
 } from "../breakPoolState";
 
 const NOW = Date.parse("2026-06-10T02:00:00.000Z");
@@ -12,6 +14,40 @@ const isoFromNow = (offsetMinutes: number) =>
   new Date(NOW + offsetMinutes * 60_000).toISOString();
 
 describe("breakPoolState", () => {
+  it("uses the owner-approved five-minute open-table warmup", () => {
+    expect(OPEN_TABLE_GRACE_MINUTES).toBe(5);
+  });
+
+  it("recognizes durable and legacy manual-open assignments as warmup", () => {
+    const assignedAt = new Date(NOW).toISOString();
+
+    expect(getOpenTableWarmupRemainingSeconds(
+      "open_operation_operation-1_table-1",
+      assignedAt,
+      NOW + 60_000,
+    )).toBe(4 * 60);
+    expect(getOpenTableWarmupRemainingSeconds(
+      "open_manual_table-2_request-1",
+      assignedAt,
+      NOW,
+    )).toBe(5 * 60);
+  });
+
+  it("does not apply open-table warmup to rotations or an elapsed window", () => {
+    const assignedAt = new Date(NOW).toISOString();
+
+    expect(getOpenTableWarmupRemainingSeconds(
+      "perform_swing_assignment-1",
+      assignedAt,
+      NOW,
+    )).toBeNull();
+    expect(getOpenTableWarmupRemainingSeconds(
+      "open_operation_operation-1_table-1",
+      assignedAt,
+      NOW + 5 * 60_000,
+    )).toBeNull();
+  });
+
   it("merges regular and meal breaks and sorts them FIFO by break start", () => {
     const entries = buildBreakPoolEntries({
       nowMs: NOW,
