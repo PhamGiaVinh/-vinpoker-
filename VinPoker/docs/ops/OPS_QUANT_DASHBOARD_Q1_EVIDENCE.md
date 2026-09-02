@@ -23,6 +23,7 @@
 - Focused Vitest: 130/130 passed across 11 files.
 - Playwright Q1 real-route mock: passed at 1440x900, 1920x1080, 1194x834, and 390x844.
 - Existing Command Center and Q0 Playwright suites: passed.
+- Protected Finance/Series Playwright suite: 3/3 passed with the current server-validated auth fixture.
 - Targeted ESLint: passed.
 - Focused Ops registry and Finance/Series TypeScript projects: passed.
 - Ops boundary, money boundary, owner-digest boundary, V3 shell text, and credential-context guards: passed.
