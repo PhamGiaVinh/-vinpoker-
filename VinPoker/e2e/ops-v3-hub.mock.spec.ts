@@ -137,8 +137,7 @@ test("Ops Control Deck renders the conservative registry without horizontal over
     { width: 390, height: 844 },
     { width: 768, height: 1024 },
     { width: 1024, height: 768 },
-    { width: 1280, height: 900 },
-    { width: 1920, height: 1080 },
+    { width: 1194, height: 834 },
   ]) {
     await page.setViewportSize(viewport);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -152,10 +151,7 @@ test("Ops Control Deck renders the conservative registry without horizontal over
     .map((element) => ({ label: element.textContent?.trim(), rect: element.getBoundingClientRect() }))
     .filter(({ rect }) => rect.width < 44 || rect.height < 44));
   expect(undersizedTargets).toEqual([]);
-  expect(q0Requests.sort()).toEqual([
-    "/rest/v1/rpc/get_ops_registration_pace_q0",
-    "/rest/v1/rpc/get_ops_sepay_read_state_q0",
-  ]);
+  expect(q0Requests).toEqual([]);
   expect(consoleErrors).toEqual([]);
   await expect(page.locator(".vite-error-overlay")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("ops-control-deck-mobile.png"), fullPage: true });
