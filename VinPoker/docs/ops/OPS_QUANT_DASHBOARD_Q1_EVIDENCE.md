@@ -24,6 +24,7 @@
 - Playwright Q1 real-route mock: passed at 1440x900, 1920x1080, 1194x834, and 390x844.
 - Existing Command Center and Q0 Playwright suites: passed.
 - Targeted ESLint: passed.
+- Focused Ops registry and Finance/Series TypeScript projects: passed.
 - Ops boundary, money boundary, owner-digest boundary, V3 shell text, and credential-context guards: passed.
 - Normal production build: passed.
 - Constrained production build (`NODE_OPTIONS=--max-old-space-size=4096`, `GOMAXPROCS=2`): passed.
