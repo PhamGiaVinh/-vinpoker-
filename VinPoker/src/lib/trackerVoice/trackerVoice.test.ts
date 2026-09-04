@@ -61,6 +61,25 @@ describe("parseSpokenAmount", () => {
     });
   });
 
+  it("fails closed for malformed Gemini decimal output when the table uses literal chip counts", () => {
+    const options = { spokenAmountUnit: 1, amountUnitConfirmed: true };
+    expect(parseSpokenAmount("120,0", options)).toMatchObject({ value: 120, ambiguous: true, explicitUnit: false });
+    expect(parseSpokenAmount("1.200.0", options)).toMatchObject({ value: null, ambiguous: true, explicitUnit: false });
+    const decimal = parseVoiceCommand("seat four raise 120,0", options);
+    const malformed = parseVoiceCommand("seat four raise 1.200.0", options);
+    expect(decimal).toMatchObject({
+      kind: "raise_to",
+      amount: { value: 120, ambiguous: true, explicitUnit: false },
+    });
+    expect(malformed).toMatchObject({
+      kind: "raise_to",
+      amount: { value: null, ambiguous: true, explicitUnit: false },
+    });
+    const seatFourReady = { ...READY, actor: { ...READY.actor!, seatNumber: 4 } };
+    expect(resolveVoiceProposal(decimal, seatFourReady)).toMatchObject({ ok: false, code: "amount_ambiguous" });
+    expect(resolveVoiceProposal(malformed, seatFourReady)).toMatchObject({ ok: false, code: "amount_ambiguous" });
+  });
+
   it.each([
     ["seat four raise 100", 100],
     ["seat four raise 200", 200],

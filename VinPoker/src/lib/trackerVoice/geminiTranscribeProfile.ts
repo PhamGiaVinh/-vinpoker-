@@ -17,7 +17,7 @@ export const TRACKER_VOICE_GEMINI_TRANSCRIBE_VOCABULARY = [
   "nghìn", "ngàn", "triệu", "thousand", "million",
   "raise 50k", "raise 80k", "raise 100k", "raise 120k", "raise 150k", "raise 200k", "raise 250k", "raise 500k",
   "raise 1000", "raise one thousand", "raise một nghìn", "seat four raise 1000",
-  "raise một trăm nghìn", "raise một trăm hai mươi nghìn", "raise hai trăm nghìn", "raise năm trăm nghìn",
+  "raise 120 nghìn", "raise một trăm nghìn", "raise một trăm hai mươi nghìn", "raise hai trăm nghìn", "raise năm trăm nghìn",
   "raise one hundred thousand", "raise one hundred twenty thousand",
   "bet 50k", "bet 80k", "bet 100k", "bet 120k", "bet 200k", "bet 500k",
   "cược năm mươi nghìn", "cược tám mươi nghìn", "cược một trăm nghìn", "cược hai trăm nghìn",
