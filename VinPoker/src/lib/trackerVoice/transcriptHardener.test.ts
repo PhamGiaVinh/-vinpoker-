@@ -66,6 +66,28 @@ describe("dealer transcript hardener", () => {
     });
   });
 
+  it("normalizes one observed Gemini million punctuation error", () => {
+    const repaired = hardenDealerTranscript("seat four raise 1.750.0");
+    expect(repaired).toMatchObject({
+      normalizedTranscript: "seat four raise 1750000",
+      riskTier: "BOUNDED_REPAIR",
+      requiresConfirmation: true,
+      repairs: [{ rule: "gemini_million_punctuation_tail", from: "1.750.0", to: "1750000" }],
+    });
+    expect(hardenDealerTranscript(repaired.normalizedTranscript)).toMatchObject({
+      normalizedTranscript: "seat four raise 1750000",
+      riskTier: "EXACT",
+      repairs: [],
+    });
+  });
+
+  it("rejects two simultaneous transcript repairs", () => {
+    expect(hardenDealerTranscript("fit four raise 1.750.0")).toMatchObject({
+      riskTier: "REJECT",
+      rejectReason: "repair_budget_exceeded",
+    });
+  });
+
   it.each(["fit feet 9 all in", "call fit 9", "feet eleven fold"])("rejects an unsafe repair form: %s", (transcript) => {
     expect(hardenDealerTranscript(transcript).riskTier).toBe("REJECT");
   });
