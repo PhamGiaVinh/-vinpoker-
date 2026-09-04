@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { dirname, resolve } from "node:path";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -21,6 +23,12 @@ import {
 } from "./sepay-scope-q0-policy.mjs";
 
 const vinPokerRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const darkSourceRoot = mkdtempSync(join(tmpdir(), "sepay-q0-dark-source-"));
+mkdirSync(resolve(darkSourceRoot, "supabase/pending-migrations"), { recursive: true });
+mkdirSync(resolve(darkSourceRoot, "src/lib"), { recursive: true });
+copyFileSync(resolve(vinPokerRoot, MIGRATION_PATH), resolve(darkSourceRoot, MIGRATION_PATH));
+writeFileSync(resolve(darkSourceRoot, "src/lib/featureFlags.ts"), "opsQuantDataHealthQ0: false\n", "utf8");
+after(() => rmSync(darkSourceRoot, { recursive: true, force: true }));
 const credentials = {
   SUPABASE_PROJECT_REF: "orlesggcjamwuknxwcpk",
   SUPABASE_ACCESS_TOKEN: "test-token",
@@ -61,8 +69,10 @@ function jsonResponse(value, status = 200) {
   return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 }
 
-test("source policy pins one dark Q0 migration in the canonical catalog", () => {
-  assert.deepEqual(sourcePolicyProblems(vinPokerRoot), []);
+test("source policy pins Q0 migration and separately enforces the apply-time dark flag", () => {
+  assert.deepEqual(sourcePolicyProblems(vinPokerRoot, { requireDarkFlag: false }), []);
+  assert.deepEqual(sourcePolicyProblems(vinPokerRoot), ["Q0 source flag must remain false during DB apply"]);
+  assert.deepEqual(sourcePolicyProblems(darkSourceRoot), []);
   assert.equal(MIGRATION_PATH, `supabase/pending-migrations/${MIGRATION_NAME}.sql`);
 });
 
@@ -107,11 +117,51 @@ test("read-only preflight emits no write request and safe state exposes no accou
     if (url.endsWith("/database/migrations") && options.method === "GET") return jsonResponse(history());
     throw new Error("unexpected request");
   };
-  const result = await run(["--preflight"], credentials, fetchImpl);
+  const result = await run(["--preflight", "--source-root", darkSourceRoot], credentials, fetchImpl);
   assert.equal(result.applied, false);
   assert.equal(calls.some((call) => call.url.endsWith("/database/query") || call.options.method === "POST" && call.url.endsWith("/database/migrations")), false);
   assert.equal(JSON.stringify(safeState(state())).includes("account_number"), false);
   assert.equal(STATE_SQL.includes("account_holder"), false);
+});
+
+test("rolled-out source permits only a completed live no-op", async () => {
+  const calls = [];
+  const completeState = state({
+    royal_active_conflict_count: 0,
+    royal_disabled_conflict_count: 1,
+    repairable_stored_conflict_count: 0,
+    total_stored_conflict_count: 0,
+    resolver_overloads: 1,
+    pace_overloads: 1,
+    sepay_overloads: 1,
+    pace_authenticated_execute: true,
+    sepay_authenticated_execute: true,
+  });
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    if (url.endsWith("/database/query/read-only")) return jsonResponse([completeState]);
+    if (url.endsWith("/database/migrations") && options.method === "GET") return jsonResponse(history(true));
+    throw new Error(`unexpected write ${options.method}`);
+  };
+  const result = await run(["--preflight"], credentials, fetchImpl);
+  assert.equal(result.applied, false);
+  assert.equal(result.decision.action, "complete");
+  assert.equal(calls.some((call) => call.url.endsWith("/database/query")), false);
+});
+
+test("rolled-out source blocks an incomplete live state before any write", async () => {
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    if (url.endsWith("/database/query/read-only")) return jsonResponse([state()]);
+    if (url.endsWith("/database/migrations") && options.method === "GET") return jsonResponse(history());
+    throw new Error(`unexpected write ${options.method}`);
+  };
+  await assert.rejects(
+    run(["--apply"], { ...credentials, CONFIRM_APPLY_SEPAY_SCOPE_Q0: CONFIRMATION }, fetchImpl),
+    /Q0 source flag must remain false during DB apply/u,
+  );
+  assert.equal(calls.some((call) => call.url.endsWith("/database/query")), false);
 });
 
 test("apply performs three separately acknowledged steps and supports deterministic resume", async () => {
@@ -143,7 +193,11 @@ test("apply performs three separately acknowledged steps and supports determinis
     }
     throw new Error(`unexpected request ${url}`);
   };
-  const result = await run(["--apply"], { ...credentials, CONFIRM_APPLY_SEPAY_SCOPE_Q0: CONFIRMATION }, fetchImpl);
+  const result = await run(
+    ["--apply", "--source-root", darkSourceRoot],
+    { ...credentials, CONFIRM_APPLY_SEPAY_SCOPE_Q0: CONFIRMATION },
+    fetchImpl,
+  );
   assert.equal(result.applied, true);
   assert.equal(phase, 3);
   assert.equal(calls.filter((call) => call.url.endsWith("/database/query") && call.options.method === "POST").length, 3);
@@ -167,5 +221,8 @@ test("missing exact confirmation blocks before the first write", async () => {
     if (url.endsWith("/database/migrations") && options.method === "GET") return jsonResponse([]);
     throw new Error(`unexpected write ${options.method}`);
   };
-  await assert.rejects(run(["--apply"], credentials, fetchImpl), /Exact apply confirmation is missing/u);
+  await assert.rejects(
+    run(["--apply", "--source-root", darkSourceRoot], credentials, fetchImpl),
+    /Exact apply confirmation is missing/u,
+  );
 });
