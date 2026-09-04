@@ -43,17 +43,26 @@ Deno.serve(async (request) => {
     const { data: userData, error: userError } = await userClient.auth.getUser(authHeader.slice(7));
     if (userError || !userData.user?.id) return json({ error: "UNAUTHORIZED" }, 401);
 
-    if (parsed.mode === "preview_ft" || parsed.mode === "preview_ft_view") {
+    if (
+      parsed.mode === "preview_ft" || parsed.mode === "preview_ft_view"
+      || parsed.mode === "preview_pt" || parsed.mode === "preview_pt_view"
+    ) {
       const rollout = await requireRollout(userClient, parsed.club_id);
       if (!rollout.allowed) return json({ error: rollout.error }, rollout.status);
-      const { data, error } = await userClient.rpc("preview_full_time_payroll_statement", {
-        p_club_id: parsed.club_id,
-        p_dealer_id: parsed.dealer_id,
-        p_payroll_period_id: parsed.payroll_period_id,
-      });
+      const isPartTime = parsed.mode === "preview_pt" || parsed.mode === "preview_pt_view";
+      const { data, error } = await userClient.rpc(
+        isPartTime ? "preview_part_time_payroll_statement" : "preview_full_time_payroll_statement",
+        {
+          p_club_id: parsed.club_id,
+          p_dealer_id: parsed.dealer_id,
+          p_payroll_period_id: parsed.payroll_period_id,
+        },
+      );
       if (error || !data) return json({ error: sanitizePayrollPdfError(error, "PAYROLL_STATEMENT_PREVIEW_UNAVAILABLE") }, 409);
       const snapshot = data as PayrollStatementSnapshot;
-      if (parsed.mode === "preview_ft_view") return json({ view: buildPayrollStatementViewModel(snapshot, true) });
+      if (parsed.mode === "preview_ft_view" || parsed.mode === "preview_pt_view") {
+        return json({ view: buildPayrollStatementViewModel(snapshot, true) });
+      }
       const rendered = await renderPayrollStatementPdf(snapshot, {
         mode: "draft_preview",
         fonts: await loadPayrollPdfFonts(),

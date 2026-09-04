@@ -78,7 +78,7 @@ export function usePayrollStatementTelegramDelivery(input: {
     const requestId = sessionStorage.getItem(storageKey) ?? crypto.randomUUID();
     sessionStorage.setItem(storageKey, requestId);
 
-    const created = await rpc("create_dealer_payroll_statement_delivery_operation", {
+    const created = await rpc("create_dealer_payroll_statement_delivery_operation_v2", {
       p_request_id: requestId,
       p_club_id: clubId,
       p_payroll_period_id: periodId,
