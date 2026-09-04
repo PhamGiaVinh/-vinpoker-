@@ -10,21 +10,11 @@ on:
         description: "Exact 40-character commit SHA already reachable from main"
         required: true
         type: string
-      deploy_process_swing:
-        description: "Deploy critical Edge function process-swing"
+      deploy_dealer_functions:
+        description: "Comma-separated: assign-dealer,checkout-dealer,mass-assign,process-swing"
         required: true
-        default: false
-        type: boolean
-      deploy_mass_assign:
-        description: "Deploy critical Edge function mass-assign"
-        required: true
-        default: false
-        type: boolean
-      deploy_checkout_dealer:
-        description: "Deploy critical Edge function checkout-dealer"
-        required: true
-        default: false
-        type: boolean
+        default: ""
+        type: string
       deploy_tournament_live_clock:
         description: "Deploy critical Edge function tournament-live-clock"
         required: true
@@ -133,9 +123,7 @@ jobs:
         id: plan
         shell: bash
         env:
-          DEPLOY_PROCESS_SWING: ${{ inputs.deploy_process_swing || false }}
-          DEPLOY_MASS_ASSIGN: ${{ inputs.deploy_mass_assign || false }}
-          DEPLOY_CHECKOUT_DEALER: ${{ inputs.deploy_checkout_dealer || false }}
+          DEPLOY_DEALER_FUNCTIONS: ${{ inputs.deploy_dealer_functions || '' }}
           DEPLOY_TOURNAMENT_LIVE_CLOCK: ${{ inputs.deploy_tournament_live_clock || false }}
           DEPLOY_OPS_CLUB_ACCOUNTS: ${{ inputs.deploy_ops_club_accounts || false }}
           DEPLOY_RENDER_PAYROLL_STATEMENT: ${{ inputs.deploy_render_payroll_statement || false }}
@@ -145,9 +133,21 @@ jobs:
         run: |
           set -euo pipefail
           selected=()
-          [[ "$DEPLOY_PROCESS_SWING" == "true" ]] && selected+=("process-swing")
-          [[ "$DEPLOY_MASS_ASSIGN" == "true" ]] && selected+=("mass-assign")
-          [[ "$DEPLOY_CHECKOUT_DEALER" == "true" ]] && selected+=("checkout-dealer")
+          declare -A selected_dealer_functions=()
+          IFS=',' read -ra requested_dealer_functions <<< "$DEPLOY_DEALER_FUNCTIONS"
+          for function_name in "${requested_dealer_functions[@]}"; do
+            [[ -z "$function_name" ]] && continue
+            case "$function_name" in
+              assign-dealer|checkout-dealer|mass-assign|process-swing) ;;
+              *) echo "Unsupported dealer Edge function: $function_name" >&2; exit 64 ;;
+            esac
+            if [[ -n "${selected_dealer_functions[$function_name]:-}" ]]; then
+              echo "Duplicate dealer Edge function: $function_name" >&2
+              exit 64
+            fi
+            selected_dealer_functions[$function_name]=true
+            selected+=("$function_name")
+          done
           [[ "$DEPLOY_TOURNAMENT_LIVE_CLOCK" == "true" ]] && selected+=("tournament-live-clock")
           [[ "$DEPLOY_OPS_CLUB_ACCOUNTS" == "true" ]] && selected+=("ops-club-accounts")
           [[ "$DEPLOY_RENDER_PAYROLL_STATEMENT" == "true" ]] && selected+=("render-payroll-statement")

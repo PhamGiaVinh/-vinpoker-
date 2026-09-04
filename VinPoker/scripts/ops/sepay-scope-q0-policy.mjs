@@ -19,7 +19,7 @@ export function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export function sourcePolicyProblems(vinPokerRoot) {
+export function sourcePolicyProblems(vinPokerRoot, { requireDarkFlag = true } = {}) {
   const problems = [];
   const migrationPath = resolve(vinPokerRoot, MIGRATION_PATH);
   const flagsPath = resolve(vinPokerRoot, "src/lib/featureFlags.ts");
@@ -30,7 +30,9 @@ export function sourcePolicyProblems(vinPokerRoot) {
   const flags = readFileSync(flagsPath, "utf8");
   if (sha256(normalizeLineEndings(migration)) !== MIGRATION_SHA256) problems.push("Q0 migration checksum mismatch");
   if (!/^BEGIN;/mu.test(migration) || !/COMMIT;\s*$/u.test(migration)) problems.push("Q0 migration is not transaction wrapped");
-  if (!/opsQuantDataHealthQ0:\s*false/u.test(flags)) problems.push("Q0 source flag must remain false during DB apply");
+  if (requireDarkFlag && !/opsQuantDataHealthQ0:\s*false/u.test(flags)) {
+    problems.push("Q0 source flag must remain false during DB apply");
+  }
   for (const expected of [
     "CREATE OR REPLACE FUNCTION public.resolve_sepay_account_club_v1",
     "CREATE OR REPLACE FUNCTION public.get_ops_registration_pace_q0",

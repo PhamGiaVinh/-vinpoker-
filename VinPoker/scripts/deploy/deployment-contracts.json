@@ -649,9 +649,16 @@
     },
     "assign-dealer": {
       "path": "VinPoker/supabase/functions/assign-dealer",
-      "critical": false,
+      "critical": true,
       "autoDeployOnPush": false,
       "verifyJwt": false,
+      "receiptEnvironment": "receipt-vinpoker-edge-assign-dealer",
+      "quality": {
+        "denoTests": [
+          "VinPoker/supabase/functions/_shared/__tests__/bulkOpenStagger.test.ts",
+          "VinPoker/supabase/functions/_shared/__tests__/pickNextDealer.test.ts"
+        ]
+      },
       "contracts": [
         { "type": "relation", "name": "public.game_tables" },
         { "type": "relation", "name": "public.dealer_assignments" },

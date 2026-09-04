@@ -229,7 +229,7 @@ export async function run(argv = process.argv.slice(2), env = process.env, fetch
   const preflight = argv.includes("--preflight");
   if (apply === preflight) throw new Error("Choose exactly one of --preflight or --apply");
   const sourceRoot = sourceRootFromArgv(argv);
-  const sourceProblems = sourcePolicyProblems(sourceRoot);
+  const sourceProblems = sourcePolicyProblems(sourceRoot, { requireDarkFlag: false });
   if (sourceProblems.length) throw new Error(`Source policy failed: ${sourceProblems.join("; ")}`);
   if (!env.SUPABASE_PROJECT_REF || !env.SUPABASE_ACCESS_TOKEN) throw new Error("Missing Supabase credential context");
   if (env.SUPABASE_PROJECT_REF !== PROJECT_REF) throw new Error("Refusing non-approved project ref");
@@ -238,6 +238,10 @@ export async function run(argv = process.argv.slice(2), env = process.env, fetch
   const credentials = { projectRef: env.SUPABASE_PROJECT_REF, token: env.SUPABASE_ACCESS_TOKEN };
   let [state, history] = await Promise.all([readState(credentials, fetchImpl), listHistory(credentials, fetchImpl)]);
   let decision = classifyState(state, history);
+  if (decision.action !== "complete") {
+    const darkSourceProblems = sourcePolicyProblems(sourceRoot);
+    if (darkSourceProblems.length) throw new Error(`Source policy failed: ${darkSourceProblems.join("; ")}`);
+  }
   log("PRE", JSON.stringify(safeState(state)));
   log("DECISION", decision.action);
   if (decision.action === "block") throw new Error(`Live state is not allowlisted: ${decision.problems.join("; ")}`);

@@ -209,12 +209,13 @@ test("missing critical receipt fails closed for frontend", () => {
   }), /checkout-dealer/);
 });
 
-test("manual dispatch rejects unchanged and noncritical functions", () => {
+test("manual dispatch rejects unchanged functions and accepts changed assign-dealer", () => {
   assert.throws(() => plan({ componentDiffs: diff(), selected: ["mass-assign"] }), /unchanged/);
-  assert.throws(() => plan({
+  const result = plan({
     componentDiffs: diff({ changed: ["assign-dealer"] }),
     selected: ["assign-dealer"],
-  }), /not allowed/);
+  });
+  assert.deepEqual(result.criticalFunctions, ["assign-dealer"]);
 });
 
 test("unchanged frontend needs the narrow manual receipt-recovery confirmation", () => {
@@ -631,7 +632,7 @@ test("pre-922 rollback target can be planned with current control-plane", () => 
   assert.throws(() => buildDeploymentPlan({
     event: "workflow_dispatch",
     componentDiffs: diffs,
-    selected: ["process-swing", "mass-assign", "checkout-dealer"],
+    selected: ["process-swing", "mass-assign", "checkout-dealer", "assign-dealer"],
     deployFrontend: true,
     manifest,
     targetSha: "1fdc210d4ae1689091e0ad874c559592b0ecd690",
@@ -648,13 +649,13 @@ test("pre-922 rollback target can be planned with current control-plane", () => 
   const result = buildDeploymentPlan({
     event: "workflow_dispatch",
     componentDiffs: diffs,
-    selected: ["process-swing", "mass-assign", "checkout-dealer"],
+    selected: ["process-swing", "mass-assign", "checkout-dealer", "assign-dealer"],
     deployFrontend: true,
     manifest,
     targetSha: "1fdc210d4ae1689091e0ad874c559592b0ecd690",
     contractSelection: LEGACY_SELECTION,
   });
   assert.equal(result.frontend, true);
-  assert.deepEqual(result.criticalFunctions, ["checkout-dealer", "mass-assign", "process-swing"]);
+  assert.deepEqual(result.criticalFunctions, ["assign-dealer", "checkout-dealer", "mass-assign", "process-swing"]);
   assert.equal(result.contractProfile, "dealer_swing_legacy");
 });
