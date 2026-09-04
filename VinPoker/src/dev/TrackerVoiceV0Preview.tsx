@@ -524,7 +524,7 @@ export default function TrackerVoiceV0Preview() {
                 <li>Chọn fixture, provider và lệnh mong đợi, rồi bấm Bắt đầu phiên test.</li>
                 <li>Bấm Kết nối microphone, cho phép Safari dùng mic, rồi chạy Kiểm tra mic 30 giây.</li>
                 <li>Nói 5 lần: Fold, Check, Call, All-in; sau đó Bỏ bài, Theo, Tất tay.</li>
-                <li>Với số lớn, chọn Deep stack rồi nói Raise 1 triệu 580 nghìn, Raise 30 triệu và Raise 300 triệu.</li>
+                <li>Với số lớn, chọn Deep stack rồi nói Raise 1 triệu 580 nghìn, Raise 30 triệu, Raise 300 triệu và Seat four raise 1 million and 200 thousand.</li>
                 <li>Nói Báo sai, Gọi Floor, rồi vài câu không liên quan. Kết quả mong đợi là NO ACTION.</li>
                 <li>Đánh dấu Đúng/Sai/Nói lại cho từng final transcript và Xuất JSON hoặc CSV. Không có audio nào được lưu.</li>
               </ol>

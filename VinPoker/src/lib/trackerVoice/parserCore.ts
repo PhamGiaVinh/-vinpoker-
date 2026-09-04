@@ -169,6 +169,7 @@ function classifyNumericPunctuation(value: string): "none" | "decimal" | "malfor
   let hasDecimal = false;
   for (const token of tokens) {
     if (!/[.,]/.test(token) || /[km]$/.test(token)) continue;
+    if (/^\d{1,3}[.,]\d{3}[.,]0$/.test(token)) continue;
     if (/^\d{1,3}(?:([.,])\d{3})(?:\1\d{3})*$/.test(token)) continue;
     if (/^\d+[.,]\d+$/.test(token)) {
       hasDecimal = true;

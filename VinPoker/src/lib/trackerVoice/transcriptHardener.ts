@@ -1,10 +1,16 @@
 export type TranscriptRiskTier = "EXACT" | "BOUNDED_REPAIR" | "REJECT";
 
-export interface TranscriptRepair {
-  rule: "seat_prefix_fit_to_seat";
-  from: "fit" | "feet";
-  to: "seat";
-}
+export type TranscriptRepair =
+  | {
+      rule: "seat_prefix_fit_to_seat";
+      from: "fit" | "feet";
+      to: "seat";
+    }
+  | {
+      rule: "gemini_million_punctuation_tail";
+      from: string;
+      to: string;
+    };
 
 export interface HardenedTranscript {
   rawTranscript: string;
@@ -15,8 +21,18 @@ export interface HardenedTranscript {
   rejectReason?: "repair_budget_exceeded" | "repair_position_invalid";
 }
 
+const GEMINI_MILLION_PUNCTUATION_TAIL = /\b(\d{1,3})[.,](\d{3})[.,]0\b/g;
+
+function normalizedGeminiMillionValue(millions: string, thousands: string): string {
+  return `${millions}${thousands}000`;
+}
+
 export function normalizeTrackerVoiceTranscript(value: string): string {
-  const thousandsNormalized = value.replace(/\b\d{1,3}(?:[.,]\d{3})+\b/g, (match) => match.replace(/[.,]/g, ""));
+  const observedGeminiNumberNormalized = value.replace(
+    GEMINI_MILLION_PUNCTUATION_TAIL,
+    (_match, millions: string, thousands: string) => normalizedGeminiMillionValue(millions, thousands),
+  );
+  const thousandsNormalized = observedGeminiNumberNormalized.replace(/\b\d{1,3}(?:[.,]\d{3})+\b/g, (match) => match.replace(/[.,]/g, ""));
   return thousandsNormalized
     .trim()
     .toLocaleLowerCase("vi-VN")
@@ -31,15 +47,20 @@ export function normalizeTrackerVoiceTranscript(value: string): string {
 
 const SEAT_TOKEN = /^(?:[1-9]|10|one|two|three|four|five|six|seven|eight|nine|ten|mot|hai|ba|bon|tu|nam|lam|sau|bay|tam|chin|muoi)$/;
 
-/** One limited repair keeps a known ASR prefix from becoming an unqualified poker action. */
+/** Accept at most one reviewed ASR repair and require confirmation for the result. */
 export function hardenDealerTranscript(rawTranscript: string): HardenedTranscript {
+  const amountRepairs: TranscriptRepair[] = [...rawTranscript.matchAll(GEMINI_MILLION_PUNCTUATION_TAIL)].map((match) => ({
+    rule: "gemini_million_punctuation_tail",
+    from: match[0],
+    to: normalizedGeminiMillionValue(match[1], match[2]),
+  }));
   const normalizedTranscript = normalizeTrackerVoiceTranscript(rawTranscript);
   const tokens = normalizedTranscript.split(" ").filter(Boolean);
   const repairIndexes = tokens
     .map((token, index) => (token === "fit" || token === "feet" ? index : -1))
     .filter((index) => index >= 0);
 
-  if (repairIndexes.length >= 2) {
+  if (repairIndexes.length + amountRepairs.length >= 2) {
     return { rawTranscript, normalizedTranscript, riskTier: "REJECT", repairs: [], requiresConfirmation: true, rejectReason: "repair_budget_exceeded" };
   }
   if (repairIndexes.length === 1) {
@@ -54,6 +75,15 @@ export function hardenDealerTranscript(rawTranscript: string): HardenedTranscrip
       normalizedTranscript: tokens.join(" "),
       riskTier: "BOUNDED_REPAIR",
       repairs: [{ rule: "seat_prefix_fit_to_seat", from: token, to: "seat" }],
+      requiresConfirmation: true,
+    };
+  }
+  if (amountRepairs.length === 1) {
+    return {
+      rawTranscript,
+      normalizedTranscript,
+      riskTier: "BOUNDED_REPAIR",
+      repairs: amountRepairs,
       requiresConfirmation: true,
     };
   }
