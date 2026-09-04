@@ -118,6 +118,8 @@ const RAISE_PATTERN = /^(?:raise(?:\s+to)?|to(?:\s+len)?|nang(?:\s+len)?)\s+(.+)
 
 const BET_PATTERN = /^(?:bet(?:\s+to)?|cuoc(?:\s+(?:den|len))?)\s+(.+)$/;
 
+const ALL_IN_AMOUNT_PATTERN = /^(?:all[ -]?in|tat tay|tat ca chip)\s+(.+)$/;
+
 const EXACT_COMMANDS: Array<{ kind: Exclude<TrackerVoiceCoreCommandKind, "raise_to" | "bet_to">; pattern: RegExp }> = [
   { kind: "report_wrong_action", pattern: /^(?:bao sai(?: action)?|sai action|wrong action|action sai|tracker(?:\s+ghi)?\s+sai|sai hanh dong)$/ },
   { kind: "call_floor", pattern: /^(?:goi floor|call floor|floor oi|can floor|floor ho tro|floor toi ban)$/ },
@@ -365,11 +367,12 @@ export function parseTrackerVoiceCommandCore(
   const actionText = seat.actionText;
   const raiseMatch = actionText.match(RAISE_PATTERN);
   const betMatch = actionText.match(BET_PATTERN);
+  const allInAmountMatch = actionText.match(ALL_IN_AMOUNT_PATTERN);
   const exact = EXACT_COMMANDS.find((candidate) => candidate.pattern.test(actionText));
-  const kind = raiseMatch ? "raise_to" : betMatch ? "bet_to" : exact?.kind;
+  const kind = raiseMatch ? "raise_to" : betMatch ? "bet_to" : allInAmountMatch ? "all_in" : exact?.kind;
   if (!kind) return null;
   if (classifyTrackerVoiceRepairSafety(hardened, kind).disposition === "REJECT") return null;
-  const amountRaw = raiseMatch?.[1] ?? betMatch?.[1] ?? null;
+  const amountRaw = raiseMatch?.[1] ?? betMatch?.[1] ?? allInAmountMatch?.[1] ?? null;
   if (amountRaw !== null && !isStrictAmountExpression(amountRaw)) return null;
   const parsedAmount = amountRaw === null ? null : parseTrackerVoiceAmount(amountRaw, options);
   const amount = parsedAmount === null

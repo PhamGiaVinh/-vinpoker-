@@ -10,6 +10,11 @@ export type TranscriptRepair =
       rule: "gemini_million_punctuation_tail";
       from: string;
       to: string;
+    }
+  | {
+      rule: "gemini_thousands_punctuation_tail";
+      from: string;
+      to: string;
     };
 
 export interface HardenedTranscript {
@@ -22,9 +27,14 @@ export interface HardenedTranscript {
 }
 
 const GEMINI_MILLION_PUNCTUATION_TAIL = /\b(\d{1,3})[.,](\d{3})[.,]0\b/g;
+const GEMINI_THOUSANDS_PUNCTUATION_TAIL = /(?<![\d.,])(\d{3})\.0\b/g;
 
 function normalizedGeminiMillionValue(millions: string, thousands: string): string {
   return `${millions}${thousands}000`;
+}
+
+function normalizedGeminiThousandsValue(thousands: string): string {
+  return `${thousands}000`;
 }
 
 export function normalizeTrackerVoiceTranscript(value: string): string {
@@ -54,7 +64,15 @@ export function hardenDealerTranscript(rawTranscript: string): HardenedTranscrip
     from: match[0],
     to: normalizedGeminiMillionValue(match[1], match[2]),
   }));
-  const normalizedTranscript = normalizeTrackerVoiceTranscript(rawTranscript);
+  amountRepairs.push(...[...rawTranscript.matchAll(GEMINI_THOUSANDS_PUNCTUATION_TAIL)].map((match) => ({
+    rule: "gemini_thousands_punctuation_tail" as const,
+    from: match[0],
+    to: normalizedGeminiThousandsValue(match[1]),
+  })));
+  const normalizedTranscript = normalizeTrackerVoiceTranscript(rawTranscript.replace(
+    GEMINI_THOUSANDS_PUNCTUATION_TAIL,
+    (_match, thousands: string) => normalizedGeminiThousandsValue(thousands),
+  ));
   const tokens = normalizedTranscript.split(" ").filter(Boolean);
   const repairIndexes = tokens
     .map((token, index) => (token === "fit" || token === "feet" ? index : -1))

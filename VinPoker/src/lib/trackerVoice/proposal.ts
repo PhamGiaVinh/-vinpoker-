@@ -65,6 +65,13 @@ export function resolveVoiceProposal(
     expectedActionAmount = Math.min(context.actor.currentStack, context.actorView.toCall);
   } else if (canonicalAction === "all_in") {
     expectedActionAmount = context.actor.currentStack;
+    betToTotal = context.actor.currentBet + context.actor.currentStack;
+    if (command.amount?.ambiguous) {
+      return reject(command, "amount_ambiguous", "Số chip all-in chưa rõ đơn vị.");
+    }
+    if (command.amount && command.amount.value !== betToTotal) {
+      return reject(command, "amount_out_of_range", "Số chip đọc không khớp tổng all-in hiện tại.");
+    }
   }
   if (canonicalAction === "bet" || canonicalAction === "raise") {
     if (!command.amount) {

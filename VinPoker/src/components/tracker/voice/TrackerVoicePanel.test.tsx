@@ -123,6 +123,18 @@ describe("TrackerVoicePanel", () => {
     expect(screen.getByText(/Auto bị khóa/)).toBeInTheDocument();
   });
 
+  it("shows the authoritative total for a spoken all-in amount", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    renderPanel(hookFixture(), provider);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("seat three all in 11.000", { final: true, id: "all-in-amount" }));
+
+    expect(await screen.findByText("Player A · all_in tới 11.000")).toBeInTheDocument();
+    expect(screen.getByText("Shadow hợp lệ, không gọi server và chưa ghi action.")).toBeInTheDocument();
+  });
+
   it("joins one VAD-split Raise prefix with the immediately following amount final", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const snapshots: TrackerVoiceDiagnosticSnapshot[] = [];

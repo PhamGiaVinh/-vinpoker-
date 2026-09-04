@@ -248,6 +248,52 @@ describe("resolveVoiceProposal", () => {
     expect(resolveVoiceProposal(parseVoiceCommand("raise 3k"), READY)).toMatchObject({ ok: false, code: "raise_too_small" });
   });
 
+  it("accepts an exact spoken all-in total and rejects a mismatched total", () => {
+    const allInFor200k = {
+      ...READY,
+      actor: { ...READY.actor!, seatNumber: 4, currentStack: 200_000, currentBet: 0 },
+    };
+    expect(resolveVoiceProposal(parseVoiceCommand("seat four all in 200.000"), allInFor200k)).toMatchObject({
+      ok: true,
+      canonicalAction: "all_in",
+      betToTotal: 200_000,
+      expectedActionAmount: 200_000,
+    });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat four all in 190.000"), allInFor200k)).toMatchObject({
+      ok: false,
+      code: "amount_out_of_range",
+    });
+  });
+
+  it("shows the authoritative all-in total even when the dealer omits the amount", () => {
+    expect(resolveVoiceProposal(parseVoiceCommand("all in"), READY)).toMatchObject({
+      ok: true,
+      canonicalAction: "all_in",
+      betToTotal: 11_000,
+      expectedActionAmount: 10_000,
+    });
+  });
+
+  it("accepts a repaired Gemini thousands amount for a legal bet", () => {
+    const betContext = {
+      ...READY,
+      actor: { ...READY.actor!, seatNumber: 4, currentStack: 300_000, currentBet: 0 },
+      actorView: {
+        ...READY.actorView!,
+        toCall: 0,
+        minRaiseTo: 40_000,
+        legal: { ...READY.actorView!.legal, call: false, bet: true, raise: false },
+      },
+    };
+    expect(resolveVoiceProposal(parseVoiceCommand("seat four bet 300.0"), betContext)).toMatchObject({
+      ok: true,
+      canonicalAction: "bet",
+      betToTotal: 300_000,
+      expectedActionAmount: 300_000,
+      command: { riskTier: "BOUNDED_REPAIR", requiresConfirmation: true },
+    });
+  });
+
   it.each([
     ["seat four raise 1 triệu 580 nghìn", 1_580_000],
     ["seat four raise 1.750.0", 1_750_000],
