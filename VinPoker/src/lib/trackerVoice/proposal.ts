@@ -67,11 +67,14 @@ export function resolveVoiceProposal(
     expectedActionAmount = context.actor.currentStack;
   }
   if (canonicalAction === "bet" || canonicalAction === "raise") {
-    if (!command.amount || command.amount.value === null) {
+    if (!command.amount) {
       return reject(command, "amount_missing", "Lệnh bet/raise cần số chip đích.");
     }
     if (command.amount.ambiguous) {
       return reject(command, "amount_ambiguous", "Số chip chưa rõ đơn vị. Hãy nói rõ nghìn hoặc triệu.");
+    }
+    if (command.amount.value === null) {
+      return reject(command, "amount_missing", "Lệnh bet/raise cần số chip đích.");
     }
     betToTotal = command.amount.value;
     const maxTotal = context.actor.currentBet + context.actor.currentStack;

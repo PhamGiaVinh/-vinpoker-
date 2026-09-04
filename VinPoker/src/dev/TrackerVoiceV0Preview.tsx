@@ -41,7 +41,7 @@ const READY_RUNTIME: TrackerVoiceRuntimeContext = {
   active_hand: { hand_id: HAND_ID, hand_number: 12, status: "in_progress", state_version: STATE_VERSION },
 };
 
-type FixtureScenario = "check_legal" | "facing_bet" | "short_stack" | "correction_pending";
+type FixtureScenario = "check_legal" | "facing_bet" | "deep_stack" | "short_stack" | "correction_pending";
 
 const FIXTURE_SCENARIOS: Record<FixtureScenario, {
   label: string;
@@ -67,6 +67,16 @@ const FIXTURE_SCENARIOS: Record<FixtureScenario, {
     label: "Đang facing bet",
     helper: "Ghế 4 · to call 40.000 · raise tối thiểu 120.000",
     stack: 300_000,
+    currentBet: 0,
+    toCall: 40_000,
+    minRaiseTo: 120_000,
+    legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+    correctionPending: false,
+  },
+  deep_stack: {
+    label: "Deep stack · test số triệu",
+    helper: "Ghế 4 · stack 1.000.000.000 · test raise từ 1 triệu đến vài trăm triệu",
+    stack: 1_000_000_000,
     currentBet: 0,
     toCall: 40_000,
     minRaiseTo: 120_000,
@@ -514,7 +524,7 @@ export default function TrackerVoiceV0Preview() {
                 <li>Chọn fixture, provider và lệnh mong đợi, rồi bấm Bắt đầu phiên test.</li>
                 <li>Bấm Kết nối microphone, cho phép Safari dùng mic, rồi chạy Kiểm tra mic 30 giây.</li>
                 <li>Nói 5 lần: Fold, Check, Call, All-in; sau đó Bỏ bài, Theo, Tất tay.</li>
-                <li>Nói Raise 100k, Raise 120k, Raise hai trăm nghìn; tiếp tục Bet 50k, Bet 80k và Cược một trăm nghìn.</li>
+                <li>Với số lớn, chọn Deep stack rồi nói Raise 1 triệu 580 nghìn, Raise 30 triệu và Raise 300 triệu.</li>
                 <li>Nói Báo sai, Gọi Floor, rồi vài câu không liên quan. Kết quả mong đợi là NO ACTION.</li>
                 <li>Đánh dấu Đúng/Sai/Nói lại cho từng final transcript và Xuất JSON hoặc CSV. Không có audio nào được lưu.</li>
               </ol>

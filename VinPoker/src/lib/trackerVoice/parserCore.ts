@@ -164,6 +164,36 @@ function normalizeFormattedThousands(value: string): string {
   return value.replace(/\b\d{1,3}(?:[.,]\d{3})+\b/g, (match) => match.replace(/[.,]/g, ""));
 }
 
+function classifyNumericPunctuation(value: string): "none" | "decimal" | "malformed" {
+  const tokens = value.toLocaleLowerCase("vi-VN").match(/\d+(?:[.,]\d+)*[km]?/g) ?? [];
+  let hasDecimal = false;
+  for (const token of tokens) {
+    if (!/[.,]/.test(token) || /[km]$/.test(token)) continue;
+    if (/^\d{1,3}(?:([.,])\d{3})(?:\1\d{3})*$/.test(token)) continue;
+    if (/^\d+[.,]\d+$/.test(token)) {
+      hasDecimal = true;
+      continue;
+    }
+    return "malformed";
+  }
+  return hasDecimal ? "decimal" : "none";
+}
+
+function applyNumericPunctuationSafety(
+  amount: TrackerVoiceCoreAmount,
+  rawTranscript: string,
+  options: TrackerVoiceAmountOptions,
+): TrackerVoiceCoreAmount {
+  const punctuation = classifyNumericPunctuation(rawTranscript);
+  if (punctuation === "malformed") {
+    return { value: null, raw: amount.raw, explicitUnit: false, ambiguous: true };
+  }
+  if (punctuation === "decimal" && !amount.explicitUnit && amountUnit(options) === 1) {
+    return { ...amount, ambiguous: true };
+  }
+  return amount;
+}
+
 function extractSpokenSeatPrefix(value: string): { actionText: string; spokenSeatNumber: number | null } {
   const matched = value.match(SEAT_PREFIX);
   if (!matched) return { actionText: value, spokenSeatNumber: null };
@@ -287,6 +317,10 @@ export function parseTrackerVoiceAmount(
 ): TrackerVoiceCoreAmount {
   const raw = rawInput.trim();
   if (!raw) return { value: null, raw: null, explicitUnit: false, ambiguous: false };
+  const punctuation = classifyNumericPunctuation(raw);
+  if (punctuation === "malformed") {
+    return { value: null, raw, explicitUnit: false, ambiguous: true };
+  }
   const tokens = normalizeFormattedThousands(normalizeTrackerVoiceTranscript(raw))
     .replace(/,/g, ".")
     .replace(/[^a-z0-9.\s-]/g, " ")
@@ -309,7 +343,8 @@ export function parseTrackerVoiceAmount(
     if (!small.consumed || !Number.isSafeInteger(small.value) || small.value <= 0) continue;
     const value = small.value * amountUnit(options);
     if (!Number.isSafeInteger(value) || value <= 0) return { value: null, raw, explicitUnit: false, ambiguous: false };
-    return { value, raw, explicitUnit: false, ambiguous: options.amountUnitConfirmed !== true };
+    const decimalWithoutTableUnit = punctuation === "decimal" && amountUnit(options) === 1;
+    return { value, raw, explicitUnit: false, ambiguous: decimalWithoutTableUnit || options.amountUnitConfirmed !== true };
   }
 
   return { value: null, raw, explicitUnit: false, ambiguous: false };
@@ -335,7 +370,10 @@ export function parseTrackerVoiceCommandCore(
   if (classifyTrackerVoiceRepairSafety(hardened, kind).disposition === "REJECT") return null;
   const amountRaw = raiseMatch?.[1] ?? betMatch?.[1] ?? null;
   if (amountRaw !== null && !isStrictAmountExpression(amountRaw)) return null;
-  const amount = amountRaw === null ? null : parseTrackerVoiceAmount(amountRaw, options);
+  const parsedAmount = amountRaw === null ? null : parseTrackerVoiceAmount(amountRaw, options);
+  const amount = parsedAmount === null
+    ? null
+    : applyNumericPunctuationSafety(parsedAmount, transcript, options);
   const normalizedTranscript = seat.spokenSeatNumber === null
     ? actionText
     : `seat ${seat.spokenSeatNumber} ${actionText}`.trim();

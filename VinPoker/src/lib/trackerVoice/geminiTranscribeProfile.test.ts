@@ -30,6 +30,7 @@ describe("Gemini Transcribe profile", () => {
     expect(TRACKER_VOICE_GEMINI_TRANSCRIBE_VOCABULARY).toEqual(expect.arrayContaining([
       "nghìn",
       "triệu",
+      "raise 120 nghìn",
       "raise một trăm hai mươi nghìn",
       "raise one hundred twenty thousand",
       "raise 1000",

@@ -116,6 +116,15 @@ describe("Tracker Voice browser and Edge parser parity", () => {
     expect(browserShape(transcript, options)).toMatchObject({ kind: "raise_to", amount, amountAmbiguous: false });
   });
 
+  it.each([
+    ["seat four raise 120,0", 120],
+    ["seat four raise 1.200.0", null],
+  ])("fails closed for malformed Gemini amount output identically: %s", (transcript, amount) => {
+    const options = { spokenAmountUnit: 1, amountUnitConfirmed: true };
+    expect(browserShape(transcript, options)).toEqual(serverShape(transcript, options));
+    expect(browserShape(transcript, options)).toMatchObject({ kind: "raise_to", amount, amountAmbiguous: true });
+  });
+
   it("rejects spoken call amounts identically because the engine derives the call amount", () => {
     expect(browserShape("seat four call 30k", {})).toBeNull();
     expect(serverShape("seat four call 30k", {})).toBeNull();

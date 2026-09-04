@@ -61,6 +61,25 @@ describe("parseSpokenAmount", () => {
     });
   });
 
+  it("fails closed for malformed Gemini decimal output when the table uses literal chip counts", () => {
+    const options = { spokenAmountUnit: 1, amountUnitConfirmed: true };
+    expect(parseSpokenAmount("120,0", options)).toMatchObject({ value: 120, ambiguous: true, explicitUnit: false });
+    expect(parseSpokenAmount("1.200.0", options)).toMatchObject({ value: null, ambiguous: true, explicitUnit: false });
+    const decimal = parseVoiceCommand("seat four raise 120,0", options);
+    const malformed = parseVoiceCommand("seat four raise 1.200.0", options);
+    expect(decimal).toMatchObject({
+      kind: "raise_to",
+      amount: { value: 120, ambiguous: true, explicitUnit: false },
+    });
+    expect(malformed).toMatchObject({
+      kind: "raise_to",
+      amount: { value: null, ambiguous: true, explicitUnit: false },
+    });
+    const seatFourReady = { ...READY, actor: { ...READY.actor!, seatNumber: 4 } };
+    expect(resolveVoiceProposal(decimal, seatFourReady)).toMatchObject({ ok: false, code: "amount_ambiguous" });
+    expect(resolveVoiceProposal(malformed, seatFourReady)).toMatchObject({ ok: false, code: "amount_ambiguous" });
+  });
+
   it.each([
     ["seat four raise 100", 100],
     ["seat four raise 200", 200],
@@ -104,6 +123,9 @@ describe("parseVoiceCommand", () => {
   it.each([
     ["seat number six raise 20,000", 20_000, 6],
     ["ghế số 7 raise 50.000", 50_000, 7],
+    ["seat four raise 1 triệu 580 nghìn", 1_580_000, 4],
+    ["seat four raise 30 triệu", 30_000_000, 4],
+    ["seat four raise 300 triệu", 300_000_000, 4],
   ])("parses exact seated amount commands in %s", (input, amount, seat) => {
     expect(parseVoiceCommand(input)).toMatchObject({
       kind: "raise_to",
@@ -219,6 +241,23 @@ describe("resolveVoiceProposal", () => {
   it("allows a short all-in raise but rejects an undersized non-all-in raise", () => {
     expect(resolveVoiceProposal(parseVoiceCommand("raise 11k"), READY)).toMatchObject({ ok: true, betToTotal: 11_000 });
     expect(resolveVoiceProposal(parseVoiceCommand("raise 3k"), READY)).toMatchObject({ ok: false, code: "raise_too_small" });
+  });
+
+  it.each([
+    ["seat four raise 1 triệu 580 nghìn", 1_580_000],
+    ["seat four raise 30 triệu", 30_000_000],
+    ["seat four raise 300 triệu", 300_000_000],
+  ])("accepts a large raise within the authoritative deep stack: %s", (input, expected) => {
+    const deepStack = {
+      ...READY,
+      actor: { ...READY.actor!, seatNumber: 4, currentStack: 1_000_000_000, currentBet: 0 },
+      actorView: { ...READY.actorView!, toCall: 40_000, minRaiseTo: 120_000 },
+    };
+    expect(resolveVoiceProposal(parseVoiceCommand(input), deepStack)).toMatchObject({
+      ok: true,
+      canonicalAction: "raise",
+      betToTotal: expected,
+    });
   });
 
   it("creates control proposals without inventing a poker actor", () => {
