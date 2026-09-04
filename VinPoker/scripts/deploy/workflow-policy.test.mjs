@@ -101,6 +101,19 @@ test("Ops club-account deploy remains an explicit protected critical selection",
   assert.match(criticalJob, /environment:\s*\n\s*name: dealer-swing-production-critical/);
 });
 
+test("assign-dealer deploy is an explicit protected critical selection", () => {
+  const criticalJob = workflow.slice(
+    workflow.indexOf("deploy-critical-edge:"),
+    workflow.indexOf("deploy-frontend:"),
+  );
+  assert.match(workflow, /deploy_dealer_functions:/);
+  assert.match(workflow, /assign-dealer\|checkout-dealer\|mass-assign\|process-swing/);
+  assert.match(workflow, /selected\+=\("\$function_name"\)/);
+  assert.match(workflow, /Unsupported dealer Edge function/);
+  assert.match(workflow, /Duplicate dealer Edge function/);
+  assert.match(criticalJob, /environment:\s*\n\s*name: dealer-swing-production-critical/);
+});
+
 test("every live probe derives its profile from the exact target checkout", () => {
   const probes = [...workflow.matchAll(/probe-live-schema-contracts\.mjs([\s\S]{0,300})/g)];
   assert.equal(probes.length, 4);

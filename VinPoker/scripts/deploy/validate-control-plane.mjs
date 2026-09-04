@@ -322,7 +322,16 @@ for (const snippet of [
   }
 }
 
+const dealerFunctionInput = "deploy_dealer_functions:";
+const dealerFunctions = new Set(["assign-dealer", "checkout-dealer", "mass-assign", "process-swing"]);
+const dealerFunctionAllowlist = "assign-dealer|checkout-dealer|mass-assign|process-swing";
+if (!workflow.includes(dealerFunctionInput) || !workflow.includes(dealerFunctionAllowlist)) {
+  throw new Error("workflow is missing the manual dealer function allowlist");
+}
 for (const [name] of Object.entries(manifest.functions).filter(([, item]) => item.critical)) {
+  if (dealerFunctions.has(name)) {
+    continue;
+  }
   const inputName = `deploy_${name.replaceAll("-", "_")}:`;
   if (!workflow.includes(inputName)) throw new Error(`workflow is missing manual input ${inputName}`);
   if (!workflow.includes(`selected+=("${name}")`)) {

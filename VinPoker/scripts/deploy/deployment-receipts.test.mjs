@@ -80,3 +80,21 @@ test("Floor clock writes its own component receipt", async () => {
   assert.equal(requests[0].ref, SHA_NEW);
   assert.equal(requests[0].environment, "receipt-vinpoker-edge-tournament-live-clock");
 });
+
+test("assign-dealer writes its own successful deployment receipt", async () => {
+  const requests = [];
+  const fetchImpl = async (_url, options) => {
+    requests.push(options.body ? JSON.parse(options.body) : null);
+    return { ok: true, status: 201, json: async () => ({ id: 100 }) };
+  };
+  await recordSuccessfulReceipt({
+    repository: "owner/repo",
+    token: "test-only-token",
+    component: "assign-dealer",
+    targetSha: SHA_NEW,
+    manifest: loadDeploymentManifest(),
+    fetchImpl,
+  });
+  assert.equal(requests[0].ref, SHA_NEW);
+  assert.equal(requests[0].environment, "receipt-vinpoker-edge-assign-dealer");
+});

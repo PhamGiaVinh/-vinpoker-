@@ -15,6 +15,7 @@ const REQUIRED_CRITICAL_POSTURE = new Map([
   ["process-swing", false],
   ["mass-assign", true],
   ["checkout-dealer", true],
+  ["assign-dealer", false],
   ["tournament-live-clock", true],
   ["ops-club-accounts", true],
   ["render-payroll-statement", true],
