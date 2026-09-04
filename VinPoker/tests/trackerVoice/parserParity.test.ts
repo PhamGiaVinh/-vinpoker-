@@ -118,11 +118,42 @@ describe("Tracker Voice browser and Edge parser parity", () => {
 
   it.each([
     ["seat four raise 120,0", 120],
-    ["seat four raise 1.200.0", null],
-  ])("fails closed for malformed Gemini amount output identically: %s", (transcript, amount) => {
+  ])("fails closed for an unqualified Gemini decimal identically: %s", (transcript, amount) => {
     const options = { spokenAmountUnit: 1, amountUnitConfirmed: true };
     expect(browserShape(transcript, options)).toEqual(serverShape(transcript, options));
     expect(browserShape(transcript, options)).toMatchObject({ kind: "raise_to", amount, amountAmbiguous: true });
+  });
+
+  it.each([
+    ["seat four raise 1.750.0", 1_750_000],
+    ["seat four raise 1 million and 200 thousand", 1_200_000],
+  ])("normalizes a reviewed million transcript identically: %s", (transcript, amount) => {
+    const options = { spokenAmountUnit: 1, amountUnitConfirmed: true };
+    expect(browserShape(transcript, options)).toEqual(serverShape(transcript, options));
+    expect(browserShape(transcript, options)).toMatchObject({ kind: "raise_to", amount, amountAmbiguous: false });
+  });
+
+  it("normalizes the reviewed thousands transcript identically", () => {
+    const options = { spokenAmountUnit: 1, amountUnitConfirmed: true };
+    expect(browserShape("seat four bet 300.0", options)).toEqual(serverShape("seat four bet 300.0", options));
+    expect(browserShape("seat four bet 300.0", options)).toMatchObject({
+      kind: "bet_to",
+      amount: 300_000,
+      amountAmbiguous: false,
+      riskTier: "BOUNDED_REPAIR",
+      requiresConfirmation: true,
+    });
+  });
+
+  it("parses an exact spoken all-in amount identically", () => {
+    const options = { spokenAmountUnit: 1, amountUnitConfirmed: true };
+    expect(browserShape("seat 4 all in 200.000", options)).toEqual(serverShape("seat 4 all in 200.000", options));
+    expect(browserShape("seat 4 all in 200.000", options)).toMatchObject({
+      kind: "all_in",
+      amount: 200_000,
+      amountAmbiguous: false,
+      spokenSeatNumber: 4,
+    });
   });
 
   it("rejects spoken call amounts identically because the engine derives the call amount", () => {
