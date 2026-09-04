@@ -41,7 +41,7 @@ const READY_RUNTIME: TrackerVoiceRuntimeContext = {
   active_hand: { hand_id: HAND_ID, hand_number: 12, status: "in_progress", state_version: STATE_VERSION },
 };
 
-type FixtureScenario = "check_legal" | "facing_bet" | "deep_stack" | "short_stack" | "correction_pending";
+type FixtureScenario = "check_legal" | "facing_bet" | "deep_stack" | "all_in_200k" | "short_stack" | "correction_pending";
 
 const FIXTURE_SCENARIOS: Record<FixtureScenario, {
   label: string;
@@ -77,6 +77,16 @@ const FIXTURE_SCENARIOS: Record<FixtureScenario, {
     label: "Deep stack · test số triệu",
     helper: "Ghế 4 · stack 1.000.000.000 · test raise từ 1 triệu đến vài trăm triệu",
     stack: 1_000_000_000,
+    currentBet: 0,
+    toCall: 40_000,
+    minRaiseTo: 120_000,
+    legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+    correctionPending: false,
+  },
+  all_in_200k: {
+    label: "All-in đúng 200.000",
+    helper: "Ghế 4 · stack 200.000 · nói Seat four all in 200.000",
+    stack: 200_000,
     currentBet: 0,
     toCall: 40_000,
     minRaiseTo: 120_000,
