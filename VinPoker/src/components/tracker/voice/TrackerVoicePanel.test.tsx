@@ -123,6 +123,55 @@ describe("TrackerVoicePanel", () => {
     expect(screen.getByText(/Auto bị khóa/)).toBeInTheDocument();
   });
 
+  it("joins one VAD-split Raise prefix with the immediately following amount final", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const snapshots: TrackerVoiceDiagnosticSnapshot[] = [];
+    const hook = {
+      ...hookFixture(),
+      actorPlayer: {
+        ...hookFixture().actorPlayer,
+        current_stack: 2_000_000,
+      },
+      actorViewData: {
+        ...hookFixture().actorViewData,
+        minRaiseTo: 4_000,
+      },
+    } as StandaloneHandInput;
+    render(
+      <TrackerVoicePanel
+        hook={hook}
+        providerOverride={provider}
+        runtimeOverride={runtimeFixture}
+        onDiagnosticSnapshot={(snapshot) => snapshots.push(snapshot)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("seat three raise", { final: true, id: "raise-prefix" }));
+    expect(await screen.findByText("Đã nhận lệnh Raise/Bet, đang chờ số chip.")).toBeInTheDocument();
+    expect(screen.queryByText(/Player A · raise tới/)).not.toBeInTheDocument();
+
+    act(() => provider.emit("1 triệu 750 nghìn", { final: true, id: "raise-amount" }));
+    expect(await screen.findByText("Player A · raise tới 1.750.000")).toBeInTheDocument();
+    expect(snapshots.some((snapshot) => (
+      snapshot.finalTranscript === "seat three raise 1 triệu 750 nghìn"
+      && snapshot.proposal?.ok
+    ))).toBe(true);
+  });
+
+  it("keeps an amount-only final fail-closed without an immediately preceding action prefix", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    renderPanel(hookFixture(), provider);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("1 triệu 750 nghìn", { final: true, id: "amount-only" }));
+
+    expect(await screen.findByText("Chưa nhận ra một lệnh Voice duy nhất.")).toBeInTheDocument();
+    expect(screen.queryByText(/Player A · raise tới/)).not.toBeInTheDocument();
+  });
+
   it("keeps a Board transcript as a draft until the Dealer confirms one atomic receipt", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const applyVoiceBoardReceipt = vi.fn(() => true);
