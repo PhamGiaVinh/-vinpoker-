@@ -1,6 +1,6 @@
 // Rules-pin (PR-T): validateAction — min-raise, BB option, street reset, and the
 // PROOF that the UAT errors were a SEED bug (with correct seeds the same actions
-// are legal). Plus a SKIP spec for the known short-all-in reopen gap.
+// are legal), including the short-all-in no-reopen rule.
 // Pure; no DB, no source change.
 import { describe, it, expect } from "vitest";
 import { validateAction } from "@tracker-engine/validateAction.ts";
@@ -106,12 +106,10 @@ describe("validateAction — physical invariants still hold", () => {
   });
 });
 
-describe("validateAction — SPEC (known gap, PENDING Phase-2 reopen hardening)", () => {
+describe("validateAction — short all-in does not reopen betting", () => {
   // A short all-in that is BELOW a full raise increment must NOT reopen the action
-  // for a player who has already acted — they may only call or fold. The engine
-  // currently allows the re-raise (it checks the increment, not whether THIS player
-  // was reopened). When the reopen rule lands, drop `.skip`.
-  it.skip("a player who already acted cannot re-raise after a non-reopening short all-in", () => {
+  // for a player who has already acted — they may only call or fold.
+  it("a player who already acted cannot re-raise after a non-reopening short all-in", () => {
     const seeds: PlayerSeed[] = [
       { player_id: "B1", seat_number: 1, starting_stack: 350 }, // button, short stack
       { player_id: "SB", seat_number: 2, starting_stack: 10000 },
@@ -127,6 +125,25 @@ describe("validateAction — SPEC (known gap, PENDING Phase-2 reopen hardening)"
     ]);
     // UTG already acted; facing a non-reopening short all-in it may only call/fold.
     const r = validateAction(seeds, prior, 1, propose("UTG", "raise", 300, "preflop"));
-    expect(r.valid).toBe(false); // EXPECTED once the reopen rule is enforced
+    expect(r).toMatchObject({ valid: false, code: "ACTION_NOT_REOPENED" });
+    expect(validateAction(seeds, prior, 1, propose("UTG", "all_in", 9700, "preflop"))).toMatchObject({
+      valid: false,
+      code: "ACTION_NOT_REOPENED",
+    });
+    expect(validateAction(seeds, prior, 1, propose("UTG", "call", 50, "preflop")).valid).toBe(true);
+    // Players who have not acted yet retain their raise right.
+    expect(validateAction(seeds, prior, 1, propose("SB", "raise", 500, "preflop")).valid).toBe(true);
+  });
+
+  it("a full later raise reopens action for players who already acted", () => {
+    const prior = build([
+      ["P2", "post_sb", 50], ["P3", "post_bb", 100],
+      ["P1", "raise", 300],
+      ["P2", "raise", 450], // reaches 500: a full +200 raise
+    ]);
+    expect(validateAction(THREE, prior, BUTTON, propose("P1", "raise", 400))).toMatchObject({
+      valid: true,
+      normalizedAmount: 400, // P1 reaches 700: another full +200 raise
+    });
   });
 });

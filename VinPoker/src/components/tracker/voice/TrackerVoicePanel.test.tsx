@@ -30,6 +30,37 @@ function hookFixture(): StandaloneHandInput {
       minRaiseTo: 4_000,
       legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
     },
+    voiceActionTargets: [{
+      actor: {
+        playerId: "player-a",
+        playerName: "Player A",
+        seatNumber: 3,
+        entryNumber: 1,
+        currentStack: 10_000,
+        currentBet: 1_000,
+      },
+      actorView: {
+        toCall: 1_000,
+        minRaiseTo: 4_000,
+        legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+      },
+      isCurrentActor: true,
+    }, {
+      actor: {
+        playerId: "player-b",
+        playerName: "Player B",
+        seatNumber: 5,
+        entryNumber: 1,
+        currentStack: 12_000,
+        currentBet: 0,
+      },
+      actorView: {
+        toCall: 2_000,
+        minRaiseTo: 4_000,
+        legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+      },
+      isCurrentActor: false,
+    }],
     handStarted: true,
     showActionStep: true,
     isReadOnly: false,
@@ -148,6 +179,9 @@ describe("TrackerVoicePanel", () => {
         ...hookFixture().actorViewData,
         minRaiseTo: 4_000,
       },
+      voiceActionTargets: hookFixture().voiceActionTargets.map((target) => target.isCurrentActor
+        ? { ...target, actor: { ...target.actor, currentStack: 2_000_000 } }
+        : target),
     } as StandaloneHandInput;
     render(
       <TrackerVoicePanel
@@ -414,7 +448,8 @@ describe("TrackerVoicePanel", () => {
       snapshot.finalProviderEventId === "final-seat-five"
       && snapshot.proposalProviderEventId === "final-fold"
     ))).toBe(false);
-    expect(await screen.findByText("Đang tới Ghế 3, nhưng Voice nghe Ghế 5.")).toBeInTheDocument();
+    expect(await screen.findByText("Player B · call")).toBeInTheDocument();
+    expect(screen.getByText("KHÁC THỨ TỰ · Đang tới Ghế 3; dealer đang xác nhận action cho Ghế 5.")).toBeInTheDocument();
   });
 
   it("fails closed when the actor changes before proposal validation", async () => {
@@ -425,7 +460,7 @@ describe("TrackerVoicePanel", () => {
     await screen.findByText("Microphone đã kết nối");
     view.rerender(
       <TrackerVoicePanel
-        hook={{ ...hook, actorPlayer: null, actorViewData: null }}
+        hook={{ ...hook, actorPlayer: null, actorViewData: null, voiceActionTargets: [] }}
         providerOverride={provider}
         runtimeOverride={runtimeFixture}
         validateEventOverride={vi.fn(async () => validatedReceipt)}

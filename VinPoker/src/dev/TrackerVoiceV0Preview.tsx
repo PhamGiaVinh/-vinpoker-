@@ -288,6 +288,32 @@ export default function TrackerVoiceV0Preview() {
       minRaiseTo: fixture.minRaiseTo,
       legal: fixture.legal,
     },
+    voiceActionTargets: [
+      {
+        actor: {
+          playerId: "74000000-0000-4000-8000-000000000001",
+          playerName: "Player A",
+          seatNumber: 4,
+          entryNumber: 1,
+          currentStack: fixture.stack,
+          currentBet: fixture.currentBet,
+        },
+        actorView: { toCall: fixture.toCall, minRaiseTo: fixture.minRaiseTo, legal: fixture.legal },
+        isCurrentActor: true,
+      },
+      {
+        actor: {
+          playerId: "74000000-0000-4000-8000-000000000002",
+          playerName: "Player B",
+          seatNumber: 5,
+          entryNumber: 1,
+          currentStack: fixture.stack,
+          currentBet: fixture.currentBet,
+        },
+        actorView: { toCall: fixture.toCall, minRaiseTo: fixture.minRaiseTo, legal: fixture.legal },
+        isCurrentActor: false,
+      },
+    ],
     handStarted: true,
     showActionStep: true,
     isReadOnly: false,

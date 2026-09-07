@@ -94,6 +94,12 @@ export interface VoiceLegalSnapshot {
   };
 }
 
+export interface VoiceActionTargetSnapshot {
+  actor: VoiceActorSnapshot;
+  actorView: VoiceLegalSnapshot;
+  isCurrentActor: boolean;
+}
+
 export interface VoiceProposalContext {
   handId: string | null;
   street: WorkflowStreet;
@@ -102,6 +108,7 @@ export interface VoiceProposalContext {
   expectedStateVersion: string | null;
   actor: VoiceActorSnapshot | null;
   actorView: VoiceLegalSnapshot | null;
+  actionTargets?: readonly VoiceActionTargetSnapshot[];
   handStarted: boolean;
   actionStepActive: boolean;
   readOnly: boolean;
@@ -178,6 +185,8 @@ export interface VoiceActionProposal {
   expectedStreet: WorkflowStreet;
   expectedActionOrder: number;
   expectedActionAmount: number;
+  offTurn: boolean;
+  currentActorSeatNumber: number;
 }
 
 export interface VoiceHoleCardsPlayer {

@@ -20,5 +20,8 @@ describe("Tracker Voice Action and Board Assist contract", () => {
     expect(edge).toContain("commit_tracker_voice_board_v0");
     expect(edge).toContain("buildVoiceHoleCardsCanonicalRequest");
     expect(edge).toContain("buildVoiceFinishCanonicalRequest");
+    expect(edge).toContain("resolveVoiceActor(snapshot, street, command.spokenSeatNumber)");
+    expect(edge).toContain("!player.has_acted_this_street || currentBet < runtime.highestBet");
+    expect(edge).toContain("off_turn: actor.offTurn");
   });
 });

@@ -300,6 +300,7 @@ export function TrackerVoicePanel({
     setValidationError("Đề xuất Finish đã hết hiệu lực vì trạng thái hand thay đổi.");
   }, [finishAttempt, hook.handId, hook.isReadOnly, hook.workflowState, runtime?.active_hand?.hand_id, runtime?.active_hand?.state_version, runtime?.correction_pending]);
 
+  const voiceCurrentActionTarget = hook.voiceActionTargets?.find((target) => target.isCurrentActor) ?? null;
   const proposalContext = useMemo(
     () => ({
       handId: hook.handId,
@@ -311,7 +312,7 @@ export function TrackerVoicePanel({
       expectedStateVersion: runtime?.active_hand?.hand_id === hook.handId
         ? runtime.active_hand.state_version
         : null,
-      actor: hook.actorPlayer
+      actor: voiceCurrentActionTarget?.actor ?? (hook.actorPlayer
         ? {
             playerId: hook.actorPlayer.player_id,
             playerName: hook.actorPlayer.display_name,
@@ -320,14 +321,15 @@ export function TrackerVoicePanel({
             currentStack: hook.actorPlayer.current_stack,
             currentBet: hook.actorPlayer.current_bet,
           }
-        : null,
-      actorView: hook.actorViewData
+        : null),
+      actorView: voiceCurrentActionTarget?.actorView ?? (hook.actorViewData
         ? {
             toCall: hook.actorViewData.toCall,
             minRaiseTo: hook.actorViewData.minRaiseTo,
             legal: hook.actorViewData.legal,
           }
-        : null,
+        : null),
+      actionTargets: hook.voiceActionTargets ?? [],
       handStarted: hook.handStarted,
       actionStepActive: hook.showActionStep,
       readOnly: hook.isReadOnly,
@@ -341,6 +343,7 @@ export function TrackerVoicePanel({
       hook.actionSyncBlocked,
       hook.actorPlayer,
       hook.actorViewData,
+      hook.voiceActionTargets,
       hook.actions,
       hook.currentStreet,
       hook.communityCards,
@@ -353,6 +356,7 @@ export function TrackerVoicePanel({
       runtime?.active_hand?.hand_id,
       runtime?.active_hand?.state_version,
       runtime?.correction_pending,
+      voiceCurrentActionTarget,
     ],
   );
 
@@ -1540,6 +1544,11 @@ export function TrackerVoicePanel({
             Voice Assist proposal
           </div>
           <div className="text-sm font-semibold">{proposalLabel}</div>
+          {proposal?.ok && "canonicalAction" in proposal && proposal.offTurn && (
+            <div className="mt-2 text-[11px] font-semibold text-amber-100">
+              KHÁC THỨ TỰ · Đang tới Ghế {proposal.currentActorSeatNumber}; dealer đang xác nhận action cho Ghế {proposal.actor.seatNumber}.
+            </div>
+          )}
           {finalTranscript && <div className="mt-1 text-[11px] opacity-65">“{finalTranscript}”</div>}
           {proposal?.ok && "intentDomain" in proposal && proposal.intentDomain === "board" && (
             <div className="mt-2 space-y-1 text-[11px] opacity-80">

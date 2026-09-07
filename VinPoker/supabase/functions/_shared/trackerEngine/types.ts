@@ -78,6 +78,8 @@ export interface PlayerRuntime {
   is_all_in: boolean;
   /** Has voluntarily acted (not just posted a blind) on the current street. */
   has_acted_this_street: boolean;
+  /** False after acting until a later full bet/raise reopens action. */
+  can_raise: boolean;
 }
 
 /** Reconstructed hand-level runtime. */
@@ -107,6 +109,7 @@ export type ValidationCode =
   | "CALL_WITH_NOTHING_TO_CALL"
   | "BET_WHEN_FACING_BET"
   | "RAISE_WITHOUT_BET"
+  | "ACTION_NOT_REOPENED"
   | "AMOUNT_EXCEEDS_STACK"
   | "BELOW_MIN_RAISE"
   | "NON_POSITIVE_AMOUNT"

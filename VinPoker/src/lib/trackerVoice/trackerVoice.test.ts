@@ -26,6 +26,22 @@ const READY: VoiceProposalContext = {
     minRaiseTo: 4_000,
     legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
   },
+  actionTargets: [{
+    actor: {
+      playerId: "player-b",
+      playerName: "Player B",
+      seatNumber: 5,
+      entryNumber: 1,
+      currentStack: 12_000,
+      currentBet: 0,
+    },
+    actorView: {
+      toCall: 2_000,
+      minRaiseTo: 4_000,
+      legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+    },
+    isCurrentActor: false,
+  }],
   handStarted: true,
   actionStepActive: true,
   readOnly: false,
@@ -243,9 +259,21 @@ describe("resolveVoiceProposal", () => {
     })).toMatchObject({ ok: false, code: "amount_ambiguous" });
   });
 
-  it("binds a spoken seat to the current actor instead of silently using another player", () => {
-    expect(resolveVoiceProposal(parseVoiceCommand("seat three call"), READY)).toMatchObject({ ok: true, canonicalAction: "call" });
+  it("targets a physical spoken seat only while that seat still has action open", () => {
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three call"), READY)).toMatchObject({
+      ok: true,
+      canonicalAction: "call",
+      offTurn: false,
+      currentActorSeatNumber: 3,
+    });
     expect(resolveVoiceProposal(parseVoiceCommand("seat five call"), READY)).toMatchObject({
+      ok: true,
+      canonicalAction: "call",
+      actor: { playerId: "player-b", seatNumber: 5 },
+      offTurn: true,
+      currentActorSeatNumber: 3,
+    });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat six call"), READY)).toMatchObject({
       ok: false,
       code: "spoken_actor_mismatch",
     });
@@ -271,6 +299,37 @@ describe("resolveVoiceProposal", () => {
       ok: false,
       code: "amount_out_of_range",
       message: "Số all-in đọc là 190.000, nhưng tổng all-in hiện tại của Ghế 4 là 200.000.",
+    });
+  });
+
+  it("accepts the observed off-highlight Seat 5 min-raise when that seat still has action", () => {
+    const facingReraise = {
+      ...READY,
+      actionTargets: [{
+        actor: {
+          playerId: "player-b",
+          playerName: "Player B",
+          seatNumber: 5,
+          entryNumber: 1,
+          currentStack: 500_000,
+          currentBet: 0,
+        },
+        actorView: {
+          toCall: 200_000,
+          minRaiseTo: 300_000,
+          legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+        },
+        isCurrentActor: false,
+      }],
+    };
+    expect(resolveVoiceProposal(parseVoiceCommand("seat five raise 300 nghìn"), facingReraise)).toMatchObject({
+      ok: true,
+      actor: { playerId: "player-b", seatNumber: 5 },
+      canonicalAction: "raise",
+      betToTotal: 300_000,
+      expectedActionAmount: 300_000,
+      offTurn: true,
+      currentActorSeatNumber: 3,
     });
   });
 
