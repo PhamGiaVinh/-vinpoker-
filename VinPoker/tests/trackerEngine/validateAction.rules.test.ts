@@ -51,6 +51,16 @@ describe("validateAction — UAT errors are a SEED bug, NOT a rules bug (correct
 });
 
 describe("validateAction — min-raise increment", () => {
+  it("allows bet 100, raise-to 200, then raise-to 300", () => {
+    const prior = build([
+      ["P1", "bet", 100, "flop"],
+      ["P2", "raise", 200, "flop"],
+    ]);
+
+    expect(validateAction(THREE, prior, BUTTON, propose("P3", "raise", 299, "flop")).code).toBe("BELOW_MIN_RAISE");
+    expect(validateAction(THREE, prior, BUTTON, propose("P3", "raise", 300, "flop")).valid).toBe(true);
+  });
+
   it("a re-raise below the last full increment is BELOW_MIN_RAISE; a full one is legal", () => {
     // SB 50 / BB 100, then P1 raises TO 300 (highestBet 300, minRaise increment 200).
     const prior = build([["P2", "post_sb", 50], ["P3", "post_bb", 100], ["P1", "raise", 300]]);

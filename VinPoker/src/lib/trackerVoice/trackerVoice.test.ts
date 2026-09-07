@@ -304,6 +304,21 @@ describe("resolveVoiceProposal", () => {
   });
 
   it.each([
+    [100_000, 200_000, "seat four raise 200 nghìn", true],
+    [100_000, 200_000, "seat four raise 199 nghìn", false],
+    [200_000, 300_000, "seat four raise 300 nghìn", true],
+    [200_000, 300_000, "seat four raise 299 nghìn", false],
+  ])("uses the authoritative min raise-to after facing %i", (toCall, minRaiseTo, input, expectedOk) => {
+    const context = {
+      ...READY,
+      actor: { ...READY.actor!, seatNumber: 4, currentStack: 500_000, currentBet: 0 },
+      actorView: { ...READY.actorView!, toCall, minRaiseTo },
+    };
+
+    expect(resolveVoiceProposal(parseVoiceCommand(input), context).ok).toBe(expectedOk);
+  });
+
+  it.each([
     ["seat four raise 1 triệu 580 nghìn", 1_580_000],
     ["seat four raise 1.750.0", 1_750_000],
     ["seat four raise 1 million and 200 thousand", 1_200_000],
