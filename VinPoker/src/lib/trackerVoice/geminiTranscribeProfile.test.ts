@@ -33,6 +33,8 @@ describe("Gemini Transcribe profile", () => {
       "raise 120 nghìn",
       "raise một trăm hai mươi nghìn",
       "raise one hundred twenty thousand",
+      "raise 1 triệu 750 nghìn",
+      "raise 1 million and 200 thousand",
       "raise 1000",
       "seat four raise 1000",
       "cược hai trăm nghìn",

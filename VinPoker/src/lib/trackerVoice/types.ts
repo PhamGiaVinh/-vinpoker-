@@ -1,5 +1,6 @@
 import type { TrackerWorkflowState, WorkflowStreet } from "@/components/cashier/tournament-live/handinput/trackerWorkflow";
 import type { VoiceCanonicalRequest } from "./canonicalRequest.ts";
+import type { TranscriptRepair } from "./transcriptHardener.ts";
 
 export type VoiceCommandKind =
   | "fold"
@@ -43,7 +44,7 @@ export interface ParsedVoiceCommand {
   amount: ParsedVoiceAmount | null;
   spokenSeatNumber: number | null;
   riskTier: "EXACT" | "BOUNDED_REPAIR";
-  repairs: readonly { rule: "seat_prefix_fit_to_seat"; from: "fit" | "feet"; to: "seat" }[];
+  repairs: readonly TranscriptRepair[];
   requiresConfirmation: boolean;
 }
 

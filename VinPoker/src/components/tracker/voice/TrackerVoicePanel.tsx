@@ -16,6 +16,7 @@ import {
   isTrackerVoiceGeminiLiveModel,
   looksLikePrivateHoleCardsTranscript,
   MockRealtimeTranscriptionProvider,
+  parseVoiceCommand,
   parseVoiceHoleCardsCommand,
   prepareTrackerVoiceFinish,
   routeTrackerVoiceIntent,
@@ -100,6 +101,43 @@ interface VoiceFinishAttempt {
 
 export const MIC_TEST_DURATION_MS = 30_000;
 const MAX_BUFFERED_TRANSCRIPTS = 20;
+const SPLIT_AMOUNT_CONTINUATION_MS = 4_000;
+
+type PendingAmountPrefix = {
+  event: VoiceTranscriptEvent;
+  receivedAt: number;
+};
+
+function isIncompleteAmountCommand(transcript: string): boolean {
+  if (parseVoiceCommand(transcript)) return false;
+  const completed = parseVoiceCommand(`${transcript.trim()} 1 nghìn`, {
+    spokenAmountUnit: 1,
+    amountUnitConfirmed: false,
+  });
+  return completed?.kind === "bet_to" || completed?.kind === "raise_to";
+}
+
+function combineSplitAmountFinal(
+  pending: PendingAmountPrefix,
+  event: VoiceTranscriptEvent,
+  receivedAt: number,
+): VoiceTranscriptEvent | null {
+  if (receivedAt - pending.receivedAt > SPLIT_AMOUNT_CONTINUATION_MS) return null;
+  const transcript = `${pending.event.transcript.trim()} ${event.transcript.trim()}`;
+  const completed = parseVoiceCommand(transcript, {
+    spokenAmountUnit: 1,
+    amountUnitConfirmed: false,
+  });
+  if (completed?.kind !== "bet_to" && completed?.kind !== "raise_to") return null;
+  return {
+    ...event,
+    providerEventId: `${pending.event.providerEventId}+${event.providerEventId}`,
+    transcript,
+    ...(pending.event.providerConfidence === undefined || event.providerConfidence === undefined
+      ? { providerConfidence: undefined }
+      : { providerConfidence: Math.min(pending.event.providerConfidence, event.providerConfidence) }),
+  };
+}
 
 type ManualFallbackAction = "fold" | "check" | "call" | "bet" | "raise" | "all_in";
 
@@ -198,6 +236,7 @@ export function TrackerVoicePanel({
   const runtimeRef = useRef<TrackerVoiceRuntimeContext | null>(runtimeOverride ?? null);
   const processedAttemptIdsRef = useRef(new Set<string>());
   const finalReceivedAtRef = useRef(new Map<string, number>());
+  const pendingAmountPrefixRef = useRef<PendingAmountPrefix | null>(null);
 
   useWakeLock(status === "listening");
 
@@ -392,6 +431,7 @@ export function TrackerVoicePanel({
     validationPromisesRef.current.clear();
     requestIdentitiesRef.current.clear();
     finalReceivedAtRef.current.clear();
+    pendingAmountPrefixRef.current = null;
     setInputDevice(null);
     setSession(null);
     setLastFinalProviderEventId(null);
@@ -771,6 +811,7 @@ export function TrackerVoicePanel({
       return;
     }
     providerRef.current = provider;
+    pendingAmountPrefixRef.current = null;
     setAudioLevel(0);
     setStatusMessage(null);
     try {
@@ -786,30 +827,50 @@ export function TrackerVoicePanel({
               : event.transcript);
             return;
           }
+          const receivedAt = performance.now();
+          const pendingAmountPrefix = pendingAmountPrefixRef.current;
+          const combinedEvent = pendingAmountPrefix
+            ? combineSplitAmountFinal(pendingAmountPrefix, event, receivedAt)
+            : null;
+          pendingAmountPrefixRef.current = null;
+          if (!combinedEvent && isIncompleteAmountCommand(event.transcript)) {
+            pendingAmountPrefixRef.current = { event, receivedAt };
+            setPartial("");
+            setFinalTranscript(event.transcript);
+            setLastFinalProviderEventId(event.providerEventId);
+            setLastFinalCapturedAt(event.capturedAt);
+            setProposal(null);
+            setProposalProviderEventId(null);
+            setProposalLatencyMs(null);
+            setValidationState("idle");
+            setValidationError("Đã nhận lệnh Raise/Bet, đang chờ số chip.");
+            return;
+          }
+          const finalEvent = combinedEvent ?? event;
           setPartial("");
           setProposal(null);
           setProposalProviderEventId(null);
           setProposalLatencyMs(null);
           setFinalTranscript("");
           setPrivateHoleCardsAttempt(null);
-          setLastFinalProviderEventId(event.providerEventId);
-          setLastFinalCapturedAt(event.capturedAt);
-          finalReceivedAtRef.current.set(event.providerEventId, performance.now());
-          setProviderConfidence(event.providerConfidence ?? null);
+          setLastFinalProviderEventId(finalEvent.providerEventId);
+          setLastFinalCapturedAt(finalEvent.capturedAt);
+          finalReceivedAtRef.current.set(finalEvent.providerEventId, receivedAt);
+          setProviderConfidence(finalEvent.providerConfidence ?? null);
           if (micTestActiveRef.current) micTestFinalCountRef.current += 1;
           if (runtimeRef.current?.correction_pending) {
             setBufferedEvents((current) => {
-              if (current.some((candidate) => candidate.providerEventId === event.providerEventId)) {
+              if (current.some((candidate) => candidate.providerEventId === finalEvent.providerEventId)) {
                 return current;
               }
-              return [...current, event].slice(-MAX_BUFFERED_TRANSCRIPTS);
+              return [...current, finalEvent].slice(-MAX_BUFFERED_TRANSCRIPTS);
             });
             setBufferStatus("Transcript được giữ cục bộ. Voice sẽ không ghi action khi Floor chưa sửa xong.");
             return;
           }
           setFinalAttempt({
-            attemptId: `provider:${event.providerEventId}`,
-            event,
+            attemptId: `provider:${finalEvent.providerEventId}`,
+            event: finalEvent,
             runtimeSnapshot: runtimeRef.current,
           });
         },
@@ -829,6 +890,7 @@ export function TrackerVoicePanel({
   };
 
   const disconnect = async () => {
+    pendingAmountPrefixRef.current = null;
     await providerRef.current?.disconnect();
     setStatus("idle");
     setAudioLevel(0);

@@ -1,4 +1,5 @@
 import { parseTrackerVoiceCommandCore } from "../../../src/lib/trackerVoice/parserCore.ts";
+import type { TranscriptRepair } from "../../../src/lib/trackerVoice/transcriptHardener.ts";
 
 export type TrackerVoiceCommandKind =
   | "fold"
@@ -17,7 +18,7 @@ export interface TrackerVoiceParsedCommand {
   amountAmbiguous: boolean;
   spokenSeatNumber: number | null;
   riskTier: "EXACT" | "BOUNDED_REPAIR";
-  repairs: readonly { rule: "seat_prefix_fit_to_seat"; from: "fit" | "feet"; to: "seat" }[];
+  repairs: readonly TranscriptRepair[];
   requiresConfirmation: boolean;
 }
 
