@@ -14,6 +14,10 @@ function reject(
   return { ok: false, command, code, message };
 }
 
+function formatChipAmount(amount: number): string {
+  return amount.toLocaleString("vi-VN");
+}
+
 export function resolveVoiceProposal(
   command: ParsedVoiceCommand | null,
   context: VoiceProposalContext,
@@ -56,6 +60,13 @@ export function resolveVoiceProposal(
       : command.kind;
   const legalKey = canonicalAction === "all_in" ? "allIn" : canonicalAction;
   if (!context.actorView.legal[legalKey as keyof typeof context.actorView.legal]) {
+    if (canonicalAction === "bet" && context.actorView.toCall > 0) {
+      return reject(
+        command,
+        "illegal_action",
+        `Ghế ${context.actor.seatNumber} đang phải theo ${formatChipAmount(context.actorView.toCall)}; Bet không hợp lệ. Hãy nói Raise, Call, Fold hoặc All-in.`,
+      );
+    }
     return reject(command, "illegal_action", "Lệnh này không hợp lệ ở trạng thái hiện tại.");
   }
 
@@ -70,7 +81,12 @@ export function resolveVoiceProposal(
       return reject(command, "amount_ambiguous", "Số chip all-in chưa rõ đơn vị.");
     }
     if (command.amount && command.amount.value !== betToTotal) {
-      return reject(command, "amount_out_of_range", "Số chip đọc không khớp tổng all-in hiện tại.");
+      const spokenAmount = command.amount.value === null ? "không xác định" : formatChipAmount(command.amount.value);
+      return reject(
+        command,
+        "amount_out_of_range",
+        `Số all-in đọc là ${spokenAmount}, nhưng tổng all-in hiện tại của Ghế ${context.actor.seatNumber} là ${formatChipAmount(betToTotal)}.`,
+      );
     }
   }
   if (canonicalAction === "bet" || canonicalAction === "raise") {

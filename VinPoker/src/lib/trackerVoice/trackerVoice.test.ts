@@ -217,6 +217,14 @@ describe("resolveVoiceProposal", () => {
     expect(resolveVoiceProposal(parseVoiceCommand("check"), READY)).toMatchObject({ ok: false, code: "illegal_action" });
   });
 
+  it("explains why Bet is illegal while the actor is facing a bet", () => {
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three bet 6k"), READY)).toMatchObject({
+      ok: false,
+      code: "illegal_action",
+      message: "Ghế 3 đang phải theo 1.000; Bet không hợp lệ. Hãy nói Raise, Call, Fold hoặc All-in.",
+    });
+  });
+
   it("preserves the existing bet amount-unit contract", () => {
     expect(parseVoiceCommand("bet 9", { spokenAmountUnit: 1_000, amountUnitConfirmed: true })).toMatchObject({
       kind: "bet_to",
@@ -262,6 +270,7 @@ describe("resolveVoiceProposal", () => {
     expect(resolveVoiceProposal(parseVoiceCommand("seat four all in 190.000"), allInFor200k)).toMatchObject({
       ok: false,
       code: "amount_out_of_range",
+      message: "Số all-in đọc là 190.000, nhưng tổng all-in hiện tại của Ghế 4 là 200.000.",
     });
   });
 
