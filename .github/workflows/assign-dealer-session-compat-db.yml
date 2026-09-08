@@ -1,0 +1,48 @@
+name: assign-dealer-session-compat-db
+
+on:
+  pull_request:
+    paths:
+      - "VinPoker/supabase/migrations/20270114000005_assign_dealer_floor_v3_session_compat.sql"
+      - "VinPoker/tests/dealerAssignmentSessionCompat/**"
+      - ".github/workflows/assign-dealer-session-compat-db.yml"
+  workflow_dispatch:
+
+jobs:
+  postgres-17:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: VinPoker
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+      - run: npm ci
+      - name: Source contract
+        run: npx vitest run --config tests/dealerAssignmentSessionCompat/vitest.config.ts
+      - name: PostgreSQL 17 compatibility matrix
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/dealerAssignmentSessionCompat/disposableDb.sql
+      - name: PostgreSQL 17 concurrency matrix
+        run: bash tests/dealerAssignmentSessionCompat/runConcurrency.sh
