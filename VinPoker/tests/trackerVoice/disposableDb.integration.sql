@@ -679,7 +679,9 @@ WHERE alert_kind = 'wrong_action' ORDER BY created_at DESC LIMIT 1 \gset wrong_a
 SELECT public.tracker_voice_test_assert(
   (:'pending_event_payload'::JSONB->>'ok')::BOOLEAN
   AND (:'wrong_event_payload'::JSONB->>'correction_pending')::BOOLEAN
-  AND (SELECT correction_state = 'correction_pending' FROM public.tracker_voice_configs LIMIT 1)
+  AND (SELECT correction_state = 'correction_pending'
+       FROM public.tracker_voice_configs
+       WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001')
   AND (SELECT status = 'in_progress' FROM public.tournament_hands WHERE id = '86000000-0000-4000-8000-000000000001'),
   'wrong-action alert pauses Voice only and does not pause the hand'
 );
@@ -814,7 +816,9 @@ SELECT public.tracker_voice_test_assert(
   AND :'alert_resolve_payload'::JSONB->>'status' = 'resolved'
   AND (:'alert_resolve_retry_payload'::JSONB->>'duplicate')::BOOLEAN
   AND :'alert_resolve_mismatch_payload'::JSONB->>'error' = 'idempotency_mismatch'
-  AND (SELECT correction_state = 'ready' AND correction_alert_id IS NULL FROM public.tracker_voice_configs LIMIT 1),
+  AND (SELECT correction_state = 'ready' AND correction_alert_id IS NULL
+       FROM public.tracker_voice_configs
+       WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001'),
   'Floor resolution is audited, idempotent and releases Voice back to Assist'
 );
 SELECT public.tracker_voice_test_assert(
@@ -954,7 +958,9 @@ BEGIN
     (SELECT count(*) = v_event_count FROM public.tracker_voice_events)
     AND (SELECT count(*) = v_alert_count FROM public.tracker_floor_alerts)
     AND (SELECT count(*) = v_audit_count FROM public.audit_logs)
-    AND (SELECT correction_state = 'ready' FROM public.tracker_voice_configs LIMIT 1),
+    AND (SELECT correction_state = 'ready'
+         FROM public.tracker_voice_configs
+         WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001'),
     'injected failure leaves zero partial event, alert, audit or config writes'
   );
 END;
