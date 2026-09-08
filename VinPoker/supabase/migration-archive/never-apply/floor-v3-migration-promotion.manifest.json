@@ -39,6 +39,13 @@
       "sha256": "41eb61a7c9e23cedd3aa16fc61d9efe9d4aeedd01b749b452011e5a0f52519c4",
       "dependencies": ["20270113000011"],
       "runtimeEdgeDependency": false
+    },
+    {
+      "version": "20270114000005",
+      "filename": "20270114000005_assign_dealer_floor_v3_session_compat.sql",
+      "sha256": "c77d92740e9cf532ac9215bba0eeac66d505951d60d6e70d2da8de143ca14955",
+      "dependencies": ["20270113000012"],
+      "runtimeEdgeDependency": false
     }
   ],
   "heldSources": [
