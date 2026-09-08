@@ -135,7 +135,7 @@ SELECT public.tracker_voice_test_assert(
   AND (SELECT enabled FROM public.tracker_voice_configs
        WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001')
   AND NOT (SELECT enabled FROM public.tracker_voice_configs
-           WHERE tournament_table_id = '84000000-0000-4000-0000-000000000002'),
+           WHERE tournament_table_id = '84000000-0000-4000-8000-000000000002'),
   'one service-only canary reconcile enables only its exact assigned tracker session while auto-provision remains off'
 );
 
@@ -987,14 +987,14 @@ UPDATE public.table_sessions
 SET control_mode = 'manual', control_epoch = control_epoch + 1
 WHERE id = '83500000-0000-4000-8000-000000000002';
 SELECT public.tracker_voice_test_assert(
-  NOT (SELECT enabled FROM public.tracker_voice_configs WHERE tournament_table_id = '84000000-0000-4000-0000-000000000002'),
+  NOT (SELECT enabled FROM public.tracker_voice_configs WHERE tournament_table_id = '84000000-0000-4000-8000-000000000002'),
   'Manual transition disables its exact Voice config without deleting audit history'
 );
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '81200000-0000-4000-8000-000000000001', false);
 SELECT public.get_tracker_voice_runtime_context(
   '85000000-0000-4000-8000-000000000001',
-  '84000000-0000-4000-0000-000000000002'
+  '84000000-0000-4000-8000-000000000002'
 )::TEXT AS payload \gset runtime_manual_
 RESET ROLE;
 SELECT public.tracker_voice_test_assert(
@@ -1008,12 +1008,12 @@ WHERE id = '83500000-0000-4000-8000-000000000002';
 UPDATE public.tracker_voice_configs
 SET enabled = TRUE,
     control_epoch = 1
-WHERE tournament_table_id = '84000000-0000-4000-0000-000000000002';
+WHERE tournament_table_id = '84000000-0000-4000-8000-000000000002';
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '81200000-0000-4000-8000-000000000001', false);
 SELECT public.get_tracker_voice_runtime_context(
   '85000000-0000-4000-8000-000000000001',
-  '84000000-0000-4000-0000-000000000002'
+  '84000000-0000-4000-8000-000000000002'
 )::TEXT AS payload \gset runtime_stale_epoch_
 RESET ROLE;
 SELECT public.tracker_voice_test_assert(
@@ -1024,7 +1024,7 @@ SELECT public.tracker_voice_test_assert(
 UPDATE public.tracker_voice_configs config_row
 SET control_epoch = session_row.control_epoch
 FROM public.table_sessions session_row
-WHERE config_row.tournament_table_id = '84000000-0000-4000-0000-000000000002'
+WHERE config_row.tournament_table_id = '84000000-0000-4000-8000-000000000002'
   AND session_row.id = config_row.table_session_id;
 UPDATE public.table_sessions
 SET closed_at = now()
@@ -1033,7 +1033,7 @@ SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '81200000-0000-4000-8000-000000000001', false);
 SELECT public.get_tracker_voice_runtime_context(
   '85000000-0000-4000-8000-000000000001',
-  '84000000-0000-4000-0000-000000000002'
+  '84000000-0000-4000-8000-000000000002'
 )::TEXT AS payload \gset runtime_closed_
 RESET ROLE;
 SELECT public.tracker_voice_test_assert(
