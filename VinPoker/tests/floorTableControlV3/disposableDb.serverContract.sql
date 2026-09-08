@@ -175,15 +175,10 @@ $$;
 -- quarantined before the one real operational assignment is bridged.
 INSERT INTO public.clubs (id, owner_id) VALUES
   ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001'),
-  ('00000000-0000-0000-0000-000000000020', '00000000-0000-0000-0000-000000000099'),
-  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111'),
-  ('33333333-3333-3333-3333-333333333333', '33333333-3333-3333-3333-333333333333');
+  ('00000000-0000-0000-0000-000000000020', '00000000-0000-0000-0000-000000000099');
 INSERT INTO public.tournaments (id, club_id, name, status) VALUES
-  ('00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000010', 'Operational Tournament', 'active'),
-  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111', 'STAGE_TEST Tournament', 'active');
-UPDATE public.tournaments
-SET updated_at = '2026-06-13 03:57:08.065228+07'
-WHERE id = '11111111-1111-1111-1111-111111111111';
+  ('00000000-0000-0000-0000-000000000100', '00000000-0000-0000-0000-000000000010', 'Operational Tournament', 'active');
+\ir stageTestBridge.fixture.sql
 UPDATE public.tournaments
 SET live_status = 'running'
 WHERE id = '11111111-1111-1111-1111-111111111111';
@@ -202,9 +197,7 @@ CREATE TRIGGER trg_validate_tournament_live_status
 BEFORE UPDATE ON public.tournaments
 FOR EACH ROW EXECUTE FUNCTION public.validate_tournament_live_status();
 INSERT INTO public.game_tables (id, club_id, table_name, status) VALUES
-  ('00000000-0000-0000-0000-000000000504', '00000000-0000-0000-0000-000000000010', 'Bàn 7', 'maintenance'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '33333333-3333-3333-3333-333333333333', 'TEST-T1', 'inactive'),
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '33333333-3333-3333-3333-333333333333', 'TEST-T2', 'inactive');
+  ('00000000-0000-0000-0000-000000000504', '00000000-0000-0000-0000-000000000010', 'Bàn 7', 'maintenance');
 ALTER TABLE public.tournament_tables
   ADD CONSTRAINT tournament_tables_table_id_legacy_key UNIQUE (table_id);
 INSERT INTO public.tournament_tables (id, tournament_id, table_id, table_number, status) VALUES
@@ -215,26 +208,6 @@ INSERT INTO public.tournament_tables (id, tournament_id, table_id, table_number,
     7,
     'active'
   );
-
-INSERT INTO public.tournament_tables (id, tournament_id, table_id, table_number, status) VALUES
-  ('cccccccc-cccc-cccc-cccc-cccccccccccc', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 1, 'active'),
-  ('dddddddd-dddd-dddd-dddd-dddddddddddd', '11111111-1111-1111-1111-111111111111', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 2, 'active');
-INSERT INTO public.tournament_entries (id, tournament_id, player_id, entry_no, status, updated_at) VALUES
-  ('11111111-1111-1111-1111-111111111201', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111301', 1, 'seated', '2026-06-13 03:57:08.065228+07'),
-  ('11111111-1111-1111-1111-111111111202', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111302', 1, 'seated', '2026-06-13 03:57:08.065228+07'),
-  ('11111111-1111-1111-1111-111111111203', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111303', 1, 'registered', '2026-06-13 03:57:08.065228+07'),
-  ('11111111-1111-1111-1111-111111111204', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111304', 1, 'registered', '2026-06-13 03:57:08.065228+07'),
-  ('11111111-1111-1111-1111-111111111205', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111305', 1, 'registered', '2026-06-13 03:57:08.065228+07');
-INSERT INTO public.tournament_seats (tournament_id, player_id, entry_number, table_id, seat_number, entry_id, is_active, status, created_at) VALUES
-  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111301', 1, 'cccccccc-cccc-cccc-cccc-cccccccccccc', 1, '11111111-1111-1111-1111-111111111201', true, 'active', '2026-06-13 03:57:08.065228+07'),
-  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111302', 1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 1, '11111111-1111-1111-1111-111111111202', true, 'active', '2026-06-13 03:57:08.065228+07'),
-  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111303', 1, 'cccccccc-cccc-cccc-cccc-cccccccccccc', 2, '11111111-1111-1111-1111-111111111203', false, 'moved', '2026-06-13 03:57:08.065228+07'),
-  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111304', 1, 'cccccccc-cccc-cccc-cccc-cccccccccccc', 3, '11111111-1111-1111-1111-111111111204', false, 'moved', '2026-06-13 03:57:08.065228+07'),
-  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111305', 1, 'cccccccc-cccc-cccc-cccc-cccccccccccc', 4, '11111111-1111-1111-1111-111111111205', false, 'moved', '2026-06-13 03:57:08.065228+07'),
-  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111301', 1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 2, '11111111-1111-1111-1111-111111111201', false, 'moved', '2026-06-13 03:57:08.065228+07'),
-  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111302', 1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 3, '11111111-1111-1111-1111-111111111202', false, 'moved', '2026-06-13 03:57:08.065228+07'),
-  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111303', 1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 4, '11111111-1111-1111-1111-111111111203', false, 'moved', '2026-06-13 03:57:08.065228+07'),
-  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111304', 1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 5, '11111111-1111-1111-1111-111111111204', false, 'moved', '2026-06-13 03:57:08.065228+07');
 
 \ir ../../supabase/migrations/20270113000002_floor_table_control_v3_foundation.sql
 

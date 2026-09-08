@@ -1,6 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  evaluateTrackerVoiceRelease,
+  TRACKER_VOICE_RELEASE_MANIFEST,
+} from "./trackerVoiceMigrationRelease.mjs";
 
 const MIGRATION_FILE_PATTERN = /^(\d{14})_.+\.sql$/u;
 const CLI_VISIBLE_NON_VERSIONED_MIGRATION = /^\d+_.+\.sql$/u;
@@ -115,6 +119,7 @@ function isCommentOnly(source) {
 export function findMigrationCatalogProblems(
   migrationDirectory,
   reconciliationManifestPath = null,
+  trackerVoiceReleaseManifestPath = null,
 ) {
   const versions = new Map();
   const invalidFiles = [];
@@ -196,6 +201,14 @@ export function findMigrationCatalogProblems(
     }
   }
 
+  const trackerVoiceRelease = trackerVoiceReleaseManifestPath
+    ? evaluateTrackerVoiceRelease({
+      migrationDirectory,
+      manifestPath: trackerVoiceReleaseManifestPath,
+    })
+    : { errors: [], filenames: new Set(), versions: new Set() };
+  invalidFiles.push(...trackerVoiceRelease.errors);
+
   if (reconciliationManifestPath) {
     if (!existsSync(reconciliationManifestPath)) {
       invalidFiles.push("Floor V3 reconciliation manifest is missing");
@@ -210,6 +223,7 @@ export function findMigrationCatalogProblems(
         const floorFiles = new Set(
           reconciliation.floorActiveAllowlist.map((entry) => entry.filename),
         );
+        const sourceOnlyVoiceFiles = trackerVoiceRelease.filenames;
         const activeByFilename = new Set(activeRows.map((row) => row.filename));
         const activeByVersion = new Set(activeRows.map((row) => row.version));
 
@@ -221,6 +235,7 @@ export function findMigrationCatalogProblems(
           }
         }
         for (const pending of reconciliation.pendingSources) {
+          if (sourceOnlyVoiceFiles.has(pending.filename)) continue;
           if (activeByFilename.has(pending.filename) || activeByVersion.has(pending.version)) {
             invalidFiles.push(`pending migration is active ${pending.filename}`);
           }
@@ -243,7 +258,11 @@ export function findMigrationCatalogProblems(
         }
         const head = reconciliation.registeredProductionHead;
         for (const row of activeRows) {
-          if (floorFiles.has(row.filename) || remoteVersions.has(row.version)) continue;
+          if (
+            floorFiles.has(row.filename) ||
+            sourceOnlyVoiceFiles.has(row.filename) ||
+            remoteVersions.has(row.version)
+          ) continue;
           invalidFiles.push(
             row.version < head
               ? `replayable historical migration not reconciled ${row.filename}`
@@ -272,10 +291,12 @@ export function findMigrationCatalogProblems(
 export function runMigrationCatalogCheck(
   migrationDirectory,
   reconciliationManifestPath = null,
+  trackerVoiceReleaseManifestPath = null,
 ) {
   const problems = findMigrationCatalogProblems(
     migrationDirectory,
     reconciliationManifestPath,
+    trackerVoiceReleaseManifestPath,
   );
   if (problems.length > 0) {
     for (const problem of problems)
@@ -300,8 +321,14 @@ if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
     dirname(scriptPath),
     "../../supabase/migration-archive/floor-v3-catalog-reconciliation.manifest.json",
   );
+  const trackerVoiceReleaseManifestPath = resolve(
+    dirname(scriptPath),
+    "../../supabase/migration-archive",
+    TRACKER_VOICE_RELEASE_MANIFEST,
+  );
   process.exitCode = runMigrationCatalogCheck(
     migrationDirectory,
     reconciliationManifestPath,
+    trackerVoiceReleaseManifestPath,
   );
 }

@@ -1,15 +1,22 @@
-// Tracker operator hand-flow helpers — compute "who is to act" and which actions
-// are legal, from HandInputPanel's EXISTING local hand state (no server round-
-// trip, no import of the server trackerEngine — that's the client-bundle
-// guardrail). Drives the gold to-act highlight and the dimmed action buttons.
-//
-// Advisory only: the operator may always override (tap any seat) — live entry
-// must never be hard-blocked just because the order differs. Mirrors the rules
-// in supabase/functions/_shared/trackerEngine/{handState,validateAction}.ts.
+// Tracker operator hand-flow helpers. When a canonical action stream is present,
+// these are browser adapters over handStateCore; manual seat selection remains UI-only.
+
+import {
+  actorViewFromRuntime,
+  isBettingRoundComplete as isCanonicalBettingRoundComplete,
+  nextToActAtStreet,
+  reduceHandAtStreet,
+  type ActionRow,
+  type CoreLegalActions,
+  type PlayerSeed,
+  type Street,
+} from "./handStateCore";
 
 export interface FlowPlayer {
   player_id: string;
   seat_number: number;
+  /** Required when canonicalActions are supplied. */
+  starting_stack?: number;
   /** Chips committed on the CURRENT street (reset each street). */
   current_bet: number;
   current_stack: number;
@@ -26,16 +33,13 @@ export interface FlowInput {
   lastActorSeat?: number | null;
   /** Big blind, for min-bet / min-raise guidance (0 → fall back to highest bet). */
   bigBlind?: number;
+  /** Full canonical hand stream for the shared browser/Edge action view. */
+  canonicalActions?: readonly ActionRow[];
+  /** Current workflow street; used to reset a later empty street deterministically. */
+  currentStreet?: Street;
 }
 
-export interface LegalActions {
-  fold: boolean;
-  check: boolean;
-  call: boolean;
-  bet: boolean;
-  raise: boolean;
-  allIn: boolean;
-}
+export type LegalActions = CoreLegalActions;
 
 export interface ActorView {
   /** Chips this player must add to call. */
@@ -43,6 +47,29 @@ export interface ActorView {
   /** Suggested minimum "raise to" amount (street total), guidance only. */
   minRaiseTo: number;
   legal: LegalActions;
+}
+
+function canonicalSeeds(input: FlowInput): PlayerSeed[] | null {
+  if (!input.canonicalActions) return null;
+  const seeds = input.players.map((player) => ({
+    player_id: player.player_id,
+    seat_number: player.seat_number,
+    starting_stack: player.starting_stack,
+  }));
+  return seeds.every((seed) => Number.isFinite(seed.starting_stack) && (seed.starting_stack ?? 0) >= 0)
+    ? seeds as PlayerSeed[]
+    : null;
+}
+
+function canonicalRuntime(input: FlowInput) {
+  const seeds = canonicalSeeds(input);
+  if (!seeds || !input.canonicalActions) return null;
+  return reduceHandAtStreet(
+    seeds,
+    [...input.canonicalActions],
+    input.buttonSeat,
+    input.currentStreet ?? "preflop",
+  );
 }
 
 export function highestBet(players: FlowPlayer[]): number {
@@ -69,6 +96,15 @@ function seatsAfter(players: FlowPlayer[], afterSeat: number): FlowPlayer[] {
  * the button when nobody has acted this street yet).
  */
 export function nextToAct(input: FlowInput): string | null {
+  const seeds = canonicalSeeds(input);
+  if (seeds && input.canonicalActions) {
+    return nextToActAtStreet(
+      seeds,
+      [...input.canonicalActions],
+      input.buttonSeat,
+      input.currentStreet ?? "preflop",
+    );
+  }
   const highest = highestBet(input.players);
   const ref = input.lastActorSeat ?? input.buttonSeat;
   for (const p of seatsAfter(input.players, ref)) {
@@ -78,6 +114,8 @@ export function nextToAct(input: FlowInput): string | null {
 }
 
 export function isBettingRoundComplete(input: FlowInput): boolean {
+  const runtime = canonicalRuntime(input);
+  if (runtime) return isCanonicalBettingRoundComplete(runtime);
   const highest = highestBet(input.players);
   return !input.players.some((p) => owes(p, highest, input.actedThisStreet));
 }
@@ -87,6 +125,15 @@ export function isBettingRoundComplete(input: FlowInput): boolean {
  * next-to-act player). A folded/all-in player has no legal actions.
  */
 export function actorView(input: FlowInput, playerId?: string): ActorView {
+  const runtime = canonicalRuntime(input);
+  if (runtime) {
+    const id = playerId ?? nextToAct(input);
+    return id ? actorViewFromRuntime(runtime, id) : {
+      toCall: 0,
+      minRaiseTo: 0,
+      legal: { fold: false, check: false, call: false, bet: false, raise: false, allIn: false },
+    };
+  }
   const id = playerId ?? nextToAct(input);
   const none: ActorView = {
     toCall: 0,

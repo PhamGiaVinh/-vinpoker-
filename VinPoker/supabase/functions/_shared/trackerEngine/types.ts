@@ -78,7 +78,9 @@ export interface PlayerRuntime {
   is_all_in: boolean;
   /** Has voluntarily acted (not just posted a blind) on the current street. */
   has_acted_this_street: boolean;
-  /** False after acting until a later full bet/raise reopens action. */
+  /** Wager faced after the player's last voluntary action on this street. */
+  last_action_wager_level: number | null;
+  /** Derived from this player-specific wager level and the last full raise. */
   can_raise: boolean;
 }
 

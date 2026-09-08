@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "kind": "tracker-voice-release-chain",
+  "phase": "SOURCE_ONLY",
+  "sourceOnly": true,
+  "sha256Encoding": "UTF-8 LF-normalized",
+  "chain": [
+    {
+      "version": "20270113000007",
+      "filename": "20270113000007_tracker_voice_transcribe35_binding.sql",
+      "sha256": "7cbd6673719824543931b3be68f127cf24218d9690ef898795de5f5be7b31861"
+    },
+    {
+      "version": "20270113000009",
+      "filename": "20270113000009_tracker_voice_board_atomic_commit_v0.sql",
+      "sha256": "d28908052e16431cf321a4d3e39f4bc69799427ba9c6b551f15ea3981fb63acc"
+    },
+    {
+      "version": "20270114000001",
+      "filename": "20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql",
+      "sha256": "38e363f9c1fa72fb6e334cf3b0df62241b9f6a8533a50d1ee10cc3de4e2510af"
+    },
+    {
+      "version": "20270114000002",
+      "filename": "20270114000002_tracker_voice_finish_atomic_commit_v0.sql",
+      "sha256": "3fc2b5b4669f15dc7d7f6d7c44df54fac8560f03621844880d9d81e9c8e7a318"
+    },
+    {
+      "version": "20270114000003",
+      "filename": "20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql",
+      "sha256": "bb2925220bb5b1e6e0abf8481a46b362f4ff640cd5691ef2ade21b1cb2fa008d"
+    },
+    {
+      "version": "20270114000004",
+      "filename": "20270114000004_tracker_voice_floor_mode_global_rollout.sql",
+      "sha256": "36ffa3cb33561e77039eaa05a619f28e5d8de30247d3b3afc2b87875ae7a1426"
+    }
+  ],
+  "safety": {
+    "dbApply": false,
+    "edgeDeploy": false,
+    "frontendDeploy": false,
+    "globalGateEnabled": false,
+    "autoProvisionEnabled": false
+  }
+}

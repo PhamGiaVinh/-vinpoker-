@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  evaluateTrackerVoiceRelease,
+  TRACKER_VOICE_RELEASE_MANIFEST,
+} from "./trackerVoiceMigrationRelease.mjs";
 
 const VERSIONED_MIGRATION = /^(\d{14})_.+\.sql$/u;
 const CLI_VISIBLE_NON_VERSIONED_MIGRATION = /^\d+_.+\.sql$/u;
@@ -183,6 +187,7 @@ function evaluatePromotion({
   appliedVersions = null,
   pushPlan = null,
   reconciliationManifestPath = null,
+  trackerVoiceReleaseManifestPath = null,
 }) {
   const failures = [];
   let manifest;
@@ -202,6 +207,13 @@ function evaluatePromotion({
   }
 
   const active = listActiveMigrations(migrationDirectory);
+  const trackerVoiceRelease = trackerVoiceReleaseManifestPath
+    ? evaluateTrackerVoiceRelease({
+      migrationDirectory,
+      manifestPath: trackerVoiceReleaseManifestPath,
+    })
+    : { errors: [], filenames: new Set() };
+  failures.push(...trackerVoiceRelease.errors);
   for (const entry of readdirSync(migrationDirectory, { withFileTypes: true })) {
     if (entry.isFile() && CLI_VISIBLE_NON_VERSIONED_MIGRATION.test(entry.name) && !VERSIONED_MIGRATION.test(entry.name)) {
       failures.push(`CLI-visible non-versioned migration remains active: ${entry.name}`);
@@ -328,6 +340,7 @@ function evaluatePromotion({
       }
 
       for (const pending of reconciliation.pendingSources) {
+        if (trackerVoiceRelease.filenames.has(pending.filename)) continue;
         if (activeByFilename.has(pending.filename) || activeByVersion.has(pending.version)) {
           failures.push(`pending migration is active: ${pending.filename}`);
         }
@@ -346,7 +359,10 @@ function evaluatePromotion({
 
       const head = reconciliation.registeredProductionHead;
       for (const row of active) {
-        if (floorAllowlist.has(row.filename)) continue;
+        if (
+          floorAllowlist.has(row.filename) ||
+          trackerVoiceRelease.filenames.has(row.filename)
+        ) continue;
         if (!remoteVersions.has(row.version)) {
           failures.push(
             row.version < head
@@ -501,6 +517,10 @@ if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
     args.get("reconciliation") ??
       join(repoRoot, "supabase", "migration-archive", "floor-v3-catalog-reconciliation.manifest.json"),
   );
+  const trackerVoiceReleaseManifestPath = resolve(
+    args.get("voice-release") ??
+      join(repoRoot, "supabase", "migration-archive", TRACKER_VOICE_RELEASE_MANIFEST),
+  );
   let appliedVersions = null;
   let pushPlan = null;
   if (args.has("ledger")) {
@@ -553,6 +573,7 @@ if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
       reconciliationManifestPath: existsSync(reconciliationManifestPath)
         ? reconciliationManifestPath
         : null,
+      trackerVoiceReleaseManifestPath,
     });
     if (args.has("static") && !existsSync(reconciliationManifestPath)) {
       result.pass = false;

@@ -12,6 +12,7 @@ import type {
 import { STREET_ORDER } from "./types.ts";
 import {
   findPlayer,
+  hasRaiseRights,
   isBettingRoundComplete,
   nextToAct,
   reduceHand,
@@ -84,6 +85,7 @@ export function validateAction(
     for (const p of runtime.players) {
       p.street_bet = 0;
       p.has_acted_this_street = false;
+      p.last_action_wager_level = null;
       p.can_raise = true;
     }
     runtime.highestBet = 0;
@@ -141,7 +143,7 @@ export function validateAction(
       if (runtime.highestBet <= 0) {
         return fail("RAISE_WITHOUT_BET", "Chưa có cược nào — dùng bet thay vì raise.");
       }
-      if (!player.can_raise) {
+      if (!hasRaiseRights(runtime, player)) {
         return fail("ACTION_NOT_REOPENED", "Action chưa được mở lại để người chơi này raise.");
       }
       if (amt <= 0) return fail("NON_POSITIVE_AMOUNT", "Số chip phải lớn hơn 0.");
@@ -168,7 +170,7 @@ export function validateAction(
       if (player.stack <= 0) {
         return fail("AMOUNT_EXCEEDS_STACK", "Người chơi không còn chip để all-in.");
       }
-      if (player.street_bet + player.stack > runtime.highestBet && !player.can_raise) {
+      if (player.street_bet + player.stack > runtime.highestBet && !hasRaiseRights(runtime, player)) {
         return fail("ACTION_NOT_REOPENED", "Action chưa được mở lại để người chơi này raise all-in.");
       }
       return ok(player.stack);

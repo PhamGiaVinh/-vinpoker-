@@ -31,29 +31,40 @@ INSERT INTO public.game_tables(id, club_id, table_name) VALUES
   ('83000000-0000-4000-8000-000000000002', '81000000-0000-4000-8000-000000000001', 'Voice Table 2'),
   ('83000000-0000-4000-8000-000000000003', '81000000-0000-4000-8000-000000000002', 'Other Club Table');
 
-INSERT INTO public.tournament_tables(
-  id, tournament_id, table_id, table_number, status, table_name, floor_control_mode
+INSERT INTO public.table_sessions(
+  id, club_id, game_table_id, session_type, tournament_id, control_mode, control_epoch
 ) VALUES
-  ('84000000-0000-4000-8000-000000000001', '85000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000001', 1, 'active', 'Voice Table 1', 'tracker'),
-  ('84000000-0000-4000-8000-000000000002', '85000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000002', 2, 'active', 'Voice Table 2', 'tracker'),
-  ('84000000-0000-4000-8000-000000000003', '85000000-0000-4000-8000-000000000002', '83000000-0000-4000-8000-000000000003', 1, 'active', 'Other Club Table', 'tracker');
+  ('83500000-0000-4000-8000-000000000001', '81000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000001', 'tournament', '85000000-0000-4000-8000-000000000001', 'tracker', 1),
+  ('83500000-0000-4000-8000-000000000002', '81000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000002', 'tournament', '85000000-0000-4000-8000-000000000001', 'tracker', 1),
+  ('83500000-0000-4000-8000-000000000003', '81000000-0000-4000-8000-000000000002', '83000000-0000-4000-8000-000000000003', 'tournament', '85000000-0000-4000-8000-000000000002', 'tracker', 1);
+
+INSERT INTO public.tournament_tables(
+  id, tournament_id, table_id, game_table_id, table_session_id,
+  table_number, status, table_name, floor_control_mode
+) VALUES
+  ('84000000-0000-4000-8000-000000000001', '85000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000001', '83500000-0000-4000-8000-000000000001', 1, 'active', 'Voice Table 1', 'tracker'),
+  ('84000000-0000-4000-8000-000000000002', '85000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000002', '83000000-0000-4000-8000-000000000002', '83500000-0000-4000-8000-000000000002', 2, 'active', 'Voice Table 2', 'tracker'),
+  ('84000000-0000-4000-8000-000000000003', '85000000-0000-4000-8000-000000000002', '83000000-0000-4000-8000-000000000003', '83000000-0000-4000-8000-000000000003', '83500000-0000-4000-8000-000000000003', 1, 'active', 'Other Club Table', 'tracker');
 
 INSERT INTO public.dealers(id, club_id, user_id, full_name, status) VALUES
   ('87000000-0000-4000-8000-000000000001', '81000000-0000-4000-8000-000000000001', '81200000-0000-4000-8000-000000000001', 'Dealer Voice A', 'active'),
   ('87000000-0000-4000-8000-000000000002', '81000000-0000-4000-8000-000000000002', '81500000-0000-4000-8000-000000000001', 'Dealer Other Club', 'active');
 
 INSERT INTO public.dealer_assignments(
-  id, dealer_id, table_id, assigned_at, status
+  id, dealer_id, table_id, table_session_id, assigned_at, status
 ) VALUES
-  ('88000000-0000-4000-8000-000000000001', '87000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000001', now(), 'assigned'),
-  ('88000000-0000-4000-8000-000000000002', '87000000-0000-4000-8000-000000000002', '83000000-0000-4000-8000-000000000003', now(), 'assigned');
+  ('88000000-0000-4000-8000-000000000001', '87000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000001', '83500000-0000-4000-8000-000000000001', now(), 'assigned'),
+  ('88000000-0000-4000-8000-000000000002', '87000000-0000-4000-8000-000000000002', '83000000-0000-4000-8000-000000000003', '83500000-0000-4000-8000-000000000003', now(), 'assigned');
 
 INSERT INTO public.tournament_hands(
-  id, tournament_id, table_id, hand_number, status, button_seat, created_by
+  id, tournament_id, table_id, tournament_table_id, table_session_id,
+  hand_number, status, button_seat, created_by
 ) VALUES (
   '86000000-0000-4000-8000-000000000001',
   '85000000-0000-4000-8000-000000000001',
   '84000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001',
+  '83500000-0000-4000-8000-000000000001',
   1,
   'in_progress',
   1,
@@ -69,6 +80,7 @@ INSERT INTO public.hand_players(
 
 INSERT INTO public.tracker_voice_configs(
   club_id, tournament_id, tournament_table_id, physical_table_id,
+  table_session_id, control_epoch,
   enabled, configured_mode, provider_model, spoken_amount_unit,
   amount_unit_confirmed, server_auto_allowed
 ) VALUES (
@@ -76,7 +88,55 @@ INSERT INTO public.tracker_voice_configs(
   '85000000-0000-4000-8000-000000000001',
   '84000000-0000-4000-8000-000000000001',
   '83000000-0000-4000-8000-000000000001',
-  true, 'assist', 'gemini-3.5-transcribe-live', 1, false, false
+  '83500000-0000-4000-8000-000000000001', 1,
+  false, 'assist', 'gemini-3.5-transcribe-live', 1, false, false
+);
+
+INSERT INTO public.tracker_voice_configs(
+  club_id, tournament_id, tournament_table_id, physical_table_id,
+  table_session_id, control_epoch, enabled, configured_mode, provider_model,
+  spoken_amount_unit, amount_unit_confirmed, server_auto_allowed
+) VALUES (
+  '81000000-0000-4000-8000-000000000001',
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000002',
+  '83000000-0000-4000-8000-000000000002',
+  '83500000-0000-4000-8000-000000000002', 1,
+  false, 'assist', 'gemini-3.5-transcribe-live', 1, false, false
+);
+
+SELECT public.tracker_voice_test_assert(
+  (SELECT value = 'false'::JSONB FROM public.app_settings WHERE key = 'tracker_voice_global_enabled'),
+  'global Voice gate defaults false after the rollout migration'
+);
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '81300000-0000-4000-8000-000000000001', false);
+SELECT set_config('request.jwt.claims', '{"sub":"81300000-0000-4000-8000-000000000001","role":"authenticated"}', false);
+UPDATE public.app_settings
+SET value = 'true'::JSONB
+WHERE key = 'tracker_voice_global_enabled';
+RESET ROLE;
+SELECT public.tracker_voice_test_assert(
+  (SELECT value = 'false'::JSONB FROM public.app_settings WHERE key = 'tracker_voice_global_enabled'),
+  'legacy media policy cannot enable the global Voice gate'
+);
+UPDATE public.app_settings
+SET value = 'true'::JSONB
+WHERE key = 'tracker_voice_global_enabled';
+SET ROLE service_role;
+SELECT set_config('request.jwt.claims', '{"sub":"81200000-0000-4000-8000-000000000001","role":"service_role"}', false);
+SELECT public.reconcile_tracker_voice_floor_config(
+  '83500000-0000-4000-8000-000000000001'
+)::TEXT AS payload \gset canary_reconcile_
+RESET ROLE;
+SELECT public.tracker_voice_test_assert(
+  (:'canary_reconcile_payload'::JSONB->>'ok')::BOOLEAN
+  AND (:'canary_reconcile_payload'::JSONB->>'voice_enabled')::BOOLEAN
+  AND (SELECT enabled FROM public.tracker_voice_configs
+       WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001')
+  AND NOT (SELECT enabled FROM public.tracker_voice_configs
+           WHERE tournament_table_id = '84000000-0000-4000-8000-000000000002'),
+  'one service-only canary reconcile enables only its exact assigned tracker session while auto-provision remains off'
 );
 
 -- Catalog and least-privilege gates.
@@ -135,11 +195,12 @@ SELECT public.tracker_voice_test_assert(
 RESET ROLE;
 
 INSERT INTO public.dealer_assignments(
-  id, dealer_id, table_id, assigned_at, status
+  id, dealer_id, table_id, table_session_id, assigned_at, status
 ) VALUES (
   '88000000-0000-4000-8000-000000000003',
   '87000000-0000-4000-8000-000000000001',
   '83000000-0000-4000-8000-000000000001',
+  '83500000-0000-4000-8000-000000000001',
   now() + interval '1 second',
   'assigned'
 );
@@ -153,6 +214,12 @@ SELECT public.tracker_voice_test_assert(
 );
 DELETE FROM public.dealer_assignments
 WHERE id = '88000000-0000-4000-8000-000000000003';
+SET ROLE service_role;
+SELECT set_config('request.jwt.claims', '{"sub":"81200000-0000-4000-8000-000000000001","role":"service_role"}', false);
+SELECT public.reconcile_tracker_voice_floor_config(
+  '83500000-0000-4000-8000-000000000001'
+);
+RESET ROLE;
 
 -- Service-only session mint limiter: five accepts, sixth deny, no browser seam.
 SELECT set_config('request.jwt.claims', '{"sub":"81200000-0000-4000-8000-000000000001","role":"service_role"}', false);
@@ -612,7 +679,9 @@ WHERE alert_kind = 'wrong_action' ORDER BY created_at DESC LIMIT 1 \gset wrong_a
 SELECT public.tracker_voice_test_assert(
   (:'pending_event_payload'::JSONB->>'ok')::BOOLEAN
   AND (:'wrong_event_payload'::JSONB->>'correction_pending')::BOOLEAN
-  AND (SELECT correction_state = 'correction_pending' FROM public.tracker_voice_configs LIMIT 1)
+  AND (SELECT correction_state = 'correction_pending'
+       FROM public.tracker_voice_configs
+       WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001')
   AND (SELECT status = 'in_progress' FROM public.tournament_hands WHERE id = '86000000-0000-4000-8000-000000000001'),
   'wrong-action alert pauses Voice only and does not pause the hand'
 );
@@ -747,7 +816,9 @@ SELECT public.tracker_voice_test_assert(
   AND :'alert_resolve_payload'::JSONB->>'status' = 'resolved'
   AND (:'alert_resolve_retry_payload'::JSONB->>'duplicate')::BOOLEAN
   AND :'alert_resolve_mismatch_payload'::JSONB->>'error' = 'idempotency_mismatch'
-  AND (SELECT correction_state = 'ready' AND correction_alert_id IS NULL FROM public.tracker_voice_configs LIMIT 1),
+  AND (SELECT correction_state = 'ready' AND correction_alert_id IS NULL
+       FROM public.tracker_voice_configs
+       WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001'),
   'Floor resolution is audited, idempotent and releases Voice back to Assist'
 );
 SELECT public.tracker_voice_test_assert(
@@ -887,7 +958,9 @@ BEGIN
     (SELECT count(*) = v_event_count FROM public.tracker_voice_events)
     AND (SELECT count(*) = v_alert_count FROM public.tracker_floor_alerts)
     AND (SELECT count(*) = v_audit_count FROM public.audit_logs)
-    AND (SELECT correction_state = 'ready' FROM public.tracker_voice_configs LIMIT 1),
+    AND (SELECT correction_state = 'ready'
+         FROM public.tracker_voice_configs
+         WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001'),
     'injected failure leaves zero partial event, alert, audit or config writes'
   );
 END;
@@ -895,5 +968,83 @@ $$;
 
 DROP TRIGGER trg_tracker_voice_test_fail_audit ON public.audit_logs;
 DROP FUNCTION public.tracker_voice_test_fail_audit();
+
+-- Floor V3 is the runtime authority. The test changes only synthetic rows and
+-- proves that global/session/epoch failures deny Voice before any writer path.
+UPDATE public.app_settings
+SET value = 'false'::JSONB
+WHERE key = 'tracker_voice_global_enabled';
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '81200000-0000-4000-8000-000000000001', false);
+SELECT public.get_tracker_voice_runtime_context(
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001'
+)::TEXT AS payload \gset runtime_global_off_
+RESET ROLE;
+SELECT public.tracker_voice_test_assert(
+  :'runtime_global_off_payload'::JSONB->>'error' = 'voice_global_disabled',
+  'global Voice gate denies the exact assigned Dealer'
+);
+
+UPDATE public.app_settings
+SET value = 'true'::JSONB
+WHERE key = 'tracker_voice_global_enabled';
+UPDATE public.table_sessions
+SET control_mode = 'manual', control_epoch = control_epoch + 1
+WHERE id = '83500000-0000-4000-8000-000000000002';
+SELECT public.tracker_voice_test_assert(
+  NOT (SELECT enabled FROM public.tracker_voice_configs WHERE tournament_table_id = '84000000-0000-4000-8000-000000000002'),
+  'Manual transition disables its exact Voice config without deleting audit history'
+);
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '81200000-0000-4000-8000-000000000001', false);
+SELECT public.get_tracker_voice_runtime_context(
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000002'
+)::TEXT AS payload \gset runtime_manual_
+RESET ROLE;
+SELECT public.tracker_voice_test_assert(
+  :'runtime_manual_payload'::JSONB->>'error' = 'voice_table_session_not_tracker',
+  'Manual session is an immediate server-side Voice kill path'
+);
+
+UPDATE public.table_sessions
+SET control_mode = 'tracker', control_epoch = control_epoch + 1
+WHERE id = '83500000-0000-4000-8000-000000000002';
+UPDATE public.tracker_voice_configs
+SET enabled = TRUE,
+    control_epoch = 1
+WHERE tournament_table_id = '84000000-0000-4000-8000-000000000002';
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '81200000-0000-4000-8000-000000000001', false);
+SELECT public.get_tracker_voice_runtime_context(
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000002'
+)::TEXT AS payload \gset runtime_stale_epoch_
+RESET ROLE;
+SELECT public.tracker_voice_test_assert(
+  :'runtime_stale_epoch_payload'::JSONB->>'error' = 'voice_config_stale',
+  'stale config epoch cannot authorize a reopened Tracker mode'
+);
+
+UPDATE public.tracker_voice_configs config_row
+SET control_epoch = session_row.control_epoch
+FROM public.table_sessions session_row
+WHERE config_row.tournament_table_id = '84000000-0000-4000-8000-000000000002'
+  AND session_row.id = config_row.table_session_id;
+UPDATE public.table_sessions
+SET closed_at = now()
+WHERE id = '83500000-0000-4000-8000-000000000002';
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '81200000-0000-4000-8000-000000000001', false);
+SELECT public.get_tracker_voice_runtime_context(
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000002'
+)::TEXT AS payload \gset runtime_closed_
+RESET ROLE;
+SELECT public.tracker_voice_test_assert(
+  :'runtime_closed_payload'::JSONB->>'error' = 'voice_table_session_not_tracker',
+  'closed session denies Voice even if its historical config remains'
+);
 
 SELECT 'TRACKER_VOICE_DISPOSABLE_DB_PASS' AS result;

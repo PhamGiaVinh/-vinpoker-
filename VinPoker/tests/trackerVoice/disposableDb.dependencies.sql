@@ -16,6 +16,69 @@ AS $$
   )::JSONB;
 $$;
 
+DO $$
+BEGIN
+  CREATE TYPE public.app_role AS ENUM ('super_admin', 'media');
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.has_role(
+  p_user_id UUID,
+  p_role public.app_role
+)
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+AS $$
+  SELECT p_role = 'media'::public.app_role
+    AND p_user_id = '81300000-0000-4000-8000-000000000001'::UUID;
+$$;
+
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL DEFAULT '{}'::JSONB,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by UUID
+);
+CREATE TABLE IF NOT EXISTS public.club_cashiers (
+  club_id UUID NOT NULL,
+  user_id UUID NOT NULL,
+  PRIMARY KEY (club_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS public.club_dealer_controls (
+  club_id UUID NOT NULL,
+  user_id UUID NOT NULL,
+  PRIMARY KEY (club_id, user_id)
+);
+CREATE OR REPLACE FUNCTION public.is_club_dealer_control(
+  p_user_id UUID,
+  p_club_id UUID
+)
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.club_dealer_controls
+    WHERE user_id = p_user_id AND club_id = p_club_id
+  );
+$$;
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, UPDATE ON public.app_settings TO authenticated;
+DROP POLICY IF EXISTS "App settings public read" ON public.app_settings;
+CREATE POLICY "App settings public read"
+  ON public.app_settings FOR SELECT
+  USING (true);
+DROP POLICY IF EXISTS "Media manage app settings" ON public.app_settings;
+CREATE POLICY "Media manage app settings"
+  ON public.app_settings FOR ALL
+  USING (public.has_role(auth.uid(), 'media'::public.app_role))
+  WITH CHECK (public.has_role(auth.uid(), 'media'::public.app_role));
+
 -- This legacy production helper is a prerequisite of the canonical Board
 -- writer. Keep its actual format and duplicate-card semantics in the fixture.
 CREATE OR REPLACE FUNCTION public.validate_cards(p_cards JSONB)
@@ -97,12 +160,16 @@ ALTER TABLE public.hand_actions
 ALTER TABLE public.tournaments
   ADD COLUMN IF NOT EXISTS players_remaining INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS average_stack INTEGER NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Floor V3's production-qualified bridge soft-quarantines its stale fixture.
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE public.tournament_entries
   ADD COLUMN IF NOT EXISTS busted_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 ALTER TABLE public.tournament_chip_counts
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE public.tournament_seats
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE TABLE IF NOT EXISTS public.tournament_eliminations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id UUID NOT NULL,
@@ -120,6 +187,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_disposable_action_idempotency
   ON public.hand_actions(hand_id, idempotency_key)
   WHERE idempotency_key IS NOT NULL;
 
+\ir ../floorTableControlV3/stageTestBridge.fixture.sql
+
 CREATE TABLE public.dealers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   club_id UUID NOT NULL REFERENCES public.clubs(id) ON DELETE CASCADE,
@@ -131,6 +200,7 @@ CREATE TABLE public.dealers (
 
 CREATE TABLE public.dealer_assignments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_id UUID,
   dealer_id UUID NOT NULL REFERENCES public.dealers(id) ON DELETE CASCADE,
   table_id UUID NOT NULL REFERENCES public.game_tables(id) ON DELETE CASCADE,
   assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),

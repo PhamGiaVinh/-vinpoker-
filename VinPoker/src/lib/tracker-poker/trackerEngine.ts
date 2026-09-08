@@ -12,9 +12,15 @@
 // proof of side-pot correctness.
 //
 // Seat numbering is assumed clockwise-ascending (same convention as
-// lib/tournament/button.ts and handFlow.ts). The manual fallback (handFlow.ts)
-// is untouched; this module is only consumed when FEATURES.trackerEngineMode is
-// on.
+// lib/tournament/button.ts and handFlow.ts). It owns button/dead-blind
+// presentation only; canonical wager legality comes from handStateCore.
+
+import {
+  actorViewFromRuntime,
+  reduceHandAtStreet,
+  type ActionRow,
+  type PlayerSeed,
+} from "./handStateCore";
 
 export type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
 export const STREETS: Street[] = ["preflop", "flop", "turn", "river", "showdown"];
@@ -47,6 +53,8 @@ export interface EngineState {
   street: Street;
   /** This street's actions, in order, INCLUDING blind/ante posts. */
   streetActions: EngineStreetAction[];
+  /** Full action stream lets the action panel reuse the shared legal-action core. */
+  canonicalActions?: readonly ActionRow[];
   /** Big blind size (min-raise guidance). 0 → fall back to current bet. */
   bigBlind?: number;
   /**
@@ -326,6 +334,18 @@ export function isRoundComplete(state: EngineState): boolean {
 }
 
 function view(state: EngineState, p: EngineSeat, needsPost: "post_sb" | "post_bb" | undefined): ActorView {
+  if (state.canonicalActions) {
+    const seeds: PlayerSeed[] = state.seats.map((seat) => ({
+      player_id: seat.player_id,
+      seat_number: seat.seat_number,
+      starting_stack: seat.starting_stack,
+    }));
+    const canonical = actorViewFromRuntime(
+      reduceHandAtStreet(seeds, [...state.canonicalActions], state.buttonSeat, state.street),
+      p.player_id,
+    );
+    return { player_id: p.player_id, seat_number: p.seat_number, needsPost, ...canonical };
+  }
   const highest = currentBet(state.seats);
   const toCall = Math.min(Math.max(0, highest - p.street_committed), p.stack);
   const bb = state.bigBlind && state.bigBlind > 0 ? state.bigBlind : 0;

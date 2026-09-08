@@ -129,3 +129,34 @@ describe("actorView — postflop open (no bet yet)", () => {
     expect(v.toCall).toBe(0);
   });
 });
+
+describe("actorView — canonical core adapter", () => {
+  it("keeps a player-specific short-all-in raise closure out of browser guidance", () => {
+    const input: FlowInput = {
+      players: [
+        P("A", 1, 200, 1_800, { starting_stack: 2_000 }),
+        P("C", 2, 200, 1_800, { starting_stack: 2_000 }),
+        P("SHORT_125", 3, 125, 0, { starting_stack: 125, is_all_in: true }),
+        P("SHORT_200", 4, 200, 0, { starting_stack: 200, is_all_in: true }),
+        P("SB", 5, 50, 1_950, { starting_stack: 2_000 }),
+        P("BB", 6, 100, 1_900, { starting_stack: 2_000 }),
+      ],
+      buttonSeat: 1,
+      actedThisStreet: new Set(),
+      bigBlind: 100,
+      currentStreet: "preflop",
+      canonicalActions: [
+        { player_id: "SB", street: "preflop", action_type: "post_sb", action_amount: 50, action_order: 1 },
+        { player_id: "BB", street: "preflop", action_type: "post_bb", action_amount: 100, action_order: 2 },
+        { player_id: "A", street: "preflop", action_type: "call", action_amount: 100, action_order: 3 },
+        { player_id: "SHORT_125", street: "preflop", action_type: "all_in", action_amount: 125, action_order: 4 },
+        { player_id: "C", street: "preflop", action_type: "call", action_amount: 125, action_order: 5 },
+        { player_id: "SHORT_200", street: "preflop", action_type: "all_in", action_amount: 200, action_order: 6 },
+      ],
+    };
+
+    expect(actorView(input, "A").legal.raise).toBe(true);
+    expect(actorView(input, "C").legal.raise).toBe(false);
+    expect(actorView(input, "C").legal.allIn).toBe(false);
+  });
+});

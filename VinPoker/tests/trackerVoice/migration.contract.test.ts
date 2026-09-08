@@ -30,23 +30,23 @@ const geminiMigration = readFileSync(
   "utf8",
 ).replace(/\r\n/g, "\n");
 const transcribeBindingMigration = readFileSync(
-  resolve(root, "supabase/pending-migrations", transcribeBindingMigrationName),
+  resolve(root, "supabase/migrations", transcribeBindingMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const boardAssistMigration = readFileSync(
-  resolve(root, "supabase/pending-migrations", boardAssistMigrationName),
+  resolve(root, "supabase/migrations", boardAssistMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const holeCardsAssistMigration = readFileSync(
-  resolve(root, "supabase/pending-migrations", holeCardsAssistMigrationName),
+  resolve(root, "supabase/migrations", holeCardsAssistMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const finishAssistMigration = readFileSync(
-  resolve(root, "supabase/pending-migrations", finishAssistMigrationName),
+  resolve(root, "supabase/migrations", finishAssistMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const voiceHashMigration = readFileSync(
-  resolve(root, "supabase/pending-migrations", voiceHashMigrationName),
+  resolve(root, "supabase/migrations", voiceHashMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const seriesMigration = readFileSync(
@@ -136,28 +136,28 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(activeNames.filter((name) => name.startsWith("20270112000008_"))).toEqual([
       geminiMigrationName,
     ]);
-    expect(pendingNames.filter((name) => name.startsWith("20270113000007_"))).toEqual([
+    expect(activeNames.filter((name) => name.startsWith("20270113000007_"))).toEqual([
       transcribeBindingMigrationName,
     ]);
-    expect(pendingNames.filter((name) => name.startsWith("20270113000009_"))).toEqual([
+    expect(activeNames.filter((name) => name.startsWith("20270113000009_"))).toEqual([
       boardAssistMigrationName,
     ]);
-    expect(pendingNames.filter((name) => name.startsWith("20270114000001_"))).toEqual([
+    expect(activeNames.filter((name) => name.startsWith("20270114000001_"))).toEqual([
       holeCardsAssistMigrationName,
     ]);
-    expect(pendingNames.filter((name) => name.startsWith("20270114000002_"))).toEqual([
+    expect(activeNames.filter((name) => name.startsWith("20270114000002_"))).toEqual([
       finishAssistMigrationName,
     ]);
-    expect(pendingNames.filter((name) => name.startsWith("20270114000003_"))).toEqual([
+    expect(activeNames.filter((name) => name.startsWith("20270114000003_"))).toEqual([
       voiceHashMigrationName,
     ]);
     expect(activeNames).toContain(migrationName);
     expect(activeNames).toContain(geminiMigrationName);
-    expect(pendingNames).toContain(transcribeBindingMigrationName);
-    expect(pendingNames).toContain(boardAssistMigrationName);
-    expect(pendingNames).toContain(holeCardsAssistMigrationName);
-    expect(pendingNames).toContain(finishAssistMigrationName);
-    expect(pendingNames).toContain(voiceHashMigrationName);
+    expect(activeNames).toContain(transcribeBindingMigrationName);
+    expect(activeNames).toContain(boardAssistMigrationName);
+    expect(activeNames).toContain(holeCardsAssistMigrationName);
+    expect(activeNames).toContain(finishAssistMigrationName);
+    expect(activeNames).toContain(voiceHashMigrationName);
   });
 
   it("enables the Voice build gate only for the exact approved Vite value", () => {

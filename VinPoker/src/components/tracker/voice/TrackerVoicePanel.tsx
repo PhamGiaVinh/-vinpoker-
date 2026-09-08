@@ -324,13 +324,7 @@ export function TrackerVoicePanel({
             currentBet: voiceActorPlayer.current_bet,
           }
         : null,
-      actorView: hook.engineActor
-        ? {
-            toCall: hook.engineActor.toCall,
-            minRaiseTo: hook.engineActor.minRaiseTo,
-            legal: hook.engineActor.legal,
-          }
-        : hook.actorViewData
+      actorView: hook.actorViewData
         ? {
             toCall: hook.actorViewData.toCall,
             minRaiseTo: hook.actorViewData.minRaiseTo,
@@ -349,7 +343,6 @@ export function TrackerVoicePanel({
     [
       hook.actionSyncBlocked,
       hook.actorViewData,
-      hook.engineActor,
       hook.actions,
       hook.currentStreet,
       hook.communityCards,

@@ -14,11 +14,16 @@ on:
       - "VinPoker/supabase/migrations/20270112000006_tracker_terminal_hand_rpc_authority.sql"
       - "VinPoker/supabase/migrations/20270112000007_tracker_p0_authority_closure.sql"
       - "VinPoker/supabase/migrations/20270112000008_tracker_voice_gemini_live_provider.sql"
-      - "VinPoker/supabase/pending-migrations/20270113000007_tracker_voice_transcribe35_binding.sql"
-      - "VinPoker/supabase/pending-migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql"
-      - "VinPoker/supabase/pending-migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql"
-      - "VinPoker/supabase/pending-migrations/20270114000002_tracker_voice_finish_atomic_commit_v0.sql"
-      - "VinPoker/supabase/pending-migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql"
+      - "VinPoker/supabase/migrations/20270113000002_floor_table_control_v3_foundation.sql"
+      - "VinPoker/supabase/migrations/20270113000010_floor_table_control_v3_final_live_bridge.sql"
+      - "VinPoker/supabase/migrations/20270113000011_floor_table_control_v3_final_contract.sql"
+      - "VinPoker/supabase/migrations/20270113000012_floor_table_control_v3_production_enable.sql"
+      - "VinPoker/supabase/migrations/20270113000007_tracker_voice_transcribe35_binding.sql"
+      - "VinPoker/supabase/migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql"
+      - "VinPoker/supabase/migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql"
+      - "VinPoker/supabase/migrations/20270114000002_tracker_voice_finish_atomic_commit_v0.sql"
+      - "VinPoker/supabase/migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql"
+      - "VinPoker/supabase/migrations/20270114000004_tracker_voice_floor_mode_global_rollout.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
@@ -158,9 +163,18 @@ jobs:
           test "$before_p0_digest" = "$after_p0_digest"
           echo "TRACKER_VOICE_P0_CATALOG_UNCHANGED=PASS"
           echo "TRACKER_VOICE_12008_APPLY=PASS"
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270113000002_floor_table_control_v3_foundation.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270113000010_floor_table_control_v3_final_live_bridge.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270113000011_floor_table_control_v3_final_contract.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270113000012_floor_table_control_v3_production_enable.sql
+          echo "TRACKER_VOICE_FLOOR_V3_PREREQUISITES=PASS"
           createdb tracker_voice_v0_before_13000007 -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
-            -f supabase/pending-migrations/20270113000007_tracker_voice_transcribe35_binding.sql
+            -f supabase/migrations/20270113000007_tracker_voice_transcribe35_binding.sql
           test "$(psql -X -At -d tracker_voice_v0 -c \
             "SELECT position('gemini-3.5-transcribe-live' IN pg_get_functiondef(
               'public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure
@@ -171,7 +185,7 @@ jobs:
           echo "TRACKER_VOICE_13000007_APPLY=PASS"
           createdb tracker_voice_v0_before_13000009 -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
-            -f supabase/pending-migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql
+            -f supabase/migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql
           test "$(psql -X -At -d tracker_voice_v0 -c \
             "SELECT to_regprocedure('public.commit_tracker_voice_board_v0(uuid,text,text)') IS NOT NULL
                     AND to_regprocedure('public._tracker_voice_register_validated_board_event(uuid,uuid,uuid,uuid,text,text,text,text,jsonb,text,text,text,text)') IS NOT NULL
@@ -179,7 +193,7 @@ jobs:
           echo "TRACKER_VOICE_13000009_APPLY=PASS"
           createdb tracker_voice_v0_before_14000001 -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
-            -f supabase/pending-migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql
+            -f supabase/migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql
           test "$(psql -X -At -d tracker_voice_v0 -c \
             "SELECT position('v_service_voice_call' IN pg_get_functiondef(
                       'public.show_hole_cards(uuid,jsonb,uuid)'::regprocedure
@@ -189,7 +203,7 @@ jobs:
           echo "TRACKER_VOICE_14000001_APPLY=PASS"
           createdb tracker_voice_v0_before_14000002 -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
-            -f supabase/pending-migrations/20270114000002_tracker_voice_finish_atomic_commit_v0.sql
+            -f supabase/migrations/20270114000002_tracker_voice_finish_atomic_commit_v0.sql
           test "$(psql -X -At -d tracker_voice_v0 -c \
             "SELECT to_regprocedure('public.commit_tracker_voice_finish_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,text,text,text,jsonb)') IS NOT NULL
                     AND position('v_service_voice_call' IN pg_get_functiondef(
@@ -199,7 +213,7 @@ jobs:
           echo "TRACKER_VOICE_14000002_APPLY=PASS"
           createdb tracker_voice_v0_before_14000003 -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
-            -f supabase/pending-migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql
+            -f supabase/migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql
           test "$(psql -X -At -d tracker_voice_v0 -c \
             "SELECT to_regprocedure('public._tracker_voice_canonical_json_v2(jsonb)') IS NOT NULL
                     AND to_regprocedure('public._tracker_voice_sha256_jsonb_v2(jsonb)') IS NOT NULL
@@ -207,6 +221,15 @@ jobs:
                       'public._tracker_voice_request_hash(jsonb)'::regprocedure
                     )) = 0")" = "t"
           echo "TRACKER_VOICE_14000003_APPLY=PASS"
+          createdb tracker_voice_v0_before_14000004 -T tracker_voice_v0
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270114000004_tracker_voice_floor_mode_global_rollout.sql
+          test "$(psql -X -At -d tracker_voice_v0 -c \
+            "SELECT EXISTS (SELECT 1 FROM public.app_settings WHERE key = 'tracker_voice_global_enabled' AND value = 'false'::jsonb)
+                    AND EXISTS (SELECT 1 FROM public.app_settings WHERE key = 'tracker_voice_auto_provision_enabled' AND value = 'false'::jsonb)
+                    AND to_regprocedure('public.reconcile_tracker_voice_floor_configs()') IS NOT NULL
+                    AND to_regprocedure('floor_private.sync_tracker_voice_config(uuid,boolean)') IS NOT NULL")" = "t"
+          echo "TRACKER_VOICE_14000004_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f tests/trackerVoice/currentP0VoiceChain.integration.sql
 
@@ -219,7 +242,9 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f tests/trackerVoice/voiceHashV2.preFix.integration.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
-            -f supabase/pending-migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql
+            -f supabase/migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f supabase/migrations/20270114000004_tracker_voice_floor_mode_global_rollout.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f tests/trackerVoice/voiceHashV2.integration.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
@@ -304,7 +329,7 @@ jobs:
           echo "TRACKER_VOICE_12008_ROLLBACK=PASS"
           failing="$RUNNER_TEMP/tracker-voice-13000007-failing.sql"
           awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
-            supabase/pending-migrations/20270113000007_tracker_voice_transcribe35_binding.sql > "$failing"
+            supabase/migrations/20270113000007_tracker_voice_transcribe35_binding.sql > "$failing"
           before_helper="$(psql -X -At -d tracker_voice_v0_before_13000007 -c \
             "SELECT md5(pg_get_functiondef('public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure))")"
           if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_13000007 -f "$failing"; then
@@ -317,7 +342,7 @@ jobs:
           echo "TRACKER_VOICE_13000007_ROLLBACK=PASS"
           failing="$RUNNER_TEMP/tracker-voice-13000009-failing.sql"
           awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
-            supabase/pending-migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql > "$failing"
+            supabase/migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql > "$failing"
           before_board_core="$(psql -X -At -d tracker_voice_v0_before_13000009 -c \
             "SELECT to_regprocedure('public.commit_tracker_voice_board_v0(uuid,text,text)') IS NULL")"
           if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_13000009 -f "$failing"; then
@@ -331,7 +356,7 @@ jobs:
           echo "TRACKER_VOICE_13000009_ROLLBACK=PASS"
           failing="$RUNNER_TEMP/tracker-voice-14000001-failing.sql"
           awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
-            supabase/pending-migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql > "$failing"
+            supabase/migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql > "$failing"
           if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_14000001 -f "$failing"; then
             echo "Injected 14000001 migration unexpectedly committed" >&2
             exit 1
@@ -344,7 +369,7 @@ jobs:
           echo "TRACKER_VOICE_14000001_ROLLBACK=PASS"
           failing="$RUNNER_TEMP/tracker-voice-14000002-failing.sql"
           awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
-            supabase/pending-migrations/20270114000002_tracker_voice_finish_atomic_commit_v0.sql > "$failing"
+            supabase/migrations/20270114000002_tracker_voice_finish_atomic_commit_v0.sql > "$failing"
           if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_14000002 -f "$failing"; then
             echo "Injected 14000002 migration unexpectedly committed" >&2
             exit 1
@@ -355,7 +380,7 @@ jobs:
           echo "TRACKER_VOICE_14000002_ROLLBACK=PASS"
           failing="$RUNNER_TEMP/tracker-voice-14000003-failing.sql"
           awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
-            supabase/pending-migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql > "$failing"
+            supabase/migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql > "$failing"
           before_voice_hash="$(psql -X -At -d tracker_voice_v0_before_14000003 -c \
             "SELECT md5(pg_get_functiondef('public._tracker_voice_request_hash(jsonb)'::regprocedure))")"
           if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_14000003 -f "$failing"; then
@@ -369,6 +394,21 @@ jobs:
             "SELECT to_regprocedure('public._tracker_voice_canonical_json_v2(jsonb)') IS NULL
                     AND to_regprocedure('public._tracker_voice_sha256_jsonb_v2(jsonb)') IS NULL")" = "t"
           echo "TRACKER_VOICE_14000003_ROLLBACK=PASS"
+          failing="$RUNNER_TEMP/tracker-voice-14000004-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
+            supabase/migrations/20270114000004_tracker_voice_floor_mode_global_rollout.sql > "$failing"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_14000004 -f "$failing"; then
+            echo "Injected 14000004 migration unexpectedly committed" >&2
+            exit 1
+          fi
+          test "$(psql -X -At -d tracker_voice_v0_before_14000004 -c \
+            "SELECT NOT EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_schema = 'public' AND table_name = 'tracker_voice_configs'
+                        AND column_name IN ('table_session_id', 'control_epoch'))
+                    AND to_regprocedure('public.reconcile_tracker_voice_floor_configs()') IS NULL
+                    AND NOT EXISTS (SELECT 1 FROM public.app_settings
+                      WHERE key IN ('tracker_voice_global_enabled', 'tracker_voice_auto_provision_enabled'))")" = "t"
+          echo "TRACKER_VOICE_14000004_ROLLBACK=PASS"
           echo "TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS"
 
       - name: Run focused Voice, Analytics and contract tests
@@ -386,6 +426,7 @@ jobs:
             tests/trackerVoice/boardAssist.contract.test.ts \
             tests/trackerVoice/holeCardsAssist.contract.test.ts \
             tests/trackerVoice/finishAssist.contract.test.ts \
+            tests/trackerVoice/floorModeGlobal.contract.test.ts \
             tests/trackerVoice/trackerVoiceSessionProtocol.test.ts \
             tests/trackerVoice/trackerPlayerAnalytics.test.ts \
             tests/trackerVoice/trackerPlayerAnalyticsPage.test.tsx \
