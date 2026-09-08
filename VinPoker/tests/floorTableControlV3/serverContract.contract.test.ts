@@ -19,6 +19,10 @@ const rosterEntryMigration = readFileSync(
   resolve(root, "supabase/migrations/20270114000006_tracker_roster_canonical_entry_link.sql"),
   "utf8",
 );
+const rosterDisplayNameMigration = readFileSync(
+  resolve(root, "supabase/migrations/20270114000007_floor_v3_roster_seat_display_name.sql"),
+  "utf8",
+);
 const testRosterRepair = readFileSync(
   resolve(root, "scripts/production/repairs/repair_tracker_test_roster_entries_ban5.sql"),
   "utf8",
@@ -165,6 +169,23 @@ describe("Floor Table Control V3 server contract", () => {
     expect(rosterContract).toContain("SET search_path = ''");
     expect(rosterContract).not.toMatch(/UPDATE\s+public\.|DELETE\s+FROM\s+public\./i);
     expect(rosterContract).not.toMatch(/legacy\s+table_id.*=/i);
+  });
+
+  it("prefers active seat display identity without changing the roster ABI or restore contract", () => {
+    expect(rosterDisplayNameMigration).toContain("NULLIF(pg_catalog.btrim(seat_row.player_name), '')");
+    expect(rosterDisplayNameMigration).toContain("NULLIF(pg_catalog.btrim(profile_row.display_name), '')");
+    expect(rosterDisplayNameMigration).toContain("entry_row.player_id::text");
+    expect(rosterDisplayNameMigration.indexOf("NULLIF(pg_catalog.btrim(seat_row.player_name), '')")).toBeLessThan(
+      rosterDisplayNameMigration.indexOf("NULLIF(pg_catalog.btrim(profile_row.display_name), '')"),
+    );
+    expect(rosterDisplayNameMigration).toContain("RETURNS TABLE(");
+    expect(rosterDisplayNameMigration).toContain("SECURITY DEFINER");
+    expect(rosterDisplayNameMigration).toContain("SET search_path = ''");
+    expect(rosterDisplayNameMigration).toContain("TO authenticated");
+    expect(rosterDisplayNameMigration).not.toContain("get_floor_restorable_entries_v3");
+    expect(rosterDisplayNameMigration).not.toContain("INSERT INTO public.profiles");
+    expect(rosterDisplayNameMigration).not.toContain("auth.users");
+    expect(disposable).toContain("20270114000007_floor_v3_roster_seat_display_name.sql");
   });
 
   it("keeps V3 writers revoked in the active catalog and confines test grants", () => {

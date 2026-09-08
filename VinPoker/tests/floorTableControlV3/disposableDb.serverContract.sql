@@ -286,6 +286,7 @@ SELECT public.floor_table_v3_assert(
 \ir ../../supabase/migrations/20270113000011_floor_table_control_v3_final_contract.sql
 
 \ir ../../supabase/migrations/20270114000006_tracker_roster_canonical_entry_link.sql
+\ir ../../supabase/migrations/20270114000007_floor_v3_roster_seat_display_name.sql
 
 DO $$
 DECLARE

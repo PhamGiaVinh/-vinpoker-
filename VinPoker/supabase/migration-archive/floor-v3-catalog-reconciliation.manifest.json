@@ -6607,6 +6607,11 @@
       "version": "20270114000006",
       "filename": "20270114000006_tracker_roster_canonical_entry_link.sql",
       "sha256": "0672b997b73375458d07a1ebcec3c376fbac7936304f1366ad73a3a4b29c67da"
+    },
+    {
+      "version": "20270114000007",
+      "filename": "20270114000007_floor_v3_roster_seat_display_name.sql",
+      "sha256": "96fc97eb9c0e46b4da25e3ee4c4bbc0860a74823abde49eae069541218773275"
     }
   ],
   "counts": {
