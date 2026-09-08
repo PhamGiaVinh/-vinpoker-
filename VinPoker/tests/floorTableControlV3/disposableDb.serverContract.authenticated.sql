@@ -76,7 +76,7 @@ COMMIT;
 INSERT INTO public.tournaments (id, club_id) VALUES
   ('00000000-0000-0000-0000-000000000107', '00000000-0000-0000-0000-000000000010');
 INSERT INTO public.game_tables (id, club_id, table_name, table_number, operational_status) VALUES
-  ('00000000-0000-0000-0000-000000000511', '00000000-0000-0000-0000-000000000010', 'Bàn 14', 14, 'in_use');
+  ('00000000-0000-0000-0000-000000000511', '00000000-0000-0000-0000-000000000010', 'Bàn 14', 14, 'available');
 INSERT INTO public.table_sessions (
   id, club_id, game_table_id, session_type, tournament_id, control_mode, control_epoch, revision
 ) VALUES (
