@@ -175,6 +175,7 @@ CREATE TABLE public.dealers (
 
 CREATE TABLE public.dealer_assignments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_id UUID,
   dealer_id UUID NOT NULL REFERENCES public.dealers(id) ON DELETE CASCADE,
   table_id UUID NOT NULL REFERENCES public.game_tables(id) ON DELETE CASCADE,
   assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
