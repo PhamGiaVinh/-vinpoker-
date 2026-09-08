@@ -41,40 +41,39 @@ BEGIN
   SELECT count(*)
   INTO v_group_count
   FROM (
-    SELECT s.tournament_id, COALESCE(s.tournament_table_id, s.table_id), s.table_session_id
+    SELECT s.tournament_id, COALESCE(s.tournament_table_id, s.table_id)
     FROM public.tournament_seats s
     JOIN _tracker_test_roster_allowlist a
       ON a.player_id = s.player_id
      AND a.seat_number = s.seat_number
      AND a.player_name = s.player_name
     WHERE s.is_active
-    GROUP BY s.tournament_id, COALESCE(s.tournament_table_id, s.table_id), s.table_session_id
+    GROUP BY s.tournament_id, COALESCE(s.tournament_table_id, s.table_id)
     HAVING count(*) = 9
   ) grouped_fixture;
   IF v_group_count <> 1 THEN
     RAISE EXCEPTION 'TEST_FIXTURE_REPAIR_PREFLIGHT_FAILED: expected one exact 9-seat context';
   END IF;
 
-  SELECT s.tournament_id, COALESCE(s.tournament_table_id, s.table_id), s.table_session_id
-  INTO v_tournament_id, v_tournament_table_id, v_table_session_id
+  SELECT s.tournament_id, COALESCE(s.tournament_table_id, s.table_id)
+  INTO v_tournament_id, v_tournament_table_id
   FROM public.tournament_seats s
   JOIN _tracker_test_roster_allowlist a
     ON a.player_id = s.player_id
    AND a.seat_number = s.seat_number
    AND a.player_name = s.player_name
   WHERE s.is_active
-  GROUP BY s.tournament_id, COALESCE(s.tournament_table_id, s.table_id), s.table_session_id
+  GROUP BY s.tournament_id, COALESCE(s.tournament_table_id, s.table_id)
   HAVING count(*) = 9;
 
-  SELECT COALESCE(tt.game_table_id, tt.table_id)
-  INTO v_game_table_id
+  SELECT COALESCE(tt.game_table_id, tt.table_id), tt.table_session_id
+  INTO v_game_table_id, v_table_session_id
   FROM public.tournament_tables tt
   JOIN public.tournaments t ON t.id = tt.tournament_id
   JOIN public.game_tables gt ON gt.id = COALESCE(tt.game_table_id, tt.table_id)
   JOIN public.table_sessions ts ON ts.id = tt.table_session_id
   WHERE tt.id = v_tournament_table_id
     AND tt.tournament_id = v_tournament_id
-    AND tt.table_session_id = v_table_session_id
     AND tt.status = 'active'
     AND t.name = 'TEST — Felt UAT (compact)'
     AND t.status NOT IN ('completed', 'cancelled')
@@ -85,7 +84,7 @@ BEGIN
     AND ts.tournament_id = t.id
     AND ts.control_mode = 'tracker'
     AND ts.closed_at IS NULL;
-  IF v_game_table_id IS NULL THEN
+  IF v_game_table_id IS NULL OR v_table_session_id IS NULL THEN
     RAISE EXCEPTION 'TEST_FIXTURE_ON_REAL_TOURNAMENT_BLOCKED';
   END IF;
 
@@ -128,11 +127,11 @@ BEGIN
 
   IF (SELECT count(*) FROM public.tournament_seats s JOIN _tracker_test_roster_allowlist a ON a.player_id=s.player_id
       WHERE s.tournament_id=v_context.tournament_id AND COALESCE(s.tournament_table_id,s.table_id)=v_context.tournament_table_id
-        AND s.table_session_id=v_context.table_session_id AND s.seat_number=a.seat_number AND s.player_name=a.player_name
+        AND s.table_session_id IS NULL AND s.seat_number=a.seat_number AND s.player_name=a.player_name
         AND s.entry_id IS NULL AND s.entry_number=1 AND s.is_active AND s.status='active' AND s.chip_count=2000000) <> 9
      OR (SELECT count(*) FROM public.tournament_seats s
          WHERE s.tournament_id=v_context.tournament_id AND COALESCE(s.tournament_table_id,s.table_id)=v_context.tournament_table_id
-           AND s.table_session_id=v_context.table_session_id AND s.is_active) <> 9
+           AND s.is_active) <> 9
      OR (SELECT count(DISTINCT s.player_id) FROM public.tournament_seats s JOIN _tracker_test_roster_allowlist a ON a.player_id=s.player_id
          WHERE s.tournament_id=v_context.tournament_id AND COALESCE(s.tournament_table_id,s.table_id)=v_context.tournament_table_id AND s.is_active) <> 9
      OR (SELECT sum(s.chip_count) FROM public.tournament_seats s JOIN _tracker_test_roster_allowlist a ON a.player_id=s.player_id
@@ -178,7 +177,7 @@ BEGIN
       ON a.player_id=s.player_id AND a.seat_number=s.seat_number AND a.player_name=s.player_name
     WHERE s.tournament_id=v_context.tournament_id
       AND COALESCE(s.tournament_table_id,s.table_id)=v_context.tournament_table_id
-      AND s.table_session_id=v_context.table_session_id
+      AND s.table_session_id IS NULL
       AND s.entry_id IS NULL AND s.entry_number=1 AND s.is_active
       AND s.chip_count=2000000
     ORDER BY s.seat_number
@@ -192,10 +191,12 @@ BEGIN
     ) RETURNING id INTO v_entry_id;
 
     UPDATE public.tournament_seats s
-    SET entry_id = v_entry_id
+    SET entry_id = v_entry_id,
+        table_session_id = v_context.table_session_id
     WHERE s.id = v_seat.id
       AND s.player_id = v_seat.player_id
       AND s.entry_id IS NULL
+      AND s.table_session_id IS NULL
       AND s.entry_number = 1
       AND s.chip_count = 2000000
       AND s.is_active;
@@ -229,6 +230,7 @@ BEGIN
         AND e.current_stack=2000000 AND e.table_id=v_context.game_table_id
         AND e.seat_id=s.id AND e.seat_number=s.seat_number
         AND s.entry_id=e.id AND s.player_id=e.player_id AND s.entry_number=e.entry_no
+        AND s.table_session_id=v_context.table_session_id
         AND s.chip_count=2000000 AND s.is_active) <> 9
      OR (SELECT count(DISTINCT entry_id) FROM _tracker_test_roster_created) <> 9
      OR (SELECT sum(s.chip_count) FROM public.tournament_seats s JOIN _tracker_test_roster_allowlist a ON a.player_id=s.player_id

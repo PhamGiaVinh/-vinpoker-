@@ -203,9 +203,13 @@ describe("Floor Table Control V3 server contract", () => {
     expect(testRosterRepair).toContain("TEST_FIXTURE_ON_REAL_TOURNAMENT_BLOCKED");
     expect(testRosterRepair).toContain("JOIN _tracker_test_roster_allowlist a");
     expect(testRosterRepair).toContain("AND s.entry_id IS NULL");
+    expect(testRosterRepair).toContain("AND s.table_session_id IS NULL");
+    expect(testRosterRepair).toContain("table_session_id = v_context.table_session_id");
     expect(testRosterRepair).toContain("GET DIAGNOSTICS v_updated = ROW_COUNT");
     expect(testRosterRepair).not.toMatch(/INSERT\s+INTO\s+public\.tournament_registrations/iu);
     expect(testRosterRepairFixture).toContain("repair_tracker_test_roster_entries_ban5.sql");
+    expect(testRosterRepairFixture).toContain("get_floor_tournament_table_roster_v3");
+    expect(testRosterRepairFixture).toContain("validate_tracker_table_writer_context_v3");
     expect(testRosterRepairFixture).toContain("TRACKER_TEST_ROSTER_REPAIR_DISPOSABLE_PASS");
     expect(workflow).toContain("repairTrackerTestRoster.fixture.sql");
   });
