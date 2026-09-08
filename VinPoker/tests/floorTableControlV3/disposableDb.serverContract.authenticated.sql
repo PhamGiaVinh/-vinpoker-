@@ -207,17 +207,22 @@ BEGIN
   FROM public.get_floor_tournament_table_roster_v3('00000000-0000-0000-0000-000000000107') r
   WHERE r.tournament_table_id='00000000-0000-0000-0000-000000000711';
   PERFORM public.floor_table_v3_assert(
-    EXISTS (SELECT 1 FROM jsonb_array_elements(v_seats) item WHERE (item ->> 'seat_number')::integer=1 AND item ->> 'display_name'='Tracker Walk-in A display edited')
-    AND (SELECT e.current_stack=40000 AND s.chip_count=40000 AND c.chip_count=40000
-         FROM public.tournament_entries e
-         JOIN public.tournament_seats s ON s.entry_id=e.id
-         JOIN public.tournament_chip_counts c ON c.tournament_id=s.tournament_id AND c.player_id=s.player_id AND c.entry_number=s.entry_number
-         WHERE e.id=current_setting('floor_table_v3_test.roster_entry_a')::uuid),
-    'canonical display edit is visible without changing chip values'
+    EXISTS (SELECT 1 FROM jsonb_array_elements(v_seats) item WHERE (item ->> 'seat_number')::integer=1 AND item ->> 'display_name'='Tracker Walk-in A display edited'),
+    'canonical display edit is visible to the Floor operator'
   );
 END;
 $$;
 COMMIT;
+
+SELECT public.floor_table_v3_assert(
+  (SELECT e.current_stack=40000 AND s.chip_count=40000 AND c.chip_count=40000
+   FROM public.tournament_entries e
+   JOIN public.tournament_seats s ON s.entry_id=e.id
+   JOIN public.tournament_chip_counts c
+     ON c.tournament_id=s.tournament_id AND c.player_id=s.player_id AND c.entry_number=s.entry_number
+   WHERE e.id=current_setting('floor_table_v3_test.roster_entry_a')::uuid),
+  'canonical display edit leaves all chip values unchanged'
+);
 
 -- A valid linked edit preserves entry identity and advances all pre-hand stack projections.
 BEGIN;
