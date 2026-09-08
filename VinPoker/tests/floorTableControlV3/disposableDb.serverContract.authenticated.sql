@@ -115,7 +115,7 @@ BEGIN
   );
   PERFORM public.floor_table_v3_assert((v_second ->> 'ok')::boolean, 'Tracker walk-in B normalizes physical table identity');
   v_third := public.set_tracker_table_roster_seat(
-    '00000000-0000-0000-0000-000000000107', v_table_id, 3,
+    '00000000-0000-0000-0000-000000000107', v_table_id, 8,
     'Tracker Walk-in C', 20000, NULL, false, NULL,
     '00000000-0000-0000-0000-000000000004'
   );
@@ -136,7 +136,7 @@ INSERT INTO public.profiles (user_id, display_name) VALUES
 UPDATE public.tournament_seats
 SET player_name = CASE seat_number WHEN 2 THEN '   ' ELSE NULL END
 WHERE tournament_id='00000000-0000-0000-0000-000000000107'
-  AND seat_number IN (2,3);
+  AND seat_number IN (2,8);
 
 SELECT public.floor_table_v3_assert(
   (SELECT count(*) = 3
@@ -178,7 +178,7 @@ BEGIN
   PERFORM public.floor_table_v3_assert(
     EXISTS (SELECT 1 FROM jsonb_array_elements(v_seats) item WHERE (item ->> 'seat_number')::integer=1 AND item ->> 'display_name'='Tracker Walk-in A')
     AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_seats) item WHERE (item ->> 'seat_number')::integer=2 AND item ->> 'display_name'='Global Profile B')
-    AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_seats) item WHERE (item ->> 'seat_number')::integer=3 AND item ->> 'display_name'=current_setting('floor_table_v3_test.roster_player_c')),
+    AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_seats) item WHERE (item ->> 'seat_number')::integer=8 AND item ->> 'display_name'=current_setting('floor_table_v3_test.roster_player_c')),
     'active roster uses seat name, then profile, then player UUID'
   );
 END;
