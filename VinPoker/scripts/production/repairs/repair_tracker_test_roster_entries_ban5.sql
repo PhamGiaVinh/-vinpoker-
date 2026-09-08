@@ -127,6 +127,7 @@ BEGIN
 
   IF (SELECT count(*) FROM public.tournament_seats s JOIN _tracker_test_roster_allowlist a ON a.player_id=s.player_id
       WHERE s.tournament_id=v_context.tournament_id AND COALESCE(s.tournament_table_id,s.table_id)=v_context.tournament_table_id
+        AND s.table_id=v_context.tournament_table_id AND s.tournament_table_id IS NULL
         AND s.table_session_id IS NULL AND s.seat_number=a.seat_number AND s.player_name=a.player_name
         AND s.entry_id IS NULL AND s.entry_number=1 AND s.is_active AND s.status='active' AND s.chip_count=2000000) <> 9
      OR (SELECT count(*) FROM public.tournament_seats s
@@ -177,6 +178,8 @@ BEGIN
       ON a.player_id=s.player_id AND a.seat_number=s.seat_number AND a.player_name=s.player_name
     WHERE s.tournament_id=v_context.tournament_id
       AND COALESCE(s.tournament_table_id,s.table_id)=v_context.tournament_table_id
+      AND s.table_id=v_context.tournament_table_id
+      AND s.tournament_table_id IS NULL
       AND s.table_session_id IS NULL
       AND s.entry_id IS NULL AND s.entry_number=1 AND s.is_active
       AND s.chip_count=2000000
@@ -192,10 +195,12 @@ BEGIN
 
     UPDATE public.tournament_seats s
     SET entry_id = v_entry_id,
+        tournament_table_id = v_context.tournament_table_id,
         table_session_id = v_context.table_session_id
     WHERE s.id = v_seat.id
       AND s.player_id = v_seat.player_id
       AND s.entry_id IS NULL
+      AND s.tournament_table_id IS NULL
       AND s.table_session_id IS NULL
       AND s.entry_number = 1
       AND s.chip_count = 2000000
@@ -230,6 +235,7 @@ BEGIN
         AND e.current_stack=2000000 AND e.table_id=v_context.game_table_id
         AND e.seat_id=s.id AND e.seat_number=s.seat_number
         AND s.entry_id=e.id AND s.player_id=e.player_id AND s.entry_number=e.entry_no
+        AND s.tournament_table_id=v_context.tournament_table_id
         AND s.table_session_id=v_context.table_session_id
         AND s.chip_count=2000000 AND s.is_active) <> 9
      OR (SELECT count(DISTINCT entry_id) FROM _tracker_test_roster_created) <> 9
