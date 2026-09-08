@@ -52,6 +52,21 @@ CREATE TABLE IF NOT EXISTS public.club_dealer_controls (
   user_id UUID NOT NULL,
   PRIMARY KEY (club_id, user_id)
 );
+CREATE OR REPLACE FUNCTION public.is_club_dealer_control(
+  p_user_id UUID,
+  p_club_id UUID
+)
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.club_dealer_controls
+    WHERE user_id = p_user_id AND club_id = p_club_id
+  );
+$$;
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, UPDATE ON public.app_settings TO authenticated;
 DROP POLICY IF EXISTS "App settings public read" ON public.app_settings;
