@@ -143,6 +143,8 @@ ALTER TABLE public.tournament_entries
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 ALTER TABLE public.tournament_chip_counts
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE public.tournament_seats
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE TABLE IF NOT EXISTS public.tournament_eliminations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id UUID NOT NULL,
@@ -159,6 +161,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_disposable_action_order
 CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_disposable_action_idempotency
   ON public.hand_actions(hand_id, idempotency_key)
   WHERE idempotency_key IS NOT NULL;
+
+\ir ../floorTableControlV3/stageTestBridge.fixture.sql
 
 CREATE TABLE public.dealers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
