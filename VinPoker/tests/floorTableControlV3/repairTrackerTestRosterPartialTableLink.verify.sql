@@ -11,7 +11,18 @@ SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001'
 DO $$ DECLARE v jsonb; BEGIN
   SELECT seats INTO v FROM public.get_floor_tournament_table_roster_v3('00000000-0000-0000-0000-000000000109')
   WHERE tournament_table_id='00000000-0000-0000-0000-000000000730';
-  PERFORM public.floor_table_v3_assert(jsonb_array_length(v)=9,'Floor roster reads nine repaired seats');
+  PERFORM public.floor_table_v3_assert(
+    jsonb_array_length(v)=9
+    AND NOT EXISTS (
+      SELECT 1 FROM jsonb_array_elements(v) item
+      WHERE item ->> 'display_name' <> 'Test ' || (item ->> 'seat_number')
+        OR item ->> 'entry_id' IS NULL
+        OR item ->> 'player_id' IS NULL
+        OR (item ->> 'entry_no')::integer <> 1
+        OR (item ->> 'chip_count')::integer <> 2000000
+    ),
+    'Floor roster reads Test 1 through Test 9 from active seat names'
+  );
 END $$;
 COMMIT;
 BEGIN;
@@ -23,3 +34,4 @@ SELECT public.floor_table_v3_assert(
 );
 COMMIT;
 SELECT 'TRACKER_TEST_ROSTER_PARTIAL_TABLE_LINK_REPAIR_PASS' AS result;
+SELECT 'FLOOR_V3_ACTIVE_ROSTER_DISPLAY_NAME_PASS' AS result;

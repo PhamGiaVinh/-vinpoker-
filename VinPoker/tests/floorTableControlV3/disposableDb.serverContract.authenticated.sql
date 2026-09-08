@@ -99,6 +99,7 @@ DECLARE
   v_table_id uuid := '00000000-0000-0000-0000-000000000711';
   v_first jsonb;
   v_second jsonb;
+  v_third jsonb;
 BEGIN
   v_first := public.set_tracker_table_roster_seat(
     '00000000-0000-0000-0000-000000000107', v_table_id, 1,
@@ -113,16 +114,32 @@ BEGIN
     '00000000-0000-0000-0000-000000000004'
   );
   PERFORM public.floor_table_v3_assert((v_second ->> 'ok')::boolean, 'Tracker walk-in B normalizes physical table identity');
+  v_third := public.set_tracker_table_roster_seat(
+    '00000000-0000-0000-0000-000000000107', v_table_id, 8,
+    'Tracker Walk-in C', 20000, NULL, false, NULL,
+    '00000000-0000-0000-0000-000000000004'
+  );
+  PERFORM public.floor_table_v3_assert((v_third ->> 'ok')::boolean, 'Tracker walk-in C creates successfully');
   PERFORM set_config('floor_table_v3_test.roster_entry_a', v_first -> 'seat' ->> 'entry_id', false);
   PERFORM set_config('floor_table_v3_test.roster_player_a', v_first -> 'seat' ->> 'player_id', false);
   PERFORM set_config('floor_table_v3_test.roster_entry_b', v_second -> 'seat' ->> 'entry_id', false);
   PERFORM set_config('floor_table_v3_test.roster_player_b', v_second -> 'seat' ->> 'player_id', false);
+  PERFORM set_config('floor_table_v3_test.roster_entry_c', v_third -> 'seat' ->> 'entry_id', false);
+  PERFORM set_config('floor_table_v3_test.roster_player_c', v_third -> 'seat' ->> 'player_id', false);
 END;
 $$;
 COMMIT;
 
+INSERT INTO public.profiles (user_id, display_name) VALUES
+  (current_setting('floor_table_v3_test.roster_player_a')::uuid, 'Global Profile A'),
+  (current_setting('floor_table_v3_test.roster_player_b')::uuid, 'Global Profile B');
+UPDATE public.tournament_seats
+SET player_name = CASE seat_number WHEN 2 THEN '   ' ELSE NULL END
+WHERE tournament_id='00000000-0000-0000-0000-000000000107'
+  AND seat_number IN (2,8);
+
 SELECT public.floor_table_v3_assert(
-  (SELECT count(*) = 2
+  (SELECT count(*) = 3
    FROM public.tournament_seats s
    JOIN public.tournament_entries e ON e.id=s.entry_id
    JOIN public.tournament_chip_counts c
@@ -134,7 +151,8 @@ SELECT public.floor_table_v3_assert(
      AND e.registration_id IS NULL AND e.source='manual' AND e.status='seated'
      AND e.table_id='00000000-0000-0000-0000-000000000511'
      AND e.seat_id=s.id AND e.seat_number=s.seat_number
-     AND e.current_stack=s.chip_count AND c.chip_count=s.chip_count),
+     AND e.current_stack=s.chip_count AND c.chip_count=s.chip_count
+     AND s.chip_count IN (20000,30000,40000)),
   'Tracker walk-ins have exact seat-entry-chip identity'
 );
 
@@ -149,17 +167,62 @@ BEGIN
   FROM public.get_floor_tournament_table_roster_v3('00000000-0000-0000-0000-000000000107') r
   WHERE r.tournament_table_id='00000000-0000-0000-0000-000000000711';
   PERFORM public.floor_table_v3_assert(
-    jsonb_array_length(v_seats)=2
+    jsonb_array_length(v_seats)=3
     AND NOT EXISTS (
       SELECT 1 FROM jsonb_array_elements(v_seats) item
       WHERE item ->> 'entry_id' IS NULL OR item ->> 'player_id' IS NULL
-        OR (item ->> 'entry_no')::integer <> 1 OR (item ->> 'chip_count')::integer NOT IN (30000,40000)
+        OR (item ->> 'entry_no')::integer <> 1 OR (item ->> 'chip_count')::integer NOT IN (20000,30000,40000)
     ),
     'Floor V3 roster reads Tracker-created walk-ins without malformed identities'
+  );
+  PERFORM public.floor_table_v3_assert(
+    EXISTS (SELECT 1 FROM jsonb_array_elements(v_seats) item WHERE (item ->> 'seat_number')::integer=1 AND item ->> 'display_name'='Tracker Walk-in A')
+    AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_seats) item WHERE (item ->> 'seat_number')::integer=2 AND item ->> 'display_name'='Global Profile B')
+    AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_seats) item WHERE (item ->> 'seat_number')::integer=8 AND item ->> 'display_name'=current_setting('floor_table_v3_test.roster_player_c')),
+    'active roster uses seat name, then profile, then player UUID'
   );
 END;
 $$;
 COMMIT;
+
+-- A canonical roster edit with the same chip amount changes only display state.
+BEGIN;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000004', true);
+DO $$
+DECLARE
+  v_result jsonb;
+  v_seats jsonb;
+BEGIN
+  v_result := public.set_tracker_table_roster_seat(
+    '00000000-0000-0000-0000-000000000107',
+    '00000000-0000-0000-0000-000000000711', 1,
+    'Tracker Walk-in A display edited', 40000,
+    current_setting('floor_table_v3_test.roster_player_a')::uuid,
+    false, NULL, '00000000-0000-0000-0000-000000000004'
+  );
+  PERFORM public.floor_table_v3_assert((v_result ->> 'ok')::boolean, 'canonical roster display edit succeeds');
+  PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
+  SELECT r.seats INTO v_seats
+  FROM public.get_floor_tournament_table_roster_v3('00000000-0000-0000-0000-000000000107') r
+  WHERE r.tournament_table_id='00000000-0000-0000-0000-000000000711';
+  PERFORM public.floor_table_v3_assert(
+    EXISTS (SELECT 1 FROM jsonb_array_elements(v_seats) item WHERE (item ->> 'seat_number')::integer=1 AND item ->> 'display_name'='Tracker Walk-in A display edited'),
+    'canonical display edit is visible to the Floor operator'
+  );
+END;
+$$;
+COMMIT;
+
+SELECT public.floor_table_v3_assert(
+  (SELECT e.current_stack=40000 AND s.chip_count=40000 AND c.chip_count=40000
+   FROM public.tournament_entries e
+   JOIN public.tournament_seats s ON s.entry_id=e.id
+   JOIN public.tournament_chip_counts c
+     ON c.tournament_id=s.tournament_id AND c.player_id=s.player_id AND c.entry_number=s.entry_number
+   WHERE e.id=current_setting('floor_table_v3_test.roster_entry_a')::uuid),
+  'canonical display edit leaves all chip values unchanged'
+);
 
 -- A valid linked edit preserves entry identity and advances all pre-hand stack projections.
 BEGIN;
