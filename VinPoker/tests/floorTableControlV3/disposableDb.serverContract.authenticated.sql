@@ -202,6 +202,7 @@ BEGIN
     false, NULL, '00000000-0000-0000-0000-000000000004'
   );
   PERFORM public.floor_table_v3_assert((v_result ->> 'ok')::boolean, 'canonical roster display edit succeeds');
+  PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
   SELECT r.seats INTO v_seats
   FROM public.get_floor_tournament_table_roster_v3('00000000-0000-0000-0000-000000000107') r
   WHERE r.tournament_table_id='00000000-0000-0000-0000-000000000711';
