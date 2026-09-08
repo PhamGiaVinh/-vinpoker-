@@ -46,6 +46,13 @@
       "sha256": "c77d92740e9cf532ac9215bba0eeac66d505951d60d6e70d2da8de143ca14955",
       "dependencies": ["20270113000012"],
       "runtimeEdgeDependency": false
+    },
+    {
+      "version": "20270114000006",
+      "filename": "20270114000006_tracker_roster_canonical_entry_link.sql",
+      "sha256": "0672b997b73375458d07a1ebcec3c376fbac7936304f1366ad73a3a4b29c67da",
+      "dependencies": ["20270114000005"],
+      "runtimeEdgeDependency": false
     }
   ],
   "heldSources": [
