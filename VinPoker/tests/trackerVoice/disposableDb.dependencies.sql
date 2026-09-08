@@ -135,7 +135,9 @@ ALTER TABLE public.hand_actions
 ALTER TABLE public.tournaments
   ADD COLUMN IF NOT EXISTS players_remaining INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS average_stack INTEGER NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Floor V3's production-qualified bridge soft-quarantines its stale fixture.
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE public.tournament_entries
   ADD COLUMN IF NOT EXISTS busted_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
