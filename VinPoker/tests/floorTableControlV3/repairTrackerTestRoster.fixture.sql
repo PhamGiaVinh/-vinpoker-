@@ -10,7 +10,7 @@ INSERT INTO public.tournaments (id, club_id, name, status) VALUES (
 INSERT INTO public.game_tables (id, club_id, table_name, table_number, operational_status) VALUES (
   '00000000-0000-0000-0000-000000000530',
   '00000000-0000-0000-0000-000000000010',
-  'Bàn 5', 55, 'in_use'
+  'Bàn 5', 55, 'available'
 );
 INSERT INTO public.table_sessions (
   id, club_id, game_table_id, session_type, tournament_id,
