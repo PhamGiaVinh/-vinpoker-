@@ -287,13 +287,18 @@ BEGIN
       RAISE;
     END IF;
   END;
-  PERFORM public.floor_table_v3_assert(
-    NOT EXISTS (SELECT 1 FROM public.tournament_seats WHERE tournament_id='00000000-0000-0000-0000-000000000107' AND seat_number=4),
-    'entry insertion failure rolls back the preceding seat insert'
-  );
 END;
 $$;
 COMMIT;
+SELECT public.floor_table_v3_assert(
+  NOT EXISTS (
+    SELECT 1
+    FROM public.tournament_seats
+    WHERE tournament_id = '00000000-0000-0000-0000-000000000107'
+      AND seat_number = 4
+  ),
+  'entry insertion failure rolls back the preceding seat insert'
+);
 DROP TRIGGER floor_table_v3_test_reject_roster_entry ON public.tournament_entries;
 DROP FUNCTION public.floor_table_v3_test_reject_roster_entry();
 
