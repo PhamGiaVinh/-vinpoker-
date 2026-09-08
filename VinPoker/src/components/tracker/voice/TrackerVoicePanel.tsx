@@ -343,7 +343,6 @@ export function TrackerVoicePanel({
     [
       hook.actionSyncBlocked,
       hook.actorViewData,
-      hook.engineActor,
       hook.actions,
       hook.currentStreet,
       hook.communityCards,
