@@ -15,6 +15,18 @@ const contractMigration = readFileSync(
   resolve(root, "supabase/migrations/20270113000011_floor_table_control_v3_final_contract.sql"),
   "utf8",
 );
+const rosterEntryMigration = readFileSync(
+  resolve(root, "supabase/migrations/20270114000006_tracker_roster_canonical_entry_link.sql"),
+  "utf8",
+);
+const testRosterRepair = readFileSync(
+  resolve(root, "scripts/production/repairs/repair_tracker_test_roster_entries_ban5.sql"),
+  "utf8",
+);
+const testRosterRepairFixture = readFileSync(
+  resolve(root, "tests/floorTableControlV3/repairTrackerTestRoster.fixture.sql"),
+  "utf8",
+);
 const hardeningMarker = "-- Consolidated hardening from archived 20270113000005.";
 const rosterMarker = "-- Consolidated roster read contract from archived 20270113000006.";
 const serverContract = contractMigration.slice(0, contractMigration.indexOf(hardeningMarker));
@@ -157,6 +169,47 @@ describe("Floor Table Control V3 server contract", () => {
     expect(previewOnlyWriterGrants).not.toMatch(/GRANT\s+USAGE\s+ON\s+SCHEMA/i);
   });
 
+  it("creates canonical entry-backed Tracker walk-ins and fails closed on malformed edits", () => {
+    expect(rosterEntryMigration).toContain("tracker_roster_entry_link_required");
+    expect(rosterEntryMigration).toContain("INSERT INTO public.tournament_entries");
+    expect(rosterEntryMigration).toContain("p_tournament_id, NULL, v_player_id, v_entry_number, 'manual'");
+    expect(rosterEntryMigration).toContain("'seated', p_chip_count, v_tt.game_table_id");
+    expect(rosterEntryMigration).toContain("tournament_table_id, table_session_id");
+    expect(rosterEntryMigration).toContain("UPDATE public.tournament_entries");
+    expect(rosterEntryMigration).toContain("SET current_stack = p_chip_count");
+    expect(rosterEntryMigration).toContain("p_existing_player_id IS NULL OR p_existing_player_id IS DISTINCT FROM v_player_id");
+    expect(rosterEntryMigration).toContain("REVOKE ALL ON FUNCTION public.set_tracker_table_roster_seat");
+    expect(rosterEntryMigration).toContain("TO authenticated, service_role");
+    expect(rosterEntryMigration).not.toMatch(/INSERT\s+INTO\s+public\.tournament_registrations/i);
+    expect(rosterEntryMigration).not.toMatch(/seat_draw_receipts|payment|sepay|buy.?in/i);
+  });
+
+  it("keeps the one-time Test repair outside migrations and exact-allowlist only", () => {
+    const ids = testRosterRepair.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/giu) ?? [];
+    const allowed = new Set([
+      "91cf8dab-fac3-4b70-9da9-7f94802f5078",
+      "4b15b3b0-cf0c-4a3b-8072-b0d29f3d1ea6",
+      "329b37ad-7e71-4239-8c8d-b28c5c858de4",
+      "ada51a88-d93c-4648-8f90-e9905d4cedd9",
+      "14405531-7688-4acc-b8be-fefc1322bc5d",
+      "a209ae6e-4588-4e3b-b5f1-e1aa04454588",
+      "0b199ee9-736b-4ed1-ac24-0d60fd3fcf61",
+      "dfdea493-0585-4619-974e-20edc13b5ffb",
+      "68ff52c6-10de-400d-8a59-35460e052414",
+    ]);
+    expect(new Set(ids.map((id) => id.toLowerCase()))).toEqual(allowed);
+    expect(testRosterRepair).toContain("TEST_FIXTURE_ENTRY_LINK_REPAIRED");
+    expect(testRosterRepair).toContain("TEST_FIXTURE_REPAIR_PREFLIGHT_FAILED");
+    expect(testRosterRepair).toContain("TEST_FIXTURE_ON_REAL_TOURNAMENT_BLOCKED");
+    expect(testRosterRepair).toContain("JOIN _tracker_test_roster_allowlist a");
+    expect(testRosterRepair).toContain("AND s.entry_id IS NULL");
+    expect(testRosterRepair).toContain("GET DIAGNOSTICS v_updated = ROW_COUNT");
+    expect(testRosterRepair).not.toMatch(/INSERT\s+INTO\s+public\.tournament_registrations/iu);
+    expect(testRosterRepairFixture).toContain("repair_tracker_test_roster_entries_ban5.sql");
+    expect(testRosterRepairFixture).toContain("TRACKER_TEST_ROSTER_REPAIR_DISPOSABLE_PASS");
+    expect(workflow).toContain("repairTrackerTestRoster.fixture.sql");
+  });
+
   it("proves lifecycle, fencing, ACL, authenticated callers and real races in isolated PostgreSQL 17", () => {
     expect(workflow).toContain("image: postgres:17");
     expect(workflow).toContain("tests/floorTableControlV3/disposableDb.serverContract.sql");
@@ -187,6 +240,8 @@ describe("Floor Table Control V3 server contract", () => {
     expect(authenticatedDisposable).toContain("authenticated cross-club access was not denied");
     expect(concurrencySetup).toContain("Dedicated exact-ID fixtures for real multi-connection races");
     expect(concurrencyRunner).toContain("same-seat race");
+    expect(concurrencyRunner).toContain("Tracker roster same-seat race");
+    expect(concurrencyRunner).toContain("set_tracker_table_roster_seat");
     expect(concurrencyRunner).toContain("move-vs-bust race");
     expect(concurrencyRunner).toContain("close-vs-dealer assignment race");
     expect(concurrencyRunner).toContain("SET LOCAL ROLE authenticated");

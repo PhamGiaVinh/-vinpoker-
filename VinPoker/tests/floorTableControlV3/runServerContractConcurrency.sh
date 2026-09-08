@@ -73,6 +73,37 @@ COMMIT;
 SQL
 }
 
+run_tracker_roster_rpc() {
+  local rpc_sql="$1"
+  psql_quiet <<SQL
+BEGIN;
+SET LOCAL lock_timeout = '3s';
+SET LOCAL deadlock_timeout = '200ms';
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000004', true);
+${rpc_sql}
+COMMIT;
+SQL
+}
+
+echo 'FLOOR_TABLE_CONTROL_V3_CONCURRENCY Tracker roster same-seat race'
+run_first_with_tournament_lock \
+  '00000000-0000-0000-0000-000000000108' \
+  "SELECT public.set_tracker_table_roster_seat('00000000-0000-0000-0000-000000000108', '00000000-0000-0000-0000-000000000729', 1, 'Roster race A', 30000, NULL, false, NULL, '00000000-0000-0000-0000-000000000002');" \
+  >"$tmp_dir/roster-seat-a" 2>&1 &
+roster_seat_a=$!
+sleep 0.15
+run_tracker_roster_rpc \
+  "SELECT public.set_tracker_table_roster_seat('00000000-0000-0000-0000-000000000108', '00000000-0000-0000-0000-000000000729', 1, 'Roster race B', 30000, NULL, false, NULL, '00000000-0000-0000-0000-000000000004');" \
+  >"$tmp_dir/roster-seat-b" 2>&1 &
+roster_seat_b=$!
+wait "$roster_seat_a"
+wait "$roster_seat_b"
+assert_exactly_one_success "$tmp_dir/roster-seat-a" "$tmp_dir/roster-seat-b"
+assert_scalar '1' "SELECT count(*) FROM public.tournament_seats WHERE tournament_id='00000000-0000-0000-0000-000000000108' AND tournament_table_id='00000000-0000-0000-0000-000000000729' AND seat_number=1 AND is_active;"
+assert_scalar '1' "SELECT count(*) FROM public.tournament_entries WHERE tournament_id='00000000-0000-0000-0000-000000000108';"
+assert_scalar '1' "SELECT count(*) FROM public.tournament_chip_counts WHERE tournament_id='00000000-0000-0000-0000-000000000108';"
+
 echo 'FLOOR_TABLE_CONTROL_V3_CONCURRENCY same-seat race'
 run_first_with_tournament_lock \
   '00000000-0000-0000-0000-000000000103' \

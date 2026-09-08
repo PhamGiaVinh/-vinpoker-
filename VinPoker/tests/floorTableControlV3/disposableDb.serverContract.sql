@@ -54,11 +54,12 @@ CREATE TABLE public.tournament_tables (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.tournament_entries (
-  id uuid PRIMARY KEY,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id uuid NOT NULL REFERENCES public.tournaments(id),
   registration_id uuid,
   player_id uuid NOT NULL,
   entry_no integer NOT NULL,
+  source text NOT NULL DEFAULT 'online' CHECK (source IN ('online', 'manual', 'staff', 'offline')),
   current_stack integer NOT NULL DEFAULT 0,
   table_id uuid,
   seat_id uuid,
@@ -66,7 +67,20 @@ CREATE TABLE public.tournament_entries (
   seated_at timestamptz,
   busted_at timestamptz,
   updated_at timestamptz NOT NULL DEFAULT now(),
-  status text NOT NULL DEFAULT 'registered'
+  status text NOT NULL DEFAULT 'registered',
+  UNIQUE (tournament_id, player_id, entry_no)
+);
+CREATE TABLE public.tournament_registrations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tournament_id uuid NOT NULL,
+  player_id uuid NOT NULL
+);
+CREATE TABLE public.seat_draw_receipts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tournament_id uuid NOT NULL,
+  registration_id uuid,
+  entry_id uuid,
+  player_id uuid NOT NULL
 );
 CREATE TABLE public.tournament_seats (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -81,6 +95,7 @@ CREATE TABLE public.tournament_seats (
   status text NOT NULL DEFAULT 'active',
   assigned_by uuid,
   assigned_at timestamptz,
+  avatar_url text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.tournament_hands (
@@ -102,6 +117,10 @@ CREATE TABLE public.hand_players (
   ending_stack integer,
   is_eliminated boolean NOT NULL DEFAULT false
 );
+CREATE TABLE public.hand_actions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  hand_id uuid NOT NULL
+);
 CREATE TABLE public.dealer_assignments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   club_id uuid,
@@ -120,12 +139,17 @@ CREATE TABLE public.tournament_chip_counts (
   player_id uuid NOT NULL,
   entry_number integer NOT NULL,
   chip_count integer NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (tournament_id, player_id, entry_number)
 );
 
 CREATE OR REPLACE FUNCTION public.is_club_floor(p_user_id uuid, p_club_id uuid)
 RETURNS boolean LANGUAGE sql STABLE AS $$
   SELECT EXISTS (SELECT 1 FROM public.club_floors WHERE club_id = p_club_id AND user_id = p_user_id)
+$$;
+CREATE OR REPLACE FUNCTION public.is_club_tracker(p_user_id uuid, p_club_id uuid)
+RETURNS boolean LANGUAGE sql STABLE AS $$
+  SELECT EXISTS (SELECT 1 FROM public.club_trackers WHERE club_id = p_club_id AND user_id = p_user_id)
 $$;
 CREATE OR REPLACE FUNCTION public.is_club_dealer_control(p_user_id uuid, p_club_id uuid)
 RETURNS boolean LANGUAGE sql STABLE AS $$
@@ -259,6 +283,8 @@ SELECT public.floor_table_v3_assert(
 );
 
 \ir ../../supabase/migrations/20270113000011_floor_table_control_v3_final_contract.sql
+
+\ir ../../supabase/migrations/20270114000006_tracker_roster_canonical_entry_link.sql
 
 DO $$
 DECLARE
