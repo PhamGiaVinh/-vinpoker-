@@ -30,37 +30,6 @@ function hookFixture(): StandaloneHandInput {
       minRaiseTo: 4_000,
       legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
     },
-    voiceActionTargets: [{
-      actor: {
-        playerId: "player-a",
-        playerName: "Player A",
-        seatNumber: 3,
-        entryNumber: 1,
-        currentStack: 10_000,
-        currentBet: 1_000,
-      },
-      actorView: {
-        toCall: 1_000,
-        minRaiseTo: 4_000,
-        legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
-      },
-      isCurrentActor: true,
-    }, {
-      actor: {
-        playerId: "player-b",
-        playerName: "Player B",
-        seatNumber: 5,
-        entryNumber: 1,
-        currentStack: 12_000,
-        currentBet: 0,
-      },
-      actorView: {
-        toCall: 2_000,
-        minRaiseTo: 4_000,
-        legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
-      },
-      isCurrentActor: false,
-    }],
     handStarted: true,
     showActionStep: true,
     isReadOnly: false,
@@ -147,7 +116,7 @@ describe("TrackerVoicePanel", () => {
     await screen.findByText("Microphone đã kết nối");
     act(() => provider.emit("raise", { final: false, id: "partial" }));
     expect(screen.queryByText(/Player A · raise/)).not.toBeInTheDocument();
-    act(() => provider.emit("raise 6k", { final: true, id: "final" }));
+    act(() => provider.emit("seat three raise 6k", { final: true, id: "final" }));
     expect(await screen.findByText("Player A · raise tới 6.000")).toBeInTheDocument();
     expect(await screen.findByText("Shadow hợp lệ, không gọi server và chưa ghi action.")).toBeInTheDocument();
     expect(validateEventOverride).not.toHaveBeenCalled();
@@ -179,9 +148,6 @@ describe("TrackerVoicePanel", () => {
         ...hookFixture().actorViewData,
         minRaiseTo: 4_000,
       },
-      voiceActionTargets: hookFixture().voiceActionTargets.map((target) => target.isCurrentActor
-        ? { ...target, actor: { ...target.actor, currentStack: 2_000_000 } }
-        : target),
     } as StandaloneHandInput;
     render(
       <TrackerVoicePanel
@@ -430,7 +396,7 @@ describe("TrackerVoicePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
     await screen.findByText("Microphone đã kết nối");
 
-    act(() => provider.emit("fold", { final: true, id: "final-fold" }));
+    act(() => provider.emit("seat three fold", { final: true, id: "final-fold" }));
     await waitFor(() => expect(snapshots.some((snapshot) => (
       snapshot.finalProviderEventId === "final-fold"
       && snapshot.proposalProviderEventId === "final-fold"
@@ -448,8 +414,8 @@ describe("TrackerVoicePanel", () => {
       snapshot.finalProviderEventId === "final-seat-five"
       && snapshot.proposalProviderEventId === "final-fold"
     ))).toBe(false);
-    expect(await screen.findByText("Player B · call")).toBeInTheDocument();
-    expect(screen.getByText("KHÁC THỨ TỰ · Đang tới Ghế 3; dealer đang xác nhận action cho Ghế 5.")).toBeInTheDocument();
+    expect(await screen.findByText("Đang tới Ghế 3. Hãy đọc lại action cho Ghế 3.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Xác nhận action" })).not.toBeInTheDocument();
   });
 
   it("fails closed when the actor changes before proposal validation", async () => {
@@ -460,7 +426,7 @@ describe("TrackerVoicePanel", () => {
     await screen.findByText("Microphone đã kết nối");
     view.rerender(
       <TrackerVoicePanel
-        hook={{ ...hook, actorPlayer: null, actorViewData: null, voiceActionTargets: [] }}
+        hook={{ ...hook, actorPlayer: null, actorViewData: null }}
         providerOverride={provider}
         runtimeOverride={runtimeFixture}
         validateEventOverride={vi.fn(async () => validatedReceipt)}
@@ -506,7 +472,7 @@ describe("TrackerVoicePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "assist" }));
     fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
     await screen.findByText("Microphone đã kết nối");
-    act(() => provider.emit("call", { final: true, id: "assist-final" }));
+    act(() => provider.emit("seat three call", { final: true, id: "assist-final" }));
     const confirm = await screen.findByRole("button", { name: "Xác nhận action" });
     fireEvent.click(confirm);
     expect(await screen.findByText(/Canonical receipt đã được Viewer\/Replay nhận/)).toBeInTheDocument();
@@ -539,7 +505,7 @@ describe("TrackerVoicePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "assist" }));
     fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
     await screen.findByText("Microphone đã kết nối");
-    act(() => provider.emit("call", { final: true, id: "assist-race" }));
+    act(() => provider.emit("seat three call", { final: true, id: "assist-race" }));
     const confirm = await screen.findByRole("button", { name: "Xác nhận action" });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
@@ -555,8 +521,8 @@ describe("TrackerVoicePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
     await screen.findByText("Microphone đã kết nối");
     act(() => {
-      provider.emit("call", { final: true, id: "same-provider-item" });
-      provider.emit("call", { final: true, id: "same-provider-item" });
+      provider.emit("seat three call", { final: true, id: "same-provider-item" });
+      provider.emit("seat three call", { final: true, id: "same-provider-item" });
     });
     await screen.findByText("Shadow hợp lệ, không gọi server và chưa ghi action.");
     expect(validateEventOverride).not.toHaveBeenCalled();
@@ -588,7 +554,7 @@ describe("TrackerVoicePanel", () => {
     act(() => provider.emit("báo sai action", { final: true, id: "wrong-action" }));
     expect(await screen.findByText("Alert đã vào hàng đợi Floor.")).toBeInTheDocument();
 
-    act(() => provider.emit("call", { final: true, id: "buffered-call" }));
+    act(() => provider.emit("seat three call", { final: true, id: "buffered-call" }));
     expect(await screen.findByText("1 transcript đang chờ Floor")).toBeInTheDocument();
     expect(validateEventOverride).toHaveBeenCalledOnce();
 
@@ -596,7 +562,7 @@ describe("TrackerVoicePanel", () => {
     const confirm = await screen.findByRole("button", { name: "Xác nhận action" });
     expect(validateEventOverride).toHaveBeenCalledTimes(2);
     expect(validateEventOverride.mock.calls[1][0]).toMatchObject({
-      finalTranscript: "call",
+      finalTranscript: "seat three call",
       executionMode: "assist",
     });
     fireEvent.click(confirm);

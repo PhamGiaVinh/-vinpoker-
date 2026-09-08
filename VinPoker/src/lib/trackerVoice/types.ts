@@ -94,12 +94,6 @@ export interface VoiceLegalSnapshot {
   };
 }
 
-export interface VoiceActionTargetSnapshot {
-  actor: VoiceActorSnapshot;
-  actorView: VoiceLegalSnapshot;
-  isCurrentActor: boolean;
-}
-
 export interface VoiceProposalContext {
   handId: string | null;
   street: WorkflowStreet;
@@ -108,7 +102,6 @@ export interface VoiceProposalContext {
   expectedStateVersion: string | null;
   actor: VoiceActorSnapshot | null;
   actorView: VoiceLegalSnapshot | null;
-  actionTargets?: readonly VoiceActionTargetSnapshot[];
   handStarted: boolean;
   actionStepActive: boolean;
   readOnly: boolean;
@@ -124,7 +117,8 @@ export type VoiceProposalFailureCode =
   | "no_active_hand"
   | "not_action_step"
   | "actor_missing"
-  | "spoken_actor_mismatch"
+  | "VOICE_SEAT_REQUIRED"
+  | "OUT_OF_TURN"
   | "read_only"
   | "sync_blocked"
   | "correction_pending"
@@ -185,7 +179,6 @@ export interface VoiceActionProposal {
   expectedStreet: WorkflowStreet;
   expectedActionOrder: number;
   expectedActionAmount: number;
-  offTurn: boolean;
   currentActorSeatNumber: number;
 }
 

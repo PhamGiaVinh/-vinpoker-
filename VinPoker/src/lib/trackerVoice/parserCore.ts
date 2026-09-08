@@ -113,6 +113,7 @@ const SEAT_NUMBERS: Record<string, number> = {
 const SEAT_PREFIX = new RegExp(
   `^(?:seat|ghe)\\s+(?:(?:number|so)\\s+)?(${Object.keys(SEAT_NUMBERS).join("|")})\\b\\s*(.*)$`,
 );
+const POSITION_PREFIX = /^(?:(?:utg)(?:\s*\+\s*\d+)?|(?:btn|button|dealer)|(?:sb|small blind)|(?:bb|big blind))\s+(.+)$/;
 
 const RAISE_PATTERN = /^(?:raise(?:\s+to)?|to(?:\s+len)?|nang(?:\s+len)?)\s+(.+)$/;
 
@@ -199,10 +200,17 @@ function applyNumericPunctuationSafety(
 
 function extractSpokenSeatPrefix(value: string): { actionText: string; spokenSeatNumber: number | null } {
   const matched = value.match(SEAT_PREFIX);
-  if (!matched) return { actionText: value, spokenSeatNumber: null };
+  if (matched) {
+    return {
+      actionText: matched[2]?.trim() ?? "",
+      spokenSeatNumber: SEAT_NUMBERS[matched[1]] ?? null,
+    };
+  }
+  const positionMatched = value.match(POSITION_PREFIX);
   return {
-    actionText: matched[2]?.trim() ?? "",
-    spokenSeatNumber: SEAT_NUMBERS[matched[1]] ?? null,
+    actionText: positionMatched?.[1]?.trim() ?? value,
+    // Position names are parsed only so the proposal layer can reject them.
+    spokenSeatNumber: null,
   };
 }
 

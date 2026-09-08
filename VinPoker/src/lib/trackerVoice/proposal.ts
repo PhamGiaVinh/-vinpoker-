@@ -45,24 +45,18 @@ export function resolveVoiceProposal(
   if (!context.actor || !context.actorView) {
     return reject(command, "actor_missing", "Chưa xác định được người đang tới lượt.");
   }
-  let actor = context.actor;
-  let actorView = context.actorView;
-  let offTurn = false;
-  if (command.spokenSeatNumber !== null && command.spokenSeatNumber !== actor.seatNumber) {
-    const target = context.actionTargets?.find(({ actor: candidate }) => (
-      candidate.seatNumber === command.spokenSeatNumber
-    ));
-    if (!target) {
-      return reject(
-        command,
-        "spoken_actor_mismatch",
-        `Ghế ${command.spokenSeatNumber} không còn action hợp lệ ở trạng thái hiện tại.`,
-      );
-    }
-    actor = target.actor;
-    actorView = target.actorView;
-    offTurn = !target.isCurrentActor;
+  if (command.spokenSeatNumber === null) {
+    return reject(command, "VOICE_SEAT_REQUIRED", "Hãy đọc rõ Ghế đang tới lượt trước action.");
   }
+  if (command.spokenSeatNumber !== context.actor.seatNumber) {
+    return reject(
+      command,
+      "OUT_OF_TURN",
+      `Đang tới Ghế ${context.actor.seatNumber}. Hãy đọc lại action cho Ghế ${context.actor.seatNumber}.`,
+    );
+  }
+  const actor = context.actor;
+  const actorView = context.actorView;
 
   const canonicalAction = command.kind === "bet_to"
     ? "bet"
@@ -131,7 +125,6 @@ export function resolveVoiceProposal(
     expectedStreet: context.street,
     expectedActionOrder: context.actionOrder,
     expectedActionAmount,
-    offTurn,
     currentActorSeatNumber: context.actor.seatNumber,
     ...(betToTotal === undefined ? {} : { betToTotal }),
   };

@@ -29,11 +29,6 @@ import {
 import { computePotBreakdown, contributionsFromActions, toSidePotsJson } from "@/lib/tracker-poker/potEngine";
 import { actorView } from "@/lib/tracker-poker/handFlow";
 import {
-  reduceHand,
-  type ActionRow as TrackerActionRow,
-  type TrackerActionType,
-} from "@/lib/tracker-poker/handState";
-import {
   actorToAct,
   isRoundComplete,
   betToAdded,
@@ -1299,60 +1294,6 @@ export function useStandaloneHandInput(tournamentId: string) {
     () => actorView(flowInput, effectiveActorId ?? undefined),
     [flowInput, effectiveActorId]
   );
-  const voiceActionTargets = useMemo(() => {
-    const runtime = reduceHand(
-      players.map((player) => ({
-        player_id: player.player_id,
-        seat_number: player.seat_number,
-        starting_stack: player.starting_stack,
-      })),
-      actions.map((action): TrackerActionRow => ({
-        player_id: action.player_id,
-        street: action.street,
-        action_type: action.action_type as TrackerActionType,
-        action_amount: action.amount,
-        action_order: action.action_order,
-      })),
-      buttonSeat,
-    );
-    const isNewStreet = runtime.street !== currentStreet;
-    const highestBet = isNewStreet ? 0 : runtime.highestBet;
-    const minRaiseIncrement = isNewStreet ? bigBlind : runtime.minRaise;
-
-    return runtime.players.flatMap((runtimePlayer) => {
-      const player = players.find((candidate) => candidate.player_id === runtimePlayer.player_id);
-      if (!player || runtimePlayer.is_folded || runtimePlayer.is_all_in || runtimePlayer.stack <= 0) return [];
-      const currentBet = isNewStreet ? 0 : runtimePlayer.street_bet;
-      const hasActed = isNewStreet ? false : runtimePlayer.has_acted_this_street;
-      if (hasActed && currentBet >= highestBet) return [];
-
-      const toCall = Math.min(runtimePlayer.stack, Math.max(0, highestBet - currentBet));
-      const canRaise = isNewStreet || runtimePlayer.can_raise;
-      return [{
-        actor: {
-          playerId: player.player_id,
-          playerName: player.display_name,
-          seatNumber: player.seat_number,
-          entryNumber: player.entry_number,
-          currentStack: runtimePlayer.stack,
-          currentBet,
-        },
-        actorView: {
-          toCall,
-          minRaiseTo: highestBet + minRaiseIncrement,
-          legal: {
-            fold: true,
-            check: toCall === 0,
-            call: toCall > 0,
-            bet: highestBet === 0 && canRaise,
-            raise: highestBet > 0 && runtimePlayer.stack > toCall && canRaise,
-            allIn: runtimePlayer.stack > 0 && (currentBet + runtimePlayer.stack <= highestBet || canRaise),
-          },
-        },
-        isCurrentActor: runtimePlayer.player_id === toActId,
-      }];
-    });
-  }, [actions, bigBlind, buttonSeat, currentStreet, players, toActId]);
   const actorPos = actorPlayer ? positionsBySeat.get(actorPlayer.seat_number) || "" : "";
   const sbPosted = useMemo(() => actions.some((a) => a.action_type === "post_sb"), [actions]);
   const bbPosted = useMemo(() => actions.some((a) => a.action_type === "post_bb"), [actions]);
@@ -1896,8 +1837,11 @@ export function useStandaloneHandInput(tournamentId: string) {
     proposal: VoiceActionProposal,
     metadata: VoiceActionMetadata,
   ): Promise<boolean> => {
-    if (!voiceActionTargets.some((target) => target.actor.playerId === proposal.actor.playerId)) {
-      toast.error("Ghế được đọc không còn action hợp lệ. Hãy nghe lại action.");
+    if (
+      proposal.actor.playerId !== engineActor?.player_id
+      || proposal.actor.seatNumber !== engineActor?.seat_number
+    ) {
+      toast.error(`Đang tới Ghế ${engineActor?.seat_number ?? "?"}. Hãy đọc lại action cho đúng Ghế.`);
       return false;
     }
     return handleAction(
@@ -2852,7 +2796,6 @@ export function useStandaloneHandInput(tournamentId: string) {
     selectedActorId,
     actorPlayer,
     actorViewData,
-    voiceActionTargets,
     actorPos,
     betAmount,
     setBetAmount,

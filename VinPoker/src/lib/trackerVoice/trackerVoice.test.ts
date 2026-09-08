@@ -26,22 +26,6 @@ const READY: VoiceProposalContext = {
     minRaiseTo: 4_000,
     legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
   },
-  actionTargets: [{
-    actor: {
-      playerId: "player-b",
-      playerName: "Player B",
-      seatNumber: 5,
-      entryNumber: 1,
-      currentStack: 12_000,
-      currentBet: 0,
-    },
-    actorView: {
-      toCall: 2_000,
-      minRaiseTo: 4_000,
-      legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
-    },
-    isCurrentActor: false,
-  }],
   handStarted: true,
   actionStepActive: true,
   readOnly: false,
@@ -216,7 +200,7 @@ describe("parseVoiceCommand", () => {
 
 describe("resolveVoiceProposal", () => {
   it("maps a verified raise-to command to the current actor", () => {
-    const command = parseVoiceCommand("raise 6k");
+    const command = parseVoiceCommand("seat three raise 6k");
     expect(resolveVoiceProposal(command, READY)).toMatchObject({
       ok: true,
       canonicalAction: "raise",
@@ -226,11 +210,21 @@ describe("resolveVoiceProposal", () => {
     });
   });
 
+  it.each(["utg call", "btn fold", "sb call", "bb raise 300 nghìn"])(
+    "rejects a position-only action without mapping it to a seat: %s",
+    (transcript) => {
+      expect(resolveVoiceProposal(parseVoiceCommand(transcript), READY)).toMatchObject({
+        ok: false,
+        code: "VOICE_SEAT_REQUIRED",
+      });
+    },
+  );
+
   it("fails closed for ambiguous amount, stale sync, correction, and illegal action", () => {
-    expect(resolveVoiceProposal(parseVoiceCommand("raise 120"), READY)).toMatchObject({ ok: false, code: "amount_ambiguous" });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three raise 120"), READY)).toMatchObject({ ok: false, code: "amount_ambiguous" });
     expect(resolveVoiceProposal(parseVoiceCommand("call"), { ...READY, syncBlocked: true })).toMatchObject({ ok: false, code: "sync_blocked" });
     expect(resolveVoiceProposal(parseVoiceCommand("call"), { ...READY, correctionPending: true })).toMatchObject({ ok: false, code: "correction_pending" });
-    expect(resolveVoiceProposal(parseVoiceCommand("check"), READY)).toMatchObject({ ok: false, code: "illegal_action" });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three check"), READY)).toMatchObject({ ok: false, code: "illegal_action" });
   });
 
   it("explains why Bet is illegal while the actor is facing a bet", () => {
@@ -250,7 +244,7 @@ describe("resolveVoiceProposal", () => {
       kind: "bet_to",
       amount: { value: 9, ambiguous: true },
     });
-    expect(resolveVoiceProposal(parseVoiceCommand("bet 9"), {
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three bet 9"), {
       ...READY,
       actorView: {
         ...READY.actorView!,
@@ -259,29 +253,29 @@ describe("resolveVoiceProposal", () => {
     })).toMatchObject({ ok: false, code: "amount_ambiguous" });
   });
 
-  it("targets a physical spoken seat only while that seat still has action open", () => {
+  it("requires the spoken physical seat to equal the current actor", () => {
     expect(resolveVoiceProposal(parseVoiceCommand("seat three call"), READY)).toMatchObject({
       ok: true,
       canonicalAction: "call",
-      offTurn: false,
       currentActorSeatNumber: 3,
     });
     expect(resolveVoiceProposal(parseVoiceCommand("seat five call"), READY)).toMatchObject({
-      ok: true,
-      canonicalAction: "call",
-      actor: { playerId: "player-b", seatNumber: 5 },
-      offTurn: true,
-      currentActorSeatNumber: 3,
+      ok: false,
+      code: "OUT_OF_TURN",
     });
     expect(resolveVoiceProposal(parseVoiceCommand("seat six call"), READY)).toMatchObject({
       ok: false,
-      code: "spoken_actor_mismatch",
+      code: "OUT_OF_TURN",
+    });
+    expect(resolveVoiceProposal(parseVoiceCommand("call"), READY)).toMatchObject({
+      ok: false,
+      code: "VOICE_SEAT_REQUIRED",
     });
   });
 
   it("allows a short all-in raise but rejects an undersized non-all-in raise", () => {
-    expect(resolveVoiceProposal(parseVoiceCommand("raise 11k"), READY)).toMatchObject({ ok: true, betToTotal: 11_000 });
-    expect(resolveVoiceProposal(parseVoiceCommand("raise 3k"), READY)).toMatchObject({ ok: false, code: "raise_too_small" });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three raise 11k"), READY)).toMatchObject({ ok: true, betToTotal: 11_000 });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three raise 3k"), READY)).toMatchObject({ ok: false, code: "raise_too_small" });
   });
 
   it("accepts an exact spoken all-in total and rejects a mismatched total", () => {
@@ -302,39 +296,18 @@ describe("resolveVoiceProposal", () => {
     });
   });
 
-  it("accepts the observed off-highlight Seat 5 min-raise when that seat still has action", () => {
+  it("rejects an off-turn Seat 5 raise even when that seat could otherwise raise", () => {
     const facingReraise = {
       ...READY,
-      actionTargets: [{
-        actor: {
-          playerId: "player-b",
-          playerName: "Player B",
-          seatNumber: 5,
-          entryNumber: 1,
-          currentStack: 500_000,
-          currentBet: 0,
-        },
-        actorView: {
-          toCall: 200_000,
-          minRaiseTo: 300_000,
-          legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
-        },
-        isCurrentActor: false,
-      }],
     };
     expect(resolveVoiceProposal(parseVoiceCommand("seat five raise 300 nghìn"), facingReraise)).toMatchObject({
-      ok: true,
-      actor: { playerId: "player-b", seatNumber: 5 },
-      canonicalAction: "raise",
-      betToTotal: 300_000,
-      expectedActionAmount: 300_000,
-      offTurn: true,
-      currentActorSeatNumber: 3,
+      ok: false,
+      code: "OUT_OF_TURN",
     });
   });
 
   it("shows the authoritative all-in total even when the dealer omits the amount", () => {
-    expect(resolveVoiceProposal(parseVoiceCommand("all in"), READY)).toMatchObject({
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three all in"), READY)).toMatchObject({
       ok: true,
       canonicalAction: "all_in",
       betToTotal: 11_000,
