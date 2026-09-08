@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const root = resolve(import.meta.dirname, "../..");
 const migration = readFileSync(resolve(
   root,
-  "supabase/pending-migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql",
+  "supabase/migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql",
 ), "utf8");
 const edge = readFileSync(resolve(root, "supabase/functions/tournament-live-update/index.ts"), "utf8");
 const panel = readFileSync(resolve(root, "src/components/tracker/voice/TrackerVoicePanel.tsx"), "utf8");

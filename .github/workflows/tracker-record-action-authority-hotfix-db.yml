@@ -6,7 +6,12 @@ on:
       - ".github/workflows/tracker-record-action-authority-hotfix-db.yml"
       - "VinPoker/supabase/migrations/20270112000003_tracker_voice_player_analytics_v0.sql"
       - "VinPoker/supabase/migrations/20270112000004_tracker_record_action_authority_binding.sql"
-      - "VinPoker/supabase/pending-migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql"
+      - "VinPoker/supabase/migrations/20270113000002_floor_table_control_v3_foundation.sql"
+      - "VinPoker/supabase/migrations/20270113000010_floor_table_control_v3_final_live_bridge.sql"
+      - "VinPoker/supabase/migrations/20270113000011_floor_table_control_v3_final_contract.sql"
+      - "VinPoker/supabase/migrations/20270113000012_floor_table_control_v3_production_enable.sql"
+      - "VinPoker/supabase/migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql"
+      - "VinPoker/supabase/migrations/20270114000004_tracker_voice_floor_mode_global_rollout.sql"
       - "VinPoker/supabase/functions/tournament-live-update/index.ts"
       - "VinPoker/src/components/cashier/tournament-live/handinput/**"
       - "VinPoker/tests/trackerRecordActionAuthority/**"
@@ -113,9 +118,19 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
             -f supabase/migrations/20270112000008_tracker_voice_gemini_live_provider.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
-            -f supabase/pending-migrations/20270113000007_tracker_voice_transcribe35_binding.sql
+            -f supabase/migrations/20270113000002_floor_table_control_v3_foundation.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
-            -f supabase/pending-migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql
+            -f supabase/migrations/20270113000010_floor_table_control_v3_final_live_bridge.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
+            -f supabase/migrations/20270113000011_floor_table_control_v3_final_contract.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
+            -f supabase/migrations/20270113000012_floor_table_control_v3_production_enable.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
+            -f supabase/migrations/20270113000007_tracker_voice_transcribe35_binding.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
+            -f supabase/migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
+            -f supabase/migrations/20270114000004_tracker_voice_floor_mode_global_rollout.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
             -f tests/trackerVoice/disposableDb.integration.sql
           echo "TRACKER_RECORD_ACTION_VOICE_CHAIN=PASS"

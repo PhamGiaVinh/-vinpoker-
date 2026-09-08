@@ -145,6 +145,7 @@ describe("hand-state reducer parity (server copy === client copy)", () => {
     expect(client.reduceHand).toBe(server.reduceHand);
     expect(client.nextToAct).toBe(server.nextToAct);
     expect(client.isBettingRoundComplete).toBe(server.isBettingRoundComplete);
+    expect(client.actorViewFromRuntime).toBe(server.actorViewFromRuntime);
   });
 
   it("reduceHand matches on every case", () => {

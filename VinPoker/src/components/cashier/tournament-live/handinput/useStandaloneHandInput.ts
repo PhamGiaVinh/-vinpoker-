@@ -1205,6 +1205,13 @@ export function useStandaloneHandInput(tournamentId: string) {
       streetActions: actions
         .filter((a) => a.street === currentStreet)
         .map((a) => ({ player_id: a.player_id, seat_number: a.seat_number, action_type: a.action_type })),
+      canonicalActions: actions.map((a) => ({
+        player_id: a.player_id,
+        street: a.street,
+        action_type: a.action_type as "fold" | "check" | "call" | "bet" | "raise" | "all_in" | "post_sb" | "post_bb" | "post_ante",
+        action_amount: a.amount,
+        action_order: a.action_order,
+      })),
       bigBlind,
       deadSb: effectiveDeadSb,
       bbSeatOverride,
@@ -1264,6 +1271,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       players: players.map((p) => ({
         player_id: p.player_id,
         seat_number: p.seat_number,
+        starting_stack: p.starting_stack,
         current_bet: p.current_bet,
         current_stack: p.current_stack,
         is_folded: p.is_folded,
@@ -1273,6 +1281,14 @@ export function useStandaloneHandInput(tournamentId: string) {
       actedThisStreet: acted,
       lastActorSeat,
       bigBlind,
+      currentStreet,
+      canonicalActions: actions.map((a) => ({
+        player_id: a.player_id,
+        street: a.street,
+        action_type: a.action_type as "fold" | "check" | "call" | "bet" | "raise" | "all_in" | "post_sb" | "post_bb" | "post_ante",
+        action_amount: a.amount,
+        action_order: a.action_order,
+      })),
     };
   }, [actions, currentStreet, players, buttonSeat, bigBlind]);
 

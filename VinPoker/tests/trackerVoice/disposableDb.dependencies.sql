@@ -16,6 +16,44 @@ AS $$
   )::JSONB;
 $$;
 
+DO $$
+BEGIN
+  CREATE TYPE public.app_role AS ENUM ('super_admin', 'media');
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.has_role(
+  p_user_id UUID,
+  p_role public.app_role
+)
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+AS $$
+  SELECT p_role = 'media'::public.app_role
+    AND p_user_id = '81300000-0000-4000-8000-000000000001'::UUID;
+$$;
+
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL DEFAULT '{}'::JSONB,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by UUID
+);
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, UPDATE ON public.app_settings TO authenticated;
+DROP POLICY IF EXISTS "App settings public read" ON public.app_settings;
+CREATE POLICY "App settings public read"
+  ON public.app_settings FOR SELECT
+  USING (true);
+DROP POLICY IF EXISTS "Media manage app settings" ON public.app_settings;
+CREATE POLICY "Media manage app settings"
+  ON public.app_settings FOR ALL
+  USING (public.has_role(auth.uid(), 'media'::public.app_role))
+  WITH CHECK (public.has_role(auth.uid(), 'media'::public.app_role));
+
 -- This legacy production helper is a prerequisite of the canonical Board
 -- writer. Keep its actual format and duplicate-card semantics in the fixture.
 CREATE OR REPLACE FUNCTION public.validate_cards(p_cards JSONB)

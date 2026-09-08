@@ -58,6 +58,21 @@ export interface HandRuntime {
   bigBlind: number;
 }
 
+export interface CoreLegalActions {
+  fold: boolean;
+  check: boolean;
+  call: boolean;
+  bet: boolean;
+  raise: boolean;
+  allIn: boolean;
+}
+
+export interface CoreActorView {
+  toCall: number;
+  minRaiseTo: number;
+  legal: CoreLegalActions;
+}
+
 function clampChips(value: unknown): number {
   const normalized = typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : 0;
   return normalized > 0 ? normalized : 0;
@@ -213,13 +228,50 @@ function replay(seeds: PlayerSeed[], actions: ActionRow[], buttonSeat: number): 
   return state;
 }
 
+function stateAtStreet(
+  seeds: PlayerSeed[],
+  actions: ActionRow[],
+  buttonSeat: number,
+  street: Street,
+): Carrier {
+  const state = replay(seeds, actions, buttonSeat);
+  if (STREET_ORDER.indexOf(street) > STREET_ORDER.indexOf(state.street)) {
+    startStreet(state, street);
+  }
+  return state;
+}
+
 export function reduceHand(seeds: PlayerSeed[], actions: ActionRow[], buttonSeat: number): HandRuntime {
   const { lastActorSeat: _lastActorSeat, ...runtime } = replay(seeds, actions, buttonSeat);
   return runtime;
 }
 
+/** Replays the canonical stream and advances an empty later street for UI/Edge reads. */
+export function reduceHandAtStreet(
+  seeds: PlayerSeed[],
+  actions: ActionRow[],
+  buttonSeat: number,
+  street: Street,
+): HandRuntime {
+  const { lastActorSeat: _lastActorSeat, ...runtime } = stateAtStreet(seeds, actions, buttonSeat, street);
+  return runtime;
+}
+
 export function nextToAct(seeds: PlayerSeed[], actions: ActionRow[], buttonSeat: number): string | null {
   const state = replay(seeds, actions, buttonSeat);
+  for (const player of seatRingFrom(state.players, state.lastActorSeat)) {
+    if (owesAction(player, state.highestBet)) return player.player_id;
+  }
+  return null;
+}
+
+export function nextToActAtStreet(
+  seeds: PlayerSeed[],
+  actions: ActionRow[],
+  buttonSeat: number,
+  street: Street,
+): string | null {
+  const state = stateAtStreet(seeds, actions, buttonSeat, street);
   for (const player of seatRingFrom(state.players, state.lastActorSeat)) {
     if (owesAction(player, state.highestBet)) return player.player_id;
   }
@@ -232,4 +284,34 @@ export function isBettingRoundComplete(runtime: HandRuntime): boolean {
 
 export function findPlayer(runtime: HandRuntime, playerId: string): PlayerRuntime | undefined {
   return runtime.players.find((player) => player.player_id === playerId);
+}
+
+/**
+ * One canonical action view for browser guidance and Edge validation inputs.
+ * Writers still revalidate server-side; this only prevents UI rule drift.
+ */
+export function actorViewFromRuntime(runtime: HandRuntime, playerId: string): CoreActorView {
+  const none: CoreActorView = {
+    toCall: 0,
+    minRaiseTo: 0,
+    legal: { fold: false, check: false, call: false, bet: false, raise: false, allIn: false },
+  };
+  const player = findPlayer(runtime, playerId);
+  if (!player || player.is_folded || player.is_all_in || player.stack <= 0) return none;
+
+  const toCall = Math.min(Math.max(0, runtime.highestBet - player.street_bet), player.stack);
+  const canRaise = hasRaiseRights(runtime, player);
+  return {
+    toCall,
+    minRaiseTo: runtime.highestBet + runtime.minRaise,
+    legal: {
+      fold: true,
+      check: toCall === 0,
+      call: toCall > 0,
+      bet: runtime.highestBet === 0,
+      raise: runtime.highestBet > 0 && player.stack > toCall && canRaise,
+      // A closed action may still all-in only when it is a call/short-call.
+      allIn: player.stack > 0 && (player.street_bet + player.stack <= runtime.highestBet || canRaise),
+    },
+  };
 }
