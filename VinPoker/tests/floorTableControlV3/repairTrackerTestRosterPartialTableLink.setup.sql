@@ -1,4 +1,17 @@
 \set ON_ERROR_STOP on
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  key text PRIMARY KEY,
+  value jsonb NOT NULL
+);
+CREATE TABLE IF NOT EXISTS public.tracker_voice_configs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  enabled boolean NOT NULL DEFAULT false
+);
+INSERT INTO public.app_settings (key,value) VALUES
+  ('tracker_voice_global_enabled','false'::jsonb),
+  ('tracker_voice_auto_provision_enabled','false'::jsonb)
+ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value;
+UPDATE public.tracker_voice_configs SET enabled=false;
 UPDATE public.tournaments SET name='TEST — Felt UAT (compact)',status='active' WHERE id='00000000-0000-0000-0000-000000000109';
 UPDATE public.table_sessions SET control_mode='tracker',closed_at=NULL WHERE id='00000000-0000-0000-0000-000000000630';
 DELETE FROM public.tournament_hands WHERE id IN ('00000000-0000-0000-0000-000000009951','00000000-0000-0000-0000-000000009952');
