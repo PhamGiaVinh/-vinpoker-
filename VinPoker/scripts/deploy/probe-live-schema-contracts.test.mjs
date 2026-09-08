@@ -20,7 +20,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", ".
 const manifest = loadDeploymentManifest();
 const PRE_922_SHA = "1fdc210d4ae1689091e0ad874c559592b0ecd690";
 const PRE_FLOOR_CLOCK_BRIDGE_RECEIPT_SHA = "37e2306dd34ba2a9bf9447d9b1e22f52c9253e07";
-const CRITICAL_TARGETS = "process-swing,mass-assign,checkout-dealer";
+const CRITICAL_TARGETS = "assign-dealer,process-swing,mass-assign,checkout-dealer";
 const productionMetricsViewFixture = readFileSync(
   resolve(repositoryRoot, "VinPoker/scripts/deploy/fixtures/dealer_shift_metrics-production-view.sql"),
   "utf8",
@@ -413,7 +413,12 @@ test("pre-922 rollback runs planning, source quality and target-aware contract p
       targets: CRITICAL_TARGETS.split(","),
       manifest,
     });
-    assert.deepEqual(Object.keys(quality.functions).sort(), ["checkout-dealer", "mass-assign", "process-swing"]);
+    assert.deepEqual(Object.keys(quality.functions).sort(), [
+      "assign-dealer",
+      "checkout-dealer",
+      "mass-assign",
+      "process-swing",
+    ]);
 
     const currentMain = execFileSync("git", ["-C", repositoryRoot, "rev-parse", "origin/main"], { encoding: "utf8" }).trim();
     const baselines = {
