@@ -27,6 +27,14 @@ const testRosterRepairFixture = readFileSync(
   resolve(root, "tests/floorTableControlV3/repairTrackerTestRoster.fixture.sql"),
   "utf8",
 );
+const partialTableLinkRepair = readFileSync(
+  resolve(root, "scripts/production/repairs/repair_tracker_test_roster_tournament_table_link_ban5.sql"),
+  "utf8",
+);
+const partialTableLinkWorkflow = readFileSync(
+  resolve(root, "tests/floorTableControlV3/runPartialTableLinkRepair.sh"),
+  "utf8",
+);
 const hardeningMarker = "-- Consolidated hardening from archived 20270113000005.";
 const rosterMarker = "-- Consolidated roster read contract from archived 20270113000006.";
 const serverContract = contractMigration.slice(0, contractMigration.indexOf(hardeningMarker));
@@ -214,6 +222,19 @@ describe("Floor Table Control V3 server contract", () => {
     expect(testRosterRepairFixture).toContain("validate_tracker_table_writer_context_v3");
     expect(testRosterRepairFixture).toContain("TRACKER_TEST_ROSTER_REPAIR_DISPOSABLE_PASS");
     expect(workflow).toContain("repairTrackerTestRoster.fixture.sql");
+  });
+
+  it("repairs only the exact partial-state tournament-table links", () => {
+    expect(partialTableLinkRepair).toContain("TRACKER_TEST_ROSTER_PARTIAL_TABLE_LINK_REPAIRED");
+    expect(partialTableLinkRepair).toContain("TARGET_TABLE_ACTIVE_HAND_BLOCKED");
+    expect(partialTableLinkRepair).toContain("SET tournament_table_id=v.tournament_table_id");
+    expect(partialTableLinkRepair).toContain("IF v_updated<>9");
+    expect(partialTableLinkRepair).not.toMatch(/INSERT\s+INTO\s+public\.tournament_entries/iu);
+    expect(partialTableLinkRepair).not.toMatch(/UPDATE\s+public\.tournament_(entries|chip_counts)/iu);
+    for (const scenario of ["already_linked","wrong_entry","wrong_session","wrong_table","wrong_name","wrong_chips","extra_seat","missing_seat","wrong_tournament_name","closed_session","manual_session","target_active_hand"]) {
+      expect(partialTableLinkWorkflow).toContain(`run_reject ${scenario}`);
+    }
+    expect(partialTableLinkWorkflow).toContain("repairTrackerTestRosterPartialTableLink.verify.sql");
   });
 
   it("proves lifecycle, fencing, ACL, authenticated callers and real races in isolated PostgreSQL 17", () => {
