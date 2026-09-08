@@ -42,6 +42,16 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_by UUID
 );
+CREATE TABLE IF NOT EXISTS public.club_cashiers (
+  club_id UUID NOT NULL,
+  user_id UUID NOT NULL,
+  PRIMARY KEY (club_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS public.club_dealer_controls (
+  club_id UUID NOT NULL,
+  user_id UUID NOT NULL,
+  PRIMARY KEY (club_id, user_id)
+);
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, UPDATE ON public.app_settings TO authenticated;
 DROP POLICY IF EXISTS "App settings public read" ON public.app_settings;
