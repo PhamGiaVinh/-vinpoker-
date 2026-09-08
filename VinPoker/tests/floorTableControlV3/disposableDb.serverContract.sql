@@ -92,6 +92,7 @@ CREATE TABLE public.tournament_seats (
   chip_count integer NOT NULL DEFAULT 0,
   entry_id uuid,
   is_active boolean NOT NULL DEFAULT true,
+  player_name text,
   status text NOT NULL DEFAULT 'active',
   assigned_by uuid,
   assigned_at timestamptz,
