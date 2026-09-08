@@ -2,12 +2,8 @@ import { describe, it, expect } from "vitest";
 import * as server from "@tracker-engine/handState.ts";
 import * as client from "@/lib/tracker-poker/handState";
 
-// The server hand-state reducer (trackerEngine/handState.ts) is the AUTHORITY; the
-// client copy (src/lib/tracker-poker/handState.ts) is a verbatim mirror the Phase G3
-// resettle-forward UI runs in the browser (the client Vite build cannot import the
-// server tree). This test fails the moment the two reducers drift — change BOTH
-// files in the same PR. Inputs are typed against the server unions and passed to the
-// client copy too (its unions are byte-identical).
+// Browser and Edge are adapters over the same pure core. Keep an identity assertion
+// as a regression guard so future edits cannot revive a copied raise-rule engine.
 
 // The server module only re-exports STREET_ORDER (its types live in ./types.ts), so use
 // the client copy's exported types for the literals — they are byte-identical unions and
@@ -145,6 +141,12 @@ const cases: Case[] = [
 ];
 
 describe("hand-state reducer parity (server copy === client copy)", () => {
+  it("uses the same reducer functions in browser and Edge adapters", () => {
+    expect(client.reduceHand).toBe(server.reduceHand);
+    expect(client.nextToAct).toBe(server.nextToAct);
+    expect(client.isBettingRoundComplete).toBe(server.isBettingRoundComplete);
+  });
+
   it("reduceHand matches on every case", () => {
     for (const c of cases) {
       const s = server.reduceHand(c.seeds, c.actions, c.buttonSeat);

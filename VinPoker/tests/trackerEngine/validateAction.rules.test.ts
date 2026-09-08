@@ -3,6 +3,7 @@
 // are legal), including the short-all-in no-reopen rule.
 // Pure; no DB, no source change.
 import { describe, it, expect } from "vitest";
+import { reduceHand } from "@tracker-engine/handState.ts";
 import { validateAction } from "@tracker-engine/validateAction.ts";
 import type { ActionRow, PlayerSeed } from "@tracker-engine/types.ts";
 
@@ -145,5 +146,45 @@ describe("validateAction — short all-in does not reopen betting", () => {
       valid: true,
       normalizedAmount: 400, // P1 reaches 700: another full +200 raise
     });
+  });
+});
+
+describe("validateAction — TDA Rule 47 player-specific cumulative short all-ins", () => {
+  it("reopens only the player who has cumulatively faced one full raise", () => {
+    const seeds: PlayerSeed[] = [
+      { player_id: "A", seat_number: 1, starting_stack: 2_000 },
+      { player_id: "C", seat_number: 2, starting_stack: 2_000 },
+      { player_id: "SHORT_125", seat_number: 3, starting_stack: 125 },
+      { player_id: "SHORT_200", seat_number: 4, starting_stack: 200 },
+      { player_id: "SB", seat_number: 5, starting_stack: 2_000 },
+      { player_id: "BB", seat_number: 6, starting_stack: 2_000 },
+    ];
+    const prior = build([
+      ["SB", "post_sb", 50],
+      ["BB", "post_bb", 100],
+      ["A", "call", 100],
+      ["SHORT_125", "all_in", 125],
+      ["C", "call", 125],
+      ["SHORT_200", "all_in", 200],
+    ]);
+
+    const runtime = reduceHand(seeds, prior, 1);
+    const byId = Object.fromEntries(runtime.players.map((player) => [player.player_id, player]));
+    expect(runtime.minRaise).toBe(100);
+    expect(byId.A).toMatchObject({ last_action_wager_level: 100, can_raise: true });
+    expect(byId.C).toMatchObject({ last_action_wager_level: 125, can_raise: false });
+
+    // A now faces 200 - 100 = 100, one full increment, so raising is reopened.
+    expect(validateAction(seeds, prior, 1, propose("A", "raise", 200))).toMatchObject({ valid: true, code: "OK" });
+    // C faces only 200 - 125 = 75, so the same raise and an all-in raise stay closed.
+    expect(validateAction(seeds, prior, 1, propose("C", "raise", 175))).toMatchObject({
+      valid: false,
+      code: "ACTION_NOT_REOPENED",
+    });
+    expect(validateAction(seeds, prior, 1, propose("C", "all_in", 0))).toMatchObject({
+      valid: false,
+      code: "ACTION_NOT_REOPENED",
+    });
+    expect(validateAction(seeds, prior, 1, propose("C", "call", 75))).toMatchObject({ valid: true, code: "OK" });
   });
 });
