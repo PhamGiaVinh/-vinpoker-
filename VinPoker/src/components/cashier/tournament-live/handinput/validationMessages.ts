@@ -19,6 +19,7 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   CALL_WITH_NOTHING_TO_CALL: "Không có cược nào để call — hãy Check hoặc Bet.",
   BET_WHEN_FACING_BET: "Đang có cược trên vòng này — hãy Raise thay vì Bet.",
   RAISE_WITHOUT_BET: "Chưa có cược nào để raise — hãy Bet.",
+  ACTION_NOT_REOPENED: "Action chưa được mở lại để người chơi này raise.",
   AMOUNT_EXCEEDS_STACK: "Số chip vượt quá stack của người chơi.",
   BELOW_MIN_RAISE: "Mức raise thấp hơn raise tối thiểu cho phép.",
   NON_POSITIVE_AMOUNT: "Số chip phải lớn hơn 0.",

@@ -14,6 +14,10 @@ function reject(
   return { ok: false, command, code, message };
 }
 
+function formatChipAmount(amount: number): string {
+  return amount.toLocaleString("vi-VN");
+}
+
 export function resolveVoiceProposal(
   command: ParsedVoiceCommand | null,
   context: VoiceProposalContext,
@@ -41,13 +45,18 @@ export function resolveVoiceProposal(
   if (!context.actor || !context.actorView) {
     return reject(command, "actor_missing", "Chưa xác định được người đang tới lượt.");
   }
-  if (command.spokenSeatNumber !== null && command.spokenSeatNumber !== context.actor.seatNumber) {
+  if (command.spokenSeatNumber === null) {
+    return reject(command, "VOICE_SEAT_REQUIRED", "Hãy đọc rõ Ghế đang tới lượt trước action.");
+  }
+  if (command.spokenSeatNumber !== context.actor.seatNumber) {
     return reject(
       command,
-      "spoken_actor_mismatch",
-      `Đang tới Ghế ${context.actor.seatNumber}, nhưng Voice nghe Ghế ${command.spokenSeatNumber}.`,
+      "OUT_OF_TURN",
+      `Đang tới Ghế ${context.actor.seatNumber}. Hãy đọc lại action cho Ghế ${context.actor.seatNumber}.`,
     );
   }
+  const actor = context.actor;
+  const actorView = context.actorView;
 
   const canonicalAction = command.kind === "bet_to"
     ? "bet"
@@ -55,22 +64,34 @@ export function resolveVoiceProposal(
       ? "raise"
       : command.kind;
   const legalKey = canonicalAction === "all_in" ? "allIn" : canonicalAction;
-  if (!context.actorView.legal[legalKey as keyof typeof context.actorView.legal]) {
+  if (!actorView.legal[legalKey as keyof typeof actorView.legal]) {
+    if (canonicalAction === "bet" && actorView.toCall > 0) {
+      return reject(
+        command,
+        "illegal_action",
+        `Ghế ${actor.seatNumber} đang phải theo ${formatChipAmount(actorView.toCall)}; Bet không hợp lệ. Hãy nói Raise, Call, Fold hoặc All-in.`,
+      );
+    }
     return reject(command, "illegal_action", "Lệnh này không hợp lệ ở trạng thái hiện tại.");
   }
 
   let betToTotal: number | undefined;
   let expectedActionAmount = 0;
   if (canonicalAction === "call") {
-    expectedActionAmount = Math.min(context.actor.currentStack, context.actorView.toCall);
+    expectedActionAmount = Math.min(actor.currentStack, actorView.toCall);
   } else if (canonicalAction === "all_in") {
-    expectedActionAmount = context.actor.currentStack;
-    betToTotal = context.actor.currentBet + context.actor.currentStack;
+    expectedActionAmount = actor.currentStack;
+    betToTotal = actor.currentBet + actor.currentStack;
     if (command.amount?.ambiguous) {
       return reject(command, "amount_ambiguous", "Số chip all-in chưa rõ đơn vị.");
     }
     if (command.amount && command.amount.value !== betToTotal) {
-      return reject(command, "amount_out_of_range", "Số chip đọc không khớp tổng all-in hiện tại.");
+      const spokenAmount = command.amount.value === null ? "không xác định" : formatChipAmount(command.amount.value);
+      return reject(
+        command,
+        "amount_out_of_range",
+        `Số all-in đọc là ${spokenAmount}, nhưng tổng all-in hiện tại của Ghế ${actor.seatNumber} là ${formatChipAmount(betToTotal)}.`,
+      );
     }
   }
   if (canonicalAction === "bet" || canonicalAction === "raise") {
@@ -84,26 +105,27 @@ export function resolveVoiceProposal(
       return reject(command, "amount_missing", "Lệnh bet/raise cần số chip đích.");
     }
     betToTotal = command.amount.value;
-    const maxTotal = context.actor.currentBet + context.actor.currentStack;
-    if (!Number.isSafeInteger(betToTotal) || betToTotal <= context.actor.currentBet || betToTotal > maxTotal) {
+    const maxTotal = actor.currentBet + actor.currentStack;
+    if (!Number.isSafeInteger(betToTotal) || betToTotal <= actor.currentBet || betToTotal > maxTotal) {
       return reject(command, "amount_out_of_range", "Số chip vượt ngoài stack hoặc không tăng mức cược.");
     }
-    if (betToTotal < context.actorView.minRaiseTo && betToTotal !== maxTotal) {
+    if (betToTotal < actorView.minRaiseTo && betToTotal !== maxTotal) {
       return reject(command, "raise_too_small", "Mức raise chưa đủ tối thiểu và không phải all-in.");
     }
-    expectedActionAmount = betToTotal - context.actor.currentBet;
+    expectedActionAmount = betToTotal - actor.currentBet;
   }
 
   const proposal: VoiceActionProposal = {
     ok: true,
     command,
-    actor: context.actor,
+    actor,
     canonicalAction,
     expectedStateVersion: context.expectedStateVersion,
     expectedWorkflowState: context.workflowState,
     expectedStreet: context.street,
     expectedActionOrder: context.actionOrder,
     expectedActionAmount,
+    currentActorSeatNumber: context.actor.seatNumber,
     ...(betToTotal === undefined ? {} : { betToTotal }),
   };
   return proposal;

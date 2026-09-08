@@ -20,5 +20,10 @@ describe("Tracker Voice Action and Board Assist contract", () => {
     expect(edge).toContain("commit_tracker_voice_board_v0");
     expect(edge).toContain("buildVoiceHoleCardsCanonicalRequest");
     expect(edge).toContain("buildVoiceFinishCanonicalRequest");
+    expect(edge).toContain("resolveVoiceActor(snapshot, street)");
+    expect(edge).toContain('validationError("VOICE_SEAT_REQUIRED"');
+    expect(edge).toMatch(/validationError\(\s*"OUT_OF_TURN"/);
+    expect(edge).toContain("{ enforceTurnOrder: true }");
+    expect(edge).toContain("turn_order_enforced: true");
   });
 });

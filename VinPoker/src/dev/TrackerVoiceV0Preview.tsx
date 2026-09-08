@@ -41,7 +41,7 @@ const READY_RUNTIME: TrackerVoiceRuntimeContext = {
   active_hand: { hand_id: HAND_ID, hand_number: 12, status: "in_progress", state_version: STATE_VERSION },
 };
 
-type FixtureScenario = "check_legal" | "facing_bet" | "deep_stack" | "all_in_200k" | "short_stack" | "correction_pending";
+type FixtureScenario = "check_legal" | "facing_bet" | "facing_reraise" | "short_all_in_no_reopen" | "deep_stack" | "all_in_200k" | "short_stack" | "correction_pending";
 
 const FIXTURE_SCENARIOS: Record<FixtureScenario, {
   label: string;
@@ -64,13 +64,33 @@ const FIXTURE_SCENARIOS: Record<FixtureScenario, {
     correctionPending: false,
   },
   facing_bet: {
-    label: "Đang facing bet",
-    helper: "Ghế 4 · to call 40.000 · raise tối thiểu 120.000",
+    label: "Facing 100.000 · min raise 200.000",
+    helper: "Ghế 4 · facing 100.000 · raise-to tối thiểu 200.000",
     stack: 300_000,
     currentBet: 0,
-    toCall: 40_000,
-    minRaiseTo: 120_000,
+    toCall: 100_000,
+    minRaiseTo: 200_000,
     legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+    correctionPending: false,
+  },
+  facing_reraise: {
+    label: "Facing 200.000 · min raise 300.000",
+    helper: "Đã bet 100.000 rồi raise-to 200.000 · lượt kế raise-to tối thiểu 300.000",
+    stack: 500_000,
+    currentBet: 0,
+    toCall: 200_000,
+    minRaiseTo: 300_000,
+    legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true },
+    correctionPending: false,
+  },
+  short_all_in_no_reopen: {
+    label: "Short all-in không mở lại raise",
+    helper: "Đã raise-to 300.000 rồi short all-in 350.000 · ghế đã action chỉ được Call/Fold",
+    stack: 700_000,
+    currentBet: 300_000,
+    toCall: 50_000,
+    minRaiseTo: 550_000,
+    legal: { fold: true, check: false, call: true, bet: false, raise: false, allIn: false },
     correctionPending: false,
   },
   deep_stack: {

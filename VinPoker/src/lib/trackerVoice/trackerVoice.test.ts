@@ -200,7 +200,7 @@ describe("parseVoiceCommand", () => {
 
 describe("resolveVoiceProposal", () => {
   it("maps a verified raise-to command to the current actor", () => {
-    const command = parseVoiceCommand("raise 6k");
+    const command = parseVoiceCommand("seat three raise 6k");
     expect(resolveVoiceProposal(command, READY)).toMatchObject({
       ok: true,
       canonicalAction: "raise",
@@ -210,11 +210,29 @@ describe("resolveVoiceProposal", () => {
     });
   });
 
+  it.each(["utg call", "btn fold", "sb call", "bb raise 300 nghìn"])(
+    "rejects a position-only action without mapping it to a seat: %s",
+    (transcript) => {
+      expect(resolveVoiceProposal(parseVoiceCommand(transcript), READY)).toMatchObject({
+        ok: false,
+        code: "VOICE_SEAT_REQUIRED",
+      });
+    },
+  );
+
   it("fails closed for ambiguous amount, stale sync, correction, and illegal action", () => {
-    expect(resolveVoiceProposal(parseVoiceCommand("raise 120"), READY)).toMatchObject({ ok: false, code: "amount_ambiguous" });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three raise 120"), READY)).toMatchObject({ ok: false, code: "amount_ambiguous" });
     expect(resolveVoiceProposal(parseVoiceCommand("call"), { ...READY, syncBlocked: true })).toMatchObject({ ok: false, code: "sync_blocked" });
     expect(resolveVoiceProposal(parseVoiceCommand("call"), { ...READY, correctionPending: true })).toMatchObject({ ok: false, code: "correction_pending" });
-    expect(resolveVoiceProposal(parseVoiceCommand("check"), READY)).toMatchObject({ ok: false, code: "illegal_action" });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three check"), READY)).toMatchObject({ ok: false, code: "illegal_action" });
+  });
+
+  it("explains why Bet is illegal while the actor is facing a bet", () => {
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three bet 6k"), READY)).toMatchObject({
+      ok: false,
+      code: "illegal_action",
+      message: "Ghế 3 đang phải theo 1.000; Bet không hợp lệ. Hãy nói Raise, Call, Fold hoặc All-in.",
+    });
   });
 
   it("preserves the existing bet amount-unit contract", () => {
@@ -226,7 +244,7 @@ describe("resolveVoiceProposal", () => {
       kind: "bet_to",
       amount: { value: 9, ambiguous: true },
     });
-    expect(resolveVoiceProposal(parseVoiceCommand("bet 9"), {
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three bet 9"), {
       ...READY,
       actorView: {
         ...READY.actorView!,
@@ -235,17 +253,29 @@ describe("resolveVoiceProposal", () => {
     })).toMatchObject({ ok: false, code: "amount_ambiguous" });
   });
 
-  it("binds a spoken seat to the current actor instead of silently using another player", () => {
-    expect(resolveVoiceProposal(parseVoiceCommand("seat three call"), READY)).toMatchObject({ ok: true, canonicalAction: "call" });
+  it("requires the spoken physical seat to equal the current actor", () => {
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three call"), READY)).toMatchObject({
+      ok: true,
+      canonicalAction: "call",
+      currentActorSeatNumber: 3,
+    });
     expect(resolveVoiceProposal(parseVoiceCommand("seat five call"), READY)).toMatchObject({
       ok: false,
-      code: "spoken_actor_mismatch",
+      code: "OUT_OF_TURN",
+    });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat six call"), READY)).toMatchObject({
+      ok: false,
+      code: "OUT_OF_TURN",
+    });
+    expect(resolveVoiceProposal(parseVoiceCommand("call"), READY)).toMatchObject({
+      ok: false,
+      code: "VOICE_SEAT_REQUIRED",
     });
   });
 
   it("allows a short all-in raise but rejects an undersized non-all-in raise", () => {
-    expect(resolveVoiceProposal(parseVoiceCommand("raise 11k"), READY)).toMatchObject({ ok: true, betToTotal: 11_000 });
-    expect(resolveVoiceProposal(parseVoiceCommand("raise 3k"), READY)).toMatchObject({ ok: false, code: "raise_too_small" });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three raise 11k"), READY)).toMatchObject({ ok: true, betToTotal: 11_000 });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three raise 3k"), READY)).toMatchObject({ ok: false, code: "raise_too_small" });
   });
 
   it("accepts an exact spoken all-in total and rejects a mismatched total", () => {
@@ -262,11 +292,22 @@ describe("resolveVoiceProposal", () => {
     expect(resolveVoiceProposal(parseVoiceCommand("seat four all in 190.000"), allInFor200k)).toMatchObject({
       ok: false,
       code: "amount_out_of_range",
+      message: "Số all-in đọc là 190.000, nhưng tổng all-in hiện tại của Ghế 4 là 200.000.",
+    });
+  });
+
+  it("rejects an off-turn Seat 5 raise even when that seat could otherwise raise", () => {
+    const facingReraise = {
+      ...READY,
+    };
+    expect(resolveVoiceProposal(parseVoiceCommand("seat five raise 300 nghìn"), facingReraise)).toMatchObject({
+      ok: false,
+      code: "OUT_OF_TURN",
     });
   });
 
   it("shows the authoritative all-in total even when the dealer omits the amount", () => {
-    expect(resolveVoiceProposal(parseVoiceCommand("all in"), READY)).toMatchObject({
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three all in"), READY)).toMatchObject({
       ok: true,
       canonicalAction: "all_in",
       betToTotal: 11_000,
@@ -292,6 +333,21 @@ describe("resolveVoiceProposal", () => {
       expectedActionAmount: 300_000,
       command: { riskTier: "BOUNDED_REPAIR", requiresConfirmation: true },
     });
+  });
+
+  it.each([
+    [100_000, 200_000, "seat four raise 200 nghìn", true],
+    [100_000, 200_000, "seat four raise 199 nghìn", false],
+    [200_000, 300_000, "seat four raise 300 nghìn", true],
+    [200_000, 300_000, "seat four raise 299 nghìn", false],
+  ])("uses the authoritative min raise-to after facing %i", (toCall, minRaiseTo, input, expectedOk) => {
+    const context = {
+      ...READY,
+      actor: { ...READY.actor!, seatNumber: 4, currentStack: 500_000, currentBet: 0 },
+      actorView: { ...READY.actorView!, toCall, minRaiseTo },
+    };
+
+    expect(resolveVoiceProposal(parseVoiceCommand(input), context).ok).toBe(expectedOk);
   });
 
   it.each([

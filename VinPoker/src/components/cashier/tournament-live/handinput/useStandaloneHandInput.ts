@@ -1837,8 +1837,11 @@ export function useStandaloneHandInput(tournamentId: string) {
     proposal: VoiceActionProposal,
     metadata: VoiceActionMetadata,
   ): Promise<boolean> => {
-    if (!effectiveActorId || proposal.actor.playerId !== effectiveActorId) {
-      toast.error("Người đang tới lượt đã thay đổi. Hãy nghe lại action.");
+    if (
+      proposal.actor.playerId !== engineActor?.player_id
+      || proposal.actor.seatNumber !== engineActor?.seat_number
+    ) {
+      toast.error(`Đang tới Ghế ${engineActor?.seat_number ?? "?"}. Hãy đọc lại action cho đúng Ghế.`);
       return false;
     }
     return handleAction(

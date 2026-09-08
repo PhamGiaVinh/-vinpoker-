@@ -108,28 +108,34 @@ function resolveVoiceActor(snapshot: VoiceSnapshot, street: Street): {
   currentBet: number;
   stack: number;
   highestBet: number;
+  currentActorSeatNumber: number;
 } | null {
   const runtime = reduceHand(snapshot.players, snapshot.actions, snapshot.button_seat);
   const hasStreetAction = snapshot.actions.some((action) => action.street === street);
-  let playerId = nextToAct(snapshot.players, snapshot.actions, snapshot.button_seat);
-  if (!playerId && !hasStreetAction && street !== runtime.street) {
-    playerId = clockwiseAfter(
+  let currentPlayerId = nextToAct(snapshot.players, snapshot.actions, snapshot.button_seat);
+  if (!currentPlayerId && !hasStreetAction && street !== runtime.street) {
+    currentPlayerId = clockwiseAfter(
       runtime.players.filter((player) => !player.is_folded && !player.is_all_in),
       snapshot.button_seat,
     )?.player_id ?? null;
   }
-  if (!playerId) return null;
-  const player = runtime.players.find((candidate) => candidate.player_id === playerId);
-  const seed = snapshot.players.find((candidate) => candidate.player_id === playerId);
-  if (!player || !seed) return null;
+  if (!currentPlayerId) return null;
+  const currentSeed = snapshot.players.find((candidate) => candidate.player_id === currentPlayerId);
+  if (!currentSeed) return null;
+  const player = runtime.players.find((candidate) => candidate.player_id === currentSeed.player_id);
+  if (!player || player.is_folded || player.is_all_in || player.stack <= 0) return null;
   const newStreet = street !== runtime.street;
+  const currentBet = newStreet ? 0 : player.street_bet;
+  const hasActionOpen = newStreet || !player.has_acted_this_street || currentBet < runtime.highestBet;
+  if (!hasActionOpen) return null;
   return {
-    playerId,
-    entryNumber: seed.entry_number || 1,
-    seatNumber: seed.seat_number,
-    currentBet: newStreet ? 0 : player.street_bet,
+    playerId: currentSeed.player_id,
+    entryNumber: currentSeed.entry_number || 1,
+    seatNumber: currentSeed.seat_number,
+    currentBet,
     stack: player.stack,
     highestBet: newStreet ? 0 : runtime.highestBet,
+    currentActorSeatNumber: currentSeed.seat_number,
   };
 }
 
@@ -632,12 +638,20 @@ Deno.serve(async (req) => {
         };
 
         if (command.kind !== "report_wrong_action" && command.kind !== "call_floor") {
+          if (command.spokenSeatNumber === null) {
+            return validationError("VOICE_SEAT_REQUIRED", "Hãy đọc rõ Ghế đang tới lượt trước action.");
+          }
           const actor = resolveVoiceActor(snapshot, street);
-          if (!actor) return validationError("VOICE_ACTOR_UNAVAILABLE", "Không xác định được người đang tới lượt.");
-          if (command.spokenSeatNumber !== null && command.spokenSeatNumber !== actor.seatNumber) {
+          if (!actor) {
             return validationError(
-              "VOICE_ACTOR_MISMATCH",
-              `Đang tới Ghế ${actor.seatNumber}, nhưng Voice nghe Ghế ${command.spokenSeatNumber}.`,
+              "VOICE_ACTOR_UNAVAILABLE",
+              "Không xác định được người đang tới lượt.",
+            );
+          }
+          if (command.spokenSeatNumber !== actor.seatNumber) {
+            return validationError(
+              "OUT_OF_TURN",
+              `Đang tới Ghế ${actor.seatNumber}. Hãy đọc lại action cho Ghế ${actor.seatNumber}.`,
             );
           }
           const canonicalAction = command.kind === "bet_to"
@@ -669,7 +683,7 @@ Deno.serve(async (req) => {
             snapshot.actions,
             snapshot.button_seat,
             proposed,
-            { enforceTurnOrder: false },
+            { enforceTurnOrder: true },
           );
           if (!verdict.valid) {
             logValidationReject({
@@ -712,6 +726,8 @@ Deno.serve(async (req) => {
             canonical_action: canonicalAction,
             actor_player_id: actor.playerId,
             spoken_seat_number: command.spokenSeatNumber,
+            current_actor_seat_number: actor.currentActorSeatNumber,
+            turn_order_enforced: true,
             entry_number: actor.entryNumber,
             street,
             action_amount: verdict.normalizedAmount,

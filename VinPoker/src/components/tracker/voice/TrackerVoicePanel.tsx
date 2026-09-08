@@ -300,6 +300,9 @@ export function TrackerVoicePanel({
     setValidationError("Đề xuất Finish đã hết hiệu lực vì trạng thái hand thay đổi.");
   }, [finishAttempt, hook.handId, hook.isReadOnly, hook.workflowState, runtime?.active_hand?.hand_id, runtime?.active_hand?.state_version, runtime?.correction_pending]);
 
+  const voiceActorPlayer = hook.engineActor
+    ? hook.players.find((player) => player.player_id === hook.engineActor?.player_id) ?? null
+    : hook.actorPlayer;
   const proposalContext = useMemo(
     () => ({
       handId: hook.handId,
@@ -311,17 +314,23 @@ export function TrackerVoicePanel({
       expectedStateVersion: runtime?.active_hand?.hand_id === hook.handId
         ? runtime.active_hand.state_version
         : null,
-      actor: hook.actorPlayer
+      actor: voiceActorPlayer
         ? {
-            playerId: hook.actorPlayer.player_id,
-            playerName: hook.actorPlayer.display_name,
-            seatNumber: hook.actorPlayer.seat_number,
-            entryNumber: hook.actorPlayer.entry_number,
-            currentStack: hook.actorPlayer.current_stack,
-            currentBet: hook.actorPlayer.current_bet,
+            playerId: voiceActorPlayer.player_id,
+            playerName: voiceActorPlayer.display_name,
+            seatNumber: voiceActorPlayer.seat_number,
+            entryNumber: voiceActorPlayer.entry_number,
+            currentStack: voiceActorPlayer.current_stack,
+            currentBet: voiceActorPlayer.current_bet,
           }
         : null,
-      actorView: hook.actorViewData
+      actorView: hook.engineActor
+        ? {
+            toCall: hook.engineActor.toCall,
+            minRaiseTo: hook.engineActor.minRaiseTo,
+            legal: hook.engineActor.legal,
+          }
+        : hook.actorViewData
         ? {
             toCall: hook.actorViewData.toCall,
             minRaiseTo: hook.actorViewData.minRaiseTo,
@@ -339,8 +348,8 @@ export function TrackerVoicePanel({
     }),
     [
       hook.actionSyncBlocked,
-      hook.actorPlayer,
       hook.actorViewData,
+      hook.engineActor,
       hook.actions,
       hook.currentStreet,
       hook.communityCards,
@@ -353,6 +362,7 @@ export function TrackerVoicePanel({
       runtime?.active_hand?.hand_id,
       runtime?.active_hand?.state_version,
       runtime?.correction_pending,
+      voiceActorPlayer,
     ],
   );
 

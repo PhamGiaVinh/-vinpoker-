@@ -81,7 +81,11 @@ export function validateAction(
   // validate against a FRESH street — reset street commitments and reset the
   // min-bet bar to one big blind. (total_bet / stack carry over untouched.)
   if (streetIndex(proposed.street) > streetIndex(runtime.street)) {
-    for (const p of runtime.players) p.street_bet = 0;
+    for (const p of runtime.players) {
+      p.street_bet = 0;
+      p.has_acted_this_street = false;
+      p.can_raise = true;
+    }
     runtime.highestBet = 0;
     runtime.minRaise = runtime.bigBlind;
   }
@@ -137,6 +141,9 @@ export function validateAction(
       if (runtime.highestBet <= 0) {
         return fail("RAISE_WITHOUT_BET", "Chưa có cược nào — dùng bet thay vì raise.");
       }
+      if (!player.can_raise) {
+        return fail("ACTION_NOT_REOPENED", "Action chưa được mở lại để người chơi này raise.");
+      }
       if (amt <= 0) return fail("NON_POSITIVE_AMOUNT", "Số chip phải lớn hơn 0.");
       if (amt > player.stack) {
         return fail("AMOUNT_EXCEEDS_STACK", "Raise vượt quá stack của người chơi.");
@@ -160,6 +167,9 @@ export function validateAction(
     case "all_in": {
       if (player.stack <= 0) {
         return fail("AMOUNT_EXCEEDS_STACK", "Người chơi không còn chip để all-in.");
+      }
+      if (player.street_bet + player.stack > runtime.highestBet && !player.can_raise) {
+        return fail("ACTION_NOT_REOPENED", "Action chưa được mở lại để người chơi này raise all-in.");
       }
       return ok(player.stack);
     }

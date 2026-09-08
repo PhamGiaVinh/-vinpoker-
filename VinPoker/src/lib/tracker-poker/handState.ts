@@ -63,6 +63,8 @@ export interface PlayerRuntime {
   is_all_in: boolean;
   /** Has voluntarily acted (not just posted a blind) on the current street. */
   has_acted_this_street: boolean;
+  /** False after acting until a later full bet/raise reopens action. */
+  can_raise: boolean;
 }
 
 /** Reconstructed hand-level runtime. */
@@ -116,6 +118,7 @@ function startStreet(state: Carrier, street: Street): void {
   for (const p of state.players) {
     p.street_bet = 0;
     p.has_acted_this_street = false;
+    p.can_raise = true;
   }
   // First to act reference: postflop it's the seat after the button; preflop the
   // blinds will overwrite lastActorSeat as they post (so UTG = after the BB).
@@ -134,9 +137,11 @@ function applyOne(state: Carrier, a: ActionRow): void {
     case "fold":
       p.is_folded = true;
       p.has_acted_this_street = true;
+      p.can_raise = false;
       break;
     case "check":
       p.has_acted_this_street = true;
+      p.can_raise = false;
       break;
     case "post_ante": {
       const moved = Math.min(amt, p.stack);
@@ -177,8 +182,12 @@ function applyOne(state: Carrier, a: ActionRow): void {
         if (increment >= state.minRaise) {
           state.minRaise = increment;
           state.aggressionCount++;
+          for (const candidate of state.players) {
+            if (!candidate.is_folded && !candidate.is_all_in) candidate.can_raise = true;
+          }
         }
       }
+      p.can_raise = false;
       state.lastActorSeat = p.seat_number;
       break;
     }
@@ -204,6 +213,7 @@ export function reduceHand(
     is_folded: false,
     is_all_in: false,
     has_acted_this_street: false,
+    can_raise: true,
   }));
 
   const state: Carrier = {
@@ -246,6 +256,7 @@ export function nextToAct(
     is_folded: false,
     is_all_in: false,
     has_acted_this_street: false,
+    can_raise: true,
   }));
   const state: Carrier = {
     players,

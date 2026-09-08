@@ -117,7 +117,8 @@ export type VoiceProposalFailureCode =
   | "no_active_hand"
   | "not_action_step"
   | "actor_missing"
-  | "spoken_actor_mismatch"
+  | "VOICE_SEAT_REQUIRED"
+  | "OUT_OF_TURN"
   | "read_only"
   | "sync_blocked"
   | "correction_pending"
@@ -178,6 +179,7 @@ export interface VoiceActionProposal {
   expectedStreet: WorkflowStreet;
   expectedActionOrder: number;
   expectedActionAmount: number;
+  currentActorSeatNumber: number;
 }
 
 export interface VoiceHoleCardsPlayer {
