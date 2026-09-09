@@ -60,6 +60,13 @@
       "sha256": "96fc97eb9c0e46b4da25e3ee4c4bbc0860a74823abde49eae069541218773275",
       "dependencies": ["20270114000006"],
       "runtimeEdgeDependency": false
+    },
+    {
+      "version": "20270114000008",
+      "filename": "20270114000008_tracker_start_hand_floor_v3_identity.sql",
+      "sha256": "e6296d1f3ab854e86448078415bca36bb8079fce3ed6fe521d01d2f1328124a5",
+      "dependencies": ["20270114000007"],
+      "runtimeEdgeDependency": false
     }
   ],
   "heldSources": [
