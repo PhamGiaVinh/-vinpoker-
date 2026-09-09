@@ -19,6 +19,7 @@ import {
   parseVoiceCommand,
   parseVoiceHoleCardsCommand,
   prepareTrackerVoiceFinish,
+  resolveNextVoiceHoleCardsSeatNumber,
   routeTrackerVoiceIntent,
   resolveVoiceBoardProposal,
   resolveVoiceFinishProposal,
@@ -260,7 +261,8 @@ export function TrackerVoicePanel({
       .filter((card): card is string => card !== null);
     const stale = proposal.expectedStateVersion !== runtime?.active_hand?.state_version
       || proposal.expectedWorkflowState !== hook.workflowState
-      || proposal.expectedStreet !== (hook.currentStreet === "flop" || hook.currentStreet === "turn" || hook.currentStreet === "river" ? hook.currentStreet : null)
+      || (proposal.expectedWorkflowState !== "runout_reveal"
+        && proposal.expectedStreet !== (hook.currentStreet === "flop" || hook.currentStreet === "turn" || hook.currentStreet === "river" ? hook.currentStreet : null))
       || proposal.persistedBoardCards.join("|") !== persisted.join("|")
       || runtime?.correction_pending === true
       || hook.isReadOnly
@@ -391,6 +393,22 @@ export function TrackerVoicePanel({
     runtime?.correction_pending,
   ]);
 
+  const impliedHoleCardsSeatNumber = useMemo(() => resolveNextVoiceHoleCardsSeatNumber({
+    players: (hook.players ?? []).map((player) => ({
+      playerId: player.player_id,
+      seatNumber: player.seat_number,
+      isFolded: Boolean(player.is_folded),
+      hasCards: (hook.playerHoleCards?.[player.player_id] ?? []).filter(Boolean).length === 2,
+    })),
+    actions: (hook.actions ?? []).map((action) => ({
+      street: action.street,
+      actionType: action.action_type,
+      actionOrder: action.action_order,
+      seatNumber: action.seat_number,
+    })),
+    buttonSeat: hook.buttonSeat ?? 0,
+  }), [hook.actions, hook.buttonSeat, hook.playerHoleCards, hook.players]);
+
   const refreshRuntime = useCallback(async () => {
     if (!hook.tournamentTableId && !runtimeOverride) {
       setRuntime(null);
@@ -499,6 +517,7 @@ export function TrackerVoicePanel({
     const route = routeTrackerVoiceIntent(finalEvent.transcript, localContext.workflowState, {
       spokenAmountUnit: unit,
       amountUnitConfirmed: unitConfirmed,
+      impliedHoleCardsSeatNumber,
     });
     const finishCommand = route.ok && route.intentDomain === "finish_hand" ? route.command : null;
     if (finishCommand) {
@@ -556,7 +575,7 @@ export function TrackerVoicePanel({
     }
     const privateCommand = route.ok && route.intentDomain === "hole_cards"
       ? route.command
-      : parseVoiceHoleCardsCommand(finalEvent.transcript);
+      : parseVoiceHoleCardsCommand(finalEvent.transcript, impliedHoleCardsSeatNumber);
     if (privateCommand || looksLikePrivateHoleCardsTranscript(finalEvent.transcript)) {
       const privateProposal = privateCommand
         ? resolveVoiceHoleCardsProposal(privateCommand, {
@@ -570,7 +589,7 @@ export function TrackerVoicePanel({
             ok: false as const,
             command: null,
             code: "command_not_supported" as const,
-            message: "Câu Voice bài tẩy phải có đúng Seat/Ghế, một số ghế và hai lá bài.",
+            message: "Hãy đọc đúng hai lá bài; chỉ cần nói Seat/Ghế khi muốn chỉ rõ người chơi.",
           };
       const receivedAt = finalReceivedAtRef.current.get(finalEvent.providerEventId);
       setProposalLatencyMs(receivedAt === undefined ? null : Math.max(0, performance.now() - receivedAt));
@@ -741,6 +760,7 @@ export function TrackerVoicePanel({
     hook.tournamentTableId,
     mode,
     holeCardsProposalContext,
+    impliedHoleCardsSeatNumber,
     proposalContext,
     runtime,
     runtimeError,

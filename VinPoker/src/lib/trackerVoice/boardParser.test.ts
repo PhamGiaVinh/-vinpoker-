@@ -7,6 +7,7 @@ describe("Voice Board grammar", () => {
     ["Flop Át cơ, năm bích, hai rô", "flop", ["Ah", "5s", "2d"]],
     ["turn queen clubs", "turn", ["Qc"]],
     ["river 10 diamonds", "river", ["Td"]],
+    ["flop K big 9 cơ 5 rô", "flop", ["Ks", "9h", "5d"]],
   ])("parses the exact complete Board phrase %s", (raw, street, cards) => {
     expect(parseVoiceBoardCommand(raw)).toMatchObject({ street, newCards: cards });
   });
@@ -32,5 +33,9 @@ describe("Voice Board grammar", () => {
       code: "wrong_workflow",
     });
     expect(routeTrackerVoiceIntent("fold", "enter_flop")).toEqual({ ok: false, code: "wrong_workflow" });
+    expect(routeTrackerVoiceIntent("flop K bích 9 cơ 5 rô", "runout_reveal")).toMatchObject({
+      ok: true,
+      intentDomain: "board",
+    });
   });
 });

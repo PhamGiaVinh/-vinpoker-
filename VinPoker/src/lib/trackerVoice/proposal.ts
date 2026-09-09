@@ -79,6 +79,18 @@ export function resolveVoiceProposal(
   let expectedActionAmount = 0;
   if (canonicalAction === "call") {
     expectedActionAmount = Math.min(actor.currentStack, actorView.toCall);
+    betToTotal = actor.currentBet + expectedActionAmount;
+    if (command.amount?.ambiguous) {
+      return reject(command, "amount_ambiguous", "Số chip call chưa rõ đơn vị.");
+    }
+    if (command.amount && command.amount.value !== betToTotal) {
+      const spokenAmount = command.amount.value === null ? "không xác định" : formatChipAmount(command.amount.value);
+      return reject(
+        command,
+        "amount_out_of_range",
+        `Số call đọc là ${spokenAmount}, nhưng tổng cược cần theo của Ghế ${actor.seatNumber} là ${formatChipAmount(betToTotal)}.`,
+      );
+    }
   } else if (canonicalAction === "all_in") {
     expectedActionAmount = actor.currentStack;
     betToTotal = actor.currentBet + actor.currentStack;
