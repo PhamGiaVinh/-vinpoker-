@@ -105,7 +105,7 @@ import type {
   VoiceFinishCommitReceipt,
   VoiceHoleCardsCommitReceipt,
 } from "@/lib/trackerVoice";
-import { resolveHandLockClaim } from "./handLockClaim";
+import { resolveHandLockActorId, resolveHandLockClaim } from "./handLockClaim";
 
 type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
 
@@ -312,13 +312,18 @@ export function useStandaloneHandInput(tournamentId: string) {
   }, [tableId, handId]);
 
   const claimHandLock = useCallback(async (targetHandId: string): Promise<boolean> => {
-    if (!user?.id) return false;
+    const actorId = await resolveHandLockActorId(user?.id, async () => {
+      const { data } = await supabase.auth.getUser();
+      if (data.user) setUser(data.user);
+      return data.user?.id;
+    });
+    if (!actorId) return false;
 
     const { data, error } = await supabase.rpc("heartbeat_lock", {
       p_hand_id: targetHandId,
-      p_user_id: user.id,
+      p_user_id: actorId,
     });
-    const resolution = resolveHandLockClaim(data, error, user.id);
+    const resolution = resolveHandLockClaim(data, error, actorId);
     if (!resolution.ok) {
       claimedHandLockRef.current = null;
       setActionSyncBlocked(true);
