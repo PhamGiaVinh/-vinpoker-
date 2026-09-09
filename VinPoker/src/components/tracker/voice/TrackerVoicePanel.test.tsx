@@ -232,7 +232,7 @@ describe("TrackerVoicePanel", () => {
     expect(applyVoiceBoardReceipt).not.toHaveBeenCalled();
     expect(commitBoardOverride).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Xác nhận Flop" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Xác nhận Flop" }));
     await waitFor(() => expect(commitBoardOverride).toHaveBeenCalledOnce());
     expect(commitBoardOverride.mock.calls[0][0].canonicalRequest).toMatchObject({
       intentDomain: "board",
