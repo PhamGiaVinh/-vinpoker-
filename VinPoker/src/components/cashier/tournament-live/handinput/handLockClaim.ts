@@ -3,6 +3,14 @@ export type HandLockClaimResolution = {
   code: string;
 };
 
+export async function resolveHandLockActorId(
+  cachedActorId: string | null | undefined,
+  loadActorId: () => Promise<string | null | undefined>,
+): Promise<string | null> {
+  if (cachedActorId) return cachedActorId;
+  return (await loadActorId()) ?? null;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
 }
