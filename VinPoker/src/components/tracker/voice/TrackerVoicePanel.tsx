@@ -50,6 +50,7 @@ interface TrackerVoicePanelProps {
   hook: StandaloneHandInput;
   providerOverride?: RealtimeTranscriptionProvider;
   runtimeOverride?: TrackerVoiceRuntimeContext;
+  loadRuntimeOverride?: typeof loadTrackerVoiceRuntimeContext;
   validateEventOverride?: (input: ValidateVoiceEventInput) => Promise<ValidatedVoiceEventReceipt>;
   commitBoardOverride?: (input: Parameters<typeof commitTrackerVoiceBoard>[0]) => Promise<VoiceBoardCommitReceipt>;
   commitHoleCardsOverride?: (input: Parameters<typeof commitTrackerVoiceHoleCards>[0]) => Promise<VoiceHoleCardsCommitReceipt>;
@@ -185,6 +186,7 @@ export function TrackerVoicePanel({
   hook,
   providerOverride,
   runtimeOverride,
+  loadRuntimeOverride = loadTrackerVoiceRuntimeContext,
   validateEventOverride = validateTrackerVoiceEvent,
   commitBoardOverride = commitTrackerVoiceBoard,
   commitHoleCardsOverride = commitTrackerVoiceHoleCards,
@@ -401,7 +403,7 @@ export function TrackerVoicePanel({
       return runtimeOverride;
     }
     try {
-      const next = await loadTrackerVoiceRuntimeContext(hook.tournamentId, hook.tournamentTableId);
+      const next = await loadRuntimeOverride(hook.tournamentId, hook.tournamentTableId);
       setRuntime(next);
       setRuntimeError(null);
       return next;
@@ -411,7 +413,7 @@ export function TrackerVoicePanel({
       setRuntimeError(message);
       return null;
     }
-  }, [hook.tournamentId, hook.tournamentTableId, runtimeOverride]);
+  }, [hook.tournamentId, hook.tournamentTableId, loadRuntimeOverride, runtimeOverride]);
 
   useEffect(() => {
     void refreshRuntime();
@@ -871,10 +873,27 @@ export function TrackerVoicePanel({
             setBufferStatus("Transcript được giữ cục bộ. Voice sẽ không ghi action khi Floor chưa sửa xong.");
             return;
           }
-          setFinalAttempt({
-            attemptId: `provider:${finalEvent.providerEventId}`,
-            event: finalEvent,
-            runtimeSnapshot: runtimeRef.current,
+          void refreshRuntime().then((freshRuntime) => {
+            if (!freshRuntime) {
+              setValidationState("error");
+              setValidationError("Không tải lại được trạng thái bàn. Hãy thử nói lại action.");
+              return;
+            }
+            if (freshRuntime.correction_pending) {
+              setBufferedEvents((current) => {
+                if (current.some((candidate) => candidate.providerEventId === finalEvent.providerEventId)) {
+                  return current;
+                }
+                return [...current, finalEvent].slice(-MAX_BUFFERED_TRANSCRIPTS);
+              });
+              setBufferStatus("Transcript được giữ cục bộ. Voice sẽ không ghi action khi Floor chưa sửa xong.");
+              return;
+            }
+            setFinalAttempt({
+              attemptId: `provider:${finalEvent.providerEventId}`,
+              event: finalEvent,
+              runtimeSnapshot: freshRuntime,
+            });
           });
         },
         onLevel: (rms) => {
