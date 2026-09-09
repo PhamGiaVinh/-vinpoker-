@@ -494,6 +494,52 @@ describe("TrackerVoicePanel", () => {
     });
   });
 
+  it("refreshes the authoritative state version before validating the next Assist transcript", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const stateAfterPriorAction = "b".repeat(64);
+    const initialRuntime = {
+      ...runtimeFixture,
+      active_hand: { ...runtimeFixture.active_hand },
+    };
+    const refreshedRuntime = {
+      ...runtimeFixture,
+      active_hand: {
+        ...runtimeFixture.active_hand,
+        state_version: stateAfterPriorAction,
+      },
+    };
+    const loadRuntimeOverride = vi.fn()
+      .mockResolvedValueOnce(initialRuntime)
+      .mockResolvedValue(refreshedRuntime);
+    const validateEventOverride = vi.fn(async (input) => ({
+      ...validatedReceipt,
+      state_version: input.expectedStateVersion,
+      execution_mode: "assist" as const,
+    }));
+
+    render(
+      <TrackerVoicePanel
+        hook={hookFixture()}
+        providerOverride={provider}
+        loadRuntimeOverride={loadRuntimeOverride}
+        validateEventOverride={validateEventOverride}
+      />,
+    );
+
+    const assist = screen.getByRole("button", { name: "assist" });
+    await waitFor(() => expect(assist).toBeEnabled());
+    fireEvent.click(assist);
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("seat three call", { final: true, id: "after-prior-action" }));
+
+    await screen.findByRole("button", { name: "Xác nhận action" });
+    expect(loadRuntimeOverride).toHaveBeenCalledTimes(2);
+    expect(validateEventOverride).toHaveBeenCalledWith(expect.objectContaining({
+      expectedStateVersion: stateAfterPriorAction,
+    }));
+  });
+
   it("single-flights two rapid Assist confirmations", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     let resolveCommit: ((value: boolean) => void) | null = null;
