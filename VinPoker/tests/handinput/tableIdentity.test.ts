@@ -6,6 +6,12 @@ const physicalTableId = "11111111-1111-4111-8111-111111111111";
 const canonicalTableId = "22222222-2222-4222-8222-222222222222";
 
 describe("resolveTournamentTableId", () => {
+  it("accepts the canonical tournament-table id returned by the production roster RPC", () => {
+    expect(resolveTournamentTableId([
+      { id: canonicalTableId, table_id: physicalTableId },
+    ], canonicalTableId)).toBe(canonicalTableId);
+  });
+
   it("maps a physical table to its distinct canonical tournament-table id", () => {
     expect(resolveTournamentTableId([
       { id: canonicalTableId, table_id: physicalTableId },
