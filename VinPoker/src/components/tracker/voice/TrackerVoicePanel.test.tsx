@@ -656,4 +656,22 @@ describe("TrackerVoicePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Call" }));
     expect(handleDockAction).toHaveBeenCalledWith("call", undefined);
   });
+
+  it.each([
+    { handStarted: false },
+    { showActionStep: false, workflowState: "setup_blinds" },
+    { showActionStep: false, workflowState: "enter_flop" },
+    { submitting: true },
+    { actionSyncBlocked: true },
+    { isReadOnly: true },
+  ])("blocks manual fallback outside an available action step: %j", (state) => {
+    const handleDockAction = vi.fn();
+    renderPanel({ ...hookFixture(), ...state, handleDockAction } as StandaloneHandInput);
+    for (const name of ["Fold", "Check", "Call", "Bet", "Raise", "All-in"]) {
+      const button = screen.getByRole("button", { name, exact: true });
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+    }
+    expect(handleDockAction).not.toHaveBeenCalled();
+  });
 });

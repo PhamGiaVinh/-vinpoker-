@@ -999,17 +999,21 @@ export function TrackerVoicePanel({
     });
   }, [hook.handId, runtime]);
 
+  const manualFallbackBlocked = !hook.handStarted || !hook.showActionStep
+    || hook.submitting || hook.actionSyncBlocked || hook.isReadOnly;
   const runManualFallback = useCallback((action: ManualFallbackAction) => {
     if (
-      hook.isReadOnly
+      manualFallbackBlocked
       || !hook.actorPlayer
       || typeof hook.handleDockAction !== "function"
     ) return;
+    const control = MANUAL_FALLBACK_ACTIONS.find((item) => item.action === action);
+    if (!control || !hook.actorViewData?.legal[control.legalKey]) return;
     const betTo = action === "bet" || action === "raise"
       ? hook.actorViewData?.minRaiseTo
       : undefined;
     hook.handleDockAction(action, betTo);
-  }, [hook]);
+  }, [hook, manualFallbackBlocked]);
 
   const startMicTest = () => {
     if (status !== "listening") return;
@@ -1522,7 +1526,7 @@ export function TrackerVoicePanel({
           <div className="grid grid-cols-3 gap-2">
             {MANUAL_FALLBACK_ACTIONS.map(({ action, label, legalKey }) => {
               const isLegal = Boolean(hook.actorViewData?.legal[legalKey]);
-              const disabled = hook.isReadOnly || !hook.actorPlayer || typeof hook.handleDockAction !== "function" || !isLegal;
+              const disabled = manualFallbackBlocked || !hook.actorPlayer || typeof hook.handleDockAction !== "function" || !isLegal;
               return (
                 <button
                   key={action}

@@ -11,6 +11,14 @@ import { blindSeats } from "@/lib/tracker-poker/trackerEngine";
 import { nextButtonTournament } from "@/lib/tournament/deadButton";
 
 describe("P2-5 carry-forward: panel SB must come from the suggestion, not blindSeats", () => {
+  it("keeps the button at Seat 4, leaves Seat 5 dead, and advances the BB to Seat 6", () => {
+    expect(nextButtonTournament({
+      maxSeats: 9,
+      occupiedSeats: [1, 2, 4, 6, 7, 8, 9],
+      prevBbSeat: 4,
+    })).toEqual({ buttonSeat: 4, sbSeat: null, bbSeat: 6, deadButton: false, deadSb: true });
+  });
+
   it("the hard case diverges — suggestion SB=2, blindSeats SB=3", () => {
     const occupied = [2, 3, 5, 8];
     const sug = nextButtonTournament({ maxSeats: 9, occupiedSeats: occupied, prevBbSeat: 2 })!;

@@ -67,6 +67,7 @@ import {
   createActionWriteGuard,
   createTableLoadGuard,
   isConfirmedActionWrite,
+  isConfirmedCompletedHandReadback,
   resolveTableHandIdentity,
   type TableLoadToken,
 } from "./trackerAsyncGuards";
@@ -231,6 +232,7 @@ export function useStandaloneHandInput(tournamentId: string) {
   const [nextActionOrder, setNextActionOrder] = useState(1);
   const [lastHandId, setLastHandId] = useState<string | null>(null);
   const [endingStacks, setEndingStacks] = useState<Record<string, number>>({});
+  const [endingStacksManuallyEdited, setEndingStacksManuallyEdited] = useState(false);
   const [isReadOnly, setIsReadOnly] = useState(false);
   const [playerHoleCards, setPlayerHoleCards] = useState<Record<string, (Card | null)[]>>({});
   const [orphanHand, setOrphanHand] = useState<{ id: string; hand_number: number } | null>(null);
@@ -619,6 +621,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     setCommunityCards([null, null, null, null, null]);
     setBetAmount("");
     setEndingStacks({});
+    setEndingStacksManuallyEdited(false);
     setPlayerHoleCards({});
     setNextActionOrder(1);
     setUndoStack([]);
@@ -848,15 +851,15 @@ export function useStandaloneHandInput(tournamentId: string) {
       }
 
       // P2-5: physical seat capacity for the dead-button ring (read-only; default 9).
-      supabase
-          .from("tournament_tables")
-          .select("max_seats")
-          .eq("tournament_id", tournamentId)
-          .eq("table_id", newTableId)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (isCurrentLoad()) setMaxSeats((data as any)?.max_seats ?? 9);
-        });
+      const { data: tableMeta } = await supabase
+        .from("tournament_tables")
+        .select("max_seats")
+        .eq("tournament_id", tournamentId)
+        .eq("table_id", newTableId)
+        .maybeSingle();
+      if (!isCurrentLoad()) return;
+      const loadedMaxSeats = (tableMeta as any)?.max_seats ?? 9;
+      setMaxSeats(loadedMaxSeats);
 
       // trackerSeatSetup: pull the per-seat avatar_url under the flag. If the migration
       // isn't applied yet the column is missing → 42703 → mark unsupported + retry
@@ -950,7 +953,7 @@ export function useStandaloneHandInput(tournamentId: string) {
 
       const { data: lastHand } = await supabase
         .from("tournament_hands")
-        .select("button_seat")
+        .select("id, button_seat")
         .eq("tournament_id", tournamentId)
         .eq("table_id", newTableId)
         .order("hand_number", { ascending: false })
@@ -958,8 +961,50 @@ export function useStandaloneHandInput(tournamentId: string) {
         .maybeSingle();
 
       if (!isCurrentLoad()) return;
-      if (lastHand?.button_seat) setButtonSeat(nextButton(activeNums, lastHand.button_seat));
-      else setButtonSeat(activeNums[0] ?? 1);
+      let previousBbSeat: number | null = null;
+      let previousBbReadFailed = false;
+      if (lastHand?.id) {
+        const { data: lastBbAction, error: lastBbActionError } = await supabase
+          .from("hand_actions")
+          .select("player_id, entry_number")
+          .eq("hand_id", lastHand.id)
+          .eq("action_type", "post_bb")
+          .order("action_order", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        previousBbReadFailed = !!lastBbActionError;
+        if (!lastBbActionError && lastBbAction?.player_id) {
+          const { data: lastBbPlayer, error: lastBbPlayerError } = await supabase
+            .from("hand_players")
+            .select("seat_number")
+            .eq("hand_id", lastHand.id)
+            .eq("player_id", lastBbAction.player_id)
+            .eq("entry_number", lastBbAction.entry_number)
+            .maybeSingle();
+          previousBbReadFailed = !!lastBbPlayerError;
+          if (!lastBbPlayerError) previousBbSeat = lastBbPlayer?.seat_number ?? null;
+        }
+      }
+
+      if (!isCurrentLoad()) return;
+      setLastBbSeat(previousBbSeat);
+      const restoredSuggestion = nextButtonTournament({
+        maxSeats: loadedMaxSeats,
+        occupiedSeats: activeNums,
+        prevBbSeat: previousBbSeat,
+      });
+      if (restoredSuggestion) {
+        setButtonSeat(restoredSuggestion.buttonSeat);
+        setButtonConfirmed(true);
+      } else {
+        setButtonSeat(lastHand?.button_seat ?? activeNums[0] ?? 1);
+        setButtonConfirmed(false);
+        if (lastHand?.id) {
+          toast.warning(previousBbReadFailed
+            ? "Không đọc được BB của hand trước. Hãy chọn BTN thủ công."
+            : "Hand trước chưa có BB hợp lệ. Hãy chọn BTN thủ công.");
+        }
+      }
 
       const identity = await resolveTableHandIdentity({
         loadOrphan: async () => {
@@ -1020,6 +1065,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     setTableSelectionNotice(null);
     resumedTableRef.current = null;
     setTableParam(null);
+    setTableReloadAttempt((attempt) => attempt + 1);
   }, [setTableParam]);
 
   // trackerMultiTable: claim a STALE lock, then open the table (its orphan hand
@@ -2547,6 +2593,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     });
     setShowdownLayers(settlement.layers);
     setEndingStacks(map);
+    setEndingStacksManuallyEdited(false);
     toast.success("Đã tự chấm bài + chia pot theo từng layer");
   };
 
@@ -2566,8 +2613,10 @@ export function useStandaloneHandInput(tournamentId: string) {
     });
     setShowdownLayers([]);
     setEndingStacks(map);
+    setEndingStacksManuallyEdited(true);
   };
   const handleEndingStackChange = (playerId: string, value: number) => {
+    setEndingStacksManuallyEdited(true);
     setEndingStacks((prev) => ({ ...prev, [playerId]: value }));
   };
 
@@ -2591,13 +2640,39 @@ export function useStandaloneHandInput(tournamentId: string) {
       toast.error("Tổng chip vào ≠ ra — không thể lưu. Kiểm tra lại stack kết thúc / người thắng.");
       return;
     }
-    const stacksEdited = players.some(
-      (p) => endingStacks[p.player_id] !== undefined && endingStacks[p.player_id] !== p.current_stack
-    );
-    if (stacksEdited && !confirm("Bạn đã chỉnh sửa stack kết thúc thủ công. Xác nhận lưu các số đã chỉnh?")) return;
+    if (endingStacksManuallyEdited && !confirm("Bạn đã chỉnh sửa stack kết thúc thủ công. Xác nhận lưu các số đã chỉnh?")) return;
     if (!handSubmitGuardRef.current.begin()) return;
     setSubmitting(true);
     markSync("sending", `Gửi Hand #${Number(handNumber)}`);
+    const submittedHandId = handId;
+    const applyRecordedHand = async (recordedHandId: string, recoveredAfterError = false) => {
+      toast.success(recoveredAfterError
+        ? "Máy chủ đã xác nhận hand được lưu dù kết nối báo lỗi"
+        : "Hand recorded successfully");
+      playTrackerSoundOnce(playedSoundsRef.current, recordedHandId, "hand_end", "pot_collect");
+      markSync("sent", `Hand #${Number(handNumber)} đã lưu`);
+      setLastHandId(recordedHandId);
+      const { data: refreshedSeats } = await supabase
+        .from("tournament_seats")
+        .select("seat_number, player_id, is_active")
+        .eq("tournament_id", tournamentId)
+        .eq("table_id", tableId)
+        .eq("is_active", true)
+        .order("seat_number");
+      const activeNums = (refreshedSeats ?? [])
+        .filter((s) => s.player_id && s.is_active !== false)
+        .map((s) => s.seat_number)
+        .sort((a, b) => a - b);
+      setButtonSeat(nextButton(activeNums, buttonSeat));
+      setLastBbSeat(actions.find((a) => a.action_type === "post_bb")?.seat_number ?? null);
+      setButtonOverridden(false);
+      if (refreshedSeats) {
+        setPlayers((prev) => survivorsAfterHand(prev, activeNums, endingStacks));
+      }
+      setHandId(null);
+      setHandStarted(false);
+      resetHand();
+    };
     try {
       const edgePlayers: EdgePlayer[] = players.map((p) => ({
         player_id: p.player_id,
@@ -2639,40 +2714,26 @@ export function useStandaloneHandInput(tournamentId: string) {
         }),
       });
       if (error || data?.error) throw new Error(await readEdgeError(error, data));
-      toast.success("Hand recorded successfully");
-      // C4: the final pot is pushed to the winner — one collect per recorded hand.
-      playTrackerSoundOnce(playedSoundsRef.current, handId, "hand_end", "pot_collect");
-      markSync("sent", `Hand #${Number(handNumber)} đã lưu`);
-      setLastHandId(data?.data?.hand_id ?? null);
-      const { data: refreshedSeats } = await supabase
-        .from("tournament_seats")
-        .select("seat_number, player_id, is_active")
-        .eq("tournament_id", tournamentId)
-        .eq("table_id", tableId)
-        .eq("is_active", true)
-        .order("seat_number");
-      const activeNums = (refreshedSeats ?? [])
-        .filter((s) => s.player_id && s.is_active !== false)
-        .map((s) => s.seat_number)
-        .sort((a, b) => a - b);
-      setButtonSeat(nextButton(activeNums, buttonSeat));
-      // P2-5: anchor the next hand's dead-button suggestion on THIS hand's posted BB,
-      // and clear the manual override so the suggestion drives the next button.
-      setLastBbSeat(actions.find((a) => a.action_type === "post_bb")?.seat_number ?? null);
-      setButtonOverridden(false);
-      // P2-4: drop busted (now-inactive) players from the felt + show survivors'
-      // new stacks immediately — no manual table reswitch. `endingStacks` is still
-      // the operator-confirmed map here (resetHand clears it just below). Guard on a
-      // successful re-query so a transient DB error never empties the felt.
-      if (refreshedSeats) {
-        setPlayers((prev) => survivorsAfterHand(prev, activeNums, endingStacks));
-      }
-      setHandId(null);
-      setHandStarted(false);
-      resetHand();
+      const recordedHandId = data?.data?.hand_id ?? submittedHandId;
+      if (!recordedHandId) throw new Error("Máy chủ không trả về mã hand đã lưu");
+      await applyRecordedHand(recordedHandId);
     } catch (e: any) {
-      toast.error(e.message || "Failed to record hand");
-      markSync("error");
+      const { data: completedHand } = submittedHandId
+        ? await supabase
+          .from("tournament_hands")
+          .select("id, status, pot_size")
+          .eq("id", submittedHandId)
+          .eq("tournament_id", tournamentId)
+          .eq("table_id", tableId)
+          .eq("hand_number", Number(handNumber))
+          .maybeSingle()
+        : { data: null };
+      if (isConfirmedCompletedHandReadback(completedHand, potSize)) {
+        await applyRecordedHand(completedHand.id, true);
+      } else {
+        toast.error(e.message || "Failed to record hand");
+        markSync("error");
+      }
     } finally {
       handSubmitGuardRef.current.finish();
       setSubmitting(false);
@@ -2761,6 +2822,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         map[r.player_id] = r.ending_stack;
       });
       setEndingStacks(map);
+      setEndingStacksManuallyEdited(false);
       return;
     }
     const boardReady = currentStreet === "preflop" ? blindsConfirmed : sentCommunityStreets.has(currentStreet);
