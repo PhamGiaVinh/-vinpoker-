@@ -21,6 +21,8 @@ const finishAssistMigrationName =
   "20270114000002_tracker_voice_finish_atomic_commit_v0.sql";
 const voiceHashMigrationName =
   "20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql";
+const providerEventIdempotencyMigrationName =
+  "20270114000009_tracker_voice_provider_event_idempotency.sql";
 const migration = readFileSync(
   resolve(root, "supabase/migrations", migrationName),
   "utf8",
@@ -47,6 +49,10 @@ const finishAssistMigration = readFileSync(
 ).replace(/\r\n/g, "\n");
 const voiceHashMigration = readFileSync(
   resolve(root, "supabase/migrations", voiceHashMigrationName),
+  "utf8",
+).replace(/\r\n/g, "\n");
+const providerEventIdempotencyMigration = readFileSync(
+  resolve(root, "supabase/migrations", providerEventIdempotencyMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const seriesMigration = readFileSync(
@@ -151,6 +157,9 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(activeNames.filter((name) => name.startsWith("20270114000003_"))).toEqual([
       voiceHashMigrationName,
     ]);
+    expect(activeNames.filter((name) => name.startsWith("20270114000009_"))).toEqual([
+      providerEventIdempotencyMigrationName,
+    ]);
     expect(activeNames).toContain(migrationName);
     expect(activeNames).toContain(geminiMigrationName);
     expect(activeNames).toContain(transcribeBindingMigrationName);
@@ -158,6 +167,14 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(activeNames).toContain(holeCardsAssistMigrationName);
     expect(activeNames).toContain(finishAssistMigrationName);
     expect(activeNames).toContain(voiceHashMigrationName);
+    expect(activeNames).toContain(providerEventIdempotencyMigrationName);
+  });
+
+  it("deduplicates immutable provider events independently of a regenerated browser key", () => {
+    expect(providerEventIdempotencyMigration).toContain("provider_event_mismatch");
+    expect(providerEventIdempotencyMigration).toContain("e.provider_event_id = NULLIF(p_provider_event_id, '')");
+    expect(providerEventIdempotencyMigration).toContain("RETURN v_existing.receipt || jsonb_build_object('duplicate', true)");
+    expect(providerEventIdempotencyMigration).not.toMatch(/DROP\s+INDEX|DROP\s+TABLE/i);
   });
 
   it("enables the Voice build gate only for the exact approved Vite value", () => {

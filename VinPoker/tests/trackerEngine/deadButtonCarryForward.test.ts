@@ -19,6 +19,14 @@ describe("P2-5 carry-forward: panel SB must come from the suggestion, not blindS
     })).toEqual({ buttonSeat: 4, sbSeat: null, bbSeat: 6, deadButton: false, deadSb: true });
   });
 
+  it("moves the next button onto dead Seat 5 after Seat 6 posted the prior BB", () => {
+    expect(nextButtonTournament({
+      maxSeats: 9,
+      occupiedSeats: [1, 2, 4, 6, 7, 8, 9],
+      prevBbSeat: 6,
+    })).toEqual({ buttonSeat: 5, sbSeat: 6, bbSeat: 7, deadButton: true, deadSb: false });
+  });
+
   it("the hard case diverges — suggestion SB=2, blindSeats SB=3", () => {
     const occupied = [2, 3, 5, 8];
     const sug = nextButtonTournament({ maxSeats: 9, occupiedSeats: occupied, prevBbSeat: 2 })!;

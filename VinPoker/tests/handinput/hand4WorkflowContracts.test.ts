@@ -40,6 +40,20 @@ describe("Hand #4 resume workflow contracts", () => {
     expect(tableLoad).toContain("prevBbSeat: previousBbSeat");
   });
 
+  it("uses the dead-button engine after both manual and Voice hand completion", () => {
+    const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
+    const voiceStart = source.indexOf("const applyVoiceFinishReceipt =");
+    const manualStart = source.indexOf("const applyRecordedHand =");
+    const voiceFinish = source.slice(voiceStart, source.indexOf("// B2", voiceStart));
+    const manualFinish = source.slice(manualStart, source.indexOf("try {", manualStart));
+
+    for (const finishPath of [voiceFinish, manualFinish]) {
+      expect(finishPath).toContain('action.action_type === "post_bb"');
+      expect(finishPath).toContain("nextButtonTournament({ maxSeats, occupiedSeats: activeNums, prevBbSeat: currentBbSeat })");
+      expect(finishPath).not.toContain("setButtonSeat(nextButton(activeNums, buttonSeat))");
+    }
+  });
+
   it("reconciles an uncertain hand submit by exact readback without retrying the writer", () => {
     const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
     const submit = source.slice(source.indexOf("const handleSubmitHand ="), source.indexOf("const handleVoid ="));

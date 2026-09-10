@@ -34,6 +34,11 @@
       "version": "20270114000004",
       "filename": "20270114000004_tracker_voice_floor_mode_global_rollout.sql",
       "sha256": "36ffa3cb33561e77039eaa05a619f28e5d8de30247d3b3afc2b87875ae7a1426"
+    },
+    {
+      "version": "20270114000009",
+      "filename": "20270114000009_tracker_voice_provider_event_idempotency.sql",
+      "sha256": "5bf954a24e89b2aa1edaab04cec7e38279680d002fcf0c8f7a6e4bae06107c45"
     }
   ],
   "safety": {
