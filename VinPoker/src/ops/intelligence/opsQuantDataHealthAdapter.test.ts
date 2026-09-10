@@ -10,6 +10,22 @@ function clientWith(data: unknown, error: { message?: string } | null = null) {
 }
 
 describe("Ops Quant Data Health Q0 adapters", () => {
+  it.each([CLUB_ID, "22222222-2222-2222-2222-222222222222"])("keeps exact cross-club checks for valid payloads requested by %s", async (clubId) => {
+    const registration = {
+      version: "ops-registration-observed-q0", clubId, asOf: AS_OF,
+      window: { from: "2026-08-28T10:00:00.000Z", to: "2026-09-12T10:00:00.000Z" }, events: [],
+    };
+    const sepay = {
+      version: "ops-sepay-read-state-q0", clubId, asOf: AS_OF,
+      window: { from: "2026-08-28T10:00:00.000Z", to: AS_OF }, latestObservedTransactionAt: null,
+      buckets: ["actionable", "resolved", "quarantined"].map((state) => ({ state, transactionCount: 0, inboundAmountVnd: 0, amountAvailability: "exact", amountReasonCode: null })),
+    };
+    expect((await loadOpsRegistrationPaceQ0(clientWith(registration), clubId)).value?.events).toEqual([]);
+    expect((await loadOpsSepayReadStateQ0(clientWith(sepay), clubId)).value?.buckets[0].transactionCount).toBe(0);
+    expect(await loadOpsRegistrationPaceQ0(clientWith(registration), OTHER_CLUB_ID)).toMatchObject({ value: null, reasonCode: "REGISTRATION_PACE_READ_FAILED_MALFORMED" });
+    expect(await loadOpsSepayReadStateQ0(clientWith(sepay), OTHER_CLUB_ID)).toMatchObject({ value: null, reasonCode: "SEPAY_READ_FAILED_MALFORMED" });
+  });
+
   it("accepts an exact empty registration receipt for the requested club", async () => {
     const receipt = await loadOpsRegistrationPaceQ0(clientWith({
       version: "ops-registration-observed-q0",
