@@ -67,6 +67,7 @@ import {
   createActionWriteGuard,
   createTableLoadGuard,
   isConfirmedActionWrite,
+  isConfirmedCompletedHandReadback,
   resolveTableHandIdentity,
   type TableLoadToken,
 } from "./trackerAsyncGuards";
@@ -2600,6 +2601,35 @@ export function useStandaloneHandInput(tournamentId: string) {
     if (!handSubmitGuardRef.current.begin()) return;
     setSubmitting(true);
     markSync("sending", `Gửi Hand #${Number(handNumber)}`);
+    const submittedHandId = handId;
+    const applyRecordedHand = async (recordedHandId: string, recoveredAfterError = false) => {
+      toast.success(recoveredAfterError
+        ? "Máy chủ đã xác nhận hand được lưu dù kết nối báo lỗi"
+        : "Hand recorded successfully");
+      playTrackerSoundOnce(playedSoundsRef.current, recordedHandId, "hand_end", "pot_collect");
+      markSync("sent", `Hand #${Number(handNumber)} đã lưu`);
+      setLastHandId(recordedHandId);
+      const { data: refreshedSeats } = await supabase
+        .from("tournament_seats")
+        .select("seat_number, player_id, is_active")
+        .eq("tournament_id", tournamentId)
+        .eq("table_id", tableId)
+        .eq("is_active", true)
+        .order("seat_number");
+      const activeNums = (refreshedSeats ?? [])
+        .filter((s) => s.player_id && s.is_active !== false)
+        .map((s) => s.seat_number)
+        .sort((a, b) => a - b);
+      setButtonSeat(nextButton(activeNums, buttonSeat));
+      setLastBbSeat(actions.find((a) => a.action_type === "post_bb")?.seat_number ?? null);
+      setButtonOverridden(false);
+      if (refreshedSeats) {
+        setPlayers((prev) => survivorsAfterHand(prev, activeNums, endingStacks));
+      }
+      setHandId(null);
+      setHandStarted(false);
+      resetHand();
+    };
     try {
       const edgePlayers: EdgePlayer[] = players.map((p) => ({
         player_id: p.player_id,
@@ -2641,40 +2671,26 @@ export function useStandaloneHandInput(tournamentId: string) {
         }),
       });
       if (error || data?.error) throw new Error(await readEdgeError(error, data));
-      toast.success("Hand recorded successfully");
-      // C4: the final pot is pushed to the winner — one collect per recorded hand.
-      playTrackerSoundOnce(playedSoundsRef.current, handId, "hand_end", "pot_collect");
-      markSync("sent", `Hand #${Number(handNumber)} đã lưu`);
-      setLastHandId(data?.data?.hand_id ?? null);
-      const { data: refreshedSeats } = await supabase
-        .from("tournament_seats")
-        .select("seat_number, player_id, is_active")
-        .eq("tournament_id", tournamentId)
-        .eq("table_id", tableId)
-        .eq("is_active", true)
-        .order("seat_number");
-      const activeNums = (refreshedSeats ?? [])
-        .filter((s) => s.player_id && s.is_active !== false)
-        .map((s) => s.seat_number)
-        .sort((a, b) => a - b);
-      setButtonSeat(nextButton(activeNums, buttonSeat));
-      // P2-5: anchor the next hand's dead-button suggestion on THIS hand's posted BB,
-      // and clear the manual override so the suggestion drives the next button.
-      setLastBbSeat(actions.find((a) => a.action_type === "post_bb")?.seat_number ?? null);
-      setButtonOverridden(false);
-      // P2-4: drop busted (now-inactive) players from the felt + show survivors'
-      // new stacks immediately — no manual table reswitch. `endingStacks` is still
-      // the operator-confirmed map here (resetHand clears it just below). Guard on a
-      // successful re-query so a transient DB error never empties the felt.
-      if (refreshedSeats) {
-        setPlayers((prev) => survivorsAfterHand(prev, activeNums, endingStacks));
-      }
-      setHandId(null);
-      setHandStarted(false);
-      resetHand();
+      const recordedHandId = data?.data?.hand_id ?? submittedHandId;
+      if (!recordedHandId) throw new Error("Máy chủ không trả về mã hand đã lưu");
+      await applyRecordedHand(recordedHandId);
     } catch (e: any) {
-      toast.error(e.message || "Failed to record hand");
-      markSync("error");
+      const { data: completedHand } = submittedHandId
+        ? await supabase
+          .from("tournament_hands")
+          .select("id, status, pot_size")
+          .eq("id", submittedHandId)
+          .eq("tournament_id", tournamentId)
+          .eq("table_id", tableId)
+          .eq("hand_number", Number(handNumber))
+          .maybeSingle()
+        : { data: null };
+      if (isConfirmedCompletedHandReadback(completedHand, potSize)) {
+        await applyRecordedHand(completedHand.id, true);
+      } else {
+        toast.error(e.message || "Failed to record hand");
+        markSync("error");
+      }
     } finally {
       handSubmitGuardRef.current.finish();
       setSubmitting(false);

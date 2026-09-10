@@ -5,6 +5,7 @@ import {
   createActionWriteGuard,
   createTableLoadGuard,
   isConfirmedActionWrite,
+  isConfirmedCompletedHandReadback,
   resolveTableHandIdentity,
 } from "./trackerAsyncGuards";
 import { createSingleFlightGuard } from "@/lib/singleFlight";
@@ -147,6 +148,15 @@ describe("tracker async guards", () => {
     expect(isConfirmedActionWrite({ status: "success" })).toBe(false);
     expect(isConfirmedActionWrite({ ok: true })).toBe(false);
     expect(isConfirmedActionWrite("success")).toBe(false);
+  });
+
+  it("accepts an authoritative completed-hand readback only when the pot matches", () => {
+    const completed = { id: "hand-2", status: "completed", pot_size: 5_400_000 };
+
+    expect(isConfirmedCompletedHandReadback(completed, 5_400_000)).toBe(true);
+    expect(isConfirmedCompletedHandReadback(completed, 5_300_000)).toBe(false);
+    expect(isConfirmedCompletedHandReadback({ ...completed, status: "in_progress" }, 5_400_000)).toBe(false);
+    expect(isConfirmedCompletedHandReadback(null, 5_400_000)).toBe(false);
   });
 
   it("blocks further actions after an ambiguous outcome until an authoritative reload", () => {

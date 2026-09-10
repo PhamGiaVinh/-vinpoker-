@@ -26,6 +26,20 @@ describe("Hand #4 resume workflow contracts", () => {
     expect(source).toContain("loadNextHandNumber: false");
   });
 
+  it("reconciles an uncertain hand submit by exact readback without retrying the writer", () => {
+    const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
+    const submit = source.slice(source.indexOf("const handleSubmitHand ="), source.indexOf("const handleVoid ="));
+
+    expect(submit.match(/supabase\.functions\.invoke\("tournament-live-update"/g)).toHaveLength(1);
+    expect(submit).toContain('.from("tournament_hands")');
+    expect(submit).toContain('.eq("id", submittedHandId)');
+    expect(submit).toContain('.eq("tournament_id", tournamentId)');
+    expect(submit).toContain('.eq("table_id", tableId)');
+    expect(submit).toContain('.eq("hand_number", Number(handNumber))');
+    expect(submit).toContain("isConfirmedCompletedHandReadback(completedHand, potSize)");
+    expect(submit).toContain("await applyRecordedHand(completedHand.id, true)");
+  });
+
   it("keeps cashier re-entry, registration VOID, and Tracker flags fail-closed", () => {
     expect(FEATURES.cashierReentry).toBe(false);
     expect(FEATURES.registrationExtensions).toBe(false);

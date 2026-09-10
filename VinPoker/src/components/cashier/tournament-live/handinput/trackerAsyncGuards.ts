@@ -111,3 +111,13 @@ export function isConfirmedActionWrite(data: unknown): boolean {
   const record = data as Record<string, unknown>;
   return record.status === "success" && Object.prototype.hasOwnProperty.call(record, "data");
 }
+
+export function isConfirmedCompletedHandReadback(data: unknown, expectedPotSize: number): data is { id: string } {
+  if (typeof data !== "object" || data === null) return false;
+  const record = data as Record<string, unknown>;
+  return (
+    typeof record.id === "string"
+    && record.status === "completed"
+    && Number(record.pot_size) === expectedPotSize
+  );
+}
