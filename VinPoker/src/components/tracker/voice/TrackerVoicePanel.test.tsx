@@ -232,7 +232,7 @@ describe("TrackerVoicePanel", () => {
     expect(applyVoiceBoardReceipt).not.toHaveBeenCalled();
     expect(commitBoardOverride).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Xác nhận Flop" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Xác nhận Flop" }));
     await waitFor(() => expect(commitBoardOverride).toHaveBeenCalledOnce());
     expect(commitBoardOverride.mock.calls[0][0].canonicalRequest).toMatchObject({
       intentDomain: "board",
@@ -282,21 +282,21 @@ describe("TrackerVoicePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "assist" }));
     fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
     await screen.findByText("Microphone đã kết nối");
-    act(() => provider.emit("Seat 8 ace hearts ace spades", { final: true, id: "private-hole-8" }));
+    act(() => provider.emit("ace hearts ace spades", { final: true, id: "private-hole-8" }));
 
     expect(await screen.findByTestId("voice-private-hole-cards-proposal")).toBeInTheDocument();
     expect(screen.getByText("A♥")).toBeInTheDocument();
     expect(screen.getByText("A♠")).toBeInTheDocument();
-    expect(screen.queryByText("Seat 8 ace hearts ace spades")).not.toBeInTheDocument();
+    expect(screen.queryByText("ace hearts ace spades")).not.toBeInTheDocument();
     expect(snapshots.some((snapshot) => (
-      snapshot.finalTranscript === "Seat 8 ace hearts ace spades"
+      snapshot.finalTranscript === "ace hearts ace spades"
       || JSON.stringify(snapshot.proposal).includes("ace hearts")
     ))).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Xác nhận bài Ghế 8" }));
     await waitFor(() => expect(commitHoleCardsOverride).toHaveBeenCalledOnce());
     expect(commitHoleCardsOverride.mock.calls[0][0]).toMatchObject({
-      finalTranscript: "Seat 8 ace hearts ace spades",
+      finalTranscript: "ace hearts ace spades",
       canonicalRequest: {
         intentDomain: "hole_cards",
         payload: { seatNumber: 8, expectedPlayerId: "player-eight", expectedEntryNumber: 2, cards: ["Ah", "As"] },

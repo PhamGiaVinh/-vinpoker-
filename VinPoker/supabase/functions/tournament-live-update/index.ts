@@ -19,6 +19,7 @@ import {
   voiceCanonicalRequestsMatch,
 } from "../../../src/lib/trackerVoice/canonicalRequest.ts";
 import { routeTrackerVoiceIntent } from "../../../src/lib/trackerVoice/intentRouter.ts";
+import { resolveNextVoiceHoleCardsSeatNumber } from "../../../src/lib/trackerVoice/holeCardsParser.ts";
 import { computeVoiceFinishSettlement } from "../_shared/trackerSettlement/finishAssist.ts";
 
 const corsHeaders = {
@@ -662,6 +663,13 @@ Deno.serve(async (req) => {
           let actionAmount = 0;
           if (canonicalAction === "call") {
             actionAmount = Math.min(actor.stack, Math.max(0, actor.highestBet - actor.currentBet));
+            const callToTotal = actor.currentBet + actionAmount;
+            if (command.amount && command.amount.value !== callToTotal) {
+              return validationError(
+                "VOICE_CALL_TOTAL_MISMATCH",
+                `Tổng call phải là ${callToTotal.toLocaleString("vi-VN")}.`,
+              );
+            }
           } else if (canonicalAction === "all_in") {
             actionAmount = actor.stack;
           } else if (canonicalAction === "bet" || canonicalAction === "raise") {
@@ -825,15 +833,52 @@ Deno.serve(async (req) => {
             "Voice bài tẩy chỉ mở khi server xác nhận all-in runout; Showdown vẫn nhập tay.",
           );
         }
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        const supabaseUrl = Deno.env.get("SUPABASE_URL");
+        if (!serviceKey || !supabaseUrl) throw new Error("tracker_voice_service_not_configured");
+        const service = createClient(supabaseUrl, serviceKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const { data: holeCardRows, error: holeCardError } = await service
+          .from("hand_players")
+          .select("player_id,hole_cards")
+          .eq("hand_id", hand_id);
+        if (holeCardError) {
+          return validationError("VOICE_HOLE_CARDS_STATE_UNAVAILABLE", "Không thể xác minh thứ tự lật bài.");
+        }
+        const persistedCardsByPlayer = new Map(
+          (holeCardRows ?? []).map((row) => [
+            String(row.player_id),
+            Array.isArray(row.hole_cards) && row.hole_cards.length === 2,
+          ]),
+        );
+        const runtime = reduceHand(snapshot.players, snapshot.actions, snapshot.button_seat);
+        const runtimeByPlayer = new Map(runtime.players.map((player) => [player.player_id, player]));
+        const seatByPlayer = new Map(snapshot.players.map((player) => [player.player_id, player.seat_number]));
+        const impliedHoleCardsSeatNumber = resolveNextVoiceHoleCardsSeatNumber({
+          players: snapshot.players.map((player) => ({
+            playerId: player.player_id,
+            seatNumber: player.seat_number,
+            isFolded: runtimeByPlayer.get(player.player_id)?.is_folded ?? true,
+            hasCards: persistedCardsByPlayer.get(player.player_id) ?? false,
+          })),
+          actions: snapshot.actions.map((action) => ({
+            street: action.street,
+            actionType: action.action_type,
+            actionOrder: action.action_order,
+            seatNumber: seatByPlayer.get(action.player_id) ?? 0,
+          })),
+          buttonSeat: snapshot.button_seat,
+        });
         const route = routeTrackerVoiceIntent(final_transcript, expectedWorkflowState, {
           spokenAmountUnit: snapshot.spoken_amount_unit,
           amountUnitConfirmed: snapshot.amount_unit_confirmed,
+          impliedHoleCardsSeatNumber,
         });
         if (!route.ok || route.intentDomain !== "hole_cards") {
           return validationError("VOICE_HOLE_CARDS_GRAMMAR_INVALID", "Cần đọc đúng: Seat/Ghế N + đúng hai lá bài.");
         }
         const target = snapshot.players.find((player) => player.seat_number === route.command.seatNumber);
-        const runtime = reduceHand(snapshot.players, snapshot.actions, snapshot.button_seat);
         const runtimePlayer = runtime.players.find((player) => player.seat_number === route.command.seatNumber);
         if (!target || !runtimePlayer) {
           return validationError("HOLE_CARDS_SEAT_NOT_FOUND", "Ghế được đọc không có người chơi trong hand.");
@@ -854,12 +899,6 @@ Deno.serve(async (req) => {
         if (!voiceCanonicalRequestsMatch(voice_request, canonicalRequest)) {
           return validationError("intent_mismatch", "Đề xuất bài tẩy không còn khớp trạng thái server.");
         }
-        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-        const supabaseUrl = Deno.env.get("SUPABASE_URL");
-        if (!serviceKey || !supabaseUrl) throw new Error("tracker_voice_service_not_configured");
-        const service = createClient(supabaseUrl, serviceKey, {
-          auth: { persistSession: false, autoRefreshToken: false },
-        });
         result = await service.rpc("commit_tracker_voice_hole_cards_v0", {
           p_actor_user_id: user.id,
           p_tournament_id: tournament_id,

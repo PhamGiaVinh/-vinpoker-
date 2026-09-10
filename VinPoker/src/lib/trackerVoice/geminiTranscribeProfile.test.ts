@@ -38,6 +38,9 @@ describe("Gemini Transcribe profile", () => {
       "raise 1000",
       "seat four raise 1000",
       "cược hai trăm nghìn",
+      "call all in",
+      "K bích K cơ",
+      "flop K bích 9 cơ 5 rô",
     ]));
     expect(TRACKER_VOICE_GEMINI_TRANSCRIBE_VOCABULARY.length).toBeLessThan(100);
   });

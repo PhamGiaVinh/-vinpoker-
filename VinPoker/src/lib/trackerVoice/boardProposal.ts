@@ -18,8 +18,10 @@ export function resolveVoiceBoardProposal(
   if (context.readOnly) return reject("read_only", "Phiên này chỉ được xem.");
   if (context.syncBlocked) return reject("sync_blocked", "Trạng thái bàn chưa đồng bộ.");
   if (context.correctionPending) return reject("correction_pending", "Đang chờ Floor sửa action trước đó.");
-  const expectedWorkflowState = command.street === "flop" ? "enter_flop"
-    : command.street === "turn" ? "enter_turn" : "enter_river";
+  const expectedWorkflowState = context.workflowState === "runout_reveal"
+    ? "runout_reveal"
+    : command.street === "flop" ? "enter_flop"
+      : command.street === "turn" ? "enter_turn" : "enter_river";
   if (context.workflowState !== expectedWorkflowState) {
     return reject("wrong_workflow", "Chưa tới bước nhập Board này.");
   }

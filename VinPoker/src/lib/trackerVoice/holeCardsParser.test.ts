@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { routeTrackerVoiceIntent } from "./intentRouter";
-import { looksLikePrivateHoleCardsTranscript, parseVoiceHoleCardsCommand } from "./holeCardsParser";
+import {
+  looksLikePrivateHoleCardsTranscript,
+  parseVoiceHoleCardsCommand,
+  resolveNextVoiceHoleCardsSeatNumber,
+} from "./holeCardsParser";
 import { resolveVoiceHoleCardsProposal } from "./holeCardsProposal";
 import type { VoiceHoleCardsProposalContext } from "./types";
 
@@ -30,8 +34,10 @@ describe("Voice Hole Cards grammar", () => {
     ["Ghế tám mười rô chín rô", 8, ["Td", "9d"]],
     ["Seat three king diamonds king spades", 3, ["Kd", "Ks"]],
     ["Seat nine ten diamonds nine diamonds", 9, ["Td", "9d"]],
+    ["K big K cơ", 8, ["Ks", "Kh"]],
+    ["9 bích 9 rô", 8, ["9s", "9d"]],
   ])("accepts one exact private card sentence: %s", (raw, seatNumber, cards) => {
-    expect(parseVoiceHoleCardsCommand(raw)).toMatchObject({ seatNumber, cards });
+    expect(parseVoiceHoleCardsCommand(raw, 8)).toMatchObject({ seatNumber, cards });
   });
 
   it.each([
@@ -62,7 +68,30 @@ describe("Voice Hole Cards grammar", () => {
       code: "showdown_hole_cards_deferred_muck_authority",
     });
     expect(routeTrackerVoiceIntent("fold", "runout_reveal")).toEqual({ ok: false, code: "wrong_workflow" });
-    expect(routeTrackerVoiceIntent("flop ace hearts five spades two diamonds", "runout_reveal")).toEqual({ ok: false, code: "wrong_workflow" });
+    expect(routeTrackerVoiceIntent("flop ace hearts five spades two diamonds", "runout_reveal")).toMatchObject({
+      ok: true,
+      intentDomain: "board",
+    });
+  });
+
+  it("derives only the next unfilled all-in reveal seat from canonical order", () => {
+    const args = {
+      players: [
+        { playerId: "utg", seatNumber: 4, isFolded: false, hasCards: false },
+        { playerId: "button", seatNumber: 1, isFolded: false, hasCards: false },
+        { playerId: "folded", seatNumber: 5, isFolded: true, hasCards: false },
+      ],
+      actions: [
+        { street: "preflop", actionType: "all_in", actionOrder: 3, seatNumber: 4 },
+        { street: "preflop", actionType: "call", actionOrder: 4, seatNumber: 1 },
+      ],
+      buttonSeat: 1,
+    };
+    expect(resolveNextVoiceHoleCardsSeatNumber(args)).toBe(4);
+    expect(resolveNextVoiceHoleCardsSeatNumber({
+      ...args,
+      players: args.players.map((player) => player.playerId === "utg" ? { ...player, hasCards: true } : player),
+    })).toBe(1);
   });
 
   it("keeps local drafts private and refuses any collision or replacement", () => {
@@ -82,6 +111,7 @@ describe("Voice Hole Cards grammar", () => {
   it("uses the broader privacy guard only at the diagnostic boundary", () => {
     expect(looksLikePrivateHoleCardsTranscript("Fit 8 Át cơ Át bích")).toBe(true);
     expect(looksLikePrivateHoleCardsTranscript("Seat 8 ace hearts ace spades all in")).toBe(true);
+    expect(looksLikePrivateHoleCardsTranscript("K big K cơ")).toBe(true);
     expect(looksLikePrivateHoleCardsTranscript("seat 8 call")).toBe(false);
   });
 });

@@ -116,8 +116,10 @@ describe("parseVoiceCommand", () => {
     ["raise 120 nghìn", "raise_to"],
     ["cược đến 2 triệu", "bet_to"],
     ["tất tay", "all_in"],
+    ["call all-in", "all_in"],
     ["báo sai action", "report_wrong_action"],
     ["gọi floor", "call_floor"],
+    ["call floor", "call_floor"],
     ["seat number three fold", "fold"],
     ["seat five all in", "all_in"],
     ["ghế số ba raise 20.000", "raise_to"],
@@ -174,9 +176,16 @@ describe("parseVoiceCommand", () => {
     }
   });
 
-  it("does not let a spoken call amount override the engine-derived call amount", () => {
-    expect(parseVoiceCommand("seat four call 30k")).toBeNull();
-    expect(parseVoiceCommand("seat four call 11.300")).toBeNull();
+  it("parses an optional call-to total without changing server-derived call semantics", () => {
+    expect(parseVoiceCommand("seat four call 500 nghìn")).toMatchObject({
+      kind: "call",
+      spokenSeatNumber: 4,
+      amount: { value: 500_000, ambiguous: false },
+    });
+    expect(parseVoiceCommand("seat four call 500")).toMatchObject({
+      kind: "call",
+      amount: { value: 500, ambiguous: true },
+    });
   });
 
   it("rejects partial/noise text", () => {
@@ -271,6 +280,37 @@ describe("resolveVoiceProposal", () => {
       ok: false,
       code: "VOICE_SEAT_REQUIRED",
     });
+  });
+
+  it("accepts a spoken call-to total for posted blinds and rejects a mismatched total", () => {
+    const smallBlindFacing500k = {
+      ...READY,
+      actor: { ...READY.actor!, seatNumber: 1, currentStack: 1_950_000, currentBet: 50_000 },
+      actorView: { ...READY.actorView!, toCall: 450_000 },
+    };
+    expect(resolveVoiceProposal(parseVoiceCommand("seat one call 500 nghìn"), smallBlindFacing500k)).toMatchObject({
+      ok: true,
+      canonicalAction: "call",
+      expectedActionAmount: 450_000,
+      betToTotal: 500_000,
+    });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat one call 400 nghìn"), smallBlindFacing500k)).toMatchObject({
+      ok: false,
+      code: "amount_out_of_range",
+    });
+  });
+
+  it("maps call all-in to the existing all-in legality path", () => {
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three call all-in"), READY)).toMatchObject({
+      ok: true,
+      canonicalAction: "all_in",
+      expectedActionAmount: 10_000,
+      betToTotal: 11_000,
+    });
+    expect(resolveVoiceProposal(parseVoiceCommand("seat three call all-in"), {
+      ...READY,
+      actorView: { ...READY.actorView!, legal: { ...READY.actorView!.legal, allIn: false } },
+    })).toMatchObject({ ok: false, code: "illegal_action" });
   });
 
   it("allows a short all-in raise but rejects an undersized non-all-in raise", () => {
@@ -391,6 +431,22 @@ describe("resolveVoiceBoardProposal", () => {
       ok: true,
       expectedExistingBoardCount: 0,
       cumulativeCards: ["Ah", "5s", "2d"],
+    });
+  });
+
+  it("allows cumulative Board confirmation during an all-in runout", () => {
+    const command = parseVoiceBoardCommand("flop K bích 9 cơ 5 rô");
+    expect(resolveVoiceBoardProposal(command!, {
+      ...READY,
+      street: "showdown",
+      workflowState: "runout_reveal",
+      actionStepActive: false,
+      persistedBoardCards: [],
+    })).toMatchObject({
+      ok: true,
+      expectedWorkflowState: "runout_reveal",
+      expectedExistingBoardCount: 0,
+      cumulativeCards: ["Ks", "9h", "5d"],
     });
   });
 

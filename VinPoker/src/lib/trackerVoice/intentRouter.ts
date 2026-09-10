@@ -5,6 +5,10 @@ import { parseVoiceHoleCardsCommand } from "./holeCardsParser.ts";
 import { parseVoiceFinishCommand } from "./finishParser.ts";
 import type { ParsedVoiceBoardCommand, ParsedVoiceFinishCommand, ParsedVoiceHoleCardsCommand } from "./types.ts";
 
+export interface TrackerVoiceIntentRouteOptions extends TrackerVoiceAmountOptions {
+  impliedHoleCardsSeatNumber?: number | null;
+}
+
 export type TrackerVoiceIntentRoute =
   | { ok: true; intentDomain: "action"; command: NonNullable<ReturnType<typeof parseTrackerVoiceCommandCore>> }
   | { ok: true; intentDomain: "board"; command: ParsedVoiceBoardCommand }
@@ -26,11 +30,11 @@ export type TrackerVoiceIntentRoute =
 export function routeTrackerVoiceIntent(
   rawTranscript: string,
   workflowState: TrackerWorkflowState,
-  amountOptions: TrackerVoiceAmountOptions = {},
+  options: TrackerVoiceIntentRouteOptions = {},
 ): TrackerVoiceIntentRoute {
-  const action = parseTrackerVoiceCommandCore(rawTranscript, amountOptions);
+  const action = parseTrackerVoiceCommandCore(rawTranscript, options);
   const board = parseVoiceBoardCommand(rawTranscript);
-  const holeCards = parseVoiceHoleCardsCommand(rawTranscript);
+  const holeCards = parseVoiceHoleCardsCommand(rawTranscript, options.impliedHoleCardsSeatNumber);
   const finish = parseVoiceFinishCommand(rawTranscript);
   const candidates = [
     ...(action ? [{ intentDomain: "action" as const, command: action }] : []),
@@ -46,7 +50,8 @@ export function routeTrackerVoiceIntent(
     || workflowState === "turn_action"
     || workflowState === "river_action";
   const boardAllowed = (selected.intentDomain === "board" && (
-    (selected.command.street === "flop" && workflowState === "enter_flop")
+    workflowState === "runout_reveal"
+    || (selected.command.street === "flop" && workflowState === "enter_flop")
     || (selected.command.street === "turn" && workflowState === "enter_turn")
     || (selected.command.street === "river" && workflowState === "enter_river")
   ));
