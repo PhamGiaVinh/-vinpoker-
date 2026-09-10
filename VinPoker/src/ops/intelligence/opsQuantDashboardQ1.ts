@@ -10,6 +10,29 @@ import type { OpsRegistrationEventQ0, OpsRegistrationPaceQ0, OpsSepayReadStateQ0
 export type QuantTruthClass = "OBSERVED" | "DERIVED" | "HYPOTHESIS" | "UNAVAILABLE";
 export type QuantPressureStatus = "PRESSURE" | "WATCH" | "ON_TRACK" | "PLANNING_SCENARIO" | "UNAVAILABLE";
 
+export interface QuantDraftQ1 {
+  requestedEventId: string | null;
+  seatsPerTable: string;
+  customEntries: string;
+  customGtd: string;
+  customPeakConcurrentPlayers: string;
+}
+
+export type QuantSourceReceiptsQ1 = Record<string, { asOf: string | null; observedAt: string }>;
+
+export function parseQuantAssumption(raw: string, positive = false): { value: number | null; invalid: boolean } {
+  if (!raw.trim()) return { value: null, invalid: false };
+  const value = Number(raw);
+  const valid = Number.isSafeInteger(value) && value >= (positive ? 1 : 0);
+  return { value: valid ? value : null, invalid: !valid };
+}
+
+export function customPeakError(entries: number | null, peak: number | null): string | null {
+  return entries !== null && peak !== null && peak > entries
+    ? "Người đồng thời cao điểm không thể lớn hơn tổng Custom entries."
+    : null;
+}
+
 export interface QuantValueQ1 {
   readonly value: number | null;
   readonly truth: QuantTruthClass;
@@ -48,6 +71,7 @@ export interface QuantScenarioQ1 {
   readonly scenarioId: "conservative" | "base" | "upside" | "baseline" | "custom";
   readonly label: string;
   readonly entries: number | null;
+  readonly peakConcurrentPlayers: number | null;
   readonly gtd: number | null;
   readonly requiredTables: number | null;
   readonly prizePool: number | null;
@@ -73,8 +97,8 @@ export interface QuantPressureRowQ1 {
 }
 
 export interface QuantCapacityQ1 {
-  readonly eventAllocatedTableCount: number;
-  readonly eventAssignedDealerCount: number;
+  readonly eventAllocatedTableCount: number | null;
+  readonly eventAssignedDealerCount: number | null;
   readonly clubOpenTableCount: number | null;
   readonly clubConfiguredTableCount: number | null;
   readonly clubDealersOnDutyCount: number | null;
@@ -143,13 +167,15 @@ export interface OpsQuantDashboardQ1Input {
   readonly seatsPerTable: number | null;
   readonly customEntries: number | null;
   readonly customGtd: number | null;
+  readonly customPeakConcurrentPlayers?: number | null;
+  readonly customGtdInvalid?: boolean;
   readonly forecastOptions?: ForecastOptions;
 }
 
 const HISTORY_REASON = "HISTORY_FINALITY_UNVERIFIED";
 
 export function buildOpsQuantDashboardQ1(input: OpsQuantDashboardQ1Input): OpsQuantDashboardQ1Model {
-  const eventOptions = Object.freeze([...(input.registration?.events ?? [])].sort(eventSort));
+  const eventOptions = Object.freeze([...(input.registrationAvailability === "unavailable" ? [] : input.registration?.events ?? [])].sort(eventSort));
   const selectedRegistration = selectQuantEvent(eventOptions, input.registration?.asOf ?? null, input.operations.runningTournamentIds, input.requestedEventId);
   const selectedSeries = selectedRegistration ? input.seriesEvents.find((event) => event.event_id === selectedRegistration.eventId) ?? null : null;
   const selectedEvent = selectedRegistration ? Object.freeze({
@@ -164,10 +190,10 @@ export function buildOpsQuantDashboardQ1(input: OpsQuantDashboardQ1Input): OpsQu
   const forecast = buildForecast(input.seriesEvents, eventOptions, selectedEvent, input.forecastOptions);
   const capacity = buildCapacity(input.operations, selectedEvent?.eventId ?? null);
   const economics = buildEconomics(selectedSeries, input.truePrizePool, input.prizePoolAvailability);
-  const scenarios = buildScenarios(forecast, economics, capacity, selectedEvent?.isRunning ?? false, input.seatsPerTable, input.customEntries, input.customGtd);
+  const scenarios = selectedEvent ? buildScenarios(forecast, economics, capacity, selectedEvent.isRunning, input.seatsPerTable, input.customEntries, input.customGtd, input.customPeakConcurrentPlayers ?? null, input.customGtdInvalid ?? false) : [];
   const pressureRows = buildPressureRows(eventOptions, input.seriesEvents, input.operations.runningTournamentIds, input.forecastOptions);
   const kpis = buildKpis(input, selectedEvent, forecast, capacity, economics);
-  const alerts = buildAlerts(selectedEvent, forecast, scenarios, input.operations.rows, input.registrationAvailability, input.sepay);
+  const alerts = buildAlerts(selectedEvent, forecast, scenarios, input.operations.availability === "exact" ? input.operations.rows.filter((row) => row.sourceAvailability === "exact") : [], input.registrationAvailability, input.sepay);
   return Object.freeze({
     selectedEvent,
     eventOptions,
@@ -196,8 +222,7 @@ export function selectQuantEvent(
   requestedEventId: string | null,
 ): OpsRegistrationEventQ0 | null {
   if (requestedEventId) {
-    const requested = events.find((event) => event.eventId === requestedEventId);
-    if (requested) return requested;
+    return events.find((event) => event.eventId === requestedEventId) ?? null;
   }
   const origin = asOf && Number.isFinite(Date.parse(asOf)) ? Date.parse(asOf) : Number.NaN;
   const futureStates = new Set(["registering", "upcoming", "active", "scheduled"]);
@@ -238,7 +263,7 @@ export function explainQuantArtifact(model: OpsQuantDashboardQ1Model, key: Quant
   }
   if (key === "band") return Object.freeze({
     title: "P10, Center và P90 khác nhau thế nào?",
-    body: `P10 ${model.forecast.low ?? "—"} · Center ${model.forecast.center ?? "—"} · P90 ${model.forecast.high ?? "—"}. Các điểm chỉ nằm ở event horizon; hệ thống không vẽ đường tăng trưởng trung gian giả.`,
+    body: `P10 ${model.forecast.low ?? "—"} · Center ${model.forecast.center ?? "—"} · P90 ${model.forecast.high ?? "—"}. Đây là tổng entries cuối giải, không phải lượng đăng ký tại giờ mở giải. Chưa có mốc đích xác minh để đặt dự báo trên trục giờ.`,
     evidenceIds: Object.freeze(["turnout-forecast", "registration-q0"]),
   });
   if (key === "baseline") return Object.freeze({
@@ -333,12 +358,13 @@ function buildEconomics(series: SeriesEvent | null, truePrizePool: TruePrizePool
 
 function buildCapacity(operations: OpsLiveOperationInputV1, eventId: string | null): QuantCapacityQ1 {
   const rows = eventId ? operations.rows.filter((row) => row.tournamentId === eventId) : [];
+  const exact = eventId !== null && operations.availability === "exact" && rows.every((row) => row.sourceAvailability === "exact");
   return Object.freeze({
-    eventAllocatedTableCount: rows.length,
-    eventAssignedDealerCount: rows.filter(hasActualDealerAssignment).length,
-    clubOpenTableCount: operations.openTableCount,
-    clubConfiguredTableCount: operations.configuredTableCount,
-    clubDealersOnDutyCount: operations.dealersOnDutyCount,
+    eventAllocatedTableCount: exact ? rows.length : null,
+    eventAssignedDealerCount: exact ? rows.filter(hasActualDealerAssignment).length : null,
+    clubOpenTableCount: operations.availability === "exact" ? operations.openTableCount : null,
+    clubConfiguredTableCount: operations.availability === "exact" ? operations.configuredTableCount : null,
+    clubDealersOnDutyCount: operations.availability === "exact" ? operations.dealersOnDutyCount : null,
   });
 }
 
@@ -350,14 +376,16 @@ function buildScenarios(
   seatsPerTable: number | null,
   customEntries: number | null,
   customGtd: number | null,
+  customPeakConcurrentPlayers: number | null,
+  customGtdInvalid: boolean,
 ): QuantScenarioQ1[] {
   const definitions: Array<[QuantScenarioQ1["scenarioId"], string, number | null, number | null]> = forecast.status === "full_model"
     ? [["conservative", "Conservative · P10", forecast.low, economics.gtd.value], ["base", "Base · Center", forecast.center, economics.gtd.value], ["upside", "Upside · P90", forecast.high, economics.gtd.value]]
     : forecast.status === "baseline_only"
       ? [["baseline", "Baseline reference", forecast.baseline, economics.gtd.value]]
       : [];
-  if (customEntries !== null && customEntries > 0) definitions.push(["custom", "Custom · Owner override", customEntries, customGtd && customGtd > 0 ? customGtd : economics.gtd.value]);
-  return definitions.map(([scenarioId, label, entries, gtd]) => scenario(scenarioId, label, entries, gtd, economics.prizeContributionPerEntry.value, seatsPerTable, capacity, isRunning));
+  if (customEntries !== null || customGtd !== null || customPeakConcurrentPlayers !== null || customGtdInvalid) definitions.push(["custom", "Custom · Owner override", customEntries, customGtdInvalid ? null : customGtd ?? economics.gtd.value]);
+  return definitions.map(([scenarioId, label, entries, gtd]) => scenario(scenarioId, label, entries, gtd, economics.prizeContributionPerEntry.value, seatsPerTable, capacity, isRunning, scenarioId === "custom" ? customPeakConcurrentPlayers : null));
 }
 
 function scenario(
@@ -369,15 +397,17 @@ function scenario(
   seatsPerTable: number | null,
   capacity: QuantCapacityQ1,
   isRunning: boolean,
+  peakConcurrentPlayers: number | null,
 ): QuantScenarioQ1 {
   const prizePool = entries !== null && contribution !== null ? entries * contribution : null;
-  const requiredTables = entries !== null && seatsPerTable !== null && seatsPerTable > 0 ? Math.ceil(entries / seatsPerTable) : null;
-  const additionalTableNeed = requiredTables === null ? null : Math.max(0, requiredTables - capacity.eventAllocatedTableCount);
-  const additionalDealerNeed = requiredTables === null ? null : Math.max(0, requiredTables - capacity.eventAssignedDealerCount);
+  const requiredTables = customPeakError(entries, peakConcurrentPlayers) === null && peakConcurrentPlayers !== null && seatsPerTable !== null && seatsPerTable > 0 ? Math.ceil(peakConcurrentPlayers / seatsPerTable) : null;
+  const additionalTableNeed = requiredTables === null || capacity.eventAllocatedTableCount === null ? null : Math.max(0, requiredTables - capacity.eventAllocatedTableCount);
+  const additionalDealerNeed = requiredTables === null || capacity.eventAssignedDealerCount === null ? null : Math.max(0, requiredTables - capacity.eventAssignedDealerCount);
   return Object.freeze({
     scenarioId,
     label,
     entries,
+    peakConcurrentPlayers,
     gtd,
     requiredTables,
     prizePool,
@@ -386,12 +416,13 @@ function scenario(
     additionalTableNeed,
     additionalDealerNeed,
     capacityStatus: classifyCapacity(requiredTables, capacity, isRunning),
-    truth: entries === null ? "UNAVAILABLE" : "HYPOTHESIS",
+    truth: entries === null && peakConcurrentPlayers === null ? "UNAVAILABLE" : "HYPOTHESIS",
   });
 }
 
 function classifyCapacity(requiredTables: number | null, capacity: QuantCapacityQ1, isRunning: boolean): QuantPressureStatus {
   if (requiredTables === null) return "UNAVAILABLE";
+  if (capacity.eventAllocatedTableCount === null || capacity.eventAssignedDealerCount === null || capacity.clubConfiguredTableCount === null) return "UNAVAILABLE";
   if (!isRunning) return "PLANNING_SCENARIO";
   if (capacity.clubConfiguredTableCount !== null && requiredTables > capacity.clubConfiguredTableCount) return "PRESSURE";
   if (requiredTables > capacity.eventAllocatedTableCount) return "WATCH";
@@ -427,8 +458,8 @@ function buildKpis(
     kpi("unique", "Unique players", selected?.registration.uniquePlayers ?? null, null, selected ? "OBSERVED" : "UNAVAILABLE", "Q0 unique"),
     kpi("velocity", "Velocity / 1h", selected?.registration.last1h ?? null, "/h", selected ? "OBSERVED" : "UNAVAILABLE", "Observed window"),
     kpi("forecast", "Forecast center", forecast.center, null, forecast.truth, forecast.status === "full_model" ? `N=${forecast.sampleSize}` : forecast.reasonCode),
-    kpi("tables", "Event / club tables", capacity.eventAllocatedTableCount, ` / ${capacity.clubConfiguredTableCount ?? "—"}`, selected ? "DERIVED" : "UNAVAILABLE", "Exact event allocation"),
-    kpi("dealers", "Event dealer coverage", capacity.eventAssignedDealerCount, null, selected ? "DERIVED" : "UNAVAILABLE", "Assigned to selected event"),
+    kpi("tables", "Event / club tables", capacity.eventAllocatedTableCount, ` / ${capacity.clubConfiguredTableCount ?? "—"}`, capacity.eventAllocatedTableCount === null ? "UNAVAILABLE" : "DERIVED", "Exact event allocation"),
+    kpi("dealers", "Event dealer coverage", capacity.eventAssignedDealerCount, null, capacity.eventAssignedDealerCount === null ? "UNAVAILABLE" : "DERIVED", "Table coverage, not shift roster"),
     kpi("sepay", "SePay actionable", actionable, " tx", actionable === null ? "UNAVAILABLE" : "DERIVED", "Q0 aggregate"),
     kpi("gtd-gap", "Current GTD gap", economics.currentOverlay.value, " ₫", economics.currentOverlay.truth, economics.currentOverlay.reasonCode ?? "Confirmed pool"),
   ];

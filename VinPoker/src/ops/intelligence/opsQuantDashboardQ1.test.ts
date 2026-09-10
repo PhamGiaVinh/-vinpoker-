@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
 import type { OpsLiveOperationInputV1 } from "./opsIntelligenceReadModel";
 import type { OpsRegistrationEventQ0, OpsRegistrationPaceQ0 } from "./opsQuantDataHealthQ0";
-import { buildOpsQuantDashboardQ1, classifyGtdPressure, explainQuantArtifact, propagateQuantTruth, selectQuantEvent } from "./opsQuantDashboardQ1";
+import { buildOpsQuantDashboardQ1, classifyGtdPressure, explainQuantArtifact, parseQuantAssumption, propagateQuantTruth, selectQuantEvent } from "./opsQuantDashboardQ1";
 import { parsePrizePool } from "./opsQuantDashboardQ1Queries";
 
 const TARGET_ID = "00000000-0000-4000-8000-000000000099";
@@ -14,6 +14,7 @@ describe("Ops Quant Dashboard Q1", () => {
     expect(selectQuantEvent([later, earlier], "2026-06-01T00:00:00.000Z", [], TARGET_ID)?.eventId).toBe(TARGET_ID);
     expect(selectQuantEvent([later, earlier], "2026-06-01T00:00:00.000Z", [], null)?.eventId).toBe(earlier.eventId);
     expect(selectQuantEvent([later], "2026-07-01T00:00:00.000Z", [TARGET_ID], null)?.eventId).toBe(TARGET_ID);
+    expect(selectQuantEvent([later], "2026-06-01T00:00:00.000Z", [], "removed-event")).toBeNull();
   });
 
   it("propagates unavailable before hypothesis before derived", () => {
@@ -43,7 +44,7 @@ describe("Ops Quant Dashboard Q1", () => {
   it("compares demand with exact event allocation instead of club-wide context", () => {
     const registration = registrationRead([registrationEvent(TARGET_ID, "2026-06-20T12:00:00.000Z")]);
     const operations = operationInput(true);
-    const model = buildOpsQuantDashboardQ1({ ...baseInput(registration, [seriesEvent(TARGET_ID, "2026-06-20T12:00:00.000Z", 200)]), operations, seatsPerTable: 9, customEntries: 36 });
+    const model = buildOpsQuantDashboardQ1({ ...baseInput(registration, [seriesEvent(TARGET_ID, "2026-06-20T12:00:00.000Z", 200)]), operations, seatsPerTable: 9, customEntries: 200, customPeakConcurrentPlayers: 36 });
     expect(model.capacity.eventAllocatedTableCount).toBe(2);
     expect(model.capacity.eventAssignedDealerCount).toBe(1);
     expect(model.capacity.clubConfiguredTableCount).toBe(40);
@@ -57,13 +58,84 @@ describe("Ops Quant Dashboard Q1", () => {
   it("keeps upcoming capacity as planning and standard scenarios isolated from custom inputs", () => {
     const registration = registrationRead([registrationEvent(TARGET_ID, "2026-06-20T12:00:00.000Z")]);
     const history = Array.from({ length: 12 }, (_, index) => seriesEvent(`00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`, `2025-${String(index + 1).padStart(2, "0")}-01T12:00:00.000Z`, 100 + index));
-    const model = buildOpsQuantDashboardQ1({ ...baseInput(registration, [...history, seriesEvent(TARGET_ID, "2026-06-20T12:00:00.000Z", 0)]), seatsPerTable: 9, customEntries: 500, customGtd: 9_000_000_000 });
+    const model = buildOpsQuantDashboardQ1({ ...baseInput(registration, [...history, seriesEvent(TARGET_ID, "2026-06-20T12:00:00.000Z", 0)]), seatsPerTable: 9, customEntries: 500, customGtd: 9_000_000_000, customPeakConcurrentPlayers: 80 });
     const base = model.scenarios.find((scenario) => scenario.scenarioId === "base");
     const custom = model.scenarios.find((scenario) => scenario.scenarioId === "custom");
     expect(base?.gtd).toBe(2_000_000_000);
     expect(custom?.gtd).toBe(9_000_000_000);
     expect(base?.entries).not.toBe(500);
+    expect(base?.requiredTables).toBeNull();
     expect(custom?.capacityStatus).toBe("PLANNING_SCENARIO");
+  });
+
+  it.each(["unavailable", "partial", "stale"] as const)("keeps capacity unknown and suppresses dealer alerts for %s operations", (availability) => {
+    const registration = registrationRead([registrationEvent(TARGET_ID, "2026-06-20T12:00:00.000Z")]);
+    const model = buildOpsQuantDashboardQ1({ ...baseInput(registration, []), operations: { ...operationInput(true), availability }, customEntries: 200, customPeakConcurrentPlayers: 80, seatsPerTable: 8 });
+    expect(model.capacity.eventAllocatedTableCount).toBeNull();
+    expect(model.capacity.eventAssignedDealerCount).toBeNull();
+    expect(model.kpis.find((item) => item.metricId === "tables")?.truth).toBe("UNAVAILABLE");
+    expect(model.alerts.some((item) => item.alertId.startsWith("dealer-"))).toBe(false);
+    const custom = model.scenarios.find((item) => item.scenarioId === "custom");
+    expect(custom?.requiredTables).toBe(10);
+    expect(custom?.additionalTableNeed).toBeNull();
+    expect(custom?.additionalDealerNeed).toBeNull();
+    expect(custom?.capacityStatus).toBe("UNAVAILABLE");
+  });
+
+  it("only counts exact empty allocation as zero, not absent selection", () => {
+    const registration = registrationRead([registrationEvent(TARGET_ID, "2026-06-20T12:00:00.000Z")]);
+    const input = { ...baseInput(registration, []), operations: { ...operationInput(false), rows: [] } };
+    expect(buildOpsQuantDashboardQ1(input).capacity.eventAllocatedTableCount).toBe(0);
+    expect(buildOpsQuantDashboardQ1({ ...input, requestedEventId: "missing" }).capacity.eventAllocatedTableCount).toBeNull();
+    expect(buildOpsQuantDashboardQ1({ ...input, registrationAvailability: "unavailable" }).selectedEvent).toBeNull();
+  });
+
+  it("never turns 200 total entries into 25 tables without a peak assumption", () => {
+    const input = { ...baseInput(registrationRead([registrationEvent(TARGET_ID, "2026-06-20T12:00:00.000Z")]), []), seatsPerTable: 8, customEntries: 200 };
+    const missingPeak = buildOpsQuantDashboardQ1(input).scenarios.find((item) => item.scenarioId === "custom");
+    expect(missingPeak?.requiredTables).toBeNull();
+    const custom = buildOpsQuantDashboardQ1({ ...input, customPeakConcurrentPlayers: 80 }).scenarios.find((item) => item.scenarioId === "custom");
+    expect(custom?.requiredTables).toBe(10);
+    expect(custom?.prizePool).toBeNull();
+  });
+
+  it.each([
+    { entries: null, peak: 80, tables: 10 },
+    { entries: 200, peak: 80, tables: 10 },
+    { entries: 50, peak: 80, tables: null },
+    { entries: 80, peak: 80, tables: 10 },
+    { entries: 0, peak: 0, tables: 0 },
+  ])("checks combined Custom capacity for entries=$entries peak=$peak", ({ entries, peak, tables }) => {
+    const input = { ...baseInput(registrationRead([registrationEvent(TARGET_ID, "2026-06-20T12:00:00.000Z")]), [seriesEvent(TARGET_ID, "2026-06-20T12:00:00.000Z", 0)]), customEntries: entries, customPeakConcurrentPlayers: peak, seatsPerTable: 8 };
+    const custom = buildOpsQuantDashboardQ1(input).scenarios.find((item) => item.scenarioId === "custom");
+    expect(custom?.requiredTables).toBe(tables);
+    expect(custom?.entries).toBe(entries);
+    expect(custom?.peakConcurrentPlayers).toBe(peak);
+    expect(custom?.prizePool).toBe(entries === null ? null : entries * 2_000_000);
+    if (tables === null) {
+      expect(custom?.additionalTableNeed).toBeNull();
+      expect(custom?.additionalDealerNeed).toBeNull();
+      expect(custom?.capacityStatus).toBe("UNAVAILABLE");
+    } else {
+      expect(custom?.truth).toBe("HYPOTHESIS");
+      expect(custom?.capacityStatus).toBe("PLANNING_SCENARIO");
+    }
+  });
+
+  it("preserves Custom zero and does not fall back from an invalid GTD", () => {
+    const input = { ...baseInput(registrationRead([registrationEvent(TARGET_ID, "2026-06-20T12:00:00.000Z")]), [seriesEvent(TARGET_ID, "2026-06-20T12:00:00.000Z", 0)]), customEntries: 0, customGtd: 0, customPeakConcurrentPlayers: 0, seatsPerTable: 8 };
+    const custom = buildOpsQuantDashboardQ1(input).scenarios.find((item) => item.scenarioId === "custom");
+    expect(custom).toMatchObject({ entries: 0, gtd: 0, prizePool: 0, overlay: 0, requiredTables: 0 });
+    expect(buildOpsQuantDashboardQ1({ ...input, customGtd: null, customGtdInvalid: true }).scenarios.find((item) => item.scenarioId === "custom")?.gtd).toBeNull();
+  });
+
+  it.each(["-1", "1.5", "NaN", "Infinity", "abc", "9007199254740992"])("rejects invalid assumption %s", (raw) => {
+    expect(parseQuantAssumption(raw)).toEqual({ value: null, invalid: true });
+  });
+  it("distinguishes blank, zero, and positive seat counts", () => {
+    expect(parseQuantAssumption("")).toEqual({ value: null, invalid: false });
+    expect(parseQuantAssumption("0")).toEqual({ value: 0, invalid: false });
+    expect(parseQuantAssumption("0", true)).toEqual({ value: null, invalid: true });
   });
 
   it("preserves observed zero and rejects malformed prize-pool payloads", () => {
