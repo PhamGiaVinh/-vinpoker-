@@ -851,15 +851,15 @@ export function useStandaloneHandInput(tournamentId: string) {
       }
 
       // P2-5: physical seat capacity for the dead-button ring (read-only; default 9).
-      supabase
-          .from("tournament_tables")
-          .select("max_seats")
-          .eq("tournament_id", tournamentId)
-          .eq("table_id", newTableId)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (isCurrentLoad()) setMaxSeats((data as any)?.max_seats ?? 9);
-        });
+      const { data: tableMeta } = await supabase
+        .from("tournament_tables")
+        .select("max_seats")
+        .eq("tournament_id", tournamentId)
+        .eq("table_id", newTableId)
+        .maybeSingle();
+      if (!isCurrentLoad()) return;
+      const loadedMaxSeats = (tableMeta as any)?.max_seats ?? 9;
+      setMaxSeats(loadedMaxSeats);
 
       // trackerSeatSetup: pull the per-seat avatar_url under the flag. If the migration
       // isn't applied yet the column is missing → 42703 → mark unsupported + retry
@@ -953,7 +953,7 @@ export function useStandaloneHandInput(tournamentId: string) {
 
       const { data: lastHand } = await supabase
         .from("tournament_hands")
-        .select("button_seat")
+        .select("id, button_seat")
         .eq("tournament_id", tournamentId)
         .eq("table_id", newTableId)
         .order("hand_number", { ascending: false })
@@ -961,8 +961,50 @@ export function useStandaloneHandInput(tournamentId: string) {
         .maybeSingle();
 
       if (!isCurrentLoad()) return;
-      if (lastHand?.button_seat) setButtonSeat(nextButton(activeNums, lastHand.button_seat));
-      else setButtonSeat(activeNums[0] ?? 1);
+      let previousBbSeat: number | null = null;
+      let previousBbReadFailed = false;
+      if (lastHand?.id) {
+        const { data: lastBbAction, error: lastBbActionError } = await supabase
+          .from("hand_actions")
+          .select("player_id, entry_number")
+          .eq("hand_id", lastHand.id)
+          .eq("action_type", "post_bb")
+          .order("action_order", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        previousBbReadFailed = !!lastBbActionError;
+        if (!lastBbActionError && lastBbAction?.player_id) {
+          const { data: lastBbPlayer, error: lastBbPlayerError } = await supabase
+            .from("hand_players")
+            .select("seat_number")
+            .eq("hand_id", lastHand.id)
+            .eq("player_id", lastBbAction.player_id)
+            .eq("entry_number", lastBbAction.entry_number)
+            .maybeSingle();
+          previousBbReadFailed = !!lastBbPlayerError;
+          if (!lastBbPlayerError) previousBbSeat = lastBbPlayer?.seat_number ?? null;
+        }
+      }
+
+      if (!isCurrentLoad()) return;
+      setLastBbSeat(previousBbSeat);
+      const restoredSuggestion = nextButtonTournament({
+        maxSeats: loadedMaxSeats,
+        occupiedSeats: activeNums,
+        prevBbSeat: previousBbSeat,
+      });
+      if (restoredSuggestion) {
+        setButtonSeat(restoredSuggestion.buttonSeat);
+        setButtonConfirmed(true);
+      } else {
+        setButtonSeat(lastHand?.button_seat ?? activeNums[0] ?? 1);
+        setButtonConfirmed(false);
+        if (lastHand?.id) {
+          toast.warning(previousBbReadFailed
+            ? "Không đọc được BB của hand trước. Hãy chọn BTN thủ công."
+            : "Hand trước chưa có BB hợp lệ. Hãy chọn BTN thủ công.");
+        }
+      }
 
       const identity = await resolveTableHandIdentity({
         loadOrphan: async () => {

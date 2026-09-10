@@ -26,6 +26,18 @@ describe("Hand #4 resume workflow contracts", () => {
     expect(source).toContain("loadNextHandNumber: false");
   });
 
+  it("restores the previous persisted BB before suggesting the next button", () => {
+    const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
+    const tableLoad = source.slice(source.indexOf("const handleTableChange ="), source.indexOf("const handlePickTable ="));
+
+    expect(tableLoad).toContain('.select("id, button_seat")');
+    expect(tableLoad).toContain('.eq("action_type", "post_bb")');
+    expect(tableLoad).toContain('.from("hand_players")');
+    expect(tableLoad).toContain("previousBbSeat = lastBbPlayer?.seat_number ?? null");
+    expect(tableLoad).toContain("setLastBbSeat(previousBbSeat)");
+    expect(tableLoad).toContain("prevBbSeat: previousBbSeat");
+  });
+
   it("reconciles an uncertain hand submit by exact readback without retrying the writer", () => {
     const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
     const submit = source.slice(source.indexOf("const handleSubmitHand ="), source.indexOf("const handleVoid ="));
