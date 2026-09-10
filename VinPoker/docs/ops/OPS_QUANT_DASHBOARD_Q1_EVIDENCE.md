@@ -76,6 +76,20 @@ All screenshots and browser observations here use synthetic local fixtures. They
 - Only the Custom and forecast-horizon proof images are included in the Wave 1 diff. Other existing screenshots remain the original Q1 evidence, although their viewports were exercised again locally.
 - Stop after one Draft PR. Review/merge and any production rollout are separate gates; Wave 2 is not started.
 
+## P1 final-review correction - 2026-09-10
+
+- Reviewed predecessor: `1fda26a4f1836ebbe1e99e505c82100f8bd9dbb0`, same Draft PR #1225. This correction supersedes the test counts and source-head receipt above; base is unchanged.
+- Tested P1 SOURCE HEAD: `486e5a72524a3a7e9f9d71727ec94be9d0ef1f33`. Final PR head includes this evidence-only follow-up and is recorded in the PR body.
+- One pure `customPeakError(entries, peak)` rule is shared by model and inline UI: when both values exist and peak exceeds entries, capacity outputs are null and capacity status is UNAVAILABLE. Owner values and independent economics remain unchanged; no clamp or band rescaling.
+- Valid boundaries verified: blank/80/8 -> 10 tables with economics unavailable; 200/80/8 -> 10; 80/80/8 -> 10; 0/0/8 -> 0. Invalid 50/80/8 fails closed; correcting peak to 40 restores 5 tables immediately. Exact inline message and aria-invalid/description behavior are covered.
+- P2 copy only: header now says `Ops status`; its Pulse + Live Operations algorithm is unchanged.
+- Red/green proof: before the fix the new unit case returned 10 instead of null and the new browser case had no inline alert; both pass after the shared invariant.
+- Latest local validation: 120/120 Vitest across the same 15 files; 10/10 route-mock E2E, retaining the prior 115 tests / 9 E2E coverage. Both focused TypeScript projects, targeted ESLint and Ops/import/money/owner-digest/shell/credential guards pass.
+- Normal build PASS (1m07s); constrained build PASS (57.22s, heap 4096 MB / GOMAXPROCS=2). Diff check, targeted secret scan, five-path incremental allowlist and unchanged package/flag/version guard pass. Existing build warning categories remain unchanged.
+- Full-app `tsc -b` remains NOT_MEASURED under the existing bounded policy; no shared type/core changes. Authenticated production smoke is not performed.
+- No new screenshot is needed: valid Custom output retains SHA-256 `2ae61362cbb9b743b38e372436566752618b8c4fa849d26349020873b0030b1b`. The earlier terminal image predates the cosmetic `Status` -> `Ops status` label change; its forecast-horizon proof is unchanged.
+- Incremental scope: two existing runtime files, existing model tests, existing E2E and this receipt only. No merge, deploy, DB, Edge, Gemini, flag, package, route or Wave 2 change.
+
 ## Screenshot byte receipts
 
 Hashes identify the captured bytes, not a promise of browser-render byte identity across machines. Original screenshot hashes remain available in the baseline revision.
