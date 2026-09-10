@@ -99,6 +99,29 @@ describe("Ops Quant Dashboard Q1", () => {
     expect(custom?.prizePool).toBeNull();
   });
 
+  it.each([
+    { entries: null, peak: 80, tables: 10 },
+    { entries: 200, peak: 80, tables: 10 },
+    { entries: 50, peak: 80, tables: null },
+    { entries: 80, peak: 80, tables: 10 },
+    { entries: 0, peak: 0, tables: 0 },
+  ])("checks combined Custom capacity for entries=$entries peak=$peak", ({ entries, peak, tables }) => {
+    const input = { ...baseInput(registrationRead([registrationEvent(TARGET_ID, "2026-06-20T12:00:00.000Z")]), [seriesEvent(TARGET_ID, "2026-06-20T12:00:00.000Z", 0)]), customEntries: entries, customPeakConcurrentPlayers: peak, seatsPerTable: 8 };
+    const custom = buildOpsQuantDashboardQ1(input).scenarios.find((item) => item.scenarioId === "custom");
+    expect(custom?.requiredTables).toBe(tables);
+    expect(custom?.entries).toBe(entries);
+    expect(custom?.peakConcurrentPlayers).toBe(peak);
+    expect(custom?.prizePool).toBe(entries === null ? null : entries * 2_000_000);
+    if (tables === null) {
+      expect(custom?.additionalTableNeed).toBeNull();
+      expect(custom?.additionalDealerNeed).toBeNull();
+      expect(custom?.capacityStatus).toBe("UNAVAILABLE");
+    } else {
+      expect(custom?.truth).toBe("HYPOTHESIS");
+      expect(custom?.capacityStatus).toBe("PLANNING_SCENARIO");
+    }
+  });
+
   it("preserves Custom zero and does not fall back from an invalid GTD", () => {
     const input = { ...baseInput(registrationRead([registrationEvent(TARGET_ID, "2026-06-20T12:00:00.000Z")]), [seriesEvent(TARGET_ID, "2026-06-20T12:00:00.000Z", 0)]), customEntries: 0, customGtd: 0, customPeakConcurrentPlayers: 0, seatsPerTable: 8 };
     const custom = buildOpsQuantDashboardQ1(input).scenarios.find((item) => item.scenarioId === "custom");

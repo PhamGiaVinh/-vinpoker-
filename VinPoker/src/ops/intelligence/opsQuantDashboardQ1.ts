@@ -27,6 +27,12 @@ export function parseQuantAssumption(raw: string, positive = false): { value: nu
   return { value: valid ? value : null, invalid: !valid };
 }
 
+export function customPeakError(entries: number | null, peak: number | null): string | null {
+  return entries !== null && peak !== null && peak > entries
+    ? "Người đồng thời cao điểm không thể lớn hơn tổng Custom entries."
+    : null;
+}
+
 export interface QuantValueQ1 {
   readonly value: number | null;
   readonly truth: QuantTruthClass;
@@ -394,7 +400,7 @@ function scenario(
   peakConcurrentPlayers: number | null,
 ): QuantScenarioQ1 {
   const prizePool = entries !== null && contribution !== null ? entries * contribution : null;
-  const requiredTables = peakConcurrentPlayers !== null && seatsPerTable !== null && seatsPerTable > 0 ? Math.ceil(peakConcurrentPlayers / seatsPerTable) : null;
+  const requiredTables = customPeakError(entries, peakConcurrentPlayers) === null && peakConcurrentPlayers !== null && seatsPerTable !== null && seatsPerTable > 0 ? Math.ceil(peakConcurrentPlayers / seatsPerTable) : null;
   const additionalTableNeed = requiredTables === null || capacity.eventAllocatedTableCount === null ? null : Math.max(0, requiredTables - capacity.eventAllocatedTableCount);
   const additionalDealerNeed = requiredTables === null || capacity.eventAssignedDealerCount === null ? null : Math.max(0, requiredTables - capacity.eventAssignedDealerCount);
   return Object.freeze({

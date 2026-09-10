@@ -139,6 +139,38 @@ test("Custom is visible, independent of turnout capacity, and retained across ta
   await expect(page.getByLabel("Custom entries", { exact: true })).toHaveValue("");
 });
 
+test("inconsistent Custom peak fails closed and recovers without changing owner inputs", async ({ page }) => {
+  await installMocks(page);
+  await page.clock.setFixedTime(new Date(asOf));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/ops/select-module");
+  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("High Roller");
+  await page.getByLabel("Custom entries", { exact: true }).fill("50");
+  await page.getByLabel("Ghế mỗi bàn (giả định)", { exact: true }).fill("8");
+  const peak = page.getByLabel("Người đồng thời cao điểm (Custom)", { exact: true });
+  await peak.fill("80");
+  await expect(page.getByRole("alert")).toHaveText("Người đồng thời cao điểm không thể lớn hơn tổng Custom entries.");
+  await expect(peak).toHaveAttribute("aria-invalid", "true");
+  await expect(peak).toHaveValue("80");
+  const results = page.getByTestId("custom-results");
+  for (const label of [/^Bàn cần/, /^Bàn còn thiếu/, /^Dealer đứng bàn còn thiếu/]) {
+    const output = results.getByText(label).locator("..");
+    await expect(output).toContainText("UNAVAILABLE");
+    await expect(output.locator("dd")).toHaveText("—");
+  }
+  await expect(results.getByText(/^Prize pool \(VND\)/).locator("..").locator("dd")).toHaveText("100.000.000");
+  await peak.fill("40");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(peak).toHaveAttribute("aria-invalid", "false");
+  await expect(results.getByText(/^Bàn cần/).locator("..").locator("dd")).toHaveText("5");
+  await expect(page.getByLabel("Custom entries", { exact: true })).toHaveValue("50");
+  await page.getByLabel("Custom entries", { exact: true }).fill("");
+  await peak.fill("80");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(results.getByText(/^Bàn cần/).locator("..").locator("dd")).toHaveText("10");
+  await expect(results.getByText(/^Prize pool \(VND\)/).locator("..").locator("dd")).toHaveText("—");
+});
+
 test("only active tab readers refresh and clock ticks do not request data", async ({ page }) => {
   const reads: string[] = [];
   page.on("request", (request) => {
