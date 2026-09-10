@@ -24,6 +24,8 @@ describe("Hand #4 resume workflow contracts", () => {
     expect(source).toContain("setHandNumber(Number(hand.hand_number))");
     expect(source).toContain("if (!resumed) return;");
     expect(source).toContain("loadNextHandNumber: false");
+    const backToMap = source.slice(source.indexOf("const backToTableMap ="), source.indexOf("const handleTakeoverLock ="));
+    expect(backToMap).toContain("setTableReloadAttempt((attempt) => attempt + 1)");
   });
 
   it("restores the previous persisted BB before suggesting the next button", () => {

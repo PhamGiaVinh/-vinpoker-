@@ -1065,6 +1065,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     setTableSelectionNotice(null);
     resumedTableRef.current = null;
     setTableParam(null);
+    setTableReloadAttempt((attempt) => attempt + 1);
   }, [setTableParam]);
 
   // trackerMultiTable: claim a STALE lock, then open the table (its orphan hand
