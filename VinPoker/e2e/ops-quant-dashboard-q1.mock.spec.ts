@@ -84,7 +84,7 @@ test("Q1 readers stay unmounted below the desktop breakpoint", async ({ page }) 
   const observedReads: string[] = [];
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
-    if (intelligenceReadPaths.has(path)) observedReads.push(path);
+    if ([...intelligenceReadPaths].some((suffix) => path.endsWith(suffix))) observedReads.push(path);
   });
   await installMocks(page);
   await page.setViewportSize({ width: 1194, height: 834 });
@@ -94,7 +94,144 @@ test("Q1 readers stay unmounted below the desktop breakpoint", async ({ page }) 
   await expect.poll(() => observedReads).toEqual([]);
 });
 
-async function installMocks(page: Page) {
+test("Custom is visible, independent of turnout capacity, and retained across tabs", async ({ page }) => {
+  await installMocks(page);
+  await page.clock.setFixedTime(new Date(asOf));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/ops/select-module");
+  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("High Roller");
+  await expect(page.locator(".recharts-reference-dot, .recharts-reference-line")).toHaveCount(0);
+  await expect(page.getByTestId("forecast-final-summary")).toContainText("Tổng entries cuối giải");
+  await page.getByRole("button", { name: /Xem tất cả/ }).click();
+  await expect(page.getByText("3 giao dịch cần đối soát", { exact: true })).toBeVisible();
+  await page.getByLabel("Custom entries", { exact: true }).fill("200");
+  await page.getByLabel("Ghế mỗi bàn (giả định)", { exact: true }).fill("8");
+  const results = page.getByTestId("custom-results");
+  await expect(results.getByText(/^Bàn cần/).locator("..")).toContainText("UNAVAILABLE");
+  await page.getByLabel("Người đồng thời cao điểm (Custom)", { exact: true }).fill("80");
+  await expect(results.getByText(/^Bàn cần/).locator("..").locator("dd")).toHaveText("10");
+  await expect(results.getByText(/^Prize pool \(VND\)/).locator("..").locator("dd")).toHaveText("400.000.000");
+  await results.locator("..").screenshot({ path: "docs/ops/evidence/quant-q1/wave1-custom.png" });
+  await page.getByLabel("Custom GTD (VND)", { exact: true }).fill("-1");
+  await expect(page.getByRole("alert")).toContainText("Nhập số nguyên");
+  await expect(results.getByText(/^GTD \(VND\)/).locator("..").locator("dd")).toHaveText("—");
+  await page.getByLabel("Custom GTD (VND)", { exact: true }).fill("0");
+  await expect(results.getByText(/^GTD \(VND\)/).locator("..").locator("dd")).toHaveText("0");
+  await page.getByText("Nguồn và thời điểm đọc thành công", { exact: true }).click();
+  const receipt = await page.getByTestId("receipt-registration-q0").textContent();
+  const backgroundReads: string[] = [];
+  page.on("request", (request) => { if (/get_club_series_events|get_tournament_prize_pool|get_series_club_live_pulse_v1/.test(request.url())) backgroundReads.push(request.url()); });
+  await page.getByRole("button", { name: "DATA HEALTH", exact: true }).click();
+  await expect(page.getByTestId("ops-quant-dashboard-q1")).toHaveCount(0);
+  await expect(page.getByTestId("ops-quant-data-health-q0")).toBeVisible();
+  expect(backgroundReads).toEqual([]);
+  await page.getByRole("button", { name: "QUANT", exact: true }).click();
+  await expect(page.getByLabel("Custom entries", { exact: true })).toHaveValue("200");
+  await expect(page.getByLabel("Custom GTD (VND)", { exact: true })).toHaveValue("0");
+  await page.getByText("Nguồn và thời điểm đọc thành công", { exact: true }).click();
+  await expect(page.getByTestId("receipt-registration-q0")).toHaveText(receipt!);
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "Deepstack Turbo", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("High Roller");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Deepstack Turbo", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("Deepstack");
+  await expect(page.getByLabel("Custom entries", { exact: true })).toHaveValue("");
+});
+
+test("only active tab readers refresh and clock ticks do not request data", async ({ page }) => {
+  const reads: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if ([...intelligenceReadPaths].some((suffix) => path.endsWith(suffix))) reads.push(path);
+  });
+  await installMocks(page);
+  await page.clock.install({ time: new Date(asOf) });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/ops/select-module");
+  await expect(page.getByText("Required entries", { exact: true }).locator("..")).toContainText("1.000");
+  await page.getByLabel("Custom entries", { exact: true }).fill("200");
+  await page.getByText("Nguồn và thời điểm đọc thành công", { exact: true }).click();
+  const receipt = await page.getByTestId("receipt-registration-q0").textContent();
+  const initialReads = [...reads];
+  expect(initialReads.some((path) => /finance|digest/.test(path))).toBe(false);
+  await page.clock.runFor(65_000);
+  expect(reads).toEqual(initialReads);
+  await expect(page.getByTestId("receipt-registration-q0")).toHaveText(receipt!);
+
+  reads.length = 0;
+  await page.getByRole("button", { name: "LIVE OPS", exact: true }).click();
+  await expect(page.getByTestId("ops-intelligence-command-center")).toBeVisible();
+  expect(reads.some((path) => /get_ops_registration_pace_q0|get_ops_sepay_read_state_q0|get_club_series_events|get_tournament_prize_pool/.test(path))).toBe(false);
+  await expect(page.getByTestId("ops-quant-dashboard-q1")).toHaveCount(0);
+
+  reads.length = 0;
+  await page.getByRole("button", { name: "DATA HEALTH", exact: true }).click();
+  await expect(page.getByTestId("ops-quant-data-health-q0")).toBeVisible();
+  expect(reads.every((path) => /get_ops_registration_pace_q0|get_ops_sepay_read_state_q0/.test(path))).toBe(true);
+  const healthReads = [...reads];
+  await page.clock.runFor(65_000);
+  expect(reads).toEqual(healthReads);
+  await page.getByRole("button", { name: "QUANT", exact: true }).click();
+  await expect(page.getByLabel("Custom entries", { exact: true })).toHaveValue("200");
+  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("High Roller");
+});
+
+test("failed reads and removed events never become empty exact or another selection", async ({ page }) => {
+  let failed = false;
+  let removed = false;
+  await installMocks(page, { registration: () => failed ? { malformed: true } : { ...registration(), events: removed ? registration().events.filter((event) => event.eventId !== eventId) : registration().events } });
+  await page.clock.setFixedTime(new Date(asOf));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/ops/select-module");
+  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("High Roller");
+  await page.getByText("Nguồn và thời điểm đọc thành công", { exact: true }).click();
+  const receipt = await page.getByTestId("receipt-registration-q0").locator("span").last().textContent();
+  failed = true;
+  await page.clock.setFixedTime(new Date("2026-08-29T10:00:10.000Z"));
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Không đọc được lịch CLB");
+  await expect(page.getByTestId("receipt-registration-q0").locator("span").last()).toHaveText(receipt!);
+  await expect(page.getByText(/EMPTY EXACT/)).toHaveCount(0);
+  failed = false;
+  removed = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("không tự đổi giải");
+  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).not.toContainText("Deepstack");
+  await page.getByRole("button", { name: "DATA HEALTH", exact: true }).click();
+  await page.getByRole("button", { name: "QUANT", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("không tự đổi giải");
+});
+
+test("Custom capacity remains usable without history or prize contribution", async ({ page }) => {
+  await installMocks(page, { history: () => [] });
+  await page.clock.setFixedTime(new Date(asOf));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/ops/select-module");
+  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("High Roller");
+  await page.getByLabel("Custom entries", { exact: true }).fill("200");
+  await page.getByLabel("Ghế mỗi bàn (giả định)", { exact: true }).fill("8");
+  await page.getByLabel("Người đồng thời cao điểm (Custom)", { exact: true }).fill("80");
+  const results = page.getByTestId("custom-results");
+  await expect(results.getByText(/^Bàn cần/).locator("..").locator("dd")).toHaveText("10");
+  await expect(results.getByText(/^Prize pool \(VND\)/).locator("..").locator("dd")).toHaveText("—");
+});
+
+for (const gate of ["spaces", "non-owner", "unverified-super-admin"] as const) {
+  test(`${gate} mounts no Intelligence reader`, async ({ page }) => {
+    const reads: string[] = [];
+    page.on("request", (request) => { if ([...intelligenceReadPaths].some((suffix) => new URL(request.url()).pathname.endsWith(suffix))) reads.push(request.url()); });
+    await installMocks(page, { owner: gate !== "non-owner", superAdmin: gate === "unverified-super-admin" });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/ops/select-module${gate === "spaces" ? "?view=spaces" : gate === "unverified-super-admin" ? `?club=${clubId}` : ""}`);
+    if (gate === "unverified-super-admin") await expect(page.getByRole("heading", { name: "Không xác thực được CLB yêu cầu" })).toBeVisible();
+    else await expect(page.getByRole("heading", { name: gate === "spaces" ? "Chọn không gian làm việc" : "Một lối vào cho mọi công việc vận hành" })).toBeVisible();
+    await expect(page.getByTestId("ops-intelligence-workspace-q1")).toHaveCount(0);
+    expect(reads).toEqual([]);
+  });
+}
+
+async function installMocks(page: Page, options: { registration?: () => unknown; history?: () => unknown; owner?: boolean; superAdmin?: boolean } = {}) {
   await page.addInitScript(({ token, actor, createdAt }) => {
     localStorage.setItem("sb-127-auth-token", JSON.stringify({ access_token: token, refresh_token: "mock", expires_in: 2_000_000_000, expires_at: 4_102_444_800, token_type: "bearer", user: { id: actor, aud: "authenticated", role: "authenticated", email: "owner@example.test", app_metadata: {}, user_metadata: {}, identities: [], created_at: createdAt } }));
   }, { token: mockJwt, actor: userId, createdAt: asOf });
@@ -102,13 +239,14 @@ async function installMocks(page: Page) {
     const path = new URL(route.request().url()).pathname;
     const json = (body: unknown) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
     if (path.endsWith("/auth/v1/user")) return json({ id: userId, aud: "authenticated", role: "authenticated", email: "owner@example.test", app_metadata: {}, user_metadata: {}, identities: [], created_at: asOf });
-    if (path.endsWith("/rpc/get_my_ops_capability_scope")) return json([{ club_id: clubId, can_owner: true, can_floor: false, can_cashier: false, can_tracker: false, can_dealer_control: false, can_accountant: false, can_chip_master: false, can_marketer: false, can_fnb_cashier: false, can_fnb_server: false, can_fnb_kitchen: false }]);
-    if (path.endsWith("/rpc/get_my_ops_global_capability")) return json([{ is_super_admin: false }]);
+    if (path.endsWith("/rpc/get_my_ops_capability_scope")) return json([{ club_id: clubId, can_owner: options.owner ?? true, can_floor: options.owner === false, can_cashier: false, can_tracker: false, can_dealer_control: false, can_accountant: false, can_chip_master: false, can_marketer: false, can_fnb_cashier: false, can_fnb_server: false, can_fnb_kitchen: false }]);
+    if (path.endsWith("/rpc/get_my_ops_global_capability")) return json([{ is_super_admin: options.superAdmin ?? false }]);
+    if (path.endsWith("/rpc/list_ops_clubs_for_super_admin")) return json([]);
     if (path.endsWith("/clubs")) return json([{ id: clubId, name: "VinPoker Club" }]);
     if (path.endsWith("/rpc/get_series_club_live_pulse_v1")) return json(pulse());
-    if (path.endsWith("/rpc/get_ops_registration_pace_q0")) return json(registration());
+    if (path.endsWith("/rpc/get_ops_registration_pace_q0")) return json(options.registration ? options.registration() : registration());
     if (path.endsWith("/rpc/get_ops_sepay_read_state_q0")) return json(sepay());
-    if (path.endsWith("/rpc/get_club_series_events")) return json(seriesHistory());
+    if (path.endsWith("/rpc/get_club_series_events")) return json(options.history ? options.history() : seriesHistory());
     if (path.endsWith("/rpc/get_tournament_prize_pool")) return json([{ prize_pool: 1_107_000_000, confirmed_entry_count: 123 }]);
     if (path.endsWith("/rpc/get_club_finance_summary")) return json({ revenue: { total: 774_540_000, rake: 56_780_000, serviceFee: 68_540_000, stakingFees: 0, payoutFees: 0, fnb: 123_000_000 }, cost: { payrollNet: 0, ptWagePaid: 0, fnbCogs: 0, compCogs: 0, clubExpenses: 0 }, net: 774_540_000 });
     if (path.endsWith("/rpc/get_latest_owner_daily_digest_artifact")) return json(null);
