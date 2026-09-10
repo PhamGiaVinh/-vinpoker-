@@ -10,6 +10,7 @@
 // always shown), byte-identical.
 
 import { cloneElement, isValidElement, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
+import { TrackerViewerCardProvider, TrackerCardStyleToggle } from "@/components/tracker/TrackerCardStyle";
 import { useTranslation } from "react-i18next";
 import { Activity, History, Trophy, Layers3, Image as ImageIcon, ArrowLeft, Share2, X } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -74,7 +75,11 @@ export interface LiveHubProps {
   children: ReactNode;
 }
 
-export function LiveHub({
+export function LiveHub(props: LiveHubProps) {
+  return <TrackerViewerCardProvider><LiveHubContent {...props} /></TrackerViewerCardProvider>;
+}
+
+function LiveHubContent({
   tournamentId, title, clubName, clubId, subtitle, prizePool, playersRemaining, currentLevel,
   guarantee, buyIn, startingStack,
   onShare, initialReplayTarget = null, initialReplayHandNumber = null, onViewHand, onReplayTargetChange, onShareHand,
@@ -117,7 +122,7 @@ export function LiveHub({
   const isMobile = useIsMobile();
   const [orientation, setOrientation] = useState<Orientation | null>(null);
   const effectiveOrientation: Orientation = orientation ?? (isMobile ? "portrait" : "landscape");
-  const viewerOrientation: Orientation = FEATURES.liveViewerRPTShell ? "portrait" : effectiveOrientation;
+  const viewerOrientation = orientation ?? undefined;
 
   // Event-tabs: which felt (if any) the viewer is actively watching. null → tabs.
   // Seeded synchronously from a deep-linked hand so it opens its replay
@@ -151,7 +156,7 @@ export function LiveHub({
         <LiveTablesMap tables={tables} activeTableId={featuredTableId} onSelect={setSelectedTableId} />
         <FeaturedTableCard
           badge={t("liveHub.featured.badge", "TRỰC TIẾP • BÀN ĐANG DIỄN RA")}
-          headerAction={<OrientationToggle value={effectiveOrientation} onChange={setOrientation} />}
+          headerAction={<div className="flex flex-wrap gap-2"><TrackerCardStyleToggle /><OrientationToggle value={effectiveOrientation} onChange={setOrientation} /></div>}
         >
           {viewer}
         </FeaturedTableCard>
@@ -210,7 +215,7 @@ export function LiveHub({
           </button>
           <FeaturedTableCard
             badge={watch.kind === "replay" ? t("liveHub.watch.replay", "PHÁT LẠI VÁN") : t("liveHub.featured.badge", "TRỰC TIẾP • BÀN ĐANG DIỄN RA")}
-            headerAction={<OrientationToggle value={effectiveOrientation} onChange={setOrientation} />}
+            headerAction={<div className="flex flex-wrap gap-2"><TrackerCardStyleToggle /><OrientationToggle value={effectiveOrientation} onChange={setOrientation} /></div>}
           >
             {watchViewer}
           </FeaturedTableCard>
@@ -280,6 +285,10 @@ export function LiveHub({
         onShare={onShare}
       />
       <LiveStatsBar prizePool={prizePool} playersRemaining={playersRemaining} chipLeader={rptChipLeader} rpt />
+      <div className="flex flex-wrap justify-end gap-2">
+        <TrackerCardStyleToggle />
+        {watch && <OrientationToggle value={effectiveOrientation} onChange={setOrientation} />}
+      </div>
 
       {watch ? (
         <section className="min-w-0 space-y-3 animate-in fade-in-0 duration-300 motion-reduce:animate-none" aria-label={t("liveHub.watch.viewer", "Trình xem ván đấu")}>
