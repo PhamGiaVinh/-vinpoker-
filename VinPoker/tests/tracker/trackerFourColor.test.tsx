@@ -16,11 +16,12 @@ describe('four-color deck assets', () => {
     expect(files).toHaveLength(52);
     for (const [suit, symbol, color] of [['S', '♠', '#303339'], ['H', '♥', '#BB242D'], ['D', '♦', '#2452BE'], ['C', '♣', '#177341']]) {
       for (const rank of 'AKQJT98765432') {
+        const label = rank === 'T' ? '10' : rank;
         const svg = readFileSync(`${root}${rank}${suit}.svg`, 'utf8');
         expect(svg).toContain('viewBox="0 0 100 140"');
-        expect(svg).toContain(`<title id="title">${rank}${symbol}</title>`);
+        expect(svg).toContain(`<title id="title">${label}${symbol}</title>`);
         expect(svg).toContain(`fill="${color}"`);
-        expect(svg.match(new RegExp(`>${rank}</text>`, 'g'))).toHaveLength(2);
+        expect(svg.match(new RegExp(`>${label}</text>`, 'g'))).toHaveLength(2);
       }
     }
   });
