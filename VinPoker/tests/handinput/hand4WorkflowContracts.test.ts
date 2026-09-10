@@ -6,6 +6,18 @@ import { FEATURES } from "@/lib/featureFlags";
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
 describe("Hand #4 resume workflow contracts", () => {
+  it("distinguishes manual ending-stack edits from engine settlement", () => {
+    const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
+    const auto = source.slice(source.indexOf("const handleAutoSettle ="), source.indexOf("const handleConfirmShowdownResult ="));
+    const manual = source.slice(source.indexOf("const handleConfirmShowdownResult ="), source.indexOf("const handleSubmitHand ="));
+    const fold = source.slice(source.indexOf("const winner = foldWinner(engineState.seats);"));
+    expect(auto).toContain("setEndingStacksManuallyEdited(false)");
+    expect(manual.match(/setEndingStacksManuallyEdited\(true\)/g)).toHaveLength(2);
+    expect(fold).toContain("setEndingStacksManuallyEdited(false)");
+    expect(source).toContain("if (endingStacksManuallyEdited && !confirm(");
+    expect(source).not.toContain("const stacksEdited = players.some(");
+  });
+
   it("commits the persisted hand identity and only announces a successful resume", () => {
     const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
     expect(source).toContain('.select("id, hand_number, table_id, button_seat, community_cards")');

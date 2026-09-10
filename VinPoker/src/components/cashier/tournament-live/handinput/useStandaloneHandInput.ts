@@ -231,6 +231,7 @@ export function useStandaloneHandInput(tournamentId: string) {
   const [nextActionOrder, setNextActionOrder] = useState(1);
   const [lastHandId, setLastHandId] = useState<string | null>(null);
   const [endingStacks, setEndingStacks] = useState<Record<string, number>>({});
+  const [endingStacksManuallyEdited, setEndingStacksManuallyEdited] = useState(false);
   const [isReadOnly, setIsReadOnly] = useState(false);
   const [playerHoleCards, setPlayerHoleCards] = useState<Record<string, (Card | null)[]>>({});
   const [orphanHand, setOrphanHand] = useState<{ id: string; hand_number: number } | null>(null);
@@ -619,6 +620,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     setCommunityCards([null, null, null, null, null]);
     setBetAmount("");
     setEndingStacks({});
+    setEndingStacksManuallyEdited(false);
     setPlayerHoleCards({});
     setNextActionOrder(1);
     setUndoStack([]);
@@ -2547,6 +2549,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     });
     setShowdownLayers(settlement.layers);
     setEndingStacks(map);
+    setEndingStacksManuallyEdited(false);
     toast.success("Đã tự chấm bài + chia pot theo từng layer");
   };
 
@@ -2566,8 +2569,10 @@ export function useStandaloneHandInput(tournamentId: string) {
     });
     setShowdownLayers([]);
     setEndingStacks(map);
+    setEndingStacksManuallyEdited(true);
   };
   const handleEndingStackChange = (playerId: string, value: number) => {
+    setEndingStacksManuallyEdited(true);
     setEndingStacks((prev) => ({ ...prev, [playerId]: value }));
   };
 
@@ -2591,10 +2596,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       toast.error("Tổng chip vào ≠ ra — không thể lưu. Kiểm tra lại stack kết thúc / người thắng.");
       return;
     }
-    const stacksEdited = players.some(
-      (p) => endingStacks[p.player_id] !== undefined && endingStacks[p.player_id] !== p.current_stack
-    );
-    if (stacksEdited && !confirm("Bạn đã chỉnh sửa stack kết thúc thủ công. Xác nhận lưu các số đã chỉnh?")) return;
+    if (endingStacksManuallyEdited && !confirm("Bạn đã chỉnh sửa stack kết thúc thủ công. Xác nhận lưu các số đã chỉnh?")) return;
     if (!handSubmitGuardRef.current.begin()) return;
     setSubmitting(true);
     markSync("sending", `Gửi Hand #${Number(handNumber)}`);
@@ -2761,6 +2763,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         map[r.player_id] = r.ending_stack;
       });
       setEndingStacks(map);
+      setEndingStacksManuallyEdited(false);
       return;
     }
     const boardReady = currentStreet === "preflop" ? blindsConfirmed : sentCommunityStreets.has(currentStreet);
