@@ -7,6 +7,7 @@ const secondEventId = "20000000-0000-4000-8000-000000000002";
 const asOf = "2026-08-29T10:00:00.000Z";
 const mockJwt = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjQxMDI0NDQ4MDAsInN1YiI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSJ9.";
 const intelligenceReadPaths = new Set([
+  "/rpc/get_ops_intelligence_context_v1",
   "/rpc/get_series_club_live_pulse_v1",
   "/rpc/get_ops_registration_pace_q0",
   "/rpc/get_ops_sepay_read_state_q0",
@@ -32,8 +33,9 @@ test("Q1 renders the real Quant workspace, embedded views, and responsive fallba
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/ops/select-module");
   await expect(page.getByTestId("ops-intelligence-workspace-q1")).toBeVisible();
+  await openDailyQuant(page);
   await expect(page.getByTestId("ops-quant-dashboard-q1")).toBeVisible();
-  await expect(page.getByText("VinPoker Quant Operations Terminal", { exact: true })).toBeVisible();
+  await expect(page.getByText("VINPOKER OPERATIONS INTELLIGENCE", { exact: true })).toBeVisible();
   await expect(page.getByText("RESEARCH MODEL · HISTORY FINALITY UNVERIFIED", { exact: true })).toBeVisible();
   await expect(page.getByText("Giải thích artifact · không gọi Gemini", { exact: true })).toBeVisible();
   await expect(page.getByText("Tournament pressure matrix", { exact: true })).toBeVisible();
@@ -99,7 +101,7 @@ test("Custom is visible, independent of turnout capacity, and retained across ta
   await page.clock.setFixedTime(new Date(asOf));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/ops/select-module");
-  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("High Roller");
+  await openDailyQuant(page);
   await expect(page.locator(".recharts-reference-dot, .recharts-reference-line")).toHaveCount(0);
   await expect(page.getByTestId("forecast-final-summary")).toContainText("Tổng entries cuối giải");
   await page.getByRole("button", { name: /Xem tất cả/ }).click();
@@ -132,10 +134,10 @@ test("Custom is visible, independent of turnout capacity, and retained across ta
   await expect(page.getByTestId("receipt-registration-q0")).toHaveText(receipt!);
   page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "Deepstack Turbo", exact: true }).click();
-  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("High Roller");
+  await expect(page.getByLabel("Phạm vi Intelligence")).toHaveValue(`daily:${eventId}`);
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Deepstack Turbo", exact: true }).click();
-  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("Deepstack");
+  await expect(page.getByLabel("Phạm vi Intelligence")).toHaveValue(`daily:${secondEventId}`);
   await expect(page.getByLabel("Custom entries", { exact: true })).toHaveValue("");
 });
 
@@ -144,7 +146,7 @@ test("inconsistent Custom peak fails closed and recovers without changing owner 
   await page.clock.setFixedTime(new Date(asOf));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/ops/select-module");
-  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("High Roller");
+  await openDailyQuant(page);
   await page.getByLabel("Custom entries", { exact: true }).fill("50");
   await page.getByLabel("Ghế mỗi bàn (giả định)", { exact: true }).fill("8");
   const peak = page.getByLabel("Người đồng thời cao điểm (Custom)", { exact: true });
@@ -181,6 +183,7 @@ test("only active tab readers refresh and clock ticks do not request data", asyn
   await page.clock.install({ time: new Date(asOf) });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/ops/select-module");
+  await openDailyQuant(page);
   await expect(page.getByText("Required entries", { exact: true }).locator("..")).toContainText("1.000");
   await page.getByLabel("Custom entries", { exact: true }).fill("200");
   await page.getByText("Nguồn và thời điểm đọc thành công", { exact: true }).click();
@@ -206,7 +209,7 @@ test("only active tab readers refresh and clock ticks do not request data", asyn
   expect(reads).toEqual(healthReads);
   await page.getByRole("button", { name: "QUANT", exact: true }).click();
   await expect(page.getByLabel("Custom entries", { exact: true })).toHaveValue("200");
-  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("High Roller");
+  await openDailyQuant(page);
 });
 
 test("failed reads and removed events never become empty exact or another selection", async ({ page }) => {
@@ -216,7 +219,7 @@ test("failed reads and removed events never become empty exact or another select
   await page.clock.setFixedTime(new Date(asOf));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/ops/select-module");
-  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("High Roller");
+  await openDailyQuant(page);
   await page.getByText("Nguồn và thời điểm đọc thành công", { exact: true }).click();
   const receipt = await page.getByTestId("receipt-registration-q0").locator("span").last().textContent();
   failed = true;
@@ -229,7 +232,7 @@ test("failed reads and removed events never become empty exact or another select
   removed = true;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("không tự đổi giải");
-  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).not.toContainText("Deepstack");
+  await expect(page.getByLabel("Phạm vi Intelligence")).toHaveValue(`daily:${eventId}`);
   await page.getByRole("button", { name: "DATA HEALTH", exact: true }).click();
   await page.getByRole("button", { name: "QUANT", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("không tự đổi giải");
@@ -240,7 +243,7 @@ test("Custom capacity remains usable without history or prize contribution", asy
   await page.clock.setFixedTime(new Date(asOf));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/ops/select-module");
-  await expect(page.getByRole("combobox", { name: "Giải đang xem" })).toContainText("High Roller");
+  await openDailyQuant(page);
   await page.getByLabel("Custom entries", { exact: true }).fill("200");
   await page.getByLabel("Ghế mỗi bàn (giả định)", { exact: true }).fill("8");
   await page.getByLabel("Người đồng thời cao điểm (Custom)", { exact: true }).fill("80");
@@ -263,7 +266,14 @@ for (const gate of ["spaces", "non-owner", "unverified-super-admin"] as const) {
   });
 }
 
-async function installMocks(page: Page, options: { registration?: () => unknown; history?: () => unknown; owner?: boolean; superAdmin?: boolean } = {}) {
+async function openDailyQuant(page: Page) {
+  await expect(page.getByLabel("Phạm vi Intelligence")).toBeEnabled();
+  await page.getByLabel("Phạm vi Intelligence").selectOption(`daily:${eventId}`);
+  await page.getByRole("button", { name: "QUANT", exact: true }).click();
+  await expect(page.getByTestId("ops-quant-dashboard-q1")).toBeVisible();
+}
+
+async function installMocks(page: Page, options: { registration?: () => unknown; history?: () => unknown; context?: () => unknown; owner?: boolean; superAdmin?: boolean } = {}) {
   await page.addInitScript(({ token, actor, createdAt }) => {
     localStorage.setItem("sb-127-auth-token", JSON.stringify({ access_token: token, refresh_token: "mock", expires_in: 2_000_000_000, expires_at: 4_102_444_800, token_type: "bearer", user: { id: actor, aud: "authenticated", role: "authenticated", email: "owner@example.test", app_metadata: {}, user_metadata: {}, identities: [], created_at: createdAt } }));
   }, { token: mockJwt, actor: userId, createdAt: asOf });
@@ -275,6 +285,7 @@ async function installMocks(page: Page, options: { registration?: () => unknown;
     if (path.endsWith("/rpc/get_my_ops_global_capability")) return json([{ is_super_admin: options.superAdmin ?? false }]);
     if (path.endsWith("/rpc/list_ops_clubs_for_super_admin")) return json([]);
     if (path.endsWith("/clubs")) return json([{ id: clubId, name: "VinPoker Club" }]);
+    if (path.endsWith("/rpc/get_ops_intelligence_context_v1")) return json(options.context ? options.context() : contextFixture());
     if (path.endsWith("/rpc/get_series_club_live_pulse_v1")) return json(pulse());
     if (path.endsWith("/rpc/get_ops_registration_pace_q0")) return json(options.registration ? options.registration() : registration());
     if (path.endsWith("/rpc/get_ops_sepay_read_state_q0")) return json(sepay());
@@ -289,6 +300,118 @@ async function installMocks(page: Page, options: { registration?: () => unknown;
     return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
   });
 }
+
+function contextFixture() {
+  return { version: "ops-intelligence-context-v1", clubId, asOf, dailyTournaments: registration().events.map((event) => ({ tournamentId: event.eventId, name: event.eventName, status: event.eventState, startTime: event.startTime, buyIn: 2_300_000, gtd: event.eventId === eventId ? 2_000_000_000 : 900_000_000, phase: null, flightLabel: null })), festivals: [] };
+}
+
+test("Wave 2 daily Overview is default, shares cache and preserves exact selection through all views", async ({ page }) => {
+  const errors: string[] = [];
+  const reads: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("request", (request) => { if ([...intelligenceReadPaths].some((suffix) => new URL(request.url()).pathname.endsWith(suffix))) reads.push(new URL(request.url()).pathname); });
+  await installMocks(page);
+  await page.clock.install({ time: new Date(asOf) });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/ops/select-module");
+  await expect(page.getByTestId("ops-intelligence-overview-v1")).toBeVisible();
+  await expect(page.getByTestId("ops-quant-dashboard-q1")).toHaveCount(0);
+  await expect(page.getByLabel("Phạm vi Intelligence")).toBeEnabled();
+  await page.getByLabel("Phạm vi Intelligence").selectOption(`daily:${eventId}`);
+  await expect(page.getByRole("button", { name: /Lượt vào phạm vi chọn/ })).toContainText("123");
+  await expect(page.getByTestId(`schedule-${eventId}`)).toBeVisible();
+  expect(reads.some((path) => /get_club_series_events|get_tournament_prize_pool|get_club_finance_summary|daily_digest/.test(path))).toBe(false);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: "docs/ops/evidence/wave2/overview-daily-1440x900.png" });
+  await page.getByRole("button", { name: /Lượt vào phạm vi chọn/ }).click();
+  await expect(page.getByRole("dialog")).toContainText("Source asOf");
+  await expect(page.getByRole("dialog")).toContainText(eventId);
+  await page.keyboard.press("Escape");
+  await page.getByTestId(`schedule-${eventId}`).getByRole("button", { name: "Mở Quant" }).click();
+  await expect(page.getByTestId("ops-quant-dashboard-q1")).toBeVisible();
+  await page.getByLabel("Custom entries", { exact: true }).fill("200");
+  for (const tab of ["LIVE OPS", "DATA HEALTH", "TỔNG QUAN", "QUANT"]) await page.getByRole("button", { name: tab, exact: true }).click();
+  await expect(page.getByLabel("Custom entries", { exact: true })).toHaveValue("200");
+  await expect(page.getByLabel("Phạm vi Intelligence")).toHaveValue(`daily:${eventId}`);
+  expect(reads.filter((path) => path.endsWith("get_ops_intelligence_context_v1"))).toHaveLength(1);
+  expect(reads.filter((path) => path.endsWith("get_ops_registration_pace_q0"))).toHaveLength(1);
+  expect(reads.filter((path) => path.endsWith("get_ops_sepay_read_state_q0"))).toHaveLength(1);
+  await page.getByRole("button", { name: "TỔNG QUAN", exact: true }).click();
+  const settled = [...reads];
+  await page.clock.runFor(65_000);
+  expect(reads).toEqual(settled);
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test("Wave 2 festival hierarchy never sends festival IDs to Quant and displays missing truth", async ({ page }) => {
+  const festivalId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const flightC = "20000000-0000-4000-8000-000000000003";
+  const finalId = "20000000-0000-4000-8000-000000000004";
+  const unknownId = "20000000-0000-4000-8000-000000000005";
+  const base = contextFixture().dailyTournaments[0];
+  let missing = false;
+  const festivalContext = () => ({ ...contextFixture(), dailyTournaments: [], festivals: [{ festivalId, name: "Main Event", status: "scheduled", finalTournamentId: missing ? null : finalId, tournaments: [
+    { ...base, name: "Flight A", phase: "flight", flightLabel: "A" },
+    { ...base, tournamentId: secondEventId, name: "Flight B", phase: "flight", flightLabel: "B" },
+    { ...base, tournamentId: flightC, name: "Flight C", phase: "flight", flightLabel: "C" },
+    { ...base, tournamentId: finalId, name: "Final Day", phase: "final", flightLabel: null },
+    ...(missing ? [{ ...base, tournamentId: unknownId, name: "Chưa phân vai", startTime: null, phase: null, flightLabel: null }] : []),
+  ] }] });
+  const prizeTargets: unknown[] = [];
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("request", (request) => { if (request.url().includes("get_tournament_prize_pool")) prizeTargets.push(request.postDataJSON()); });
+  await installMocks(page, { context: festivalContext, registration: () => missing ? {} : registration() });
+  await page.clock.setFixedTime(new Date(asOf));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/ops/select-module");
+  await expect(page.getByLabel("Phạm vi Intelligence")).toBeEnabled();
+  await page.getByLabel("Phạm vi Intelligence").selectOption(`festival:${festivalId}`);
+  await expect(page.getByRole("button", { name: /Lượt vào phạm vi chọn/ })).toContainText("UNAVAILABLE");
+  await expect(page.getByTestId(`schedule-${secondEventId}`)).toContainText("Flight B");
+  await expect(page.getByText("Final: Final Day", { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: "docs/ops/evidence/wave2/overview-festival-1440x900.png" });
+  await page.getByRole("button", { name: "QUANT", exact: true }).click();
+  await expect(page.getByTestId("forecast-final-summary")).toHaveCount(0);
+  expect(prizeTargets).toEqual([]);
+  await page.getByRole("button", { name: "TỔNG QUAN", exact: true }).click();
+  await page.getByTestId(`schedule-${secondEventId}`).getByRole("button", { name: "Mở Quant" }).click();
+  await expect(page.getByLabel("Phạm vi Intelligence")).toHaveValue(`flight:${festivalId}:${secondEventId}`);
+  await expect.poll(() => prizeTargets.length).toBe(1);
+  expect(JSON.stringify(prizeTargets)).toContain(secondEventId);
+  expect(JSON.stringify(prizeTargets)).not.toContain(festivalId);
+  await page.getByRole("button", { name: "TỔNG QUAN", exact: true }).click();
+  await expect(page.getByText("Main Event", { exact: true })).toBeVisible();
+  missing = true;
+  await page.getByRole("button", { name: "Đọc lại nguồn phạm vi", exact: true }).click();
+  await page.getByRole("button", { name: "Làm mới", exact: true }).click();
+  await expect(page.getByTestId(`schedule-${unknownId}`)).toContainText("VAI TRÒ CHƯA XÁC ĐỊNH");
+  await expect(page.getByTestId(`schedule-${unknownId}`).getByRole("button", { name: "Mở Quant" })).toBeDisabled();
+  await expect(page.getByText(/chưa có liên kết Final/).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Lượt vào phạm vi chọn/ })).toContainText("UNAVAILABLE");
+  expect(errors).toEqual([]);
+});
+
+test("Wave 2 exact empty Q0 still provides club observations and historical context", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  await installMocks(page, { registration: () => ({ ...registration(), events: [] }) });
+  await page.clock.setFixedTime(new Date(asOf));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/ops/select-module");
+  await expect(page.getByText(/Không có giải trong khoảng vận hành hiện tại/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /Người đang chơi/ })).toContainText("68");
+  await expect(page.getByTestId(`schedule-${eventId}`)).toBeVisible();
+  await expect(page.getByTestId("ops-quant-dashboard-q1")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
 
 function pulse() {
   const metric = (metricId: string, sourceId: string, grain: string, definitionVersion: string, value: number) => ({ metricId, value, unit: "count", availability: "exact", privacyState: value > 0 && value < 5 ? "small_cohort_suppressed" : "safe", asOf, sourceId, grain, definitionVersion });
