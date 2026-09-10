@@ -239,6 +239,7 @@ export function reduceGeminiTranscriptMessage(
   message: unknown,
   capturedAt: string,
   model = TRACKER_VOICE_GEMINI_LIVE_MODEL,
+  providerEventNamespace = "gemini-live",
 ): { state: GeminiTranscriptState; events: VoiceTranscriptEvent[] } {
   if (!message || typeof message !== "object") return { state, events: [] };
   const serverContent = (message as { serverContent?: unknown }).serverContent;
@@ -261,7 +262,7 @@ export function reduceGeminiTranscriptMessage(
   if (finalIsReady) {
     const finalCount = state.finalCount + 1;
     events.push({
-      providerEventId: `gemini-live:${finalCount}`,
+      providerEventId: `${providerEventNamespace}:${finalCount}`,
       transcript: isTrackerVoiceGeminiTranscribeModel(model) ? confirmed : confirmedTranscript,
       isFinal: true,
       capturedAt,
@@ -274,7 +275,7 @@ export function reduceGeminiTranscriptMessage(
 
   if (workingTranscript && (partial || confirmed)) {
     events.push({
-      providerEventId: `gemini-live:partial:${state.finalCount}`,
+      providerEventId: `${providerEventNamespace}:partial:${state.finalCount}`,
       transcript: workingTranscript,
       isFinal: false,
       capturedAt,
@@ -414,6 +415,7 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
   private sessionModel = TRACKER_VOICE_GEMINI_LIVE_MODEL;
   private reconnectAttempts = 0;
   private sessionResumptionHandle: string | null = null;
+  private providerEventNamespace = "gemini-live";
 
   constructor(private readonly options: GeminiLiveTranscriptionProviderOptions) {}
 
@@ -444,6 +446,7 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
   }
 
   private async openLiveSession(generation: number): Promise<void> {
+    this.providerEventNamespace = `gemini-live:${crypto.randomUUID()}`;
     await this.beginMicrophoneCapture(generation);
     if (!this.isCurrentGeneration(generation)) return;
 
@@ -653,6 +656,7 @@ export class GeminiLiveTranscriptionProvider implements RealtimeTranscriptionPro
       message,
       new Date().toISOString(),
       this.sessionModel,
+      this.providerEventNamespace,
     );
     this.transcriptState = result.state;
     result.events.forEach((event) => this.handlers?.onTranscript(event));

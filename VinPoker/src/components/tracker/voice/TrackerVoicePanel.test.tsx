@@ -462,7 +462,7 @@ describe("TrackerVoicePanel", () => {
     expect(disconnect).not.toHaveBeenCalled();
   });
 
-  it("commits an Assist proposal once through the canonical hook", async () => {
+  it("commits a spoken fold as fold once through the canonical Assist hook", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const handleVoiceAction = vi.fn(async () => true);
     const hook = { ...hookFixture(), handleVoiceAction };
@@ -472,11 +472,15 @@ describe("TrackerVoicePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "assist" }));
     fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
     await screen.findByText("Microphone đã kết nối");
-    act(() => provider.emit("seat three call", { final: true, id: "assist-final" }));
+    act(() => provider.emit("seat three fold", { final: true, id: "assist-final" }));
     const confirm = await screen.findByRole("button", { name: "Xác nhận action" });
     fireEvent.click(confirm);
     expect(await screen.findByText(/Canonical receipt đã được Viewer\/Replay nhận/)).toBeInTheDocument();
     expect(handleVoiceAction).toHaveBeenCalledOnce();
+    expect(handleVoiceAction.mock.calls[0][0]).toMatchObject({
+      canonicalAction: "fold",
+      actor: { playerId: "player-a", seatNumber: 3 },
+    });
     expect(handleVoiceAction.mock.calls[0][1]).toMatchObject({
       source: "voice",
       tournamentTableId: "canonical-table-1",
@@ -486,7 +490,7 @@ describe("TrackerVoicePanel", () => {
     expect(validateEventOverride.mock.calls[0][0].canonicalRequest).toMatchObject({
       intentDomain: "action",
       payload: {
-        canonicalAction: "call",
+        canonicalAction: "fold",
         actorPlayerId: "player-a",
         entryNumber: 1,
         seatNumber: 3,
