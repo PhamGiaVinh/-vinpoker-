@@ -27,6 +27,28 @@ function sepay(overrides: Record<string, unknown> = {}) {
 }
 
 describe("Ops Quant Data Health Q0 contracts", () => {
+  it.each([
+    CLUB,
+    "22222222-2222-2222-2222-222222222222",
+    "11111111-1111-1111-1111-111111111111",
+    "33333333-3333-3333-3333-333333333333",
+    "ABCDEF01-ABCD-ABCD-ABCD-ABCDEF012345",
+  ])("preserves canonical PostgreSQL UUID %s in both payloads", (clubId) => {
+    expect(parseOpsRegistrationPaceQ0(registration({ clubId, events: [] }))).toMatchObject({ clubId, events: [] });
+    expect(parseOpsSepayReadStateQ0(sepay({ clubId }))).toMatchObject({ clubId });
+  });
+
+  it.each([
+    "222222222222-2222-2222-222222222222",
+    "22222222-2222-2222-2222-22222222222",
+    "g2222222-2222-2222-2222-222222222222",
+    "",
+    "22222222-2222-2222-2222-222222222222x",
+  ])("rejects malformed UUID %s in both payloads", (clubId) => {
+    expect(() => parseOpsRegistrationPaceQ0(registration({ clubId }))).toThrow(/INVALID/);
+    expect(() => parseOpsSepayReadStateQ0(sepay({ clubId }))).toThrow(/INVALID/);
+  });
+
   it("preserves exact zero without converting it to missing", () => {
     const parsed = parseOpsSepayReadStateQ0(sepay());
     expect(parsed.buckets[0]).toMatchObject({ transactionCount: 0, inboundAmountVnd: 0, amountAvailability: "exact" });
