@@ -1,4 +1,5 @@
 {
+  "trackerCards": { "deck": "カードの種類", "fourColor": "4色", "classic": "クラシック" },
   "fnb": {
     "navCounter": "F&B · Quầy",
     "navKitchen": "F&B · Bếp",

@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, type ComponentProps } from "react";
+import { TrackerViewerCardProvider, TrackerCardStyleToggle } from "@/components/tracker/TrackerCardStyle";
 import { FEATURES } from "@/lib/featureFlags";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
@@ -55,7 +56,6 @@ import {
   type TableMotionEvent,
 } from "@/lib/tracker-poker/tableMotion";
 import { shouldCollectCommittedChips } from "@/lib/tracker-poker/livePotCollection";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
 import { resolveViewerIdentity } from "./viewer-hub/viewerIdentity";
 import { resolveReplayCandidates, type ReplayTarget, type ReplayTargetState } from "./viewer-hub/replayTarget";
@@ -90,7 +90,11 @@ function formatClockTime(d: Date): string {
   return d.toLocaleTimeString("vi-VN", { hour12: false });
 }
 
-export function TournamentLiveView({
+export function TournamentLiveView(props: ComponentProps<typeof TournamentLiveViewContent>) {
+  return <TrackerViewerCardProvider><TournamentLiveViewContent {...props} /></TrackerViewerCardProvider>;
+}
+
+function TournamentLiveViewContent({
   tournamentId,
   orientationOverride = null,
   spectator = false,
@@ -132,7 +136,6 @@ export function TournamentLiveView({
   ]);
   const canTdAi = isStaffOps || isClubAdmin;
   const [tdAiOpen, setTdAiOpen] = useState(false);
-  const isMobile = useIsMobile();
   const [seats, setSeats] = useState<SeatInfo[]>([]);
   const [communityCards, setCommunityCards] = useState<string[]>([]);
   const [potSize, setPotSize] = useState(0);
@@ -1611,10 +1614,11 @@ export function TournamentLiveView({
       {/* Live / Replay mode toggle — available to spectators too, so the public
           viewer can replay past hands (watch what happened). */}
       <div className="flex items-center gap-3 flex-wrap">
+        {!spectator && <TrackerCardStyleToggle />}
         <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs font-bold">
           <button
             onClick={goLive}
-            className={`flex items-center gap-1.5 px-3 py-1.5 transition-colors ${
+            className={`flex min-h-11 items-center gap-1.5 px-3 py-1.5 transition-colors ${
               !isReplay ? "bg-emerald-500/20 text-emerald-300" : "text-muted-foreground hover:text-emerald-300"
             }`}
           >
@@ -1622,7 +1626,7 @@ export function TournamentLiveView({
           </button>
           <button
             onClick={enterReplay}
-            className={`flex items-center gap-1.5 px-3 py-1.5 transition-colors border-l border-border ${
+            className={`flex min-h-11 items-center gap-1.5 px-3 py-1.5 transition-colors border-l border-border ${
               isReplay ? "bg-amber-500/20 text-amber-300" : "text-muted-foreground hover:text-amber-300"
             }`}
           >
@@ -1666,10 +1670,10 @@ export function TournamentLiveView({
         />
       )}
 
-      <div className={spectator && isReplay && selectedReplayHand && FEATURES.liveReplayHud
-        ? "grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] md:items-start"
-        : spectator ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3"}>
-        <div className={spectator && isReplay && selectedReplayHand && FEATURES.liveReplayHud ? "min-w-0" : undefined}>
+      <div className={spectator && ((isReplay && selectedReplayHand && FEATURES.liveReplayHud) || (!isReplay && liveHandOnView && actions.length > 0))
+        ? "grid grid-cols-1 gap-3 min-[1200px]:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] min-[1200px]:items-start"
+        : spectator ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 min-[1200px]:grid-cols-[minmax(0,1fr)_280px] gap-3"}>
+        <div className="min-w-0">
           {spectator && FEATURES.liveViewerPulseV2 && !isReplay && activeSeatsToRender.length === 0 ? (
             <div className="grid min-h-72 place-items-center rounded-[28px] border border-[hsl(var(--viewer-neon)_/_0.28)] bg-card/55 px-5 text-center">
               <div><Users className="mx-auto h-7 w-7 text-[hsl(var(--viewer-neon))]" /><p className="mt-3 text-sm font-bold text-foreground">Đang đồng bộ người chơi</p><p className="mt-1 text-xs text-muted-foreground">Bàn và action sẽ hiện ngay khi snapshot của ván được tải.</p></div>
@@ -1677,7 +1681,7 @@ export function TournamentLiveView({
           ) : (
             <LiveFelt
               {...viewerFeltProps}
-              portrait={orientationOverride ? orientationOverride === "portrait" : !!isMobile}
+              portrait={orientationOverride ? orientationOverride === "portrait" : undefined}
               viewerNeon={spectator && FEATURES.liveHandFeed}
               viewerLayout={spectator && FEATURES.liveViewerFeltV2}
               tableFx={spectator && FEATURES.liveTableFx}
@@ -1728,7 +1732,9 @@ export function TournamentLiveView({
               showdownResult={selectedReplayFrame?.showdownResult}
             />
           )}
+        </div>
           {spectator && !isReplay && liveHandOnView && actions.length > 0 && (
+            <aside className="min-w-0">
             <HandBreakdown
               actions={actions}
               players={activeSeatsToRender.map((s) => ({
@@ -1740,11 +1746,11 @@ export function TournamentLiveView({
               buttonSeat={buttonSeat}
               bigBlind={bigBlind}
             />
+            </aside>
           )}
-        </div>
 
         {spectator && isReplay && selectedReplayHand && FEATURES.liveReplayHud && (
-          <aside className="min-w-0 md:sticky md:top-[calc(env(safe-area-inset-top)+3.75rem)]">
+          <aside className="min-w-0 min-[1200px]:sticky min-[1200px]:top-[calc(env(safe-area-inset-top)+3.75rem)]">
             <ReplayScrubber
               key={selectedReplayHand.hand_id ?? `hand-${selectedReplayHand.hand_number}`}
               hand={selectedReplayHand}

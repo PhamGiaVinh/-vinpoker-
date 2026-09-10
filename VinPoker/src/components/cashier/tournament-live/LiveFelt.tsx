@@ -14,6 +14,8 @@
 //  • Seats are avatar + name + stack only (no name boxes); position badge is small.
 
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useTrackerCardStyle } from '@/components/tracker/TrackerCardStyle';
+import { TRACKER_TABLE_GEOMETRY, TRACKER_FELT_STYLE, trackerTableSizes, trackerBetPoint, useTrackerTableLayout } from '@/components/tracker/trackerTableLayout';
 import { useTranslation } from "react-i18next";
 import { PokerCard, CardBack } from "./PokerVisuals";
 import { ChipStack } from "./ChipStack";
@@ -359,7 +361,7 @@ export function LiveFelt({
   handNumber,
   latestAction,
   formatBB,
-  portrait = false,
+  portrait: portraitProp,
   buttonSeat = null,
   onSeatClick,
   selectedSeat = null,
@@ -386,16 +388,20 @@ export function LiveFelt({
   motionEnabled = false,
 }: LiveFeltProps) {
   const { t } = useTranslation();
+  const unified = !!useTrackerCardStyle();
+  const layout = useTrackerTableLayout(portraitProp);
+  const portrait = unified ? layout.portrait : portraitProp ?? false;
+  const sharedSizes = trackerTableSizes(portrait);
   // V2 uses the wider CoinPoker geometry; operator/TV keep the current GEO (byte-identical).
   // PR-A1 compact is DOUBLE-gated on viewerLayout so it can never touch operator/TV even
   // if the prop leaks; geometry only changes in portrait (landscape 13/6 is already wide).
   const compactActive = viewerLayout && compact;
   const geoSet = viewerLayout ? GEO_V2 : GEO;
-  const geo = compactActive && portrait ? GEO_COMPACT_PORTRAIT : portrait ? geoSet.portrait : geoSet.landscape;
+  const geo = unified ? (portrait ? TRACKER_TABLE_GEOMETRY.portrait : TRACKER_TABLE_GEOMETRY.landscape) : compactActive && portrait ? GEO_COMPACT_PORTRAIT : portrait ? geoSet.portrait : geoSet.landscape;
   // Phase 2: the VIEWER landscape reads the rim-tuned V3 map; every other path keeps its
   // geo map. All seat/stack/chip-fly placements read `seatMap` so the three stay in sync
   // (module constants → stable identity for the chips-effect dependency).
-  const seatMap = viewerLayout && !portrait ? LANDSCAPE_SEATS_V3 : geo.seats;
+  const seatMap = !unified && viewerLayout && !portrait ? LANDSCAPE_SEATS_V3 : geo.seats;
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
   const settlementPayoutPhase = replayRunoutPresentation?.phase ?? null;
   const settlementPayoutActive = viewerLayout
@@ -469,12 +475,12 @@ export function LiveFelt({
   // Hole cards are sized to ≈85% of the board clamps below (owner: showdown cards were
   // too small — wanted 80-90% of the board). Each term = 0.85 × the matching boardStyle
   // term. viewerLayout-gated only → operator/TV/replay-without-V2 stay byte-identical.
-  const holeStyle: CSSProperties | undefined = viewerLayout
+  const holeStyle: CSSProperties | undefined = unified ? sharedSizes.hole : viewerLayout
     ? portrait
       ? { width: "clamp(27px,8.8cqi,40px)", height: "clamp(38px,12.4cqi,56px)" }
       : { width: "clamp(22px,3.9cqi,41px)", height: "clamp(31px,5.4cqi,56px)" }
     : undefined;
-  const boardStyle: CSSProperties | undefined = viewerLayout
+  const boardStyle: CSSProperties | undefined = unified ? sharedSizes.board : viewerLayout
     ? portrait
       ? { width: "clamp(30px,11.5cqi,50px)", height: "clamp(42px,16.2cqi,70px)" }
       : { width: "clamp(26px,4.6cqi,48px)", height: "clamp(36px,6.4cqi,66px)" }
@@ -491,12 +497,12 @@ export function LiveFelt({
   // players looked lost on the table. 11cqi ≈ 97px at 880 (11%); floors keep the 560px
   // `fit` design width + portrait phones at today's sizes (no regress); caps bound it.
   // When viewerLayout is off all of these are `undefined` → operator/TV byte-identical.
-  const podStyle: CSSProperties | undefined = viewerLayout
+  const podStyle: CSSProperties | undefined = unified ? sharedSizes.pod : viewerLayout
     ? portrait
       ? { width: "clamp(56px,15cqi,84px)" }
       : { width: "clamp(58px,11cqi,112px)" }
     : undefined;
-  const avatarStyle: CSSProperties | undefined = viewerLayout
+  const avatarStyle: CSSProperties | undefined = unified ? sharedSizes.avatar : viewerLayout
     ? portrait
       ? { width: "clamp(32px,8.5cqi,44px)", height: "clamp(32px,8.5cqi,44px)" }
       : { width: "clamp(34px,5.4cqi,52px)", height: "clamp(34px,5.4cqi,52px)" }
@@ -512,7 +518,7 @@ export function LiveFelt({
   // each other at the pot (the board is positionally protected, NOT just by z-order).
   // K + MINGAP are tuned in the 9-handed-all-bet visual check.
   const potCenterT = parseFloat(geo.centerTop) || 43;
-  const motionAspect = portrait ? (compactActive ? 3 / 4 : 5 / 7) : 13 / 6;
+  const motionAspect = unified ? (portrait ? 5 / 8 : 1.9) : portrait ? (compactActive ? 3 / 4 : 5 / 7) : 13 / 6;
   // Disc lerp K per surface (measured, 2026-07-06 tall-portrait redesign):
   //  • non-compact: 0.42 + the radial center clamp (unchanged — flag-off byte-identical).
   //  • compact LANDSCAPE (desktop /live): 0.30 "near the seat" (UAT wave 2 tuning — at
@@ -524,6 +530,7 @@ export function LiveFelt({
   //    0.30 so they stop short of the board's edge (measured: l 19% vs board left 26%).
   const STACK_MINGAP = 16; // % of the felt that the stack center stays clear of the pot
   const stackPt = (pos: Pt): Pt => {
+    if (unified) return trackerBetPoint(pos, portrait);
     const k = !compactActive
       ? 0.42
       : !portrait
@@ -627,28 +634,28 @@ export function LiveFelt({
   // width) also untouched. Operator/TV (viewerLayout off) never measure.
   const LANDSCAPE_DESIGN_W = 560;
   const FIT_PAD = 26; // breathing room above/below for pods that straddle the rim
-  const feltWrapRef = useRef<HTMLDivElement>(null);
+  const feltWrapRef = layout.ref;
   const [fit, setFit] = useState<{ scale: number; h: number } | null>(null);
   useEffect(() => {
-    if (!viewerLayout || portrait) { setFit(null); return; }
+    if ((!viewerLayout && !unified) || portrait) { setFit(null); return; }
     const el = feltWrapRef.current;
     if (!el) return;
     const measure = () => {
       const w = el.clientWidth;
       if (!w || w >= LANDSCAPE_DESIGN_W) { setFit(null); return; }
       const scale = w / LANDSCAPE_DESIGN_W;
-      const designH = (LANDSCAPE_DESIGN_W * 6) / 13; // landscape aspect 13/6
+      const designH = LANDSCAPE_DESIGN_W / motionAspect;
       setFit({ scale, h: Math.round(designH * scale) + FIT_PAD * 2 });
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [viewerLayout, portrait]);
+  }, [viewerLayout, portrait, unified, motionAspect, feltWrapRef]);
 
   return (
     <div
-      className={`w-full${bestFiveFocusActive ? ` tracker-best-five-focus-active tracker-best-five-focus-${bestFiveFocusPhase}` : ""}${settlementPayoutActive ? ` tracker-settlement-payout-${settlementPayoutPhase}` : ""}`}
+      className={`w-full${unified ? ' tracker-unified' : ''}${bestFiveFocusActive ? ` tracker-best-five-focus-active tracker-best-five-focus-${bestFiveFocusPhase}` : ""}${settlementPayoutActive ? ` tracker-settlement-payout-${settlementPayoutPhase}` : ""}`}
       ref={feltWrapRef}
     >
       {/* Felt oval — scales with container; seats may straddle the rim so the
@@ -662,7 +669,7 @@ export function LiveFelt({
         style={
           fit
             ? { position: "relative", height: fit.h, overflow: "hidden" }
-            : compactActive && portrait
+            : unified ? { paddingTop: 16, paddingBottom: 16 } : compactActive && portrait
               ? // Compact stadium: rim-straddling pods extend ~44px above/below the short
                 // oval — reserve that space so nothing above (headers) or below (status
                 // bar) ever overlaps a pod. Non-compact keeps display:contents (identical).
@@ -671,6 +678,7 @@ export function LiveFelt({
         }
       >
       <div
+        data-tracker-table={unified ? (portrait ? 'portrait' : 'landscape') : undefined}
         className={fit ? "overflow-visible" : "relative mx-auto w-full overflow-visible"}
         style={
           fit
@@ -694,7 +702,7 @@ export function LiveFelt({
                 // V2: make the oval a size container so card `cqi` units resolve to the FELT
                 // width. inline-size containment only fixes the inline axis — height still
                 // comes from aspectRatio + width, so there is no sizing side-effect.
-                ...(viewerLayout ? { containerType: "inline-size" } : {}),
+                ...(viewerLayout || unified ? { containerType: "inline-size" } : {}),
               }
         }
       >
@@ -706,12 +714,12 @@ export function LiveFelt({
             // viewerLayout (V2) → RPT-style BLACK felt + a thin neon-green rim hint.
             // `neon` (old viewerNeon-only path) keeps the green felt; default =
             // burgundy operator/TV felt.
-            background: viewerLayout
+            background: unified ? TRACKER_FELT_STYLE.background : viewerLayout
               ? "radial-gradient(80% 72% at 50% 40%, #16181d 0%, #090b0f 58%, #020304 100%)"
               : neon
               ? "radial-gradient(62% 60% at 50% 38%, hsl(158 30% 13%) 0%, hsl(158 30% 13%) 50%, hsl(210 13% 5%) 100%)"
               : "radial-gradient(62% 60% at 50% 38%, hsl(var(--poker-felt)) 0%, hsl(var(--poker-felt)) 50%, hsl(var(--poker-felt-dark)) 100%)",
-            boxShadow: viewerLayout
+            boxShadow: unified ? TRACKER_FELT_STYLE.boxShadow : viewerLayout
               ? "inset 0 0 0 1.5px hsl(var(--primary) / 0.24), inset 0 18px 48px rgba(255,255,255,0.025), inset 0 0 82px rgba(0,0,0,0.74), 0 18px 48px rgba(0,0,0,0.56), 0 0 28px hsl(var(--primary) / 0.07)"
               : neon
               ? "inset 0 0 0 5px hsl(var(--primary) / 0.4), inset 0 0 0 7px hsl(210 13% 5% / 0.85), inset 0 0 0 8px hsl(var(--primary) / 0.55), inset 0 0 70px rgba(0,0,0,0.55), 0 22px 55px rgba(0,0,0,0.45), 0 0 36px hsl(var(--primary) / 0.12)"
@@ -731,7 +739,7 @@ export function LiveFelt({
             out of this area. pointer-events-none so it never blocks the felt. */}
         <div
           className="pointer-events-none absolute left-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
-          style={{ top: geo.centerTop, width: geo.centerW, maxWidth: "244px" }}
+          style={{ top: geo.centerTop, width: geo.centerW, maxWidth: unified ? '400px' : "244px" }}
         >
           {compactActive && portrait ? (
             // Compact-portrait: the V is ABSOLUTE behind the board (no layout impact). On the
@@ -977,11 +985,14 @@ export function LiveFelt({
           return (
             <div
               key={seat.player_id}
+              data-tracker-seat={unified ? seat.seat_number : undefined}
+              data-seat-selected={unified && isSelected}
+              data-seat-acting={unified && isToAct}
               className={`absolute z-10 ${seat.is_folded ? "opacity-50" : ""}${tableFx ? " transition-opacity duration-300 motion-reduce:transition-none" : ""}${interactiveCls}${selectedCls}`}
               style={posStyle}
               {...interactiveProps}
             >
-              <div className="relative flex w-[58px] flex-col items-center text-center sm:w-[70px]" style={podStyle}>
+              <div className={`relative flex w-[58px] flex-col items-center text-center sm:w-[70px]${unified ? ' tracker-seat' : ''}`} style={podStyle}>
                 {isToAct && (
                   <div
                     className="tracker-display absolute -top-2 z-20 rounded-full px-1.5 py-0.5 text-[7.5px] font-bold uppercase tracking-wide whitespace-nowrap text-white shadow"
@@ -990,7 +1001,7 @@ export function LiveFelt({
                     ◀ {t("liveHub.felt.toAct", "chờ")}
                   </div>
                 )}
-                <div className="relative">
+                <div className={unified ? 'tracker-seat-avatar' : 'relative'}>
                   <div
                     className={`grid ${viewerLayout ? "h-9 w-9 sm:h-10 sm:w-10" : "h-8 w-8 sm:h-9 sm:w-9"} place-items-center overflow-hidden rounded-full border-2 text-[9px] font-bold sm:text-[11px] ${
                       isWinner ? "tracker-win-glow border-[hsl(var(--poker-gold))]" : `${avatarBorder} ${avatarRing}`
@@ -1031,17 +1042,18 @@ export function LiveFelt({
                     </span>
                   )}
                 </div>
-                {viewerLayout ? (
+                {viewerLayout || unified ? (
                   // V2: a CoinPoker-style "nameplate" capsule — name + stack grouped in one
                   // dark, neon-bordered pill so each seat reads as a tight unit.
                   // PR-A1 compact: the stack goes BB-FIRST (RPT pattern — meaningful at any
                   // level) with chips demoted to a smaller secondary line. formatBB null
                   // (no blind level) → chips render alone exactly as today: never a fake BB.
                   <div
-                    className="mt-1 flex max-w-full flex-col items-center rounded-md px-1.5 py-[3px] leading-none"
-                    style={{ background: "rgba(3,5,8,0.9)", border: "1px solid hsl(var(--primary) / 0.28)", boxShadow: "0 1px 3px rgba(0,0,0,0.6)" }}
+                    className={`mt-1 flex max-w-full flex-col items-center rounded-md px-1.5 py-[3px] leading-none${unified ? ' tracker-seat-plate' : ''}`}
+                    title={`${seat.display_name} · ${seat.chip_count}`}
+                    style={unified ? undefined : { background: "rgba(3,5,8,0.9)", border: "1px solid hsl(var(--primary) / 0.28)", boxShadow: "0 1px 3px rgba(0,0,0,0.6)" }}
                   >
-                    <div className="tracker-display max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]" style={nameTextStyle}>
+                    <div className={`tracker-display max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]${unified ? ' tracker-seat-name' : ''}`} style={unified ? undefined : nameTextStyle}>
                       {seat.display_name}
                     </div>
                     {compactActive && formatBB(seat.chip_count) ? (
@@ -1083,10 +1095,10 @@ export function LiveFelt({
                 {/* Compact: face-DOWN backs are dropped entirely (RPT pods carry no cards
                     until a reveal) — the short felt can't afford the extra pod height.
                     Revealed cards (showdown/all-in) still render. Non-compact unchanged. */}
-                {(!compactActive || (seat.hole_cards && seat.hole_cards.length === 2)) && (
+                {(unified || !compactActive || (seat.hole_cards && seat.hole_cards.length === 2)) && (
                 <div
                   data-testid="seat-holecards"
-                  className="mt-0.5 flex justify-center gap-0.5"
+                  className={`mt-0.5 flex justify-center gap-0.5${unified ? ' tracker-seat-cards' : ''}`}
                 >
                   {seat.hole_cards && seat.hole_cards.length === 2 ? (
                     // trackerShowdownRevealOrder: stagger the flip by this seat's place
@@ -1280,6 +1292,7 @@ export function LiveFelt({
               return (
                 <div
                   key={`stack-${s.player_id}-${s.is_all_in ? "allin" : amt}`}
+                  data-tracker-bet={unified ? s.seat_number : undefined}
                   className="pointer-events-none absolute z-[15] -translate-x-1/2 -translate-y-1/2"
                   style={{ left: `${pt.l}%`, top: `${pt.t}%` }}
                 >
@@ -1303,7 +1316,8 @@ export function LiveFelt({
               return (
                 <div
                   key={`empty-${n}`}
-                  className={`absolute z-10 flex flex-col items-center opacity-60${tap ? " cursor-pointer" : ""}`}
+                  data-tracker-seat={unified ? n : undefined}
+                  className={`absolute z-10 flex flex-col items-center opacity-60${unified ? ' min-h-11 min-w-11' : ''}${tap ? " cursor-pointer" : ""}`}
                   style={posStyle}
                   {...(tap
                     ? {

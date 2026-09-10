@@ -150,19 +150,20 @@ describe("LiveHub — event-tabs layout (liveEventTabs ON)", () => {
     expect(onTabChange).toHaveBeenCalledWith("hands");
   });
 
-  it("RPT shell forces the portrait felt and removes the landscape toggle", () => {
+  it("RPT shell lets the felt size itself to its container and retains orientation controls", () => {
     (FEATURES as Record<string, unknown>).liveViewerRPTShell = true;
     const Viewer = ({ orientationOverride }: { orientationOverride?: "landscape" | "portrait" | null }) => (
-      <div>ORIENT:{orientationOverride}</div>
+      <div>ORIENT:{orientationOverride ?? 'auto'}</div>
     );
     const html = wrap(
       <LiveHub tournamentId="t1" title="Main Event" initialReplayHandNumber={7} onShare={noop}>
         <Viewer />
       </LiveHub>,
     );
-    expect(html).toContain("ORIENT:portrait");
-    expect(html).not.toContain("Ngang");
-    expect(html).not.toContain("Dọc");
+    expect(html).toContain("ORIENT:auto");
+    expect(html).toContain("Ngang");
+    expect(html).toContain("Dọc");
+    expect(html).toContain("4 màu");
   });
 });
 
@@ -183,14 +184,14 @@ describe("LiveHub — legacy stacked layout (liveEventTabs OFF) stays intact", (
   it("injects orientation + spectator overrides into the child viewer", () => {
     (FEATURES as Record<string, unknown>).liveEventTabs = false;
     const Viewer = ({ orientationOverride, spectator }: { orientationOverride?: "landscape" | "portrait" | null; spectator?: boolean }) => (
-      <div>ORIENT:{orientationOverride}|SPECTATOR:{String(spectator)}</div>
+      <div>ORIENT:{orientationOverride ?? 'auto'}|SPECTATOR:{String(spectator)}</div>
     );
     const html = wrap(
       <LiveHub tournamentId="t1" title="X" onShare={noop}>
         <Viewer />
       </LiveHub>
     );
-    expect(html).toContain("ORIENT:landscape");
+    expect(html).toContain("ORIENT:auto");
     expect(html).toContain("SPECTATOR:true");
   });
 });

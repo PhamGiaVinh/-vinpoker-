@@ -22,6 +22,7 @@
 // allin-sidepots) reproduces the owner's problem configuration.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TrackerViewerCardProvider, TrackerCardStyleToggle } from '@/components/tracker/TrackerCardStyle';
 import { useSearchParams } from "react-router-dom";
 import { LiveFelt } from "@/components/cashier/tournament-live/LiveFelt";
 import { TrackerVisualStyles } from "@/components/cashier/tournament-live/PokerVisuals";
@@ -45,12 +46,16 @@ const FIXTURES: LiveFeltFixtureName[] = [
 ];
 
 export default function LiveFeltPreview() {
+  return <TrackerViewerCardProvider><TrackerCardStyleToggle /><LiveFeltPreviewContent /></TrackerViewerCardProvider>;
+}
+
+function LiveFeltPreviewContent() {
   const [params] = useSearchParams();
   const fixtureParam = params.get("fixture") as LiveFeltFixtureName | null;
   const fixture: LiveFeltFixtureName = fixtureParam && FIXTURES.includes(fixtureParam) ? fixtureParam : "allin-sidepots";
   const seats = Math.max(3, Math.min(9, Number(params.get("seats")) || 9));
   const play = params.get("play") === "1";
-  const orientation = params.get("orientation") === "portrait" ? "portrait" : "landscape";
+  const orientation = params.get("orientation");
   const viewerLayout = params.get("viewerLayout") !== "0";
   const compact = params.get("compact") !== "0";
   const tableFx = params.get("tableFx") !== "0";
@@ -112,7 +117,10 @@ export default function LiveFeltPreview() {
 
   const felt = (
     <LiveFelt
-      seats={frame.seats}
+      seats={frame.seats.map(seat => ({ ...seat,
+        ...(params.get('stress') === '1' ? { display_name: `Nguyễn Hoàng Minh Anh · ${seat.seat_number}`, chip_count: 123456789012 } : {}),
+        ...(params.has('allbets') ? { is_folded: false, current_bet: 1000000, display_committed_bet: 1000000 } : {}),
+      }))}
       lastActorId={frame.lastActorId}
       displayCards={frame.displayCards}
       potSize={frame.potSize}
@@ -122,7 +130,7 @@ export default function LiveFeltPreview() {
       latestAction={frame.latestAction}
       showdownResult={frame.showdownResult}
       formatBB={formatBB}
-      portrait={orientation === "portrait"}
+      portrait={orientation ? orientation === "portrait" : undefined}
       buttonSeat={hand.button_seat}
       viewerLayout={viewerLayout}
       compact={compact}
@@ -141,7 +149,7 @@ export default function LiveFeltPreview() {
   // hand-input console grid, and a viewer-hub FeaturedTableCard-like padded card.
   const wrapped =
     wrap === "console" ? (
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+      <div className="grid gap-3 min-[1200px]:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <div>{felt}</div>
         <div className="rounded-lg border border-border/40 bg-black/20 p-3 text-xs text-muted-foreground">console panel placeholder</div>
       </div>

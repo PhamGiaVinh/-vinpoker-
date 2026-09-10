@@ -383,7 +383,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
         ))}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+      <div className="grid gap-3 min-[1200px]:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         {/* LEFT — oval table map (shared LiveFelt) + state summary */}
         <div className={`${tab === "table" ? "block" : "hidden"} space-y-2 md:block`}>
           {hook.players.length === 0 ? (

@@ -3,6 +3,7 @@
 // v1 action scope: edit type/amount + delete a row. NO add-row, NO reorder — a deleted
 // row's action_order gap is kept (never renumbered).
 import { useState, useEffect, useRef } from "react";
+import { TrackerInputCardProvider } from "@/components/tracker/TrackerCardStyle";
 import { CardSlotPicker, type Card } from "@/components/shared/CardSlotPicker";
 import {
   buildHandEditPatch,
@@ -50,7 +51,11 @@ const fromSlots = (slots: (Card | null)[]): string[] => slots.filter((c): c is C
 
 const ACTION_TYPES = ["fold", "check", "call", "bet", "raise", "all_in", "post_sb", "post_bb", "post_ante"];
 
-export function HandEditPanel({ board, players, actions, saving, onCancel, onSave, resettleEnabled, onResettle, onEditChange }: HandEditPanelProps) {
+export function HandEditPanel(props: HandEditPanelProps) {
+  return <TrackerInputCardProvider><HandEditPanelContent {...props} /></TrackerInputCardProvider>;
+}
+
+function HandEditPanelContent({ board, players, actions, saving, onCancel, onSave, resettleEnabled, onResettle, onEditChange }: HandEditPanelProps) {
   const [boardSlots, setBoardSlots] = useState<(Card | null)[]>(toSlots(board, 5));
   const [holes, setHoles] = useState<Record<string, (Card | null)[]>>(() => {
     const m: Record<string, (Card | null)[]> = {};

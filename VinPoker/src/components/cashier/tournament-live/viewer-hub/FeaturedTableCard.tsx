@@ -37,7 +37,7 @@ export function FeaturedTableCard({
       style={{ borderColor: `hsl(${accentVar} / 0.3)` }}
     >
       <div
-        className="flex items-center justify-between gap-2 px-3 py-2 sm:px-3.5 sm:py-2.5 border-b border-border"
+        className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-3.5 sm:py-2.5 border-b border-border"
         style={{ background: `linear-gradient(90deg, hsl(${accentVar} / 0.12), transparent)` }}
       >
         <div className={`tracker-display flex items-center gap-1.5 text-[11px] sm:text-xs font-bold ${accent} uppercase tracking-wide min-w-0`}>

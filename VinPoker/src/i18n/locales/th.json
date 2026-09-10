@@ -1,4 +1,5 @@
 {
+  "trackerCards": { "deck": "รูปแบบไพ่", "fourColor": "4 สี", "classic": "คลาสสิก" },
   "fnb": {
     "navCounter": "F&B · Quầy",
     "navKitchen": "F&B · Bếp",

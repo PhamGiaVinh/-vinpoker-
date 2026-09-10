@@ -1,4 +1,5 @@
 {
+  "trackerCards": { "deck": "Card deck", "fourColor": "4 colors", "classic": "Classic" },
   "fnb": {
     "navCounter": "F&B · Counter",
     "navKitchen": "F&B · Kitchen",

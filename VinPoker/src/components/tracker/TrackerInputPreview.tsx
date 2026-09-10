@@ -5,6 +5,7 @@
 // into a scratch page) and run `npm run dev` — then revert that temporary mount.
 // All callbacks only console.log the emitted ActionIntent; nothing hits Supabase.
 import { useRef, useState } from 'react';
+import { TrackerInputCardProvider } from './TrackerCardStyle';
 import { FEATURES } from '@/lib/featureFlags';
 import { TrackerRacetrack } from './TrackerRacetrack';
 import { ActionDock } from './ActionDock';
@@ -41,6 +42,10 @@ function nextActing(seats: SeatVM[], from: number): number {
 }
 
 export function TrackerInputPreview() {
+  return <TrackerInputCardProvider><TrackerInputPreviewContent /></TrackerInputCardProvider>;
+}
+
+function TrackerInputPreviewContent() {
   const [actingSeatNumber, setActingSeatNumber] = useState<number | null>(5);
   // DEV toggles: `rich` shows the burgundy felt (the operator's real skin); `betChips`
   // renders committed bets as ChipStack discs (FEATURES.liveBetChips ON) vs today's text puck.
@@ -110,7 +115,7 @@ export function TrackerInputPreview() {
             Lv.3 · 200/400 · pot {formatChips(POT)}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setRich((v) => !v)}
@@ -146,7 +151,7 @@ export function TrackerInputPreview() {
       </div>
 
       <TrackerRacetrack
-        seats={SEATS}
+        seats={new URLSearchParams(window.location.search).has('allbets') ? SEATS.map(seat => ({ ...seat, committed: 1000000, isFolded: false })) : SEATS}
         actingSeatNumber={actingSeatNumber}
         dealerSeatNumber={DEALER_SEAT}
         boardCards={BOARD}
