@@ -4,7 +4,9 @@
 
 - BASE SHA: `155a4f5adab2187fbcfe2695e6a310aeeea5d8e4` (latest fetched main at branch creation).
 - Branch: `codex/intelligence-wave2-overview-context`.
-- HEAD SHA: recorded in the source PR after the evidence commit; review that exact PR head.
+- HEAD SHA (tested implementation): `3c8b4c984a40d9e7e1597d2ec6585a191eaee2eb`.
+  The final PR head adds only this evidence identity update; its exact SHA is
+  recorded in the PR description, not claimed as a deployment target.
 - Prior Wave 1/Q0 closeout `e47e4409c2adfb5b8bdbc6ea6aca95ca578bad3b` is an ancestor. The intervening #1226 diff was Tracker-only, with no Q1 overlap.
 - SOURCE: read-only Overview, shared context, pending read-only RPC. No Wave 3-6 work.
 - LOCAL E2E: synthetic fixtures only, real `/ops/select-module` route and Ops auth/capability gate.
