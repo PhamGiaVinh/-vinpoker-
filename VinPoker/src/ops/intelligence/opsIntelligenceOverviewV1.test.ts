@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOpsIntelligenceOverviewV1, type OverviewInputV1 } from "./opsIntelligenceOverviewV1";
+import { buildOpsIntelligenceOverviewV1, sourceTarget, type OverviewInputV1 } from "./opsIntelligenceOverviewV1";
 import type { TournamentContextV1 } from "./opsIntelligenceContextV1";
 
 const child = (tournamentId: string): TournamentContextV1 => ({ tournamentId, name: tournamentId, status: "scheduled", startTime: null, buyIn: null, gtd: 2_000_000_000, phase: "flight", flightLabel: null });
@@ -10,6 +10,28 @@ const input = (): OverviewInputV1 => ({
   operations: { asOf: null, observedAt: "", availability: "unavailable", reasonCode: "READ_FAILED", rows: [], runningTournamentIds: [], openTableCount: null, configuredTableCount: null, operationalTableCount: null, dealersOnDutyCount: null, countComparisonEligible: false },
 });
 describe("Wave 2 overview truth", () => {
+  it.each([
+    ["registration", "health", "Mở Data Health"],
+    ["sepay", "health", "Mở Data Health"],
+    ["operations", "live", "Mở Live Ops"],
+    ["context", "overview", "Đọc lại phạm vi"],
+  ])("routes unavailable %s to its actual owner", (source, tab, label) => {
+    const value = { ...input(), context: null, registration: null };
+    expect(sourceTarget(source)).toMatchObject({ tab, label });
+    const action = buildOpsIntelligenceOverviewV1(value).actions.find((row) => row.id === source);
+    expect(action).toMatchObject({ tab, scope: value.scope });
+    expect(action?.retryContext === true).toBe(source === "context");
+  });
+  it("does not offer history or unknown sources false remediation", () => {
+    expect(sourceTarget("history")).toBeNull();
+    expect(sourceTarget("unknown")).toBeNull();
+    expect(buildOpsIntelligenceOverviewV1(input()).actions.some((row) => row.source === "history")).toBe(false);
+  });
+  it("keeps structural context gaps at their exact scope without a retry action", () => {
+    const actions = buildOpsIntelligenceOverviewV1(input()).actions;
+    expect(actions.find((row) => row.reason === "FINAL_TOURNAMENT_MISSING")).toMatchObject({ tab: "overview", scope: { kind: "festival", festivalId: "festival" } });
+    expect(actions.find((row) => row.reason === "FINAL_TOURNAMENT_MISSING")?.retryContext).toBeUndefined();
+  });
   it("remains useful without Q0-window events without fabricating zero observations", () => {
     const model = buildOpsIntelligenceOverviewV1(input());
     expect(model.noWindowEvents).toBe(true);

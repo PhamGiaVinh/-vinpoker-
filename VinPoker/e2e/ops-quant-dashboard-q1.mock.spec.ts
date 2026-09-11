@@ -366,12 +366,14 @@ test("Wave 2 festival hierarchy never sends festival IDs to Quant and displays m
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
   page.on("request", (request) => { if (request.url().includes("get_tournament_prize_pool")) prizeTargets.push(request.postDataJSON()); });
-  await installMocks(page, { context: festivalContext, registration: () => missing ? {} : registration() });
+  await installMocks(page, { context: festivalContext, registration: () => missing ? {} : { ...registration(), events: [...registration().events, { ...registration().events[0], eventId: finalId, eventName: "Final Day" }] } });
   await page.clock.setFixedTime(new Date(asOf));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/ops/select-module");
   await expect(page.getByLabel("Phạm vi Intelligence")).toBeEnabled();
   await page.getByLabel("Phạm vi Intelligence").selectOption(`festival:${festivalId}`);
+  await expect(page.getByTestId("overview-readiness").getByRole("button", { name: "Mở Quant", exact: true })).toHaveCount(0);
+  await expect(page.getByText("Chọn Flight hoặc Final để mở Quant", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Lượt vào phạm vi chọn/ })).toContainText("UNAVAILABLE");
   await expect(page.getByTestId(`schedule-${secondEventId}`)).toContainText("Flight B");
   await expect(page.getByText("Final: Final Day", { exact: true })).toBeVisible();
@@ -385,6 +387,11 @@ test("Wave 2 festival hierarchy never sends festival IDs to Quant and displays m
   await expect(page.getByLabel("Phạm vi Intelligence")).toHaveValue(`flight:${festivalId}:${secondEventId}`);
   await expect.poll(() => prizeTargets.length).toBe(1);
   expect(JSON.stringify(prizeTargets)).toContain(secondEventId);
+  expect(JSON.stringify(prizeTargets)).not.toContain(festivalId);
+  await page.getByRole("button", { name: "TỔNG QUAN", exact: true }).click();
+  await page.getByTestId(`schedule-${finalId}`).getByRole("button", { name: "Mở Quant" }).click();
+  await expect(page.getByLabel("Phạm vi Intelligence")).toHaveValue(`final:${festivalId}:${finalId}`);
+  await expect.poll(() => JSON.stringify(prizeTargets)).toContain(finalId);
   expect(JSON.stringify(prizeTargets)).not.toContain(festivalId);
   await page.getByRole("button", { name: "TỔNG QUAN", exact: true }).click();
   await expect(page.getByText("Main Event", { exact: true })).toBeVisible();
@@ -412,6 +419,53 @@ test("Wave 2 exact empty Q0 still provides club observations and historical cont
   await expect(page.getByTestId("ops-quant-dashboard-q1")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("Wave 2 context retry stays Overview and history offers no false remediation", async ({ page }) => {
+  let valid = false;
+  let contextReads = 0;
+  await installMocks(page, { context: () => { contextReads++; return valid ? contextFixture() : {}; } });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/ops/select-module");
+  const overview = page.getByTestId("ops-intelligence-overview-v1");
+  const action = page.getByTestId("overview-action-context");
+  await expect(action.getByRole("button", { name: "Đọc lại phạm vi" })).toBeVisible();
+  await expect(action.getByRole("button", { name: "Mở Data Health" })).toHaveCount(0);
+  const beforeAction = contextReads;
+  await action.getByRole("button", { name: "Đọc lại phạm vi" }).click();
+  await expect.poll(() => contextReads).toBeGreaterThan(beforeAction);
+  await expect(overview).toBeVisible();
+  await page.getByTestId("overview-readiness").getByRole("button", { name: /Phạm vi lịch/ }).click();
+  await expect(page.getByRole("dialog").getByRole("button", { name: "Mở Data Health" })).toHaveCount(0);
+  valid = true;
+  const beforeSheet = contextReads;
+  await page.getByRole("dialog").getByRole("button", { name: "Đọc lại phạm vi" }).click();
+  await expect.poll(() => contextReads).toBeGreaterThan(beforeSheet);
+  await expect(page.getByLabel("Phạm vi Intelligence")).toBeEnabled();
+  await expect(overview).toBeVisible();
+  await page.getByTestId("overview-readiness").getByRole("button", { name: /Series \/ lịch sử/ }).click();
+  await expect(page.getByRole("dialog")).toContainText("HISTORY_NOT_MOUNTED");
+  await expect(page.getByRole("dialog")).toContainText("Chưa được nối trong Wave 2");
+  await expect(page.getByRole("dialog").getByRole("button", { name: "Mở Data Health" })).toHaveCount(0);
+});
+
+for (const source of [
+  { id: "registration", path: "rpc/get_ops_registration_pace_q0", label: /Đăng ký/, target: "Mở Data Health", view: "ops-quant-data-health-q0" },
+  { id: "sepay", path: "rpc/get_ops_sepay_read_state_q0", label: /^SePay/, target: "Mở Data Health", view: "ops-quant-data-health-q0" },
+  { id: "operations", path: "game_tables", label: /Bàn & Dealer/, target: "Mở Live Ops", view: "ops-intelligence-command-center" },
+]) {
+  test(`Wave 2 ${source.id} remediation targets its owning view from action and source sheet`, async ({ page }) => {
+    await installMocks(page);
+    await page.route(`http://127.0.0.1:54321/rest/v1/${source.path}*`, (route) => route.fulfill({ status: source.id === "operations" ? 503 : 200, contentType: "application/json", body: source.id === "operations" ? JSON.stringify({ message: "Mock operations read unavailable" }) : "{}" }));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/ops/select-module");
+    await page.getByTestId(`overview-action-${source.id}`).getByRole("button", { name: source.target }).click();
+    await expect(page.getByTestId(source.view)).toBeVisible();
+    await page.getByRole("button", { name: "TỔNG QUAN", exact: true }).click();
+    await page.getByTestId("overview-readiness").getByRole("button", { name: source.label }).click();
+    await page.getByRole("dialog").getByRole("button", { name: source.target }).click();
+    await expect(page.getByTestId(source.view)).toBeVisible();
+  });
+}
 
 function pulse() {
   const metric = (metricId: string, sourceId: string, grain: string, definitionVersion: string, value: number) => ({ metricId, value, unit: "count", availability: "exact", privacyState: value > 0 && value < 5 ? "small_cohort_suppressed" : "safe", asOf, sourceId, grain, definitionVersion });

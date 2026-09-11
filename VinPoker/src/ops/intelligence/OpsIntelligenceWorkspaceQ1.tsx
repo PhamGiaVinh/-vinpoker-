@@ -109,7 +109,7 @@ function Workspace({ clubId, clubName }: { clubId: string; clubName: string | nu
     </header>
     {scopeError && <p role="alert" className="border border-amber-300/25 p-3 text-sm text-amber-100">{scopeError}</p>}
     {(tab === "live" || tab === "health") && <p className="border-l-2 border-cyan-300/30 px-3 py-2 text-sm text-[#a1b4ad]">Dữ liệu tab này ở phạm vi toàn CLB. Phạm vi đang chọn được giữ cho Tổng quan và Quant.</p>}
-    {tab === "overview" && <OpsIntelligenceOverviewV1 clubId={clubId} scope={scope} context={context.isError ? null : context.data ?? null} contextReason={context.isError ? "CONTEXT_READ_UNAVAILABLE" : null} navigate={navigate} receipts={receipts} onReceiptsChange={setReceipts} />}
+    {tab === "overview" && <OpsIntelligenceOverviewV1 clubId={clubId} scope={scope} context={context.isError ? null : context.data ?? null} contextReason={context.isError ? "CONTEXT_READ_UNAVAILABLE" : null} onRetryContext={() => void context.refetch()} navigate={navigate} receipts={receipts} onReceiptsChange={setReceipts} />}
     {tab === "quant" && <OpsQuantDashboardQ1View clubId={clubId} clubName={clubName} requestedTournamentId={resolved.tournamentId} onTournamentChange={selectTournament} draft={draft} onDraftChange={setDraft} receipts={receipts} onReceiptsChange={setReceipts} />}
     {tab === "live" && <OpsIntelligenceCommandCenterV1 clubId={clubId} clubName={clubName} embedded showDataHealth={false} />}
     {tab === "health" && <OpsQuantDataHealthQ0Panel clubId={clubId} embedded />}

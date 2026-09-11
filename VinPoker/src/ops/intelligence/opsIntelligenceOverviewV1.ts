@@ -4,6 +4,14 @@ import { festivalGaps, resolveIntelligenceScope, scopeForTournament, tournamentG
 import type { OpsRegistrationPaceQ0, OpsSepayReadStateQ0 } from "./opsQuantDataHealthQ0";
 
 export type IntelligenceTabV1 = "overview" | "quant" | "live" | "health";
+export function sourceTarget(sourceId: string): { tab: IntelligenceTabV1; label: string; retryContext?: boolean } | null {
+  switch (sourceId) {
+    case "registration": case "sepay": return { tab: "health", label: "Mở Data Health" };
+    case "operations": return { tab: "live", label: "Mở Live Ops" };
+    case "context": return { tab: "overview", label: "Đọc lại phạm vi", retryContext: true };
+    default: return null;
+  }
+}
 export interface OverviewSourceV1 {
   id: string; label: string; definition: string; availability: OpsSourceAvailabilityV1;
   asOf: string | null; observedAt: string | null; reason: string | null;
@@ -11,7 +19,7 @@ export interface OverviewSourceV1 {
 export interface OverviewMetricV1 extends OverviewSourceV1 { value: number | null; grain: string }
 export interface OverviewActionV1 {
   id: string; title: string; severity: "info" | "warning" | "critical";
-  reason: string; source: string; scope: OpsIntelligenceScopeV1; tab: IntelligenceTabV1;
+  reason: string; source: string; scope: OpsIntelligenceScopeV1; tab: IntelligenceTabV1; retryContext?: boolean;
 }
 type Accepted<T> = { value: T; observedAt: string } | null;
 export interface OverviewInputV1 {
@@ -48,7 +56,10 @@ export function buildOpsIntelligenceOverviewV1(input: OverviewInputV1) {
     scopedMetrics[3] = { ...sources[1], id: "selected-dealers", label: "Dealer đứng bàn của giải", grain: input.scope.kind.toUpperCase(), value: allocationExact ? rows.filter((row) => row.dealerName !== null && (row.dealerAssignmentState === "assigned" || row.dealerAssignmentState === "overdue")).length : null, availability: allocationExact ? "exact" : "unavailable", reason: allocationExact ? null : "SCOPE_ALLOCATION_UNAVAILABLE" };
   }
   scopedMetrics.push({ ...sources[2], id: "sepay-actionable", label: "SePay cần xử lý", value: input.sepay?.value.buckets.find((row) => row.state === "actionable")?.transactionCount ?? null, grain: "TOÀN CLB" });
-  const actions: OverviewActionV1[] = sources.filter((row) => row.availability !== "exact" && row.id !== "history").map((row) => ({ id: row.id, title: `${row.label}: ${row.availability === "unavailable" ? "chưa đọc được" : "cần kiểm tra"}`, severity: "warning", reason: row.reason ?? "SOURCE_PARTIAL", source: row.id, scope: input.scope, tab: "health" }));
+  const actions: OverviewActionV1[] = sources.flatMap((row): OverviewActionV1[] => {
+    const target = sourceTarget(row.id);
+    return row.availability !== "exact" && target ? [{ id: row.id, title: `${row.label}: ${row.availability === "unavailable" ? "chưa đọc được" : "cần kiểm tra"}`, severity: "warning", reason: row.reason ?? "SOURCE_PARTIAL", source: row.id, scope: input.scope, tab: target.tab, retryContext: target.retryContext }] : [];
+  });
   if (!resolved.valid) actions.push({ id: "scope", title: "Phạm vi đã chọn chưa xác minh được", severity: "warning", reason: "SELECTED_SCOPE_UNAVAILABLE", source: "context", scope: input.scope, tab: "overview" });
   if ((scopedMetrics[4].value ?? 0) > 0) actions.push({ id: "sepay-actionable", title: `${scopedMetrics[4].value} giao dịch cần xử lý`, severity: "warning", reason: "SEPAY_ACTIONABLE", source: "sepay", scope: { kind: "club" }, tab: "health" });
   for (const alert of core.alerts.filter((row) => row.kind === "dealer_assignment_missing" || row.kind === "dealer_rotation_overdue")) {
