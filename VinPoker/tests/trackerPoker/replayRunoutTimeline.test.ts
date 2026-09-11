@@ -68,7 +68,7 @@ describe("viewer replay all-in runout timeline", () => {
     expect(replayRunoutPhaseDuration("river", 99)).toBe(Math.round(850 / 8));
   });
 
-  it("shows only the active verified pot result while that three-second award is presented", () => {
+  it("shows only the active verified pot result while that award is presented", () => {
     expect(replayRunoutFocusPhase("hole_hold")).toBe("hidden");
     expect(replayRunoutFocusPhase("dim")).toBe("dim");
     expect(replayRunoutFocusPhase("glow")).toBe("glow");
@@ -98,11 +98,11 @@ describe("viewer replay all-in runout timeline", () => {
     ]);
     expect(replayRunoutPhaseDuration("pot_collect", 1)).toBe(POT_COLLECT_MS);
     expect(replayRunoutPhaseDuration("pot_award", 1)).toBe(POT_AWARD_MS);
-    expect(POT_AWARD_MS).toBe(3_000);
-    expect(replayRunoutPhaseDuration("pot_award", 2)).toBe(1_500);
-    expect(replayRunoutPhaseDuration("pot_award", 0.5)).toBe(6_000);
-    // A single verified Main Pot finishes its three-second award hold before
+    expect(POT_AWARD_MS).toBe(1_500);
+    expect(replayRunoutPhaseDuration("pot_award", 2)).toBe(750);
+    expect(replayRunoutPhaseDuration("pot_award", 0.5)).toBe(3_000);
+    // A single verified Main Pot finishes its 1.5-second award hold before
     // best-five focus begins. Extra side pots each receive the same hold.
-    expect(4_450 + POT_COLLECT_MS + POT_AWARD_MS).toBe(7_870);
+    expect(4_450 + POT_COLLECT_MS + POT_AWARD_MS).toBe(6_370);
   });
 });

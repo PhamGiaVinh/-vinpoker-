@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { fmtCompact } from "./hubDerive";
+import { formatViewerBBOrUnavailable } from "@/lib/tracker-poker/viewerAmounts";
 import type { ViewerActionItem, ViewerStreet } from "./viewerTypes";
 
 const STREET_ORDER: ViewerStreet[] = ["preflop", "flop", "turn", "river", "showdown"];
@@ -16,7 +16,7 @@ function initials(name: string): string {
   return name.trim().slice(0, 2).toUpperCase() || "?";
 }
 
-export function ViewerActionTimeline({ actions }: { actions: ViewerActionItem[] }) {
+export function ViewerActionTimeline({ actions, bigBlind }: { actions: ViewerActionItem[]; bigBlind: number }) {
   const [open, setOpen] = useState(false);
   if (actions.length === 0) return null;
 
@@ -41,7 +41,7 @@ export function ViewerActionTimeline({ actions }: { actions: ViewerActionItem[] 
                         {action.avatarUrl ? <img src={action.avatarUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : initials(action.playerName)}
                       </span>
                       <span className="min-w-0"><span className="block truncate text-[11px] font-bold text-foreground">{action.playerName}</span><span className="block text-[9px] text-muted-foreground">{action.seatNumber > 0 ? `Ghế ${action.seatNumber}` : ""}</span></span>
-                      <span className="text-right"><span className="block text-[11px] font-bold text-foreground">{ACTION_LABEL[action.actionType] || action.actionType.split("_").join(" ")}{action.amount > 0 ? ` ${fmtCompact(action.amount)}` : ""}</span><span className="tracker-num block text-[9px] text-muted-foreground">Pot {fmtCompact(action.potAfter)}</span></span>
+                      <span className="text-right"><span className="block text-[11px] font-bold text-foreground">{ACTION_LABEL[action.actionType] || action.actionType.split("_").join(" ")}{action.amount > 0 ? ` ${formatViewerBBOrUnavailable(action.amount, bigBlind)}` : ""}</span><span className="tracker-num block text-[9px] text-muted-foreground">Pot {formatViewerBBOrUnavailable(action.potAfter, bigBlind)}</span></span>
                     </div>
                   ))}
                 </div>

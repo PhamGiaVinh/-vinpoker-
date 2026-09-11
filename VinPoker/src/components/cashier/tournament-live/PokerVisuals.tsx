@@ -639,7 +639,7 @@ export function TrackerVisualStyles() {
           animation-timing-function: cubic-bezier(.22,.82,.28,1);
         }
         .tracker-settlement-chip-collect { animation-name: tracker-settlement-collect; animation-duration: 420ms; }
-        .tracker-settlement-chip-award { animation-name: tracker-settlement-award; animation-duration: 560ms; }
+        .tracker-settlement-chip-award { animation-name: tracker-settlement-award; animation-duration: 420ms; }
         .tracker-settlement-stack-collect {
           animation: tracker-settlement-stack-collect 420ms cubic-bezier(.22,.82,.28,1) both;
           pointer-events: none;

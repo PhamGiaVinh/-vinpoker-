@@ -20,6 +20,16 @@ describe("shouldCollectCommittedChips", () => {
     })).toBe(true);
   });
 
+  it("collects when the betting round is confirmed complete", () => {
+    expect(shouldCollectCommittedChips({
+      enabled: true,
+      runout: false,
+      finalAllIn: false,
+      bettingRoundComplete: true,
+      hasCommittedChips: true,
+    })).toBe(true);
+  });
+
   it("fails closed before the final all-in state or without chips", () => {
     expect(shouldCollectCommittedChips({
       enabled: true,

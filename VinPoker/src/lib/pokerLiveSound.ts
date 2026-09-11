@@ -47,6 +47,7 @@ const TRACKER_MP3_BY_KIND: Partial<Record<PokerLiveSound, string>> = {
   deal_turn: "/sounds/tracker/deal-turn-river.mp3",
   deal_river: "/sounds/tracker/deal-turn-river.mp3",
   pot_collect: "/sounds/tracker/pot-collect.mp3",
+  pot_award: "/sounds/tracker/pot-award.mp3",
 };
 
 /** MP3 source a kind resolves to (exported so tests can pin flag-OFF byte-identity). */

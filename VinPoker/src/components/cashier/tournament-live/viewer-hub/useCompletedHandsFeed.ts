@@ -20,6 +20,7 @@ import {
   type RawProfile,
 } from "./handFeedDerive";
 import { FEATURES } from "@/lib/featureFlags";
+import { parseReplayPublicSettlement, type ReplayPublicSettlement } from "@/lib/tracker-poker/replaySettlement";
 
 const PAGE_SIZE = 10;
 const POLL_MS = 13_000;
@@ -59,6 +60,7 @@ export function useCompletedHandsFeed(
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const seqRef = useRef(0);
+  const settlementCacheRef = useRef(new Map<string, ReplayPublicSettlement>());
 
   // Reset paging when the tournament / table scope changes.
   useEffect(() => {
@@ -133,8 +135,25 @@ export function useCompletedHandsFeed(
       profMap.set(pid, { user_id: pid, display_name: d.name ?? null, avatar_url: d.avatar ?? null }),
     );
 
+    const uncachedHandIds = ids.filter((handId) => !settlementCacheRef.current.has(handId));
+    const settlementRows = await Promise.all(uncachedHandIds.map(async (handId) => {
+      const { data, error } = await supabase.rpc(
+        "get_public_tournament_settlement" as never,
+        { p_hand_id: handId } as never,
+      );
+      return [handId, error ? null : parseReplayPublicSettlement(data)] as const;
+    }));
+    if (seq !== seqRef.current) return;
+    settlementRows.forEach(([handId, settlement]) => {
+      if (settlement) settlementCacheRef.current.set(handId, settlement);
+    });
+    const settledHands = pageHands.map((hand) => ({
+      ...hand,
+      publicSettlement: settlementCacheRef.current.get(hand.id) ?? null,
+    }));
+
     const items = buildHandFeedItems(
-      pageHands,
+      settledHands,
       groupByHand(hp as unknown as RawHandPlayer[] | null),
       groupByHand(ha as unknown as RawHandAction[] | null),
       groupByHand(el as unknown as RawElimination[] | null),

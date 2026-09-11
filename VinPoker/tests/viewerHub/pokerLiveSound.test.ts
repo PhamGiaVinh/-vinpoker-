@@ -9,6 +9,7 @@ import {
   setPokerSoundMuted,
   isPokerSoundMuted,
   pokerSoundVolumeFor,
+  mp3SrcFor,
   type PokerLiveSound,
 } from "@/lib/pokerLiveSound";
 
@@ -50,6 +51,7 @@ describe("pokerLiveSound — FX safety contract", () => {
     expect(pokerSoundVolumeFor("deal_turn", "tracker")).toBe(1);
     expect(pokerSoundVolumeFor("deal_river", "tracker")).toBe(1);
     expect(pokerSoundVolumeFor("pot_collect", "tracker")).toBe(0.95);
+    expect(mp3SrcFor("pot_award")).toBe("/sounds/tracker/pot-award.mp3");
   });
 
   it("leaves the legacy Online Poker source levels unchanged", () => {

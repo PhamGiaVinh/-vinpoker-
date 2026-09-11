@@ -2,6 +2,7 @@ export type LivePotCollectionGateInput = {
   enabled: boolean;
   runout: boolean;
   finalAllIn: boolean;
+  bettingRoundComplete?: boolean;
   hasCommittedChips: boolean;
 };
 
@@ -13,7 +14,8 @@ export function shouldCollectCommittedChips({
   enabled,
   runout,
   finalAllIn,
+  bettingRoundComplete = false,
   hasCommittedChips,
 }: LivePotCollectionGateInput): boolean {
-  return enabled && hasCommittedChips && (runout || finalAllIn);
+  return enabled && hasCommittedChips && (runout || finalAllIn || bettingRoundComplete);
 }
