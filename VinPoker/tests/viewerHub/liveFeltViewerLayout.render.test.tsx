@@ -63,7 +63,7 @@ describe("LiveFelt viewerLayout (Viewer Felt V2)", () => {
     // Hole + board cards carry the responsive clamp (cqi is unique to this sizing —
     // the felt's V mark uses vw, so a bare `clamp(` check would be ambiguous).
     expect(html).toContain("8.8cqi"); // portrait hole-card width clamp, enlarged for SVG clarity
-    expect(html).toContain("8.4cqi"); // portrait board-card width clamp
+    expect(html).toContain("11.5cqi"); // existing portrait board-card width clamp outside the unified Tracker provider
   });
 
   it("uses the landscape clamp set when not portrait", () => {

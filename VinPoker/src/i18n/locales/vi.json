@@ -1,4 +1,5 @@
 {
+  "trackerCards": { "deck": "Bộ bài", "fourColor": "4 màu", "classic": "Kiểu cũ" },
   "fnb": {
     "navCounter": "F&B · Quầy",
     "navKitchen": "F&B · Bếp",

@@ -32,7 +32,7 @@ export function OrientationToggle({ value: controlled, defaultValue = "landscape
       aria-pressed={value === o}
       aria-label={label}
       onClick={() => pick(o)}
-      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold transition ${
+      className={`inline-flex min-h-11 min-w-11 items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
         value === o
           ? rpt ? "bg-[hsl(var(--viewer-neon)_/_0.16)] text-[hsl(var(--viewer-neon))]" : "bg-warning/20 text-warning"
           : "text-muted-foreground hover:text-foreground"

@@ -3,6 +3,7 @@
 // data; no Supabase client, auth state, or real player data is used here.
 
 import { useEffect, useMemo, useState } from "react";
+import { TrackerViewerCardProvider, TrackerCardStyleToggle } from '@/components/tracker/TrackerCardStyle';
 import { Link, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Activity, History, Image as ImageIcon, Layers3, Trophy } from "lucide-react";
@@ -75,6 +76,10 @@ const views = [
 ] as const;
 
 export default function ViewerRPTPreview() {
+  return <TrackerViewerCardProvider><TrackerCardStyleToggle /><ViewerRPTPreviewContent /></TrackerViewerCardProvider>;
+}
+
+function ViewerRPTPreviewContent() {
   const [params] = useSearchParams();
   const { t, i18n } = useTranslation();
   const requestedView = params.get("view") || "updates";
@@ -120,7 +125,7 @@ export default function ViewerRPTPreview() {
         )}
 
         {state === "loading" ? <FixtureLoading /> : state === "error" ? <FixtureError /> : state === "empty" ? <FixtureEmpty /> : view === "replay" ? (
-          <section className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] md:items-start">
+          <section className="grid min-w-0 grid-cols-1 gap-3 min-[1200px]:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] min-[1200px]:items-start">
             <div className="min-w-0 rounded-2xl border border-border/55 bg-card/55 p-2 sm:p-3">
               <LiveFelt seats={visualSeats} lastActorId={frame.lastActorId} displayCards={frame.displayCards} potSize={frame.potSize} potBreakdown={frame.potBreakdown} multiTableUnresolved={false} handNumber={replayHand.hand_number} latestAction={frame.latestAction} formatBB={formatBB} buttonSeat={replayHand.button_seat} viewerLayout compact tableFx={false} blinds={{ sb: bb / 2, bb, ante: 0 }} />
             </div>

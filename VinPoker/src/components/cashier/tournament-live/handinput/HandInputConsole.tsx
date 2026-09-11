@@ -11,12 +11,13 @@ import { FEATURES } from "@/lib/featureFlags";
 import { useStandaloneHandInput } from "./useStandaloneHandInput";
 import { StandaloneHandInputConsole } from "./StandaloneHandInputConsole";
 import { RacetrackHandInputConsole } from "./RacetrackHandInputConsole";
+import { TrackerInputCardProvider } from "@/components/tracker/TrackerCardStyle";
 
 export function HandInputConsole({ tournamentId }: { tournamentId: string }) {
   const hook = useStandaloneHandInput(tournamentId);
-  return FEATURES.trackerRacetrackUi ? (
+  return <TrackerInputCardProvider>{FEATURES.trackerRacetrackUi ? (
     <RacetrackHandInputConsole hook={hook} />
   ) : (
     <StandaloneHandInputConsole hook={hook} />
-  );
+  )}</TrackerInputCardProvider>;
 }

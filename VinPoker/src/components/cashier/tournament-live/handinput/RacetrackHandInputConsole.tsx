@@ -515,7 +515,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           {headerBlock}
           {orphanBlock}
         </div>
-        <div className="mt-3 flex flex-col gap-3 xl:grid xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] xl:items-start xl:gap-4">
+        <div className="mt-3 flex flex-col gap-3 min-[1200px]:grid min-[1200px]:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] min-[1200px]:items-start min-[1200px]:gap-4">
           <div className="flex flex-col gap-3">
             {progressBlock}
             {feltBlock}

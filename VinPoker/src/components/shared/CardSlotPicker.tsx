@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import { Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useTrackerCardStyle } from "@/components/tracker/TrackerCardStyle";
+import { PokerCard } from "@/components/cashier/tournament-live/PokerVisuals";
 
 export type Card = string;
 
@@ -40,6 +42,7 @@ export function CardSlotPicker({
   onChange: (c: Card | null) => void;
 }) {
   const { t } = useTranslation();
+  const fourColor = useTrackerCardStyle()?.style === 'four-color';
   const [open, setOpen] = useState(false);
   const [rank, setRank] = useState<string>(value ? value[0] : "");
 
@@ -71,6 +74,8 @@ export function CardSlotPicker({
         >
           {open ? (
             <X className="h-4 w-4 text-muted-foreground" />
+          ) : value && fourColor ? (
+            <PokerCard card={value} className="!h-full !w-full" />
           ) : value ? (
             <span className={cn("flex flex-col items-center text-base leading-tight sm:text-lg", SUIT_COLOR[value[1]])}>
               <span>{value[0]}</span>
@@ -88,7 +93,7 @@ export function CardSlotPicker({
         className="w-[min(17rem,calc(100vw-1.5rem))] p-2"
       >
         {!rank ? (
-          <div className="grid grid-cols-7 gap-1" aria-label="Chọn hạng bài">
+          <div className={cn('grid gap-1', fourColor ? 'grid-cols-5' : 'grid-cols-7')} aria-label="Chọn hạng bài">
             {RANKS.map((r) => (
               <button
                 key={r}
@@ -120,7 +125,7 @@ export function CardSlotPicker({
                       SUIT_COLOR[s]
                     )}
                   >
-                    {SUIT_SYMBOL[s]}
+                    {fourColor ? <PokerCard card={c} size="sm" className="mx-auto my-1" /> : SUIT_SYMBOL[s]}
                   </button>
                 );
               })}

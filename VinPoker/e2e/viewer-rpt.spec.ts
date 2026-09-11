@@ -49,8 +49,12 @@ test("mobile and tablet replay stack at the intended breakpoint", async ({ page 
   await page.reload();
   const tabletRail = await page.getByTestId("replay-action-rail").boundingBox();
   const tabletFelt = await page.locator("[data-testid='felt-status-bar']").boundingBox();
-  expect(tabletRail!.x).toBeGreaterThan(tabletFelt!.x);
+  expect(tabletRail!.y).toBeGreaterThan(tabletFelt!.y);
   await page.screenshot({ path: path.join(shots, "ipad-landscape-replay-vi.png"), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const desktopRail = await page.getByTestId('replay-action-rail').boundingBox();
+  const desktopFelt = await page.locator("[data-testid='felt-status-bar']").boundingBox();
+  expect(desktopRail!.x).toBeGreaterThan(desktopFelt!.x);
 });
 
 test("English chrome and fallback states render", async ({ page }) => {

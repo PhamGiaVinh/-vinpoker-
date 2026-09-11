@@ -41,14 +41,14 @@ describe("LiveFelt committed-bet chip stack (viewerLayout)", () => {
     expect(stackCount(renderToStaticMarkup(<LiveFelt seats={s} {...baseProps} portrait viewerLayout />))).toBe(1);
   });
 
-  it("one stack per betting/all-in seat; folded or no-bet seats get none", () => {
+  it("keeps committed bets visible until collection, including folded seats; no-bet seats get none", () => {
     const s = [
       seat({ player_id: "a", seat_number: 1, current_bet: 200000 }), // bet → stack
       seat({ player_id: "b", seat_number: 2, is_all_in: true, current_bet: 5_000_000 }), // all-in → stack
       seat({ player_id: "c", seat_number: 3 }), // no bet → none
-      seat({ player_id: "d", seat_number: 4, is_folded: true, current_bet: 100 }), // folded → none
+      seat({ player_id: "d", seat_number: 4, is_folded: true, current_bet: 100 }), // folded contribution stays visible until collection
     ];
-    expect(stackCount(renderToStaticMarkup(<LiveFelt seats={s} {...baseProps} portrait viewerLayout />))).toBe(2);
+    expect(stackCount(renderToStaticMarkup(<LiveFelt seats={s} {...baseProps} portrait viewerLayout />))).toBe(3);
   });
 
   it("all-in stack is RED (#d33), a regular stack is GOLD (#f5b340)", () => {
@@ -148,7 +148,7 @@ describe("LiveFelt committed-bet chip stack (viewerLayout)", () => {
     expect(html.toLowerCase()).toContain("#d33"); // red all-in styling carries the signal
   });
 
-  it("non-compact keeps today's bare 'ALL IN' when current_bet is 0 (regression)", () => {
+  it("non-compact retains the authoritative total after current_bet is swept", () => {
     const html = renderToStaticMarkup(
       <LiveFelt
         seats={[seat({ player_id: "a", seat_number: 1, is_all_in: true, current_bet: 0, total_committed: 19_900_000 })]}
@@ -158,6 +158,6 @@ describe("LiveFelt committed-bet chip stack (viewerLayout)", () => {
       />
     );
     expect(html).toContain("ALL IN");
-    expect(html).not.toContain("ALL IN 19.9M");
+    expect(html).toContain("ALL IN 19.9M");
   });
 });

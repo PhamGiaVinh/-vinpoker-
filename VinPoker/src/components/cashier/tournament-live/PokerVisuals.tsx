@@ -1,6 +1,7 @@
 import { useId, useState, type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { FEATURES } from "@/lib/featureFlags";
+import { useTrackerCardStyle } from "@/components/tracker/TrackerCardStyle";
 
 // ── xCards face deck (trackerCardFaces) ──────────────────────────────────────
 // Map an internal card string ("As", "Th", "2c", or glyph-suited "A♠") to the
@@ -11,6 +12,7 @@ const XCARDS_SUIT: Record<string, string> = {
   "♠": "S", "♥": "H", "♦": "D", "♣": "C",
 };
 const XCARDS_RANKS = new Set(["A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2"]);
+const FOUR_COLOR_BACKGROUNDS: Record<string, string> = { S: '#303339', H: '#BB242D', D: '#2452BE', C: '#177341' };
 function xcardsFaceFile(card: string): string | null {
   if (!card || card.length < 2) return null;
   let rank = card.slice(0, -1).toUpperCase();
@@ -26,6 +28,7 @@ function xcardsFaceFile(card: string): string | null {
  *  survives re-render; the whole card box's rounding/size/mute come from the caller. */
 function XCardImageFace({
   file,
+  deck,
   cardCode,
   muted,
   sizeClass,
@@ -34,6 +37,7 @@ function XCardImageFace({
   fallback,
 }: {
   file: string;
+  deck: "xcards" | "four-color";
   cardCode: string;
   muted: boolean;
   sizeClass: string;
@@ -62,7 +66,7 @@ function XCardImageFace({
       style={style}
     >
       <img
-        src={`/cards/xcards/${file}`}
+        src={`/cards/${deck}/${file}`}
         alt=""
         aria-hidden="true"
         draggable={false}
@@ -145,6 +149,7 @@ export function PokerCard({
   /** Optional inline style (e.g. animationDelay for a staggered board reveal). */
   style?: CSSProperties;
 }) {
+  const trackerStyle = useTrackerCardStyle()?.style;
   const red = isPokerCardRed(card);
   const sizeClass = {
     xs: "h-8 w-6 rounded-md text-[10px]",
@@ -177,12 +182,21 @@ export function PokerCard({
           sizeClass,
           className
         )}
+        style={style}
       />
     );
   }
 
   const rank = card.slice(0, -1);
   const suit = SUIT_SYMBOL[card.slice(-1)] || card.slice(-1);
+
+  const mappedFile = xcardsFaceFile(card);
+  const fallbackStyle = trackerStyle === 'four-color' ? {
+    ...style,
+    backgroundColor: FOUR_COLOR_BACKGROUNDS[mappedFile?.[1] ?? 'S'],
+    color: '#fff',
+    fontFamily: 'Arial, sans-serif',
+  } : style;
 
   // Today's built-in text face — also the fallback when an xCards asset fails to load.
   const textFace = (
@@ -195,7 +209,7 @@ export function PokerCard({
         sizeClass,
         className
       )}
-      style={style}
+      style={fallbackStyle}
     >
       <div className="absolute inset-1 rounded-[inherit] border border-black/10" />
       <div className="absolute inset-0 flex items-center justify-center gap-0.5 text-[1.35em]">
@@ -208,11 +222,13 @@ export function PokerCard({
   // trackerCardFaces: swap the text face for the owner-chosen xCards vector deck.
   // Only reached for a REVEALED card (the hidden/empty branches returned above), so
   // no card value is exposed that wasn't already shown as text today.
-  const faceFile = FEATURES.trackerCardFaces ? xcardsFaceFile(card) : null;
+  const faceFile = trackerStyle || FEATURES.trackerCardFaces ? mappedFile : null;
   if (faceFile) {
     return (
       <XCardImageFace
+        key={`${trackerStyle}:${faceFile}`}
         file={faceFile}
+        deck={trackerStyle === 'four-color' ? 'four-color' : 'xcards'}
         cardCode={card}
         muted={muted}
         sizeClass={sizeClass}
