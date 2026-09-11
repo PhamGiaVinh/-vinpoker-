@@ -50,7 +50,7 @@ describe("usePayrollStatementTelegramDelivery", () => {
     const { result } = renderHook(() => usePayrollStatementTelegramDelivery({ clubId: club, periodId: period, canSend: true }));
     await waitFor(() => expect(result.current.availability).toBe("ready"));
     await act(async () => expect((await result.current.sendAll())?.sent_count).toBe(2));
-    expect(rpcMock).toHaveBeenLastCalledWith("create_dealer_payroll_statement_delivery_operation", expect.objectContaining({
+    expect(rpcMock).toHaveBeenLastCalledWith("create_dealer_payroll_statement_delivery_operation_v2", expect.objectContaining({
       p_club_id: club,
       p_payroll_period_id: period,
     }));

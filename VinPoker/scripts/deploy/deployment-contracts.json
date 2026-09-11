@@ -7,6 +7,7 @@
       "vitest": [
         "src/lib/payrollStatementUi.test.ts",
         "src/hooks/useFtPayrollStatements.test.tsx",
+        "src/hooks/usePtPayrollStatements.test.tsx",
         "src/hooks/usePayrollStatementTelegramDelivery.test.tsx",
         "src/components/ops/dealer-swing/DealerPhoneCompletionStates.test.tsx",
         "src/hooks/useDealerSwingPhoneRollout.test.tsx",
@@ -19,6 +20,7 @@
       { "type": "relation", "name": "public.clubs" },
       { "type": "relation", "name": "public.dealer_payroll_statement_rollout" },
       { "type": "relation", "name": "public.dealer_payroll_statements" },
+      { "type": "relation", "name": "public.dealer_payroll_statement_period_links" },
       { "type": "column", "relation": "public.dealer_payroll_statements", "name": "statement_version" },
       { "type": "column", "relation": "public.dealer_payroll_statements", "name": "pdf_status" },
       {
@@ -48,6 +50,42 @@
         "acl": { "authenticated": true, "anon": false },
         "dependencyKind": "direct_frontend"
       },
+      {
+        "type": "function",
+        "name": "public.preview_part_time_payroll_statement",
+        "arguments": ["p_club_id", "p_dealer_id", "p_payroll_period_id"],
+        "argumentTypes": ["uuid", "uuid", "uuid"],
+        "allowOtherOverloads": false,
+        "acl": { "authenticated": true, "anon": false, "service_role": true },
+        "dependencyKind": "direct_frontend"
+      },
+      {
+        "type": "function",
+        "name": "public.list_part_time_payroll_statements_for_period",
+        "arguments": ["p_club_id", "p_payroll_period_id"],
+        "argumentTypes": ["uuid", "uuid"],
+        "allowOtherOverloads": false,
+        "acl": { "authenticated": true, "anon": false, "service_role": true },
+        "dependencyKind": "direct_frontend"
+      },
+      {
+        "type": "function",
+        "name": "public.finalize_part_time_payroll_statement_for_period",
+        "arguments": ["p_request_id", "p_club_id", "p_dealer_id", "p_payroll_period_id", "p_reason"],
+        "argumentTypes": ["uuid", "uuid", "uuid", "uuid", "text"],
+        "allowOtherOverloads": false,
+        "acl": { "authenticated": true, "anon": false, "service_role": true },
+        "dependencyKind": "direct_frontend"
+      },
+      {
+        "type": "function",
+        "name": "public.finalize_part_time_payroll_statements_for_period",
+        "arguments": ["p_request_id", "p_club_id", "p_payroll_period_id"],
+        "argumentTypes": ["uuid", "uuid", "uuid"],
+        "allowOtherOverloads": false,
+        "acl": { "authenticated": true, "anon": false, "service_role": true },
+        "dependencyKind": "direct_frontend"
+      },
       { "type": "relation", "name": "public.dealer_payroll_statement_delivery_rollout" },
       { "type": "relation", "name": "public.dealer_payroll_delivery_operations" },
       { "type": "relation", "name": "public.dealer_payroll_delivery_targets" },
@@ -62,7 +100,7 @@
       },
       {
         "type": "function",
-        "name": "public.create_dealer_payroll_statement_delivery_operation",
+        "name": "public.create_dealer_payroll_statement_delivery_operation_v2",
         "arguments": ["p_request_id", "p_club_id", "p_payroll_period_id"],
         "argumentTypes": ["uuid", "uuid", "uuid"],
         "allowOtherOverloads": false,
@@ -525,7 +563,8 @@
         "denoTests": [
           "VinPoker/supabase/tests/dealer_payroll_statement_pdf_contract.test.ts",
           "VinPoker/supabase/tests/dealer_payroll_statement_pdf_render.test.ts",
-          "VinPoker/supabase/tests/dealer_payroll_statement_pdf_runtime.test.ts"
+          "VinPoker/supabase/tests/dealer_payroll_statement_pdf_runtime.test.ts",
+          "VinPoker/supabase/tests/dealer_payroll_pt_statement_delivery_contract.test.ts"
         ]
       },
       "contracts": [
@@ -555,6 +594,14 @@
         {
           "type": "function",
           "name": "public.preview_full_time_payroll_statement",
+          "arguments": ["p_club_id", "p_dealer_id", "p_payroll_period_id"],
+          "argumentTypes": ["uuid", "uuid", "uuid"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": true, "anon": false, "service_role": true }
+        },
+        {
+          "type": "function",
+          "name": "public.preview_part_time_payroll_statement",
           "arguments": ["p_club_id", "p_dealer_id", "p_payroll_period_id"],
           "argumentTypes": ["uuid", "uuid", "uuid"],
           "allowOtherOverloads": false,

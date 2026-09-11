@@ -43,6 +43,27 @@ Deno.test("runtime accepts only intent identifiers for FT draft preview", () => 
   }), null);
 });
 
+Deno.test("runtime accepts only intent identifiers for PT draft preview", () => {
+  assertEquals(parsePayrollPdfRequest({
+    mode: "preview_pt_view",
+    club_id: clubId,
+    dealer_id: dealerId,
+    payroll_period_id: periodId,
+  }), {
+    mode: "preview_pt_view",
+    club_id: clubId,
+    dealer_id: dealerId,
+    payroll_period_id: periodId,
+  });
+  assertEquals(parsePayrollPdfRequest({
+    mode: "preview_pt",
+    club_id: clubId,
+    dealer_id: dealerId,
+    payroll_period_id: periodId,
+    amount: 800_000,
+  }), null);
+});
+
 Deno.test("runtime accepts finalized preview and final intents only", () => {
   assertEquals(parsePayrollPdfRequest({ mode: "preview", statement_id: statementId }), {
     mode: "preview",
@@ -84,6 +105,16 @@ Deno.test("download filename contains only period and statement UUID", () => {
       payroll_period: { month: 8, year: 2026 },
       dealer_name: "must-not-appear",
       club_name: "must-not-appear",
+    }),
+    `phieu-luong-082026-${statementId}.pdf`,
+  );
+});
+
+Deno.test("PT download filename derives the label from immutable covered_to", () => {
+  assertEquals(
+    payrollPdfDownloadFilename(statementId, {
+      covered_to: "2026-08-31T16:59:59.000Z",
+      dealer_name: "must-not-appear",
     }),
     `phieu-luong-082026-${statementId}.pdf`,
   );

@@ -1,5 +1,6 @@
 export type PayrollPdfRequest =
   | { mode: "preview_ft" | "preview_ft_view"; club_id: string; dealer_id: string; payroll_period_id: string }
+  | { mode: "preview_pt" | "preview_pt_view"; club_id: string; dealer_id: string; payroll_period_id: string }
   | { mode: "preview" | "preview_view" | "final"; statement_id: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -8,7 +9,10 @@ const SAFE_ERROR = /^PAYROLL_(?:PDF|STATEMENT)_[A-Z0-9_]{1,80}$/;
 export function parsePayrollPdfRequest(value: unknown): PayrollPdfRequest | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const body = value as Record<string, unknown>;
-  if (body.mode === "preview_ft" || body.mode === "preview_ft_view") {
+  if (
+    body.mode === "preview_ft" || body.mode === "preview_ft_view"
+    || body.mode === "preview_pt" || body.mode === "preview_pt_view"
+  ) {
     if (!hasExactKeys(body, ["mode", "club_id", "dealer_id", "payroll_period_id"])) return null;
     if (!isUuid(body.club_id) || !isUuid(body.dealer_id) || !isUuid(body.payroll_period_id)) return null;
     return {
@@ -52,11 +56,18 @@ export function payrollPdfDownloadFilename(
 ): string {
   if (!isUuid(statementId)) throw new Error("PAYROLL_PDF_INVALID_STATEMENT_IDENTITY");
   const period = sourceSnapshot.payroll_period;
-  if (!period || typeof period !== "object" || Array.isArray(period)) {
-    throw new Error("PAYROLL_PDF_INVALID_PERIOD");
-  }
-  const month = Number((period as Record<string, unknown>).month);
-  const year = Number((period as Record<string, unknown>).year);
+  const periodRecord = period && typeof period === "object" && !Array.isArray(period)
+    ? period as Record<string, unknown>
+    : null;
+  const coveredTo = typeof sourceSnapshot.covered_to === "string"
+    ? new Date(sourceSnapshot.covered_to)
+    : null;
+  const month = periodRecord
+    ? Number(periodRecord.month)
+    : coveredTo && Number.isFinite(coveredTo.getTime()) ? coveredTo.getUTCMonth() + 1 : Number.NaN;
+  const year = periodRecord
+    ? Number(periodRecord.year)
+    : coveredTo && Number.isFinite(coveredTo.getTime()) ? coveredTo.getUTCFullYear() : Number.NaN;
   if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year) || year < 2000 || year > 9999) {
     throw new Error("PAYROLL_PDF_INVALID_PERIOD");
   }
