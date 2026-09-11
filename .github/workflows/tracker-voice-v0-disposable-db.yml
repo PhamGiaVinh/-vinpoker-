@@ -24,6 +24,7 @@ on:
       - "VinPoker/supabase/migrations/20270114000002_tracker_voice_finish_atomic_commit_v0.sql"
       - "VinPoker/supabase/migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql"
       - "VinPoker/supabase/migrations/20270114000004_tracker_voice_floor_mode_global_rollout.sql"
+      - "VinPoker/supabase/migrations/20270114000009_tracker_voice_provider_event_idempotency.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
@@ -230,6 +231,14 @@ jobs:
                     AND to_regprocedure('public.reconcile_tracker_voice_floor_configs()') IS NOT NULL
                     AND to_regprocedure('floor_private.sync_tracker_voice_config(uuid,boolean)') IS NOT NULL")" = "t"
           echo "TRACKER_VOICE_14000004_APPLY=PASS"
+          createdb tracker_voice_v0_before_14000009 -T tracker_voice_v0
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270114000009_tracker_voice_provider_event_idempotency.sql
+          test "$(psql -X -At -d tracker_voice_v0 -c \
+            "SELECT position('provider_event_mismatch' IN pg_get_functiondef(
+              'public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure
+            )) > 0")" = "t"
+          echo "TRACKER_VOICE_14000009_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f tests/trackerVoice/currentP0VoiceChain.integration.sql
 
@@ -245,6 +254,8 @@ jobs:
             -f supabase/migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f supabase/migrations/20270114000004_tracker_voice_floor_mode_global_rollout.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f supabase/migrations/20270114000009_tracker_voice_provider_event_idempotency.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f tests/trackerVoice/voiceHashV2.integration.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
@@ -409,6 +420,24 @@ jobs:
                     AND NOT EXISTS (SELECT 1 FROM public.app_settings
                       WHERE key IN ('tracker_voice_global_enabled', 'tracker_voice_auto_provision_enabled'))")" = "t"
           echo "TRACKER_VOICE_14000004_ROLLBACK=PASS"
+          failing="$RUNNER_TEMP/tracker-voice-14000009-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
+            supabase/migrations/20270114000009_tracker_voice_provider_event_idempotency.sql > "$failing"
+          before_provider_event_guard="$(psql -X -At -d tracker_voice_v0_before_14000009 -c \
+            "SELECT position('provider_event_mismatch' IN pg_get_functiondef(
+              'public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure
+            )) = 0")"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_14000009 -f "$failing"; then
+            echo "Injected 14000009 migration unexpectedly committed" >&2
+            exit 1
+          fi
+          after_provider_event_guard="$(psql -X -At -d tracker_voice_v0_before_14000009 -c \
+            "SELECT position('provider_event_mismatch' IN pg_get_functiondef(
+              'public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure
+            )) = 0")"
+          test "$before_provider_event_guard" = "t"
+          test "$after_provider_event_guard" = "t"
+          echo "TRACKER_VOICE_14000009_ROLLBACK=PASS"
           echo "TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS"
 
       - name: Run focused Voice, Analytics and contract tests

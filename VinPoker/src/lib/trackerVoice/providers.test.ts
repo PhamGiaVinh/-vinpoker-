@@ -46,6 +46,38 @@ describe("Tracker Voice provider selection", () => {
     }]);
   });
 
+  it("namespaces final events per Gemini connection so a new browser session cannot collide", () => {
+    const message = {
+      serverContent: { inputTranscription: { text: "seat eight fold" } },
+    };
+    const firstConnection = reduceGeminiTranscriptMessage(
+      emptyState(),
+      message,
+      "2026-09-10T00:00:00.000Z",
+      TRACKER_VOICE_GEMINI_LIVE_MODEL,
+      "gemini-live:connection-a",
+    );
+    const secondConnection = reduceGeminiTranscriptMessage(
+      emptyState(),
+      message,
+      "2026-09-10T00:00:01.000Z",
+      TRACKER_VOICE_GEMINI_LIVE_MODEL,
+      "gemini-live:connection-b",
+    );
+
+    expect(firstConnection.events[0]).toMatchObject({
+      providerEventId: "gemini-live:connection-a:1",
+      transcript: "seat eight fold",
+      isFinal: true,
+    });
+    expect(secondConnection.events[0]).toMatchObject({
+      providerEventId: "gemini-live:connection-b:1",
+      transcript: "seat eight fold",
+      isFinal: true,
+    });
+    expect(firstConnection.events[0].providerEventId).not.toBe(secondConnection.events[0].providerEventId);
+  });
+
   it("keeps the legacy model guarded by turnComplete for compatibility", () => {
     const completed = reduceGeminiTranscriptMessage(emptyState(), {
       serverContent: { turnComplete: true },

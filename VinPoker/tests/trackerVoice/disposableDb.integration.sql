@@ -375,6 +375,26 @@ SELECT public._tracker_voice_register_validated_event(
   :'initial_state_value', 'assist', 'voice-event-call-0001', 'trace-call-0001',
   'enforce', true, NULL
 )::TEXT AS payload \gset event_mismatch_
+SELECT public._tracker_voice_register_validated_event(
+  '81200000-0000-4000-8000-000000000001',
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001',
+  '86000000-0000-4000-8000-000000000001',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'provider-event-1', NULL, 'Player A call 100',
+  '{"kind":"call","canonical_action":"call","actor_player_id":"82000000-0000-4000-8000-000000000001","entry_number":1,"street":"preflop","action_order":1,"action_amount":100}'::JSONB,
+  :'initial_state_value', 'assist', 'voice-provider-replay-0001', 'trace-provider-replay-0001',
+  'enforce', true, NULL
+)::TEXT AS payload \gset provider_replay_
+SELECT public._tracker_voice_register_validated_event(
+  '81200000-0000-4000-8000-000000000001',
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001',
+  '86000000-0000-4000-8000-000000000001',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'provider-event-1', NULL, 'Player A call 200',
+  '{"kind":"call","canonical_action":"call","actor_player_id":"82000000-0000-4000-8000-000000000001","entry_number":1,"street":"preflop","action_order":1,"action_amount":200}'::JSONB,
+  :'initial_state_value', 'assist', 'voice-provider-reuse-0001', 'trace-provider-reuse-0001',
+  'enforce', true, NULL
+)::TEXT AS payload \gset provider_reuse_
 RESET ROLE;
 SELECT public.tracker_voice_test_assert(
   (:'event_retry_payload'::JSONB->>'duplicate')::BOOLEAN,
@@ -383,6 +403,15 @@ SELECT public.tracker_voice_test_assert(
 SELECT public.tracker_voice_test_assert(
   :'event_mismatch_payload'::JSONB->>'error' = 'idempotency_mismatch',
   'same idempotency key with different event payload is rejected'
+);
+SELECT public.tracker_voice_test_assert(
+  (:'provider_replay_payload'::JSONB->>'duplicate')::BOOLEAN
+  AND :'provider_replay_payload'::JSONB->>'voice_event_id' = :'event_retry_payload'::JSONB->>'voice_event_id',
+  'same provider event with a new idempotency key returns the original receipt'
+);
+SELECT public.tracker_voice_test_assert(
+  :'provider_reuse_payload'::JSONB->>'error' = 'provider_event_mismatch',
+  'same provider event cannot authorize a changed payload'
 );
 
 -- Exercise the unique-violation retry branch under real row locking. Session A

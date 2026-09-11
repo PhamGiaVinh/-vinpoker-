@@ -2408,15 +2408,17 @@ export function useStandaloneHandInput(tournamentId: string) {
     playTrackerSoundOnce(playedSoundsRef.current, handId, "hand_end", "pot_collect");
     markSync("sent", `Voice Assist đã lưu Hand #${Number(handNumber)}`);
     setLastHandId(receipt.hand_id);
-    setButtonSeat(nextButton(activeNums, buttonSeat));
-    setLastBbSeat(actions.find((action) => action.action_type === "post_bb")?.seat_number ?? null);
+    const currentBbSeat = actions.find((action) => action.action_type === "post_bb")?.seat_number ?? null;
+    const nextSuggestion = nextButtonTournament({ maxSeats, occupiedSeats: activeNums, prevBbSeat: currentBbSeat });
+    setButtonSeat(nextSuggestion?.buttonSeat ?? nextButton(activeNums, buttonSeat));
+    setLastBbSeat(currentBbSeat);
     setButtonOverridden(false);
     setPlayers((previous) => survivorsAfterHand(previous, activeNums, serverEndingStacks));
     setHandId(null);
     setHandStarted(false);
     resetHand();
     return true;
-  }, [actions, buttonSeat, handId, handNumber, markSync, resetHand, tableId, tournamentId]);
+  }, [actions, buttonSeat, handId, handNumber, markSync, maxSeats, resetHand, tableId, tournamentId]);
 
   // B2 — all-in runout ONE-SCREEN: persist EVERY remaining board street in one
   // operator gesture. Sends the SAME cumulative update_community_cards payload as
@@ -2663,8 +2665,10 @@ export function useStandaloneHandInput(tournamentId: string) {
         .filter((s) => s.player_id && s.is_active !== false)
         .map((s) => s.seat_number)
         .sort((a, b) => a - b);
-      setButtonSeat(nextButton(activeNums, buttonSeat));
-      setLastBbSeat(actions.find((a) => a.action_type === "post_bb")?.seat_number ?? null);
+      const currentBbSeat = actions.find((action) => action.action_type === "post_bb")?.seat_number ?? null;
+      const nextSuggestion = nextButtonTournament({ maxSeats, occupiedSeats: activeNums, prevBbSeat: currentBbSeat });
+      setButtonSeat(nextSuggestion?.buttonSeat ?? nextButton(activeNums, buttonSeat));
+      setLastBbSeat(currentBbSeat);
       setButtonOverridden(false);
       if (refreshedSeats) {
         setPlayers((prev) => survivorsAfterHand(prev, activeNums, endingStacks));
