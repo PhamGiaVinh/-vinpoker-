@@ -24,6 +24,28 @@ const HAND: RawHandRow = {
   pot_size: 10_000_000,
   button_seat: 1,
   table_id: "ft",
+  publicSettlement: {
+    schemaVersion: "settlement-outcome-v1",
+    status: "verified",
+    players: [
+      { playerId: "p1", potAward: 10_800_000, refund: 250_000, netDelta: 5_400_000 },
+      { playerId: "p2", potAward: 0, refund: 0, netDelta: -5_400_000 },
+    ],
+    pots: [{
+      potId: "main-0",
+      kind: "main",
+      amount: 10_800_000,
+      winnerIds: ["p1"],
+      allocations: [{ potId: "main-0", winnerId: "p1", amount: 10_800_000 }],
+    }],
+    refunds: [{ playerId: "p1", amount: 250_000, sourceActionId: "raise-p1" }],
+    handRanks: [{
+      playerId: "p1",
+      category: "full_house",
+      bestFive: ["Qs", "Qh", "Qc", "Jh", "Jd"],
+      kickers: ["J"],
+    }],
+  },
 };
 
 const PLAYERS: RawHandPlayer[] = [
@@ -34,7 +56,7 @@ const PLAYERS: RawHandPlayer[] = [
 const ACTIONS: RawHandAction[] = [
   { hand_id: "h1", player_id: "p2", action_type: "post_sb", action_amount: 125_000, action_order: 0 },
   { hand_id: "h1", player_id: "p1", action_type: "post_bb", action_amount: BB, action_order: 1 },
-  { hand_id: "h1", player_id: "p1", action_type: "raise", action_amount: 5_400_000, action_order: 2 },
+  { id: "raise-p1", hand_id: "h1", player_id: "p1", action_type: "raise", action_amount: 5_400_000, action_order: 2 },
   { hand_id: "h1", player_id: "p2", action_type: "all_in", action_amount: 5_275_000, action_order: 3 },
 ];
 
@@ -103,17 +125,18 @@ describe("buildHandFeedItems", () => {
     expect(item.highHand?.category).toBe("full_house");
   });
 
-  it("sorts positive chip deltas first but does not infer a winner from the delta", () => {
+  it("sorts positive chip deltas first without using the delta as settlement proof", () => {
     expect(item.players[0].playerId).toBe("p1");
     expect(item.players[0].isWinner).toBe(false);
     expect(item.players[0].deltaChips).toBe(5_400_000);
     expect(item.players[0].deltaBB).toBe(21.6);
   });
 
-  it("does not promote guarded client reconstruction into settlement proof", () => {
+  it("uses the verified public settlement for winner and ranking", () => {
     const guarded = build(true);
-    expect(guarded.showdownResult).toBeNull();
-    expect(guarded.players.find((player) => player.playerId === "p1")?.isWinner).toBe(false);
+    expect(guarded.showdownResult).toBe("winner");
+    expect(guarded.players.find((player) => player.playerId === "p1")?.isWinner).toBe(true);
+    expect(guarded.players.find((player) => player.playerId === "p1")?.rankingText).toContain("Cù lũ");
     expect(guarded.players.find((player) => player.playerId === "p2")?.isWinner).toBe(false);
   });
 

@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { Crown, Share2, Play } from "lucide-react";
 import { PokerCard, CardBack } from "../PokerVisuals";
 import { fmtCompact } from "./hubDerive";
+import { formatViewerBBOrUnavailable } from "@/lib/tracker-poker/viewerAmounts";
 import type { HandFeedItem, HandFeedTag } from "./handFeedDerive";
 import { ViewerActionTimeline } from "./ViewerActionTimeline";
 import type { ReplayTarget } from "./replayTarget";
@@ -17,19 +18,6 @@ const TAG_META: Record<HandFeedTag, { label: string; cls: string }> = {
   big_pot: { label: "BIG POT", cls: "border-success/40 bg-success/15 text-success" },
   high_hand: { label: "HIGH HAND", cls: "border-warning/40 bg-warning/15 text-warning" },
   eliminated: { label: "ELIMINATED", cls: "border-destructive/40 bg-destructive/15 text-destructive" },
-};
-
-const HAND_CATEGORY_LABEL: Record<string, string> = {
-  royal_flush: "Royal Flush",
-  straight_flush: "Straight Flush",
-  quads: "Four of a Kind",
-  full_house: "Full House",
-  flush: "Flush",
-  straight: "Straight",
-  trips: "Three of a Kind",
-  two_pair: "Two Pair",
-  pair: "One Pair",
-  high_card: "High Card",
 };
 
 function pad5(board: string[]): (string | null)[] {
@@ -102,14 +90,14 @@ export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare
               </span>
             )}
             <span className="tracker-num text-sm font-bold text-[hsl(var(--viewer-neon))]">
-              {t("liveHub.handFeed.pot", "POT")} {fmtCompact(item.potChips)}
+              {t("liveHub.handFeed.pot", "POT")} {formatViewerBBOrUnavailable(item.potChips, item.bigBlind)}
             </span>
-            {item.potBB != null && <span className="text-[11px] text-muted-foreground">({item.potBB} BB)</span>}
             {item.sidePotCount > 0 && (
               <span className="tracker-num ml-auto text-[10px] font-bold text-warning">
                 +{item.sidePotCount} {t("liveHub.handFeed.sidePot", "side")}
               </span>
             )}
+            {item.bigBlind <= 0 && <span className="w-full text-[10px] text-amber-300">{t("liveHub.replay.missingBlind", "Chưa có blind của hand")}</span>}
           </div>
 
           <div data-testid="viewer-rpt-board" className="flex min-h-16 items-center gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label={t("liveHub.handFeed.board", "Bài chung") }>
@@ -143,11 +131,9 @@ export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare
                       {showFinish && <span className="rounded bg-destructive/15 px-1 text-[9px] font-bold text-destructive">#{player.finishPosition}</span>}
                     </div>
                     {player.seatNumber > 0 && <span className="text-[10px] text-muted-foreground">{t("liveHub.seat", "Ghế {{n}}", { n: player.seatNumber })}</span>}
-                    {player.handRank && (
+                    {player.rankingText && (
                       <span className="block truncate text-[10px] font-semibold text-[hsl(var(--poker-gold))]">
-                        {HAND_CATEGORY_LABEL[player.handRank.category]}
-                        {player.handRank.primaryRanks.length > 0 ? ` · ${player.handRank.primaryRanks.join("-")}` : ""}
-                        {player.handRank.kickerRanks.length > 0 ? ` · kicker ${player.handRank.kickerRanks.join("-")}` : ""}
+                        {player.rankingText}
                       </span>
                     )}
                   </div>
@@ -159,8 +145,7 @@ export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare
                   <span className={`tracker-num ml-auto min-w-[78px] text-right text-xs font-bold ${
                     player.deltaChips > 0 ? "text-success" : player.deltaChips < 0 ? "text-destructive" : "text-muted-foreground"
                   }`}>
-                    {player.deltaChips > 0 ? "+" : player.deltaChips < 0 ? "−" : ""}{fmtCompact(Math.abs(player.deltaChips))}
-                    {player.deltaBB != null && <span className="block text-[9px] font-medium opacity-75">{player.deltaBB > 0 ? "+" : player.deltaBB < 0 ? "−" : ""}{Math.abs(player.deltaBB)} BB</span>}
+                    {player.deltaChips > 0 ? "+" : player.deltaChips < 0 ? "−" : ""}{formatViewerBBOrUnavailable(Math.abs(player.deltaChips), item.bigBlind)}
                   </span>
                 </div>
               );
@@ -178,7 +163,7 @@ export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare
             </div>
           )}
 
-          <ViewerActionTimeline actions={item.actions ?? []} />
+          <ViewerActionTimeline actions={item.actions ?? []} bigBlind={item.bigBlind} />
 
           {item.handNumber > 0 && (onShare || onViewHand) && (
             <div className="flex gap-2 border-t border-border/40 pt-3">
@@ -218,12 +203,7 @@ export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare
 
       {/* pot */}
       <div className="mb-2 flex items-baseline gap-2">
-        <span className="tracker-num text-lg font-bold text-primary">{fmtCompact(item.potChips)}</span>
-        {item.potBB != null && (
-          <span className="text-[11px] text-muted-foreground">
-            · {item.potBB} {t("liveHub.handFeed.bbPot", "BB pot")}
-          </span>
-        )}
+        <span className="tracker-num text-lg font-bold text-primary">{formatViewerBBOrUnavailable(item.potChips, item.bigBlind)}</span>
         {item.sidePotCount > 0 && (
           <span className="tracker-num rounded-full border border-warning/40 px-1.5 text-[9px] font-bold text-warning">
             +{item.sidePotCount} {t("liveHub.handFeed.sidePot", "side")}
@@ -274,8 +254,7 @@ export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare
               }`}
             >
               {p.deltaChips > 0 ? "+" : p.deltaChips < 0 ? "−" : ""}
-              {fmtCompact(Math.abs(p.deltaChips))}
-              {p.deltaBB != null && <span className="text-[9px]"> ({p.deltaBB > 0 ? "+" : p.deltaBB < 0 ? "−" : ""}{Math.abs(p.deltaBB)} BB)</span>}
+              {formatViewerBBOrUnavailable(Math.abs(p.deltaChips), item.bigBlind)}
             </span>
           </div>
         ))}

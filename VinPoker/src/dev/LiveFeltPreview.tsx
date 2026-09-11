@@ -28,6 +28,7 @@ import { LiveFelt } from "@/components/cashier/tournament-live/LiveFelt";
 import { TrackerVisualStyles } from "@/components/cashier/tournament-live/PokerVisuals";
 import { ReplayScrubber } from "@/components/cashier/tournament-live/ReplayScrubber";
 import { buildReplayFrames, detectBigBlind, type ReplayFrame } from "@/lib/tracker-poker/replayEngine";
+import { formatViewerBB } from "@/lib/tracker-poker/viewerAmounts";
 import {
   resolveVerifiedShowdownPresentation,
   selectVerifiedPotLayerPresentation,
@@ -94,7 +95,7 @@ function LiveFeltPreviewContent() {
   };
 
   const bb = detectBigBlind(hand);
-  const formatBB = (n: number): string | null => (bb > 0 ? `${(n / bb).toFixed(1).replace(/\.0$/, "")} BB` : null);
+  const formatBB = (n: number): string | null => formatViewerBB(n, bb);
   const blinds = bb > 0 ? { sb: bb / 2, bb, ante: 0 } : null;
   const verifiedPresentation = useMemo(() => resolveVerifiedShowdownPresentation({
     handId: hand.hand_id ?? `fixture-${fixture}-${hand.hand_number}`,
@@ -133,8 +134,10 @@ function LiveFeltPreviewContent() {
       portrait={orientation ? orientation === "portrait" : undefined}
       buttonSeat={hand.button_seat}
       viewerLayout={viewerLayout}
+      viewerAmountsInBB={viewerLayout}
       compact={compact}
       tableFx={tableFx}
+      collectCommittedChips={frame.index === frames.length - 1 && hand.actions.some((action) => action.action_type === "all_in")}
       bestFiveFocus={visiblePresentation.enabled ? visiblePresentation.focus : null}
       showdownPresentation={visiblePresentation.enabled ? visiblePresentation : null}
       bestFiveFocusPhase="static"

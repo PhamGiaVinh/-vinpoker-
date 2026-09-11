@@ -14,7 +14,7 @@ import { useTranslation } from "react-i18next";
 import { Trophy } from "lucide-react";
 import { deriveHandBreakdown, type BreakdownAction } from "@/lib/tracker-poker/handBreakdown";
 import { getSeatPositions } from "@/lib/tournament/button";
-import { fmtCompact } from "./hubDerive";
+import { formatViewerBBOrUnavailable } from "@/lib/tracker-poker/viewerAmounts";
 
 export interface HandBreakdownPlayer {
   player_id: string;
@@ -65,10 +65,6 @@ function initials(name: string): string {
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-function trimBB(n: number): string {
-  return n.toFixed(1).replace(/\.0$/, "");
 }
 
 export function HandBreakdown({
@@ -138,8 +134,7 @@ export function HandBreakdown({
                 {player.display_name || fallbackName}
               </span>
               <span className="tracker-num">
-                +{fmtCompact(net)}
-                {bigBlind > 0 ? ` (${trimBB(net / bigBlind)} BB)` : ""}
+                +{formatViewerBBOrUnavailable(net, bigBlind)}
               </span>
             </span>
           ))}
@@ -157,8 +152,7 @@ export function HandBreakdown({
                 {STREET_LABELS[col.street] ?? col.street}
               </span>
               <span className="tracker-num text-[10px] text-muted-foreground" title={potHint}>
-                {t("liveHub.breakdown.pot", "Pot")} {fmtCompact(col.potChips)}
-                {col.potBB != null ? ` · ${trimBB(col.potBB)} BB` : ""}
+                {t("liveHub.breakdown.pot", "Pot")} {formatViewerBBOrUnavailable(col.potChips, bigBlind)}
               </span>
             </div>
 
@@ -200,11 +194,6 @@ export function HandBreakdown({
                         <span className={`text-[11px] font-semibold ${actionClass(r.action_type)}`}>
                           {r.label}
                         </span>
-                        {r.amountBB != null && (
-                          <span className="tracker-num text-[9px] text-muted-foreground">
-                            {trimBB(r.amountBB)} BB
-                          </span>
-                        )}
                       </div>
                     </div>
                   </div>

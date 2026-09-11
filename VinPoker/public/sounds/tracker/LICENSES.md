@@ -7,9 +7,10 @@
 | fold.mp3 | IMG_1362.MP4 | Fold (bỏ bài) |
 | deal-flop.mp3 | IMG_1363.MP4 | Mở flop 3 lá |
 | check.mp3 | IMG_1364.MP4 | Check |
+| pot-award.mp3 | IMG_2431.MP4 | Trao pot cho người thắng |
 
 - **Source:** owner-provided clips (Telegram, 2026-07-08), supplied by the product owner
-  for use as VinPoker product sound assets.
+  for use as VinPoker product sound assets. `IMG_2431.MP4` was supplied on 2026-09-12.
 - **Usage:** VinPoker internal/product UI sound effects (tracker operator console + `/live` viewer).
 - **Processing:** audio extracted from the MP4 clips with ffmpeg, silence-trimmed at the edges
   (−60 dB threshold, 0.3 s decay tail kept), mono 44.1 kHz, peak-normalized to −3 dBTP,

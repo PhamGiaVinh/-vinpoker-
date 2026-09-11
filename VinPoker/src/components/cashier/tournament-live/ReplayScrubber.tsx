@@ -26,6 +26,7 @@ import {
   type ReplayRunoutPresentation,
 } from "@/lib/tracker-poker/replayRunoutTimeline";
 import { formatActionLabel, formatStack, type ActionLog } from "./LiveFelt";
+import { formatViewerBBOrUnavailable } from "@/lib/tracker-poker/viewerAmounts";
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
 const STREET_LABELS: Record<string, string> = {
@@ -59,6 +60,8 @@ interface ReplayScrubberProps {
   showdownPresentation?: VerifiedShowdownPresentation | null;
   /** Ephemeral playback-only state; never changes the replay frame or settlement. */
   onRunoutPresentation?: (presentation: ReplayRunoutPresentation | null) => void;
+  selectedPotIndex?: number;
+  onSelectedPotIndexChange?: (potIndex: number) => void;
 }
 
 export function ReplayScrubber({
@@ -69,6 +72,8 @@ export function ReplayScrubber({
   onSpeedChange,
   showdownPresentation = null,
   onRunoutPresentation,
+  selectedPotIndex = 0,
+  onSelectedPotIndexChange,
 }: ReplayScrubberProps) {
   const { t } = useTranslation();
   const frames = useMemo(() => buildReplayFrames(hand, { trackBets }), [hand, trackBets]);
@@ -237,11 +242,16 @@ export function ReplayScrubber({
   const potScopedPresentation = runoutPresentation?.key === runoutKey && runoutPresentation.potAwardIndex != null
     ? selectVerifiedPotLayerPresentation(currentPresentation, runoutPresentation.potAwardIndex)
     : null;
+  const directMainPotPresentation = hasVerifiedPayoutSequence && !runoutPresentation
+    ? selectVerifiedPotLayerPresentation(currentPresentation, selectedPotIndex)
+    : null;
   const visiblePresentation = potScopedPresentation?.enabled
     ? potScopedPresentation
+    : directMainPotPresentation?.enabled
+      ? directMainPotPresentation
       : hasVerifiedPayoutSequence && runoutPresentation
-      ? null
-      : currentPresentation;
+        ? null
+        : currentPresentation;
   const summaryVisible = visiblePresentation != null
     && (!runoutPresentation || (runoutPresentation.key === runoutKey && replayRunoutShowsSummary(runoutPresentation.phase)));
   const publicName = (name: string | null | undefined, playerId: string): string => {
@@ -259,7 +269,7 @@ export function ReplayScrubber({
     () => (hud ? Math.max(0, ...sortedActions.filter((a) => a.action_type === "post_ante").map((a) => a.action_amount), 0) : 0),
     [hud, sortedActions]
   );
-  const inBB = (n: number): string | null => (bb > 0 ? `${(n / bb).toFixed(1)} BB` : null);
+  const amountForHud = (n: number): string => formatViewerBBOrUnavailable(n, bb);
   // Hand-summary bullets reveal only actions reached by the current replay frame.
   const bullets = (() => {
     if (!hud) return [];
@@ -267,10 +277,9 @@ export function ReplayScrubber({
     const nameOf = (pid: string) => publicName(hand.players.find((p) => p.player_id === pid)?.display_name, pid);
     for (const a of sortedActions.slice(0, current?.index ?? 0)) {
       if (a.action_type === "all_in") {
-        out.push(t("liveHub.replay.allInSummary", "{{name}} all-in {{amount}}{{bb}}", {
+        out.push(t("liveHub.replay.allInSummary", "{{name}} all-in {{amount}}", {
           name: nameOf(a.player_id),
-          amount: formatStack(a.action_amount),
-          bb: inBB(a.action_amount) ? ` (${inBB(a.action_amount)})` : "",
+          amount: amountForHud(a.action_amount),
         }));
       }
     }
@@ -286,14 +295,13 @@ export function ReplayScrubber({
     >
       {/* B1 HUD strip — the RPT-style BB/ANTE + POT bar (hand's own blind, not the clock) */}
       {hud && (
-        <div data-testid="replay-hud-bar" className="flex min-h-11 items-center justify-between gap-2 rounded-xl border border-border/50 bg-background/45 px-3 text-[11px]">
+        <div data-testid="replay-hud-bar" className="flex min-h-11 flex-wrap items-center justify-between gap-2 rounded-xl border border-border/50 bg-background/45 px-3 py-2 text-[11px]">
           <span className="tracker-num font-bold text-[hsl(var(--viewer-neon))]">
             BB{ante > 0 ? "/ANTE" : ""} {bb > 0 ? formatStack(bb) : "—"}
             {ante > 0 ? ` / ${formatStack(ante)}` : ""}
           </span>
           <span className="tracker-num font-bold text-success">
-            POT {formatStack(current?.potSize ?? 0)}
-            {current && inBB(current.potSize) ? <span className="ml-1 font-normal opacity-70">({inBB(current.potSize)})</span> : null}
+            POT {amountForHud(current?.potSize ?? 0)}
           </span>
           {current?.showdownResult && (
             <span className={`rounded-md border px-1.5 py-1 text-[9px] font-black uppercase tracking-wider ${
@@ -310,6 +318,7 @@ export function ReplayScrubber({
                   : t("liveHub.felt.showdown", "Showdown")}
             </span>
           )}
+          {bb <= 0 && <span className="w-full text-[10px] text-amber-300">{t("liveHub.replay.missingBlind", "Chưa có blind của hand")}</span>}
         </div>
       )}
       {/* Street tabs */}
@@ -434,6 +443,25 @@ export function ReplayScrubber({
 
       {hud && hudTab === "summary" && (
         <div data-testid="replay-hud-summary" aria-live="polite" className="space-y-2">
+          {summaryVisible && (currentPresentation?.potLayers.length ?? 0) > 1 && (
+            <div className="flex max-w-full gap-1.5 overflow-x-auto pb-0.5" aria-label={t("liveHub.replay.choosePot", "Chọn pot") }>
+              {currentPresentation!.potLayers.map((pot, potIndex) => (
+                <button
+                  key={pot.potId}
+                  type="button"
+                  data-testid={`replay-pot-selector-${potIndex}`}
+                  onClick={() => {
+                    setIsPlaying(false);
+                    publishRunoutPresentation(null);
+                    onSelectedPotIndexChange?.(potIndex);
+                  }}
+                  className={`min-h-11 shrink-0 rounded-xl border px-3 text-[10px] font-black uppercase tracking-wider ${selectedPotIndex === potIndex ? "border-[hsl(var(--poker-gold)/.68)] bg-[hsl(var(--poker-gold)/.12)] text-[hsl(var(--poker-gold))]" : "border-border text-muted-foreground"}`}
+                >
+                  {pot.kind === "main" ? t("liveHub.felt.mainPot", "Main Pot") : t("liveHub.felt.sidePot", "Side Pot")} · {amountForHud(pot.amount)}
+                </button>
+              ))}
+            </div>
+          )}
           {summaryVisible && visiblePresentation.isChop && (
             <div data-testid="replay-hud-chop" className="rounded-xl border border-[hsl(var(--viewer-neon)_/_0.35)] bg-[hsl(var(--viewer-neon)_/_0.08)] px-3 py-2 text-xs font-semibold text-[hsl(var(--viewer-neon))]">
               {t("liveHub.felt.chopPot", "Chop pot")}
@@ -491,7 +519,7 @@ export function ReplayScrubber({
         <div className={hud ? "border-t border-border/20 pt-3 text-xs text-foreground" : "text-xs text-amber-100 border-t border-border/20 pt-2"}>
           {(!hud || current.latestAction.seat_number > 0) && <span className={hud ? "text-muted-foreground" : "text-amber-300/70"}>{hud ? t("liveHub.seat", "Ghế {{n}}", { n: current.latestAction.seat_number }) : `Ghế ${current.latestAction.seat_number}`} · </span>}
           <span className={hud ? "font-semibold text-[hsl(var(--viewer-neon))]" : "font-semibold text-emerald-300"}>{hud ? publicName(current.latestAction.display_name, current.latestAction.player_id) : current.latestAction.display_name}</span>{" "}
-          {formatActionLabel(current.latestAction)}
+          {formatActionLabel(current.latestAction, hud ? amountForHud : formatStack)}
         </div>
       )}
 
@@ -505,7 +533,7 @@ export function ReplayScrubber({
             action_type: a.action_type,
             action_amount: a.action_amount,
             action_order: a.action_order,
-          } as ActionLog);
+          } as ActionLog, hud ? amountForHud : formatStack);
           const rawName = hand.players.find((p) => p.player_id === a.player_id)?.display_name;
           const name = hud ? publicName(rawName, a.player_id) : rawName || a.player_id.slice(0, 6);
           const active = step === i + 1;

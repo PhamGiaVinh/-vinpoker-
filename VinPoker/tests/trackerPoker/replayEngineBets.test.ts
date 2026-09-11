@@ -106,7 +106,7 @@ describe("trackBets — street bets + sweep", () => {
 });
 
 describe("trackBets — all-in totals", () => {
-  it("preserves a folded player's whole-hand commitment after later-street sweeps", () => {
+  it("moves a folded player's current commitment into the center pot", () => {
     const h = hand({
       actions: [
         A("P2", "post_sb", 50),
@@ -123,7 +123,7 @@ describe("trackBets — all-in totals", () => {
 
     expect(folded.is_folded).toBe(true);
     expect(folded.current_bet).toBe(0);
-    expect(folded.display_committed_bet).toBe(300);
+    expect(folded.display_committed_bet).toBe(0);
   });
 
   it("explicit all_in carries whole-hand total_committed through later frames incl. final", () => {

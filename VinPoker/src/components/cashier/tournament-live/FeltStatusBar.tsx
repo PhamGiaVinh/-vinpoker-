@@ -14,12 +14,13 @@ interface FeltStatusBarProps {
   toActName: string | null;
   potSize: number;
   formatBB: (n: number) => string | null;
+  viewerAmountsInBB?: boolean;
   /** All-in runout in progress (betting closed) — middle segment shows "Đang chạy
    * board" instead of a waiting-on-player name. Absent → no change. */
   runout?: boolean;
 }
 
-export function FeltStatusBar({ blinds, toActName, potSize, formatBB, runout = false }: FeltStatusBarProps) {
+export function FeltStatusBar({ blinds, toActName, potSize, formatBB, viewerAmountsInBB = false, runout = false }: FeltStatusBarProps) {
   const { t } = useTranslation();
   const hasBlinds = !!blinds && blinds.bb > 0;
   if (!hasBlinds && !toActName && !runout && potSize <= 0) return null;
@@ -66,9 +67,9 @@ export function FeltStatusBar({ blinds, toActName, potSize, formatBB, runout = f
             {t("liveHub.felt.pot", "Pot")}
           </span>
           <span className="tracker-num font-bold" style={{ color: "hsl(var(--poker-gold))" }}>
-            {formatStack(potSize)}
+            {viewerAmountsInBB ? formatBB(potSize) ?? "— BB" : formatStack(potSize)}
           </span>
-          {formatBB(potSize) && <span className="tracker-num text-white/50">({formatBB(potSize)})</span>}
+          {!viewerAmountsInBB && formatBB(potSize) && <span className="tracker-num text-white/50">({formatBB(potSize)})</span>}
         </span>
       )}
     </div>

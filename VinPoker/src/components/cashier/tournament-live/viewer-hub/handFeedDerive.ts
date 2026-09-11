@@ -4,23 +4,23 @@
 //
 // READ-ONLY: every field is derived from already-persisted, operator-recorded data
 // (tournament_hands / hand_players / hand_actions / tournament_eliminations).
-// Reuses the canonical pure utilities: computePotBreakdown (side-pot layering) +
-// evaluate7 (hand evaluator) + toEvalCard (card normaliser).
+// Reuses the canonical pot/replay utilities. Winner and ranking labels are copied
+// only from the server-authoritative public settlement for this exact hand.
 //
 // 🟢 HOLE-CARD GUARANTEE (structural): `hand_players.hole_cards` is persisted ONLY
 // when the operator reveals cards at showdown/runout — i.e. cards that were already
 // physically face-up at the table. There is NO hidden / RFID hole-card source, and
 // this feed shows COMPLETED hands only. So the viewer can never know more than the
-// table already showed → no leak, no broadcast delay needed. HIGH HAND is computed
-// only from these revealed cards, so it inherits the same guarantee.
+// table already showed → no leak, no broadcast delay needed. HIGH HAND is shown
+// only when the verified settlement also supplies its public ranking.
 // ⚠️ If an RFID / hole-card-camera feed is ever added as a hole-card source, this
 // guarantee BREAKS — a broadcast delay + reveal policy would become mandatory.
 
 import { computePotBreakdown, contributionsFromActions } from "@/lib/tracker-poker/potEngine";
-import { evaluate7 } from "@/lib/poker/handEval";
-import { toEvalCard } from "@/lib/tracker-poker/trackerShowdown";
 import { buildReplayFrames } from "@/lib/tracker-poker/replayEngine";
-import { buildHandRankView, type HandRankView } from "./handRankView";
+import type { ReplayPublicSettlement } from "@/lib/tracker-poker/replaySettlement";
+import { formatVerifiedHandRanking } from "@/lib/tracker-poker/replayBestFiveFocus";
+import { resolveViewerHandBigBlind } from "@/lib/tracker-poker/viewerAmounts";
 import { resolveViewerIdentity } from "./viewerIdentity";
 import type { ViewerActionItem, ViewerStreet } from "./viewerTypes";
 
@@ -60,6 +60,7 @@ export interface RawHandRow {
   pot_size: number | null;
   button_seat: number | null;
   table_id: string | null;
+  publicSettlement?: ReplayPublicSettlement | null;
 }
 export interface RawHandPlayer {
   hand_id: string;
@@ -109,7 +110,7 @@ export interface HandFeedPlayer {
   isEliminated: boolean;
   finishPosition: number | null;
   prize: number | null;
-  handRank?: HandRankView | null;
+  rankingText?: string | null;
 }
 export interface HandFeedItem {
   handId: string;
@@ -144,11 +145,10 @@ function clampChips(n: unknown): number {
 /** Big blind from the hand's post_bb action (0 when none). Inlined to keep this
  *  module free of the React-coupled replayEngine import. */
 export function bigBlindFromActions(actions: RawHandAction[]): number {
-  const bb = actions.find((a) => a.action_type === "post_bb");
-  return clampChips(bb?.action_amount);
+  return resolveViewerHandBigBlind({ actions });
 }
 
-/** Map an evaluate7 score to a poker hand category (bands are `score / 1e10`). */
+/** Legacy score-category adapter kept for callers that already own an evaluator score. */
 export function scoreToCategory(score: number): HandCategory {
   const band = Math.floor(score / 1e10);
   switch (band) {
@@ -173,21 +173,13 @@ export function scoreToCategory(score: number): HandCategory {
   }
 }
 
-/** Best revealed hand in the pot (needs 2 revealed hole cards + ≥3 board cards). */
-function deriveHighHand(
-  players: RawHandPlayer[],
-  board: string[],
-): { playerId: string; category: HandCategory } | null {
-  if (board.length < 3) return null;
-  const boardEval = board.map(toEvalCard);
-  let best: { playerId: string; score: number } | null = null;
-  for (const p of players) {
-    const hole = (p.hole_cards ?? []).filter((c): c is string => !!c);
-    if (hole.length !== 2) continue;
-    const score = evaluate7([...hole.map(toEvalCard), ...boardEval]);
-    if (!best || score > best.score) best = { playerId: p.player_id, score };
-  }
-  return best ? { playerId: best.playerId, category: scoreToCategory(best.score) } : null;
+function settlementCategory(value: string): HandCategory | null {
+  const aliases: Record<string, HandCategory> = {
+    royal_flush: "royal_flush", straight_flush: "straight_flush", four_of_a_kind: "quads", quads: "quads",
+    full_house: "full_house", flush: "flush", straight: "straight", three_of_a_kind: "trips", trips: "trips",
+    two_pair: "two_pair", one_pair: "pair", pair: "pair", high_card: "high_card",
+  };
+  return aliases[value.trim().toLowerCase()] ?? null;
 }
 
 /** Build the feed cards from grouped persisted rows (newest-first order preserved). */
@@ -209,13 +201,21 @@ export function buildHandFeedItems(
     const elims = elimsByHand.get(h.id) ?? [];
     const board = (h.community_cards ?? []).filter((c): c is string => !!c);
 
-    const bb = bigBlindFromActions(actions);
+    const bb = resolveViewerHandBigBlind({
+      actions,
+      startingStacks: new Map(rawPlayers.map((player) => [player.player_id, clampChips(player.starting_stack)])),
+    });
     const breakdown = computePotBreakdown(contributionsFromActions(actions));
     const potChips = breakdown.totalPot > 0 ? breakdown.totalPot : clampChips(h.pot_size);
-    const potBB = bb > 0 ? Math.round((potChips / bb) * 10) / 10 : null;
+    const potBB = bb > 0 ? Number((potChips / bb).toFixed(2)) : null;
 
     const elimByPlayer = new Map(elims.map((e) => [e.player_id, e]));
-    const highHand = deriveHighHand(rawPlayers, board);
+    const verifiedRanks = h.publicSettlement?.status === "verified" ? h.publicSettlement.handRanks : [];
+    const highHand = verifiedRanks.reduce<{ playerId: string; category: HandCategory } | null>((best, rank) => {
+      const category = settlementCategory(rank.category);
+      if (!category || (best && CATEGORY_RANK[best.category] >= CATEGORY_RANK[category])) return best;
+      return { playerId: rank.playerId, category };
+    }, null);
 
     const replayFrames = viewerPulseV2 ? buildReplayFrames({
       hand_id: h.id,
@@ -241,6 +241,7 @@ export function buildHandFeedItems(
         action_amount: clampChips(a.action_amount),
         action_order: a.action_order,
       })),
+      publicSettlement: h.publicSettlement,
     }) : [];
     const finalFrame = replayFrames.at(-1);
     const verifiedWinnerIds = new Set(finalFrame?.payoutVerified ? finalFrame.showdownWinnerIds ?? [] : []);
@@ -272,7 +273,7 @@ export function buildHandFeedItems(
           avatarUrl: identity.avatarUrl,
           endingStack: end,
           deltaChips,
-          deltaBB: bb > 0 && end != null ? Math.round((deltaChips / bb) * 10) / 10 : null,
+          deltaBB: bb > 0 && end != null ? Number((deltaChips / bb).toFixed(2)) : null,
           holeCards: hole.length > 0 ? hole : null,
           // A positive stack delta is not proof of winning a pot (refunds and
           // corrections can also increase a stack). Fail closed until the verified
@@ -281,7 +282,16 @@ export function buildHandFeedItems(
           isEliminated: !!elim || p.is_eliminated === true,
           finishPosition: elim?.position ?? null,
           prize: elim?.prize ?? null,
-          handRank: viewerPulseV2 && hole.length === 2 ? buildHandRankView(hole, board) : null,
+          rankingText: viewerPulseV2 && verifiedWinnerIds.has(p.player_id)
+            ? (() => {
+                const rank = verifiedRanks.find((candidate) => candidate.playerId === p.player_id);
+                return rank ? formatVerifiedHandRanking({
+                  category: rank.category,
+                  bestFive: rank.bestFive,
+                  kickers: rank.kickers,
+                }) : null;
+              })()
+            : null,
         };
       })
       .sort((a, b) => b.deltaChips - a.deltaChips);

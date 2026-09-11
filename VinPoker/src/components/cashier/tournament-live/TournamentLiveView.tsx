@@ -32,10 +32,12 @@ import { HandSelector } from "./HandSelector";
 import { HandBreakdown } from "./viewer-hub/HandBreakdown";
 import { ReplayLiveBanner } from "./ReplayLiveBanner";
 import {
+  buildReplayFrames,
   detectBigBlind,
   type ReplayHand,
   type ReplayFrame,
 } from "@/lib/tracker-poker/replayEngine";
+import { parseReplayPublicSettlement } from "@/lib/tracker-poker/replaySettlement";
 import {
   createReplayActionFxScheduler,
   deriveReplayPlaybackFx,
@@ -56,6 +58,7 @@ import {
   type TableMotionEvent,
 } from "@/lib/tracker-poker/tableMotion";
 import { shouldCollectCommittedChips } from "@/lib/tracker-poker/livePotCollection";
+import { formatViewerBB, resolveViewerHandBigBlind } from "@/lib/tracker-poker/viewerAmounts";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
 import { resolveViewerIdentity } from "./viewer-hub/viewerIdentity";
 import { resolveReplayCandidates, type ReplayTarget, type ReplayTargetState } from "./viewer-hub/replayTarget";
@@ -72,6 +75,25 @@ const CHIP_ACTIONS = new Set<string>(["call", "bet", "raise", "all_in", "post_sb
 const SOUND_MUTE_KEY = "tracker_sound_muted";
 
 type RealtimeStatus = "connecting" | "online" | "offline";
+
+type LiveHandPlayerRow = {
+  player_id: string;
+  seat_number: number;
+  starting_stack: number | null;
+  ending_stack: number | null;
+  hole_cards: string[] | null;
+  player_name?: string | null;
+  avatar_url?: string | null;
+};
+
+type LiveHandActionRow = {
+  id: string;
+  street: string | null;
+  player_id: string;
+  action_type: string;
+  action_amount: number | null;
+  action_order: number;
+};
 
 const STREET_ORDER = ["preflop", "flop", "turn", "river"];
 const STREET_LABELS: Record<string, string> = {
@@ -155,6 +177,7 @@ function TournamentLiveViewContent({
     big_blind: number;
     ante: number;
   } | null>(null);
+  const [liveHandBigBlind, setLiveHandBigBlind] = useState(0);
   const [playersRemaining, setPlayersRemaining] = useState(0);
   const [averageStack, setAverageStack] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -171,6 +194,8 @@ function TournamentLiveViewContent({
   // UAT wave 2 (R1): the live hand is an all-in runout (betting closed) — drives the
   // compact status bar's "Đang chạy board" segment instead of a stale to-act name.
   const [liveRunout, setLiveRunout] = useState(false);
+  const [liveBettingRoundComplete, setLiveBettingRoundComplete] = useState(false);
+  const [liveCompletedHand, setLiveCompletedHand] = useState<ReplayHand | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [tableNames, setTableNames] = useState<Record<string, string>>({});
   const [localRemaining, setLocalRemaining] = useState(0);
@@ -193,6 +218,7 @@ function TournamentLiveViewContent({
   const [replayFrameSource, setReplayFrameSource] = useState<ReplayFrameSource>("jump");
   const [replayRunoutPresentation, setReplayRunoutPresentation] = useState<ReplayRunoutPresentation | null>(null);
   const [replayMotionEpoch, setReplayMotionEpoch] = useState(0);
+  const [replaySelectedPotIndex, setReplaySelectedPotIndex] = useState(0);
   const [replayTargetState, setReplayTargetState] = useState<ReplayTargetState>({ kind: "idle" });
   // Snapshot of the LIVE table the moment replay was entered. The live machinery
   // keeps advancing in the background while the felt is frozen on the replay frame;
@@ -225,6 +251,9 @@ function TournamentLiveViewContent({
   const replayMotionFrameRef = useRef<ReplayFrame | null>(null);
   const replaySettlementSoundRef = useRef<string | null>(null);
   const previousLiveHandRef = useRef<string | null>(null);
+  const liveHandBlindRef = useRef<{ handId: string; bigBlind: number } | null>(null);
+  const observedLiveHandRef = useRef<string | null>(null);
+  const liveAwardedHandRef = useRef<string | null>(null);
 
   const enqueueTableMotion = useCallback((events: TableMotionEvent[]) => {
     if (events.length > 0) setTableMotionEvents((current) => appendTableMotionEvents(current, events));
@@ -326,6 +355,9 @@ function TournamentLiveViewContent({
     let nextInProgress = false;
     let liveToActId: string | null = null;
     let nextRunout = false;
+    let nextBettingRoundComplete = false;
+    let nextStartingStacks = new Map<string, number>();
+    let nextLiveCompletedHand: ReplayHand | null = null;
 
     if (handsRes.data && handsRes.data.length > 0) {
       const hand = handsRes.data[0] as any;
@@ -349,11 +381,13 @@ function TournamentLiveViewContent({
       const { data: handPlayers } = await supabase
         .from("hand_players")
         .select(hasIdentitySnapshot
-          ? "player_id, seat_number, starting_stack, hole_cards, player_name, avatar_url"
-          : "player_id, seat_number, starting_stack, hole_cards")
+          ? "player_id, seat_number, starting_stack, ending_stack, hole_cards, player_name, avatar_url"
+          : "player_id, seat_number, starting_stack, ending_stack, hole_cards")
         .eq("hand_id", hand.id);
 
       if (seq !== requestSeqRef.current) return;
+      const liveHandPlayers = (handPlayers ?? []) as LiveHandPlayerRow[];
+      const liveHandActions = (actionData ?? []) as LiveHandActionRow[];
 
       if (spectator && FEATURES.liveViewerPulseV2 && handPlayers?.length) {
         const historicalDisplay = await fetchHandPlayerDisplay(tournamentId, handPlayers.map((player: any) => player.player_id), { includeProfiles: true });
@@ -392,6 +426,11 @@ function TournamentLiveViewContent({
         }
       }
 
+      nextStartingStacks = new Map(liveHandPlayers.map((hp) => [
+        hp.player_id,
+        Math.max(0, hp.starting_stack ?? 0),
+      ]));
+
       if (actionData && actionData.length > 0) {
         // Action-author names come from tournament_seats.player_name — the SAME source the
         // LIVE seats use (see seatInfos above), keyed by player_id. The old code joined
@@ -413,6 +452,7 @@ function TournamentLiveViewContent({
             holeCardsMap.set(hp.player_id, hp.hole_cards);
           }
         });
+        nextStartingStacks = startingStackMap;
 
         nextActions = actionData.map((a: any) => ({
           action_id: a.id,
@@ -428,6 +468,7 @@ function TournamentLiveViewContent({
         const foldedPlayers = new Set<string>();
         const allInPlayers = new Set<string>();
         const lastActionMap = new Map<string, string>();
+        const lastActionDataMap = new Map<string, { type: string; amount: number }>();
         actionData.forEach((a: any) => {
           if (a.action_type === "fold") foldedPlayers.add(a.player_id);
           if (a.action_type === "all_in") allInPlayers.add(a.player_id);
@@ -443,6 +484,7 @@ function TournamentLiveViewContent({
               action_order: a.action_order,
             })
           );
+          lastActionDataMap.set(a.player_id, { type: a.action_type, amount: a.action_amount ?? 0 });
         });
 
         seatInfos = seatInfos.map((s) => ({
@@ -450,6 +492,8 @@ function TournamentLiveViewContent({
           is_folded: foldedPlayers.has(s.player_id),
           is_all_in: allInPlayers.has(s.player_id),
           last_action: lastActionMap.get(s.player_id),
+          last_action_type: lastActionDataMap.get(s.player_id)?.type,
+          last_action_amount: lastActionDataMap.get(s.player_id)?.amount,
           hole_cards: holeCardsMap.get(s.player_id),
         }));
 
@@ -514,7 +558,7 @@ function TournamentLiveViewContent({
           seatInfos = seatInfos.map((s) => ({
             ...s,
             current_bet: streetBets[s.player_id] || 0,
-            ...(wantPersistentBet ? { display_committed_bet: totalBets[s.player_id] || 0 } : {}),
+            ...(wantPersistentBet ? { display_committed_bet: streetBets[s.player_id] || 0 } : {}),
             ...(wantBetChips && isAllInAug(s)
               ? { is_all_in: true, total_committed: totalBets[s.player_id] || 0 }
               : {}),
@@ -538,6 +582,8 @@ function TournamentLiveViewContent({
             lastActorSeat,
             bigBlind: bbAmt,
           });
+          nextBettingRoundComplete = liveHandActions.some((action) => !POSTS.includes(action.action_type))
+            && liveToActId === null;
           // UAT wave 2 (R1, spectator+compact): during an all-in RUNOUT (≥2 live, ≤1
           // eligible, and that seat owes no call) the "waiting on X" spotlight is
           // misleading — betting is closed. Null it and let the status bar say
@@ -560,6 +606,57 @@ function TournamentLiveViewContent({
         nextBreakdown = liveDisplay.potBreakdown;
         if (spectator) nextPot = liveDisplay.potSize;
       }
+
+      if (spectator && !nextInProgress) {
+        const { data: settlementData, error: settlementError } = await supabase.rpc(
+          "get_public_tournament_settlement" as never,
+          { p_hand_id: hand.id } as never,
+        );
+        if (seq !== requestSeqRef.current) return;
+        const publicSettlement = settlementError ? null : parseReplayPublicSettlement(settlementData);
+        const seatByPlayer = new Map(seatInfos.map((seat) => [seat.player_id, seat]));
+        nextLiveCompletedHand = {
+          hand_id: hand.id,
+          hand_number: hand.hand_number,
+          button_seat: hand.button_seat || 1,
+          community_cards: nextCommunity,
+          stored_pot_size: hand.pot_size,
+          players: liveHandPlayers.map((hp) => ({
+            player_id: hp.player_id,
+            seat_number: hp.seat_number,
+            display_name: seatByPlayer.get(hp.player_id)?.display_name ?? hp.player_name ?? hp.player_id.slice(0, 6),
+            starting_stack: Math.max(0, hp.starting_stack ?? 0),
+            ending_stack: hp.ending_stack ?? null,
+            avatar_url: seatByPlayer.get(hp.player_id)?.avatar_url ?? hp.avatar_url ?? null,
+            hole_cards: hp.hole_cards?.length ? hp.hole_cards : undefined,
+          })),
+          actions: liveHandActions.map((action) => ({
+            action_id: action.id,
+            player_id: action.player_id,
+            street: action.street || "preflop",
+            action_type: action.action_type,
+            action_amount: action.action_amount ?? 0,
+            action_order: action.action_order,
+          })),
+          publicSettlement,
+        };
+      }
+    }
+
+    const capturedBlind = nextHandId && liveHandBlindRef.current?.handId === nextHandId
+      ? liveHandBlindRef.current.bigBlind
+      : 0;
+    const clockBigBlind = (clockRes.data as { current_level?: { big_blind?: number } | null } | null)
+      ?.current_level?.big_blind ?? 0;
+    const nextHandBigBlind = nextHandId
+      ? resolveViewerHandBigBlind({
+          explicitBigBlind: capturedBlind > 0 ? capturedBlind : nextInProgress ? clockBigBlind : 0,
+          actions: nextActions,
+          startingStacks: nextStartingStacks,
+        })
+      : 0;
+    if (nextHandId && nextHandBigBlind > 0) {
+      liveHandBlindRef.current = { handId: nextHandId, bigBlind: nextHandBigBlind };
     }
 
     setSeats(seatInfos);
@@ -574,6 +671,9 @@ function TournamentLiveViewContent({
     setHandInProgress(nextInProgress);
     setToActId(liveToActId);
     setLiveRunout(nextRunout);
+    setLiveBettingRoundComplete(nextBettingRoundComplete);
+    setLiveHandBigBlind(nextHandBigBlind);
+    setLiveCompletedHand(nextLiveCompletedHand);
 
     if (clockRes.data && !clockRes.error) {
       const c = clockRes.data as any;
@@ -660,6 +760,9 @@ function TournamentLiveViewContent({
     setLastUpdatedAt(null);
     setHandInProgress(false);
     setToActId(null);
+    setLiveBettingRoundComplete(false);
+    setLiveHandBigBlind(0);
+    liveHandBlindRef.current = null;
     setMode("live");
     setReplayHandId(null);
     setReplayHand(null);
@@ -834,6 +937,8 @@ function TournamentLiveViewContent({
     prevActionCountRef.current = null;
     prevBoardCountRef.current = null;
     lastChipNonceRef.current = null;
+    observedLiveHandRef.current = null;
+    liveAwardedHandRef.current = null;
   }, [tournamentId]);
 
   // liveTableFx replay-playback FX: as a completed hand is PLAYED back, emit the
@@ -949,9 +1054,9 @@ function TournamentLiveViewContent({
     return "preflop";
   }, [handNumber, seats, communityCards]);
 
-  const bigBlind = clockData?.big_blind ?? 0;
+  const bigBlind = liveHandBigBlind;
   const formatBB = useCallback(
-    (n: number) => (bigBlind > 0 ? `${(n / bigBlind).toFixed(1).replace(/\.0$/, "")} BB` : null),
+    (n: number) => formatViewerBB(n, bigBlind),
     [bigBlind]
   );
 
@@ -968,6 +1073,7 @@ function TournamentLiveViewContent({
   const selectedReplayHandKey = selectedReplayHand
     ? selectedReplayHand.hand_id ?? `hand-${selectedReplayHand.hand_number}`
     : null;
+  useEffect(() => setReplaySelectedPotIndex(0), [selectedReplayHandKey]);
   const selectedReplayFrame = selectedReplayHandKey && replayFrameState?.handKey === selectedReplayHandKey
     ? replayFrameState.frame
     : null;
@@ -988,6 +1094,22 @@ function TournamentLiveViewContent({
       locale: i18n.language,
     });
   }, [i18n.language, selectedReplayFrame, selectedReplayHand]);
+  const liveShowdownPresentation = useMemo(() => {
+    if (!liveCompletedHand?.hand_id) return null;
+    const frames = buildReplayFrames(liveCompletedHand, { trackBets: true });
+    const finalFrame = frames.at(-1);
+    if (!finalFrame) return null;
+    const presentation = resolveVerifiedShowdownPresentation({
+      handId: liveCompletedHand.hand_id,
+      frame: finalFrame,
+      finalFrameIndex: liveCompletedHand.actions.length,
+      settlement: liveCompletedHand.publicSettlement,
+      locale: i18n.language,
+    });
+    if (!presentation.enabled) return null;
+    const main = selectVerifiedPotLayerPresentation(presentation, 0);
+    return main.enabled ? main : presentation;
+  }, [i18n.language, liveCompletedHand]);
   const replayRunoutForSelectedHand = selectedReplayHandKey
     && selectedReplayFrame?.index === selectedReplayHand?.actions.length
     && replayRunoutPresentation?.key.startsWith(`${selectedReplayHandKey}:${selectedReplayHand.actions.length}:`)
@@ -1004,10 +1126,16 @@ function TournamentLiveViewContent({
       );
       return scoped.enabled ? scoped : null;
     }
-    // A cinematic all-in must never flash the union of every Main/Side winner
-    // while its keyed pot sequence is collecting chips or switching layers.
-    return replayHasVerifiedPotSequence ? null : replayShowdownPresentation;
-  }, [replayHasVerifiedPotSequence, replayRunoutForSelectedHand?.potAwardIndex, replayShowdownPresentation]);
+    // While a keyed cinematic is collecting or revealing cards, do not flash a
+    // union of unrelated Main/Side winners. A direct seek/reload at showdown has
+    // no keyed cinematic, so show the verified Main Pot immediately.
+    if (replayRunoutForSelectedHand) return null;
+    if (replayHasVerifiedPotSequence) {
+      const main = selectVerifiedPotLayerPresentation(replayShowdownPresentation, replaySelectedPotIndex);
+      return main.enabled ? main : null;
+    }
+    return replayShowdownPresentation;
+  }, [replayHasVerifiedPotSequence, replayRunoutForSelectedHand?.potAwardIndex, replaySelectedPotIndex, replayShowdownPresentation]);
   // The HUD owns the verified payout cadence. One key per phase/layer prevents
   // polling, rerenders, and a fast scrub from replaying the collect/award sound.
   useEffect(() => {
@@ -1035,6 +1163,38 @@ function TournamentLiveViewContent({
   const replayFocusPhase = replayRunoutFocusPhase(replayRunoutForSelectedHand?.phase ?? (
     replayVisibleShowdownPresentation?.enabled ? "static" : null
   ));
+
+  useEffect(() => {
+    if (mode === "live" && handInProgress && handId) observedLiveHandRef.current = handId;
+  }, [handId, handInProgress, mode]);
+
+  useEffect(() => {
+    if (
+      mode !== "live"
+      || !spectator
+      || !liveShowdownPresentation?.enabled
+      || !liveShowdownPresentation.handId
+      || observedLiveHandRef.current !== liveShowdownPresentation.handId
+      || liveAwardedHandRef.current === liveShowdownPresentation.handId
+    ) return;
+    liveAwardedHandRef.current = liveShowdownPresentation.handId;
+    if (!soundMuted) playPokerLiveSound("pot_award", { bypassStoredMute: true, profile: "tracker" });
+    if (FEATURES.liveTableMotionV2) {
+      enqueueTableMotion([{
+        id: `live:${liveShowdownPresentation.handId}:award`,
+        handId: liveShowdownPresentation.handId,
+        kind: "pot_award",
+        awards: liveShowdownPresentation.potLayers.map((pot, potIndex) => ({
+          potIndex,
+          amount: pot.amount,
+          winnerSeatNumbers: pot.winnerPlayerIds.flatMap((playerId) => {
+            const winner = liveShowdownPresentation.winners.find((candidate) => candidate.playerId === playerId);
+            return winner ? [winner.seatNumber] : [];
+          }),
+        })),
+      }]);
+    }
+  }, [enqueueTableMotion, liveShowdownPresentation, mode, soundMuted, spectator]);
   const replayDisplayCards = selectedReplayFrame
     ? replayRunoutForSelectedHand
       ? selectedReplayFrame.displayCards.map((card, index) => (
@@ -1043,14 +1203,21 @@ function TournamentLiveViewContent({
       : selectedReplayFrame.displayCards
     : null;
 
+  const replayRoundComplete = Boolean((() => {
+    if (!selectedReplayHand || !selectedReplayFrame || selectedReplayFrame.index <= 0) return false;
+    const ordered = [...selectedReplayHand.actions].sort((a, b) => a.action_order - b.action_order);
+    const current = ordered[selectedReplayFrame.index - 1];
+    const next = ordered[selectedReplayFrame.index];
+    return !!current && (!next || next.street !== current.street);
+  })());
+
   const replayFinalAllInCollection = Boolean(
     spectator
       && isReplay
       && FEATURES.liveReplayHud
       && selectedReplayHand
       && selectedReplayFrame
-      && selectedReplayFrame.index === selectedReplayHand.actions.length
-      && selectedReplayFrame.displayCards.filter(Boolean).length >= 5
+      && replayRoundComplete
       && selectedReplayHand.actions.some((action) => action.action_type === "all_in")
       && selectedReplayFrame.seats.some((seat) => (
         seat.is_all_in === true
@@ -1063,7 +1230,7 @@ function TournamentLiveViewContent({
       && !isReplay
       && FEATURES.liveViewerFeltV2
       && FEATURES.liveTableFx
-      && communityCards.filter(Boolean).length >= 5
+      && liveBettingRoundComplete
       && actions.some((action) => action.action_type === "all_in")
       && seats.some((seat) => (
         seat.is_all_in === true
@@ -1075,6 +1242,7 @@ function TournamentLiveViewContent({
     enabled: spectator && FEATURES.liveTableFx,
     runout: !isReplay && liveRunout,
     finalAllIn: replayFinalAllInCollection || liveFinalAllInCollection,
+    bettingRoundComplete: isReplay ? replayRoundComplete : liveBettingRoundComplete,
     hasCommittedChips: isReplay
       ? Boolean(selectedReplayFrame?.potBreakdown?.totalCommitted)
         || Boolean(selectedReplayFrame?.seats.some((seat) => (
@@ -1094,8 +1262,7 @@ function TournamentLiveViewContent({
   // Replay uses the historical hand's own big blind (the live clock may have moved on).
   const replayBigBlind = selectedReplayHand ? detectBigBlind(selectedReplayHand) : 0;
   const replayFormatBB = useCallback(
-    (n: number) =>
-      replayBigBlind > 0 ? `${(n / replayBigBlind).toFixed(1).replace(/\.0$/, "")} BB` : null,
+    (n: number) => formatViewerBB(n, replayBigBlind),
     [replayBigBlind]
   );
   const replayHeaderMetadata = useMemo(() => deriveReplayHeaderMetadata(selectedReplayHand), [selectedReplayHand]);
@@ -1556,14 +1723,14 @@ function TournamentLiveViewContent({
           )}
           {headerAverageStack != null && (
             <span className="flex items-center gap-1">
-              <Layers className="w-3.5 h-3.5" /> AVG: {formatStack(headerAverageStack)}
+              <Layers className="w-3.5 h-3.5" /> AVG: {spectator ? (headerFormatBB(headerAverageStack) ?? "— BB") : formatStack(headerAverageStack)}
             </span>
           )}
           {headerPotSize != null && (
             <span className="flex items-center gap-1">
               <Coins className="w-3.5 h-3.5 text-emerald-400" /> Pot:{" "}
-              <strong className="text-emerald-400 text-sm">{formatStack(headerPotSize)}</strong>
-              {headerPotSize > 0 && headerFormatBB(headerPotSize) && (
+              <strong className="text-emerald-400 text-sm">{spectator ? (headerFormatBB(headerPotSize) ?? "— BB") : formatStack(headerPotSize)}</strong>
+              {!spectator && headerPotSize > 0 && headerFormatBB(headerPotSize) && (
                 <span className="text-[10px] text-muted-foreground">({headerFormatBB(headerPotSize)})</span>
               )}
             </span>
@@ -1586,6 +1753,12 @@ function TournamentLiveViewContent({
           </button>
         </div>
       </div>
+
+      {spectator && handId && bigBlind <= 0 && (
+        <div className="rounded-lg border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
+          {t("liveHub.replay.missingBlind", "Chưa có blind của hand")}
+        </div>
+      )}
 
       {/* Operator-only inline table picker. Hidden for spectators — the viewer
           hub provides the table-map picker (which drives selectedTableIdOverride). */}
@@ -1684,6 +1857,7 @@ function TournamentLiveViewContent({
               portrait={orientationOverride ? orientationOverride === "portrait" : undefined}
               viewerNeon={spectator && FEATURES.liveHandFeed}
               viewerLayout={spectator && FEATURES.liveViewerFeltV2}
+              viewerAmountsInBB={spectator}
               tableFx={spectator && FEATURES.liveTableFx}
               chipPush={spectator && FEATURES.liveTableFx ? chipPush : null}
               compact={compactFelt}
@@ -1694,13 +1868,17 @@ function TournamentLiveViewContent({
               motionEnabled={spectator && FEATURES.liveTableMotionV2}
               motionEvents={tableMotionEvents}
               motionSpeed={isReplay ? (spectator && FEATURES.liveReplayHud ? replayMotionSpeed : 2) : 1}
-              bestFiveFocus={spectator && isReplay && FEATURES.liveReplayHud && replayFocusPhase !== "hidden"
-                ? replayVisibleShowdownPresentation?.focus ?? null
+              bestFiveFocus={spectator
+                ? isReplay && FEATURES.liveReplayHud && replayFocusPhase !== "hidden"
+                  ? replayVisibleShowdownPresentation?.focus ?? null
+                  : !isReplay ? liveShowdownPresentation?.focus ?? null : null
                 : null}
-              showdownPresentation={spectator && isReplay && FEATURES.liveReplayHud
-                ? replayVisibleShowdownPresentation
+              showdownPresentation={spectator
+                ? isReplay && FEATURES.liveReplayHud
+                  ? replayVisibleShowdownPresentation
+                  : !isReplay ? liveShowdownPresentation : null
                 : null}
-              bestFiveFocusPhase={replayFocusPhase}
+              bestFiveFocusPhase={isReplay ? replayFocusPhase : liveShowdownPresentation?.enabled ? "static" : "hidden"}
               replayRunoutPhase={spectator && isReplay && FEATURES.liveReplayHud
                 ? replayRunoutForSelectedHand?.phase ?? null
                 : null}
@@ -1760,6 +1938,8 @@ function TournamentLiveViewContent({
               onSpeedChange={setReplayMotionSpeed}
               showdownPresentation={replayShowdownPresentation}
               onRunoutPresentation={handleSelectedReplayRunoutPresentation}
+              selectedPotIndex={replaySelectedPotIndex}
+              onSelectedPotIndexChange={setReplaySelectedPotIndex}
             />
           </aside>
         )}

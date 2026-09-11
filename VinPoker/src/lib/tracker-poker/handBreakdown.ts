@@ -11,6 +11,7 @@
 // not the street-only delta (the UI labels it as such).
 
 import { formatActionLabel } from "@/components/cashier/tournament-live/LiveFelt";
+import { formatViewerBBOrUnavailable } from "./viewerAmounts";
 
 const STREETS = ["preflop", "flop", "turn", "river", "showdown"];
 // Action types that put chips in the pot (same set the replay/pot engines use).
@@ -63,10 +64,10 @@ function streetIdx(s: string): number {
   return i < 0 ? 0 : i;
 }
 
-/** One decimal, trailing ".0" trimmed (e.g. 39.3, 12). null when bb ≤ 0. */
+/** Two display decimals at most. null when bb ≤ 0. */
 function toBB(chips: number, bb: number): number | null {
   if (bb <= 0) return null;
-  return Number((chips / bb).toFixed(1));
+  return Number((chips / bb).toFixed(2));
 }
 
 /**
@@ -100,7 +101,7 @@ export function deriveHandBreakdown(
       action_type: a.action_type,
       action_amount: amt,
       action_order: a.action_order,
-    });
+    }, (amount) => formatViewerBBOrUnavailable(amount, bb));
 
     const row: BreakdownRow = {
       player_id: a.player_id,

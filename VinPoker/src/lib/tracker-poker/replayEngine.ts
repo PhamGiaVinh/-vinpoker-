@@ -21,6 +21,7 @@ import {
 } from "@/components/cashier/tournament-live/LiveFelt";
 import { settleShowdown } from "./trackerShowdown";
 import type { ReplayPublicSettlement } from "./replaySettlement";
+import { resolveViewerHandBigBlind } from "./viewerAmounts";
 
 export interface ReplayHandPlayer {
   player_id: string;
@@ -192,6 +193,8 @@ interface SeatRuntime {
   folded: boolean;
   allIn: boolean;
   last?: string;
+  lastType?: string;
+  lastAmount?: number;
   /** UAT wave 2 (trackBets): chips committed on the CURRENT street (swept to 0 at
    * each street boundary) + across the whole hand. Only maintained when the
    * `trackBets` option is on; otherwise stays 0 and is never emitted. */
@@ -288,6 +291,8 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
         position: getPosition(p.seat_number, hand.button_seat, totalPlayers),
         avatar_url: p.avatar_url ?? null,
         last_action: st.folded || st.allIn ? undefined : st.last,
+        last_action_type: st.folded || st.allIn ? undefined : st.lastType,
+        last_action_amount: st.folded || st.allIn ? undefined : st.lastAmount,
         is_folded: st.folded,
         is_all_in: st.allIn,
         hole_cards: reveal ? p.hole_cards : undefined,
@@ -299,7 +304,7 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
           ? { category: settledRank.category, best_five: [...settledRank.bestFive], kickers: [...settledRank.kickers] }
           : undefined,
         // trackBets only — absent keys keep flag-off frames deep-equal to today's.
-        ...(trackBets ? { current_bet: st.streetBet, display_committed_bet: st.totalBet } : {}),
+        ...(trackBets ? { current_bet: st.streetBet, display_committed_bet: st.streetBet } : {}),
         ...(trackBets && st.allIn ? { total_committed: st.totalBet } : {}),
       };
     });
@@ -384,6 +389,8 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
         action_amount: a.action_amount,
         action_order: a.action_order,
       });
+      st.lastType = a.action_type;
+      st.lastAmount = a.action_amount;
     } else if (st) {
       // A folded player should not act again; still advance street bookkeeping.
       maxStreetIdx = Math.max(maxStreetIdx, streetIndexOf(a.street));
@@ -405,7 +412,9 @@ export function streetFrameIndex(frames: ReplayFrame[]): Record<string, number> 
 
 /** Derive the big blind from the hand's post_bb action when not supplied. */
 export function detectBigBlind(hand: ReplayHand): number {
-  if (hand.big_blind && hand.big_blind > 0) return hand.big_blind;
-  const bb = (hand.actions || []).find((a) => a.action_type === "post_bb");
-  return clampChips(bb?.action_amount);
+  return resolveViewerHandBigBlind({
+    explicitBigBlind: hand.big_blind,
+    actions: hand.actions || [],
+    startingStacks: new Map((hand.players || []).map((player) => [player.player_id, clampChips(player.starting_stack)])),
+  });
 }

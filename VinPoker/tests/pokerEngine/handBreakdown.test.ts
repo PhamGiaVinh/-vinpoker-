@@ -63,7 +63,7 @@ describe("deriveHandBreakdown", () => {
     const bet = flop.rows.find((r) => r.action_type === "bet")!;
     expect(bet.action_amount).toBe(200);
     expect(bet.amountBB).toBe(4); // 200/50
-    expect(bet.label).toBe("Bet 200");
+    expect(bet.label).toBe("Bet 4 BB");
     // fractional conversion keeps one decimal
     const preflop = out.find((s) => s.street === "preflop")!;
     const call = preflop.rows.find((r) => r.action_type === "call")!;
