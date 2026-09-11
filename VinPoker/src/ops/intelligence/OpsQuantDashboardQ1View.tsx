@@ -3,28 +3,28 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ArrowUpRight, Bot, RefreshCw, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { FEATURES } from "@/lib/featureFlags";
 import type { SeriesClubLivePulseV1 } from "@/lib/series-intelligence/seriesClubLivePulseV1";
 import type { OpsLiveOperationInputV1, OpsSourceAvailabilityV1 } from "./opsIntelligenceReadModel";
 import { isOpsQuantDataHealthQ0Enabled } from "./opsQuantDataHealthGate";
 import { operationsQueryOptions, pulseQueryOptions, registrationQ0QueryOptions, sepayQ0QueryOptions } from "./opsIntelligenceQueryOptions";
-import { buildOpsQuantDashboardQ1, customPeakError, explainQuantArtifact, parseQuantAssumption, selectQuantEvent, type QuantDraftQ1, type QuantSourceReceiptsQ1, type OpsQuantDashboardQ1Model, type QuantExplanationKey, type QuantPressureStatus, type QuantTruthClass } from "./opsQuantDashboardQ1";
+import { buildOpsQuantDashboardQ1, customPeakError, explainQuantArtifact, parseQuantAssumption, type QuantDraftQ1, type QuantSourceReceiptsQ1, type OpsQuantDashboardQ1Model, type QuantExplanationKey, type QuantPressureStatus, type QuantTruthClass } from "./opsQuantDashboardQ1";
 import { selectedPrizePoolQueryOptions, seriesHistoryQueryOptions } from "./opsQuantDashboardQ1Queries";
 import { OpsQuantForecastChart } from "./OpsQuantForecastChart";
 import type { OpsRegistrationPaceQ0, OpsSepayReadStateQ0 } from "./opsQuantDataHealthQ0";
 
 const PENDING_AT = "1970-01-01T00:00:00.000Z";
 
-export function OpsQuantDashboardQ1View({ clubId, clubName, draft, onDraftChange, receipts, onReceiptsChange }: {
+export function OpsQuantDashboardQ1View({ clubId, clubName, requestedTournamentId, onTournamentChange, draft, onDraftChange, receipts, onReceiptsChange }: {
   clubId: string; clubName: string | null;
+  requestedTournamentId: string | null; onTournamentChange: (id: string) => void;
   draft: QuantDraftQ1; onDraftChange: Dispatch<SetStateAction<QuantDraftQ1>>;
   receipts: QuantSourceReceiptsQ1; onReceiptsChange: Dispatch<SetStateAction<QuantSourceReceiptsQ1>>;
 }) {
   const client = useSupabaseClient();
   const q0Enabled = isOpsQuantDataHealthQ0Enabled();
-  const { requestedEventId } = draft;
+  const requestedEventId = requestedTournamentId;
   const seatsPerTable = parseQuantAssumption(draft.seatsPerTable, true).value;
   const customEntries = parseQuantAssumption(draft.customEntries).value;
   const customGtdInput = parseQuantAssumption(draft.customGtd);
@@ -41,15 +41,11 @@ export function OpsQuantDashboardQ1View({ clubId, clubName, draft, onDraftChange
   const operationValue = operations.isError ? emptyOperations() : operations.data ?? emptyOperations();
   const registrationValue = registration.isError ? null : registration.data?.value ?? null;
   const sepayValue = sepay.isError ? null : sepay.data?.value ?? null;
-  const autoSelected = selectQuantEvent(registrationValue?.events ?? [], registrationValue?.asOf ?? null, operationValue.runningTournamentIds, requestedEventId);
-  const selectedEventId = autoSelected?.eventId ?? null;
+  const selectedEventId = registrationValue?.events.find((event) => event.eventId === requestedTournamentId)?.eventId ?? null;
   const prizePool = useQuery(selectedPrizePoolQueryOptions(client, clubId, selectedEventId));
   const pulseValue = pulse.isError ? null : acceptedPulse(pulse.data?.value ?? null);
   const registrationAvailability = registrationAvailabilityOf(registrationValue);
   const sepayAvailability = sepayAvailabilityOf(sepayValue);
-  useEffect(() => {
-    if (selectedEventId && !requestedEventId) onDraftChange((previous) => previous.requestedEventId ? previous : { ...previous, requestedEventId: selectedEventId });
-  }, [selectedEventId, requestedEventId, onDraftChange]);
   useEffect(() => {
     const accepted: QuantSourceReceiptsQ1 = {};
     if (pulseValue && pulse.data) accepted["club-pulse"] = { asOf: pulseValue.asOf, observedAt: pulse.data.observedAt };
@@ -63,6 +59,7 @@ export function OpsQuantDashboardQ1View({ clubId, clubName, draft, onDraftChange
 
   const model = useMemo(() => buildOpsQuantDashboardQ1({
     requestedEventId,
+    explicitSelection: true,
     pulse: pulseValue,
     pulseAvailability: pulseAvailabilityOf(pulseValue),
     operations: operationValue,
@@ -88,15 +85,14 @@ export function OpsQuantDashboardQ1View({ clubId, clubName, draft, onDraftChange
   const refresh = () => void Promise.allSettled([pulse.refetch(), operations.refetch(), registration.refetch(), sepay.refetch(), series.refetch(), ...(selectedEventId ? [prizePool.refetch()] : [])]);
   const changeEvent = (eventId: string) => {
     if (eventId === requestedEventId) return;
-    if ([draft.seatsPerTable, draft.customEntries, draft.customGtd, draft.customPeakConcurrentPlayers].some(Boolean) && !window.confirm("Đổi giải sẽ xóa giả định Custom chưa lưu. Tiếp tục?")) return;
-    onDraftChange({ requestedEventId: eventId, seatsPerTable: "", customEntries: "", customGtd: "", customPeakConcurrentPlayers: "" });
+    onTournamentChange(eventId);
     setExplanationKey(null);
   };
 
   return <section className="space-y-3" data-testid="ops-quant-dashboard-q1">
     <div className="grid gap-2 border border-white/10 bg-[#050b0d] p-3 xl:grid-cols-[minmax(180px,.7fr)_minmax(260px,1.25fr)_1fr_auto] xl:items-end">
       <HeaderField label="CLB" value={clubName ?? "CLB đã xác thực"} badge="VERIFIED" />
-      <label className="block min-w-0"><span className="mb-1 block text-xs font-semibold text-[#91a49b]">Giải đang xem</span><Select value={model.selectedEvent?.eventId ?? ""} onValueChange={changeEvent}><SelectTrigger aria-label="Giải đang xem" className="h-9 rounded-[4px] border-white/10 bg-black/25 text-xs text-white"><SelectValue placeholder={requestedEventId ? "Giải đã chọn không khả dụng" : "Chọn giải"} /></SelectTrigger><SelectContent>{model.eventOptions.map((event) => <SelectItem key={event.eventId} value={event.eventId}>{event.eventName}</SelectItem>)}</SelectContent></Select></label>
+      <HeaderField label="Giải đang xem" value={model.selectedEvent?.eventName ?? (requestedEventId ? "Giải ngoài nguồn Q0 hiện tại" : "Chọn daily / flight trong phạm vi chung")} badge="TOURNAMENT" />
       <div className="grid grid-cols-2 gap-3 text-right"><LocalClock timezone={pulseValue?.timezone ?? null} /><HeaderStat label="Ops status" value={terminalStatus} tone={terminalStatus === "LIVE" ? "good" : "warn"} /></div>
       <Button type="button" size="sm" variant="outline" onClick={refresh} className="h-9 rounded-[4px] border-white/10 bg-black/20 text-xs"><RefreshCw className="mr-2 h-3.5 w-3.5" />Refresh</Button>
     </div>

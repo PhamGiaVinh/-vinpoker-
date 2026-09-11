@@ -11,7 +11,6 @@ export type QuantTruthClass = "OBSERVED" | "DERIVED" | "HYPOTHESIS" | "UNAVAILAB
 export type QuantPressureStatus = "PRESSURE" | "WATCH" | "ON_TRACK" | "PLANNING_SCENARIO" | "UNAVAILABLE";
 
 export interface QuantDraftQ1 {
-  requestedEventId: string | null;
   seatsPerTable: string;
   customEntries: string;
   customGtd: string;
@@ -153,6 +152,7 @@ export interface QuantArtifactExplanationQ1 {
 
 export interface OpsQuantDashboardQ1Input {
   readonly requestedEventId: string | null;
+  readonly explicitSelection?: boolean;
   readonly pulse: SeriesClubLivePulseV1 | null;
   readonly pulseAvailability: OpsSourceAvailabilityV1;
   readonly operations: OpsLiveOperationInputV1;
@@ -176,7 +176,7 @@ const HISTORY_REASON = "HISTORY_FINALITY_UNVERIFIED";
 
 export function buildOpsQuantDashboardQ1(input: OpsQuantDashboardQ1Input): OpsQuantDashboardQ1Model {
   const eventOptions = Object.freeze([...(input.registrationAvailability === "unavailable" ? [] : input.registration?.events ?? [])].sort(eventSort));
-  const selectedRegistration = selectQuantEvent(eventOptions, input.registration?.asOf ?? null, input.operations.runningTournamentIds, input.requestedEventId);
+  const selectedRegistration = input.explicitSelection && !input.requestedEventId ? null : selectQuantEvent(eventOptions, input.registration?.asOf ?? null, input.operations.runningTournamentIds, input.requestedEventId);
   const selectedSeries = selectedRegistration ? input.seriesEvents.find((event) => event.event_id === selectedRegistration.eventId) ?? null : null;
   const selectedEvent = selectedRegistration ? Object.freeze({
     eventId: selectedRegistration.eventId,
