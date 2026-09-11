@@ -2,16 +2,22 @@
 
 ## Identity and boundaries
 
-- BASE SHA: `155a4f5adab2187fbcfe2695e6a310aeeea5d8e4` (latest fetched main at branch creation).
+- BASE SHA after final-review rebase: `fae504d2c445daabf724a8abf7684fb467dfcf64`.
+  Original branch base: `155a4f5adab2187fbcfe2695e6a310aeeea5d8e4`.
 - Branch: `codex/intelligence-wave2-overview-context`.
-- HEAD SHA (tested implementation): `3c8b4c984a40d9e7e1597d2ec6585a191eaee2eb`.
+- HEAD SHA (tested implementation): `26ef17912c5c576d0123d6db5f8facf4a22dfbe4`.
   The final PR head adds only this evidence identity update; its exact SHA is
   recorded in the PR description, not claimed as a deployment target.
+- Reviewed predecessor: `8ff87c603984650f01bd1305f0e73188ee2c795b`, PR #1229.
+  Rebased without conflicts after #1230/#1231 Tracker UI/cards and #1228 Tracker
+  provider-event idempotency. No Intelligence semantic overlap; no Tracker edits.
 - Prior Wave 1/Q0 closeout `e47e4409c2adfb5b8bdbc6ea6aca95ca578bad3b` is an ancestor. The intervening #1226 diff was Tracker-only, with no Q1 overlap.
 - SOURCE: read-only Overview, shared context, pending read-only RPC. No Wave 3-6 work.
 - LOCAL E2E: synthetic fixtures only, real `/ops/select-module` route and Ops auth/capability gate.
 - USER_VISIBLE: local route/screenshots verified; no Wave 2 production visibility claim.
-- PRODUCTION: read-only schema/relationship inspection only. No DB apply, Edge/frontend deployment, flag change, business record, Gemini call, or historical repair.
+- PRODUCTION: original wave had read-only schema/relationship inspection only.
+  Final-review fix performed no production reads or mutations. No DB apply,
+  Edge/frontend deployment, flag change, business record, Gemini call, or repair.
 
 ## Server contract and ID semantics
 
@@ -44,6 +50,8 @@ data was changed or required to be perfect.
 
 Docker startup was unavailable. Used installed PostgreSQL **17.11**, a new local
 cluster bound only to `127.0.0.1:55482`, database `wave2_context_disposable`.
+Final-review rerun used a fresh local PG17.11 cluster on `127.0.0.1:55483`,
+with the same guarded database name and unchanged SQL test/migration.
 No production connection was used for test execution. The local instance was stopped.
 
 Reproduce only on a fresh named disposable PG17 database with:
@@ -91,12 +99,35 @@ exact Flight B drilldown retaining its parent, null-role/missing-time/final gaps
 Custom regression, source errors, removed events, zero/missing and receipt stability
 remain covered. Exact empty Q0 does not prevent club observations/context display.
 
+## Final context UX review fixes (2026-09-11)
+
+- Festival Overview has no active generic `Mở Quant` shortcut. It displays
+  `Chọn Flight hoặc Final để mở Quant`; explicit child rows retain their actions.
+  No child is automatically selected, including when the Quant tab is opened.
+- One pure `sourceTarget` mapping is shared by source actions and source sheets:
+  Registration/SePay -> Data Health; Operations -> Live Ops; Context -> Overview
+  and the existing workspace `context.refetch`; History -> no remediation action.
+- History retains `HISTORY_NOT_MOUNTED` and displays `Chưa được nối trong Wave 2`.
+  Structural data-gap actions still open Overview at their exact scope.
+- Schedule heading now includes both upcoming and historical events.
+- No new query, route, polling, package, feature flag or backend change.
+- Six added unit cases cover source routing and structural-gap isolation.
+  Four added route cases exercise context recovery and both action/sheet routes.
+  Festival E2E additionally checks the generic shortcut is absent and both Flight
+  and Final use exact child IDs; festival ID never reaches the prize-pool reader.
+- An initial Operations error fixture returned HTTP 200 with an object, which the
+  existing adapter normalized to an empty array. The regression now injects an
+  explicit HTTP 503 read failure. This pre-existing malformed-response behavior
+  is not changed by this scoped CTA fix; strict Operations parsing is follow-up.
+  Expected HTTP 503 console output in that injected-error test is not a claim of
+  zero network failures; successful-route console/page checks remain in the suite.
+
 ## Validation
 
 | Check | Result |
 | --- | --- |
-| Intelligence + Ops auth Vitest | 147 passed (17 files) |
-| Real-route mock Playwright | 13 passed (40.6s), four viewports |
+| Intelligence + Ops auth Vitest | 153 passed (17 files) |
+| Real-route mock Playwright | 17 passed (38.2s), four viewports |
 | Context disposable PG17 | PASS, including apply/reapply and ACL/cross-club |
 | Focused tsc: ops-v3-registry | PASS |
 | Focused tsc: ops-v3-finance-series | PASS |
@@ -106,8 +137,8 @@ remain covered. Exact empty Q0 does not prevent club observations/context displa
 | check:owner-digest-read-boundary | PASS |
 | check:ops-v3-shell-text | PASS |
 | check:credential-context | PASS |
-| Normal production build | PASS, rerun after cache fix (69s) |
-| Constrained build (4096MB heap, GOMAXPROCS=2) | PASS, rerun after cache fix |
+| Normal production build | PASS after rebase/context fixes (62s) |
+| Constrained build (4096MB heap, GOMAXPROCS=2) | PASS after rebase/context fixes (43.52s) |
 | Full tsc -b | NOT_MEASURED: bounded 90s, no diagnostics before termination |
 | Changed-source secret-pattern scan | PASS; credential guard separately passed |
 | Package/flag/control-plane/version allowlist | Unchanged |
@@ -125,6 +156,10 @@ Real-route mock Playwright at 1440x900 and 1920x1080 desktop; 1194x834 and 390x8
 retain the legacy selector. No horizontal overflow, console/page errors or
 reduced-motion regression in the exercised flows. Source sheet opens via an actual
 button and closes by Escape. Only these two screenshots belong to this wave:
+
+The final CTA/copy fix does not materially change layout. Existing image artifacts
+are retained from initial Wave 2; rerun browser images were visually inspected but
+are not committed as new acceptance screenshots.
 
 - [Daily Overview 1440x900](evidence/wave2/overview-daily-1440x900.png)
 - [Festival Overview 1440x900](evidence/wave2/overview-festival-1440x900.png)
