@@ -10,6 +10,7 @@ export {
   reduceHand,
   nextToAct,
   isBettingRoundComplete,
+  isRunout,
   findPlayer,
 } from "./handState.ts";
 export {

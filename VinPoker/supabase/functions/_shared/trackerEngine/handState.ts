@@ -4,6 +4,7 @@ export {
   findPlayer,
   hasRaiseRights,
   isBettingRoundComplete,
+  isRunout,
   nextToAct,
   nextToActAtStreet,
   reduceHand,

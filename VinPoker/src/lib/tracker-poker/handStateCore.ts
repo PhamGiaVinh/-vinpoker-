@@ -282,6 +282,13 @@ export function isBettingRoundComplete(runtime: HandRuntime): boolean {
   return !runtime.players.some((player) => owesAction(player, runtime.highestBet));
 }
 
+/** No further betting is possible when at most one live player can still act. */
+export function isRunout(runtime: HandRuntime): boolean {
+  const livePlayers = runtime.players.filter((player) => !player.is_folded);
+  const eligiblePlayers = livePlayers.filter((player) => !player.is_all_in && player.stack > 0);
+  return livePlayers.length >= 2 && eligiblePlayers.length <= 1;
+}
+
 export function findPlayer(runtime: HandRuntime, playerId: string): PlayerRuntime | undefined {
   return runtime.players.find((player) => player.player_id === playerId);
 }
