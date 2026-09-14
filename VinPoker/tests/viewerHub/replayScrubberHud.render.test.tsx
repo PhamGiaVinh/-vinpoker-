@@ -163,7 +163,8 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
     const s = getByTestId("replay-hud-summary").textContent || "";
     expect(s).toMatch(/Chưa có kết quả|No result yet/);
     expect(s).toContain("KIÊN");
-    expect(s).toContain("all-in 2.1M");
+    expect(s).toContain("all-in 7 BB");
+    expect(s).not.toContain("{{bb}}");
     expect(s).not.toContain("+4.2M");
     expect(s).not.toContain("Hoàn +300k");
   });
@@ -241,7 +242,7 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
     expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_award", potAwardIndex: 0 });
   });
 
-  it("uses the same three-second verified pot result for a hand without an all-in and keeps it visible", () => {
+  it("keeps the verified pot result visible for 1.5 seconds without an all-in", () => {
     vi.useFakeTimers();
     const onRunoutPresentation = vi.fn();
     const view = render(
@@ -258,7 +259,7 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
     expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_collect" });
     act(() => vi.advanceTimersByTime(420));
     expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_award", potAwardIndex: 0 });
-    act(() => vi.advanceTimersByTime(2_999));
+    act(() => vi.advanceTimersByTime(1_499));
     expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_award", potAwardIndex: 0 });
     act(() => vi.advanceTimersByTime(1));
     expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "static", potAwardIndex: 0 });
