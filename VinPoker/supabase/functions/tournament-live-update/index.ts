@@ -4,6 +4,7 @@ import {
   reconcileSidePots,
   reduceHand,
   isBettingRoundComplete,
+  isRunout,
   validateAction,
   type ActionRow,
   type PlayerSeed,
@@ -77,7 +78,7 @@ function workflowForVoiceSnapshot(snapshot: VoiceSnapshot):
   if (
     boardCount < 5
     && livePlayers.length >= 2
-    && livePlayers.every((player) => player.is_all_in)
+    && isRunout(runtime)
     && bettingComplete
   ) return "runout_reveal";
   if (!bettingComplete) {

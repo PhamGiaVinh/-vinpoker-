@@ -3,6 +3,7 @@ import {
   reduceHand,
   nextToAct,
   isBettingRoundComplete,
+  isRunout,
 } from "@tracker-engine/handState.ts";
 import { computePotBreakdown, contributionsFromActions } from "@tracker-engine/potEngine.ts";
 import type { ActionRow, PlayerSeed } from "@tracker-engine/types.ts";
@@ -97,6 +98,38 @@ describe("nextToAct / isBettingRoundComplete", () => {
       ["P1", "raise", 300],
     ]);
     expect(nextToAct(SEEDS, actions, BUTTON)).toBe("P2");
+  });
+});
+
+describe("isRunout", () => {
+  it("allows Board runout when one covering player still has chips", () => {
+    const seeds: PlayerSeed[] = [
+      { player_id: "cover", seat_number: 1, starting_stack: 1000 },
+      { player_id: "all-in", seat_number: 2, starting_stack: 300 },
+    ];
+    const runtime = reduceHand(seeds, build([
+      ["all-in", "all_in", 300],
+      ["cover", "call", 300],
+    ]), BUTTON);
+
+    expect(isBettingRoundComplete(runtime)).toBe(true);
+    expect(isRunout(runtime)).toBe(true);
+  });
+
+  it("does not run out while two live players can still bet", () => {
+    const seeds: PlayerSeed[] = [
+      { player_id: "all-in", seat_number: 1, starting_stack: 300 },
+      { player_id: "cover-a", seat_number: 2, starting_stack: 1000 },
+      { player_id: "cover-b", seat_number: 3, starting_stack: 1000 },
+    ];
+    const runtime = reduceHand(seeds, build([
+      ["all-in", "all_in", 300],
+      ["cover-a", "call", 300],
+      ["cover-b", "call", 300],
+    ]), BUTTON);
+
+    expect(isBettingRoundComplete(runtime)).toBe(true);
+    expect(isRunout(runtime)).toBe(false);
   });
 });
 
