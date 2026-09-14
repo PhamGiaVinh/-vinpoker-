@@ -299,6 +299,11 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
         net_won: settledPlayer?.netDelta ?? null,
         pot_winner: settledPlayer ? settledPlayer.potAward > 0 : undefined,
         payout_award: settledPlayer?.potAward,
+        // Presentation baseline includes a verified refund, but no awarded pots.
+        // Net delta comes from the public settlement, never a client winner calculation.
+        payout_starting_stack: settledPlayer
+          ? p.starting_stack + settledPlayer.netDelta - settledPlayer.potAward
+          : undefined,
         refund_award: settledPlayer?.refund,
         hand_rank: settledRank
           ? { category: settledRank.category, best_five: [...settledRank.bestFive], kickers: [...settledRank.kickers] }

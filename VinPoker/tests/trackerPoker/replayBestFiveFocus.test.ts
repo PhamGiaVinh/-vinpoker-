@@ -4,12 +4,32 @@ import {
   normalizeReplayCardCode,
   resolveVerifiedBestFiveFocus,
   resolveVerifiedShowdownPresentation,
+  resolveVerifiedPayoutPresentation,
   selectVerifiedPotLayerPresentation,
 } from "@/lib/tracker-poker/replayBestFiveFocus";
 import type { ReplayFrame } from "@/lib/tracker-poker/replayEngine";
 import type { ReplayPublicSettlement } from "@/lib/tracker-poker/replaySettlement";
+import { buildReplayFrames } from "@/lib/tracker-poker/replayEngine";
+import { buildFixtureHand } from "@/dev/livefeltFixtures";
 
 const HAND_ID = "hand-1";
+
+describe("verified payout without public ranking", () => {
+  it("keeps fold-win awards separate from refunds and never reveals hidden cards", () => {
+    const hand = buildFixtureHand("verified-fold", 3);
+    const frames = buildReplayFrames(hand);
+    const input = { handId: hand.hand_id!, frame: frames.at(-1)!, finalFrameIndex: hand.actions.length, settlement: hand.publicSettlement };
+    const result = resolveVerifiedPayoutPresentation(input);
+    expect(result.enabled).toBe(true);
+    expect(result.potLayers[0].allocations).toEqual([{ playerId: "phil", amount: 400 }]);
+    expect(result.focus.enabled).toBe(false);
+    expect(result.winners[0].bestFive).toEqual([]);
+    expect(input.frame.seats.every(seat => !seat.hole_cards)).toBe(true);
+    expect(resolveVerifiedPayoutPresentation({ ...input, frame: frames[1] }).enabled).toBe(false);
+    expect(resolveVerifiedPayoutPresentation({ ...input, settlement: null }).enabled).toBe(false);
+    expect(resolveVerifiedPayoutPresentation({ ...input, frame: { ...input.frame, seats: input.frame.seats.map(seat => ({ ...seat, payout_award: 999 })) } }).enabled).toBe(false);
+  });
+});
 
 function settlement(overrides: Partial<ReplayPublicSettlement> = {}): ReplayPublicSettlement {
   return {

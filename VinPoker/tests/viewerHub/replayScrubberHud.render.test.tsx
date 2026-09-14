@@ -141,6 +141,21 @@ afterEach(() => {
 });
 
 describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
+  it("schedules payout before the parent exposes a final-frame presentation", () => {
+    vi.useFakeTimers();
+    const onRunoutPresentation = vi.fn();
+    const view = render(<ReplayScrubber hand={verifiedCheckedDownHand} onFrame={() => {}} hud
+      showdownPresentation={null} onRunoutPresentation={onRunoutPresentation} />);
+    fireEvent.click(view.getByTitle("Tới cuối (showdown)"));
+    expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_collect" });
+    act(() => vi.advanceTimersByTime(420));
+    expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_award", potAwardIndex: 0 });
+    act(() => vi.advanceTimersByTime(3_419));
+    expect(onRunoutPresentation.mock.calls.at(-1)?.[0].phase).toBe("pot_award");
+    act(() => vi.advanceTimersByTime(1));
+    expect(onRunoutPresentation.mock.calls.at(-1)?.[0].phase).toBe("static");
+  });
+
   it("hud absent → no HUD bar, no tabs, no jump-to-end (byte-identical scrubber)", () => {
     const { container, queryByTestId, queryByTitle } = render(<ReplayScrubber hand={hand} onFrame={() => {}} />);
     expect(queryByTestId("replay-hud-bar")).toBeNull();
@@ -242,7 +257,7 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
     expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_award", potAwardIndex: 0 });
   });
 
-  it("keeps the verified pot result visible for 1.5 seconds without an all-in", () => {
+  it("keeps the verified pot result visible for 3 seconds after chip arrival without an all-in", () => {
     vi.useFakeTimers();
     const onRunoutPresentation = vi.fn();
     const view = render(
@@ -259,7 +274,7 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
     expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_collect" });
     act(() => vi.advanceTimersByTime(420));
     expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_award", potAwardIndex: 0 });
-    act(() => vi.advanceTimersByTime(1_499));
+    act(() => vi.advanceTimersByTime(3_419));
     expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "pot_award", potAwardIndex: 0 });
     act(() => vi.advanceTimersByTime(1));
     expect(onRunoutPresentation.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "static", potAwardIndex: 0 });

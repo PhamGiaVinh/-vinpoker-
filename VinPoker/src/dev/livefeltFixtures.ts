@@ -7,6 +7,8 @@
 import type { ReplayHand, ReplayHandAction, ReplayHandPlayer } from "@/lib/tracker-poker/replayEngine";
 
 export type LiveFeltFixtureName =
+  | "verified-sidepots"
+  | "verified-fold"
   | "fold-walk"
   | "showdown"
   | "allin-sidepots"
@@ -281,8 +283,49 @@ function chop(): ReplayHand {
   };
 }
 
+function verifiedSidepots(): ReplayHand {
+  const base = bestFiveQuads();
+  return { ...base, hand_id: "fixture-verified-sidepots",
+    players: [
+      { ...base.players[0], ending_stack: 30_000 },
+      { ...base.players[1], ending_stack: 10_000 },
+      { player_id: "sam", display_name: "Sam", seat_number: 7, starting_stack: 15_000, ending_stack: 0, hole_cards: ["9s", "8s"] },
+    ],
+    actions: [...base.actions, { player_id: "sam", action_type: "call", street: "preflop", action_amount: 15_000, action_order: 3 }],
+    publicSettlement: { schemaVersion: "settlement-outcome-v1", status: "verified",
+      players: [{ playerId: "tom", potAward: 30_000, refund: 0, netDelta: 20_000 },
+        { playerId: "phil", potAward: 10_000, refund: 0, netDelta: -5_000 },
+        { playerId: "sam", potAward: 0, refund: 0, netDelta: -15_000 }],
+      pots: [{ potId: "main-0", kind: "main", amount: 30_000, winnerIds: ["tom"], allocations: [{ potId: "main-0", winnerId: "tom", amount: 30_000 }] },
+        { potId: "side-1", kind: "side", amount: 10_000, winnerIds: ["phil"], allocations: [{ potId: "side-1", winnerId: "phil", amount: 10_000 }] }],
+      refunds: [], handRanks: [base.publicSettlement!.handRanks[0],
+        { playerId: "phil", category: "two_pair", bestFive: ["As", "Ah", "Jc", "Js", "Kh"], kickers: ["K"] }],
+    },
+  };
+}
+function verifiedFold(): ReplayHand {
+  const base = bestFiveQuads();
+  return { ...base, hand_id: "fixture-verified-fold", community_cards: ["Kh", "Jc", "Qh"],
+    players: base.players.map(p => ({ ...p, hole_cards: undefined, ending_stack: p.player_id === "tom" ? 9_800 : 15_200 })),
+    actions: [
+      { player_id: "tom", action_type: "post_sb", street: "preflop", action_amount: 100, action_order: 1 },
+      { player_id: "phil", action_type: "post_bb", street: "preflop", action_amount: 200, action_order: 2 },
+      { player_id: "tom", action_type: "call", street: "preflop", action_amount: 100, action_order: 3 },
+      { player_id: "phil", action_type: "bet", street: "flop", action_amount: 1_000, action_order: 4 },
+      { player_id: "tom", action_type: "fold", street: "flop", action_amount: 0, action_order: 5 },
+    ],
+    publicSettlement: { schemaVersion: "settlement-outcome-v1", status: "verified",
+      players: [{ playerId: "tom", potAward: 0, refund: 0, netDelta: -200 }, { playerId: "phil", potAward: 400, refund: 1_000, netDelta: 200 }],
+      pots: [{ potId: "main-0", kind: "main", amount: 400, winnerIds: ["phil"], allocations: [{ potId: "main-0", winnerId: "phil", amount: 400 }] }],
+      refunds: [{ playerId: "phil", amount: 1_000, sourceActionId: "refund-phil" }], handRanks: [],
+    },
+  };
+}
+
 export function buildFixtureHand(name: LiveFeltFixtureName, seats: number): ReplayHand {
   switch (name) {
+    case "verified-sidepots": return verifiedSidepots();
+    case "verified-fold": return verifiedFold();
     case "fold-walk":
       return foldWalk(seats);
     case "showdown":

@@ -98,13 +98,14 @@ function canPlay(kind: PokerLiveSound, bypassStoredMute = false) {
   if (muted && !bypassStoredMute) return false;
   if (typeof window === "undefined" || typeof document === "undefined") return false;
   ensureGestureListeners();
+  if (!userGestureSeen) return false;
   const now = Date.now();
   // Throttle is PER-KIND (Map keyed by kind), so deal_flop / deal_turn / deal_river
   // never throttle each other — a turn dealt <180ms after the flop still sounds.
   const throttleMs = kind.startsWith("deal") ? 150 : 70;
   if (now - (lastPlayedAt.get(kind) ?? 0) < throttleMs) return false;
   lastPlayedAt.set(kind, now);
-  return userGestureSeen;
+  return true;
 }
 
 export type PokerLiveSoundProfile = "legacy" | "tracker";
@@ -144,6 +145,7 @@ export function pokerSoundVolumeFor(kind: PokerLiveSound, profile: PokerLiveSoun
     case "deal_turn":
     case "deal_river": return 1;
     case "pot_collect": return 0.95;
+    case "pot_award": return 1;
     default: return 0.4;
   }
 }
@@ -155,11 +157,24 @@ const SYNTH_FALLBACK_KINDS = new Set<PokerLiveSound>([
   "fold", "check", "deal_flop", "deal_turn", "deal_river", "fold_muck", "chip", "pot_collect", "pot_award",
 ]);
 
+const activeTrackerSounds = new Set<HTMLAudioElement>();
+
+/** Cancel the previous hand's recorded cues without affecting Online Poker. */
+export function stopTrackerPokerSounds(): void {
+  for (const sound of activeTrackerSounds) { sound.pause(); sound.currentTime = 0; }
+  activeTrackerSounds.clear();
+}
+
 function playMp3(kind: PokerLiveSound, src: string, profile: PokerLiveSoundProfile) {
   const audio = new Audio(src);
+  if (profile === "tracker") {
+    activeTrackerSounds.add(audio);
+    audio.onended = () => { activeTrackerSounds.delete(audio); };
+  }
   audio.volume = pokerSoundVolumeFor(kind, profile);
   audio.playbackRate = playbackRateFor(kind);
   void audio.play().catch(() => {
+    if (profile === "tracker" && !activeTrackerSounds.delete(audio)) return;
     if (SYNTH_FALLBACK_KINDS.has(kind)) playSynth(kind);
   });
   // The base bet clip is intentionally reused for action consistency. A quiet
@@ -309,6 +324,8 @@ function playSynth(kind: PokerLiveSound) {
 
 export function markPokerSoundGesture() {
   userGestureSeen = true;
+  const ctx = ensureCtx();
+  if (ctx?.state === "suspended") void ctx.resume().catch(() => {});
 }
 
 export function playPokerLiveSound(kind: PokerLiveSound, options?: PokerLiveSoundOptions) {

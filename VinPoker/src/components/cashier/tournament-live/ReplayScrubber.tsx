@@ -15,6 +15,7 @@ import {
   type ReplayHand,
 } from "@/lib/tracker-poker/replayEngine";
 import {
+  resolveVerifiedPayoutPresentation,
   selectVerifiedPotLayerPresentation,
   type VerifiedShowdownPresentation,
 } from "@/lib/tracker-poker/replayBestFiveFocus";
@@ -27,6 +28,7 @@ import {
 } from "@/lib/tracker-poker/replayRunoutTimeline";
 import { formatActionLabel, formatStack, type ActionLog } from "./LiveFelt";
 import { formatViewerBBOrUnavailable } from "@/lib/tracker-poker/viewerAmounts";
+import { markPokerSoundGesture, stopTrackerPokerSounds } from "@/lib/pokerLiveSound";
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
 const STREET_LABELS: Record<string, string> = {
@@ -125,13 +127,25 @@ export function ReplayScrubber({
     () => [...(hand.actions || [])].sort((a, b) => a.action_order - b.action_order),
     [hand]
   );
+  // Scheduling must know the terminal proof BEFORE reaching the terminal frame.
+  // The parent's presentation is deliberately disabled on earlier frames so it
+  // cannot reveal winners/cards early; using it here skipped the whole payout.
+  const terminalPresentation = useMemo(() => hud && frames[lastIndex]
+    ? resolveVerifiedPayoutPresentation({
+        handId: hand.hand_id ?? `hand-${hand.hand_number}`,
+        frame: frames[lastIndex],
+        finalFrameIndex: lastIndex,
+        settlement: hand.publicSettlement,
+      })
+    : null, [frames, hand, hud, lastIndex]);
   const hasVerifiedPayoutSequence = hud
-    && showdownPresentation?.enabled === true
-    && frames[lastIndex]?.revealHoleCards === true
-    && (showdownPresentation?.potLayers.length ?? 0) > 0;
+    && terminalPresentation?.enabled === true
+    && (terminalPresentation?.potLayers.length ?? 0) > 0;
   const hasCinematicAllInRunout = hasVerifiedPayoutSequence
+    && frames[lastIndex]?.revealHoleCards === true
+    && frames[lastIndex]?.displayCards.filter(Boolean).length === 5
     && sortedActions.some((action) => action.action_type === "all_in");
-  const verifiedPotLayerCount = hasVerifiedPayoutSequence ? (showdownPresentation?.potLayers.length ?? 0) : 0;
+  const verifiedPotLayerCount = hasVerifiedPayoutSequence ? (terminalPresentation?.potLayers.length ?? 0) : 0;
   const publishRunoutPresentation = useCallback((presentation: ReplayRunoutPresentation | null) => {
     setRunoutPresentation(presentation);
     onRunoutPresentation?.(presentation);
@@ -198,6 +212,8 @@ export function ReplayScrubber({
   }, [hasCinematicAllInRunout, hasVerifiedPayoutSequence, isPlaying, lastIndex, publishRunoutPresentation, runoutKey, runoutPresentation, speed, step, verifiedPotLayerCount]);
 
   const pauseTo = (nextStep: number) => {
+    if (hud) stopTrackerPokerSounds();
+    markPokerSoundGesture();
     frameSourceRef.current = "scrub";
     const entersVerifiedPayout = nextStep === lastIndex && hasVerifiedPayoutSequence;
     const reducedMotion = entersVerifiedPayout
@@ -213,8 +229,10 @@ export function ReplayScrubber({
   };
 
   const togglePlay = () => {
-    if (isPlaying && runoutPresentation) {
-      setIsPlaying(false);
+    markPokerSoundGesture();
+    if (hud && isPlaying) stopTrackerPokerSounds();
+    if (runoutPresentation && runoutPresentation.phase !== "static") {
+      setIsPlaying(playing => !playing);
       return;
     }
     if (step >= lastIndex) {
@@ -451,11 +469,12 @@ export function ReplayScrubber({
                   type="button"
                   data-testid={`replay-pot-selector-${potIndex}`}
                   onClick={() => {
+                    stopTrackerPokerSounds();
                     setIsPlaying(false);
                     publishRunoutPresentation(null);
                     onSelectedPotIndexChange?.(potIndex);
                   }}
-                  className={`min-h-11 shrink-0 rounded-xl border px-3 text-[10px] font-black uppercase tracking-wider ${selectedPotIndex === potIndex ? "border-[hsl(var(--poker-gold)/.68)] bg-[hsl(var(--poker-gold)/.12)] text-[hsl(var(--poker-gold))]" : "border-border text-muted-foreground"}`}
+                  className={`min-h-11 shrink-0 rounded-xl border px-3 text-[10px] font-black uppercase tracking-wider ${(runoutPresentation?.potAwardIndex ?? selectedPotIndex) === potIndex ? "border-[hsl(var(--poker-gold)/.68)] bg-[hsl(var(--poker-gold)/.12)] text-[hsl(var(--poker-gold))]" : "border-border text-muted-foreground"}`}
                 >
                   {pot.kind === "main" ? t("liveHub.felt.mainPot", "Main Pot") : t("liveHub.felt.sidePot", "Side Pot")} · {amountForHud(pot.amount)}
                 </button>

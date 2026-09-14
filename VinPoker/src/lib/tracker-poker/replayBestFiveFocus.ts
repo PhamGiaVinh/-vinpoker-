@@ -1,5 +1,6 @@
 import type { ReplayFrame } from "./replayEngine";
 import type { ReplayPublicSettlement } from "./replaySettlement";
+import { parseReplayPublicSettlement } from "./replaySettlement";
 
 export type BestFiveFocus = {
   enabled: boolean;
@@ -67,7 +68,9 @@ export function selectVerifiedPotLayerPresentation(
 
   const boardCardCodes = new Set<string>();
   const holeCardCodesByPlayerId = new Map<string, ReadonlySet<string>>();
+  const hasRanking = winners.every(winner => winner.bestFive.length === 5);
   for (const winner of winners) {
+    if (!hasRanking) continue;
     const bestFive = new Set(winner.bestFive);
     if (bestFive.size !== 5) return disabledPresentation();
     for (const holeCard of winner.holeBestFive) {
@@ -84,7 +87,7 @@ export function selectVerifiedPotLayerPresentation(
     isChop: layer.winnerPlayerIds.length > 1,
     winners,
     focus: {
-      enabled: true,
+      enabled: hasRanking,
       winnerPlayerIds: new Set(layer.winnerPlayerIds),
       boardCardCodes,
       holeCardCodesByPlayerId,
@@ -587,6 +590,37 @@ export function resolveVerifiedShowdownPresentation({
       holeCardCodesByPlayerId,
     },
   };
+}
+
+/** Pot receipts can be presented without exposing cards (for example a fold win).
+ * Ranking remains optional and is still validated by the stricter resolver above. */
+export function resolveVerifiedPayoutPresentation(input: ResolveVerifiedShowdownPresentationInput): VerifiedShowdownPresentation {
+  const ranked = resolveVerifiedShowdownPresentation(input);
+  if (ranked.enabled) return ranked;
+  const { frame, handId, finalFrameIndex } = input;
+  const settlement = parseReplayPublicSettlement(input.settlement);
+  if (!handId || !settlement || !frame.payoutVerified || frame.index !== finalFrameIndex
+    || settlement.pots.filter(pot => pot.kind === "main").length !== 1) return disabledPresentation();
+  const players = new Map(settlement.players.map(player => [player.playerId, player]));
+  if (frame.seats.length !== players.size || new Set(frame.seats.map(seat => seat.player_id)).size !== players.size
+    || frame.seats.some(seat => {
+      const player = players.get(seat.player_id);
+      return !player || seat.payout_award !== player.potAward || seat.refund_award !== player.refund
+        || seat.net_won !== player.netDelta;
+    })) return disabledPresentation();
+  const potLayers = settlement.pots.map(pot => ({
+    potId: pot.potId, kind: pot.kind, amount: pot.amount, winnerPlayerIds: pot.winnerIds,
+    allocations: pot.allocations.map(allocation => ({ playerId: allocation.winnerId, amount: allocation.amount })),
+  })).sort((a, b) => a.kind === b.kind ? 0 : a.kind === "main" ? -1 : 1);
+  const winnerIds = new Set(potLayers.flatMap(pot => pot.winnerPlayerIds));
+  if (!equalSets(winnerIds, new Set(frame.showdownWinnerIds ?? []))) return disabledPresentation();
+  const winners = frame.seats.filter(seat => winnerIds.has(seat.player_id)).map(seat => ({
+    playerId: seat.player_id, playerName: seat.display_name, seatNumber: seat.seat_number,
+    category: "", rankingText: "", bestFive: [], kickers: [], holeBestFive: new Set<string>(),
+  }));
+  return { enabled: true, handId, frameIndex: frame.index,
+    isChop: potLayers.every(pot => pot.winnerPlayerIds.length > 1), winners, potLayers,
+    focus: { enabled: false, winnerPlayerIds: winnerIds, boardCardCodes: new Set(), holeCardCodesByPlayerId: new Map() } };
 }
 
 /** Backward-compatible focus projection for existing felt callers and tests. */

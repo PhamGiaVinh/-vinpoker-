@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { act, render, cleanup } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LiveFelt, type SeatInfo } from "@/components/cashier/tournament-live/LiveFelt";
 import {
@@ -258,8 +259,8 @@ describe("LiveFelt verified best-five focus", () => {
         replayRunoutPresentation={{ key: "hand-1:7:verified", phase: "pot_collect", visibleBoardCount: 5, potAwardIndex: null }}
       />,
     );
-    expect((collectingWholeHandCommitments.match(/data-testid="felt-settlement-collect-stack"/g) ?? []).length).toBe(3);
-    expect(collectingWholeHandCommitments).toContain("9k");
+    expect((collectingWholeHandCommitments.match(/data-testid="felt-settlement-collect-stack"/g) ?? []).length).toBe(2);
+    expect(collectingWholeHandCommitments).not.toContain("9k");
 
     const mainPresentation = selectVerifiedPotLayerPresentation(layeredPresentation, 0);
     const mainAward = renderToStaticMarkup(
@@ -341,4 +342,38 @@ describe("LiveFelt verified best-five focus", () => {
     expect(operator).not.toContain("11.5cqi");
     expect(operator).not.toContain("16.2cqi");
   });
+});
+
+ it("credits each verified pot once after arrival and keeps final stacks when reviewing another pot", () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  const layers = { ...showdownPresentation, potLayers: [
+    { ...showdownPresentation.potLayers[0], amount: 8_000, allocations: [{ playerId: "tom", amount: 8_000 }] },
+    { ...showdownPresentation.potLayers[0], potId: "side-1", kind: "side" as const, amount: 12_000, allocations: [{ playerId: "tom", amount: 12_000 }] },
+  ] };
+  const payoutSeats = [{ ...winner, chip_count: 0, payout_starting_stack: 5_000 }, { ...refundOnly, payout_starting_stack: 5_000 }];
+  const felt = (phase: "pot_award" | "static", index: number) => <LiveFelt {...baseProps} seats={payoutSeats}
+    viewerLayout viewerAmountsInBB tableFx showdownPresentation={layers} bestFiveFocus={focus}
+    replayRunoutPresentation={{ key: "award-test", phase, visibleBoardCount: 5, potAwardIndex: index }} />;
+  try {
+    const view = render(felt("pot_award", 0));
+    const target = () => Number(view.getByTestId("felt-stack-tom").getAttribute("data-stack-target"));
+    expect(target()).toBe(5_000);
+    expect(view.queryByTestId("felt-settlement-award-label-tom")).toBeNull();
+    act(() => vi.advanceTimersByTime(420));
+    expect(target()).toBe(13_000);
+    expect(view.getByTestId("felt-settlement-award-label-tom").textContent).toBe("+40 BB");
+    view.rerender(felt("pot_award", 0));
+    expect(target()).toBe(13_000);
+    view.rerender(felt("pot_award", 1));
+    expect(target()).toBe(13_000);
+    act(() => vi.advanceTimersByTime(420));
+    expect(target()).toBe(25_000);
+    expect(view.getByTestId("felt-settlement-award-label-tom").textContent).toBe("+60 BB");
+    view.rerender(felt("static", 0));
+    expect(target()).toBe(25_000);
+    expect(view.queryByTestId("felt-settlement-award-label-phil")).toBeNull();
+    expect(Number(view.getByTestId("felt-stack-phil").getAttribute("data-stack-target"))).toBe(5_000);
+    expect(target() + 5_000).toBe(5_000 + 5_000 + 20_000);
+  } finally { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); }
 });

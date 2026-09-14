@@ -550,6 +550,10 @@ export function TrackerVisualStyles() {
           from { transform: translate(-50%, -32%) scale(.86); opacity: 0; }
           to { transform: translate(-50%, -90%) scale(1); opacity: 1; }
         }
+        @keyframes tracker-seat-award-label {
+          from { transform: translateY(4px) scale(.96); opacity: 0; }
+          to { transform: translateY(0) scale(1); opacity: 1; }
+        }
         .tracker-card-reveal { animation: tracker-card-reveal .36s cubic-bezier(.2,.7,.2,1) both; }
         .tracker-seat-pop { animation: tracker-seat-pop .22s ease-out both; }
         .tracker-pot-pulse { animation: tracker-pot-pulse 1.4s ease-in-out infinite; }
@@ -651,12 +655,12 @@ export function TrackerVisualStyles() {
           box-shadow: 0 0 14px hsl(var(--viewer-neon) / .3);
           color: hsl(var(--viewer-neon));
           font-family: var(--font-display, ui-monospace, monospace);
-          font-size: clamp(8px, 1.4cqi, 12px);
+          font-size: clamp(11px, 1.65cqi, 15px);
           font-weight: 900;
           line-height: 1;
           padding: 3px 6px;
           white-space: nowrap;
-          animation: tracker-settlement-award-label 220ms cubic-bezier(.22,1,.36,1) 130ms both;
+          animation: tracker-seat-award-label 220ms cubic-bezier(.22,1,.36,1) both;
         }
         .tracker-settlement-award-announcement {
           width: min(82cqi, 260px);

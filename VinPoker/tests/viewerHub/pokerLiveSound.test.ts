@@ -3,13 +3,15 @@
 // the safety contract the FX relies on: every kind — old and new — is a TOTAL,
 // silent no-op until a user gesture unlocks audio, and stays a no-op when muted.
 // (jsdom has no AudioContext, so this also proves the synth path fails closed.)
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   playPokerLiveSound,
   setPokerSoundMuted,
   isPokerSoundMuted,
   pokerSoundVolumeFor,
   mp3SrcFor,
+  markPokerSoundGesture,
+  stopTrackerPokerSounds,
   type PokerLiveSound,
 } from "@/lib/pokerLiveSound";
 
@@ -51,11 +53,29 @@ describe("pokerLiveSound — FX safety contract", () => {
     expect(pokerSoundVolumeFor("deal_turn", "tracker")).toBe(1);
     expect(pokerSoundVolumeFor("deal_river", "tracker")).toBe(1);
     expect(pokerSoundVolumeFor("pot_collect", "tracker")).toBe(0.95);
+    expect(pokerSoundVolumeFor("pot_award", "tracker")).toBe(1);
     expect(mp3SrcFor("pot_award")).toBe("/sounds/tracker/pot-award.mp3");
   });
 
   it("leaves the legacy Online Poker source levels unchanged", () => {
     expect(pokerSoundVolumeFor("deal")).toBe(0.32);
     expect(pokerSoundVolumeFor("all_in")).toBe(0.4);
+  });
+
+  it("plays the supplied award after an explicit gesture and cancels it on hand change", () => {
+    const play = vi.fn().mockResolvedValue(undefined);
+    const pause = vi.fn();
+    const audio = { play, pause, currentTime: 0, volume: 0, playbackRate: 0, onended: null };
+    const AudioMock = vi.fn(function () { return audio; });
+    vi.stubGlobal("Audio", AudioMock);
+    try {
+      markPokerSoundGesture();
+      playPokerLiveSound("pot_award", { profile: "tracker", bypassStoredMute: true });
+      expect(AudioMock).toHaveBeenCalledWith("/sounds/tracker/pot-award.mp3");
+      expect(play).toHaveBeenCalledTimes(1);
+      expect(audio.volume).toBe(1);
+      stopTrackerPokerSounds();
+      expect(pause).toHaveBeenCalledTimes(1);
+    } finally { vi.unstubAllGlobals(); }
   });
 });
