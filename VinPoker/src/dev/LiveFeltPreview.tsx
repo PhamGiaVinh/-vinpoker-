@@ -30,14 +30,16 @@ import { ReplayScrubber } from "@/components/cashier/tournament-live/ReplayScrub
 import { buildReplayFrames, detectBigBlind, type ReplayFrame } from "@/lib/tracker-poker/replayEngine";
 import { formatViewerBB } from "@/lib/tracker-poker/viewerAmounts";
 import {
-  resolveVerifiedShowdownPresentation,
+  resolveVerifiedPayoutPresentation,
   selectVerifiedPotLayerPresentation,
 } from "@/lib/tracker-poker/replayBestFiveFocus";
-import { createReplayRunoutPresentation } from "@/lib/tracker-poker/replayRunoutTimeline";
+import { createReplayRunoutPresentation, replayRunoutFocusPhase, type ReplayRunoutPresentation } from "@/lib/tracker-poker/replayRunoutTimeline";
+import { markPokerSoundGesture, playPokerLiveSound } from "@/lib/pokerLiveSound";
 import { deriveReplayPlaybackFx } from "@/lib/tracker-poker/replayFx";
 import { buildFixtureHand, type LiveFeltFixtureName } from "./livefeltFixtures";
 
 const FIXTURES: LiveFeltFixtureName[] = [
+  "verified-sidepots", "verified-fold",
   "fold-walk",
   "showdown",
   "allin-sidepots",
@@ -72,6 +74,15 @@ function LiveFeltPreviewContent() {
   const requestedPotIndex = Math.max(0, Number(params.get("pot")) || 0);
 
   const [frame, setFrame] = useState<ReplayFrame>(frames[step]);
+  const [runout, setRunout] = useState<ReplayRunoutPresentation | null>(null);
+  const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(muted);
+  mutedRef.current = muted;
+  useEffect(() => {
+    if (!mutedRef.current && (runout?.phase === "pot_collect" || runout?.phase === "pot_award")) {
+      playPokerLiveSound(runout.phase, { bypassStoredMute: true, profile: "tracker" });
+    }
+  }, [runout]);
   useEffect(() => { if (!play) setFrame(frames[step]); }, [frames, step, play]);
 
   // Play mode mirrors the real viewer's replay FX derivation (forward-only, single-step):
@@ -97,7 +108,7 @@ function LiveFeltPreviewContent() {
   const bb = detectBigBlind(hand);
   const formatBB = (n: number): string | null => formatViewerBB(n, bb);
   const blinds = bb > 0 ? { sb: bb / 2, bb, ante: 0 } : null;
-  const verifiedPresentation = useMemo(() => resolveVerifiedShowdownPresentation({
+  const verifiedPresentation = useMemo(() => resolveVerifiedPayoutPresentation({
     handId: hand.hand_id ?? `fixture-${fixture}-${hand.hand_number}`,
     frame,
     finalFrameIndex: frames.length - 1,
@@ -105,10 +116,10 @@ function LiveFeltPreviewContent() {
     locale: "vi",
   }), [fixture, frame, frames.length, hand]);
   const visiblePresentation = useMemo(
-    () => selectVerifiedPotLayerPresentation(verifiedPresentation, requestedPotIndex),
-    [requestedPotIndex, verifiedPresentation],
+    () => selectVerifiedPotLayerPresentation(verifiedPresentation, runout?.potAwardIndex ?? requestedPotIndex),
+    [requestedPotIndex, runout?.potAwardIndex, verifiedPresentation],
   );
-  const staticPayoutPresentation = visiblePresentation.enabled
+  const staticPayoutPresentation = play ? runout : visiblePresentation.enabled
     ? createReplayRunoutPresentation(
         `${visiblePresentation.handId}:${visiblePresentation.frameIndex}:dev-fixture`,
         "static",
@@ -123,7 +134,7 @@ function LiveFeltPreviewContent() {
         ...(params.has('allbets') ? { is_folded: false, current_bet: 1000000, display_committed_bet: 1000000 } : {}),
       }))}
       lastActorId={frame.lastActorId}
-      displayCards={frame.displayCards}
+      displayCards={frame.displayCards.map((card, index) => runout && index >= runout.visibleBoardCount ? "" : card)}
       potSize={frame.potSize}
       potBreakdown={frame.potBreakdown}
       multiTableUnresolved={false}
@@ -140,7 +151,7 @@ function LiveFeltPreviewContent() {
       collectCommittedChips={frame.index === frames.length - 1 && hand.actions.some((action) => action.action_type === "all_in")}
       bestFiveFocus={visiblePresentation.enabled ? visiblePresentation.focus : null}
       showdownPresentation={visiblePresentation.enabled ? visiblePresentation : null}
-      bestFiveFocusPhase="static"
+      bestFiveFocusPhase={play ? replayRunoutFocusPhase(runout?.phase ?? null) : "static"}
       replayRunoutPhase={staticPayoutPresentation?.phase ?? null}
       replayRunoutPresentation={staticPayoutPresentation}
       chipPush={chipPush}
@@ -165,6 +176,7 @@ function LiveFeltPreviewContent() {
   return (
     <div
       data-dev-livefelt-preview
+      onPointerDown={markPokerSoundGesture}
       data-viewer-shell="rpt"
       className="min-h-screen bg-background p-3"
       style={widthPx > 0 ? { width: widthPx, marginInline: "auto" } : undefined}
@@ -174,10 +186,12 @@ function LiveFeltPreviewContent() {
         /__dev/livefelt · {fixture} · seats={seats} · step={play ? "play" : step}/{frames.length - 1} · {orientation} · vL={viewerLayout ? 1 : 0} compact={compact ? 1 : 0} fx={tableFx ? 1 : 0} · wrap={wrap}
       </div>
       {wrapped}
+      {play && <button type="button" onClick={() => setMuted(value => !value)}>{muted ? "Unmute" : "Mute"}</button>}
       {play && (
         <div className="mt-3">
-          <ReplayScrubber hand={hand} onFrame={handleFrame} trackBets={viewerLayout && compact} />
-          <AutoPlay speed={speed} />
+          <ReplayScrubber hand={hand} onFrame={handleFrame} hud trackBets={viewerLayout && compact}
+            showdownPresentation={verifiedPresentation} onRunoutPresentation={setRunout} />
+          {params.get("autoplay") !== "0" && <AutoPlay speed={speed} />}
         </div>
       )}
     </div>

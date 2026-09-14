@@ -29,7 +29,7 @@ import {
   type BestFiveFocus,
   type VerifiedShowdownPresentation,
 } from "@/lib/tracker-poker/replayBestFiveFocus";
-import { isReplaySettlementPayoutPhase, type ReplayRunoutPhase, type ReplayRunoutPresentation } from "@/lib/tracker-poker/replayRunoutTimeline";
+import { POT_AWARD_TRAVEL_MS, isReplaySettlementPayoutPhase, type ReplayRunoutPhase, type ReplayRunoutPresentation } from "@/lib/tracker-poker/replayRunoutTimeline";
 import { shouldCollectCommittedChips } from "@/lib/tracker-poker/livePotCollection";
 
 /** Count-up text (Phase 3, tableFx only): tweens a numeric display toward its target.
@@ -65,6 +65,8 @@ export interface SeatInfo {
   pot_winner?: boolean;
   /** Verified payout credited to this seat; absent until settlement matches storage. */
   payout_award?: number | null;
+  /** Server-projected stack before pot awards, including any verified refund. */
+  payout_starting_stack?: number;
   /** Verified uncalled amount returned to this seat. Refund never implies a winner. */
   refund_award?: number | null;
   /** Public display-only rank from a fresh verified settlement. */
@@ -410,6 +412,28 @@ export function LiveFelt({
   const seatMap = !unified && viewerLayout && !portrait ? LANDSCAPE_SEATS_V3 : geo.seats;
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
   const settlementPayoutPhase = replayRunoutPresentation?.phase ?? null;
+  const awardKey = settlementPayoutPhase === "pot_award"
+    ? `${replayRunoutPresentation?.key}:${replayRunoutPresentation?.potAwardIndex}` : null;
+  const [arrivedAwardKey, setArrivedAwardKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!awardKey) { setArrivedAwardKey(null); return; }
+    const timer = window.setTimeout(() => setArrivedAwardKey(awardKey), POT_AWARD_TRAVEL_MS);
+    return () => window.clearTimeout(timer);
+  }, [awardKey]);
+  const awardArrived = !awardKey || arrivedAwardKey === awardKey;
+  const displayedStack = (seat: SeatInfo): number => {
+    if (!viewerLayout || !showdownPresentation?.enabled || seat.payout_starting_stack == null
+      || !Number.isFinite(seat.payout_starting_stack) || seat.payout_starting_stack < 0) return seat.chip_count;
+    const completedCount = settlementPayoutPhase === "pot_award"
+      ? (replayRunoutPresentation?.potAwardIndex ?? 0) + (awardArrived ? 1 : 0)
+      : settlementPayoutPhase === "static" || !replayRunoutPresentation
+        ? showdownPresentation.potLayers.length : 0;
+    const credited = showdownPresentation.potLayers.slice(0, completedCount)
+      .flatMap(pot => pot.allocations)
+      .filter(allocation => allocation.playerId === seat.player_id)
+      .reduce((sum, allocation) => sum + allocation.amount, 0);
+    return seat.payout_starting_stack + credited;
+  };
   const settlementPayoutActive = viewerLayout
     && tableFx
     && showdownPresentation?.enabled === true
@@ -581,8 +605,8 @@ export function LiveFelt({
     activePotAwardsComplete ? activePotLayer?.winnerPlayerIds ?? [] : [],
   );
   const visibleSettlementPotLayers = settlementPayoutSequenceActive && showdownPresentation
-    ? settlementPayoutPhase === "pot_award"
-      ? showdownPresentation.potLayers.slice(Math.max(0, activePotLayerIndex))
+    ? settlementPayoutPhase === "pot_award" || settlementPayoutPhase === "static"
+      ? showdownPresentation.potLayers.slice(Math.max(0, activePotLayerIndex), Math.max(0, activePotLayerIndex) + 1)
       : showdownPresentation.potLayers
     : [];
   const settlementPotPoint = (visibleIndex: number, total: number): Pt => {
@@ -1062,21 +1086,21 @@ export function LiveFelt({
                       {seat.display_name}
                     </div>
                     {viewerAmountsInBB ? (
-                      <div className="tracker-num mt-[1px] whitespace-nowrap text-[11px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)", ...bbTextStyle }}>
-                        <CountUpText value={seat.chip_count} format={formatViewerAmount} enabled={tableFx} />
+                      <div data-testid={`felt-stack-${seat.player_id}`} data-stack-target={displayedStack(seat)} className="tracker-num mt-[1px] whitespace-nowrap text-[11px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)", ...bbTextStyle }}>
+                        <CountUpText value={displayedStack(seat)} format={formatViewerAmount} enabled={tableFx} />
                       </div>
                     ) : compactActive && formatBB(seat.chip_count) ? (
                       <>
                         <div className="tracker-num mt-[1px] whitespace-nowrap text-[11px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)", ...bbTextStyle }}>
-                          <CountUpText value={seat.chip_count} format={(n) => formatBB(n) ?? formatStack(n)} enabled={tableFx} />
+                          <CountUpText value={displayedStack(seat)} format={(n) => formatBB(n) ?? formatStack(n)} enabled={tableFx} />
                         </div>
                         <div className="tracker-num mt-[1px] whitespace-nowrap text-[8px] font-semibold leading-none text-white/60" style={subTextStyle}>
-                          <CountUpText value={seat.chip_count} format={formatStack} enabled={tableFx} />
+                          <CountUpText value={displayedStack(seat)} format={formatStack} enabled={tableFx} />
                         </div>
                       </>
                     ) : (
                       <div className="tracker-num mt-[1px] text-[10px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)", ...bbTextStyle }}>
-                        <CountUpText value={seat.chip_count} format={formatStack} enabled={tableFx} />
+                        <CountUpText value={displayedStack(seat)} format={formatStack} enabled={tableFx} />
                       </div>
                     )}
                   </div>
@@ -1090,6 +1114,15 @@ export function LiveFelt({
                     </div>
                   </>
                 )}
+                {settlementPotResultActive && activePotAwardsComplete && awardArrived && activePotLayer
+                  && activePotLayer.allocations.filter(a => a.playerId === seat.player_id).map(allocation => (
+                    <span key={`${activePotLayer.potId}-${seat.player_id}`}
+                      data-testid={`felt-settlement-award-label-${seat.player_id}`}
+                      className="tracker-settlement-award-label mt-1"
+                      style={{ position: "relative", zIndex: 30 }}>
+                      +{formatGameplayAmount(allocation.amount)}
+                    </span>
+                  ))}
                 {/* Committed-bet indicator. viewerLayout → an RPT-style chip STACK rendered
                     ON THE FELT (in the placement layer below the seats map), NOT a pill here.
                     Operator/TV (viewerLayout off) keep the standalone ALL IN label as today,
@@ -1192,9 +1225,8 @@ export function LiveFelt({
                   className="absolute -translate-x-1/2 -translate-y-1/2"
                   style={{ left: `${point.l}%`, top: `${point.t}%` }}
                 >
-                  <ChipStack
-                    label={`${pot.kind === "main" ? t("liveHub.felt.main", "Main") : t("liveHub.felt.side", "Side")} ${formatGameplayAmount(pot.amount)}`}
-                    sizeStyle={stackStyle}
+                  <CenterPotStack compact
+                    label={`${pot.kind === "main" ? t("liveHub.felt.main", "Main") : t("liveHub.felt.side", "Side {{i}}", { i: activePotLayerIndex })} ${formatGameplayAmount(pot.amount)}`}
                   />
                   {isAwardingPot && activePotAwardsComplete && activePotAwardRows.flatMap(({ allocation, seat }, allocationIndex) => {
                     const slot = ((seat.seat_number - 1) % 9) + 1;
@@ -1205,8 +1237,8 @@ export function LiveFelt({
                         data-testid={`felt-settlement-award-${allocation.playerId}`}
                         className="tracker-settlement-chip tracker-settlement-chip-award"
                         style={{
-                          left: `${point.l}%`,
-                          top: `${point.t}%`,
+                          left: "50%",
+                          top: "0%",
                           "--sp-dx": `${target.l - point.l}cqi`,
                           "--sp-dy": `${(target.t - point.t) / motionAspect}cqi`,
                           animationDelay: `${allocationIndex * 55 + chip * 22}ms`,
@@ -1218,21 +1250,7 @@ export function LiveFelt({
               );
             })}
 
-            {settlementPotResultActive && activePotAwardsComplete && activePotLayer && activePotAwardRows.map(({ allocation, seat }) => {
-              const slot = ((seat.seat_number - 1) % 9) + 1;
-              const target = stackPt(seatMap[slot] || seatMap[1]);
-              const awardBB = formatBB(allocation.amount);
-              return (
-                <span
-                  key={`award-label-${activePotLayer.potId}-${allocation.playerId}`}
-                  data-testid={`felt-settlement-award-label-${allocation.playerId}`}
-                  className="tracker-settlement-award-label absolute -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: `${target.l}%`, top: `${target.t}%` }}
-                >
-                  +{viewerAmountsInBB ? awardBB ?? "— BB" : `${formatStack(allocation.amount)}${awardBB ? ` (${awardBB})` : ""}`}
-                </span>
-              );
-            })}
+
           </div>
         )}
 

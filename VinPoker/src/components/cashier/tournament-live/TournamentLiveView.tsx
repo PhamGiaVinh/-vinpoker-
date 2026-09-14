@@ -13,7 +13,7 @@ import { getSeatPositions } from "@/lib/tournament/button";
 import { useAuth } from "@/hooks/useAuth";
 import { TdAiAssistantPanel } from "@/components/td-ai/TdAiAssistantPanel";
 import { TrackerVisualStyles } from "./PokerVisuals";
-import { playPokerLiveSound, type PokerLiveSound } from "@/lib/pokerLiveSound";
+import { markPokerSoundGesture, playPokerLiveSound, stopTrackerPokerSounds, type PokerLiveSound } from "@/lib/pokerLiveSound";
 import {
   streetContribution,
   type PotBreakdown,
@@ -44,11 +44,14 @@ import {
   replayActionSoundDelayMs,
 } from "@/lib/tracker-poker/replayFx";
 import {
-  resolveVerifiedShowdownPresentation,
+  resolveVerifiedPayoutPresentation,
   selectVerifiedPotLayerPresentation,
 } from "@/lib/tracker-poker/replayBestFiveFocus";
 import {
   replayRunoutFocusPhase,
+  createReplayRunoutPresentation,
+  nextReplayRunoutPresentation,
+  replayRunoutPhaseDuration,
   type ReplayRunoutPresentation,
 } from "@/lib/tracker-poker/replayRunoutTimeline";
 import { deriveLiveHandDisplay } from "@/lib/tracker-poker/liveDisplay";
@@ -196,6 +199,7 @@ function TournamentLiveViewContent({
   const [liveRunout, setLiveRunout] = useState(false);
   const [liveBettingRoundComplete, setLiveBettingRoundComplete] = useState(false);
   const [liveCompletedHand, setLiveCompletedHand] = useState<ReplayHand | null>(null);
+  const [livePayout, setLivePayout] = useState<ReplayRunoutPresentation | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [tableNames, setTableNames] = useState<Record<string, string>>({});
   const [localRemaining, setLocalRemaining] = useState(0);
@@ -1022,8 +1026,10 @@ function TournamentLiveViewContent({
   }, [enqueueTableMotion, mode, replayFrame, replayFrameSource, replayHand, replayMotionEpoch, replayRunoutPresentation, spectator]);
 
   const toggleSoundMuted = useCallback(() => {
+    markPokerSoundGesture();
     setSoundMuted((m) => {
       const next = !m;
+      if (next) stopTrackerPokerSounds();
       try {
         localStorage.setItem(SOUND_MUTE_KEY, next ? "1" : "0");
       } catch {
@@ -1074,6 +1080,7 @@ function TournamentLiveViewContent({
     ? selectedReplayHand.hand_id ?? `hand-${selectedReplayHand.hand_number}`
     : null;
   useEffect(() => setReplaySelectedPotIndex(0), [selectedReplayHandKey]);
+  useEffect(() => () => stopTrackerPokerSounds(), [mode, handId, selectedReplayHandKey, effectiveTableId]);
   const selectedReplayFrame = selectedReplayHandKey && replayFrameState?.handKey === selectedReplayHandKey
     ? replayFrameState.frame
     : null;
@@ -1086,7 +1093,7 @@ function TournamentLiveViewContent({
   }, []);
   const replayShowdownPresentation = useMemo(() => {
     if (!selectedReplayHand?.hand_id || !selectedReplayFrame) return null;
-    return resolveVerifiedShowdownPresentation({
+    return resolveVerifiedPayoutPresentation({
       handId: selectedReplayHand.hand_id,
       frame: selectedReplayFrame,
       finalFrameIndex: selectedReplayHand.actions.length,
@@ -1094,12 +1101,13 @@ function TournamentLiveViewContent({
       locale: i18n.language,
     });
   }, [i18n.language, selectedReplayFrame, selectedReplayHand]);
+  const liveCompletedFrame = useMemo(() => liveCompletedHand
+    ? buildReplayFrames(liveCompletedHand, { trackBets: true }).at(-1) ?? null : null, [liveCompletedHand]);
   const liveShowdownPresentation = useMemo(() => {
     if (!liveCompletedHand?.hand_id) return null;
-    const frames = buildReplayFrames(liveCompletedHand, { trackBets: true });
-    const finalFrame = frames.at(-1);
+    const finalFrame = liveCompletedFrame;
     if (!finalFrame) return null;
-    const presentation = resolveVerifiedShowdownPresentation({
+    const presentation = resolveVerifiedPayoutPresentation({
       handId: liveCompletedHand.hand_id,
       frame: finalFrame,
       finalFrameIndex: liveCompletedHand.actions.length,
@@ -1107,9 +1115,8 @@ function TournamentLiveViewContent({
       locale: i18n.language,
     });
     if (!presentation.enabled) return null;
-    const main = selectVerifiedPotLayerPresentation(presentation, 0);
-    return main.enabled ? main : presentation;
-  }, [i18n.language, liveCompletedHand]);
+    return presentation;
+  }, [i18n.language, liveCompletedHand, liveCompletedFrame]);
   const replayRunoutForSelectedHand = selectedReplayHandKey
     && selectedReplayFrame?.index === selectedReplayHand?.actions.length
     && replayRunoutPresentation?.key.startsWith(`${selectedReplayHandKey}:${selectedReplayHand.actions.length}:`)
@@ -1135,7 +1142,7 @@ function TournamentLiveViewContent({
       return main.enabled ? main : null;
     }
     return replayShowdownPresentation;
-  }, [replayHasVerifiedPotSequence, replayRunoutForSelectedHand?.potAwardIndex, replaySelectedPotIndex, replayShowdownPresentation]);
+  }, [replayHasVerifiedPotSequence, replayRunoutForSelectedHand, replaySelectedPotIndex, replayShowdownPresentation]);
   // The HUD owns the verified payout cadence. One key per phase/layer prevents
   // polling, rerenders, and a fast scrub from replaying the collect/award sound.
   useEffect(() => {
@@ -1145,6 +1152,7 @@ function TournamentLiveViewContent({
       || !FEATURES.liveReplayHud
       || !FEATURES.liveTableFx
       || !replayRunoutForSelectedHand
+      || replayFrameSource !== "playback"
       || (replayRunoutForSelectedHand.phase !== "pot_collect" && replayRunoutForSelectedHand.phase !== "pot_award")
     ) {
       replaySettlementSoundRef.current = null;
@@ -1159,7 +1167,7 @@ function TournamentLiveViewContent({
         profile: "tracker",
       });
     }
-  }, [mode, replayRunoutForSelectedHand, soundMuted, spectator]);
+  }, [mode, replayFrameSource, replayRunoutForSelectedHand, soundMuted, spectator]);
   const replayFocusPhase = replayRunoutFocusPhase(replayRunoutForSelectedHand?.phase ?? (
     replayVisibleShowdownPresentation?.enabled ? "static" : null
   ));
@@ -1168,33 +1176,41 @@ function TournamentLiveViewContent({
     if (mode === "live" && handInProgress && handId) observedLiveHandRef.current = handId;
   }, [handId, handInProgress, mode]);
 
+  const livePayoutKey = liveShowdownPresentation?.enabled && liveCompletedHand?.hand_id === handId && !handInProgress
+    ? 'live:' + handId : null;
   useEffect(() => {
-    if (
-      mode !== "live"
-      || !spectator
-      || !liveShowdownPresentation?.enabled
-      || !liveShowdownPresentation.handId
-      || observedLiveHandRef.current !== liveShowdownPresentation.handId
-      || liveAwardedHandRef.current === liveShowdownPresentation.handId
-    ) return;
-    liveAwardedHandRef.current = liveShowdownPresentation.handId;
-    if (!soundMuted) playPokerLiveSound("pot_award", { bypassStoredMute: true, profile: "tracker" });
-    if (FEATURES.liveTableMotionV2) {
-      enqueueTableMotion([{
-        id: `live:${liveShowdownPresentation.handId}:award`,
-        handId: liveShowdownPresentation.handId,
-        kind: "pot_award",
-        awards: liveShowdownPresentation.potLayers.map((pot, potIndex) => ({
-          potIndex,
-          amount: pot.amount,
-          winnerSeatNumbers: pot.winnerPlayerIds.flatMap((playerId) => {
-            const winner = liveShowdownPresentation.winners.find((candidate) => candidate.playerId === playerId);
-            return winner ? [winner.seatNumber] : [];
-          }),
-        })),
-      }]);
+    if (mode !== "live" || !spectator || !livePayoutKey || !liveShowdownPresentation?.enabled) {
+      setLivePayout(null);
+      return;
     }
-  }, [enqueueTableMotion, liveShowdownPresentation, mode, soundMuted, spectator]);
+    if (liveAwardedHandRef.current === livePayoutKey) {
+      setLivePayout(current => current?.key === livePayoutKey ? current
+        : createReplayRunoutPresentation(livePayoutKey, "static", 0));
+      return;
+    }
+    liveAwardedHandRef.current = livePayoutKey;
+    const observed = observedLiveHandRef.current === liveShowdownPresentation.handId;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    setLivePayout(createReplayRunoutPresentation(livePayoutKey, observed && !reduced ? "pot_collect" : "static", observed && !reduced ? null : 0));
+  }, [handInProgress, livePayoutKey, liveShowdownPresentation, mode, spectator]);
+  const livePayoutForHand = livePayoutKey && livePayout?.key === livePayoutKey ? livePayout : null;
+  const livePotCount = liveShowdownPresentation?.enabled ? liveShowdownPresentation.potLayers.length : 0;
+  useEffect(() => {
+    if (mode !== "live" || !livePayoutForHand || !livePotCount) return;
+    const next = nextReplayRunoutPresentation(livePayoutForHand, livePotCount);
+    if (!next) return;
+    const timer = window.setTimeout(() => setLivePayout(next), replayRunoutPhaseDuration(livePayoutForHand.phase, 1));
+    return () => window.clearTimeout(timer);
+  }, [livePayoutForHand, livePotCount, mode]);
+  useEffect(() => {
+    if (mode !== "live" || replayFxPlaybackStateRef.current.soundMuted || !livePayoutForHand
+      || (livePayoutForHand.phase !== "pot_collect" && livePayoutForHand.phase !== "pot_award")) return;
+    playPokerLiveSound(livePayoutForHand.phase, { bypassStoredMute: true, profile: "tracker" });
+  }, [livePayoutForHand, mode]);
+  const liveVisibleShowdownPresentation = liveShowdownPresentation?.enabled
+    ? selectVerifiedPotLayerPresentation(liveShowdownPresentation, livePayoutForHand?.potAwardIndex ?? 0) : null;
+  const replayFeltPayout = replayRunoutForSelectedHand ?? (replayVisibleShowdownPresentation?.enabled && selectedReplayHandKey
+    ? createReplayRunoutPresentation(selectedReplayHandKey + ":static", "static", replaySelectedPotIndex) : null);
   const replayDisplayCards = selectedReplayFrame
     ? replayRunoutForSelectedHand
       ? selectedReplayFrame.displayCards.map((card, index) => (
@@ -1590,7 +1606,7 @@ function TournamentLiveViewContent({
           motionHandKey: null,
         }
     : {
-        seats: activeSeatsToRender,
+        seats: spectator && livePayoutKey && liveCompletedFrame ? liveCompletedFrame.seats : activeSeatsToRender,
         lastActorId,
         toActId: spectator && FEATURES.liveActionEngine ? toActId : null,
         displayCards,
@@ -1871,19 +1887,19 @@ function TournamentLiveViewContent({
               bestFiveFocus={spectator
                 ? isReplay && FEATURES.liveReplayHud && replayFocusPhase !== "hidden"
                   ? replayVisibleShowdownPresentation?.focus ?? null
-                  : !isReplay ? liveShowdownPresentation?.focus ?? null : null
+                  : !isReplay && livePayoutForHand?.phase !== "pot_collect" ? liveVisibleShowdownPresentation?.focus ?? null : null
                 : null}
               showdownPresentation={spectator
                 ? isReplay && FEATURES.liveReplayHud
-                  ? replayVisibleShowdownPresentation
-                  : !isReplay ? liveShowdownPresentation : null
+                  ? replayVisibleShowdownPresentation ?? replayShowdownPresentation
+                  : !isReplay ? liveVisibleShowdownPresentation : null
                 : null}
-              bestFiveFocusPhase={isReplay ? replayFocusPhase : liveShowdownPresentation?.enabled ? "static" : "hidden"}
+              bestFiveFocusPhase={isReplay ? replayFocusPhase : replayRunoutFocusPhase(livePayoutForHand?.phase ?? null)}
               replayRunoutPhase={spectator && isReplay && FEATURES.liveReplayHud
                 ? replayRunoutForSelectedHand?.phase ?? null
                 : null}
-              replayRunoutPresentation={spectator && isReplay && FEATURES.liveReplayHud
-                ? replayRunoutForSelectedHand
+              replayRunoutPresentation={spectator
+                ? isReplay && FEATURES.liveReplayHud ? replayFeltPayout : !isReplay ? livePayoutForHand : null
                 : null}
             />
           )}

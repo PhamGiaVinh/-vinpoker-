@@ -98,11 +98,11 @@ describe("viewer replay all-in runout timeline", () => {
     ]);
     expect(replayRunoutPhaseDuration("pot_collect", 1)).toBe(POT_COLLECT_MS);
     expect(replayRunoutPhaseDuration("pot_award", 1)).toBe(POT_AWARD_MS);
-    expect(POT_AWARD_MS).toBe(1_500);
-    expect(replayRunoutPhaseDuration("pot_award", 2)).toBe(750);
-    expect(replayRunoutPhaseDuration("pot_award", 0.5)).toBe(3_000);
-    // A single verified Main Pot finishes its 1.5-second award hold before
+    expect(POT_AWARD_MS).toBe(3_420);
+    expect(replayRunoutPhaseDuration("pot_award", 2)).toBe(3_420);
+    expect(replayRunoutPhaseDuration("pot_award", 0.5)).toBe(3_420);
+    // A single verified Main Pot finishes its 3-second hold after chip arrival before
     // best-five focus begins. Extra side pots each receive the same hold.
-    expect(4_450 + POT_COLLECT_MS + POT_AWARD_MS).toBe(6_370);
+    expect(4_450 + POT_COLLECT_MS + POT_AWARD_MS).toBe(8_290);
   });
 });

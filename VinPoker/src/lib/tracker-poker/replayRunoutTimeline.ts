@@ -9,7 +9,8 @@ export const RIVER_RESULT_HOLD_MS = 350;
 export const POT_COLLECT_MS = 420;
 // Keep every verified pot result readable before moving to the next side pot.
 // The replay only uses this for server-projected settlement allocations.
-export const POT_AWARD_MS = 1_500;
+export const POT_AWARD_TRAVEL_MS = 420;
+export const POT_AWARD_MS = POT_AWARD_TRAVEL_MS + 3_000;
 export const BEST_FIVE_DIM_MS = 180;
 export const BEST_FIVE_GLOW_MS = 320;
 export const SUMMARY_RANKING_DELAY_MS = 120;
@@ -106,6 +107,9 @@ export function nextReplayRunoutPresentation(
 }
 
 export function replayRunoutPhaseDuration(phase: ReplayRunoutPhase, speed: number): number {
+  // Money arrival and the reading hold stay readable even at fast action speed.
+  if (phase === "pot_award") return POT_AWARD_MS;
+  if (phase === "pot_collect") return POT_COLLECT_MS;
   const base = phase === "hole_hold"
     ? ALL_IN_HOLE_REVEAL_HOLD_MS
     : phase === "flop"
@@ -114,10 +118,6 @@ export function replayRunoutPhaseDuration(phase: ReplayRunoutPhase, speed: numbe
         ? TURN_REVEAL_MS + TURN_READ_HOLD_MS
         : phase === "river"
           ? RIVER_REVEAL_MS + RIVER_RESULT_HOLD_MS
-          : phase === "pot_collect"
-            ? POT_COLLECT_MS
-            : phase === "pot_award"
-              ? POT_AWARD_MS
           : phase === "dim"
             ? BEST_FIVE_DIM_MS
             : phase === "glow"
