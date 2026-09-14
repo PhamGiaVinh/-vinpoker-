@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest";
 import {
   MockRealtimeTranscriptionProvider,
+  type CommitVoiceHoleCardsInput,
   type TrackerVoiceRuntimeContext,
   type ValidatedVoiceEventReceipt,
 } from "@/lib/trackerVoice";
@@ -309,6 +310,65 @@ describe("TrackerVoicePanel", () => {
     }));
     expect(await screen.findByText("Đã xác nhận bài Ghế 8")).toBeInTheDocument();
     expect(screen.queryByTestId("voice-private-hole-cards-proposal")).not.toBeInTheDocument();
+  });
+
+  it("accepts either explicit runout seat first and commits each confirmed hand separately", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const applyVoiceHoleCardsReceipt = vi.fn(() => true);
+    const commitHoleCardsOverride = vi.fn(async (input: CommitVoiceHoleCardsInput) => {
+      if (input.canonicalRequest.intentDomain !== "hole_cards") throw new Error("unexpected domain");
+      const payload = input.canonicalRequest.payload;
+      return {
+        ok: true as const,
+        voice_event_id: `voice-hole-${payload.seatNumber}`,
+        canonical_receipt_event_id: `hole-receipt-${payload.seatNumber}`,
+        idempotency_key: input.idempotencyKey,
+        trace_id: input.traceId,
+        seat_number: payload.seatNumber,
+        player_id: payload.expectedPlayerId,
+        entry_number: payload.expectedEntryNumber,
+        redacted: true as const,
+        state_version_before: "a".repeat(64),
+        state_version_after: "b".repeat(64),
+      };
+    });
+    const hook = {
+      ...hookFixture(),
+      workflowState: "runout_reveal",
+      showActionStep: false,
+      players: [
+        { player_id: "player-eight", display_name: "Player Eight", seat_number: 8, entry_number: 2 },
+        { player_id: "player-nine", display_name: "Player Nine", seat_number: 9, entry_number: 1 },
+      ],
+      playerHoleCards: {},
+      applyVoiceHoleCardsReceipt,
+    } as unknown as StandaloneHandInput;
+    render(
+      <TrackerVoicePanel
+        hook={hook}
+        providerOverride={provider}
+        runtimeOverride={runtimeFixture}
+        commitHoleCardsOverride={commitHoleCardsOverride}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "assist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+
+    act(() => provider.emit("Ghế 9 cầm Q dô Q tép", { final: true, id: "private-hole-9" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Xác nhận bài Ghế 9" }));
+    expect(await screen.findByText("Đã xác nhận bài Ghế 9")).toBeInTheDocument();
+
+    act(() => provider.emit("Ghế 8 có K bích K cơ", { final: true, id: "private-hole-8" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Xác nhận bài Ghế 8" }));
+    expect(await screen.findByText("Đã xác nhận bài Ghế 8")).toBeInTheDocument();
+
+    expect(commitHoleCardsOverride).toHaveBeenCalledTimes(2);
+    expect(commitHoleCardsOverride.mock.calls.map(([input]) => (
+      input.canonicalRequest.intentDomain === "hole_cards" ? input.canonicalRequest.payload.seatNumber : null
+    ))).toEqual([9, 8]);
+    expect(applyVoiceHoleCardsReceipt).toHaveBeenCalledTimes(2);
   });
 
   it("keeps Finish as a server summary until one Dealer touch confirms it", async () => {

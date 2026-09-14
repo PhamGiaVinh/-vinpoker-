@@ -36,6 +36,10 @@ describe("Voice Hole Cards grammar", () => {
     ["Seat nine ten diamonds nine diamonds", 9, ["Td", "9d"]],
     ["K big K cơ", 8, ["Ks", "Kh"]],
     ["9 bích 9 rô", 8, ["9s", "9d"]],
+    ["Ghế 8 cầm K bích K cơ", 8, ["Ks", "Kh"]],
+    ["Ghế 8 có K bích K cơ", 8, ["Ks", "Kh"]],
+    ["Ghế 9 cầm Q dô Q tép", 9, ["Qd", "Qc"]],
+    ["v9 cầm K bích K cơ", 9, ["Ks", "Kh"]],
   ])("accepts one exact private card sentence: %s", (raw, seatNumber, cards) => {
     expect(parseVoiceHoleCardsCommand(raw, 8)).toMatchObject({ seatNumber, cards });
   });
@@ -94,6 +98,19 @@ describe("Voice Hole Cards grammar", () => {
     })).toBe(1);
   });
 
+  it("allows either explicit live seat to be revealed first", () => {
+    const seatNine = parseVoiceHoleCardsCommand("Ghế 9 cầm Q dô Q tép");
+    const seatEight = parseVoiceHoleCardsCommand("Ghế 8 có K bích K cơ");
+    expect(resolveVoiceHoleCardsProposal(seatNine!, RUNOUT)).toMatchObject({
+      ok: true,
+      player: { playerId: "player-9", seatNumber: 9 },
+    });
+    expect(resolveVoiceHoleCardsProposal(seatEight!, RUNOUT)).toMatchObject({
+      ok: true,
+      player: { playerId: "player-8", seatNumber: 8 },
+    });
+  });
+
   it("keeps local drafts private and refuses any collision or replacement", () => {
     const command = parseVoiceHoleCardsCommand("Seat 8 ace hearts ace spades");
     expect(command).not.toBeNull();
@@ -110,8 +127,10 @@ describe("Voice Hole Cards grammar", () => {
 
   it("uses the broader privacy guard only at the diagnostic boundary", () => {
     expect(looksLikePrivateHoleCardsTranscript("Fit 8 Át cơ Át bích")).toBe(true);
+    expect(looksLikePrivateHoleCardsTranscript("Fit 8 cầm Át cơ Át bích")).toBe(true);
     expect(looksLikePrivateHoleCardsTranscript("Seat 8 ace hearts ace spades all in")).toBe(true);
     expect(looksLikePrivateHoleCardsTranscript("K big K cơ")).toBe(true);
+    expect(looksLikePrivateHoleCardsTranscript("v9 cầm K bích K cơ")).toBe(true);
     expect(looksLikePrivateHoleCardsTranscript("seat 8 call")).toBe(false);
   });
 });

@@ -11,7 +11,7 @@ const RANKS: Readonly<Record<string, string>> = {
 
 const SUITS: Readonly<Record<string, string>> = {
   h: "h", hearts: "h", heart: "h", co: "h",
-  d: "d", diamonds: "d", diamond: "d", ro: "d",
+  d: "d", diamonds: "d", diamond: "d", ro: "d", do: "d",
   c: "c", clubs: "c", club: "c", tep: "c", chuon: "c",
   s: "s", spades: "s", spade: "s", bich: "s", big: "s",
 };
