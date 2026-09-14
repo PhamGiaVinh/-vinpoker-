@@ -8,6 +8,7 @@ const asOf = "2026-08-29T10:00:00.000Z";
 const mockJwt = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjQxMDI0NDQ4MDAsInN1YiI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSJ9.";
 const intelligenceReadPaths = new Set([
   "/rpc/get_ops_intelligence_context_v1",
+  "/rpc/get_ops_intelligence_timeline_v1",
   "/rpc/get_series_club_live_pulse_v1",
   "/rpc/get_ops_registration_pace_q0",
   "/rpc/get_ops_sepay_read_state_q0",
@@ -84,6 +85,9 @@ test("Q1 renders the real Quant workspace, embedded views, and responsive fallba
 
 test("Q1 readers stay unmounted below the desktop breakpoint", async ({ page }) => {
   const observedReads: string[] = [];
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
     if ([...intelligenceReadPaths].some((suffix) => path.endsWith(suffix))) observedReads.push(path);
@@ -94,6 +98,7 @@ test("Q1 readers stay unmounted below the desktop breakpoint", async ({ page }) 
   await expect(page.getByRole("heading", { name: "Một lối vào cho mọi công việc vận hành" })).toBeVisible();
   await expect(page.getByTestId("ops-intelligence-workspace-q1")).toHaveCount(0);
   await expect.poll(() => observedReads).toEqual([]);
+  expect(errors).toEqual([]);
 });
 
 test("Custom is visible, independent of turnout capacity, and retained across tabs", async ({ page }) => {
@@ -273,7 +278,7 @@ async function openDailyQuant(page: Page) {
   await expect(page.getByTestId("ops-quant-dashboard-q1")).toBeVisible();
 }
 
-async function installMocks(page: Page, options: { registration?: () => unknown; history?: () => unknown; context?: () => unknown; owner?: boolean; superAdmin?: boolean } = {}) {
+async function installMocks(page: Page, options: { registration?: () => unknown; history?: () => unknown; context?: () => unknown; timeline?: () => unknown; owner?: boolean; superAdmin?: boolean } = {}) {
   await page.addInitScript(({ token, actor, createdAt }) => {
     localStorage.setItem("sb-127-auth-token", JSON.stringify({ access_token: token, refresh_token: "mock", expires_in: 2_000_000_000, expires_at: 4_102_444_800, token_type: "bearer", user: { id: actor, aud: "authenticated", role: "authenticated", email: "owner@example.test", app_metadata: {}, user_metadata: {}, identities: [], created_at: createdAt } }));
   }, { token: mockJwt, actor: userId, createdAt: asOf });
@@ -286,6 +291,10 @@ async function installMocks(page: Page, options: { registration?: () => unknown;
     if (path.endsWith("/rpc/list_ops_clubs_for_super_admin")) return json([]);
     if (path.endsWith("/clubs")) return json([{ id: clubId, name: "VinPoker Club" }]);
     if (path.endsWith("/rpc/get_ops_intelligence_context_v1")) return json(options.context ? options.context() : contextFixture());
+    if (path.endsWith("/rpc/get_ops_intelligence_timeline_v1")) {
+      const body = route.request().postDataJSON() as { p_tournament_id?: string };
+      return json(options.timeline ? options.timeline() : timelineFixture(false, body.p_tournament_id ?? eventId));
+    }
     if (path.endsWith("/rpc/get_series_club_live_pulse_v1")) return json(pulse());
     if (path.endsWith("/rpc/get_ops_registration_pace_q0")) return json(options.registration ? options.registration() : registration());
     if (path.endsWith("/rpc/get_ops_sepay_read_state_q0")) return json(sepay());
@@ -304,6 +313,63 @@ async function installMocks(page: Page, options: { registration?: () => unknown;
 function contextFixture() {
   return { version: "ops-intelligence-context-v1", clubId, asOf, dailyTournaments: registration().events.map((event) => ({ tournamentId: event.eventId, name: event.eventName, status: event.eventState, startTime: event.startTime, buyIn: 2_300_000, gtd: event.eventId === eventId ? 2_000_000_000 : 900_000_000, phase: null, flightLabel: null })), festivals: [] };
 }
+
+function timelineFixture(partial = false, target = eventId) {
+  const times = ["2026-08-29T06:00:00.000Z", "2026-08-29T07:00:00.000Z", "2026-08-29T08:00:00.000Z", "2026-08-29T09:00:00.000Z"];
+  return {
+    version: "ops-intelligence-timeline-v1", clubId, tournamentId: target, asOf,
+    entries: { availability: "exact", reasonCode: null, points: times.map((at, index) => ({ at, value: [18, 42, 68, 61][index] })) },
+    tables: { availability: "exact", reasonCode: null, capacityAvailability: partial ? "partial" : "exact", capacityReasonCode: partial ? "TABLE_CAPACITY_BINDING_INCOMPLETE" : null, points: times.map((at, index) => ({ at, value: [3, 6, 8, 7][index], seatCapacity: partial ? null : [27, 54, 72, 63][index] })) },
+    dealers: partial ? { availability: "partial", reasonCode: "DEALER_SESSION_BINDING_INCOMPLETE", points: [] } : { availability: "exact", reasonCode: null, points: times.map((at, index) => ({ at, value: [2, 5, 8, 7][index] })) },
+    gtd: { availability: "exact", reasonCode: null, guaranteeState: "available", guaranteeAmount: 2_000_000_000, points: times.map((at, index) => ({ at, value: [180_000_000, 430_000_000, 780_000_000, 1_050_000_000][index] })) },
+    dealerGaps: partial ? [] : [{ from: times[0], to: times[1], maxGap: 1 }, { from: times[1], to: times[2], maxGap: 1 }],
+  };
+}
+
+test("Wave 3 daily Overview renders exact aggregate step timelines", async ({ page }) => {
+  const errors: string[] = [];
+  const targets: unknown[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("request", (request) => { if (request.url().includes("get_ops_intelligence_timeline_v1")) targets.push(request.postDataJSON()); });
+  await installMocks(page);
+  await page.clock.setFixedTime(new Date(asOf));
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/ops/select-module");
+  await page.waitForTimeout(1_000);
+  expect(errors).toEqual([]);
+  await expect(page.getByTestId("ops-intelligence-timeline-v1")).toHaveCount(0);
+  await page.getByLabel("Phạm vi Intelligence").selectOption(`daily:${eventId}`);
+  const timeline = page.getByTestId("ops-intelligence-timeline-v1");
+  await expect(timeline).toBeVisible();
+  await expect(timeline.getByText("NGƯỜI ĐANG NGỒI")).toBeVisible();
+  await expect(timeline.getByText("BÀN / DEALER")).toBeVisible();
+  await expect(timeline.getByText("GTD COVERAGE")).toBeVisible();
+  await expect(timeline.getByText(/DEALER GAP/)).toBeVisible();
+  await expect(page.getByTestId("overview-readiness").getByText("Operational timeline")).toBeVisible();
+  await expect.poll(() => JSON.stringify(targets)).toContain(eventId);
+  expect(JSON.stringify(targets)).not.toContain("festivalId");
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: "docs/ops/evidence/wave3/wave3-daily-timeline-1440x900.png" });
+  expect(errors).toEqual([]);
+});
+
+test("Wave 3 partial bindings stay visible without a dealer-shortage claim", async ({ page }) => {
+  await installMocks(page, { timeline: () => timelineFixture(true) });
+  await page.clock.setFixedTime(new Date(asOf));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/ops/select-module");
+  await page.getByLabel("Phạm vi Intelligence").selectOption(`daily:${eventId}`);
+  const timeline = page.getByTestId("ops-intelligence-timeline-v1");
+  await expect(timeline.getByText(/Dealer binding chưa exact/)).toBeVisible();
+  await expect(timeline.getByText(/DEALER GAP/)).toHaveCount(0);
+  await timeline.getByRole("button", { name: "Nguồn" }).click();
+  await expect(page.getByRole("dialog")).toContainText("TABLE_CAPACITY_BINDING_INCOMPLETE");
+  await expect(page.getByRole("dialog")).toContainText("DEALER_SESSION_BINDING_INCOMPLETE");
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: "docs/ops/evidence/wave3/wave3-partial-source-1440x900.png" });
+});
 
 test("Wave 2 daily Overview is default, shares cache and preserves exact selection through all views", async ({ page }) => {
   const errors: string[] = [];
