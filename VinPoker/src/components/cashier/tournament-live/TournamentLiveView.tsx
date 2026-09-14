@@ -1080,7 +1080,6 @@ function TournamentLiveViewContent({
     ? selectedReplayHand.hand_id ?? `hand-${selectedReplayHand.hand_number}`
     : null;
   useEffect(() => setReplaySelectedPotIndex(0), [selectedReplayHandKey]);
-  useEffect(() => () => stopTrackerPokerSounds(), [mode, handId, selectedReplayHandKey, effectiveTableId]);
   const selectedReplayFrame = selectedReplayHandKey && replayFrameState?.handKey === selectedReplayHandKey
     ? replayFrameState.frame
     : null;
@@ -1449,6 +1448,8 @@ function TournamentLiveViewContent({
     if (tableIds.length === 1) return tableIds[0];
     return null;
   }, [replayTargetState, requestedReplayTarget, selectedTableIdOverride, selectedTableId, handTableId, tableIds]);
+
+  useEffect(() => () => stopTrackerPokerSounds(), [mode, handId, selectedReplayHandKey, effectiveTableId]);
 
   const multiTableUnresolved = tableIds.length > 1 && !effectiveTableId;
 

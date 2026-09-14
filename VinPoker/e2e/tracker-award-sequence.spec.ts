@@ -21,6 +21,9 @@ for (const width of [390, 1440]) {
     const mainAppearedAt = Date.now();
     await expect(page.getByTestId("felt-stack-tom")).toHaveText("150 BB");
     await expect(page.getByTestId("felt-stack-phil")).toHaveText("0 BB");
+    if (width < 640) {
+      await expect(page.getByTestId("felt-settlement-award-announcement")).toHaveClass("sr-only");
+    }
     await expect.poll(() => page.evaluate(() => {
       const sounds = (window as unknown as { awardTestSounds: HTMLMediaElement[] }).awardTestSounds;
       return sounds.some(sound => sound.currentTime > 0.1 && sound.duration > 1.6 && !sound.error);
