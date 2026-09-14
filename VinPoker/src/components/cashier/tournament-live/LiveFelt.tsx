@@ -1257,7 +1257,7 @@ export function LiveFelt({
         {settlementPotResultActive && activePotAwardsComplete && activePotLayer && (
           <section
             data-testid="felt-settlement-award-announcement"
-            className="tracker-settlement-award-announcement pointer-events-none absolute z-[25] -translate-x-1/2 -translate-y-1/2"
+            className={portrait ? "sr-only" : "tracker-settlement-award-announcement pointer-events-none absolute z-[25] -translate-x-1/2 -translate-y-1/2"}
             style={{ left: "50%", top: `${Math.max(13, potCenterT - (portrait ? 19 : 17))}%` }}
             role="status"
             aria-live="polite"
