@@ -20,6 +20,7 @@ import { FloorTableRosterIndex } from "@/components/ops/shared/FloorTableRosterI
 import { FIXED_FLOOR_TABLE_SEATS } from "@/components/ops/shared/floorTablePresentation";
 import { preflightFloorTableEntries } from "@/components/ops/shared/floorSeatEntryPreflight";
 import { OpenTableDialog } from "@/components/cashier/tournament-live/OpenTableDialog";
+import { FloorTableMapPanelV3 } from "@/components/cashier/tournament-live/FloorTableMapPanelV3";
 import {
   toMockTable, toMockSeat,
   type MapTable,
@@ -83,6 +84,123 @@ interface RedrawResult {
 }
 
 export default function OpsTables({ tournamentId }: { tournamentId?: string }) {
+  return FEATURES.floorTableControlV3
+    ? <OpsTablesV3 tournamentId={tournamentId} />
+    : <OpsTablesLegacy tournamentId={tournamentId} />;
+}
+
+function OpsTablesV3({ tournamentId }: { tournamentId?: string }) {
+  const {
+    loading: clubsLoading,
+    clubs,
+    floorClubIds: scopedIds,
+    isSuperAdmin,
+    scopeError,
+    metadataError,
+  } = useOpsCapabilities();
+  const { selectedClubId } = useOpsWorkspace();
+  const clubId = selectedClubId && (isSuperAdmin || scopedIds.includes(selectedClubId))
+    ? selectedClubId
+    : null;
+  const { data: tournaments, isLoading: tournamentsLoading, error: tournamentsError } = useTournaments(clubId ?? undefined);
+  const tourOptions = useMemo(() => {
+    const list = (tournaments ?? []) as unknown as Tournament[];
+    const primary = list.filter((tournament) => LIVEISH_PRIMARY.includes(tournament.status));
+    const base = primary.length > 0
+      ? primary
+      : list.filter((tournament) => LIVEISH_FALLBACK.includes(tournament.status));
+    const requested = tournamentId ? list.find((tournament) => tournament.id === tournamentId) : null;
+    return requested && !base.some((tournament) => tournament.id === requested.id)
+      ? [requested, ...base]
+      : base;
+  }, [tournamentId, tournaments]);
+  const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(tournamentId ?? null);
+
+  useEffect(() => {
+    if (tournamentId) {
+      setSelectedTournamentId(tourOptions.some((tournament) => tournament.id === tournamentId) ? tournamentId : null);
+      return;
+    }
+    setSelectedTournamentId((current) => (
+      current && tourOptions.some((tournament) => tournament.id === current)
+        ? current
+        : tourOptions[0]?.id ?? null
+    ));
+  }, [tourOptions, tournamentId]);
+
+  const selectedTournament = tourOptions.find((tournament) => tournament.id === selectedTournamentId) ?? null;
+  const selectedClubName = clubId
+    ? clubs?.find((club) => club.id === clubId)?.name ?? `CLB ${clubId.slice(0, 4)}…`
+    : "CLB";
+
+  if (clubsLoading || tournamentsLoading) {
+    return (
+      <div className="ios-card flex flex-col items-center gap-2 py-12 text-center">
+        <Loader2 className="h-7 w-7 animate-spin text-[#c9a86a]" />
+        <div className="text-[13px] text-[#9b8e97]">Đang tải kho bàn chung…</div>
+      </div>
+    );
+  }
+
+  if (scopeError || !clubId) {
+    return (
+      <div className="ios-card flex flex-col items-center gap-2 py-10 text-center">
+        <AlertTriangle className="h-7 w-7 text-rose-300" />
+        <div className="text-[15px] font-semibold text-[#f2ece6]">Không tải được phạm vi Floor</div>
+        <div className="max-w-[300px] text-[12px] text-[#9b8e97]">{scopeError ?? "Hãy chọn đúng CLB trong thanh Đổi không gian."}</div>
+      </div>
+    );
+  }
+
+  if (tournamentsError) {
+    return (
+      <div className="ios-card flex flex-col items-center gap-2 py-10 text-center">
+        <AlertTriangle className="h-7 w-7 text-rose-300" />
+        <div className="text-[15px] font-semibold text-[#f2ece6]">Không tải được danh sách giải</div>
+        <div className="max-w-[300px] text-[12px] text-[#9b8e97]">Dữ liệu V3 đã khóa để không hiển thị nhầm CLB.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ios-in space-y-4 pt-2">
+      <header className="px-1">
+        <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Bàn</h1>
+        <p className="mt-0.5 text-[15px] text-[#9b8e97]">{selectedTournament?.name ?? selectedClubName} · kho bàn/session V3</p>
+      </header>
+      {metadataError && <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">{metadataError}</div>}
+      {!tournamentId && tourOptions.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto px-1" aria-label="Chọn giải">
+          {tourOptions.map((tournament) => (
+            <button
+              key={tournament.id}
+              type="button"
+              data-ops-action="floor.tables.select_tournament"
+              onClick={() => setSelectedTournamentId(tournament.id)}
+              className={cn(
+                "min-h-11 shrink-0 rounded-full px-3 text-[12px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300",
+                selectedTournamentId === tournament.id ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]",
+              )}
+            >
+              {tournament.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {selectedTournament ? (
+        <FloorTableMapPanelV3 tournament={selectedTournament} refreshTrigger={0} />
+      ) : (
+        <div className="ios-card flex flex-col items-center gap-2 py-12 text-center">
+          <Trophy className="h-7 w-7 text-amber-300" />
+          <div className="text-[15px] font-semibold text-[#f2ece6]">Chưa có giải đang vận hành</div>
+          <div className="max-w-[280px] text-[12px] text-[#9b8e97]">Mở giải trước, sau đó bàn vật lý sẽ được chiếm bằng một session V3 duy nhất.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
   const navigate = useNavigate();
   const supabase = useSupabaseClient();
   const { user } = useOpsAuth();

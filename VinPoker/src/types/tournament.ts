@@ -41,6 +41,7 @@ export interface TournamentWithTables extends Tournament {
       table_name: string;
     } | null;
   }[];
+  tournament_levels?: Pick<TournamentLevel, "level_number" | "is_break">[];
 }
 
 export interface TournamentLevel {

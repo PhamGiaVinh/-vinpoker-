@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { RefreshCw, User, Search, Users } from "lucide-react";
-import { formatVND } from "@/lib/format";
+import { formatStack } from "@/lib/format";
 import type { Tournament } from "@/types/tournament";
 import { PlayerActionSheet, type ActionSeat } from "./PlayerActionSheet";
 import { MovePlayerDialog } from "./MovePlayerDialog";
@@ -329,7 +329,7 @@ export function PlayersGroupedPanel({
                   <div className="truncate text-sm font-medium">{s.player_name || s.player_id.slice(0, 8)}</div>
                   <div className="text-xs text-muted-foreground">{s.table_name} · Ghế {s.seat_number}{s.entry_number > 1 ? ` · R#${s.entry_number}` : ""}</div>
                 </div>
-                <div className="shrink-0 text-right font-mono text-sm text-primary">{formatVND(s.chip_count)}</div>
+                <div className="shrink-0 text-right font-mono text-sm text-primary">{formatStack(s.chip_count)}</div>
               </button>
             ))}
           </div>
@@ -347,7 +347,7 @@ export function PlayersGroupedPanel({
                   <div className="truncate text-sm font-medium">{e.player_name || e.player_id.slice(0, 8)}</div>
                   <div className="text-xs text-warning">Chờ xếp bàn</div>
                 </div>
-                <div className="shrink-0 text-right font-mono text-xs text-muted-foreground">{formatVND(e.current_stack)}</div>
+                <div className="shrink-0 text-right font-mono text-xs text-muted-foreground">{formatStack(e.current_stack)}</div>
               </div>
             ))}
           </div>

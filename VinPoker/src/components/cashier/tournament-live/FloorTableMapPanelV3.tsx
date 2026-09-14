@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRightLeft, Loader2, Plus, RefreshCw, RotateCcw, UserRoundX } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Loader2, Plus, RadioTower, RefreshCw, RotateCcw, UserRoundX, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { FloorSeatRoster } from "@/components/ops/shared/FloorSeatRoster";
 import { FloorTableRosterIndex } from "@/components/ops/shared/FloorTableRosterIndex";
-import { formatVND } from "@/lib/format";
+import { FloorTableModePicker } from "@/components/ops/shared/FloorTableModePicker";
+import { formatStack } from "@/lib/format";
 import {
   createFloorTableControlV3Client,
   type FloorRestorableEntry,
@@ -64,6 +65,8 @@ export function FloorTableMapPanelV3({
   const [restoreEntryId, setRestoreEntryId] = useState("");
   const [moveDestinationId, setMoveDestinationId] = useState("");
   const [moveSeatNumber, setMoveSeatNumber] = useState<number | null>(null);
+  const [modeOpen, setModeOpen] = useState(false);
+  const [nextMode, setNextMode] = useState<"manual" | "tracker">("manual");
 
   const selectedTable = useMemo(
     () => tables.find((table) => table.tournamentTableId === selectedTableId) ?? null,
@@ -100,7 +103,13 @@ export function FloorTableMapPanelV3({
       setTables([]);
       setSeatableEntries([]);
       setRestorableEntries([]);
-      const failure = roster.ok === false ? roster.error : entries.ok === false ? entries.error : restorable.error;
+      const failure = roster.ok === false
+        ? roster.error
+        : entries.ok === false
+          ? entries.error
+          : restorable.ok === false
+            ? restorable.error
+            : "V3_STATE_LOAD_FAILED";
       const message = `Không tải được state V3: ${v3ErrorMessage(failure)}`;
       setLoadError(message);
       toast.error(message);
@@ -121,6 +130,15 @@ export function FloorTableMapPanelV3({
     if (current != null && (selectedTable.seats.some((seat) => seat.seatNumber === current) || emptySeatNumbers.includes(current))) return;
     setSelectedSeatNumber(null);
   }, [emptySeatNumbers, selectedSeatNumber, selectedTable]);
+
+  const selectedTableSessionId = selectedTable?.tableSessionId ?? null;
+  const selectedTableControlMode = selectedTable?.controlMode ?? null;
+
+  useEffect(() => {
+    if (!selectedTableControlMode) return;
+    setNextMode(selectedTableControlMode);
+    setModeOpen(false);
+  }, [selectedTableSessionId, selectedTableControlMode]);
 
   useEffect(() => {
     if (!moveDestination) return;
@@ -147,7 +165,7 @@ export function FloorTableMapPanelV3({
   const selectedRosterSeats = useMemo(() => selectedTable?.seats.map((seat) => ({
     seatNumber: seat.seatNumber,
     playerName: seat.displayName,
-    chipsLabel: formatVND(seat.chipCount),
+    chipsLabel: formatStack(seat.chipCount),
     entryNumber: seat.entryNo,
   })) ?? [], [selectedTable]);
 
@@ -167,7 +185,7 @@ export function FloorTableMapPanelV3({
       <section className="space-y-3 rounded-2xl border border-border bg-card/55 p-3" aria-label="Thao tác người chơi">
         <div>
           <p className="text-sm font-semibold text-foreground">{seat.displayName}</p>
-          <p className="text-xs text-muted-foreground">Ghế {seat.seatNumber} · Entry {seat.entryNo} · {formatVND(seat.chipCount)}</p>
+          <p className="text-xs text-muted-foreground">Ghế {seat.seatNumber} · Entry {seat.entryNo} · {formatStack(seat.chipCount)} chip</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="grid gap-1 text-xs text-muted-foreground">
@@ -188,7 +206,7 @@ export function FloorTableMapPanelV3({
           </label>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Button className="min-h-11" disabled={busy || !moveDestination || moveSeatNumber == null} onClick={() => void run("Đã chuyển người chơi.", () => v3.movePlayerSeat({
+          <Button data-ops-action="floor.player.move" className="min-h-11" disabled={busy || !moveDestination || moveSeatNumber == null} onClick={() => void run("Đã chuyển người chơi.", () => v3.movePlayerSeat({
             entryId: seat.entryId,
             toTournamentTableId: moveDestination!.tournamentTableId,
             toSeatNumber: moveSeatNumber!,
@@ -198,7 +216,7 @@ export function FloorTableMapPanelV3({
           }))}>
             <ArrowRightLeft className="mr-2 h-4 w-4" /> Chuyển ghế
           </Button>
-          <Button variant="destructive" className="min-h-11" disabled={busy} onClick={() => void run("Đã loại người chơi khỏi giải.", () => v3.bustPlayer({
+          <Button data-ops-action="floor.player.bust" variant="destructive" className="min-h-11" disabled={busy} onClick={() => void run("Đã loại người chơi khỏi giải.", () => v3.bustPlayer({
             entryId: seat.entryId,
             expectedRevision: selectedTable.sessionRevision,
             expectedControlEpoch: selectedTable.controlEpoch,
@@ -229,8 +247,8 @@ export function FloorTableMapPanelV3({
           <p className="mt-1 text-xs text-muted-foreground">State chỉ đọc từ session/assignment V3; không dùng mixed legacy table ID.</p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" className="min-h-11" disabled={loading || busy} onClick={() => void load()}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Làm mới</Button>
-          <Button size="sm" className="min-h-11" disabled={busy} onClick={() => setOpenTable(true)}><Plus className="mr-2 h-4 w-4" /> Mở bàn</Button>
+          <Button data-ops-action="floor.tables.refresh" size="sm" variant="outline" className="min-h-11" disabled={loading || busy} onClick={() => void load()}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Làm mới</Button>
+          <Button data-ops-action="floor.tables.open_table_dialog" size="sm" className="min-h-11" disabled={busy} onClick={() => setOpenTable(true)}><Plus className="mr-2 h-4 w-4" /> Mở bàn</Button>
         </div>
       </div>
 
@@ -258,34 +276,72 @@ export function FloorTableMapPanelV3({
             <>
               <SheetHeader>
                 <SheetTitle>Bàn {selectedTable.tableNumber} · {selectedTable.seats.length}/9</SheetTitle>
-                <p className="text-xs text-muted-foreground">{selectedTable.controlMode === "tracker" ? "Live Tracker" : "Manual Floor"} · revision {selectedTable.sessionRevision} · epoch {selectedTable.controlEpoch}</p>
+                <button
+                  type="button"
+                  data-ops-action="floor.tables.open_v3_control_mode"
+                  className="inline-flex min-h-11 w-fit items-center gap-2 rounded-full border border-border bg-card px-3 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  aria-expanded={modeOpen}
+                  aria-controls="floor-v3-mode-panel"
+                  onClick={() => setModeOpen((open) => !open)}
+                >
+                  {selectedTable.controlMode === "tracker" ? <RadioTower className="h-4 w-4 text-sky-300" /> : <UsersRound className="h-4 w-4 text-emerald-300" />}
+                  {selectedTable.controlMode === "tracker" ? "Live Tracker" : "Manual Floor"}
+                  <span className="text-muted-foreground">· Đổi chế độ</span>
+                </button>
+                <p className="text-xs text-muted-foreground">Revision {selectedTable.sessionRevision} · epoch {selectedTable.controlEpoch}</p>
               </SheetHeader>
               <div className="mt-5 space-y-4">
+                {modeOpen && (
+                  <section id="floor-v3-mode-panel" className="space-y-3 rounded-xl border border-border bg-card/55 p-3" aria-label="Đổi chế độ bàn">
+                    <FloorTableModePicker value={nextMode} onChange={setNextMode} disabled={busy} testIdPrefix="floor-v3-mode" />
+                    <Button
+                      data-ops-action="floor.tables.save_v3_control_mode"
+                      className="min-h-11 w-full"
+                      disabled={busy || nextMode === selectedTable.controlMode}
+                      onClick={() => void run("Đã đổi chế độ bàn.", async () => {
+                        const result = await v3.setTableControlMode({
+                          tournamentTableId: selectedTable.tournamentTableId,
+                          controlMode: nextMode,
+                          expectedRevision: selectedTable.sessionRevision,
+                          requestId: crypto.randomUUID(),
+                        });
+                        if (result.ok) setModeOpen(false);
+                        return result;
+                      })}
+                    >
+                      Lưu chế độ
+                    </Button>
+                    <p className="text-[11px] leading-4 text-muted-foreground">Chỉ đổi được khi bàn trống và không có hand đang chạy. Đổi chế độ sẽ tăng epoch để chặn yêu cầu Tracker cũ.</p>
+                  </section>
+                )}
+
+                <div className="space-y-4">
+                  {selectedSeat ? seatAction(selectedSeat) : selectedSeatNumber != null && (
+                    <section className="space-y-3 rounded-xl border border-border bg-card/55 p-3">
+                      <p className="text-sm font-semibold">Ghế {selectedSeatNumber} đang trống</p>
+                      <label className="grid gap-1 text-xs text-muted-foreground">
+                        Entry hợp lệ chưa có ghế
+                        <select className="h-11 rounded-md border border-input bg-background px-2 text-sm text-foreground" value={entryId} onChange={(event) => setEntryId(event.target.value)}>
+                          <option value="">Chọn người chơi đã đăng ký</option>
+                          {seatableEntries.map((entry) => <option key={entry.entryId} value={entry.entryId}>{entry.displayName} · Entry {entry.entryNo}</option>)}
+                        </select>
+                      </label>
+                      <Button data-ops-action="floor.tables.add_player" className="min-h-11 w-full" disabled={busy || !entryId} onClick={() => void run("Đã thêm người vào ghế.", () => v3.assignEntryToSeat({
+                        entryId,
+                        tournamentTableId: selectedTable.tournamentTableId,
+                        seatNumber: selectedSeatNumber,
+                        expectedRevision: selectedTable.sessionRevision,
+                        requestId: crypto.randomUUID(),
+                      }))}><Plus className="mr-2 h-4 w-4" /> Thêm người</Button>
+                    </section>
+                  )}
+                </div>
+
                 <FloorSeatRoster
                   seats={selectedRosterSeats}
                   onSeatTap={(seatNumber) => setSelectedSeatNumber(seatNumber)}
                   onEmptySeatTap={(seatNumber) => setSelectedSeatNumber(seatNumber)}
                 />
-
-                {selectedSeat ? seatAction(selectedSeat) : selectedSeatNumber != null && (
-                  <section className="space-y-3 rounded-2xl border border-border bg-card/55 p-3">
-                    <p className="text-sm font-semibold">Ghế {selectedSeatNumber} đang trống</p>
-                    <label className="grid gap-1 text-xs text-muted-foreground">
-                      Entry hợp lệ chưa có ghế
-                      <select className="h-11 rounded-md border border-input bg-background px-2 text-sm text-foreground" value={entryId} onChange={(event) => setEntryId(event.target.value)}>
-                        <option value="">Chọn người chơi đã đăng ký</option>
-                        {seatableEntries.map((entry) => <option key={entry.entryId} value={entry.entryId}>{entry.displayName} · Entry {entry.entryNo}</option>)}
-                      </select>
-                    </label>
-                    <Button className="min-h-11 w-full" disabled={busy || !entryId} onClick={() => void run("Đã thêm người vào ghế.", () => v3.assignEntryToSeat({
-                      entryId,
-                      tournamentTableId: selectedTable.tournamentTableId,
-                      seatNumber: selectedSeatNumber,
-                      expectedRevision: selectedTable.sessionRevision,
-                      requestId: crypto.randomUUID(),
-                    }))}><Plus className="mr-2 h-4 w-4" /> Thêm người</Button>
-                  </section>
-                )}
 
                 {emptySeatNumbers.length > 0 && restorableEntries.length > 0 && (
                   <section className="space-y-3 rounded-2xl border border-border bg-card/55 p-3">
@@ -297,7 +353,7 @@ export function FloorTableMapPanelV3({
                         {restorableEntries.map((entry) => <option key={entry.entryId} value={entry.entryId}>{entry.displayName} · Entry {entry.entryNo}</option>)}
                       </select>
                     </label>
-                    <Button variant="outline" className="min-h-11 w-full" disabled={busy || !restoreEntryId || selectedSeatNumber == null || !emptySeatNumbers.includes(selectedSeatNumber)} onClick={() => void run("Đã khôi phục người chơi.", () => v3.restoreBustedPlayer({
+                    <Button data-ops-action="floor.players.restore" variant="outline" className="min-h-11 w-full" disabled={busy || !restoreEntryId || selectedSeatNumber == null || !emptySeatNumbers.includes(selectedSeatNumber)} onClick={() => void run("Đã khôi phục người chơi.", () => v3.restoreBustedPlayer({
                       entryId: restoreEntryId,
                       toTournamentTableId: selectedTable.tournamentTableId,
                       toSeatNumber: selectedSeatNumber!,
@@ -309,12 +365,12 @@ export function FloorTableMapPanelV3({
                 )}
 
                 <section className="grid gap-2 sm:grid-cols-2">
-                  <Button variant="outline" className="min-h-11" disabled={busy || selectedTable.seats.length !== 0} onClick={() => void run("Đã đóng bàn và giải phóng bàn vật lý.", () => v3.closeTournamentTable({
+                  <Button data-ops-action="floor.tables.close_table" variant="outline" className="min-h-11" disabled={busy || selectedTable.seats.length !== 0} onClick={() => void run("Đã đóng bàn và giải phóng bàn vật lý.", () => v3.closeTournamentTable({
                     tournamentTableId: selectedTable.tournamentTableId,
                     expectedRevision: selectedTable.sessionRevision,
                     requestId: crypto.randomUUID(),
                   }))}>Đóng bàn trống</Button>
-                  <Button variant="outline" className="min-h-11" disabled={busy || selectedTable.seats.length === 0} onClick={() => void run("Đã đóng và chuyển người chơi.", () => v3.breakTournamentTable({
+                  <Button data-ops-action="floor.tables.break_v3" variant="outline" className="min-h-11" disabled={busy || selectedTable.seats.length === 0} onClick={() => void run("Đã đóng và chuyển người chơi.", () => v3.breakTournamentTable({
                     tournamentTableId: selectedTable.tournamentTableId,
                     expectedRevision: selectedTable.sessionRevision,
                     requestId: crypto.randomUUID(),

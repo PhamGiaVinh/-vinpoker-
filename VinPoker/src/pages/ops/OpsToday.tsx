@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOperatorClubs } from "@/hooks/useOperatorClubs";
 import { useTournaments } from "@/hooks/useTournaments";
 import {
-  useActiveTables, useActiveAssignmentsWithTimeline, useCheckedInDealers,
+  useDealerOperationalTables, useActiveAssignmentsWithTimeline, useCheckedInDealers,
   type DealerAssignment,
 } from "@/hooks/useDealerSwing";
 import type { Tournament } from "@/types/tournament";
@@ -13,7 +13,7 @@ import type { Tournament } from "@/types/tournament";
 /**
  * "Hôm nay" — cockpit mở đầu mobileOpsV2 — bản NỐI DỮ LIỆU THẬT (reads).
  * Hero = giải đang chạy thật (`useTournaments`); dải chỉ số bàn/dealer + "việc gấp" từ các hook
- * dealer-swing thật (`useActiveTables` / `useActiveAssignmentsWithTimeline` / `useCheckedInDealers`).
+ * dealer-swing thật (`useDealerOperationalTables` / `useActiveAssignmentsWithTimeline` / `useCheckedInDealers`).
  * READ-ONLY: không nút thao tác tiền. Không fallback mock — trạng thái loading/empty rõ ràng.
  */
 type Enriched = DealerAssignment & { isOverdue: boolean; minutesLeft: number | null };
@@ -28,7 +28,7 @@ export default function OpsToday() {
   const activeClub = scopedIds[0];
 
   const { data: tournaments } = useTournaments(activeClub);
-  const tablesQ = useActiveTables(scopedIds);
+  const tablesQ = useDealerOperationalTables(scopedIds);
   const asgQ = useActiveAssignmentsWithTimeline(scopedIds);
   const rosterQ = useCheckedInDealers(scopedIds);
 

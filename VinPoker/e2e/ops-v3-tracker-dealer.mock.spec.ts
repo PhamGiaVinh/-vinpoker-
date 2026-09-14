@@ -61,8 +61,34 @@ async function installMockOpsSession(page: Page) {
       contentType: "application/json",
       body: JSON.stringify(body),
     });
+    if (path.endsWith("/auth/v1/user")) return json({
+      id: userId,
+      aud: "authenticated",
+      role: "authenticated",
+      email: "operator@example.test",
+      app_metadata: {},
+      user_metadata: {},
+      identities: [],
+      created_at: "2026-08-09T00:00:00.000Z",
+    });
     if (path.endsWith("/rpc/get_my_ops_capability_scope")) return json(operatorScope);
     if (path.endsWith("/rpc/get_my_ops_global_capability")) return json([{ is_super_admin: false }]);
+    if (path.endsWith("/rpc/get_club_table_inventory")) return json([{
+      game_table_id: tableId,
+      table_number: 3,
+      table_name: "Cash 3",
+      operational_status: "available",
+      availability_status: "in_use",
+      table_session_id: "31000000-0000-4000-8000-000000000003",
+      session_type: "cash",
+      control_mode: "manual",
+      control_epoch: 1,
+      revision: 1,
+      tournament_id: null,
+      tournament_table_id: null,
+      tournament_table_status: null,
+      active_dealer_assignment_id: "50000000-0000-4000-8000-000000000003",
+    }]);
     if (path.endsWith("/clubs")) return json([{ id: clubId, name: "CODEX OPS TEST CLUB" }]);
     if (path.endsWith("/tournaments")) return json([{
       id: tournamentId,

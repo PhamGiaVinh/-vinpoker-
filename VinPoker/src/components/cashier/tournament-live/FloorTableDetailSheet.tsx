@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { LiquidButton } from "@/components/kokonutui/liquid-glass-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExternalLink, Lock, UserPlus } from "lucide-react";
-import { formatVND } from "@/lib/format";
+import { formatStack } from "@/lib/format";
 import { FEATURES } from "@/lib/featureFlags";
 import { OpenTableDialog } from "./OpenTableDialog";
 import { AddPlayerDialog } from "./AddPlayerDialog";
@@ -81,7 +81,7 @@ export function FloorTableDetailSheet({
   const rosterSeats = seats.map((seat) => ({
     seatNumber: seat.seat_number,
     playerName: seat.player_name || seat.player_id.slice(0, 6),
-    chipsLabel: formatVND(seat.chip_count),
+    chipsLabel: formatStack(seat.chip_count),
     entryNumber: seat.entry_number,
   }));
 

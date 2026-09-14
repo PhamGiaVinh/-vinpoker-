@@ -69,7 +69,7 @@ export function FloorSeatRoster({
                 else onEmptySeatTap?.(seatNumber);
               }}
               className={cn(
-                "flex min-h-[62px] w-full items-center gap-3 border-b border-border/70 px-3 py-2.5 text-left last:border-b-0",
+                "flex min-h-[52px] w-full items-center gap-2.5 border-b border-border/70 px-3 py-2 text-left last:border-b-0 sm:min-h-[58px] sm:gap-3 sm:py-2.5",
                 interactive && "transition hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/45",
                 !interactive && "cursor-default",
               )}
@@ -81,7 +81,7 @@ export function FloorSeatRoster({
 
               {seat ? (
                 <>
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary" aria-hidden="true">
+                  <span className="hidden h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary min-[390px]:grid" aria-hidden="true">
                     {playerInitials(seat.playerName)}
                   </span>
                   <span className="min-w-0 flex-1">
@@ -93,7 +93,7 @@ export function FloorSeatRoster({
                       {seat.entryNumber != null ? ` · Entry ${seat.entryNumber}` : ""}
                     </span>
                   </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">Đang ngồi</span>
+                  <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">Đang ngồi</span>
                 </>
               ) : (
                 <>
