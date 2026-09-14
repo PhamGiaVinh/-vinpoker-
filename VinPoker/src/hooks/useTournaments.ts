@@ -68,11 +68,15 @@ export function useActiveTournaments(clubId: string | undefined) {
               id,
               table_name
             )
+          ),
+          tournament_levels (
+            level_number,
+            is_break
           )
         `
         )
         .eq("club_id", clubId)
-        .eq("status", "active")
+        .in("status", ["active", "live", "break", "final_table"])
         .order("name");
 
       if (error) throw error;

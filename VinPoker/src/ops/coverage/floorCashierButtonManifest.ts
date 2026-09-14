@@ -42,6 +42,7 @@ const navigationActions = [
   "floor.tables.toggle_search",
   "floor.tables.select_tournament",
   "floor.tables.open_roster",
+  "floor.tables.open_v3_control_mode",
   "floor.tables.open_seat",
   "floor.tables.open_table_dialog",
   "floor.tables.open_add_player",
@@ -103,11 +104,13 @@ const nonMoneyWriteActions = [
   "floor.tables.open_control_mode_confirm",
   "floor.tables.cancel_control_mode",
   "floor.tables.save_control_mode",
+  "floor.tables.save_v3_control_mode",
   "floor.tables.add_player",
 ] as const;
 
 const destructiveActions = [
   "floor.tables.close_table",
+  "floor.tables.break_v3",
   "floor.tables.confirm_redraw",
   "floor.player.move",
   "floor.player.save_chip",

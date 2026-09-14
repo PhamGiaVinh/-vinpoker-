@@ -27,8 +27,8 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import {
-  useCheckedInDealers, useActiveTables, useActiveAssignmentsWithTimeline, useSwingConfigs, useAuditLogs,
-  useSwingMetrics, useBreakPolicies, useSpecialDates, useAvailableTables, usePreAssignedDealers, usePoolTables,
+  useCheckedInDealers, useDealerOperationalTables, useActiveAssignmentsWithTimeline, useSwingConfigs, useAuditLogs,
+  useSwingMetrics, useBreakPolicies, useSpecialDates, usePreAssignedDealers,
   useOptimisticDealerCount, useNextDealerPredictions, useTodayCheckedOutDealers, useBreakPool,
 } from "@/hooks/useDealerSwing";
 import type { BreakPoolEntry, DealerAssignment, DealerAttendance, SwingConfig, ShiftBreakPolicy, PreAssignedInfo, NextDealerPrediction } from "@/hooks/useDealerSwing";
@@ -72,6 +72,8 @@ import { FeatureTablePoolBox } from "./dealer-swing/FeatureTablePoolBox";
 import { StaffingOptimizerCard } from "./dealer-swing/StaffingOptimizerCard";
 import CloseTourDialog, { type CloseTourPreview } from "./dealer-swing/CloseTourDialog";
 import { FEATURES } from "@/lib/featureFlags";
+import { createFloorTableControlV3Client, type FloorTableControlV3Rpc } from "@/lib/floorTableControlV3";
+import { isDealerTableAvailable } from "@/lib/dealerTableInventory";
 import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
 import {
@@ -139,7 +141,8 @@ function resolveTableSwingTiming(
 ): TableTimeline {
   const tableType = table?.table_type ?? assignment.game_tables?.table_type ?? "tournament";
   const tableTournament = tournaments?.find((tr) =>
-    tr.tournament_tables.some((tt) => tt.table_id === assignment.table_id)
+    tr.id === table?.tournament_id
+    || tr.tournament_tables.some((tt) => tt.table_id === assignment.table_id)
   );
   const swingDurationMinutes =
     tableTournament?.swing_duration_minutes
@@ -230,13 +233,19 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   const [tableSearch, setTableSearch] = useState("");
   const [mobileTab, setMobileTab] = useState<"map" | "left" | "right">("map");
   const nowMs = useLiveClock();
+  const floorV3 = useMemo(() => createFloorTableControlV3Client(
+    ((name, args) => (supabase.rpc as unknown as FloorTableControlV3Rpc)(name, args)),
+    { enabled: FEATURES.floorTableControlV3 },
+  ), []);
 
   const { data: dealers, loading: dealersLoading, error: dealersError, refetch: refetchDealers } = useCheckedInDealers(filteredClubIds);
   const { data: checkedOutDealers, refetch: refetchCheckedOut } = useTodayCheckedOutDealers(filteredClubIds);
   const { data: allDealers } = useAllDealers(filteredClubIds);
-  const { data: tables, loading: tablesLoading, error: tablesError, refetch: refetchTables } = useActiveTables(filteredClubIds);
-  const { data: availableTables, error: availableTablesError, refetch: refetchAvailableTables } = useAvailableTables(filteredClubIds);
-  const { data: poolTables, loading: poolLoading, error: poolError, refetch: refetchPoolTables } = usePoolTables(filteredClubIds);
+  const { data: tables, loading: tablesLoading, error: tablesError, refetch: refetchTables } = useDealerOperationalTables(filteredClubIds);
+  const poolTables = tables;
+  const poolLoading = tablesLoading;
+  const poolError = tablesError;
+  const refetchPoolTables = refetchTables;
   const {
     data: assignments,
     activeRawData,
@@ -737,6 +746,30 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       toast.error("Hãy chọn một CLB trước khi mở bàn.");
       return;
     }
+    if (FEATURES.floorTableControlV3) {
+      if (newTableType === "tournament") {
+        toast.warning("Bàn giải phải được mở trong Floor để gắn đúng giải. Dealer Swing sẽ tự thấy bàn ngay sau khi Floor mở.");
+        return;
+      }
+      setProcessing("create_table");
+      try {
+        const result = await floorV3.openClubTables({
+          gameTableIds: selectedPoolTableIds,
+          sessionType: newTableType as "cash" | "vip",
+          requestId: crypto.randomUUID(),
+        });
+        if (result.ok === false) {
+          toast.error(`Chưa mở được bàn (${result.error}).`);
+          return;
+        }
+        toast.success(`Đã mở ${selectedPoolTableIds.length} bàn ${newTableType.toUpperCase()}. Chọn từng bàn để gán dealer.`);
+        setSelectedPoolTableIds([]);
+      } finally {
+        setProcessing(null);
+        await Promise.all([refetchTables(), refetchAssignments(), refetchDealers()]);
+      }
+      return;
+    }
     if (massOpenGate === "checking") {
       toast.info("Đang kiểm tra quyền mở bàn. Vui lòng thử lại sau ít giây.");
       return;
@@ -803,7 +836,6 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       if (request === openOperationRequestRef.current) setProcessing(null);
       await Promise.all([
         refetchTables(),
-        refetchAvailableTables(),
         refetchPoolTables(),
         refetchAssignments(),
         refetchDealers(),
@@ -1109,6 +1141,32 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
     if (!closeTableConfirmId) return;
     setClosingTable(true);
     try {
+      if (FEATURES.floorTableControlV3) {
+        const table = tables.find((candidate) => candidate.id === closeTableConfirmId);
+        if (!table?.table_session_id || table.revision == null) {
+          toast.info("Bàn đã được đóng trước đó.");
+          setCloseTableConfirmId(null);
+          return;
+        }
+        if (table.table_type === "tournament") {
+          toast.warning("Bàn giải phải đóng trong Floor để kiểm tra ghế và hand đang chạy.");
+          setCloseTableConfirmId(null);
+          return;
+        }
+        const result = await floorV3.closeClubTable({
+          tableSessionId: table.table_session_id,
+          expectedRevision: table.revision,
+          requestId: crypto.randomUUID(),
+        });
+        if (result.ok === false) {
+          toast.error(`Chưa đóng được bàn (${result.error}).`);
+          return;
+        }
+        toast.success("Đã đóng session bàn và đưa dealer về Break Pool.");
+        setCloseTableConfirmId(null);
+        await Promise.all([refetchTables(), refetchAssignments(), refetchDealers()]);
+        return;
+      }
       const { data, error } = await supabase.functions.invoke("close-table", {
         body: { table_id: closeTableConfirmId, requested_by: user?.id },
       });
@@ -1145,6 +1203,11 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   // the migration is applied live). NEVER raw-updates from the client.
   const closeTour = async () => {
     if (!selectedTour) return;
+    if (FEATURES.floorTableControlV3) {
+      toast.warning("Floor V3 đang quản lý phiên bàn. Hãy đóng từng bàn giải trong Floor trước khi lưu trữ Swing.");
+      setCloseTourOpen(false);
+      return;
+    }
     const tour = (tours ?? []).find((t) => t.id === selectedTour);
     const clubId = (tour as any)?.club_id ?? clubFilter ?? filteredClubIds[0];
     if (!clubId) { toast.error("Thiếu thông tin club."); return; }
@@ -1208,6 +1271,10 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   // opened after the dialog was shown can't sneak in). Scope: selectedTour null = all
   // active tables of the club; else only that tour's (game_tables.shift_id).
   const closeTables = async () => {
+    if (FEATURES.floorTableControlV3) {
+      toast.warning("Đóng hàng loạt đang khóa để tránh bỏ qua phiên bàn V3. Đóng bàn Cash/VIP từng bàn; bàn giải đóng trong Floor.");
+      return;
+    }
     const clubId = clubFilter ?? filteredClubIds[0];
     if (!clubId) { toast.error("Thiếu thông tin club."); return; }
     setClosingTables(true);
@@ -1235,6 +1302,12 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   // Confirm → close EXACTLY the snapshotted ids via the RPC (which re-validates
   // in-club/active/scope server-side and skips anything that changed).
   const doCloseTables = async () => {
+    if (FEATURES.floorTableControlV3) {
+      setCloseTablesConfirmOpen(false);
+      setCloseTablesTargets([]);
+      toast.warning("Phiên bàn V3 đã bật; không thể dùng đường đóng bàn legacy.");
+      return;
+    }
     const clubId = clubFilter ?? filteredClubIds[0];
     if (!clubId || closeTablesTargets.length === 0) return;
     setClosingTables(true);
@@ -1837,6 +1910,11 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
             <span>Chưa có tour nào. </span>
             <button onClick={() => setCreateTourOpen(true)} className="underline hover:text-warning">Tạo tour mới</button>
           </div>
+        )}
+        {FEATURES.floorTableControlV3 && (
+          <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+            Ca Swing chỉ lọc kế hoạch dealer; bản đồ bên dưới luôn dùng toàn bộ phiên bàn đang chạy từ kho bàn chung.
+          </p>
         )}
       </div>
 
@@ -2589,7 +2667,9 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
                       || String(a.table_name).localeCompare(String(b.table_name), "vi"));
                   return filtered.map((t) => {
                     const isAssigned = t.status === "active" && tableAssignmentMap[t.id];
-                    const isSelectable = massOpenGate === "enabled" || !isAssigned;
+                    const isSelectable = FEATURES.floorTableControlV3
+                      ? isDealerTableAvailable(t)
+                      : massOpenGate === "enabled" || !isAssigned;
                     return (
                       <label key={t.id}
                         className={`flex items-center justify-between p-2 text-xs border ${isSelectable ? "cursor-pointer" : "opacity-50"} ${selectedPoolTableIds.includes(t.id) ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted/20"}`}>
@@ -2605,7 +2685,11 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
                           />
                           <span className="font-semibold">{t.table_name}</span>
                         </div>
-                        {isAssigned ? (
+                        {FEATURES.floorTableControlV3 && t.status === "active" ? (
+                          <Badge variant="secondary" className="text-[10px] bg-warning/10 text-warning border-warning/20">
+                            {t.table_type === "tournament" ? "Đang dùng · Giải" : `Đang dùng · ${(t.table_type ?? "session").toUpperCase()}`}
+                          </Badge>
+                        ) : isAssigned ? (
                           <Badge variant="secondary" className="text-[10px] bg-warning/10 text-warning border-warning/20">Đã có dealer</Badge>
                         ) : t.status === "active" ? (
                           <Badge variant="secondary" className="text-[10px] bg-success/10 text-success border-success/20">Sẵn sàng</Badge>
@@ -2626,7 +2710,9 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
                     const excluded = ["11", "12", "13", "21", "A25"];
                     const selectable = (poolTables ?? [])
                       .filter((t) => !excluded.includes(t.table_name) && (!poolSearch || t.table_name.toLowerCase().includes(poolSearch.toLowerCase())))
-                      .filter((t) => massOpenGate === "enabled" || !(t.status === "active" && tableAssignmentMap[t.id]));
+                      .filter((t) => FEATURES.floorTableControlV3
+                        ? isDealerTableAvailable(t)
+                        : massOpenGate === "enabled" || !(t.status === "active" && tableAssignmentMap[t.id]));
                     setSelectedPoolTableIds(selectable.map((t: any) => t.id));
                   }}>
                   Chọn tất cả
@@ -3792,7 +3878,9 @@ function TableGrid({
     // Inactive tables sit in the general pool and are not actionable here.
     const active = tables.filter((t) => t.status === "active");
     // "Tổng thể" (All): show EVERY active table; specific tour → shift_id match.
-    const scoped = !selectedTour ? active : active.filter((t) => t.shift_id === selectedTour);
+    const scoped = !selectedTour || FEATURES.floorTableControlV3
+      ? active
+      : active.filter((t) => t.shift_id === selectedTour);
     // Quick search (UI polish) — by table name or current dealer name.
     const q = (searchTerm ?? "").trim().toLowerCase();
     const result = !q ? scoped : scoped.filter((t) => {
@@ -3895,7 +3983,9 @@ function TableGrid({
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 max-h-[62vh] overflow-y-auto pr-0.5">
         {filteredTables.length === 0 ? (
           <div className="col-span-full text-xs text-muted-foreground text-center py-6">
-            {selectedTour ? "Chưa có bàn nào trong tour này. Hãy tạo bàn mới hoặc assign dealer." : "Chưa có bàn nào."}
+            {selectedTour && !FEATURES.floorTableControlV3
+              ? "Chưa có bàn nào trong ca này. Hãy tạo bàn mới hoặc gán dealer."
+              : "Chưa có phiên bàn nào đang chạy trong kho bàn chung."}
           </div>
         ) : visibleTables.length === 0 ? (
           <div className="col-span-full text-xs text-muted-foreground text-center py-6">

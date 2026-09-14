@@ -22,7 +22,7 @@ import { DealerPhoneCheckinSheet } from "@/components/ops/dealer-swing/DealerPho
 import { DealerPhoneCloseTablesSheet } from "@/components/ops/dealer-swing/DealerPhoneCloseTablesSheet";
 import { DealerPhoneReconcileSheet } from "@/components/ops/dealer-swing/DealerPhoneReconcileSheet";
 import {
-  useActiveTables, useActiveAssignmentsWithTimeline, useCheckedInDealers,
+  useDealerOperationalTables, useActiveAssignmentsWithTimeline, useCheckedInDealers,
   useTodayCheckedOutDealers,
   type DealerAttendance, type DealerAssignment,
 } from "@/hooks/useDealerSwing";
@@ -33,7 +33,7 @@ import { summarizeDealerCheckoutBatch } from "@/lib/dealerCheckoutResults";
 /**
  * Dealer Swing (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads).
  * Ngữ cảnh CLB qua `useOperatorClubs()` (đúng nguồn desktop DealerSwingDashboard dùng);
- * bàn/dealer/đếm ngược đọc từ các hook thật `useActiveTables` / `useActiveAssignmentsWithTimeline`
+ * bàn/dealer/đếm ngược đọc từ các hook thật `useDealerOperationalTables` / `useActiveAssignmentsWithTimeline`
  * / `useCheckedInDealers` / `useTodayCheckedOutDealers` (realtime).
  *
  * Hành động THẬT đã nối (gate opsSwingActions): swing / gán / nghỉ / đưa-vào-bàn / check-in /
@@ -168,7 +168,7 @@ function DealerSwingClubView({
   const { user } = useAuth();
   const scopedIds = useMemo(() => [activeClubId], [activeClubId]);
 
-  const tablesQ = useActiveTables(scopedIds);
+  const tablesQ = useDealerOperationalTables(scopedIds);
   const asgQ = useActiveAssignmentsWithTimeline(scopedIds);
   const rosterQ = useCheckedInDealers(scopedIds);
   const outQ = useTodayCheckedOutDealers(scopedIds);

@@ -14,6 +14,12 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useLiveClock } from "@/hooks/useLiveClock";
+import { FEATURES } from "@/lib/featureFlags";
+import {
+  createFloorTableControlV3Client,
+  type FloorTableControlV3Rpc,
+} from "@/lib/floorTableControlV3";
+import { projectDealerOperationalTable } from "@/lib/dealerTableInventory";
 import type { TournamentWithTables, SwingConfigOverride, EffectiveSwingConfig } from "@/types/tournament";
 import {
   derivePreAssignStatus,
@@ -138,6 +144,15 @@ export interface GameTableRow {
   table_type?: string | null;
   table_priority?: number | null;
   current_blind_level?: number | null;
+  /** Floor V3 session identity. Present only when the shared inventory flag is ON. */
+  table_session_id?: string | null;
+  tournament_id?: string | null;
+  tournament_table_id?: string | null;
+  table_number?: number | null;
+  availability_status?: string | null;
+  control_mode?: "manual" | "tracker" | null;
+  control_epoch?: number | null;
+  revision?: number | null;
 }
 
 interface UseRealtimeQueryOptions<T> {
@@ -607,6 +622,49 @@ export function useActiveTables(clubIds: string[]) {
         .in("club_id", clubIds)
         .order("table_name"),
     realtimeTables: ["game_tables"],
+    clubIds,
+  });
+}
+
+/**
+ * Operational table source for Dealer Swing and the Ops surfaces. While Floor
+ * V3 is enabled, this reads the same authoritative active-session inventory as
+ * Floor. The legacy reader remains available to configuration screens that
+ * still need raw game_tables metadata.
+ */
+export function useDealerOperationalTables(clubIds: string[]) {
+  return useRealtimeQuery<GameTableRow>({
+    queryFn: async () => {
+      if (!FEATURES.floorTableControlV3) {
+        return supabase
+          .from("game_tables")
+          .select("*")
+          .in("club_id", clubIds)
+          .order("table_name");
+      }
+
+      const client = createFloorTableControlV3Client(
+        ((name, args) => (supabase.rpc as unknown as FloorTableControlV3Rpc)(name, args)),
+        { enabled: true },
+      );
+      const responses = await Promise.all(
+        clubIds.map(async (clubId) => ({ clubId, result: await client.getClubTableInventory(clubId) })),
+      );
+      const failed = responses.find((response) => response.result.ok === false);
+      if (failed && failed.result.ok === false) {
+        return { data: null, error: { message: failed.result.error } };
+      }
+
+      return {
+        data: responses.flatMap((response) => response.result.ok
+          ? response.result.data.map((item) => projectDealerOperationalTable(response.clubId, item))
+          : []),
+        error: null,
+      };
+    },
+    realtimeTables: FEATURES.floorTableControlV3
+      ? ["game_tables", "table_sessions", "tournament_tables", "dealer_assignments"]
+      : ["game_tables"],
     clubIds,
   });
 }

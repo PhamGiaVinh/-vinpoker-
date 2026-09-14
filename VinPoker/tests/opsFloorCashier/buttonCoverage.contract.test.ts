@@ -22,6 +22,7 @@ const coveredFiles = [
   "src/components/ops/shared/FloorTableNumberPicker.tsx",
   "src/components/ops/shared/FloorTableModePicker.tsx",
   "src/components/cashier/tournament-live/OpenTableDialog.tsx",
+  "src/components/cashier/tournament-live/FloorTableMapPanelV3.tsx",
 ] as const;
 const interactiveTags = new Set(["button", "Button", "AlertDialogAction", "AlertDialogCancel"]);
 

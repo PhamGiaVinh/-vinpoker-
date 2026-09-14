@@ -22,6 +22,7 @@ import { dealerStatusStyle, type DealerTableStatus } from "./dealerStatusStyle";
 import { FeatureTableBadge, useFeatureTableBorder } from "./FeatureTableBadge";
 import { getPreAssignStatusLabel } from "@/lib/dealerSwingState";
 import { getOpenTableWarmupRemainingSeconds } from "@/lib/breakPoolState";
+import { isTournamentStructureBreak } from "@/lib/dealerTableInventory";
 import type {
   DealerAssignment, DealerAttendance, PreAssignedInfo, NextDealerPrediction, SwingConfig,
 } from "@/hooks/useDealerSwing";
@@ -105,6 +106,8 @@ export default function SwingTableCard({
   const dealer = a ? (a as any).dealer_attendance?.dealers : null;
   const s = dealerStatusStyle[dealerStatus];
   const featureBorder = useFeatureTableBorder(t.id);
+  const tableTournament = tournaments?.find((tournament) => tournament.id === t.tournament_id);
+  const tournamentOnBreak = isTournamentStructureBreak(tableTournament);
 
   // ── Shared timing view (single source of truth — see swingTableView) ──
   const {
@@ -278,6 +281,16 @@ export default function SwingTableCard({
               {s.label}
             </span>
             <FeatureTableBadge tableId={t.id} className="ml-1 mt-1.5 align-middle" />
+            {tableTournament && (
+              <span className="ml-1 mt-1.5 inline-flex max-w-[12rem] truncate rounded-md border border-sky-400/25 bg-sky-400/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-200">
+                {tableTournament.name}
+              </span>
+            )}
+            {tournamentOnBreak && (
+              <span className="ml-1 mt-1.5 inline-flex rounded-md border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200">
+                Giải đang nghỉ
+              </span>
+            )}
             {dealer && nextName && (
               <div className="mt-1 flex items-baseline gap-1 text-[11px] leading-tight">
                 <span className="shrink-0 text-[hsl(var(--ds-preassign))]" aria-hidden="true">→</span>
@@ -306,6 +319,12 @@ export default function SwingTableCard({
 
         {overdueState && (
           <div className={cn("mb-2 font-mono text-[11px]", overdueState.className)}>{overdueState.label}</div>
+        )}
+
+        {tournamentOnBreak && (
+          <p className="mb-2 rounded-md border border-amber-400/20 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-4 text-amber-100/80">
+            Đồng hồ giải đang nghỉ. Đồng hồ Swing của dealer vẫn theo ca riêng và không tự dừng.
+          </p>
         )}
 
         <SwingTableActions

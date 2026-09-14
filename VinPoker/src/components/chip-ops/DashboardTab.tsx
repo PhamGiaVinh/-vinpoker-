@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChipDisc } from "./ChipDisc";
 import { AlertTriangle, Crown, Users, Gauge, CheckCircle2 } from "lucide-react";
+import { deriveTournamentChipMetrics } from "@/lib/chipOpsMetrics";
 
 // Reads are open-SELECT tournament tables + the server-authoritative inventory (passed in).
 const sb = supabase as any;
@@ -18,6 +19,7 @@ interface Metrics {
   current_level: number | null; current_blinds: string | null;
   small_blind: number | null; big_blind: number | null; ante: number | null; is_break: boolean | null;
   leader_name: string | null; leader_chips: number | null;
+  active_seat_count: number; table_chip_total: number; roster_quality: "exact" | "partial";
 }
 
 /** Live "Tổng quan" dashboard — synced to the tournament. Read-only. */
@@ -28,38 +30,76 @@ export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: stri
   useEffect(() => {
     if (!tournamentId) { setM(null); return; }
     let active = true;
-    setLoading(true);
-    (async () => {
-      const { data: t } = await sb.from("tournaments")
+    let requestInFlight = false;
+    const load = async () => {
+      if (requestInFlight) return;
+      requestInFlight = true;
+      setLoading(true);
+      try {
+      const { data: t, error: tournamentError } = await sb.from("tournaments")
         .select("status,players_remaining,average_stack,current_level,current_blinds,starting_stack")
         .eq("id", tournamentId).maybeSingle();
+      if (tournamentError) throw tournamentError;
       let lvl: any = null;
       if (t?.current_level != null) {
-        const { data: l } = await sb.from("tournament_levels")
+        const { data: l, error: levelError } = await sb.from("tournament_levels")
           .select("small_blind,big_blind,ante,is_break")
           .eq("tournament_id", tournamentId).eq("level_number", t.current_level).maybeSingle();
+        if (levelError) throw levelError;
         lvl = l;
       }
-      const { data: top } = await sb.from("tournament_chip_counts")
-        .select("player_id,chip_count").eq("tournament_id", tournamentId)
-        .order("chip_count", { ascending: false }).limit(1);
-      let leaderName: string | null = null, leaderChips: number | null = null;
-      if (top && top[0]) {
-        leaderChips = Number(top[0].chip_count);
-        const { data: seat } = await sb.from("tournament_seats")
-          .select("player_name").eq("tournament_id", tournamentId).eq("player_id", top[0].player_id).limit(1);
-        leaderName = seat?.[0]?.player_name ?? null;
-      }
+      const { data: activeSeats, error: seatsError } = await sb.from("tournament_seats")
+        .select("player_name,chip_count")
+        .eq("tournament_id", tournamentId)
+        .eq("is_active", true)
+        .order("chip_count", { ascending: false });
+      if (seatsError) throw seatsError;
+      const normalizedSeats = (activeSeats ?? []) as Array<{ player_name?: string | null; chip_count?: number | null }>;
+      const seatStacks = normalizedSeats.map((seat) => (
+        seat.chip_count == null ? Number.NaN : Number(seat.chip_count)
+      ));
+      const chipMetrics = deriveTournamentChipMetrics(
+        seatStacks,
+        t?.players_remaining ?? null,
+      );
+      const leader = normalizedSeats.reduce<null | { player_name?: string | null; chip_count?: number | null }>((best, seat) => {
+        const chipCount = seat.chip_count == null ? Number.NaN : Number(seat.chip_count);
+        if (!Number.isSafeInteger(chipCount) || chipCount < 0) return best;
+        const bestCount = best?.chip_count == null ? Number.NEGATIVE_INFINITY : Number(best.chip_count);
+        return chipCount > bestCount ? seat : best;
+      }, null);
+      const leaderName = leader?.player_name ?? null;
+      const leaderChips = leader?.chip_count != null ? Number(leader.chip_count) : null;
       if (!active) return;
       setM({
         status: t?.status ?? null, players_remaining: t?.players_remaining ?? null, average_stack: t?.average_stack ?? null,
         current_level: t?.current_level ?? null, current_blinds: t?.current_blinds ?? null,
         small_blind: lvl?.small_blind ?? null, big_blind: lvl?.big_blind ?? null, ante: lvl?.ante ?? null, is_break: lvl?.is_break ?? null,
         leader_name: leaderName, leader_chips: leaderChips,
+        active_seat_count: chipMetrics.activeSeatCount,
+        table_chip_total: chipMetrics.tableChipTotal,
+        roster_quality: chipMetrics.rosterQuality,
       });
       setLoading(false);
-    })().catch(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+      } catch {
+        if (active) setLoading(false);
+      } finally {
+        requestInFlight = false;
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 4_000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [tournamentId]);
 
   if (!inv) {
@@ -70,9 +110,12 @@ export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: stri
     );
   }
 
-  const chipsInPlay = inv.total_value ?? 0;
+  const issuedInventoryValue = inv.total_value ?? 0;
   const playersLeft = m?.players_remaining ?? null;
-  const computedAvg = playersLeft && playersLeft > 0 ? Math.round(chipsInPlay / playersLeft) : null;
+  const tableChipTotal = m?.table_chip_total ?? 0;
+  const computedAvg = m?.roster_quality === "exact" && m.active_seat_count > 0
+    ? Math.round(tableChipTotal / m.active_seat_count)
+    : null;
   const bb = m?.big_blind ?? null;
   const countOf = (d: InvDenom) => d.current_count ?? d.issued_count_total;
   const currentByValue = new Map(inv.denominations.map((d) => [d.value, countOf(d)]));
@@ -80,12 +123,14 @@ export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: stri
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Chips in play" value={fmt(chipsInPlay)} accent
-          sub={inv.reconciled ? "khớp số ✓" : "lệch số ⚠"} />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <StatCard label="Kho chip đã phát" value={fmt(issuedInventoryValue)} accent
+          sub={inv.reconciled ? "Kho đã đối soát nội bộ" : "Kho chưa đối soát"} />
+        <StatCard label="Chip trên ghế" value={m ? fmt(tableChipTotal) : "—"}
+          sub={m ? `${m.active_seat_count} ghế đang active` : "Đang tải roster"} />
         <StatCard label="Average stack" icon={<Gauge className="h-3.5 w-3.5" />}
           value={computedAvg != null ? fmt(computedAvg) : "—"}
-          sub={playersLeft != null ? `${fmt(chipsInPlay)} ÷ ${playersLeft}` : ""} />
+          sub={m?.roster_quality === "partial" ? "Roster và số người còn lại chưa khớp" : playersLeft != null ? `${fmt(tableChipTotal)} ÷ ${playersLeft}` : ""} />
         <StatCard label="Người còn lại" icon={<Users className="h-3.5 w-3.5" />}
           value={playersLeft != null ? fmt(playersLeft) : "—"} />
         <StatCard label="Chip leader" icon={<Crown className="h-3.5 w-3.5" />}
@@ -137,9 +182,9 @@ export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: stri
           )}
           <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-sm">
             <span className="flex items-center gap-1.5 text-muted-foreground">
-              {inv.reconciled && <CheckCircle2 className="h-4 w-4 text-primary" />} Tổng giá trị
+              {inv.reconciled && <CheckCircle2 className="h-4 w-4 text-primary" />} Tổng giá trị chip đã phát từ kho
             </span>
-            <span className="font-display font-semibold tabular-nums text-foreground">{fmt(chipsInPlay)}</span>
+            <span className="font-display font-semibold tabular-nums text-foreground">{fmt(issuedInventoryValue)}</span>
           </div>
         </CardContent>
       </Card>
