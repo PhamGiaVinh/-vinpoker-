@@ -24,7 +24,11 @@ describe("Wave 3 architecture", () => {
     expect(migration).toMatch(/GRANT EXECUTE .* TO authenticated/u);
     expect(migration).toContain("ENTRY_SEATED_AT_MISSING");
     expect(migration).toContain("ENTRY_BUST_BEFORE_SEAT");
+    expect(migration).toContain("ENTRY_TERMINAL_AT_MISSING");
     expect(migration).toContain("CONFIRMED_AT_MISSING");
     expect(migration).toContain("FUTURE_CONFIRMED_AT");
+    expect(migration).toContain("dealer_coverage_intervals AS");
+    expect(migration).toContain("GROUP BY table_session_id, coverage_group");
+    expect(migration).toContain("WHERE v_tables_exact AND v_dealer_exact");
   });
 });

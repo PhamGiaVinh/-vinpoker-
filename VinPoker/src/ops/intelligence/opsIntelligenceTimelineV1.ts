@@ -80,7 +80,7 @@ export function parseOpsIntelligenceTimelineV1(value: unknown, expectedClubId: s
     return { from, to, maxGap: count(row.maxGap) };
   });
   const dealers = series(root.dealers);
-  if (dealers.availability !== "exact" && dealerGaps.length) return fail();
+  if ((dealers.availability !== "exact" || tableBase.availability !== "exact") && dealerGaps.length) return fail();
   return {
     version: root.version, clubId: uuid(root.clubId), tournamentId: uuid(root.tournamentId), asOf: timestamp(root.asOf),
     entries: series(root.entries),
