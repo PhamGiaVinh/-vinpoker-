@@ -259,8 +259,10 @@ export function TrackerVoicePanel({
     const persisted = (hook.communityCards ?? [])
       .slice(0, persistedBoardCount)
       .filter((card): card is string => card !== null);
+    const workflowMatches = proposal.expectedWorkflowState === hook.workflowState
+      || (proposal.expectedWorkflowState === "runout_reveal" && hook.allInRunout);
     const stale = proposal.expectedStateVersion !== runtime?.active_hand?.state_version
-      || proposal.expectedWorkflowState !== hook.workflowState
+      || !workflowMatches
       || (proposal.expectedWorkflowState !== "runout_reveal"
         && proposal.expectedStreet !== (hook.currentStreet === "flop" || hook.currentStreet === "turn" || hook.currentStreet === "river" ? hook.currentStreet : null))
       || proposal.persistedBoardCards.join("|") !== persisted.join("|")
@@ -274,7 +276,7 @@ export function TrackerVoicePanel({
     setValidatedReceipt(null);
     setValidationState("idle");
     setValidationError("Đề xuất Board đã hết hiệu lực vì trạng thái bàn thay đổi.");
-  }, [hook.communityCards, hook.currentStreet, hook.handId, hook.isReadOnly, hook.persistedBoardCount, hook.workflowState, proposal, runtime?.active_hand?.hand_id, runtime?.active_hand?.state_version, runtime?.correction_pending]);
+  }, [hook.allInRunout, hook.communityCards, hook.currentStreet, hook.handId, hook.isReadOnly, hook.persistedBoardCount, hook.workflowState, proposal, runtime?.active_hand?.hand_id, runtime?.active_hand?.state_version, runtime?.correction_pending]);
 
   // Private card speech is invalidated on any authoritative hand transition.
   // The raw text stays in this state only until cancellation or successful commit.
@@ -622,7 +624,9 @@ export function TrackerVoicePanel({
             : "Chưa nhận ra một lệnh Voice duy nhất.",
         }
       : route.intentDomain === "board"
-        ? resolveVoiceBoardProposal(route.command, localContext)
+        ? resolveVoiceBoardProposal(route.command, hook.allInRunout
+          ? { ...localContext, workflowState: "runout_reveal" }
+          : localContext)
         : resolveVoiceProposal({
             kind: route.command.kind,
             transcript: finalEvent.transcript.trim(),
@@ -755,6 +759,7 @@ export function TrackerVoicePanel({
   }, [
     amountUnitConfirmed,
     finalAttempt,
+    hook.allInRunout,
     hook.handId,
     hook.tournamentId,
     hook.tournamentTableId,
