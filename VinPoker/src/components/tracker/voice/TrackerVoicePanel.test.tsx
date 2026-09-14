@@ -242,6 +242,44 @@ describe("TrackerVoicePanel", () => {
     expect(applyVoiceBoardReceipt).toHaveBeenCalledOnce();
   });
 
+  it("keeps the canonical runout workflow after hole cards reveal moves the UI to flop entry", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const validateEventOverride = vi.fn(async () => ({
+      ...validatedReceipt,
+      execution_mode: "assist" as const,
+      voice_event_id: "voice-runout-flop",
+    }));
+    const hook = {
+      ...hookFixture(),
+      currentStreet: "flop",
+      workflowState: "enter_flop",
+      allInRunout: true,
+      showActionStep: false,
+      persistedBoardCount: 0,
+      communityCards: [null, null, null, null, null],
+    } as StandaloneHandInput;
+
+    renderPanel(hook, provider, validateEventOverride);
+    fireEvent.click(screen.getByRole("button", { name: "assist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("flop 4 cơ 5 bích 6 tép", { final: true, id: "runout-flop-final" }));
+
+    expect(await screen.findByRole("button", { name: "Xác nhận Flop" })).toBeInTheDocument();
+    await waitFor(() => expect(validateEventOverride).toHaveBeenCalledOnce());
+    expect(validateEventOverride.mock.calls[0][0].canonicalRequest).toMatchObject({
+      intentDomain: "board",
+      envelope: {
+        expectedWorkflowState: "runout_reveal",
+        expectedStreet: "flop",
+      },
+      payload: {
+        newCards: ["4h", "5s", "6c"],
+        cumulativeCards: ["4h", "5s", "6c"],
+      },
+    });
+  });
+
   it("keeps Hole Cards speech outside generic diagnostics until the Dealer confirms", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const applyVoiceHoleCardsReceipt = vi.fn(() => true);
