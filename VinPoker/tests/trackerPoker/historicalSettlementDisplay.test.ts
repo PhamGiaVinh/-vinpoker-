@@ -41,6 +41,7 @@ describe("historical settlement display preview", () => {
 
   it("fails closed for a malformed or privacy-violating preview", () => {
     expect(parseHistoricalSettlementDisplayPreview(preview({ source_chain_hash: "not-a-hash" }), "historical-preview-key")).toBeNull();
+    expect(parseHistoricalSettlementDisplayPreview(preview({ source_revision: "3" }), "historical-preview-key")).toBeNull();
     const publicOutcome = preview().public_outcome as Record<string, unknown>;
     expect(parseHistoricalSettlementDisplayPreview(preview({
       public_outcome: { ...publicOutcome, privateEvidence: { holeCards: ["As", "Ah"] } },
