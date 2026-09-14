@@ -23,7 +23,9 @@ export const TRACKER_VOICE_GEMINI_TRANSCRIBE_VOCABULARY = [
   "bet 50k", "bet 80k", "bet 100k", "bet 120k", "bet 200k", "bet 500k",
   "cược năm mươi nghìn", "cược tám mươi nghìn", "cược một trăm nghìn", "cược hai trăm nghìn",
   "báo sai action", "gọi floor", "button", "small blind", "big blind", "call all in",
-  "K bích K cơ", "9 bích 9 rô", "flop K bích 9 cơ 5 rô", "turn J bích", "river 3 tép",
+  "K bích K cơ", "9 bích 9 rô",
+  "ghế 8 cầm K bích K cơ", "ghế 8 có K bích K cơ", "ghế 9 cầm Q rô Q tép",
+  "flop K bích 9 cơ 5 rô", "flop năm bích bảy cơ hai tép", "turn hai rô", "river át tép",
 ] as const;
 
 export function parseGeminiTranscribeLanguageProfile(value: unknown): GeminiTranscribeLanguageProfile | null {

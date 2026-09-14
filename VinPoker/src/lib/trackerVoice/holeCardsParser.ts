@@ -15,6 +15,29 @@ const SEAT_NUMBERS: Readonly<Record<string, number>> = {
   "10": 10, ten: 10, muoi: 10,
 };
 
+const HOLE_CARD_OWNERSHIP_WORDS = new Set(["cam", "co"]);
+
+function parseExplicitSeatPrefix(tokens: readonly string[]): {
+  seatNumber: number;
+  cardsStartIndex: number;
+} | null {
+  let seatNumber: number | undefined;
+  let cardsStartIndex = 0;
+  if (tokens[0] === "seat" || tokens[0] === "ghe") {
+    seatNumber = SEAT_NUMBERS[tokens[1] ?? ""];
+    cardsStartIndex = 2;
+  } else {
+    const fusedSeat = /^v(10|[1-9])$/.exec(tokens[0] ?? "");
+    if (fusedSeat) {
+      seatNumber = Number(fusedSeat[1]);
+      cardsStartIndex = 1;
+    }
+  }
+  if (!seatNumber) return null;
+  if (HOLE_CARD_OWNERSHIP_WORDS.has(tokens[cardsStartIndex] ?? "")) cardsStartIndex += 1;
+  return { seatNumber, cardsStartIndex };
+}
+
 /**
  * Hole-card calls have the strictest grammar in Voice V0. Unlike action
  * parsing, this deliberately does not run the dealer hardener, so `fit` and
@@ -26,14 +49,13 @@ export function parseVoiceHoleCardsCommand(
 ): ParsedVoiceHoleCardsCommand | null {
   const normalizedTranscript = normalizeTrackerVoiceTranscript(rawTranscript);
   const tokens = normalizedTranscript.split(" ").filter(Boolean);
-  const hasSeatPrefix = tokens.length === 6 && (tokens[0] === "seat" || tokens[0] === "ghe");
-  const seatNumber = hasSeatPrefix
-    ? SEAT_NUMBERS[tokens[1] ?? ""]
-    : tokens.length === 4 && Number.isInteger(impliedSeatNumber) && Number(impliedSeatNumber) > 0
+  const explicitSeat = parseExplicitSeatPrefix(tokens);
+  const seatNumber = explicitSeat?.seatNumber
+    ?? (tokens.length === 4 && Number.isInteger(impliedSeatNumber) && Number(impliedSeatNumber) > 0
       ? Number(impliedSeatNumber)
-      : null;
+      : null);
   if (!seatNumber) return null;
-  const cards = parseVoiceCardPairs(hasSeatPrefix ? tokens.slice(2) : tokens, 2);
+  const cards = parseVoiceCardPairs(explicitSeat ? tokens.slice(explicitSeat.cardsStartIndex) : tokens, 2);
   if (!cards || cards.length !== 2) return null;
   return {
     kind: "hole_cards",
@@ -91,10 +113,14 @@ export function resolveNextVoiceHoleCardsSeatNumber(args: {
 export function looksLikePrivateHoleCardsTranscript(rawTranscript: string): boolean {
   const tokens = normalizeTrackerVoiceTranscript(rawTranscript).split(" ").filter(Boolean);
   if (tokens.length === 4 && parseVoiceCardPairs(tokens, 2)) return true;
-  if (!(["seat", "ghe", "fit", "feet"] as const).includes(tokens[0] as "seat" | "ghe" | "fit" | "feet")) {
+  const explicitSeat = parseExplicitSeatPrefix(tokens);
+  const legacyPrivatePrefix = (["fit", "feet"] as const).includes(tokens[0] as "fit" | "feet");
+  if (!explicitSeat && !legacyPrivatePrefix) {
     return false;
   }
-  for (let index = 2; index + 1 < tokens.length; index += 1) {
+  const legacyCardsStartIndex = HOLE_CARD_OWNERSHIP_WORDS.has(tokens[2] ?? "") ? 3 : 2;
+  const cardsStartIndex = explicitSeat?.cardsStartIndex ?? legacyCardsStartIndex;
+  for (let index = cardsStartIndex; index + 1 < tokens.length; index += 1) {
     if (parseVoiceCardPairs(tokens.slice(index, index + 2), 1)) return true;
   }
   return false;
