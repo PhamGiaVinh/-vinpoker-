@@ -99,6 +99,7 @@ import {
   playTrackerSoundOnce,
 } from "@/lib/trackerSound";
 import type { PokerLiveSound } from "@/lib/pokerLiveSound";
+import { ensureRecordedHandDisplayOutcome } from "@/lib/tracker-poker/recordedHandDisplayOutcome";
 import type {
   VoiceActionMetadata,
   VoiceActionProposal,
@@ -2398,6 +2399,13 @@ export function useStandaloneHandInput(tournamentId: string) {
       .eq("table_id", tableId)
       .order("seat_number");
     if (error || !refreshedSeats) return false;
+    const displayOutcome = await ensureRecordedHandDisplayOutcome({
+      tournamentId,
+      handId: receipt.hand_id,
+    });
+    if (!displayOutcome.ok) {
+      toast.warning("Hand đã lưu; outcome hiển thị chưa được server xác minh. Có thể kiểm tra lại trong Lịch sử & sửa hand.");
+    }
     const activeRows = refreshedSeats.filter((seat) => seat.player_id && seat.is_active !== false);
     const activeNums = activeRows.map((seat) => seat.seat_number).sort((left, right) => left - right);
     const serverEndingStacks = Object.fromEntries(
@@ -2648,9 +2656,17 @@ export function useStandaloneHandInput(tournamentId: string) {
     markSync("sending", `Gửi Hand #${Number(handNumber)}`);
     const submittedHandId = handId;
     const applyRecordedHand = async (recordedHandId: string, recoveredAfterError = false) => {
+      markSync("sending", `Đang xác minh hiển thị Hand #${Number(handNumber)}`);
+      const displayOutcome = await ensureRecordedHandDisplayOutcome({
+        tournamentId,
+        handId: recordedHandId,
+      });
       toast.success(recoveredAfterError
         ? "Máy chủ đã xác nhận hand được lưu dù kết nối báo lỗi"
         : "Hand recorded successfully");
+      if (!displayOutcome.ok) {
+        toast.warning("Hand đã lưu; outcome hiển thị chưa được server xác minh. Có thể kiểm tra lại trong Lịch sử & sửa hand.");
+      }
       playTrackerSoundOnce(playedSoundsRef.current, recordedHandId, "hand_end", "pot_collect");
       markSync("sent", `Hand #${Number(handNumber)} đã lưu`);
       setLastHandId(recordedHandId);

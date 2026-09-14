@@ -34,6 +34,7 @@ export function parseHistoricalSettlementDisplayPreview(
     || value.ok !== true
     || value.status !== "preview"
     || typeof value.hand_id !== "string"
+    || typeof value.source_revision !== "number"
     || !Number.isSafeInteger(value.source_revision)
     || !hash(value.source_chain_hash)
     || !hash(value.outcome_hash)
