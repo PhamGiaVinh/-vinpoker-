@@ -144,6 +144,7 @@ const DevPublicTournamentEventPreview = import.meta.env.DEV
 // with rich + betChips toggles. Same import.meta.env.DEV gate → route + lazy chunk stripped
 // from production. Reached only at /__dev/tracker; not linked anywhere.
 const DevTrackerPreview = import.meta.env.DEV ? lazy(() => import("./components/tracker/TrackerInputPreview")) : null;
+const DevDealerTabletPreview = import.meta.env.DEV ? lazy(() => import("./dev/DealerTabletPreview")) : null;
 // DEV-ONLY visual harness for the member-card design (cashier → Cấp lại thẻ). Fixture-rendered — no
 // Supabase. Same import.meta.env.DEV gate → route + chunk stripped from production. Reached only at /__dev/card.
 const DevCardPreview = import.meta.env.DEV ? lazy(() => import("./dev/CardPreview")) : null;
@@ -227,6 +228,10 @@ const App = () => {
         </Suspense>
       </BrowserRouter>
     );
+  }
+
+  if (import.meta.env.DEV && window.location.pathname === "/__dev/dealer-tablet" && DevDealerTabletPreview) {
+    return <BrowserRouter><Suspense fallback={<RouteLoader />}><DevDealerTabletPreview /></Suspense></BrowserRouter>;
   }
 
   if (isTrackerVoiceUatPreviewRoute && DevTrackerVoiceV0Preview) {

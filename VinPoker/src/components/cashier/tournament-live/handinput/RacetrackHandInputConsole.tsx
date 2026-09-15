@@ -37,6 +37,8 @@ import { HandGuideDrawer } from "./HandGuideDrawer";
 import { TrackerSoundToggle } from "./TrackerSoundToggle";
 import { OperatorActionLog } from "./OperatorActionLog";
 import { TrackerVoicePanelGate } from "@/components/tracker/voice/TrackerVoicePanelGate";
+import { DealerTabletCockpit } from "@/components/tracker/DealerTabletCockpit";
+import { useDealerTabletLandscape } from "@/hooks/useDealerTabletLandscape";
 import { formatStack } from "./format";
 import type { PlayerState, StandaloneHandInput } from "./useStandaloneHandInput";
 
@@ -76,6 +78,7 @@ function toSeatVMs(
 export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const tabletLandscape = useDealerTabletLandscape();
 
   // No table chosen → operator table picker (full screen).
   if (!hook.tableId) {
@@ -405,6 +408,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
       </div>
     ) : (
       <TrackerRacetrack
+        portrait={FEATURES.trackerTabletLayout && tabletLandscape ? false : undefined}
         seats={seatVMs}
         actingSeatNumber={hook.actorPlayer?.seat_number ?? null}
         dealerSeatNumber={hook.buttonSeat}
@@ -502,33 +506,14 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
 
   // LOG
   const logBlock = <OperatorActionLog actions={hook.actions} communityCards={hook.communityCards} />;
-  const voiceBlock = FEATURES.trackerVoiceInput ? <TrackerVoicePanelGate hook={hook} /> : null;
+  const voiceBlock = FEATURES.trackerVoiceInput ? <TrackerVoicePanelGate hook={hook} compact={FEATURES.trackerTabletLayout} /> : null;
 
   // A4: flag ON → at ≥xl the felt sits in a LEFT column and the guided region + log in a
   // fixed RIGHT column (both visible without scrolling); below xl it's the single column.
   // xl (not lg) so the wide 13/6 racetrack keeps a comfortable width. Flag OFF → the exact
   // single-column order below, byte-identical to before.
   if (FEATURES.trackerTabletLayout) {
-    return (
-      <div className="mx-auto w-full max-w-[1500px]">
-        <div className="flex flex-col gap-3">
-          {headerBlock}
-          {orphanBlock}
-        </div>
-        <div className="mt-3 flex flex-col gap-3 min-[1200px]:grid min-[1200px]:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] min-[1200px]:items-start min-[1200px]:gap-4">
-          <div className="flex flex-col gap-3">
-            {progressBlock}
-            {feltBlock}
-            {boardBlock}
-          </div>
-          <div className="flex flex-col gap-2">
-            {voiceBlock}
-            {guidedBlock}
-            {logBlock}
-          </div>
-        </div>
-      </div>
-    );
+    return <DealerTabletCockpit key={hook.tournamentTableId ?? hook.tableId} hook={hook} header={headerBlock} orphan={orphanBlock} progress={progressBlock} felt={feltBlock} board={boardBlock} voice={voiceBlock} guided={guidedBlock} log={logBlock} />;
   }
 
   return (

@@ -10,7 +10,7 @@ import { TrackerVoicePanel } from "./TrackerVoicePanel";
  * The build flag only enables this read-only server gate. The server remains
  * authoritative for the exact table, active dealer assignment, and Voice mode.
  */
-export function TrackerVoicePanelGate({ hook }: { hook: StandaloneHandInput }) {
+export function TrackerVoicePanelGate({ hook, compact = false }: { hook: StandaloneHandInput; compact?: boolean }) {
   const [runtime, setRuntime] = useState<TrackerVoiceRuntimeContext | null>(null);
 
   useEffect(() => {
@@ -37,5 +37,5 @@ export function TrackerVoicePanelGate({ hook }: { hook: StandaloneHandInput }) {
     };
   }, [hook.tournamentId, hook.tournamentTableId]);
 
-  return isTrackerVoiceUiEnabled(runtime) ? <TrackerVoicePanel hook={hook} /> : null;
+  return isTrackerVoiceUiEnabled(runtime) ? <TrackerVoicePanel hook={hook} compact={compact} /> : compact ? <p className="rounded-xl border border-amber-300/20 p-4 text-xs text-amber-100/80">Voice chưa khả dụng. Kiểm tra cấu hình bàn và phân công Dealer.</p> : null;
 }
