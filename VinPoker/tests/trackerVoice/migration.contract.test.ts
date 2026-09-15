@@ -23,6 +23,8 @@ const voiceHashMigrationName =
   "20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql";
 const providerEventIdempotencyMigrationName =
   "20270114000009_tracker_voice_provider_event_idempotency.sql";
+const coveringStackHoleCardsMigrationName =
+  "20270114000010_tracker_voice_covering_stack_hole_cards.sql";
 const migration = readFileSync(
   resolve(root, "supabase/migrations", migrationName),
   "utf8",
@@ -53,6 +55,10 @@ const voiceHashMigration = readFileSync(
 ).replace(/\r\n/g, "\n");
 const providerEventIdempotencyMigration = readFileSync(
   resolve(root, "supabase/migrations", providerEventIdempotencyMigrationName),
+  "utf8",
+).replace(/\r\n/g, "\n");
+const coveringStackHoleCardsMigration = readFileSync(
+  resolve(root, "supabase/migrations", coveringStackHoleCardsMigrationName),
   "utf8",
 ).replace(/\r\n/g, "\n");
 const seriesMigration = readFileSync(
@@ -160,6 +166,9 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(activeNames.filter((name) => name.startsWith("20270114000009_"))).toEqual([
       providerEventIdempotencyMigrationName,
     ]);
+    expect(activeNames.filter((name) => name.startsWith("20270114000010_"))).toEqual([
+      coveringStackHoleCardsMigrationName,
+    ]);
     expect(activeNames).toContain(migrationName);
     expect(activeNames).toContain(geminiMigrationName);
     expect(activeNames).toContain(transcribeBindingMigrationName);
@@ -168,6 +177,16 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(activeNames).toContain(finishAssistMigrationName);
     expect(activeNames).toContain(voiceHashMigrationName);
     expect(activeNames).toContain(providerEventIdempotencyMigrationName);
+    expect(activeNames).toContain(coveringStackHoleCardsMigrationName);
+  });
+
+  it("adds covering-stack Hole Cards authority as a forward-only migration", () => {
+    expect(coveringStackHoleCardsMigration).toContain("BEGIN;");
+    expect(coveringStackHoleCardsMigration).toContain("COMMIT;");
+    expect(coveringStackHoleCardsMigration).toContain("tracker_voice_covering_stack_hole_cards_precondition_failed");
+    expect(coveringStackHoleCardsMigration).toContain("_tracker_voice_runout_reveal_authoritative_v1");
+    expect(coveringStackHoleCardsMigration).toContain("TO service_role");
+    expect(workflow).toContain(coveringStackHoleCardsMigrationName);
   });
 
   it("deduplicates immutable provider events independently of a regenerated browser key", () => {
