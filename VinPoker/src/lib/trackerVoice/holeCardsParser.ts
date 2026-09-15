@@ -17,6 +17,11 @@ const SEAT_NUMBERS: Readonly<Record<string, number>> = {
 
 const HOLE_CARD_OWNERSHIP_WORDS = new Set(["cam", "co"]);
 
+/** Exact runout-only voice acknowledgement; callers still own workflow authority. */
+export function isVoiceHoleCardsConfirmCommand(rawTranscript: string): boolean {
+  return normalizeTrackerVoiceTranscript(rawTranscript) === "xac nhan";
+}
+
 function parseExplicitSeatPrefix(tokens: readonly string[]): {
   seatNumber: number;
   cardsStartIndex: number;

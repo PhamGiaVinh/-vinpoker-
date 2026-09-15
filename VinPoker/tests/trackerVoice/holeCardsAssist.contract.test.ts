@@ -46,7 +46,8 @@ describe("Tracker Voice Hole Cards Assist contract", () => {
     expect(panel).toContain("PrivateHoleCardsAttempt");
     expect(panel).toContain("looksLikePrivateHoleCardsTranscript");
     expect(panel).not.toContain("privateHoleCardsAttempt:");
-    expect(panel).toContain("CẦN CHẠM XÁC NHẬN · CHƯA GHI BÀI");
+    expect(panel).toContain("CHƯA GHI BÀI · NÓI “XÁC NHẬN”");
+    expect(panel).toContain("isVoiceHoleCardsConfirmCommand");
   });
 
   it("allows one matched covering stack without allowing an early reveal", () => {
