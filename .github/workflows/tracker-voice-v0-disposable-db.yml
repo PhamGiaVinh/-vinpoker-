@@ -25,6 +25,7 @@ on:
       - "VinPoker/supabase/migrations/20270114000003_tracker_voice_snake_case_canonical_hash_v2.sql"
       - "VinPoker/supabase/migrations/20270114000004_tracker_voice_floor_mode_global_rollout.sql"
       - "VinPoker/supabase/migrations/20270114000009_tracker_voice_provider_event_idempotency.sql"
+      - "VinPoker/supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
@@ -239,6 +240,16 @@ jobs:
               'public._tracker_voice_register_validated_event(uuid,uuid,uuid,uuid,text,text,text,numeric,text,jsonb,text,text,text,text,text,boolean,text)'::regprocedure
             )) > 0")" = "t"
           echo "TRACKER_VOICE_14000009_APPLY=PASS"
+          createdb tracker_voice_v0_before_14000010 -T tracker_voice_v0
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql
+          test "$(psql -X -At -d tracker_voice_v0 -c \
+            "SELECT to_regprocedure('public._tracker_voice_runout_reveal_authoritative_v1(uuid)') IS NOT NULL
+                    AND position('_tracker_voice_runout_reveal_authoritative_v1' IN pg_get_functiondef(
+                      'public.commit_tracker_voice_hole_cards_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,integer,jsonb)'::regprocedure
+                    )) > 0
+                    AND NOT has_function_privilege('authenticated', 'public.commit_tracker_voice_hole_cards_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,integer,jsonb)', 'EXECUTE')")" = "t"
+          echo "TRACKER_VOICE_14000010_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f tests/trackerVoice/currentP0VoiceChain.integration.sql
 
@@ -256,6 +267,8 @@ jobs:
             -f supabase/migrations/20270114000004_tracker_voice_floor_mode_global_rollout.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f supabase/migrations/20270114000009_tracker_voice_provider_event_idempotency.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f tests/trackerVoice/voiceHashV2.integration.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
@@ -438,6 +451,21 @@ jobs:
           test "$before_provider_event_guard" = "t"
           test "$after_provider_event_guard" = "t"
           echo "TRACKER_VOICE_14000009_ROLLBACK=PASS"
+          failing="$RUNNER_TEMP/tracker-voice-14000010-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
+            supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql > "$failing"
+          before_hole_cards="$(psql -X -At -d tracker_voice_v0_before_14000010 -c \
+            "SELECT md5(pg_get_functiondef('public.commit_tracker_voice_hole_cards_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,integer,jsonb)'::regprocedure))")"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_14000010 -f "$failing"; then
+            echo "Injected 14000010 migration unexpectedly committed" >&2
+            exit 1
+          fi
+          after_hole_cards="$(psql -X -At -d tracker_voice_v0_before_14000010 -c \
+            "SELECT md5(pg_get_functiondef('public.commit_tracker_voice_hole_cards_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,integer,jsonb)'::regprocedure))")"
+          test "$before_hole_cards" = "$after_hole_cards"
+          test "$(psql -X -At -d tracker_voice_v0_before_14000010 -c \
+            "SELECT to_regprocedure('public._tracker_voice_runout_reveal_authoritative_v1(uuid)') IS NULL")" = "t"
+          echo "TRACKER_VOICE_14000010_ROLLBACK=PASS"
           echo "TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS"
 
       - name: Run focused Voice, Analytics and contract tests

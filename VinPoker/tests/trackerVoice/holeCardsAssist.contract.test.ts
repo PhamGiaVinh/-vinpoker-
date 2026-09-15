@@ -7,7 +7,12 @@ const migration = readFileSync(resolve(
   root,
   "supabase/migrations/20270114000001_tracker_voice_hole_cards_atomic_confirm_v0.sql",
 ), "utf8");
+const coveringStackMigration = readFileSync(resolve(
+  root,
+  "supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql",
+), "utf8");
 const edge = readFileSync(resolve(root, "supabase/functions/tournament-live-update/index.ts"), "utf8");
+const api = readFileSync(resolve(root, "src/lib/trackerVoice/api.ts"), "utf8");
 const panel = readFileSync(resolve(root, "src/components/tracker/voice/TrackerVoicePanel.tsx"), "utf8");
 
 describe("Tracker Voice Hole Cards Assist contract", () => {
@@ -42,6 +47,23 @@ describe("Tracker Voice Hole Cards Assist contract", () => {
     expect(panel).toContain("looksLikePrivateHoleCardsTranscript");
     expect(panel).not.toContain("privateHoleCardsAttempt:");
     expect(panel).toContain("CẦN CHẠM XÁC NHẬN · CHƯA GHI BÀI");
+  });
+
+  it("allows one matched covering stack without allowing an early reveal", () => {
+    expect(coveringStackMigration).toContain("_tracker_voice_runout_reveal_authoritative_v1");
+    expect(coveringStackMigration).toContain("state.all_in_count >= 1");
+    expect(coveringStackMigration).toContain("state.covering_count <= 1");
+    expect(coveringStackMigration).toContain("player.committed < aggregate_state.highest_commitment");
+    expect(coveringStackMigration).toContain("runout_reveal_not_authoritative");
+    expect(coveringStackMigration).not.toMatch(/DROP\s+(TABLE|FUNCTION)|TRUNCATE|DELETE\s+FROM/i);
+  });
+
+  it("surfaces canonical Hole Cards denials instead of a successful Edge envelope", () => {
+    expect(edge).toMatch(
+      /action === "commit_voice_hole_cards"[\s\S]*?status: 409/,
+    );
+    expect(api).toContain("await throwEdgeFunctionError");
+    expect(api).toContain('receipt?.ok === false && typeof receipt.error === "string"');
   });
 
   it("keeps the Hole Cards migration specific while Finish is added separately", () => {
