@@ -60,4 +60,3 @@ describe("public spectator v2 boundary", () => {
     expect(migration).not.toMatch(/INSERT\s+INTO\s+public\.tournament_eliminations/i);
   });
 });
-
