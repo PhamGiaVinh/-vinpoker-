@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { routeTrackerVoiceIntent } from "./intentRouter";
 import {
+  isVoiceHoleCardsConfirmCommand,
   looksLikePrivateHoleCardsTranscript,
   parseVoiceHoleCardsCommand,
   resolveNextVoiceHoleCardsSeatNumber,
@@ -25,6 +26,13 @@ const RUNOUT: VoiceHoleCardsProposalContext = {
 };
 
 describe("Voice Hole Cards grammar", () => {
+  it("accepts only the exact Vietnamese voice acknowledgement", () => {
+    expect(isVoiceHoleCardsConfirmCommand("xác nhận")).toBe(true);
+    expect(isVoiceHoleCardsConfirmCommand("XAC NHAN")).toBe(true);
+    expect(isVoiceHoleCardsConfirmCommand("xác nhận bài")).toBe(false);
+    expect(isVoiceHoleCardsConfirmCommand("confirm")).toBe(false);
+  });
+
   it.each([
     ["Seat 8 Át cơ, Át bích", 8, ["Ah", "As"]],
     ["Seat eight ace hearts ace spades", 8, ["Ah", "As"]],

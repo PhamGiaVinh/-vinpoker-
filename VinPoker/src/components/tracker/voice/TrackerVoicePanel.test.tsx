@@ -61,6 +61,11 @@ const runtimeFixture: TrackerVoiceRuntimeContext = {
   },
 };
 
+const handsFreeRuntimeFixture: TrackerVoiceRuntimeContext = {
+  ...runtimeFixture,
+  config: { ...runtimeFixture.config, server_auto_allowed: true },
+};
+
 const validatedReceipt: ValidatedVoiceEventReceipt = {
   ok: true,
   voice_event_id: "voice-event-1",
@@ -242,6 +247,186 @@ describe("TrackerVoicePanel", () => {
     expect(applyVoiceBoardReceipt).toHaveBeenCalledOnce();
   });
 
+  it("auto-commits a validated Assist action after the visible three-second countdown", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const handleVoiceAction = vi.fn(async () => true);
+    render(
+      <TrackerVoicePanel
+        hook={{ ...hookFixture(), handleVoiceAction }}
+        providerOverride={provider}
+        runtimeOverride={handsFreeRuntimeFixture}
+        validateEventOverride={vi.fn(async () => ({ ...validatedReceipt, execution_mode: "assist" as const }))}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "assist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("seat three call", { final: true, id: "hands-free-countdown" }));
+
+    expect(await screen.findByRole("timer", { name: "Đếm ngược tự ghi action" })).toBeInTheDocument();
+    expect(handleVoiceAction).not.toHaveBeenCalled();
+    await waitFor(() => expect(handleVoiceAction).toHaveBeenCalledOnce(), { timeout: 4_000 });
+    expect(await screen.findByText(/Canonical receipt đã được Viewer\/Replay nhận/)).toBeInTheDocument();
+  });
+
+  it("commits the pending action before accepting the next spoken poker action", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const handleVoiceAction = vi.fn(async () => true);
+    const validateEventOverride = vi.fn(async (input) => ({
+      ...validatedReceipt,
+      voice_event_id: `voice-${input.finalTranscript}`,
+      execution_mode: "assist" as const,
+    }));
+    render(
+      <TrackerVoicePanel
+        hook={{ ...hookFixture(), handleVoiceAction }}
+        providerOverride={provider}
+        runtimeOverride={handsFreeRuntimeFixture}
+        validateEventOverride={validateEventOverride}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "assist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("seat three call", { final: true, id: "hands-free-first" }));
+    await screen.findByRole("timer", { name: "Đếm ngược tự ghi action" });
+
+    act(() => provider.emit("seat three fold", { final: true, id: "hands-free-next" }));
+    await waitFor(() => expect(handleVoiceAction).toHaveBeenCalledOnce());
+    await waitFor(() => expect(validateEventOverride).toHaveBeenCalledTimes(2));
+    expect(validateEventOverride.mock.calls[1][0].finalTranscript).toBe("seat three fold");
+  });
+
+  it("cancels the pending hands-free action when Dealer says Báo sai", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const handleVoiceAction = vi.fn(async () => true);
+    render(
+      <TrackerVoicePanel
+        hook={{ ...hookFixture(), handleVoiceAction }}
+        providerOverride={provider}
+        runtimeOverride={handsFreeRuntimeFixture}
+        validateEventOverride={vi.fn(async () => ({ ...validatedReceipt, execution_mode: "assist" as const }))}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "assist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("seat three call", { final: true, id: "hands-free-cancel" }));
+    await screen.findByRole("timer", { name: "Đếm ngược tự ghi action" });
+
+    act(() => provider.emit("báo sai", { final: true, id: "hands-free-report-wrong" }));
+    await waitFor(() => expect(screen.queryByRole("timer", { name: "Đếm ngược tự ghi action" })).not.toBeInTheDocument());
+    await new Promise((resolve) => setTimeout(resolve, 3_100));
+    expect(handleVoiceAction).not.toHaveBeenCalled();
+  }, 8_000);
+
+  it("does not fast-commit the pending action for a seatless next command", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const handleVoiceAction = vi.fn(async () => true);
+    render(
+      <TrackerVoicePanel
+        hook={{ ...hookFixture(), handleVoiceAction }}
+        providerOverride={provider}
+        runtimeOverride={handsFreeRuntimeFixture}
+        validateEventOverride={vi.fn(async () => ({ ...validatedReceipt, execution_mode: "assist" as const }))}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "assist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("seat three call", { final: true, id: "hands-free-seat-bound" }));
+    await screen.findByRole("timer", { name: "Đếm ngược tự ghi action" });
+
+    act(() => provider.emit("call", { final: true, id: "hands-free-seatless-next" }));
+    expect(await screen.findByText("Action kế tiếp phải đọc rõ Ghế. Action đang chờ vẫn tiếp tục đếm ngược.")).toBeInTheDocument();
+    expect(handleVoiceAction).not.toHaveBeenCalled();
+    act(() => provider.emit("báo sai", { final: true, id: "hands-free-seatless-cancel" }));
+    await waitFor(() => expect(screen.queryByRole("timer", { name: "Đếm ngược tự ghi action" })).not.toBeInTheDocument());
+    expect(handleVoiceAction).not.toHaveBeenCalled();
+  });
+
+  it("auto-commits a validated Board through the existing atomic writer", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const applyVoiceBoardReceipt = vi.fn(() => true);
+    const commitBoardOverride = vi.fn(async () => ({
+      ok: true as const,
+      voice_event_id: "voice-board-auto",
+      canonical_receipt_event_id: "board-receipt-auto",
+      idempotency_key: "voice:board-auto",
+      trace_id: "voice-trace:board-auto",
+      street: "flop" as const,
+      previous_board: [],
+      community_cards: ["Ah", "5s", "2d"],
+      state_version_before: "a".repeat(64),
+      state_version_after: "b".repeat(64),
+    }));
+    const hook = {
+      ...hookFixture(),
+      currentStreet: "flop",
+      workflowState: "enter_flop",
+      showActionStep: false,
+      persistedBoardCount: 0,
+      communityCards: [null, null, null, null, null],
+      applyVoiceBoardReceipt,
+    } as StandaloneHandInput;
+    render(
+      <TrackerVoicePanel
+        hook={hook}
+        providerOverride={provider}
+        runtimeOverride={handsFreeRuntimeFixture}
+        validateEventOverride={vi.fn(async () => ({
+          ...validatedReceipt,
+          execution_mode: "assist" as const,
+          voice_event_id: "voice-board-auto",
+        }))}
+        commitBoardOverride={commitBoardOverride}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "assist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("flop át cơ năm bích hai rô", { final: true, id: "board-auto" }));
+
+    await waitFor(() => expect(commitBoardOverride).toHaveBeenCalledOnce());
+    expect(applyVoiceBoardReceipt).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "Xác nhận Flop" })).not.toBeInTheDocument();
+  });
+
+  it("offers a manual retry when hands-free Board commit fails", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const commitBoardOverride = vi.fn(async () => {
+      throw new Error("Board writer unavailable");
+    });
+    const hook = {
+      ...hookFixture(),
+      currentStreet: "flop",
+      workflowState: "enter_flop",
+      showActionStep: false,
+      persistedBoardCount: 0,
+      communityCards: [null, null, null, null, null],
+    } as StandaloneHandInput;
+    render(
+      <TrackerVoicePanel
+        hook={hook}
+        providerOverride={provider}
+        runtimeOverride={handsFreeRuntimeFixture}
+        validateEventOverride={vi.fn(async () => ({
+          ...validatedReceipt,
+          execution_mode: "assist" as const,
+          voice_event_id: "voice-board-retry",
+        }))}
+        commitBoardOverride={commitBoardOverride}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "assist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("flop át cơ năm bích hai rô", { final: true, id: "board-retry" }));
+
+    expect(await screen.findByText("Board writer unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Xác nhận Flop" })).toBeInTheDocument();
+  });
+
   it("keeps the canonical runout workflow after hole cards reveal moves the UI to flop entry", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const validateEventOverride = vi.fn(async () => ({
@@ -407,6 +592,63 @@ describe("TrackerVoicePanel", () => {
       input.canonicalRequest.intentDomain === "hole_cards" ? input.canonicalRequest.payload.seatNumber : null
     ))).toEqual([9, 8]);
     expect(applyVoiceHoleCardsReceipt).toHaveBeenCalledTimes(2);
+  });
+
+  it("queues either runout seat order and commits both after one spoken xác nhận", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const applyVoiceHoleCardsReceipt = vi.fn(() => true);
+    const commitHoleCardsOverride = vi.fn(async (input: CommitVoiceHoleCardsInput) => {
+      if (input.canonicalRequest.intentDomain !== "hole_cards") throw new Error("unexpected domain");
+      const payload = input.canonicalRequest.payload;
+      const stateVersionAfter = payload.seatNumber === 9 ? "b".repeat(64) : "c".repeat(64);
+      return {
+        ok: true as const,
+        voice_event_id: `voice-hole-${payload.seatNumber}`,
+        canonical_receipt_event_id: `hole-receipt-${payload.seatNumber}`,
+        idempotency_key: input.idempotencyKey,
+        trace_id: input.traceId,
+        seat_number: payload.seatNumber,
+        player_id: payload.expectedPlayerId,
+        entry_number: payload.expectedEntryNumber,
+        redacted: true as const,
+        state_version_before: input.expectedStateVersion,
+        state_version_after: stateVersionAfter,
+      };
+    });
+    const hook = {
+      ...hookFixture(),
+      workflowState: "runout_reveal",
+      showActionStep: false,
+      players: [
+        { player_id: "player-eight", display_name: "Player Eight", seat_number: 8, entry_number: 2 },
+        { player_id: "player-nine", display_name: "Player Nine", seat_number: 9, entry_number: 1 },
+      ],
+      playerHoleCards: {},
+      applyVoiceHoleCardsReceipt,
+    } as unknown as StandaloneHandInput;
+    render(
+      <TrackerVoicePanel
+        hook={hook}
+        providerOverride={provider}
+        runtimeOverride={handsFreeRuntimeFixture}
+        commitHoleCardsOverride={commitHoleCardsOverride}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "assist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+
+    act(() => provider.emit("Ghế 9 cầm Q dô Q tép", { final: true, id: "queue-hole-9" }));
+    expect(await screen.findByRole("button", { name: "Xác nhận bài Ghế 9" })).toBeInTheDocument();
+    act(() => provider.emit("Ghế 8 có K bích K cơ", { final: true, id: "queue-hole-8" }));
+    expect(await screen.findByRole("button", { name: "Xác nhận 2 ghế" })).toBeInTheDocument();
+    act(() => provider.emit("xác nhận", { final: true, id: "queue-confirm" }));
+
+    await waitFor(() => expect(commitHoleCardsOverride).toHaveBeenCalledTimes(2));
+    expect(commitHoleCardsOverride.mock.calls[0][0]).toMatchObject({ expectedStateVersion: "a".repeat(64) });
+    expect(commitHoleCardsOverride.mock.calls[1][0]).toMatchObject({ expectedStateVersion: "b".repeat(64) });
+    expect(applyVoiceHoleCardsReceipt).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("voice-private-hole-cards-proposal")).not.toBeInTheDocument();
   });
 
   it("keeps Finish as a server summary until one Dealer touch confirms it", async () => {

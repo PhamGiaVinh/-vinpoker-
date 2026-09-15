@@ -14,6 +14,7 @@ import {
   createTrackerVoiceGeminiProvider,
   createTrackerVoiceOpenAiProvider,
   isTrackerVoiceGeminiLiveModel,
+  isVoiceHoleCardsConfirmCommand,
   looksLikePrivateHoleCardsTranscript,
   MockRealtimeTranscriptionProvider,
   parseVoiceCommand,
@@ -102,6 +103,7 @@ interface VoiceFinishAttempt {
 }
 
 export const MIC_TEST_DURATION_MS = 30_000;
+export const ACTION_AUTO_COMMIT_MS = 3_000;
 const MAX_BUFFERED_TRANSCRIPTS = 20;
 const SPLIT_AMOUNT_CONTINUATION_MS = 4_000;
 
@@ -223,7 +225,8 @@ export function TrackerVoicePanel({
   const [validatedReceipt, setValidatedReceipt] = useState<ValidatedVoiceEventReceipt | null>(null);
   const [validatedProposal, setValidatedProposal] = useState<VoiceProposal | null>(null);
   const [finalAttempt, setFinalAttempt] = useState<VoiceEventAttempt | null>(null);
-  const [privateHoleCardsAttempt, setPrivateHoleCardsAttempt] = useState<PrivateHoleCardsAttempt | null>(null);
+  const [privateHoleCardsAttempts, setPrivateHoleCardsAttempts] = useState<PrivateHoleCardsAttempt[]>([]);
+  const [actionCountdownMs, setActionCountdownMs] = useState<number | null>(null);
   const [finishAttempt, setFinishAttempt] = useState<VoiceFinishAttempt | null>(null);
   const [confirmedHoleSeat, setConfirmedHoleSeat] = useState<number | null>(null);
   const [bufferedEvents, setBufferedEvents] = useState<VoiceTranscriptEvent[]>([]);
@@ -232,6 +235,12 @@ export function TrackerVoicePanel({
   const validationPromisesRef = useRef(new Map<string, Promise<ValidatedVoiceEventReceipt>>());
   const requestIdentitiesRef = useRef(new Map<string, { idempotencyKey: string; traceId: string }>());
   const assistCommitRef = useRef<Promise<boolean> | null>(null);
+  const privateHoleCardsAttemptsRef = useRef<PrivateHoleCardsAttempt[]>([]);
+  const handsFreeActionCommitRef = useRef<(() => Promise<boolean>) | null>(null);
+  const cancelPendingActionRef = useRef<(() => void) | null>(null);
+  const confirmBoardAssistRef = useRef<(() => Promise<void>) | null>(null);
+  const confirmHoleCardsQueueRef = useRef<(() => Promise<boolean>) | null>(null);
+  const autoBoardCommitEventRef = useRef<string | null>(null);
   const micTestMaxLevelRef = useRef(0);
   const micTestFinalCountRef = useRef(0);
   const micTestActiveRef = useRef(false);
@@ -281,17 +290,20 @@ export function TrackerVoicePanel({
   // Private card speech is invalidated on any authoritative hand transition.
   // The raw text stays in this state only until cancellation or successful commit.
   useEffect(() => {
-    if (!privateHoleCardsAttempt) return;
-    const stale = privateHoleCardsAttempt.proposal.expectedStateVersion !== runtime?.active_hand?.state_version
+    if (privateHoleCardsAttempts.length === 0 || validationState === "committing") return;
+    const stale = privateHoleCardsAttempts.some((attempt) => (
+      attempt.proposal.expectedStateVersion !== runtime?.active_hand?.state_version
+    ))
       || hook.workflowState !== "runout_reveal"
       || runtime?.correction_pending === true
       || hook.isReadOnly
       || runtime?.active_hand?.hand_id !== hook.handId;
     if (!stale) return;
-    setPrivateHoleCardsAttempt(null);
+    privateHoleCardsAttemptsRef.current = [];
+    setPrivateHoleCardsAttempts([]);
     setValidationState("idle");
     setValidationError("Đề xuất bài tẩy đã hết hiệu lực vì trạng thái bàn thay đổi.");
-  }, [hook.handId, hook.isReadOnly, hook.workflowState, privateHoleCardsAttempt, runtime?.active_hand?.hand_id, runtime?.active_hand?.state_version, runtime?.correction_pending]);
+  }, [hook.handId, hook.isReadOnly, hook.workflowState, privateHoleCardsAttempts, runtime?.active_hand?.hand_id, runtime?.active_hand?.state_version, runtime?.correction_pending, validationState]);
 
   useEffect(() => {
     if (!finishAttempt) return;
@@ -400,7 +412,8 @@ export function TrackerVoicePanel({
       playerId: player.player_id,
       seatNumber: player.seat_number,
       isFolded: Boolean(player.is_folded),
-      hasCards: (hook.playerHoleCards?.[player.player_id] ?? []).filter(Boolean).length === 2,
+      hasCards: (hook.playerHoleCards?.[player.player_id] ?? []).filter(Boolean).length === 2
+        || privateHoleCardsAttempts.some((attempt) => attempt.proposal.player.playerId === player.player_id),
     })),
     actions: (hook.actions ?? []).map((action) => ({
       street: action.street,
@@ -409,7 +422,7 @@ export function TrackerVoicePanel({
       seatNumber: action.seat_number,
     })),
     buttonSeat: hook.buttonSeat ?? 0,
-  }), [hook.actions, hook.buttonSeat, hook.playerHoleCards, hook.players]);
+  }), [hook.actions, hook.buttonSeat, hook.playerHoleCards, hook.players, privateHoleCardsAttempts]);
 
   const refreshRuntime = useCallback(async () => {
     if (!hook.tournamentTableId && !runtimeOverride) {
@@ -442,7 +455,10 @@ export function TrackerVoicePanel({
   useEffect(() => {
     validationGenerationRef.current += 1;
     setFinalAttempt(null);
-    setPrivateHoleCardsAttempt(null);
+    privateHoleCardsAttemptsRef.current = [];
+    setPrivateHoleCardsAttempts([]);
+    setActionCountdownMs(null);
+    autoBoardCommitEventRef.current = null;
     setConfirmedHoleSeat(null);
     setFinalTranscript("");
     setProposal(null);
@@ -521,6 +537,25 @@ export function TrackerVoicePanel({
       amountUnitConfirmed: unitConfirmed,
       impliedHoleCardsSeatNumber,
     });
+    if (isVoiceHoleCardsConfirmCommand(finalEvent.transcript)) {
+      setFinalTranscript("");
+      setProposal(null);
+      setValidatedProposal(null);
+      setValidatedReceipt(null);
+      setFinishAttempt(null);
+      if (
+        attemptMode !== "assist"
+        || attemptRuntime?.config.server_auto_allowed !== true
+        || localContext.workflowState !== "runout_reveal"
+        || privateHoleCardsAttemptsRef.current.length === 0
+      ) {
+        setValidationState("idle");
+        setValidationError("Chỉ nhận lệnh xác nhận khi đang có bài tẩy all-in chờ ghi.");
+        return;
+      }
+      void confirmHoleCardsQueueRef.current?.();
+      return;
+    }
     const finishCommand = route.ok && route.intentDomain === "finish_hand" ? route.command : null;
     if (finishCommand) {
       const finishProposal = resolveVoiceFinishProposal(finishCommand, {
@@ -538,7 +573,8 @@ export function TrackerVoicePanel({
       setProposal(null);
       setValidatedProposal(null);
       setValidatedReceipt(null);
-      setPrivateHoleCardsAttempt(null);
+      privateHoleCardsAttemptsRef.current = [];
+      setPrivateHoleCardsAttempts([]);
       setFinishAttempt(null);
       setValidationError(null);
       setProposalProviderEventId(finalEvent.providerEventId);
@@ -603,12 +639,32 @@ export function TrackerVoicePanel({
       setValidationError(null);
       setProposalProviderEventId(null);
       if (!privateProposal.ok || !attemptRuntime) {
-        setPrivateHoleCardsAttempt(null);
         setProposal(privateProposal);
         setValidationState("idle");
         return;
       }
-      setPrivateHoleCardsAttempt({ event: finalEvent, proposal: privateProposal, runtimeSnapshot: attemptRuntime });
+      const duplicateQueuedCard = privateHoleCardsAttemptsRef.current.some((attempt) => (
+        attempt.proposal.player.playerId !== privateProposal.player.playerId
+        && attempt.proposal.command.cards.some((card) => privateProposal.command.cards.includes(card))
+      ));
+      if (duplicateQueuedCard) {
+        setProposal({
+          ok: false,
+          command: null,
+          code: "duplicate_card",
+          message: "Bài tẩy vừa đọc trùng lá với ghế khác đang chờ xác nhận.",
+        });
+        setValidationState("idle");
+        return;
+      }
+      setPrivateHoleCardsAttempts((current) => {
+        const next = [
+          ...current.filter((attempt) => attempt.proposal.player.playerId !== privateProposal.player.playerId),
+          { event: finalEvent, proposal: privateProposal, runtimeSnapshot: attemptRuntime },
+        ];
+        privateHoleCardsAttemptsRef.current = next;
+        return next;
+      });
       setValidationState("validated");
       return;
     }
@@ -640,7 +696,6 @@ export function TrackerVoicePanel({
     const receivedAt = finalReceivedAtRef.current.get(finalEvent.providerEventId);
     setProposalLatencyMs(receivedAt === undefined ? null : Math.max(0, performance.now() - receivedAt));
     setFinalTranscript(finalEvent.transcript);
-    setPrivateHoleCardsAttempt(null);
     setFinishAttempt(null);
     setProposal(nextProposal);
     setProposalProviderEventId(finalEvent.providerEventId);
@@ -844,6 +899,46 @@ export function TrackerVoicePanel({
     pendingAmountPrefixRef.current = null;
     setAudioLevel(0);
     setStatusMessage(null);
+    const acceptFinalEvent = (finalEvent: VoiceTranscriptEvent, receivedAt: number) => {
+      setPartial("");
+      setProposal(null);
+      setProposalProviderEventId(null);
+      setProposalLatencyMs(null);
+      setFinalTranscript("");
+      setLastFinalProviderEventId(finalEvent.providerEventId);
+      setLastFinalCapturedAt(finalEvent.capturedAt);
+      finalReceivedAtRef.current.set(finalEvent.providerEventId, receivedAt);
+      setProviderConfidence(finalEvent.providerConfidence ?? null);
+      if (micTestActiveRef.current) micTestFinalCountRef.current += 1;
+      if (runtimeRef.current?.correction_pending) {
+        setBufferedEvents((current) => {
+          if (current.some((candidate) => candidate.providerEventId === finalEvent.providerEventId)) return current;
+          return [...current, finalEvent].slice(-MAX_BUFFERED_TRANSCRIPTS);
+        });
+        setBufferStatus("Transcript được giữ cục bộ. Voice sẽ không ghi action khi Floor chưa sửa xong.");
+        return;
+      }
+      void refreshRuntime().then((freshRuntime) => {
+        if (!freshRuntime) {
+          setValidationState("error");
+          setValidationError("Không tải lại được trạng thái bàn. Hãy thử nói lại action.");
+          return;
+        }
+        if (freshRuntime.correction_pending) {
+          setBufferedEvents((current) => {
+            if (current.some((candidate) => candidate.providerEventId === finalEvent.providerEventId)) return current;
+            return [...current, finalEvent].slice(-MAX_BUFFERED_TRANSCRIPTS);
+          });
+          setBufferStatus("Transcript được giữ cục bộ. Voice sẽ không ghi action khi Floor chưa sửa xong.");
+          return;
+        }
+        setFinalAttempt({
+          attemptId: `provider:${finalEvent.providerEventId}`,
+          event: finalEvent,
+          runtimeSnapshot: freshRuntime,
+        });
+      });
+    };
     try {
       await provider.connect({
         onStatus: (next, message) => {
@@ -877,49 +972,31 @@ export function TrackerVoicePanel({
             return;
           }
           const finalEvent = combinedEvent ?? event;
-          setPartial("");
-          setProposal(null);
-          setProposalProviderEventId(null);
-          setProposalLatencyMs(null);
-          setFinalTranscript("");
-          setPrivateHoleCardsAttempt(null);
-          setLastFinalProviderEventId(finalEvent.providerEventId);
-          setLastFinalCapturedAt(finalEvent.capturedAt);
-          finalReceivedAtRef.current.set(finalEvent.providerEventId, receivedAt);
-          setProviderConfidence(finalEvent.providerConfidence ?? null);
-          if (micTestActiveRef.current) micTestFinalCountRef.current += 1;
-          if (runtimeRef.current?.correction_pending) {
-            setBufferedEvents((current) => {
-              if (current.some((candidate) => candidate.providerEventId === finalEvent.providerEventId)) {
-                return current;
-              }
-              return [...current, finalEvent].slice(-MAX_BUFFERED_TRANSCRIPTS);
+          const pendingActionCommit = handsFreeActionCommitRef.current;
+          if (pendingActionCommit) {
+            const parsedNext = parseVoiceCommand(finalEvent.transcript, {
+              spokenAmountUnit: runtimeRef.current?.config.spoken_amount_unit ?? spokenAmountUnit,
+              amountUnitConfirmed: runtimeRef.current?.config.amount_unit_confirmed ?? amountUnitConfirmed,
             });
-            setBufferStatus("Transcript được giữ cục bộ. Voice sẽ không ghi action khi Floor chưa sửa xong.");
+            if (parsedNext?.kind === "report_wrong_action") {
+              cancelPendingActionRef.current?.();
+              return;
+            }
+            if (!parsedNext || parsedNext.kind === "call_floor") {
+              setValidationError("Action đang đếm ngược. Hãy đọc action hợp lệ tiếp theo hoặc nói Báo sai.");
+              return;
+            }
+            if (parsedNext.spokenSeatNumber === null) {
+              setValidationError("Action kế tiếp phải đọc rõ Ghế. Action đang chờ vẫn tiếp tục đếm ngược.");
+              return;
+            }
+            handsFreeActionCommitRef.current = null;
+            void pendingActionCommit().then((committed) => {
+              if (committed) acceptFinalEvent(finalEvent, receivedAt);
+            });
             return;
           }
-          void refreshRuntime().then((freshRuntime) => {
-            if (!freshRuntime) {
-              setValidationState("error");
-              setValidationError("Không tải lại được trạng thái bàn. Hãy thử nói lại action.");
-              return;
-            }
-            if (freshRuntime.correction_pending) {
-              setBufferedEvents((current) => {
-                if (current.some((candidate) => candidate.providerEventId === finalEvent.providerEventId)) {
-                  return current;
-                }
-                return [...current, finalEvent].slice(-MAX_BUFFERED_TRANSCRIPTS);
-              });
-              setBufferStatus("Transcript được giữ cục bộ. Voice sẽ không ghi action khi Floor chưa sửa xong.");
-              return;
-            }
-            setFinalAttempt({
-              attemptId: `provider:${finalEvent.providerEventId}`,
-              event: finalEvent,
-              runtimeSnapshot: freshRuntime,
-            });
-          });
+          acceptFinalEvent(finalEvent, receivedAt);
         },
         onLevel: (rms) => {
           const normalized = Math.max(0, Math.min(1, rms));
@@ -1059,6 +1136,7 @@ export function TrackerVoicePanel({
   };
 
   const assistAllowed = runtime?.config.configured_mode === "assist" || runtime?.config.configured_mode === "auto";
+  const handsFreeAssistEnabled = mode === "assist" && runtime?.config.server_auto_allowed === true;
   const autoAllowed = Boolean(
     FEATURES.trackerVoiceAutoCommit
     && runtime?.config.configured_mode === "auto"
@@ -1067,7 +1145,7 @@ export function TrackerVoicePanel({
     && providerConfidence !== null,
   );
 
-  const confirmAssist = async () => {
+  const confirmAssist = async (): Promise<boolean> => {
     if (
       !hook.tournamentTableId
       ||
@@ -1075,8 +1153,8 @@ export function TrackerVoicePanel({
       || !validatedReceipt
       || !validatedProposal?.ok
       || !("canonicalAction" in validatedProposal)
-    ) return;
-    if (assistCommitRef.current) return;
+    ) return false;
+    if (assistCommitRef.current) return assistCommitRef.current;
     setValidationState("committing");
     setValidationError(null);
     const actionProposal = validatedProposal as VoiceActionProposal;
@@ -1094,28 +1172,30 @@ export function TrackerVoicePanel({
       if (!committed) {
         setValidationState("error");
         setValidationError("Action không được canonical writer xác nhận. Hãy tải lại trạng thái bàn.");
-        return;
+        return false;
       }
       const readBack = await refreshRuntime();
       if (!readBack || readBack.active_hand?.hand_id !== hook.handId) {
         setValidationState("error");
         setValidationError("Action đã gửi nhưng không đọc lại được trạng thái bàn. Hãy tải lại trước khi tiếp tục.");
-        return;
+        return false;
       }
       if (!runtimeOverride && readBack.active_hand.state_version === validatedReceipt.state_version) {
         setValidationState("error");
         setValidationError("Server chưa xác nhận state version mới. Hãy tải lại trước khi tiếp tục.");
-        return;
+        return false;
       }
       setProposal(null);
       setValidatedProposal(null);
       setValidatedReceipt(null);
       setValidationState("committed");
+      return true;
     } catch (error) {
       setValidationState("error");
       setValidationError(error instanceof Error
         ? error.message
         : "Không thể xác nhận action Voice. Hãy tải lại trạng thái bàn.");
+      return false;
     } finally {
       assistCommitRef.current = null;
     }
@@ -1182,81 +1262,175 @@ export function TrackerVoicePanel({
     }
   };
 
-  const confirmHoleCardsAssist = async () => {
-    const privateAttempt = privateHoleCardsAttempt;
-    const expectedStateVersion = privateAttempt?.proposal.expectedStateVersion;
+  const cancelPendingAction = () => {
+    if (validationState === "committing") return;
+    validationGenerationRef.current += 1;
+    handsFreeActionCommitRef.current = null;
+    setActionCountdownMs(null);
+    setProposal(null);
+    setValidatedProposal(null);
+    setValidatedReceipt(null);
+    setValidationError(null);
+    setValidationState("idle");
+  };
+
+  const handsFreeActionReady = handsFreeAssistEnabled
+    && validationState === "validated"
+    && Boolean(validatedReceipt)
+    && Boolean(validatedProposal?.ok && "canonicalAction" in validatedProposal);
+
+  useEffect(() => {
+    handsFreeActionCommitRef.current = handsFreeActionReady ? confirmAssist : null;
+    cancelPendingActionRef.current = handsFreeActionReady ? cancelPendingAction : null;
+    confirmBoardAssistRef.current = confirmBoardAssist;
+  });
+
+  useEffect(() => {
+    if (!handsFreeActionReady) {
+      setActionCountdownMs(null);
+      return;
+    }
+
+    const deadline = performance.now() + ACTION_AUTO_COMMIT_MS;
+    setActionCountdownMs(ACTION_AUTO_COMMIT_MS);
+    const interval = window.setInterval(() => {
+      setActionCountdownMs(Math.max(0, deadline - performance.now()));
+    }, 100);
+    const timeout = window.setTimeout(() => {
+      window.clearInterval(interval);
+      setActionCountdownMs(0);
+      if (document.visibilityState !== "visible" || !navigator.onLine || statusRef.current !== "listening") {
+        handsFreeActionCommitRef.current = null;
+        setValidationError("Đã dừng tự ghi vì tab, mạng hoặc microphone không còn sẵn sàng.");
+        return;
+      }
+      const commit = handsFreeActionCommitRef.current;
+      handsFreeActionCommitRef.current = null;
+      void commit?.();
+    }, ACTION_AUTO_COMMIT_MS);
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+    };
+  }, [handsFreeActionReady]);
+
+  useEffect(() => {
+    const boardReady = handsFreeAssistEnabled
+      && validationState === "validated"
+      && Boolean(validatedReceipt)
+      && Boolean(validatedProposal?.ok
+        && "intentDomain" in validatedProposal
+        && validatedProposal.intentDomain === "board");
+    if (!boardReady || !validatedReceipt) return;
+    if (autoBoardCommitEventRef.current === validatedReceipt.voice_event_id) return;
+    if (document.visibilityState !== "visible" || !navigator.onLine || statusRef.current !== "listening") {
+      setValidationError("Board chưa tự ghi vì tab, mạng hoặc microphone không còn sẵn sàng.");
+      return;
+    }
+    autoBoardCommitEventRef.current = validatedReceipt.voice_event_id;
+    void confirmBoardAssistRef.current?.();
+  }, [handsFreeAssistEnabled, validationState, validatedProposal, validatedReceipt]);
+
+  const confirmHoleCardsAssist = async (): Promise<boolean> => {
+    const attempts = [...privateHoleCardsAttemptsRef.current];
     if (
-      !privateAttempt
-      || !expectedStateVersion
+      attempts.length === 0
       || !hook.tournamentTableId
       || mode !== "assist"
       || assistCommitRef.current
-    ) return;
+    ) return false;
+    const queuedCards = attempts.flatMap((attempt) => [...attempt.proposal.command.cards]);
+    if (new Set(queuedCards).size !== queuedCards.length) {
+      setValidationError("Các bài tẩy đang chờ có lá trùng nhau. Hãy hủy và đọc lại.");
+      return false;
+    }
     setValidationState("committing");
     setValidationError(null);
-    let identity = requestIdentitiesRef.current.get(privateAttempt.event.providerEventId);
-    if (!identity) {
-      identity = {
-        idempotencyKey: `voice:${crypto.randomUUID()}`,
-        traceId: `voice-trace:${crypto.randomUUID()}`,
-      };
-      requestIdentitiesRef.current.set(privateAttempt.event.providerEventId, identity);
-    }
+    const committedProviderEventIds = new Set<string>();
     const commit = (async () => {
-      const canonicalRequest = await buildVoiceHoleCardsCanonicalRequest({
-        rawTranscript: privateAttempt.event.transcript,
-        expectedStateVersion,
-        payload: {
-          seatNumber: privateAttempt.proposal.player.seatNumber,
-          expectedPlayerId: privateAttempt.proposal.player.playerId,
-          expectedEntryNumber: privateAttempt.proposal.player.entryNumber,
+      let currentRuntime = await refreshRuntime();
+      if (!currentRuntime?.active_hand || currentRuntime.active_hand.hand_id !== hook.handId) {
+        throw new Error("Không đọc lại được hand trước khi xác nhận bài tẩy.");
+      }
+      let lastSeat: number | null = null;
+      for (const privateAttempt of attempts) {
+        const expectedStateVersion = currentRuntime.active_hand.state_version;
+        let identity = requestIdentitiesRef.current.get(privateAttempt.event.providerEventId);
+        if (!identity) {
+          identity = {
+            idempotencyKey: `voice:${crypto.randomUUID()}`,
+            traceId: `voice-trace:${crypto.randomUUID()}`,
+          };
+          requestIdentitiesRef.current.set(privateAttempt.event.providerEventId, identity);
+        }
+        const canonicalRequest = await buildVoiceHoleCardsCanonicalRequest({
+          rawTranscript: privateAttempt.event.transcript,
+          expectedStateVersion,
+          payload: {
+            seatNumber: privateAttempt.proposal.player.seatNumber,
+            expectedPlayerId: privateAttempt.proposal.player.playerId,
+            expectedEntryNumber: privateAttempt.proposal.player.entryNumber,
+            cards: privateAttempt.proposal.command.cards,
+          },
+        });
+        const receipt = await commitHoleCardsOverride({
+          tournamentId: hook.tournamentId,
+          tournamentTableId: hook.tournamentTableId,
+          handId: hook.handId!,
+          finalTranscript: privateAttempt.event.transcript,
+          providerName: providerRef.current?.kind ?? "openai_realtime",
+          providerModel: privateAttempt.runtimeSnapshot.config.provider_model,
+          providerEventId: privateAttempt.event.providerEventId,
+          expectedStateVersion,
+          ...identity,
+          canonicalRequest,
+        });
+        if (!hook.applyVoiceHoleCardsReceipt({
+          receipt,
+          playerId: privateAttempt.proposal.player.playerId,
+          entryNumber: privateAttempt.proposal.player.entryNumber,
           cards: privateAttempt.proposal.command.cards,
-        },
-      });
-      const receipt = await commitHoleCardsOverride({
-        tournamentId: hook.tournamentId,
-        tournamentTableId: hook.tournamentTableId,
-        handId: hook.handId!,
-        finalTranscript: privateAttempt.event.transcript,
-        providerName: providerRef.current?.kind ?? "openai_realtime",
-        providerModel: privateAttempt.runtimeSnapshot.config.provider_model,
-        providerEventId: privateAttempt.event.providerEventId,
-        expectedStateVersion,
-        ...identity,
-        canonicalRequest,
-      });
-      if (!hook.applyVoiceHoleCardsReceipt({
-        receipt,
-        playerId: privateAttempt.proposal.player.playerId,
-        entryNumber: privateAttempt.proposal.player.entryNumber,
-        cards: privateAttempt.proposal.command.cards,
-      })) {
-        throw new Error("Receipt bài tẩy không khớp hand đang mở. Hãy tải lại bàn.");
+        })) {
+          throw new Error("Receipt bài tẩy không khớp hand đang mở. Hãy tải lại bàn.");
+        }
+        committedProviderEventIds.add(privateAttempt.event.providerEventId);
+        lastSeat = receipt.seat_number;
+        if (runtimeOverride) {
+          currentRuntime = {
+            ...currentRuntime,
+            active_hand: { ...currentRuntime.active_hand, state_version: receipt.state_version_after },
+          };
+        } else {
+          const readBack = await refreshRuntime();
+          if (!readBack?.active_hand || readBack.active_hand.hand_id !== hook.handId
+            || readBack.active_hand.state_version !== receipt.state_version_after) {
+            throw new Error("Bài tẩy đã gửi nhưng không đọc lại được trạng thái server. Hãy tải lại trước khi tiếp tục.");
+          }
+          currentRuntime = readBack;
+        }
       }
-      const readBack = await refreshRuntime();
-      if (!readBack || readBack.active_hand?.hand_id !== hook.handId
-        || (!runtimeOverride && readBack.active_hand.state_version !== receipt.state_version_after)) {
-        throw new Error("Bài tẩy đã gửi nhưng không đọc lại được trạng thái server. Hãy tải lại trước khi tiếp tục.");
-      }
-      return receipt;
+      return lastSeat;
     })();
     // Keep the single-flight guard settled even when the receipt request fails.
     // The original promise below still preserves the proposal and idempotency key for retry.
     assistCommitRef.current = commit.then(() => true, () => false);
     try {
-      const receipt = await commit;
-      // Purge the only React copy of raw speech immediately after authoritative success.
-      setPrivateHoleCardsAttempt(null);
-      setConfirmedHoleSeat(receipt.seat_number);
+      const lastSeat = await commit;
+      privateHoleCardsAttemptsRef.current = [];
+      setPrivateHoleCardsAttempts([]);
+      setConfirmedHoleSeat(lastSeat);
       setProposal(null);
       setValidatedProposal(null);
       setValidatedReceipt(null);
       setValidationState("committed");
+      return true;
     } catch (error) {
-      // Preserve the same private proposal and key so a later retry cannot create
-      // a second card mutation after an uncertain network response.
+      const remaining = attempts.filter((attempt) => !committedProviderEventIds.has(attempt.event.providerEventId));
+      privateHoleCardsAttemptsRef.current = remaining;
+      setPrivateHoleCardsAttempts(remaining);
       setValidationState("validated");
       setValidationError(error instanceof Error ? error.message : "Không thể xác nhận bài tẩy Voice.");
+      return false;
     } finally {
       assistCommitRef.current = null;
     }
@@ -1264,10 +1438,17 @@ export function TrackerVoicePanel({
 
   const cancelHoleCardsAssist = () => {
     if (validationState === "committing") return;
-    setPrivateHoleCardsAttempt(null);
+    privateHoleCardsAttemptsRef.current = [];
+    setPrivateHoleCardsAttempts([]);
     setValidationError(null);
     setValidationState("idle");
   };
+
+  useEffect(() => {
+    confirmHoleCardsQueueRef.current = handsFreeAssistEnabled && privateHoleCardsAttempts.length > 0
+      ? confirmHoleCardsAssist
+      : null;
+  });
 
   const confirmFinishAssist = async () => {
     const attempt = finishAttempt;
@@ -1596,10 +1777,12 @@ export function TrackerVoicePanel({
             <div className="mt-2 space-y-1 text-[11px] opacity-80">
               <div>Board đã lưu: {proposal.persistedBoardCards.join(" ") || "chưa có"}</div>
               <div>Board đề xuất: {proposal.cumulativeCards.join(" ")}</div>
-              <div className="font-semibold text-amber-100">CẦN CHẠM XÁC NHẬN · CHƯA GHI BOARD</div>
+              <div className="font-semibold text-amber-100">
+                {handsFreeAssistEnabled ? "ĐANG GHI BOARD QUA SERVER" : "CẦN CHẠM XÁC NHẬN · CHƯA GHI BOARD"}
+              </div>
             </div>
           )}
-          {providerConfidence === null && finalTranscript && (
+          {providerConfidence === null && finalTranscript && !handsFreeAssistEnabled && (
             <div className="mt-2 text-[10px] opacity-70">Provider không trả confidence tương thích: Auto bị khóa.</div>
           )}
           {validationState === "validating" && (
@@ -1614,13 +1797,33 @@ export function TrackerVoicePanel({
                 ? "Alert đã vào hàng đợi Floor."
                 : mode === "shadow"
                   ? "Shadow hợp lệ, không gọi server và chưa ghi action."
-                  : "Đã xác minh, chờ Dealer xác nhận."}
+                  : handsFreeAssistEnabled
+                    ? "Đã xác minh. Hands-free đang xử lý."
+                    : "Đã xác minh, chờ Dealer xác nhận."}
             </div>
           )}
+          {handsFreeAssistEnabled
+            && actionCountdownMs !== null
+            && validatedProposal?.ok
+            && "canonicalAction" in validatedProposal && (
+              <div className="mt-3 flex items-center gap-3" role="timer" aria-label="Đếm ngược tự ghi action">
+                <div
+                  className="grid h-12 w-12 shrink-0 place-items-center rounded-full p-[3px]"
+                  style={{ background: `conic-gradient(rgb(110 231 183) ${Math.max(0, actionCountdownMs / ACTION_AUTO_COMMIT_MS) * 360}deg, rgba(255,255,255,.1) 0deg)` }}
+                >
+                  <span className="grid h-full w-full place-items-center rounded-full bg-[#07110e] text-base font-black tabular-nums text-emerald-200">
+                    {Math.max(1, Math.ceil(actionCountdownMs / 1000))}
+                  </span>
+                </div>
+                <div className="text-[11px] leading-relaxed text-emerald-100/80">
+                  Tự ghi sau 3 giây. Đọc action kế tiếp để chốt ngay, hoặc nói “Báo sai”.
+                </div>
+              </div>
+            )}
           {validationError && <div className="mt-2 text-[11px] text-rose-200">{validationError}</div>}
         </div>
 
-        {privateHoleCardsAttempt && (
+        {privateHoleCardsAttempts.length > 0 && (
           <div
             className="rounded-xl border border-fuchsia-300/35 bg-fuchsia-300/[0.07] p-3 text-fuchsia-50"
             data-testid="voice-private-hole-cards-proposal"
@@ -1628,18 +1831,24 @@ export function TrackerVoicePanel({
             aria-atomic="true"
           >
             <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-fuchsia-200/80">Voice Hole Cards</div>
-            <div className="mt-1 text-sm font-semibold">
-              Ghế {privateHoleCardsAttempt.proposal.player.seatNumber} · {privateHoleCardsAttempt.proposal.player.playerName}
-            </div>
-            <div className="mt-3 flex gap-2" aria-label={`Bài tẩy đề xuất cho Ghế ${privateHoleCardsAttempt.proposal.player.seatNumber}`}>
-              {privateHoleCardsAttempt.proposal.command.cards.map((card) => (
-                <span key={card} className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-fuchsia-200/35 bg-black/25 px-3 font-mono text-lg font-black">
-                  {formatPrivateCard(card)}
-                </span>
+            <div className="mt-3 space-y-2">
+              {privateHoleCardsAttempts.map((attempt) => (
+                <div key={attempt.event.providerEventId} className="flex items-center justify-between gap-3 rounded-lg border border-fuchsia-200/20 bg-black/20 p-2">
+                  <div className="text-sm font-semibold">
+                    Ghế {attempt.proposal.player.seatNumber} · {attempt.proposal.player.playerName}
+                  </div>
+                  <div className="flex gap-2" aria-label={`Bài tẩy đề xuất cho Ghế ${attempt.proposal.player.seatNumber}`}>
+                    {attempt.proposal.command.cards.map((card) => (
+                      <span key={card} className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-fuchsia-200/35 bg-black/25 px-3 font-mono text-lg font-black">
+                        {formatPrivateCard(card)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
-            <p className="mt-3 text-[11px] font-semibold text-amber-100">CẦN CHẠM XÁC NHẬN · CHƯA GHI BÀI</p>
-            <p className="mt-1 text-[11px] text-fuchsia-100/70">Transcript chỉ giữ tạm trong trình duyệt cho tới khi xác nhận hoặc hủy.</p>
+            <p className="mt-3 text-[11px] font-semibold text-amber-100">CHƯA GHI BÀI · NÓI “XÁC NHẬN”</p>
+            <p className="mt-1 text-[11px] text-fuchsia-100/70">Các transcript riêng tư chỉ giữ trong trình duyệt cho tới khi xác nhận hoặc hủy.</p>
             {mode === "assist" ? (
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
@@ -1648,7 +1857,11 @@ export function TrackerVoicePanel({
                   disabled={validationState === "committing"}
                   className="min-h-11 rounded-xl bg-fuchsia-200 px-3 text-sm font-bold text-fuchsia-950 outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50"
                 >
-                  {validationState === "committing" ? "Đang xác nhận..." : `Xác nhận bài Ghế ${privateHoleCardsAttempt.proposal.player.seatNumber}`}
+                  {validationState === "committing"
+                    ? "Đang xác nhận..."
+                    : privateHoleCardsAttempts.length === 1
+                      ? `Xác nhận bài Ghế ${privateHoleCardsAttempts[0].proposal.player.seatNumber}`
+                      : `Xác nhận ${privateHoleCardsAttempts.length} ghế`}
                 </button>
                 <button
                   type="button"
@@ -1715,13 +1928,14 @@ export function TrackerVoicePanel({
           && "canonicalAction" in validatedProposal && (
             <button
               type="button"
-              onClick={confirmAssist}
+              onClick={() => void confirmAssist()}
               className="min-h-11 w-full rounded-xl bg-emerald-300 px-4 text-sm font-bold text-emerald-950 outline-none focus-visible:ring-2 focus-visible:ring-emerald-100"
             >
-              Xác nhận action
+              {handsFreeAssistEnabled ? "Chốt ngay" : "Xác nhận action"}
             </button>
           )}
         {mode === "assist"
+          && (!handsFreeAssistEnabled || Boolean(validationError))
           && validationState === "validated"
           && validatedProposal?.ok
           && "intentDomain" in validatedProposal
