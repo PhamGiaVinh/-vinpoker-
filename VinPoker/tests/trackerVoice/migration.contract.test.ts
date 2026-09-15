@@ -187,6 +187,7 @@ describe("Tracker Voice V0 migration contract", () => {
     expect(coveringStackHoleCardsMigration).toContain("_tracker_voice_runout_reveal_authoritative_v1");
     expect(coveringStackHoleCardsMigration).toContain("TO service_role");
     expect(workflow).toContain(coveringStackHoleCardsMigrationName);
+    expect(workflow).toContain("TRACKER_VOICE_14000010_CRLF_APPLY=PASS");
   });
 
   it("deduplicates immutable provider events independently of a regenerated browser key", () => {

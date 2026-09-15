@@ -102,6 +102,13 @@ $old$;
 $new$;
 BEGIN
   SELECT pg_get_functiondef(v_function) INTO v_definition;
+
+  -- pg_get_functiondef returns LF even when psql reads this migration from a
+  -- CRLF checkout. Normalize both sides before the guarded replacement.
+  v_definition := replace(v_definition, E'\r\n', E'\n');
+  v_old_authority := replace(v_old_authority, E'\r\n', E'\n');
+  v_new_authority := replace(v_new_authority, E'\r\n', E'\n');
+
   IF v_definition IS NULL
      OR strpos(v_definition, v_old_authority) = 0
      OR strpos(v_definition, '_tracker_voice_runout_reveal_authoritative_v1') > 0 THEN
