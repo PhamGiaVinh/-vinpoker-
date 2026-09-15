@@ -55,7 +55,7 @@ describe("Floor Table Control V3 writer convergence source guards", () => {
     expect(v3Map).toContain("breakTournamentTable");
     expect(v3Map).toContain('role="status"');
     expect(v3Map).toContain('role="alert"');
-    expect(v3Map).toContain("min-h-11");
+    expect(v3Map).toContain("min-h-12");
     expect(v3Map).not.toMatch(/functions\.invoke|from\(["']tournament_seats["']\)/);
   });
 });

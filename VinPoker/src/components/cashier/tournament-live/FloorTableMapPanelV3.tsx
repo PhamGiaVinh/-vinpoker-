@@ -5,6 +5,17 @@ import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { FloorEntryPicker, type FloorEntrySelection } from "@/components/ops/shared/FloorEntryPicker";
 import { FloorSeatRoster } from "@/components/ops/shared/FloorSeatRoster";
 import { FloorTableRosterIndex } from "@/components/ops/shared/FloorTableRosterIndex";
 import { FloorTableModePicker } from "@/components/ops/shared/FloorTableModePicker";
@@ -21,6 +32,7 @@ import type { Tournament } from "@/types/tournament";
 import { OpenTableDialog } from "./OpenTableDialog";
 
 type Mutation = () => Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }>;
+type PendingTableAction = "close" | "break";
 
 function v3ErrorMessage(error: string): string {
   switch (error) {
@@ -30,6 +42,26 @@ function v3ErrorMessage(error: string): string {
     case "seat_occupied": return "Ghế này vừa được sử dụng. Hãy tải lại.";
     case "insufficient_capacity": return "Không đủ ghế trống để đóng và chuyển người.";
     case "player_has_chips": return "Bàn Live Tracker chỉ cho phép loại khi chip bằng 0.";
+    case "tracker_chip_state_mismatch": return "Chip trên Floor và Live Tracker chưa khớp. Hãy tải lại trước khi loại người chơi.";
+    case "table_has_active_seats": return "Bàn vẫn còn người chơi. Hãy dùng “Đóng & chuyển người”.";
+    case "no_destination_table":
+    case "no_table_available": return "Chưa có bàn đích đủ ghế để chuyển toàn bộ người chơi.";
+    case "entry_not_found": return "Không tìm thấy entry này trong giải. Hãy tải lại danh sách người chơi.";
+    case "entry_not_active": return "Entry này không còn ở trạng thái có thể thao tác.";
+    case "entry_already_seated": return "Người chơi này đã có ghế ở một bàn khác.";
+    case "entry_not_seated":
+    case "no_active_v3_seat": return "Người chơi không còn ở ghế này. Hãy tải lại roster.";
+    case "table_not_found": return "Không tìm thấy bàn trong giải này.";
+    case "table_not_empty": return "Bàn vẫn còn người chơi. Hãy dùng “Đóng & chuyển người”.";
+    case "table_session_not_active":
+    case "table_session_mismatch": return "Phiên bàn đã đóng hoặc được mở lại. Hãy tải lại trước khi thao tác.";
+    case "destination_table_has_active_hand": return "Bàn đích đang có ván chạy nên chưa thể chuyển người.";
+    case "no_active_v3_tables": return "Giải chưa có bàn đích đang hoạt động.";
+    case "tournament_not_open": return "Giải chưa mở hoặc đã kết thúc nên thao tác bị chặn.";
+    case "actor_not_allowed": return "Tài khoản này không có quyền thao tác giải hoặc CLB này.";
+    case "game_table_scope_mismatch": return "Bàn vật lý không thuộc cùng CLB với giải.";
+    case "invalid_request": return "Yêu cầu thiếu thông tin hợp lệ. Hãy đóng màn hình và thử lại.";
+    case "IDEMPOTENCY_CONFLICT": return "Yêu cầu này đã được dùng cho một thao tác khác. Hãy thử lại.";
     case "STALE_TRACKER_CONTEXT": return "Phiên Live Tracker đã đổi. Không thể dùng trạng thái cũ.";
     case "FLOOR_TABLE_CONTROL_V3_DISABLED": return "Table Control V3 chưa được mở cho môi trường này.";
     default: return `Thao tác không thành công (${error}).`;
@@ -61,12 +93,13 @@ export function FloorTableMapPanelV3({
   const [openTable, setOpenTable] = useState(false);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [selectedSeatNumber, setSelectedSeatNumber] = useState<number | null>(null);
-  const [entryId, setEntryId] = useState("");
-  const [restoreEntryId, setRestoreEntryId] = useState("");
+  const [entrySelection, setEntrySelection] = useState<FloorEntrySelection | null>(null);
   const [moveDestinationId, setMoveDestinationId] = useState("");
   const [moveSeatNumber, setMoveSeatNumber] = useState<number | null>(null);
   const [modeOpen, setModeOpen] = useState(false);
   const [nextMode, setNextMode] = useState<"manual" | "tracker">("manual");
+  const [pendingBustSeat, setPendingBustSeat] = useState<FloorTableRosterSeat | null>(null);
+  const [pendingTableAction, setPendingTableAction] = useState<PendingTableAction | null>(null);
 
   const selectedTable = useMemo(
     () => tables.find((table) => table.tournamentTableId === selectedTableId) ?? null,
@@ -92,34 +125,47 @@ export function FloorTableMapPanelV3({
   }, [moveDestination]);
 
   const load = useCallback(async () => {
-    if (!v3.enabled) return;
+    if (!v3.enabled) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    const [roster, entries, restorable] = await Promise.all([
-      v3.getTournamentTableRoster(tournament.id),
-      v3.getSeatableEntries(tournament.id),
-      v3.getRestorableEntries(tournament.id),
-    ]);
-    if (roster.ok === false || entries.ok === false || restorable.ok === false) {
+    try {
+      const [roster, entries, restorable] = await Promise.all([
+        v3.getTournamentTableRoster(tournament.id),
+        v3.getSeatableEntries(tournament.id),
+        v3.getRestorableEntries(tournament.id),
+      ]);
+      if (roster.ok === false || entries.ok === false || restorable.ok === false) {
+        setTables([]);
+        setSeatableEntries([]);
+        setRestorableEntries([]);
+        const failure = roster.ok === false
+          ? roster.error
+          : entries.ok === false
+            ? entries.error
+            : restorable.ok === false
+              ? restorable.error
+              : "V3_STATE_LOAD_FAILED";
+        const message = `Không tải được dữ liệu bàn: ${v3ErrorMessage(failure)}`;
+        setLoadError(message);
+        toast.error(message);
+      } else {
+        setTables(roster.data);
+        setSeatableEntries(entries.data);
+        setRestorableEntries(restorable.data);
+        setLoadError(null);
+      }
+    } catch {
       setTables([]);
       setSeatableEntries([]);
       setRestorableEntries([]);
-      const failure = roster.ok === false
-        ? roster.error
-        : entries.ok === false
-          ? entries.error
-          : restorable.ok === false
-            ? restorable.error
-            : "V3_STATE_LOAD_FAILED";
-      const message = `Không tải được state V3: ${v3ErrorMessage(failure)}`;
+      const message = "Không thể kết nối để tải dữ liệu bàn. Hãy kiểm tra mạng và thử lại.";
       setLoadError(message);
       toast.error(message);
-    } else {
-      setTables(roster.data);
-      setSeatableEntries(entries.data);
-      setRestorableEntries(restorable.data);
-      setLoadError(null);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [tournament.id, v3]);
 
   useEffect(() => { void load(); }, [load, refreshTrigger]);
@@ -130,6 +176,14 @@ export function FloorTableMapPanelV3({
     if (current != null && (selectedTable.seats.some((seat) => seat.seatNumber === current) || emptySeatNumbers.includes(current))) return;
     setSelectedSeatNumber(null);
   }, [emptySeatNumbers, selectedSeatNumber, selectedTable]);
+
+  useEffect(() => {
+    setEntrySelection(null);
+    setMoveDestinationId("");
+    setMoveSeatNumber(null);
+    setPendingBustSeat(null);
+    setPendingTableAction(null);
+  }, [selectedSeatNumber, selectedTableId]);
 
   const selectedTableSessionId = selectedTable?.tableSessionId ?? null;
   const selectedTableControlMode = selectedTable?.controlMode ?? null;
@@ -145,21 +199,31 @@ export function FloorTableMapPanelV3({
     setMoveSeatNumber(destinationSeatNumbers[0] ?? null);
   }, [destinationSeatNumbers, moveDestination]);
 
-  const run = async (successMessage: string, mutation: Mutation) => {
-    if (busy) return;
+  const run = async (successMessage: string, mutation: Mutation): Promise<boolean> => {
+    if (busy) return false;
     setBusy(true);
-    const result = await mutation();
-    if (result.ok === false) {
-      const message = v3ErrorMessage(result.error);
-      setOperationError(message);
-      toast.error(message);
-      await load();
-    } else {
+    try {
+      const result = await mutation();
+      if (result.ok === false) {
+        const message = v3ErrorMessage(result.error);
+        setOperationError(message);
+        toast.error(message);
+        await load();
+        return false;
+      }
       setOperationError(null);
       toast.success(successMessage);
       await load();
+      return true;
+    } catch {
+      const message = "Mất kết nối khi thao tác. Chưa xác nhận thay đổi; hãy tải lại để kiểm tra trạng thái bàn.";
+      setOperationError(message);
+      toast.error(message);
+      await load();
+      return false;
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   const selectedRosterSeats = useMemo(() => selectedTable?.seats.map((seat) => ({
@@ -181,6 +245,7 @@ export function FloorTableMapPanelV3({
 
   const seatAction = (seat: FloorTableRosterSeat | undefined) => {
     if (!seat || !selectedTable) return null;
+    const trackerChipBlocked = selectedTable.controlMode === "tracker" && seat.chipCount !== 0;
     return (
       <section className="space-y-3 rounded-2xl border border-border bg-card/55 p-3" aria-label="Thao tác người chơi">
         <div>
@@ -190,7 +255,7 @@ export function FloorTableMapPanelV3({
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="grid gap-1 text-xs text-muted-foreground">
             Chuyển tới bàn
-            <select className="h-11 rounded-md border border-input bg-background px-2 text-sm text-foreground" value={moveDestinationId} onChange={(event) => setMoveDestinationId(event.target.value)}>
+            <select className="h-12 rounded-md border border-input bg-background px-2 text-base text-foreground" value={moveDestinationId} onChange={(event) => setMoveDestinationId(event.target.value)}>
               <option value="">Chọn bàn đích</option>
               {tables.filter((table) => table.tournamentTableId !== selectedTable.tournamentTableId).map((table) => (
                 <option key={table.tournamentTableId} value={table.tournamentTableId}>Bàn {table.tableNumber} · {table.seats.length}/9</option>
@@ -199,14 +264,14 @@ export function FloorTableMapPanelV3({
           </label>
           <label className="grid gap-1 text-xs text-muted-foreground">
             Ghế đích
-            <select className="h-11 rounded-md border border-input bg-background px-2 text-sm text-foreground" value={moveSeatNumber ?? ""} onChange={(event) => setMoveSeatNumber(Number(event.target.value))} disabled={!moveDestination}>
+            <select className="h-12 rounded-md border border-input bg-background px-2 text-base text-foreground" value={moveSeatNumber ?? ""} onChange={(event) => setMoveSeatNumber(Number(event.target.value))} disabled={!moveDestination}>
               <option value="">Chọn ghế</option>
               {destinationSeatNumbers.map((seatNumber) => <option key={seatNumber} value={seatNumber}>Ghế {seatNumber}</option>)}
             </select>
           </label>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Button data-ops-action="floor.player.move" className="min-h-11" disabled={busy || !moveDestination || moveSeatNumber == null} onClick={() => void run("Đã chuyển người chơi.", () => v3.movePlayerSeat({
+          <Button data-ops-action="floor.player.move" className="min-h-12" disabled={busy || !moveDestination || moveSeatNumber == null} onClick={() => void run("Đã chuyển người chơi.", () => v3.movePlayerSeat({
             entryId: seat.entryId,
             toTournamentTableId: moveDestination!.tournamentTableId,
             toSeatNumber: moveSeatNumber!,
@@ -216,17 +281,15 @@ export function FloorTableMapPanelV3({
           }))}>
             <ArrowRightLeft className="mr-2 h-4 w-4" /> Chuyển ghế
           </Button>
-          <Button data-ops-action="floor.player.bust" variant="destructive" className="min-h-11" disabled={busy} onClick={() => void run("Đã loại người chơi khỏi giải.", () => v3.bustPlayer({
-            entryId: seat.entryId,
-            expectedRevision: selectedTable.sessionRevision,
-            expectedControlEpoch: selectedTable.controlEpoch,
-            expectedChipCount: seat.chipCount,
-            requestId: crypto.randomUUID(),
-            reason: "floor_v3_operator_bust",
-          }))}>
+          <Button data-ops-action="floor.player.open_bust" variant="destructive" className="min-h-12" disabled={busy || trackerChipBlocked} onClick={() => setPendingBustSeat(seat)}>
             <UserRoundX className="mr-2 h-4 w-4" /> Loại khỏi giải
           </Button>
         </div>
+        {trackerChipBlocked && (
+          <p className="rounded-xl border border-amber-400/25 bg-amber-400/5 px-3 py-2 text-xs leading-5 text-amber-100/90">
+            Live Tracker chỉ cho loại khi chip đã về 0. Hãy hoàn tất chip ở Tracker rồi tải lại.
+          </p>
+        )}
       </section>
     );
   };
@@ -243,12 +306,12 @@ export function FloorTableMapPanelV3({
     <Card className="space-y-4 p-3 sm:p-4" data-testid="floor-table-map-v3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold"><span className="rounded-full bg-primary/15 px-2 py-0.5 font-mono text-xs text-primary">V3</span> Kho bàn & roster</h2>
-          <p className="mt-1 text-xs text-muted-foreground">State chỉ đọc từ session/assignment V3; không dùng mixed legacy table ID.</p>
+          <h2 className="text-base font-semibold">Bàn đang sử dụng</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Mỗi bàn hiển thị một phiên đang hoạt động của giải này.</p>
         </div>
         <div className="flex gap-2">
-          <Button data-ops-action="floor.tables.refresh" size="sm" variant="outline" className="min-h-11" disabled={loading || busy} onClick={() => void load()}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Làm mới</Button>
-          <Button data-ops-action="floor.tables.open_table_dialog" size="sm" className="min-h-11" disabled={busy} onClick={() => setOpenTable(true)}><Plus className="mr-2 h-4 w-4" /> Mở bàn</Button>
+          <Button data-ops-action="floor.tables.refresh" size="sm" variant="outline" className="min-h-12" disabled={loading || busy} onClick={() => void load()}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Làm mới</Button>
+          <Button data-ops-action="floor.tables.open_table_dialog" size="sm" className="min-h-12" disabled={busy} onClick={() => setOpenTable(true)}><Plus className="mr-2 h-4 w-4" /> Mở bàn</Button>
         </div>
       </div>
 
@@ -258,28 +321,33 @@ export function FloorTableMapPanelV3({
       {loading ? (
         <div role="status" aria-live="polite" aria-busy="true" className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> Đang tải roster V3…</div>
       ) : tables.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Chưa có bàn V3 active. Chọn “Mở bàn” để lấy bàn vật lý còn trống.</div>
+        <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Chưa có bàn đang hoạt động. Chọn “Mở bàn” để lấy một bàn vật lý còn trống.</div>
       ) : (
         <FloorTableRosterIndex tables={tableIndex} onOpen={(tableId) => { setSelectedTableId(tableId); setSelectedSeatNumber(null); }} />
       )}
 
       <p className="flex items-start gap-2 rounded-xl border border-amber-400/25 bg-amber-400/5 p-3 text-xs leading-5 text-amber-100/90">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
-        Live Tracker đang giữ an toàn cho tới khi runtime Edge chuyển đủ fencing tuple V3. Trong Preview này Floor V3 chỉ mở Manual; không fallback sang writer cũ.
+        Live Tracker chỉ nhận thao tác khi đúng phiên bàn hiện tại. Floor không tự chuyển sang writer cũ nếu phiên đã thay đổi.
       </p>
 
       <OpenTableDialog open={openTable} onOpenChange={setOpenTable} tournamentId={tournament.id} onDone={() => void load()} />
 
       <Sheet open={selectedTable !== null} onOpenChange={(open) => { if (!open) setSelectedTableId(null); }}>
-        <SheetContent side="right" className="operations-typography h-[100dvh] w-full overflow-y-auto overscroll-contain pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-xl">
+        <SheetContent
+          side="right"
+          closeLabel="Đóng danh sách bàn"
+          closeButtonClassName="top-0"
+          className="operations-typography h-[100dvh] w-full overflow-y-auto overscroll-contain pl-[max(1rem,calc(env(safe-area-inset-left)+0.5rem))] pr-[max(1rem,calc(env(safe-area-inset-right)+0.5rem))] pt-[max(1.5rem,calc(env(safe-area-inset-top)+0.75rem))] pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-xl sm:p-6"
+        >
           {selectedTable && (
             <>
-              <SheetHeader>
+              <SheetHeader className="pr-14 text-left">
                 <SheetTitle>Bàn {selectedTable.tableNumber} · {selectedTable.seats.length}/9</SheetTitle>
                 <button
                   type="button"
                   data-ops-action="floor.tables.open_v3_control_mode"
-                  className="inline-flex min-h-11 w-fit items-center gap-2 rounded-full border border-border bg-card px-3 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  className="inline-flex min-h-12 w-fit items-center gap-2 rounded-full border border-border bg-card px-3 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                   aria-expanded={modeOpen}
                   aria-controls="floor-v3-mode-panel"
                   onClick={() => setModeOpen((open) => !open)}
@@ -288,7 +356,10 @@ export function FloorTableMapPanelV3({
                   {selectedTable.controlMode === "tracker" ? "Live Tracker" : "Manual Floor"}
                   <span className="text-muted-foreground">· Đổi chế độ</span>
                 </button>
-                <p className="text-xs text-muted-foreground">Revision {selectedTable.sessionRevision} · epoch {selectedTable.controlEpoch}</p>
+                <details className="w-fit text-left text-xs text-muted-foreground">
+                  <summary className="min-h-12 cursor-pointer content-center rounded-md px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">Thông tin phiên bàn</summary>
+                  <p className="font-mono">Revision {selectedTable.sessionRevision} · epoch {selectedTable.controlEpoch}</p>
+                </details>
               </SheetHeader>
               <div className="mt-5 space-y-4">
                 {modeOpen && (
@@ -296,7 +367,7 @@ export function FloorTableMapPanelV3({
                     <FloorTableModePicker value={nextMode} onChange={setNextMode} disabled={busy} testIdPrefix="floor-v3-mode" />
                     <Button
                       data-ops-action="floor.tables.save_v3_control_mode"
-                      className="min-h-11 w-full"
+                      className="min-h-12 w-full"
                       disabled={busy || nextMode === selectedTable.controlMode}
                       onClick={() => void run("Đã đổi chế độ bàn.", async () => {
                         const result = await v3.setTableControlMode({
@@ -319,20 +390,48 @@ export function FloorTableMapPanelV3({
                   {selectedSeat ? seatAction(selectedSeat) : selectedSeatNumber != null && (
                     <section className="space-y-3 rounded-xl border border-border bg-card/55 p-3">
                       <p className="text-sm font-semibold">Ghế {selectedSeatNumber} đang trống</p>
-                      <label className="grid gap-1 text-xs text-muted-foreground">
-                        Entry hợp lệ chưa có ghế
-                        <select className="h-11 rounded-md border border-input bg-background px-2 text-sm text-foreground" value={entryId} onChange={(event) => setEntryId(event.target.value)}>
-                          <option value="">Chọn người chơi đã đăng ký</option>
-                          {seatableEntries.map((entry) => <option key={entry.entryId} value={entry.entryId}>{entry.displayName} · Entry {entry.entryNo}</option>)}
-                        </select>
-                      </label>
-                      <Button data-ops-action="floor.tables.add_player" className="min-h-11 w-full" disabled={busy || !entryId} onClick={() => void run("Đã thêm người vào ghế.", () => v3.assignEntryToSeat({
-                        entryId,
-                        tournamentTableId: selectedTable.tournamentTableId,
-                        seatNumber: selectedSeatNumber,
-                        expectedRevision: selectedTable.sessionRevision,
-                        requestId: crypto.randomUUID(),
-                      }))}><Plus className="mr-2 h-4 w-4" /> Thêm người</Button>
+                      <p className="text-xs text-muted-foreground">Danh sách chỉ gồm entry hợp lệ của giải. Chọn “Đã loại” để khôi phục.</p>
+                      <FloorEntryPicker
+                        seatableEntries={seatableEntries}
+                        restorableEntries={restorableEntries}
+                        value={entrySelection}
+                        onChange={setEntrySelection}
+                      />
+                      {entrySelection?.kind === "restore" ? (
+                        <Button
+                          data-ops-action="floor.players.restore"
+                          className="min-h-12 w-full"
+                          disabled={busy}
+                          onClick={() => void run("Đã khôi phục người chơi vào ghế.", () => v3.restoreBustedPlayer({
+                            entryId: entrySelection.entryId,
+                            toTournamentTableId: selectedTable.tournamentTableId,
+                            toSeatNumber: selectedSeatNumber,
+                            expectedRevision: selectedTable.sessionRevision,
+                            expectedControlEpoch: selectedTable.controlEpoch,
+                            requestId: crypto.randomUUID(),
+                          })).then((ok) => { if (ok) setEntrySelection(null); })}
+                        >
+                          <RotateCcw className="mr-2 h-4 w-4" /> Khôi phục vào ghế này
+                        </Button>
+                      ) : (
+                        <Button
+                          data-ops-action="floor.tables.add_player"
+                          className="min-h-12 w-full"
+                          disabled={busy || !entrySelection}
+                          onClick={() => {
+                            if (!entrySelection) return;
+                            void run("Đã thêm người vào ghế.", () => v3.assignEntryToSeat({
+                              entryId: entrySelection.entryId,
+                              tournamentTableId: selectedTable.tournamentTableId,
+                              seatNumber: selectedSeatNumber,
+                              expectedRevision: selectedTable.sessionRevision,
+                              requestId: crypto.randomUUID(),
+                            })).then((ok) => { if (ok) setEntrySelection(null); });
+                          }}
+                        >
+                          <Plus className="mr-2 h-4 w-4" /> Thêm vào ghế này
+                        </Button>
+                      )}
                     </section>
                   )}
                 </div>
@@ -343,45 +442,118 @@ export function FloorTableMapPanelV3({
                   onEmptySeatTap={(seatNumber) => setSelectedSeatNumber(seatNumber)}
                 />
 
-                {emptySeatNumbers.length > 0 && restorableEntries.length > 0 && (
-                  <section className="space-y-3 rounded-2xl border border-border bg-card/55 p-3">
-                    <div><p className="text-sm font-semibold">Khôi phục người đã loại</p><p className="text-xs text-muted-foreground">Chỉ restore vào ghế trống của session đang active.</p></div>
-                    <label className="grid gap-1 text-xs text-muted-foreground">
-                      Người chơi đã loại
-                      <select className="h-11 rounded-md border border-input bg-background px-2 text-sm text-foreground" value={restoreEntryId} onChange={(event) => setRestoreEntryId(event.target.value)}>
-                        <option value="">Chọn người chơi</option>
-                        {restorableEntries.map((entry) => <option key={entry.entryId} value={entry.entryId}>{entry.displayName} · Entry {entry.entryNo}</option>)}
-                      </select>
-                    </label>
-                    <Button data-ops-action="floor.players.restore" variant="outline" className="min-h-11 w-full" disabled={busy || !restoreEntryId || selectedSeatNumber == null || !emptySeatNumbers.includes(selectedSeatNumber)} onClick={() => void run("Đã khôi phục người chơi.", () => v3.restoreBustedPlayer({
-                      entryId: restoreEntryId,
-                      toTournamentTableId: selectedTable.tournamentTableId,
-                      toSeatNumber: selectedSeatNumber!,
-                      expectedRevision: selectedTable.sessionRevision,
-                      expectedControlEpoch: selectedTable.controlEpoch,
-                      requestId: crypto.randomUUID(),
-                    }))}><RotateCcw className="mr-2 h-4 w-4" /> Khôi phục vào ghế đã chọn</Button>
-                  </section>
-                )}
-
                 <section className="grid gap-2 sm:grid-cols-2">
-                  <Button data-ops-action="floor.tables.close_table" variant="outline" className="min-h-11" disabled={busy || selectedTable.seats.length !== 0} onClick={() => void run("Đã đóng bàn và giải phóng bàn vật lý.", () => v3.closeTournamentTable({
-                    tournamentTableId: selectedTable.tournamentTableId,
-                    expectedRevision: selectedTable.sessionRevision,
-                    requestId: crypto.randomUUID(),
-                  }))}>Đóng bàn trống</Button>
-                  <Button data-ops-action="floor.tables.break_v3" variant="outline" className="min-h-11" disabled={busy || selectedTable.seats.length === 0} onClick={() => void run("Đã đóng và chuyển người chơi.", () => v3.breakTournamentTable({
-                    tournamentTableId: selectedTable.tournamentTableId,
-                    expectedRevision: selectedTable.sessionRevision,
-                    requestId: crypto.randomUUID(),
-                    drawMode: "fill_lowest_table",
-                  }))}>Đóng & chuyển người</Button>
+                  <Button data-ops-action="floor.tables.open_close_table" variant="outline" className="min-h-12" disabled={busy || selectedTable.seats.length !== 0} onClick={() => setPendingTableAction("close")}>Đóng bàn trống</Button>
+                  <Button data-ops-action="floor.tables.open_break_v3" variant="outline" className="min-h-12" disabled={busy || selectedTable.seats.length === 0} onClick={() => setPendingTableAction("break")}>Đóng & chuyển người</Button>
                 </section>
               </div>
             </>
           )}
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={pendingBustSeat !== null} onOpenChange={(open) => { if (!open) setPendingBustSeat(null); }}>
+        <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Loại người chơi khỏi giải?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-left">
+                <p>Thao tác này gỡ người chơi khỏi ghế và ghi nhận họ đã bị loại. Không thực hiện payout.</p>
+                {selectedTable && pendingBustSeat && (
+                  <dl className="rounded-xl border border-border bg-card/55 p-3 text-sm text-foreground">
+                    <div className="flex justify-between gap-3"><dt>Người chơi</dt><dd className="min-w-0 truncate font-semibold">{pendingBustSeat.displayName}</dd></div>
+                    <div className="mt-1 flex justify-between gap-3"><dt>Vị trí</dt><dd>Bàn {selectedTable.tableNumber} · Ghế {pendingBustSeat.seatNumber}</dd></div>
+                    <div className="mt-1 flex justify-between gap-3"><dt>Entry</dt><dd>{pendingBustSeat.entryNo}</dd></div>
+                    <div className="mt-1 flex justify-between gap-3"><dt>Chip hiện tại</dt><dd>{formatStack(pendingBustSeat.chipCount)}</dd></div>
+                    <div className="mt-1 flex justify-between gap-3"><dt>Chế độ</dt><dd>{selectedTable.controlMode === "tracker" ? "Live Tracker" : "Manual Floor"}</dd></div>
+                  </dl>
+                )}
+                {selectedTable?.controlMode === "manual" && (pendingBustSeat?.chipCount ?? 0) > 0 && (
+                  <p className="rounded-xl border border-amber-400/25 bg-amber-400/5 p-3 text-amber-100/90">Manual Floor cho phép loại khi còn chip, nhưng hệ thống sẽ ghi audit cảnh báo.</p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-ops-action="floor.player.cancel_bust" className="min-h-12">Giữ người chơi</AlertDialogCancel>
+            <AlertDialogAction
+              data-ops-action="floor.player.bust"
+              className="min-h-12 bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={busy || !selectedTable || !pendingBustSeat}
+              onClick={async (event) => {
+                event.preventDefault();
+                if (!selectedTable || !pendingBustSeat) return;
+                const seat = pendingBustSeat;
+                const ok = await run("Đã loại người chơi khỏi giải.", () => v3.bustPlayer({
+                  entryId: seat.entryId,
+                  expectedRevision: selectedTable.sessionRevision,
+                  expectedControlEpoch: selectedTable.controlEpoch,
+                  expectedChipCount: seat.chipCount,
+                  requestId: crypto.randomUUID(),
+                  reason: "floor_v3_operator_bust",
+                }));
+                if (ok) setPendingBustSeat(null);
+              }}
+            >
+              Xác nhận loại
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={pendingTableAction !== null} onOpenChange={(open) => { if (!open) setPendingTableAction(null); }}>
+        <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{pendingTableAction === "break" ? "Đóng và chuyển toàn bộ người chơi?" : "Đóng bàn trống?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingTableAction === "break"
+                ? "Server sẽ kiểm tra sức chứa, chuyển người, kết thúc phân công dealer và đóng phiên bàn trong một giao dịch. Nếu không đủ ghế, không có thay đổi nào được ghi."
+                : "Server sẽ kiểm tra lại bàn không còn người và không có ván đang chạy trước khi đóng phiên bàn."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-ops-action="floor.tables.cancel_close_table" className="min-h-12">Huỷ</AlertDialogCancel>
+            {pendingTableAction === "break" ? (
+              <AlertDialogAction
+                data-ops-action="floor.tables.break_v3"
+                className="min-h-12"
+                disabled={busy || !selectedTable}
+                 onClick={async (event) => {
+                   event.preventDefault();
+                   if (!selectedTable) return;
+                   const ok = await run("Đã đóng và chuyển người chơi.", () => v3.breakTournamentTable({
+                     tournamentTableId: selectedTable.tournamentTableId,
+                     expectedRevision: selectedTable.sessionRevision,
+                     requestId: crypto.randomUUID(),
+                     drawMode: "fill_lowest_table",
+                   }));
+                   if (ok) setPendingTableAction(null);
+                 }}
+              >
+                Xác nhận đóng & chuyển
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction
+                data-ops-action="floor.tables.close_table"
+                className="min-h-12"
+                disabled={busy || !selectedTable}
+                 onClick={async (event) => {
+                   event.preventDefault();
+                   if (!selectedTable) return;
+                   const ok = await run("Đã đóng bàn và giải phóng bàn vật lý.", () => v3.closeTournamentTable({
+                     tournamentTableId: selectedTable.tournamentTableId,
+                     expectedRevision: selectedTable.sessionRevision,
+                     requestId: crypto.randomUUID(),
+                   }));
+                   if (ok) setPendingTableAction(null);
+                 }}
+              >
+                Xác nhận đóng bàn
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

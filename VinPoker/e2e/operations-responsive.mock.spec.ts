@@ -40,3 +40,44 @@ test("chip metrics and narrow mode panel contain long names and large values", a
   await expect(page.getByRole("radio", { name: /Live Tracker/ })).toHaveAttribute("aria-checked", "true");
   expect(errors).toEqual([]);
 });
+
+test("Floor roster and entry picker stay usable across phone, tablet and desktop widths", async ({ page }) => {
+  for (const size of [
+    { width: 360, height: 800 },
+    { width: 390, height: 844 },
+    { width: 430, height: 932 },
+    { width: 768, height: 1024 },
+    { width: 1024, height: 768 },
+    { width: 1280, height: 900 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(size);
+    await page.goto("/e2e/fixtures/operations-responsive.html?surface=floor");
+    const close = page.getByRole("button", { name: "Đóng danh sách bàn" });
+    await expect(close).toBeVisible();
+    await page.waitForTimeout(600);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const closeBounds = await close.boundingBox();
+    expect(closeBounds).not.toBeNull();
+    expect(closeBounds!.width).toBeGreaterThanOrEqual(48);
+    expect(closeBounds!.height).toBeGreaterThanOrEqual(48);
+    expect(closeBounds!.x + closeBounds!.width).toBeLessThanOrEqual(size.width);
+    expect(closeBounds!.y).toBeGreaterThanOrEqual(0);
+    await page.screenshot({ path: `test-results/ops-responsive/floor-${size.width}x${size.height}.png`, fullPage: true });
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/e2e/fixtures/operations-responsive.html?surface=floor");
+  await expect(page.getByText("Tom Dwan")).toBeVisible();
+  await page.getByRole("searchbox", { name: "Tìm theo tên hoặc số entry" }).fill("27");
+  await expect(page.getByText("Tom Dwan")).toBeVisible();
+  await expect(page.getByText("Nguyễn Văn Tên Rất Dài Tại Bàn Final")).toHaveCount(0);
+  await page.getByRole("tab", { name: /Đã loại 1/ }).click();
+  await expect(page.getByTestId("floor-entry-restore-entry-c")).toContainText("Phil Ivey");
+  await page.getByTestId("floor-entry-restore-entry-c").click();
+  await expect(page.getByRole("button", { name: "Khôi phục vào ghế này" })).toBeEnabled();
+
+  const close = page.getByRole("button", { name: "Đóng danh sách bàn" });
+  await close.click();
+  await expect(close).toBeHidden();
+});
