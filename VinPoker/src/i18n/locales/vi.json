@@ -2889,7 +2889,7 @@
     "create": "Tạo"
   },
   "liveHub": {
-    "tabs": { "updates": "Cập nhật", "handHistory": "Lịch sử ván", "prizes": "Giải thưởng", "structure": "Cấu trúc", "photos": "Hình ảnh", "back": "Quay lại" },
+    "tabs": { "updates": "Cập nhật", "tablesLive": "Bàn LIVE", "leaders": "Xếp hạng", "handHistory": "Lịch sử ván", "prizes": "Giải thưởng", "structure": "Cấu trúc", "photos": "Hình ảnh", "back": "Quay lại" },
     "watch": {
       "title": "Bàn đang chơi",
       "replay": "PHÁT LẠI VÁN",

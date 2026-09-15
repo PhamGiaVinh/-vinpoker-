@@ -2629,7 +2629,7 @@
     "create": "สร้าง"
   },
   "liveHub": {
-    "tabs": { "updates": "อัปเดต", "handHistory": "ประวัติมือ", "prizes": "เงินรางวัล", "structure": "โครงสร้าง", "photos": "รูปภาพ", "back": "กลับ" },
+    "tabs": { "updates": "อัปเดต", "tablesLive": "โต๊ะ LIVE", "leaders": "อันดับ", "handHistory": "ประวัติมือ", "prizes": "เงินรางวัล", "structure": "โครงสร้าง", "photos": "รูปภาพ", "back": "กลับ" },
     "watch": { "title": "โต๊ะที่กำลังเล่น", "replay": "เล่นมือซ้ำ" },
     "prizes": { "empty": "ยังไม่มีโครงสร้างเงินรางวัล", "total": "รางวัลรวม", "position": "อันดับ", "amount": "รางวัล", "rank": "#{{n}}" },
     "structure": { "empty": "ยังไม่มีโครงสร้างเบลน์", "level": "Lv", "blinds": "เบลน์ (SB/BB)", "ante": "อันเต", "time": "นาที", "break": "พัก" },
