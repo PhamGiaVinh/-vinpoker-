@@ -122,8 +122,8 @@ export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: stri
   const dueDenoms = bb ? denoms.filter((d) => d.value < bb && (currentByValue.get(d.value) ?? 0) > 0) : [];
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <div className="operations-typography min-w-0 space-y-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] items-start gap-3">
         <StatCard label="Kho chip đã phát" value={fmt(issuedInventoryValue)} accent
           sub={inv.reconciled ? "Kho đã đối soát nội bộ" : "Kho chưa đối soát"} />
         <StatCard label="Chip trên ghế" value={m ? fmt(tableChipTotal) : "—"}
@@ -145,7 +145,7 @@ export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: stri
             : m?.status && <Badge variant="outline" className="uppercase">{m.is_break ? "break" : m.status}</Badge>}
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]">
             <Field k="Level" v={m?.current_level != null ? String(m.current_level) : "—"} />
             <Field k="Blinds" v={m?.small_blind != null ? `${fmt(m.small_blind)} / ${fmt(m.big_blind ?? 0)}` : (m?.current_blinds ?? "—")} />
             <Field k="Ante" v={m?.ante != null ? fmt(m.ante) : "—"} />
@@ -180,7 +180,7 @@ export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: stri
               ))}
             </div>
           )}
-          <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-sm">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-sm">
             <span className="flex items-center gap-1.5 text-muted-foreground">
               {inv.reconciled && <CheckCircle2 className="h-4 w-4 text-primary" />} Tổng giá trị chip đã phát từ kho
             </span>
@@ -194,11 +194,11 @@ export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: stri
 
 function StatCard({ label, value, sub, accent, icon }: { label: string; value: string; sub?: string; accent?: boolean; icon?: ReactNode }) {
   return (
-    <Card className={`border-border ${accent ? "ring-1 ring-primary/20" : ""}`}>
-      <CardContent className="py-4">
+    <Card className={`min-w-0 border-border ${accent ? "ring-1 ring-primary/20" : ""}`}>
+      <CardContent className="min-w-0 px-4 py-4">
         <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">{icon}{label}</div>
-        <div className={`mt-1 font-display text-2xl font-bold tabular-nums ${accent ? "text-primary" : "text-foreground"}`}>{value}</div>
-        {sub ? <div className="mt-1 text-xs text-muted-foreground">{sub}</div> : null}
+        <div className={`mt-1 break-words font-display text-xl font-bold tabular-nums [overflow-wrap:anywhere] ${accent ? "text-primary" : "text-foreground"}`}>{value}</div>
+        {sub ? <div className="mt-1 break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">{sub}</div> : null}
       </CardContent>
     </Card>
   );
@@ -206,9 +206,9 @@ function StatCard({ label, value, sub, accent, icon }: { label: string; value: s
 
 function Field({ k, v }: { k: string; v: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{k}</div>
-      <div className="font-display text-lg font-semibold tabular-nums text-foreground">{v}</div>
+      <div className="break-words font-display text-lg font-semibold tabular-nums text-foreground [overflow-wrap:anywhere]">{v}</div>
     </div>
   );
 }

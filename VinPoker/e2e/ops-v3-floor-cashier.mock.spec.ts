@@ -139,6 +139,7 @@ async function installMockOpsSession(page: Page) {
 const viewports = [
   { width: 360, height: 800 },
   { width: 390, height: 844 },
+  { width: 411, height: 915 },
   { width: 768, height: 1024 },
   { width: 1024, height: 768 },
   { width: 1280, height: 900 },
@@ -195,7 +196,22 @@ test("Floor V3 table sheet is compact, uses tournament-chip units and exposes fo
   await expect(page.getByText(/40\.000\s*₫/u)).toHaveCount(0);
   await modeButton.click();
   await expect(page.locator('[data-ops-action="floor.tables.save_v3_control_mode"]')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    const sheet = page.getByRole("dialog");
+    await expect.poll(() => sheet.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await expect(page.locator('[data-testid^="floor-seat-row-"]')).toHaveCount(9);
+    const modeCards = page.getByRole("radio");
+    for (const card of await modeCards.all()) {
+      await expect.poll(() => card.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(240);
+    }
+    await page.screenshot({ path: `test-results/ops-responsive/floor-${viewport.width}.png` });
+  }
+  await modeButton.click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "test-results/ops-responsive/floor-roster-390.png" });
+  await page.locator('[data-testid="floor-seat-row-9"]').scrollIntoViewIfNeeded();
+  await expect(page.locator('[data-testid="floor-seat-row-9"]')).toBeInViewport();
   expect(pageErrors).toEqual([]);
 });
 

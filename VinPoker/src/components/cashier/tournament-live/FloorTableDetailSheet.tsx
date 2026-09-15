@@ -90,10 +90,10 @@ export function FloorTableDetailSheet({
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="right"
-          className="h-[100dvh] w-full overflow-y-auto border-white/10 bg-[#0d0913] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:h-auto sm:max-w-3xl lg:max-w-4xl"
+          className="operations-typography h-[100dvh] w-full overflow-y-auto overscroll-contain border-white/10 bg-[#0d0913] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:max-w-3xl lg:max-w-4xl"
         >
           <SheetHeader>
-            <SheetTitle className="flex items-center gap-2 text-[#f2ece6]">
+            <SheetTitle className="flex min-w-0 flex-wrap items-center gap-2 break-words pr-8 text-[#f2ece6]">
               {table.table_name}
               <span className="rounded-full border border-primary/35 bg-primary/10 px-2.5 py-1 font-mono text-xs text-primary">
                 {operationalSeatCount}/{FIXED_FLOOR_TABLE_SEATS}
@@ -116,7 +116,7 @@ export function FloorTableDetailSheet({
                 : undefined}
             />
 
-            <div className="lg:sticky lg:top-0 lg:self-start">
+            <div className="min-w-0 lg:self-start">
               {canManageTableControl ? (
                 <FloorTableControlModeControl
                   tournamentId={tournamentId}
