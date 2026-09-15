@@ -31,6 +31,11 @@ export interface FloorRosterSlot {
   seat: FloorRosterSeat | null;
 }
 
+export interface FloorRosterSeatLock {
+  seatNumber: number;
+  reason: string;
+}
+
 /**
  * Builds the visible 1–100 picker from the server-returned tournament catalog.
  * An active row always wins over a historical closed row for the same number.
@@ -87,12 +92,13 @@ export function buildFloorTableNumberOptions(
 }
 
 /**
- * Floor table detail is intentionally a fixed nine-seat operational roster.
+ * Floor table detail renders the server-authoritative 8-max or 9-max capacity.
  * Duplicate seat numbers are surfaced to the UI instead of silently choosing
  * one player, because the database/Edge projection is authoritative.
  */
 export function buildFloorSeatRoster(
   seats: readonly FloorRosterSeat[],
+  maxSeats: 8 | 9 = FIXED_FLOOR_TABLE_SEATS,
 ): {
   slots: FloorRosterSlot[];
   duplicateSeatNumbers: number[];
@@ -106,7 +112,7 @@ export function buildFloorSeatRoster(
     if (
       !Number.isInteger(seat.seatNumber)
       || seat.seatNumber < 1
-      || seat.seatNumber > FIXED_FLOOR_TABLE_SEATS
+      || seat.seatNumber > maxSeats
     ) {
       outOfRange.add(seat.seatNumber);
       continue;
@@ -120,7 +126,7 @@ export function buildFloorSeatRoster(
 
   return {
     slots: Array.from(
-      { length: FIXED_FLOOR_TABLE_SEATS },
+      { length: maxSeats },
       (_, index): FloorRosterSlot => {
         const seatNumber = index + 1;
         return { seatNumber, seat: bySeat.get(seatNumber) ?? null };

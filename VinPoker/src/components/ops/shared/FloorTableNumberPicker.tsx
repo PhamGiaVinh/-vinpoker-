@@ -29,16 +29,24 @@ export function FloorTableNumberPicker({
   onChange,
   disabled = false,
   missingState = "available",
+  listedOnly = false,
 }: {
   rows: readonly FloorTableCatalogRow[];
   value: number | null;
   onChange: (tableNumber: number) => void;
   disabled?: boolean;
   missingState?: FloorTableNumberState;
+  /** Hide catalog numbers omitted by a server-scoped inventory response. */
+  listedOnly?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<PickerFilter>("all");
-  const options = useMemo(() => buildFloorTableNumberOptions(rows, missingState), [missingState, rows]);
+  const options = useMemo(() => {
+    const built = buildFloorTableNumberOptions(rows, missingState);
+    if (!listedOnly) return built;
+    const listed = new Set(rows.map((row) => row.table_number).filter((value): value is number => value != null));
+    return built.filter((option) => listed.has(option.number));
+  }, [listedOnly, missingState, rows]);
   const visible = useMemo(() => {
     const needle = query.trim();
     return options.filter((option) => {

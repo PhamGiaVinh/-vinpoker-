@@ -42,8 +42,19 @@ const rosterRow = {
   }],
 };
 
-function clientFrom(handler: ReturnType<typeof vi.fn>, enabled = true) {
-  return createFloorTableControlV3Client(handler as unknown as FloorTableControlV3Rpc, { enabled });
+const rosterV4Row = {
+  ...rosterRow,
+  max_seats: 8,
+  seat_locks: [{
+    seat_number: 8,
+    reason: "Giữ ghế cho vận hành",
+    locked_at: "2026-09-15T12:00:00.000Z",
+    locked_by: "operator-a",
+  }],
+};
+
+function clientFrom(handler: ReturnType<typeof vi.fn>, enabled = true, redrawSeatLockEnabled = false) {
+  return createFloorTableControlV3Client(handler as unknown as FloorTableControlV3Rpc, { enabled, redrawSeatLockEnabled });
 }
 
 describe("floorTableControlV3 browser boundary", () => {
@@ -144,5 +155,118 @@ describe("floorTableControlV3 browser boundary", () => {
       ok: false,
       error: "V3_ROSTER_ROW_MALFORMED",
     });
+  });
+
+  it("uses the tournament-scoped inventory contract for table pickers", async () => {
+    const scopedRow = {
+      game_table_id: "table-6",
+      table_number: 6,
+      table_name: "Bàn 6",
+      operational_status: "available",
+      availability_status: "available",
+      table_session_id: null,
+      control_mode: null,
+      control_epoch: null,
+      revision: null,
+      tournament_table_id: null,
+      max_seats: null,
+    };
+    const rpc = vi.fn().mockResolvedValue({ data: [scopedRow], error: null });
+    const client = clientFrom(rpc, true, true);
+
+    await expect(client.getTournamentTableInventory("tournament-a")).resolves.toMatchObject({ ok: true });
+    expect(rpc).toHaveBeenCalledWith("get_floor_tournament_table_inventory_v1", { p_tournament_id: "tournament-a" });
+  });
+
+  it("parses an 8-max roster with an empty locked seat", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: [rosterV4Row], error: null });
+    const client = clientFrom(rpc, true, true);
+
+    await expect(client.getTournamentTableRoster("tournament-a")).resolves.toEqual({
+      ok: true,
+      data: [expect.objectContaining({ maxSeats: 8, seatLocks: [expect.objectContaining({ seatNumber: 8 })] })],
+    });
+    expect(rpc).toHaveBeenCalledWith("get_floor_tournament_table_roster_v4", { p_tournament_id: "tournament-a" });
+  });
+
+  it("routes seat assignment and table lifecycle writes through the lock-aware contracts", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: { ok: true }, error: null });
+    const client = clientFrom(rpc, true, true);
+
+    await client.assignEntryToSeat({
+      entryId: "entry-a",
+      tournamentTableId: "assignment-a",
+      seatNumber: 3,
+      expectedRevision: 4,
+      requestId: "request-seat",
+    });
+    await client.breakTournamentTable({
+      tournamentTableId: "assignment-a",
+      expectedRevision: 4,
+      requestId: "request-break",
+      drawMode: "fill_lowest_table",
+    });
+    await client.closeTournamentTable({
+      tournamentTableId: "assignment-a",
+      expectedRevision: 4,
+      requestId: "request-close",
+    });
+
+    expect(rpc).toHaveBeenNthCalledWith(1, "floor_assign_entry_to_seat_v4", expect.any(Object));
+    expect(rpc).toHaveBeenNthCalledWith(2, "floor_break_table_v4", expect.any(Object));
+    expect(rpc).toHaveBeenNthCalledWith(3, "close_tournament_table_v4", expect.any(Object));
+  });
+
+  it("persists a redraw preview and applies the exact batch id", async () => {
+    const planned = {
+      ok: true,
+      batch_id: "batch-a",
+      status: "planned",
+      target_max_seats: 8,
+      target_table_count: 1,
+      player_count: 1,
+      moved_count: 1,
+      moves: [{
+        entry_id: "entry-a",
+        player_name: "Player A",
+        from_table_number: 5,
+        from_seat_number: 1,
+        to_table_number: 6,
+        to_seat_number: 1,
+      }],
+    };
+    const rpc = vi.fn()
+      .mockResolvedValueOnce({ data: planned, error: null })
+      .mockResolvedValueOnce({ data: { ...planned, status: "applied" }, error: null });
+    const client = clientFrom(rpc, true, true);
+
+    const preview = await client.planTournamentRedraw({
+      tournamentId: "tournament-a",
+      targetMaxSeats: 8,
+      gameTableIds: ["table-6"],
+      requestId: "request-plan",
+    });
+    expect(preview).toMatchObject({ ok: true, data: { batchId: "batch-a", status: "planned" } });
+    const applied = await client.applyTournamentRedraw({ batchId: "batch-a", requestId: "request-apply" });
+    expect(applied).toMatchObject({ ok: true, data: { batchId: "batch-a", status: "applied" } });
+    expect(rpc).toHaveBeenLastCalledWith("floor_apply_tournament_redraw_v1", {
+      p_batch_id: "batch-a",
+      p_request_id: "request-apply",
+    });
+  });
+
+  it("makes no RPC when redraw and seat locking are dark", async () => {
+    const rpc = vi.fn();
+    const client = clientFrom(rpc, true, false);
+
+    await expect(client.setSeatLock({
+      tournamentTableId: "assignment-a",
+      seatNumber: 2,
+      locked: true,
+      reason: "hold",
+      expectedRevision: 4,
+      requestId: "request-lock",
+    })).resolves.toEqual({ ok: false, error: "FLOOR_REDRAW_SEAT_LOCK_V1_DISABLED" });
+    expect(rpc).not.toHaveBeenCalled();
   });
 });

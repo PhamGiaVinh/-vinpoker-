@@ -97,6 +97,27 @@ export function OpenTableDialog({
     setCatalogError(null);
     try {
       if (tableControlV3.enabled) {
+        if (tableControlV3.redrawSeatLockEnabled) {
+          const inventory = await tableControlV3.getTournamentTableInventory(tournamentId);
+          if (sequence !== requestSequence.current) return;
+          if (inventory.ok === false) {
+            setCatalog([]);
+            setV3GameTableIdByNumber({});
+            setCatalogError("Không tải được kho bàn của giải. Bàn đang dùng ở giải khác đã được ẩn để tránh chọn nhầm.");
+            return;
+          }
+          const tableIds: Record<number, string> = {};
+          for (const item of inventory.data) tableIds[item.tableNumber] = item.gameTableId;
+          setV3GameTableIdByNumber(tableIds);
+          setCatalog(inventory.data.map((item) => ({
+            table_number: item.tableNumber,
+            status: item.availabilityStatus === "current_tournament" ? "active" : null,
+            availability_status: item.availabilityStatus === "current_tournament" ? "in_use" : item.availabilityStatus,
+            session_type: item.availabilityStatus === "current_tournament" ? "tournament" : null,
+            operational_status: item.operationalStatus,
+          })));
+          return;
+        }
         const { data: tournament, error: tournamentError } = await supabase
           .from("tournaments")
           .select("club_id")
@@ -256,6 +277,7 @@ export function OpenTableDialog({
                 onChange={setSelectedNumber}
                 disabled={busy}
                 missingState={tableControlV3.enabled ? "unavailable" : "available"}
+                listedOnly={tableControlV3.redrawSeatLockEnabled}
                 />
               </div>
 

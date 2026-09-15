@@ -28,6 +28,14 @@ export function isFloorTableControlV3ProductionEnabled(
   return flagValue === "production" && environmentValue === "production";
 }
 
+export function isFloorRedrawSeatLockV1Enabled(
+  flagValue: unknown = import.meta.env.VITE_FLOOR_REDRAW_SEAT_LOCK_V1,
+  environmentValue: unknown = import.meta.env.VITE_FLOOR_UAT_ENV,
+): boolean {
+  return (flagValue === "preview" && environmentValue === "preview")
+    || (flagValue === "production" && environmentValue === "production");
+}
+
 export const FEATURES = {
   /**
    * Owner Daily Digest web report — owner-only, read-only surface in VinPoker Ops.
@@ -884,6 +892,11 @@ export const FEATURES = {
    */
   floorTableControlV3:
     isFloorTableControlV3PreviewEnabled() || isFloorTableControlV3ProductionEnabled(),
+  /**
+   * Persisted 8/9-max redraw + empty-seat locks. Dark by default and separate
+   * from Floor V3 because its additive tables/RPCs require their own DB gate.
+   */
+  floorRedrawSeatLockV1: isFloorRedrawSeatLockV1Enabled(),
   /**
    * Ops phone app (mobileOpsV2) — Dealer Swing action wiring. The `/ops/dealer-swing`
    * page renders every operator action (swing 1 table, assign a specific dealer via the

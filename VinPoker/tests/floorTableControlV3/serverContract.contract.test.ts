@@ -186,6 +186,7 @@ describe("Floor Table Control V3 server contract", () => {
     expect(rosterDisplayNameMigration).not.toContain("INSERT INTO public.profiles");
     expect(rosterDisplayNameMigration).not.toContain("auth.users");
     expect(disposable).toContain("20270114000007_floor_v3_roster_seat_display_name.sql");
+    expect(disposable).toContain("20270114000011_floor_redraw_seat_lock_v1.sql");
   });
 
   it("keeps V3 writers revoked in the active catalog and confines test grants", () => {

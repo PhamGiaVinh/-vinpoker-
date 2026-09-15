@@ -5,6 +5,9 @@ import { TvClockScreen } from "@/components/tv/TvClockScreen";
 import { TvChrome } from "@/components/tv/TvChrome";
 import { useMockTvData } from "@/lib/tv/mockTvData";
 import { useTournamentTvData } from "@/hooks/useTournamentTvData";
+import { useTournamentRedrawTv } from "@/hooks/useTournamentRedrawTv";
+import { TvRedrawScreen } from "@/components/tv/TvRedrawScreen";
+import { FEATURES } from "@/lib/featureFlags";
 
 function TvStatusScreen({ title, hint }: { title: string; hint?: string }) {
   return (
@@ -27,17 +30,21 @@ const TournamentTv = () => {
   const { t } = useTranslation();
 
   const isMock = searchParams.get("mock") === "1";
+  const redrawScene = FEATURES.floorRedrawSeatLockV1 && searchParams.get("scene") === "redraw";
   const mockData = useMockTvData(isMock);
-  const live = useTournamentTvData(tournamentId, { enabled: !isMock });
+  const live = useTournamentTvData(tournamentId, { enabled: !isMock && !redrawScene });
   const data = isMock ? mockData : live.data;
+  const redraw = useTournamentRedrawTv(tournamentId, redrawScene && !isMock);
+
+  const pageTournamentName = redrawScene ? redraw.data?.tournamentName : data?.tournamentName;
 
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = data ? `${data.tournamentName} — TV` : "VinPoker TV";
+    document.title = pageTournamentName ? `${pageTournamentName} — TV` : "VinPoker TV";
     return () => {
       document.title = previousTitle;
     };
-  }, [data?.tournamentName]);
+  }, [pageTournamentName]);
 
   const showScreen = isMock || (live.state === "ready" && data);
 
@@ -57,10 +64,23 @@ const TournamentTv = () => {
               className="absolute bottom-[1.5vmin] left-[1.5vmin] h-[1.2vmin] w-[1.2vmin] animate-pulse rounded-full bg-amber-500/80"
             />
           ) : null}
+          {redrawScene && redraw.state === "stale" ? (
+            <span className="absolute right-[1.5vmin] top-[1.5vmin] rounded-full border border-amber-400/40 bg-amber-400/15 px-[1.2vmin] py-[0.5vmin] text-[1.4vmin] font-bold text-amber-200">
+              Kết nối chậm · đang giữ danh sách gần nhất
+            </span>
+          ) : null}
         </>
       }
     >
-      {showScreen && data ? (
+      {redrawScene && (redraw.state === "ready" || redraw.state === "stale") && redraw.data ? (
+        <TvRedrawScreen tournamentName={redraw.data.tournamentName} batch={redraw.data} />
+      ) : redrawScene && redraw.state === "loading" ? (
+        <TvStatusScreen title="Đang tải danh sách redraw…" />
+      ) : redrawScene && redraw.state === "empty" ? (
+        <TvStatusScreen title="Chưa có redraw đã áp dụng" hint="Floor cần xác nhận redraw trước khi TV hiển thị." />
+      ) : redrawScene && redraw.state === "error" ? (
+        <TvStatusScreen title="Không tải được redraw" hint="Dữ liệu cũ không được tự suy lại trên TV." />
+      ) : showScreen && data ? (
         <TvClockScreen data={data} />
       ) : live.state === "loading" ? (
         <TvStatusScreen title={t("tv.loading")} />

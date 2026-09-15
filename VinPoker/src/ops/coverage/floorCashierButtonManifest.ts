@@ -79,6 +79,10 @@ const navigationActions = [
   "floor.tables.select_add_entry",
   "floor.tables.open_break_v3",
   "floor.tables.cancel_close_table",
+  "floor.redraw.open",
+  "floor.redraw.select_capacity",
+  "floor.redraw.select_table",
+  "floor.redraw.open_tv",
   "floor.screens.open_public_tv",
   "floor.screens.open_pairing",
   "cashier.navigate",
@@ -110,6 +114,9 @@ const nonMoneyWriteActions = [
   "floor.tables.save_control_mode",
   "floor.tables.save_v3_control_mode",
   "floor.tables.add_player",
+  "floor.seat.lock",
+  "floor.seat.unlock",
+  "floor.redraw.preview",
 ] as const;
 
 const destructiveActions = [
@@ -120,6 +127,7 @@ const destructiveActions = [
   "floor.player.save_chip",
   "floor.player.bust",
   "floor.players.restore",
+  "floor.redraw.apply",
 ] as const;
 
 function entry(
@@ -155,6 +163,7 @@ function routeForAction(actionId: string): string {
   if (actionId.startsWith("floor.clock.")) return "/ops/floor/tournaments/:id/clock";
   if (actionId.startsWith("floor.players.")) return "/ops/floor/tournaments/:id/players";
   if (actionId.startsWith("floor.screens.")) return "/ops/floor/tournaments/:id/screens";
+  if (actionId.startsWith("floor.redraw.") || actionId.startsWith("floor.seat.")) return "/ops/floor/tournaments/:id/tables";
   if (actionId.startsWith("floor.player.")) return "/ops/floor/tournaments/:id/tables|players";
   if (actionId.startsWith("floor.tables.")) return "/ops/floor/tournaments/:id/tables";
   return "/ops/floor/tournaments/:id/:section";
