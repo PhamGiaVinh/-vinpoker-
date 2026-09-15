@@ -241,6 +241,18 @@ jobs:
             )) > 0")" = "t"
           echo "TRACKER_VOICE_14000009_APPLY=PASS"
           createdb tracker_voice_v0_before_14000010 -T tracker_voice_v0
+          createdb tracker_voice_v0_14000010_crlf -T tracker_voice_v0_before_14000010
+          crlf_migration="$RUNNER_TEMP/tracker-voice-14000010-crlf.sql"
+          sed 's/$/\r/' \
+            supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql \
+            > "$crlf_migration"
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_14000010_crlf \
+            -f "$crlf_migration"
+          test "$(psql -X -At -d tracker_voice_v0_14000010_crlf -c \
+            "SELECT position('_tracker_voice_runout_reveal_authoritative_v1' IN pg_get_functiondef(
+              'public.commit_tracker_voice_hole_cards_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,integer,jsonb)'::regprocedure
+            )) > 0")" = "t"
+          echo "TRACKER_VOICE_14000010_CRLF_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql
           test "$(psql -X -At -d tracker_voice_v0 -c \

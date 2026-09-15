@@ -55,6 +55,9 @@ describe("Tracker Voice Hole Cards Assist contract", () => {
     expect(coveringStackMigration).toContain("state.covering_count <= 1");
     expect(coveringStackMigration).toContain("player.committed < aggregate_state.highest_commitment");
     expect(coveringStackMigration).toContain("runout_reveal_not_authoritative");
+    expect(coveringStackMigration).toContain("v_definition := replace(v_definition, E'\\r\\n', E'\\n')");
+    expect(coveringStackMigration).toContain("v_old_authority := replace(v_old_authority, E'\\r\\n', E'\\n')");
+    expect(coveringStackMigration).toContain("v_new_authority := replace(v_new_authority, E'\\r\\n', E'\\n')");
     expect(coveringStackMigration).not.toMatch(/DROP\s+(TABLE|FUNCTION)|TRUNCATE|DELETE\s+FROM/i);
   });
 
