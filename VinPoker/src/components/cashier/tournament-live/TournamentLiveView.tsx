@@ -67,6 +67,7 @@ import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-po
 import { resolveViewerIdentity } from "./viewer-hub/viewerIdentity";
 import { resolveReplayCandidates, type ReplayTarget, type ReplayTargetState } from "./viewer-hub/replayTarget";
 import { deriveReplayHeaderMetadata } from "./viewer-hub/replayMetadata";
+import { PublicSnapshotCoordinator } from "./viewer-hub/publicSnapshotCoordinator";
 
 const SOUND_KINDS = new Set<string>([
   "fold", "check", "call", "bet", "raise", "all_in", "post_sb", "post_bb", "post_ante",
@@ -97,6 +98,11 @@ type LiveHandActionRow = {
   action_type: string;
   action_amount: number | null;
   action_order: number;
+};
+
+type PublicHandResponse = {
+  actions?: Array<{ id: string; playerId: string; entryNumber: number; street: string | null; actionType: string; amount: number | null; order: number }>;
+  players?: Array<{ playerId: string; entryNumber: number; seatNumber: number; startingStack: number | null; endingStack: number | null; name: string; avatarUrl: string | null }>;
 };
 
 const STREET_ORDER = ["preflop", "flop", "turn", "river"];
@@ -373,27 +379,48 @@ function TournamentLiveViewContent({
       nextPot = hand.pot_size || 0;
       nextInProgress = hand.status === "in_progress";
 
-      const { data: actionData } = await supabase
-        .from("hand_actions")
-        .select("id, street, player_id, action_type, action_amount, action_order")
-        .eq("hand_id", hand.id)
-        .order("action_order");
-
-      const hasIdentitySnapshot = spectator && FEATURES.liveViewerPulseV2
-        ? await handPlayersHasSnapshot()
-        : false;
-      const { data: handPlayers } = await supabase
-        .from("hand_players")
-        .select(hasIdentitySnapshot
-          ? "player_id, seat_number, starting_stack, ending_stack, hole_cards, player_name, avatar_url"
-          : "player_id, seat_number, starting_stack, ending_stack, hole_cards")
-        .eq("hand_id", hand.id);
+      let actionData: LiveHandActionRow[] | null = null;
+      let handPlayers: LiveHandPlayerRow[] | null = null;
+      let hasIdentitySnapshot = false;
+      if (spectator && FEATURES.publicSpectatorRealtimeV2) {
+        const { data: publicHand } = await supabase.rpc("get_public_tournament_hand_v2" as never, {
+          p_tournament_id: tournamentId,
+          p_hand_id: hand.id,
+        } as never);
+        const safe = (publicHand ?? {}) as PublicHandResponse;
+        actionData = (safe.actions ?? []).map((action) => ({
+          id: action.id, player_id: action.playerId, entry_number: action.entryNumber,
+          street: action.street, action_type: action.actionType,
+          action_amount: action.amount, action_order: action.order,
+        }));
+        handPlayers = (safe.players ?? []).map((player) => ({
+          player_id: player.playerId, entry_number: player.entryNumber,
+          seat_number: player.seatNumber, starting_stack: player.startingStack,
+          ending_stack: player.endingStack, hole_cards: [],
+          player_name: player.name, avatar_url: player.avatarUrl,
+        }));
+        hasIdentitySnapshot = true;
+      } else {
+        const [{ data: actions }, identitySnapshot] = await Promise.all([
+          supabase.from("hand_actions").select("id, street, player_id, action_type, action_amount, action_order").eq("hand_id", hand.id).order("action_order"),
+          spectator && FEATURES.liveViewerPulseV2 ? handPlayersHasSnapshot() : Promise.resolve(false),
+        ]);
+        hasIdentitySnapshot = identitySnapshot;
+        const { data: players } = await supabase
+          .from("hand_players")
+          .select(hasIdentitySnapshot
+            ? "player_id, seat_number, starting_stack, ending_stack, hole_cards, player_name, avatar_url"
+            : "player_id, seat_number, starting_stack, ending_stack, hole_cards")
+          .eq("hand_id", hand.id);
+        actionData = actions as LiveHandActionRow[] | null;
+        handPlayers = players as LiveHandPlayerRow[] | null;
+      }
 
       if (seq !== requestSeqRef.current) return;
       const liveHandPlayers = (handPlayers ?? []) as LiveHandPlayerRow[];
       const liveHandActions = (actionData ?? []) as LiveHandActionRow[];
 
-      if (spectator && FEATURES.liveViewerPulseV2 && handPlayers?.length) {
+      if (spectator && FEATURES.liveViewerPulseV2 && !FEATURES.publicSpectatorRealtimeV2 && handPlayers?.length) {
         const historicalDisplay = await fetchHandPlayerDisplay(tournamentId, handPlayers.map((player: any) => player.player_id), { includeProfiles: true });
         if (seq !== requestSeqRef.current) return;
         const rosterByPlayer = new Map(seatRows.map((row: any) => [row.player_id, row]));
@@ -788,9 +815,13 @@ function TournamentLiveViewContent({
     }
 
     setRealtimeStatus("connecting");
-    const channel = supabase.channel(`live-view:${tournamentId}`);
-    channel
-      .on(
+    const publicV2 = spectator && FEATURES.publicSpectatorRealtimeV2;
+    const publicCoordinator = publicV2 ? new PublicSnapshotCoordinator(loadAllData, 1_000) : null;
+    const channel = supabase.channel(publicV2 ? `public:tournament-viewer-v2:${tournamentId}` : `live-view:${tournamentId}`, publicV2 ? { config: { private: false } } : undefined);
+    if (publicV2) {
+      channel.on("broadcast", { event: "changed" }, () => publicCoordinator?.request());
+    } else {
+      channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table: "tournament_hands", filter: `tournament_id=eq.${tournamentId}` },
         () => loadAllData()
@@ -814,8 +845,9 @@ function TournamentLiveViewContent({
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "tournaments", filter: `id=eq.${tournamentId}` },
         () => loadAllData()
-      )
-      .subscribe((status) => {
+      );
+    }
+    channel.subscribe((status) => {
         // Ignore status callbacks from a channel we already replaced/removed.
         if (channelRef.current !== channel) return;
         if (status === "SUBSCRIBED") {
@@ -825,16 +857,17 @@ function TournamentLiveViewContent({
           setRealtimeStatus("offline");
           startPolling();
         }
-      });
+    });
 
     channelRef.current = channel;
     return () => {
       const ch = channelRef.current;
       channelRef.current = null;
+      publicCoordinator?.stop();
       if (ch) supabase.removeChannel(ch);
       stopPolling();
     };
-  }, [tournamentId, loadAllData, startPolling, stopPolling]);
+  }, [tournamentId, loadAllData, spectator, startPolling, stopPolling]);
 
   useEffect(() => {
     if (!isRunning || localRemaining <= 0) return;

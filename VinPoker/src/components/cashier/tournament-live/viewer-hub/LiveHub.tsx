@@ -26,6 +26,10 @@ import { PrizesPanel } from "./PrizesPanel";
 import { StructurePanel } from "./StructurePanel";
 import { PhotosPanel } from "./PhotosPanel";
 import { useLiveTrackerData } from "./useLiveTrackerData";
+import { usePublicSpectatorSnapshot } from "./usePublicSpectatorSnapshot";
+import { RealtimeRankingPanel } from "./RealtimeRankingPanel";
+import { RealtimePayoutPanel } from "./RealtimePayoutPanel";
+import { RealtimeTablesGrid } from "./RealtimeTablesGrid";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { FEATURES } from "@/lib/featureFlags";
 import { panelToViewerTab, viewerTabToPanel } from "./viewerUrlState";
@@ -88,7 +92,22 @@ function LiveHubContent({
 }: LiveHubProps) {
   // Isolated hub data (count / all-tables / feed / chip leader). Does NOT touch
   // TournamentLiveView — the featured felt still renders the real viewer when watched.
-  const { liveTableCount, tables, feed, chipLeader, storyFeed, activeHandTableId } = useLiveTrackerData(tournamentId);
+  const realtimeEnabled = FEATURES.publicSpectatorRealtimeV2;
+  const [visibleTableIds, setVisibleTableIds] = useState<string[]>([]);
+  const [historyTableId, setHistoryTableId] = useState<string | null>(null);
+  const { liveTableCount, tables, feed, chipLeader, storyFeed, activeHandTableId } = useLiveTrackerData(tournamentId, !realtimeEnabled);
+  const { snapshot: publicSnapshot, loading: publicSnapshotLoading, networkError } = usePublicSpectatorSnapshot(
+    tournamentId,
+    realtimeEnabled,
+    realtimeEnabled ? visibleTableIds : tables.map((table) => table.tableId),
+  );
+  const realtimeTables = publicSnapshot?.access === "public"
+    ? (publicSnapshot.sections.tables?.items ?? []).map((table) => ({ tableId: table.tableId, name: table.name, playerCount: table.players.length }))
+    : [];
+  const displayedTables = realtimeEnabled ? realtimeTables : tables;
+  const displayedLiveTableCount = realtimeEnabled
+    ? (publicSnapshot?.sections.tables?.catalog?.length ?? displayedTables.length)
+    : liveTableCount;
   const { t } = useTranslation();
   const requestedReplayTarget = initialReplayTarget ?? (initialReplayHandNumber != null
     ? { handId: null, tableId: null, handNumber: initialReplayHandNumber }
@@ -100,14 +119,14 @@ function LiveHubContent({
   // "Cập nhật … trước" — stamp the moment the hub data last changed (each poll for a
   // live event re-stamps, so the header stays fresh; a finished event freezes).
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  useEffect(() => { setLastUpdated(new Date()); }, [feed, tables, storyFeed]);
+  useEffect(() => { setLastUpdated(new Date()); }, [feed, publicSnapshot, tables, storyFeed]);
 
   // Public table-map picker (legacy stacked layout): which table to feature.
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const featuredTableId = selectedTableId ?? activeHandTableId;
   const tableNames = useMemo(
-    () => Object.fromEntries(tables.map((table) => [table.tableId, table.name])),
-    [tables],
+    () => Object.fromEntries(displayedTables.map((table) => [table.tableId, table.name])),
+    [displayedTables],
   );
   const rptChipLeader = chipLeader && chipLeader.seatNumber > 0
     ? {
@@ -133,6 +152,13 @@ function LiveHubContent({
   // The URL key is deliberate: parent renders may create equivalent target objects.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedReplayKey]);
+  useEffect(() => {
+    setVisibleTableIds([]);
+    setHistoryTableId(null);
+  }, [tournamentId]);
+  useEffect(() => {
+    if (realtimeEnabled && publicSnapshot?.access === "revoked") setWatch(null);
+  }, [publicSnapshot?.access, realtimeEnabled]);
 
   const closeWatch = () => {
     setWatch(null);
@@ -151,9 +177,9 @@ function LiveHubContent({
     const viewer = cloneViewer({ selectedTableIdOverride: selectedTableId, initialReplayTarget: requestedReplayTarget, initialReplayHandNumber, onReplayTargetChange });
     return (
       <div className="space-y-3 sm:space-y-4 animate-in fade-in-0 duration-500 motion-reduce:animate-none">
-        <LiveHubHeader title={title} clubName={clubName} clubId={clubId} subtitle={subtitle} liveTableCount={liveTableCount} guarantee={guarantee} buyIn={buyIn} startingStack={startingStack} lastUpdated={lastUpdated} onShare={onShare} />
+        <LiveHubHeader title={title} clubName={clubName} clubId={clubId} subtitle={subtitle} liveTableCount={displayedLiveTableCount} guarantee={guarantee} buyIn={buyIn} startingStack={startingStack} lastUpdated={lastUpdated} onShare={onShare} />
         <LiveStatsBar prizePool={prizePool} playersRemaining={playersRemaining} chipLeader={chipLeader} />
-        <LiveTablesMap tables={tables} activeTableId={featuredTableId} onSelect={setSelectedTableId} />
+        <LiveTablesMap tables={displayedTables} activeTableId={featuredTableId} onSelect={setSelectedTableId} />
         <FeaturedTableCard
           badge={t("liveHub.featured.badge", "TRỰC TIẾP • BÀN ĐANG DIỄN RA")}
           headerAction={<div className="flex flex-wrap gap-2"><TrackerCardStyleToggle /><OrientationToggle value={effectiveOrientation} onChange={setOrientation} /></div>}
@@ -201,10 +227,10 @@ function LiveHubContent({
 
   if (!FEATURES.liveViewerRPTShell) return (
     <div className="space-y-3 sm:space-y-4 animate-in fade-in-0 duration-500 motion-reduce:animate-none">
-      <LiveHubHeader title={title} clubName={clubName} clubId={clubId} subtitle={subtitle} liveTableCount={liveTableCount} onShare={onShare} />
+      <LiveHubHeader title={title} clubName={clubName} clubId={clubId} subtitle={subtitle} liveTableCount={displayedLiveTableCount} onShare={onShare} />
       <LiveStatsBar prizePool={prizePool} playersRemaining={playersRemaining} chipLeader={chipLeader} />
 
-      {watch ? (
+      {realtimeEnabled && publicSnapshot?.access === "revoked" ? null : watch ? (
         <div className="space-y-2 animate-in fade-in-0 duration-300 motion-reduce:animate-none">
           <button
             type="button"
@@ -234,7 +260,7 @@ function LiveHubContent({
 
           <TabsContent value="updates" className="mt-3 space-y-3 sm:space-y-4">
             <LiveTablesMap
-              tables={tables}
+              tables={displayedTables}
               activeTableId={null}
               onSelect={(id) => setWatch({ kind: "live", tableId: id })}
               minToShow={1}
@@ -275,7 +301,7 @@ function LiveHubContent({
         clubName={clubName}
         clubId={clubId}
         subtitle={subtitle}
-        liveTableCount={liveTableCount}
+        liveTableCount={displayedLiveTableCount}
         guarantee={guarantee}
         buyIn={buyIn}
         startingStack={startingStack}
@@ -289,8 +315,18 @@ function LiveHubContent({
         <TrackerCardStyleToggle />
         {watch && <OrientationToggle value={effectiveOrientation} onChange={setOrientation} />}
       </div>
+      {realtimeEnabled && networkError && publicSnapshot?.access !== "revoked" && (
+        <div role="status" className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+          Mất kết nối tạm thời — đang giữ dữ liệu đã xác nhận gần nhất.
+        </div>
+      )}
+      {realtimeEnabled && publicSnapshot?.access === "revoked" && (
+        <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-8 text-center text-sm text-muted-foreground">
+          Giải này không còn được công khai.
+        </div>
+      )}
 
-      {watch ? (
+      {realtimeEnabled && publicSnapshot?.access === "revoked" ? null : watch ? (
         <section className="min-w-0 space-y-3 animate-in fade-in-0 duration-300 motion-reduce:animate-none" aria-label={t("liveHub.watch.viewer", "Trình xem ván đấu")}>
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/55 bg-card/55 p-2 sm:p-2.5">
             <button
@@ -359,18 +395,38 @@ function LiveHubContent({
           </div>
 
           <TabsContent value="updates" className="mt-3 min-w-0 focus-visible:outline-none sm:mt-4">
+            {realtimeEnabled && (
+              <div className="mb-4">
+                <RealtimeTablesGrid
+                  catalog={publicSnapshot?.sections.tables?.catalog ?? []}
+                  tables={publicSnapshot?.sections.tables?.items ?? []}
+                  freshness={publicSnapshot?.sections.tables?.freshness}
+                  onVisibleTableIds={setVisibleTableIds}
+                  onView={(id) => setWatch({ kind: "live", tableId: id })}
+                  onHistory={(id) => { setHistoryTableId(id); onTabChange?.("hands"); }}
+                />
+              </div>
+            )}
             <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.75fr)] xl:items-start">
               <aside className={`min-w-0 space-y-4 xl:col-start-2 xl:row-start-1 ${FEATURES.liveHandFeed ? "" : "xl:col-span-2 xl:col-start-1"}`}>
-                <LiveTablesMap
-                  tables={tables}
+                {!realtimeEnabled && <LiveTablesMap
+                  tables={displayedTables}
                   activeTableId={null}
                   onSelect={(id) => setWatch({ kind: "live", tableId: id })}
                   minToShow={1}
                   title={t("liveHub.watch.title", "Bàn đang chơi")}
                   rpt
-                />
+                />}
                 <LiveStoryFeed items={storyFeed} rpt />
                 <LiveUpdatesFeed feed={feed} rpt />
+                {realtimeEnabled && (
+                  <RealtimeRankingPanel
+                    rows={publicSnapshot?.sections.ranking?.items ?? []}
+                    bigBlind={publicSnapshot?.sections.ranking?.bigBlind ?? null}
+                    freshness={publicSnapshot?.sections.ranking?.freshness}
+                    loading={publicSnapshotLoading}
+                  />
+                )}
               </aside>
               {FEATURES.liveHandFeed && (
                 <div className="min-w-0 xl:col-start-1 xl:row-start-1">
@@ -393,7 +449,7 @@ function LiveHubContent({
           <TabsContent value="history" className="mt-3 min-w-0 focus-visible:outline-none sm:mt-4">
             <LiveHandFeed
               tournamentId={tournamentId}
-              featuredTableId={activeHandTableId}
+              featuredTableId={historyTableId ?? activeHandTableId}
               variant="history"
               tableNames={tableNames}
               onViewHand={handleViewHand}
@@ -402,7 +458,14 @@ function LiveHubContent({
           </TabsContent>
 
           <TabsContent value="prizes" className="mt-3 focus-visible:outline-none sm:mt-4">
-            <PrizesPanel tournamentId={tournamentId} rpt />
+            {realtimeEnabled ? (
+              <RealtimePayoutPanel
+                rows={publicSnapshot?.sections.payout?.items ?? []}
+                freshness={publicSnapshot?.sections.payout?.freshness}
+                published={publicSnapshot?.sections.payout?.published ?? false}
+                loading={publicSnapshotLoading}
+              />
+            ) : <PrizesPanel tournamentId={tournamentId} rpt />}
           </TabsContent>
 
           <TabsContent value="structure" className="mt-3 focus-visible:outline-none sm:mt-4">

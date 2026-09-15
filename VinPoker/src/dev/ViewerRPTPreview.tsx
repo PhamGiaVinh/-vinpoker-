@@ -13,8 +13,10 @@ import { HandFeedCard } from "@/components/cashier/tournament-live/viewer-hub/Ha
 import { LiveHubHeader } from "@/components/cashier/tournament-live/viewer-hub/LiveHubHeader";
 import { LiveStatsBar } from "@/components/cashier/tournament-live/viewer-hub/LiveStatsBar";
 import { LiveStoryFeed } from "@/components/cashier/tournament-live/viewer-hub/LiveStoryFeed";
-import { LiveTablesMap } from "@/components/cashier/tournament-live/viewer-hub/LiveTablesMap";
 import { LiveUpdatesFeed } from "@/components/cashier/tournament-live/viewer-hub/LiveUpdatesFeed";
+import { RealtimeTablesGrid } from "@/components/cashier/tournament-live/viewer-hub/RealtimeTablesGrid";
+import { RealtimeRankingPanel } from "@/components/cashier/tournament-live/viewer-hub/RealtimeRankingPanel";
+import { RealtimePayoutPanel } from "@/components/cashier/tournament-live/viewer-hub/RealtimePayoutPanel";
 import { TournamentPostCard } from "@/components/cashier/tournament-live/viewer-hub/TournamentPostCard";
 import type { HandFeedItem } from "@/components/cashier/tournament-live/viewer-hub/handFeedDerive";
 import type { TournamentPostViewModel } from "@/components/cashier/tournament-live/viewer-hub/viewerTypes";
@@ -96,6 +98,16 @@ function ViewerRPTPreviewContent() {
 
   const bb = detectBigBlind(replayHand);
   const formatBB = (chips: number) => bb > 0 ? `${(chips / bb).toFixed(1).replace(/\.0$/, "")} BB` : null;
+  const previewTables = [{ tableId: "table-1", tableSessionId: "session-1", name: "Bàn 14", handId: "hand-141", handNumber: 141, buttonSeat: 2, street: "turn", board: ["4S", "AC", "6D", "QH"], pot: 18_600_000, smallBlind: 150_000, bigBlind: 300_000, trackerState: "live" as const, players: visualSeats.slice(0, 6).map((seat, index) => ({ entryId: `entry-${index}`, playerId: seat.player_id, entryNumber: 1, seatNumber: seat.seat_number, name: fixtureNames[index], avatarUrl: null, stack: seat.chip_count })) }];
+  const previewCatalog = params.get("tables") === "many"
+    ? Array.from({ length: 8 }, (_, index) => ({
+      tableId: index === 0 ? previewTables[0].tableId : `table-${index + 1}`,
+      name: `Bàn ${14 + index}`,
+      playerCount: index === 0 ? previewTables[0].players.length : 0,
+      searchPlayers: index === 0 ? previewTables[0].players.map((player) => player.name) : [],
+    }))
+    : previewTables.map((table) => ({ tableId: table.tableId, name: table.name, playerCount: table.players.length, searchPlayers: table.players.map((player) => player.name) }));
+  const freshness = { sourceRevision: "fixture", projectedSourceRevision: "fixture", sourceChangedAt: new Date().toISOString(), publishedAt: new Date().toISOString(), serverCheckedAt: new Date().toISOString(), oldestPendingAt: null, state: "current" as const };
 
   return (
     <main
@@ -134,9 +146,9 @@ function ViewerRPTPreviewContent() {
             </aside>
           </section>
         ) : view === "updates" ? (
-          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.75fr)] xl:items-start">
+          <div className="space-y-4"><RealtimeTablesGrid catalog={previewCatalog} tables={previewTables} freshness={freshness} onVisibleTableIds={() => {}} onView={() => {}} onHistory={() => {}} /><div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.75fr)] xl:items-start">
             <aside className="min-w-0 space-y-4 xl:col-start-2 xl:row-start-1">
-              <LiveTablesMap tables={[{ tableId: "table-1", name: "Bàn Sakura", playerCount: 5 }, { tableId: "table-2", name: "Bàn Sumi", playerCount: 5 }]} activeTableId={null} minToShow={1} onSelect={() => {}} title={t("liveHub.watch.title", "Bàn đang chơi")} rpt />
+              <RealtimeRankingPanel loading={false} bigBlind={300_000} freshness={freshness} rows={previewTables[0].players.map((player) => ({ ...player, chips: player.stack, updatedAt: freshness.publishedAt }))} />
               <LiveStoryFeed rpt items={[{ id: "bubble", kind: "bubble", count: 10, label: "Bubble" }, { id: "elim", kind: "elimination", name: "MINH", count: 10, label: "Eliminated" }]} />
               <LiveUpdatesFeed rpt feed={[{ id: "a1", seatNumber: 2, playerName: "KIÊN", label: "ALL-IN 4.5M", kind: "allin", actionType: "all_in", amount: 4_500_000 }, { id: "a2", seatNumber: 5, playerName: "NAM", label: "Theo 4.5M", kind: "call", actionType: "call", amount: 4_500_000 }]} />
             </aside>
@@ -144,9 +156,11 @@ function ViewerRPTPreviewContent() {
               <TournamentPostCard post={post} onShare={() => {}} onViewHand={() => {}} />
               <HandFeedCard rpt item={handCard} tableName="Bàn Sakura" onShare={() => {}} onViewHand={() => {}} />
             </div>
-          </div>
+          </div></div>
         ) : view === "history" ? (
           <div className="space-y-3"><HandFeedCard rpt item={handCard} tableName="Bàn Sakura" onShare={() => {}} onViewHand={() => {}} /><HandFeedCard rpt item={{ ...handCard, handId: "fixture-140", handNumber: 140, tags: ["high_hand"], sidePotCount: 0 }} tableName="Bàn Sumi" onShare={() => {}} onViewHand={() => {}} /></div>
+        ) : view === "prizes" ? (
+          <RealtimePayoutPanel loading={false} published freshness={freshness} rows={[{ fromPlace: 1, toPlace: 1, amountPerPlayer: 1_500_000_000, playerName: "KIÊN", avatarUrl: null, resultStatus: "official" }, { fromPlace: 2, toPlace: 2, amountPerPlayer: 1_040_000_000, playerName: null, avatarUrl: null, resultStatus: "open" }, { fromPlace: 3, toPlace: 5, amountPerPlayer: 250_000_000, playerName: null, avatarUrl: null, resultStatus: "open" }]} />
         ) : (
           <FixtureEmpty />
         )}
