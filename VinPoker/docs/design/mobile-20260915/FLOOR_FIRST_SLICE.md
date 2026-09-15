@@ -1,6 +1,17 @@
 # Floor mobile — first bounded redesign slice
 
-Status: SPEC ONLY. Không sửa RPC, Edge, mode rules, permission, flag, chip hoặc payout.
+Status: SOURCE IMPLEMENTED / LOCAL UI E2E PASS. Không sửa RPC, Edge, mode rules, permission, flag, chip hoặc payout.
+
+Implementation receipt (2026-09-15):
+
+- Floor V3 sheet dùng safe-area theo bốn cạnh; nút đóng 48×48 và nhãn screen-reader tiếng Việt.
+- Danh sách chính chỉ hiển thị session đang hoạt động; không gộp hoặc giấu hai assignment lịch sử bằng số bàn.
+- Ghế trống mở danh sách entry ngay, không autofocus; tìm theo tên/số entry và tách `Chưa có ghế` / `Đã loại`.
+- Bust, đóng bàn trống và đóng/chuyển người đều có bước xác nhận; bust nêu người, entry, bàn, ghế, chip và mode.
+- Tracker còn chip bị chặn ngay tại UI với lý do; server vẫn là authority cuối.
+- Load/mutation bị mất mạng luôn nhả trạng thái busy, báo chưa xác nhận thay đổi và refetch fail-closed.
+- Player bottom navigation và nút cài PWA không còn che route `/floor` trên mobile.
+- Local Chromium fixture PASS tại 360×800, 390×844, 430×932, 768×1024, 1024×768, 1280×900 và 1920×1080. Đây không phải Safari iPhone thật và không chứng minh RPC/DB live.
 
 ## Wireframe phone (placeholder, không dữ liệu live)
 

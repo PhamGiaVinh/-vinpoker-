@@ -16,6 +16,7 @@ const coveredFiles = [
   "src/pages/ops/OpsCashier.tsx",
   "src/components/ops/shared/PlayerActionSheets.tsx",
   "src/components/ops/shared/FloorSeatRoster.tsx",
+  "src/components/ops/shared/FloorEntryPicker.tsx",
   "src/components/ops/shared/RoomGrid.tsx",
   "src/components/ops/shared/FloorTableRosterIndex.tsx",
   "src/components/ops/shared/FloorTableControlMode.tsx",

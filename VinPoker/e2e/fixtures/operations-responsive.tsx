@@ -9,10 +9,59 @@ import { VinPokerTournamentClock } from "../../src/components/tournament-clock/V
 import { TrackerReadOnlyRoster } from "../../src/components/cashier/tournament-live/handinput/unified/TrackerReadOnlyRoster";
 import { DashboardTab } from "../../src/components/chip-ops/DashboardTab";
 import { FloorTableModePicker } from "../../src/components/ops/shared/FloorTableModePicker";
+import { FloorSeatRoster } from "../../src/components/ops/shared/FloorSeatRoster";
+import { FloorEntryPicker, type FloorEntrySelection } from "../../src/components/ops/shared/FloorEntryPicker";
+import { Button } from "../../src/components/ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../src/components/ui/sheet";
+
+const FLOOR_SEATABLE = [
+  { entryId: "entry-a", playerId: "player-a", entryNo: 1, displayName: "Nguyễn Văn Tên Rất Dài Tại Bàn Final", currentStack: 30_000_000, registrationId: "reg-a" },
+  { entryId: "entry-b", playerId: "player-b", entryNo: 27, displayName: "Tom Dwan", currentStack: 15_000, registrationId: "reg-b" },
+];
+const FLOOR_RESTORABLE = [
+  { entryId: "entry-c", playerId: "player-c", entryNo: 3, displayName: "Phil Ivey", currentStack: 0 },
+];
+
+function FloorMobileFixture() {
+  const [open, setOpen] = React.useState(true);
+  const [selection, setSelection] = React.useState<FloorEntrySelection | null>(null);
+  return (
+    <main className="operations-typography min-h-screen bg-background p-4 text-foreground">
+      <p className="text-sm text-muted-foreground">LOCAL TEST · Floor mobile · Không kết nối production</p>
+      <Button className="mt-4 min-h-12" onClick={() => setOpen(true)}>Mở danh sách Bàn 2</Button>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent
+          side="right"
+          closeLabel="Đóng danh sách bàn"
+          className="operations-typography h-[100dvh] w-full overflow-y-auto overscroll-contain pl-[max(1rem,calc(env(safe-area-inset-left)+0.5rem))] pr-[max(1rem,calc(env(safe-area-inset-right)+0.5rem))] pt-[max(1.5rem,calc(env(safe-area-inset-top)+0.75rem))] pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-xl sm:p-6"
+        >
+          <SheetHeader className="pr-14 text-left">
+            <SheetTitle>Bàn 2 · 2/9</SheetTitle>
+            <p className="text-xs text-muted-foreground">Manual Floor · Ghế 3 đang trống</p>
+          </SheetHeader>
+          <div className="mt-5 space-y-4">
+            <FloorSeatRoster
+              seats={[
+                { seatNumber: 1, playerName: "CODEX_FLOOR_UAT_PLAYER_WITH_A_VERY_LONG_NAME", chipsLabel: "30.000.000", entryNumber: 1 },
+                { seatNumber: 2, playerName: "Phil Ivey", chipsLabel: "0", entryNumber: 3 },
+              ]}
+            />
+            <section className="space-y-3 rounded-xl border border-border bg-card/55 p-3">
+              <h2 className="text-sm font-semibold">Thêm người vào Ghế 3</h2>
+              <FloorEntryPicker seatableEntries={FLOOR_SEATABLE} restorableEntries={FLOOR_RESTORABLE} value={selection} onChange={setSelection} />
+              <Button className="min-h-12 w-full" disabled={!selection}>{selection?.kind === "restore" ? "Khôi phục vào ghế này" : "Thêm vào ghế này"}</Button>
+            </section>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </main>
+  );
+}
 
 function Fixture() {
   const [mode, setMode] = React.useState<"manual" | "tracker">("manual");
   const surface = new URLSearchParams(location.search).get("surface");
+  if (surface === "floor") return <FloorMobileFixture />;
   if (surface === "clock") return <VinPokerTournamentClock data={{
     title: "Giải vô địch câu lạc bộ · FINAL TABLE", players: 9, entries: 199, reEntries: 99,
     prizePool: "420.000.000 VND", totalChips: "98.765.432", averageStack: "10.973.937",

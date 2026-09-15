@@ -49,10 +49,13 @@ const sheetVariants = cva(
 
 interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
-    VariantProps<typeof sheetVariants> {}
+    VariantProps<typeof sheetVariants> {
+  closeLabel?: string;
+  closeButtonClassName?: string;
+}
 
 const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Content>, SheetContentProps>(
-  ({ side = "right", className, children, ...props }, ref) => (
+  ({ side = "right", className, children, closeLabel = "Close", closeButtonClassName, ...props }, ref) => (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} {...props}>
@@ -61,9 +64,12 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
             sheets the old `absolute` X scrolled out of reach on short / keyboard-
             reduced mobile viewports, so it couldn't be tapped to close. */}
         <div className="pointer-events-none sticky top-0 z-20 h-0">
-          <SheetPrimitive.Close className="pointer-events-auto absolute right-0 top-0 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-muted text-foreground shadow-md ring-offset-background transition-colors hover:bg-primary hover:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+          <SheetPrimitive.Close className={cn(
+            "pointer-events-auto absolute right-0 top-0 inline-flex h-12 w-12 items-center justify-center rounded-full border border-border bg-muted text-foreground shadow-md ring-offset-background transition-colors hover:bg-primary hover:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none",
+            closeButtonClassName,
+          )}>
             <X className="h-6 w-6" />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{closeLabel}</span>
           </SheetPrimitive.Close>
         </div>
         {children}
