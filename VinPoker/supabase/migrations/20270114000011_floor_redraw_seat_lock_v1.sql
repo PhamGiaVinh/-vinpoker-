@@ -1379,7 +1379,8 @@ AS $$
           'to_table_number', move_row.to_table_number,
           'to_seat_number', move_row.to_seat_number
         ) ORDER BY move_row.ordinal
-      ), '[]'::jsonb)
+       ), '[]'::jsonb)
+      )
     FROM public.tournament_redraw_batches batch_row
     JOIN public.tournament_redraw_moves move_row ON move_row.batch_id = batch_row.id
     JOIN public.tournaments tournament_row ON tournament_row.id = batch_row.tournament_id
