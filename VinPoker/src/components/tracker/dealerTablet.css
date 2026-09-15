@@ -1,0 +1,51 @@
+.dealer-cockpit { --dealer-gold:#efbf57; --dealer-green:#6ee7b7; width:100%; max-width:1560px; margin:auto; color:#edf4ef; }
+.dealer-cockpit-header { padding:8px 4px 14px; }
+.dealer-modebar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:10px 14px; border:1px solid #ffffff18; border-radius:14px; background:linear-gradient(110deg,#18211f,#0f1716); }
+.dealer-segment { display:flex; padding:3px; border:1px solid #ffffff18; border-radius:12px; background:#090e0e; }
+.dealer-segment button { display:flex; align-items:center; justify-content:center; gap:6px; min-height:44px; padding:0 18px; border-radius:9px; font-size:12px; font-weight:700; color:#a8b5b0; }
+.dealer-segment button[aria-pressed=true] { color:#d5ffea; background:#124730; box-shadow:inset 0 0 0 1px #66dc9c80; }
+.dealer-segment button:disabled { opacity:.4; cursor:not-allowed; }
+.dealer-segment button:focus-visible { outline:2px solid #efbf57; outline-offset:2px; }
+.dealer-access { display:flex; align-items:center; gap:6px; font-size:11px; color:#9cbaa9; }
+.dealer-cockpit-grid { display:grid; gap:16px; margin-top:14px; }
+.dealer-table-region,.dealer-control-region { min-width:0; display:flex; flex-direction:column; gap:12px; }
+.dealer-table-region { padding:12px; border:1px solid #ffffff12; border-radius:18px; background:radial-gradient(ellipse at center,#18352a55,#080e0d); }
+.dealer-shot-clock { padding:12px 16px 10px; border:1px solid #b2925266; border-radius:16px; background:radial-gradient(ellipse at left,#5b401a28,transparent),#101513; }
+.dealer-shot-clock h2 { font-family:Georgia,serif; color:#efcf8a; font-size:17px; font-weight:700; letter-spacing:.035em; }
+.dealer-clock-ring { width:116px; height:116px; flex-shrink:0; padding:5px; border-radius:50%; box-shadow:0 0 25px #dbaa2916; }
+.dealer-clock-ring > div { height:100%; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#111713; }
+.dealer-clock-ring strong { font-size:62px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; color:var(--dealer-gold); }
+.dealer-clock-ring span { font-size:12px; color:#d6c4a0; }
+.dealer-log,.dealer-manual-fallback,.dealer-normal-note { border:1px solid #ffffff1c; border-radius:12px; background:#111917; }
+.dealer-log summary,.dealer-manual-fallback summary { cursor:pointer; padding:12px 16px; font-size:12px; min-height:44px; color:#b6c6bd; }
+.dealer-normal-note { padding:24px; line-height:1.6; font-size:13px; color:#a9bdb2; }
+.dealer-normal-note h2 { color:#f0d396; font-size:18px; margin-bottom:8px; }
+.dealer-voice-region:empty::after { content:'Voice chưa khả dụng. Kiểm tra cấu hình bàn và phân công Dealer.'; display:block; padding:16px; color:#e6c68b; font-size:12px; }
+.dealer-voice-region [data-compact=true] > .space-y-3 { display:flex; flex-direction:column; gap:8px; padding:12px; }
+.dealer-voice-region [data-compact=true] > .space-y-3 > * { margin-top:0; }
+.dealer-voice-region .dealer-voice-proposal { order:-3; min-height:100px; }
+.dealer-voice-region [data-testid=voice-private-hole-cards-proposal] { order:-2; }
+.dealer-voice-region [aria-label='Fallback hand actions'] { order:2; }
+.dealer-voice-region [aria-label='Fallback hand actions'] .grid { grid-template-columns:repeat(6,minmax(0,1fr)); gap:4px; }
+.dealer-voice-region [aria-label='Fallback hand actions'] .mb-2 { display:none; }
+.dealer-voice-region [data-compact=true] > div:first-child { padding:8px 12px; }
+.dealer-shot-clock .grid { grid-template-columns:repeat(3,minmax(0,1fr)); max-width:none; }
+.dealer-shot-clock .grid button { flex-direction:column; padding:6px; font-size:10px; }
+.dealer-voice-region [aria-label='Floor alerts'] { order:3; }
+.dealer-voice-region .dealer-voice-settings { order:4; }
+.dealer-voice-region [role=timer] { border-top:1px solid #6ee7b740; padding-top:12px; }
+.dealer-voice-region [role=timer] > div:first-child { width:64px; height:64px; }
+.dealer-voice-region .dealer-voice-proposal { position:relative; }
+.dealer-voice-region .dealer-voice-proposal:has([role=timer]) { min-height:154px; padding-right:88px; }
+.dealer-voice-region .dealer-voice-proposal [role=timer] { position:absolute; right:12px; top:32px; padding:0; border:0; margin:0; }
+.dealer-voice-region .dealer-voice-proposal [role=timer] > div:last-child { display:none; }
+.dealer-voice-region .dealer-voice-proposal:has([role=timer])::after { content:'3 giây để chốt · Nói Báo sai để hủy'; display:block; margin-top:12px; font-size:10px; color:#afd9be; }
+.dealer-voice-region [data-compact=true] > div:first-child button:nth-child(2) { padding:0 8px; font-size:10px; }
+.dealer-voice-region [aria-label='Floor alerts'] { position:sticky; bottom:0; background:#101b16; border-radius:10px; }
+.dealer-voice-settings > div { margin-top:8px; }
+@media(min-width:1000px) and (orientation:landscape) {
+ .dealer-cockpit-grid { grid-template-columns:minmax(0,1.55fr) minmax(350px,1fr); align-items:start; }
+ .dealer-table-region { position:sticky; top:12px; }
+ .dealer-control-region { max-height:calc(100dvh - 180px); overflow-y:auto; scrollbar-width:thin; scrollbar-color:#446755 transparent; padding-right:3px; }
+}
+@media(max-width:600px) { .dealer-modebar { gap:8px; padding:8px; } .dealer-segment button { padding:0 12px; } .dealer-access { width:100%; order:3; } .dealer-shot-clock { padding:14px; } .dealer-table-region { padding:4px; } }

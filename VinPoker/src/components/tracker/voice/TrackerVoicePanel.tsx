@@ -50,6 +50,7 @@ import type { StandaloneHandInput } from "@/components/cashier/tournament-live/h
 
 interface TrackerVoicePanelProps {
   hook: StandaloneHandInput;
+  compact?: boolean;
   providerOverride?: RealtimeTranscriptionProvider;
   runtimeOverride?: TrackerVoiceRuntimeContext;
   loadRuntimeOverride?: typeof loadTrackerVoiceRuntimeContext;
@@ -187,6 +188,7 @@ function formatPrivateCard(card: string): string {
 
 export function TrackerVoicePanel({
   hook,
+  compact = false,
   providerOverride,
   runtimeOverride,
   loadRuntimeOverride = loadTrackerVoiceRuntimeContext,
@@ -205,7 +207,7 @@ export function TrackerVoicePanel({
   const [partial, setPartial] = useState("");
   const [finalTranscript, setFinalTranscript] = useState("");
   const [proposal, setProposal] = useState<VoiceProposal | null>(null);
-  const [mode, setMode] = useState<VoiceExecutionMode>("shadow");
+  const [mode, setMode] = useState<VoiceExecutionMode>(compact ? "assist" : "shadow");
   const [mockText, setMockText] = useState("raise 120k");
   const [providerConfidence, setProviderConfidence] = useState<number | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
@@ -1527,7 +1529,7 @@ export function TrackerVoicePanel({
       : "controlAction" in proposal
       ? proposal.controlAction === "call_floor" ? "Gọi Floor" : "Báo sai action"
       : `${proposal.actor.playerName} · ${proposal.canonicalAction}${proposal.betToTotal ? ` tới ${proposal.betToTotal.toLocaleString("vi-VN")}` : ""}`
-    : proposal?.message ?? "Nói một lệnh để tạo đề xuất Shadow.";
+    : proposal?.message ?? (mode === "assist" ? "Đọc action, Board hoặc bài tẩy all-in." : "Nói một lệnh để tạo đề xuất Shadow.");
 
   const providerKind = providerRef.current?.kind ??
     (import.meta.env.VITE_TRACKER_VOICE_PROVIDER === "mock"
@@ -1578,6 +1580,7 @@ export function TrackerVoicePanel({
     <section
       className="overflow-hidden rounded-2xl border border-emerald-400/25 bg-[linear-gradient(135deg,rgba(5,18,14,.95),rgba(8,10,13,.96))] shadow-[0_18px_50px_rgba(0,0,0,.28)]"
       aria-label="Voice Tracker"
+      data-compact={compact}
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
@@ -1585,8 +1588,8 @@ export function TrackerVoicePanel({
             <Radio className="h-5 w-5" />
           </span>
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold tracking-wide text-zinc-100">Voice Tracker</h2>
-            <p className="truncate text-[11px] text-zinc-500">
+            <h2 className="text-sm font-semibold tracking-wide text-zinc-100">{compact ? "Voice Assist" : "Voice Tracker"}</h2>
+            <p className={`truncate text-[11px] text-zinc-500 ${compact ? "hidden" : ""}`}>
               {providerKind === "mock"
                 ? "Mock mic · Preview"
                 : providerKind === "gemini_live"
@@ -1618,6 +1621,8 @@ export function TrackerVoicePanel({
       </div>
 
       <div className="space-y-3 p-4">
+        <details open={compact ? undefined : true} className="dealer-voice-settings">
+        {compact && <summary className="cursor-pointer py-2 text-xs text-emerald-100/70">Microphone & chế độ · {microphoneStatusLabel}</summary>}
         <div className="grid grid-cols-3 gap-2" aria-label="Chế độ Voice">
           {(["shadow", "assist", "auto"] as const).map((item) => {
             const unavailable = item === "assist" ? !assistAllowed : item === "auto" ? !autoAllowed : false;
@@ -1687,6 +1692,7 @@ export function TrackerVoicePanel({
           {micTestResult && <p className="mt-2 text-[11px] text-zinc-400" aria-live="polite">{micTestResult}</p>}
         </div>
 
+        </details>
         <div className="grid grid-cols-2 gap-2" aria-label="Floor alerts">
           <button
             type="button"
@@ -1766,7 +1772,7 @@ export function TrackerVoicePanel({
           </div>
         )}
 
-        <div className={`rounded-xl border p-3 ${proposalTone(proposal)}`} aria-live="polite" aria-atomic="true">
+        <div className={`dealer-voice-proposal rounded-xl border p-3 ${proposalTone(proposal)}`} aria-live="polite" aria-atomic="true">
           <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] opacity-75">
             {proposal?.ok ? <ShieldCheck className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
             Voice Assist proposal
