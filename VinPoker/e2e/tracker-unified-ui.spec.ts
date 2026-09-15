@@ -17,6 +17,14 @@ async function measure(page: Page) {
       const plate = pod.querySelector('.tracker-seat-plate');
       const cards = pod.querySelector('.tracker-seat-cards');
       if (plate && cards && hits(rect(plate), rect(cards))) overlaps.push(`cards/name/${pod.getAttribute('data-tracker-seat')}`);
+      const avatar = pod.querySelector('.tracker-seat-avatar > div');
+      const holeCards = cards ? [...cards.querySelectorAll('[data-card-code], :scope > div:not(:has([data-card-code]))')] : [];
+      holeCards.forEach((card, ci) => {
+        if (avatar && hits(rect(card), rect(avatar))) overlaps.push(`card/avatar/${pod.getAttribute('data-tracker-seat')}/${ci}`);
+        holeCards.slice(ci + 1).forEach(other => {
+          if (hits(rect(card), rect(other))) overlaps.push(`card/card/${pod.getAttribute('data-tracker-seat')}`);
+        });
+      });
     });
     if (board) for (const bet of table.querySelectorAll('[data-tracker-bet]')) {
       if (hits(rect(bet), rect(board))) overlaps.push(`bet/board/${bet.getAttribute('data-tracker-bet')}`);
@@ -91,7 +99,7 @@ test('nine committed stacks do not cover the board', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    for (const url of ['/__dev/tracker?allbets=1', '/__dev/livefelt?fixture=showdown&allbets=1']) {
+    for (const url of ['/__dev/tracker?allbets=1', '/__dev/livefelt?fixture=showdown&allbets=1&step=12']) {
       await page.goto(url);
       await expect(page.locator('[data-tracker-bet]')).toHaveCount(9);
       const result = await measure(page);

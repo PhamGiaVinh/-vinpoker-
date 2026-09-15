@@ -13,6 +13,7 @@ import { getSeatPositions } from "@/lib/tournament/button";
 import { useAuth } from "@/hooks/useAuth";
 import { TdAiAssistantPanel } from "@/components/td-ai/TdAiAssistantPanel";
 import { TrackerVisualStyles } from "./PokerVisuals";
+import { useTrackerRunoutSounds } from "@/lib/tracker-poker/useTrackerRunoutSounds";
 import { markPokerSoundGesture, playPokerLiveSound, stopTrackerPokerSounds, type PokerLiveSound } from "@/lib/pokerLiveSound";
 import {
   streetContribution,
@@ -244,7 +245,7 @@ function TournamentLiveViewContent({
   const lastChipNonceRef = useRef<number | null>(null);
   // liveTableFx replay playback FX: forward-only tracker (frame index + board count)
   // so PLAYING a hand back emits the same sounds + chip-push; scrubbing back is silent.
-  const replayFxRef = useRef<{ index: number | null; board: number }>({ index: null, board: 0 });
+  const replayFxRef = useRef<{ index: number | null; board: number; revealed: boolean }>({ index: null, board: 0, revealed: false });
   const replayFxPlaybackStateRef = useRef({ soundMuted, spectator, replayMotionSpeed });
   replayFxPlaybackStateRef.current = { soundMuted, spectator, replayMotionSpeed };
   const replayActionFxSchedulerRef = useRef<ReturnType<typeof createReplayActionFxScheduler> | null>(null);
@@ -253,7 +254,6 @@ function TournamentLiveViewContent({
   }
   const replayChipSeqRef = useRef(0);
   const replayMotionFrameRef = useRef<ReplayFrame | null>(null);
-  const replaySettlementSoundRef = useRef<string | null>(null);
   const previousLiveHandRef = useRef<string | null>(null);
   const liveHandBlindRef = useRef<{ handId: string; bigBlind: number } | null>(null);
   const observedLiveHandRef = useRef<string | null>(null);
@@ -862,7 +862,7 @@ function TournamentLiveViewContent({
     const last = actions[count - 1];
 
     // Sound — unchanged detection (new action by count, respects mute).
-    if (!soundMuted && prev !== null && count > prev && last && SOUND_KINDS.has(last.action_type)) {
+    if (mode === "live" && !soundMuted && prev !== null && count > prev && last && SOUND_KINDS.has(last.action_type)) {
       if (FEATURES.liveTableFx && last.action_type === "fold") {
         playPokerLiveSound("fold_muck", { bypassStoredMute: true, profile: "tracker" }); // card-muck swoosh instead of the legacy beep
       } else {
@@ -910,7 +910,7 @@ function TournamentLiveViewContent({
     const count = communityCards.length;
     const prev = prevBoardCountRef.current;
     prevBoardCountRef.current = count;
-    if (prev === null || count <= prev) return;
+    if (mode !== "live" || prev === null || count <= prev) return;
     // C4 (trackerActionSounds): a street change means the finished street's bets were
     // gathered — play the owner's pot-collect clip before the deal. The prev-count
     // guard above IS the dedupe (fires once per board growth; polling echoes and
@@ -936,6 +936,17 @@ function TournamentLiveViewContent({
     }
   }, [communityCards, soundMuted, enqueueTableMotion, handId, mode, spectator]);
 
+  const liveShownCardsRef = useRef<{ hand: string | null; players: Set<string> } | null>(null);
+  useEffect(() => {
+    const shown = new Set(seats.filter(seat => !seat.is_folded && seat.hole_cards?.length === 2).map(seat => seat.player_id));
+    const previous = liveShownCardsRef.current;
+    liveShownCardsRef.current = { hand: handId, players: shown };
+    if (mode !== "live" || soundMuted || !previous || previous.hand !== handId || !FEATURES.liveTableFx) return;
+    if ([...shown].some(id => !previous.players.has(id))) {
+      playPokerLiveSound("showdown", { bypassStoredMute: true, profile: "tracker" });
+    }
+  }, [handId, mode, seats, soundMuted]);
+
   // Reset sound baselines on tournament switch so the first load stays silent.
   useEffect(() => {
     prevActionCountRef.current = null;
@@ -954,18 +965,22 @@ function TournamentLiveViewContent({
     const scheduler = replayActionFxSchedulerRef.current;
     if (mode !== "replay" || !FEATURES.liveTableFx || !replayFrame) {
       scheduler?.cancel();
-      replayFxRef.current = { index: null, board: 0 };
+      replayFxRef.current = { index: null, board: 0, revealed: false };
       return;
     }
     const idx = replayFrame.index;
     const board = replayFrame.displayCards.filter(Boolean).length;
     const prev = replayFxRef.current;
-    replayFxRef.current = { index: idx, board };
+    replayFxRef.current = { index: idx, board, revealed: replayFrame.revealHoleCards };
     if (replayFrameSource !== "playback") {
       scheduler?.cancel();
       return;
     }
 
+    if (!replayFxPlaybackStateRef.current.soundMuted && !prev.revealed && replayFrame.revealHoleCards
+      && prev.index !== null && idx === prev.index + 1 && (!replayRunoutPresentation || replayRunoutPresentation.phase === "pot_collect")) {
+      playPokerLiveSound("showdown", { bypassStoredMute: true, profile: "tracker" });
+    }
     const la = replayFrame.latestAction;
     const fx = deriveReplayPlaybackFx({
       prevIndex: prev.index,
@@ -976,6 +991,8 @@ function TournamentLiveViewContent({
       seatNumber: la?.seat_number ?? 0,
     });
 
+    // The final frame contains the entire board; the HUD owns its street cues.
+    if (replayRunoutPresentation && replayFrame.index === replayHand?.actions.length) fx.deal = null;
     if (!replayFxPlaybackStateRef.current.soundMuted && fx.deal) {
       playPokerLiveSound(fx.deal, { bypassStoredMute: true, profile: "tracker" });
     }
@@ -1026,7 +1043,7 @@ function TournamentLiveViewContent({
   }, [enqueueTableMotion, mode, replayFrame, replayFrameSource, replayHand, replayMotionEpoch, replayRunoutPresentation, spectator]);
 
   const toggleSoundMuted = useCallback(() => {
-    markPokerSoundGesture();
+    markPokerSoundGesture("tracker");
     setSoundMuted((m) => {
       const next = !m;
       if (next) stopTrackerPokerSounds();
@@ -1142,31 +1159,13 @@ function TournamentLiveViewContent({
     }
     return replayShowdownPresentation;
   }, [replayHasVerifiedPotSequence, replayRunoutForSelectedHand, replaySelectedPotIndex, replayShowdownPresentation]);
-  // The HUD owns the verified payout cadence. One key per phase/layer prevents
-  // polling, rerenders, and a fast scrub from replaying the collect/award sound.
-  useEffect(() => {
-    if (
-      mode !== "replay"
-      || !spectator
-      || !FEATURES.liveReplayHud
-      || !FEATURES.liveTableFx
-      || !replayRunoutForSelectedHand
-      || replayFrameSource !== "playback"
-      || (replayRunoutForSelectedHand.phase !== "pot_collect" && replayRunoutForSelectedHand.phase !== "pot_award")
-    ) {
-      replaySettlementSoundRef.current = null;
-      return;
-    }
-    const soundKey = `${replayRunoutForSelectedHand.key}:${replayRunoutForSelectedHand.phase}:${replayRunoutForSelectedHand.potAwardIndex ?? ""}`;
-    if (replaySettlementSoundRef.current === soundKey) return;
-    replaySettlementSoundRef.current = soundKey;
-    if (!soundMuted) {
-      playPokerLiveSound(replayRunoutForSelectedHand.phase === "pot_collect" ? "pot_collect" : "pot_award", {
-        bypassStoredMute: true,
-        profile: "tracker",
-      });
-    }
-  }, [mode, replayFrameSource, replayRunoutForSelectedHand, soundMuted, spectator]);
+  // The HUD owns the verified payout cadence, including each visible runout street.
+  useTrackerRunoutSounds(
+    replayRunoutForSelectedHand,
+    mode === "replay" && spectator && FEATURES.liveReplayHud && FEATURES.liveTableFx && replayFrameSource === "playback",
+    soundMuted,
+    Boolean(replayVisibleShowdownPresentation?.winners.some(winner => winner.bestFive.length === 5)),
+  );
   const replayFocusPhase = replayRunoutFocusPhase(replayRunoutForSelectedHand?.phase ?? (
     replayVisibleShowdownPresentation?.enabled ? "static" : null
   ));
@@ -1201,11 +1200,10 @@ function TournamentLiveViewContent({
     const timer = window.setTimeout(() => setLivePayout(next), replayRunoutPhaseDuration(livePayoutForHand.phase, 1));
     return () => window.clearTimeout(timer);
   }, [livePayoutForHand, livePotCount, mode]);
-  useEffect(() => {
-    if (mode !== "live" || replayFxPlaybackStateRef.current.soundMuted || !livePayoutForHand
-      || (livePayoutForHand.phase !== "pot_collect" && livePayoutForHand.phase !== "pot_award")) return;
-    playPokerLiveSound(livePayoutForHand.phase, { bypassStoredMute: true, profile: "tracker" });
-  }, [livePayoutForHand, mode]);
+  useTrackerRunoutSounds(
+    livePayoutForHand, mode === "live" && spectator && FEATURES.liveTableFx, soundMuted,
+    Boolean(liveShowdownPresentation?.winners.some(winner => winner.bestFive.length === 5)),
+  );
   const liveVisibleShowdownPresentation = liveShowdownPresentation?.enabled
     ? selectVerifiedPotLayerPresentation(liveShowdownPresentation, livePayoutForHand?.potAwardIndex ?? 0) : null;
   const replayFeltPayout = replayRunoutForSelectedHand ?? (replayVisibleShowdownPresentation?.enabled && selectedReplayHandKey

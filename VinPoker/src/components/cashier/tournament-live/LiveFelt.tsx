@@ -635,14 +635,6 @@ export function LiveFelt({
   // V2 forces its OWN premium surface, so the redesign never depends on the
   // separate liveHandFeed/viewerNeon flag being on (review P1).
   const neon = viewerNeon || viewerLayout;
-  // RPT-style subtle hole-card FAN (viewer only): the two cards tilt out + overlap a hair.
-  const fanFor = (ci: number): CSSProperties | undefined =>
-    !viewerLayout
-      ? undefined
-      : ci === 0
-        ? { transform: "rotate(-7deg)", transformOrigin: "bottom right", marginRight: "-3px" }
-        : { transform: "rotate(7deg)", transformOrigin: "bottom left", marginLeft: "-3px" };
-
   // liveTableFx chip-push: a transient chip per distinct nonce flies seat→pot.
   // Reduced-motion → never enqueue (so the absent onAnimationEnd can't orphan a chip).
   const [chips, setChips] = useState<{ id: number; fx: string; fy: string; color?: string }[]>([]);
@@ -855,7 +847,7 @@ export function LiveFelt({
                           ...(runoutDelay !== null
                             ? { animationDelay: `${runoutDelay}ms` }
                             : tableFx && i < 3
-                              ? { animationDelay: `${i * 45}ms` }
+                              ? { animationDelay: `${i * (unified ? 90 : 45)}ms` }
                               : {}),
                         }
                       : undefined
@@ -1162,7 +1154,7 @@ export function LiveFelt({
                     // the animation entirely (CSS), so the delay is moot for a11y.
                     seat.hole_cards.map((card, ci) => {
                       const focusClass = cardFocusClass(card, bestFiveFocus?.holeCardCodesByPlayerId.get(seat.player_id));
-                      const viewerClass = viewerLayout ? "ring-1 ring-white/20 drop-shadow-[0_2px_5px_rgba(0,0,0,0.65)]" : "";
+                      const viewerClass = viewerLayout ? "drop-shadow-[0_2px_5px_rgba(0,0,0,0.65)]" : "";
                       return (
                         <PokerCard
                           key={ci}
@@ -1170,12 +1162,12 @@ export function LiveFelt({
                           size="xs"
                           className={[viewerClass, focusClass].filter(Boolean).join(" ") || undefined}
                           muted={seat.is_folded}
-                          style={{ ...holeStyle, ...fanFor(ci), ...revealDelayStyle(seat.player_id) }}
+                          style={{ ...holeStyle, ...revealDelayStyle(seat.player_id) }}
                         />
                       );
                     })
                   ) : (
-                    [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} style={{ ...holeStyle, ...fanFor(ci) }} />)
+                    [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} style={holeStyle} />)
                   )}
                 </div>
                 )}

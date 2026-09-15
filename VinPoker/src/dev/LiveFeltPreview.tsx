@@ -34,7 +34,8 @@ import {
   selectVerifiedPotLayerPresentation,
 } from "@/lib/tracker-poker/replayBestFiveFocus";
 import { createReplayRunoutPresentation, replayRunoutFocusPhase, type ReplayRunoutPresentation } from "@/lib/tracker-poker/replayRunoutTimeline";
-import { markPokerSoundGesture, playPokerLiveSound } from "@/lib/pokerLiveSound";
+import { useTrackerRunoutSounds } from "@/lib/tracker-poker/useTrackerRunoutSounds";
+import { markPokerSoundGesture } from "@/lib/pokerLiveSound";
 import { deriveReplayPlaybackFx } from "@/lib/tracker-poker/replayFx";
 import { buildFixtureHand, type LiveFeltFixtureName } from "./livefeltFixtures";
 
@@ -78,11 +79,6 @@ function LiveFeltPreviewContent() {
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
-  useEffect(() => {
-    if (!mutedRef.current && (runout?.phase === "pot_collect" || runout?.phase === "pot_award")) {
-      playPokerLiveSound(runout.phase, { bypassStoredMute: true, profile: "tracker" });
-    }
-  }, [runout]);
   useEffect(() => { if (!play) setFrame(frames[step]); }, [frames, step, play]);
 
   // Play mode mirrors the real viewer's replay FX derivation (forward-only, single-step):
@@ -119,6 +115,8 @@ function LiveFeltPreviewContent() {
     () => selectVerifiedPotLayerPresentation(verifiedPresentation, runout?.potAwardIndex ?? requestedPotIndex),
     [requestedPotIndex, runout?.potAwardIndex, verifiedPresentation],
   );
+  useTrackerRunoutSounds(runout, play, muted, Boolean(visiblePresentation.winners.some(winner => winner.bestFive.length === 5)));
+
   const staticPayoutPresentation = play ? runout : visiblePresentation.enabled
     ? createReplayRunoutPresentation(
         `${visiblePresentation.handId}:${visiblePresentation.frameIndex}:dev-fixture`,
@@ -176,7 +174,7 @@ function LiveFeltPreviewContent() {
   return (
     <div
       data-dev-livefelt-preview
-      onPointerDown={markPokerSoundGesture}
+      onPointerDown={() => markPokerSoundGesture("tracker")}
       data-viewer-shell="rpt"
       className="min-h-screen bg-background p-3"
       style={widthPx > 0 ? { width: widthPx, marginInline: "auto" } : undefined}

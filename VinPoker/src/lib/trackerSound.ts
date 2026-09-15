@@ -11,6 +11,7 @@ import { FEATURES } from "@/lib/featureFlags";
 import {
   markPokerSoundGesture,
   playPokerLiveSound,
+  stopTrackerPokerSounds,
   type PokerLiveSound,
 } from "@/lib/pokerLiveSound";
 
@@ -27,6 +28,7 @@ export function isTrackerSoundMuted(): boolean {
 }
 
 export function setTrackerSoundMuted(v: boolean): void {
+  if (v) stopTrackerPokerSounds();
   try {
     localStorage.setItem(TRACKER_SOUND_MUTE_KEY, v ? "1" : "0");
   } catch {
@@ -64,8 +66,8 @@ export function shouldPlayOnce(
 export function playTrackerSound(kind: PokerLiveSound): void {
   if (!FEATURES.trackerActionSounds) return;
   if (isTrackerSoundMuted()) return;
-  markPokerSoundGesture();
-  playPokerLiveSound(kind);
+  markPokerSoundGesture("tracker");
+  playPokerLiveSound(kind, { profile: "tracker", bypassStoredMute: true });
 }
 
 /** playTrackerSound with the (handId, street, kind) dedupe applied. */
