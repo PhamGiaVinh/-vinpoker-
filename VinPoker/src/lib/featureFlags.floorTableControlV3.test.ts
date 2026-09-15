@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isFloorRedrawSeatLockV1Enabled,
   isFloorTableControlV3PreviewEnabled,
   isFloorTableControlV3ProductionEnabled,
 } from "./featureFlags";
@@ -15,5 +16,13 @@ describe("Floor Table Control V3 deployment gate", () => {
     expect(isFloorTableControlV3ProductionEnabled("preview", "production")).toBe(false);
     expect(isFloorTableControlV3ProductionEnabled(true, true)).toBe(false);
     expect(isFloorTableControlV3PreviewEnabled(undefined, undefined)).toBe(false);
+  });
+
+  it("keeps seat-lock/redraw dark unless the deployment pair matches exactly", () => {
+    expect(isFloorRedrawSeatLockV1Enabled("preview", "preview")).toBe(true);
+    expect(isFloorRedrawSeatLockV1Enabled("production", "production")).toBe(true);
+    expect(isFloorRedrawSeatLockV1Enabled("true", "production")).toBe(false);
+    expect(isFloorRedrawSeatLockV1Enabled("production", "preview")).toBe(false);
+    expect(isFloorRedrawSeatLockV1Enabled(undefined, undefined)).toBe(false);
   });
 });

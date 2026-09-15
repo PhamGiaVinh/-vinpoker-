@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRightLeft, Loader2, Plus, RadioTower, RefreshCw, RotateCcw, UserRoundX, UsersRound } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Loader2, LockKeyhole, Plus, RadioTower, RefreshCw, RotateCcw, Shuffle, UnlockKeyhole, UserRoundX, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,8 @@ import {
 } from "@/lib/floorTableControlV3";
 import type { Tournament } from "@/types/tournament";
 import { OpenTableDialog } from "./OpenTableDialog";
+import { FloorRedrawDialogV1 } from "./FloorRedrawDialogV1";
+import { FEATURES } from "@/lib/featureFlags";
 
 type Mutation = () => Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }>;
 type PendingTableAction = "close" | "break";
@@ -40,7 +42,9 @@ function v3ErrorMessage(error: string): string {
     case "table_has_active_hand":
     case "player_in_active_hand": return "Bàn đang có ván chạy nên thao tác này đã bị chặn.";
     case "seat_occupied": return "Ghế này vừa được sử dụng. Hãy tải lại.";
+    case "seat_locked": return "Ghế này đang khóa. Hãy mở khóa trước khi xếp người.";
     case "insufficient_capacity": return "Không đủ ghế trống để đóng và chuyển người.";
+    case "redraw_required_for_capacity_or_locks": return "Giải đang dùng bàn 8-max hoặc có ghế khóa. Hãy dùng Redraw để server giữ đúng sức chứa và ghế khóa.";
     case "player_has_chips": return "Bàn Live Tracker chỉ cho phép loại khi chip bằng 0.";
     case "tracker_chip_state_mismatch": return "Chip trên Floor và Live Tracker chưa khớp. Hãy tải lại trước khi loại người chơi.";
     case "table_has_active_seats": return "Bàn vẫn còn người chơi. Hãy dùng “Đóng & chuyển người”.";
@@ -64,6 +68,7 @@ function v3ErrorMessage(error: string): string {
     case "IDEMPOTENCY_CONFLICT": return "Yêu cầu này đã được dùng cho một thao tác khác. Hãy thử lại.";
     case "STALE_TRACKER_CONTEXT": return "Phiên Live Tracker đã đổi. Không thể dùng trạng thái cũ.";
     case "FLOOR_TABLE_CONTROL_V3_DISABLED": return "Table Control V3 chưa được mở cho môi trường này.";
+    case "FLOOR_REDRAW_SEAT_LOCK_V1_DISABLED": return "Khóa ghế và redraw 8/9-max chưa được mở cho môi trường này.";
     default: return `Thao tác không thành công (${error}).`;
   }
 }
@@ -100,6 +105,8 @@ export function FloorTableMapPanelV3({
   const [nextMode, setNextMode] = useState<"manual" | "tracker">("manual");
   const [pendingBustSeat, setPendingBustSeat] = useState<FloorTableRosterSeat | null>(null);
   const [pendingTableAction, setPendingTableAction] = useState<PendingTableAction | null>(null);
+  const [redrawOpen, setRedrawOpen] = useState(false);
+  const [lockReason, setLockReason] = useState("Giữ ghế cho vận hành");
 
   const selectedTable = useMemo(
     () => tables.find((table) => table.tournamentTableId === selectedTableId) ?? null,
@@ -109,10 +116,16 @@ export function FloorTableMapPanelV3({
     () => selectedTable?.seats.find((seat) => seat.seatNumber === selectedSeatNumber) ?? null,
     [selectedSeatNumber, selectedTable],
   );
+  const selectedSeatLock = useMemo(
+    () => selectedTable?.seatLocks.find((lock) => lock.seatNumber === selectedSeatNumber) ?? null,
+    [selectedSeatNumber, selectedTable],
+  );
   const emptySeatNumbers = useMemo(() => {
     if (!selectedTable) return [] as number[];
     const occupied = new Set(selectedTable.seats.map((seat) => seat.seatNumber));
-    return Array.from({ length: 9 }, (_, index) => index + 1).filter((seat) => !occupied.has(seat));
+    const locked = new Set(selectedTable.seatLocks.map((seatLock) => seatLock.seatNumber));
+    return Array.from({ length: selectedTable.maxSeats }, (_, index) => index + 1)
+      .filter((seat) => !occupied.has(seat) && !locked.has(seat));
   }, [selectedTable]);
   const moveDestination = useMemo(
     () => tables.find((table) => table.tournamentTableId === moveDestinationId) ?? null,
@@ -121,7 +134,9 @@ export function FloorTableMapPanelV3({
   const destinationSeatNumbers = useMemo(() => {
     if (!moveDestination) return [] as number[];
     const occupied = new Set(moveDestination.seats.map((seat) => seat.seatNumber));
-    return Array.from({ length: 9 }, (_, index) => index + 1).filter((seat) => !occupied.has(seat));
+    const locked = new Set(moveDestination.seatLocks.map((seatLock) => seatLock.seatNumber));
+    return Array.from({ length: moveDestination.maxSeats }, (_, index) => index + 1)
+      .filter((seat) => !occupied.has(seat) && !locked.has(seat));
   }, [moveDestination]);
 
   const load = useCallback(async () => {
@@ -183,6 +198,7 @@ export function FloorTableMapPanelV3({
     setMoveSeatNumber(null);
     setPendingBustSeat(null);
     setPendingTableAction(null);
+    setLockReason("Giữ ghế cho vận hành");
   }, [selectedSeatNumber, selectedTableId]);
 
   const selectedTableSessionId = selectedTable?.tableSessionId ?? null;
@@ -238,7 +254,7 @@ export function FloorTableMapPanelV3({
     tableNumber: table.tableNumber,
     tableName: table.tableName,
     occupiedSeatNumbers: table.seats.map((seat) => seat.seatNumber),
-    maxSeats: 9,
+    maxSeats: table.maxSeats,
     status: table.seats.length > 0 ? "running" as const : "open" as const,
     controlMode: table.controlMode,
   })), [tables]);
@@ -258,7 +274,7 @@ export function FloorTableMapPanelV3({
             <select className="h-12 rounded-md border border-input bg-background px-2 text-base text-foreground" value={moveDestinationId} onChange={(event) => setMoveDestinationId(event.target.value)}>
               <option value="">Chọn bàn đích</option>
               {tables.filter((table) => table.tournamentTableId !== selectedTable.tournamentTableId).map((table) => (
-                <option key={table.tournamentTableId} value={table.tournamentTableId}>Bàn {table.tableNumber} · {table.seats.length}/9</option>
+                <option key={table.tournamentTableId} value={table.tournamentTableId}>Bàn {table.tableNumber} · {table.seats.length}/{table.maxSeats}</option>
               ))}
             </select>
           </label>
@@ -312,6 +328,9 @@ export function FloorTableMapPanelV3({
         <div className="flex gap-2">
           <Button data-ops-action="floor.tables.refresh" size="sm" variant="outline" className="min-h-12" disabled={loading || busy} onClick={() => void load()}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Làm mới</Button>
           <Button data-ops-action="floor.tables.open_table_dialog" size="sm" className="min-h-12" disabled={busy} onClick={() => setOpenTable(true)}><Plus className="mr-2 h-4 w-4" /> Mở bàn</Button>
+          {FEATURES.floorRedrawSeatLockV1 && (
+            <Button data-ops-action="floor.redraw.open" size="sm" variant="outline" className="min-h-12" disabled={busy || tables.length === 0} onClick={() => setRedrawOpen(true)}><Shuffle className="mr-2 h-4 w-4" /> Redraw</Button>
+          )}
         </div>
       </div>
 
@@ -332,6 +351,16 @@ export function FloorTableMapPanelV3({
       </p>
 
       <OpenTableDialog open={openTable} onOpenChange={setOpenTable} tournamentId={tournament.id} onDone={() => void load()} />
+      {FEATURES.floorRedrawSeatLockV1 && (
+        <FloorRedrawDialogV1
+          open={redrawOpen}
+          onOpenChange={setRedrawOpen}
+          tournamentId={tournament.id}
+          tables={tables}
+          client={v3}
+          onApplied={load}
+        />
+      )}
 
       <Sheet open={selectedTable !== null} onOpenChange={(open) => { if (!open) setSelectedTableId(null); }}>
         <SheetContent
@@ -343,7 +372,7 @@ export function FloorTableMapPanelV3({
           {selectedTable && (
             <>
               <SheetHeader className="pr-14 text-left">
-                <SheetTitle>Bàn {selectedTable.tableNumber} · {selectedTable.seats.length}/9</SheetTitle>
+                <SheetTitle>Bàn {selectedTable.tableNumber} · {selectedTable.seats.length}/{selectedTable.maxSeats}</SheetTitle>
                 <button
                   type="button"
                   data-ops-action="floor.tables.open_v3_control_mode"
@@ -387,7 +416,33 @@ export function FloorTableMapPanelV3({
                 )}
 
                 <div className="space-y-4">
-                  {selectedSeat ? seatAction(selectedSeat) : selectedSeatNumber != null && (
+                  {selectedSeat ? seatAction(selectedSeat) : selectedSeatNumber != null && selectedSeatLock ? (
+                    <section className="space-y-3 rounded-xl border border-amber-400/25 bg-amber-400/5 p-3">
+                      <div className="flex items-start gap-2">
+                        <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-amber-100">Ghế {selectedSeatNumber} đang khóa</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{selectedSeatLock.reason}</p>
+                        </div>
+                      </div>
+                      <Button
+                        data-ops-action="floor.seat.unlock"
+                        variant="outline"
+                        className="min-h-12 w-full"
+                        disabled={busy}
+                        onClick={() => void run("Đã mở khóa ghế.", () => v3.setSeatLock({
+                          tournamentTableId: selectedTable.tournamentTableId,
+                          seatNumber: selectedSeatNumber,
+                          locked: false,
+                          reason: "operator_unlock",
+                          expectedRevision: selectedTable.sessionRevision,
+                          requestId: crypto.randomUUID(),
+                        }))}
+                      >
+                        <UnlockKeyhole className="mr-2 h-4 w-4" /> Mở khóa ghế
+                      </Button>
+                    </section>
+                  ) : selectedSeatNumber != null && (
                     <section className="space-y-3 rounded-xl border border-border bg-card/55 p-3">
                       <p className="text-sm font-semibold">Ghế {selectedSeatNumber} đang trống</p>
                       <p className="text-xs text-muted-foreground">Danh sách chỉ gồm entry hợp lệ của giải. Chọn “Đã loại” để khôi phục.</p>
@@ -397,6 +452,35 @@ export function FloorTableMapPanelV3({
                         value={entrySelection}
                         onChange={setEntrySelection}
                       />
+                      {FEATURES.floorRedrawSeatLockV1 && (
+                        <div className="space-y-2 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3">
+                          <label className="grid gap-1 text-xs text-muted-foreground">
+                            Lý do khóa ghế
+                            <input
+                              value={lockReason}
+                              maxLength={200}
+                              onChange={(event) => setLockReason(event.target.value)}
+                              className="h-12 rounded-xl border border-white/10 bg-background px-3 text-base text-foreground"
+                            />
+                          </label>
+                          <Button
+                            data-ops-action="floor.seat.lock"
+                            variant="outline"
+                            className="min-h-12 w-full border-amber-400/30 text-amber-200"
+                            disabled={busy || lockReason.trim().length < 2}
+                            onClick={() => void run("Đã khóa ghế.", () => v3.setSeatLock({
+                              tournamentTableId: selectedTable.tournamentTableId,
+                              seatNumber: selectedSeatNumber,
+                              locked: true,
+                              reason: lockReason.trim(),
+                              expectedRevision: selectedTable.sessionRevision,
+                              requestId: crypto.randomUUID(),
+                            }))}
+                          >
+                            <LockKeyhole className="mr-2 h-4 w-4" /> Khóa ghế này
+                          </Button>
+                        </div>
+                      )}
                       {entrySelection?.kind === "restore" ? (
                         <Button
                           data-ops-action="floor.players.restore"
@@ -438,8 +522,11 @@ export function FloorTableMapPanelV3({
 
                 <FloorSeatRoster
                   seats={selectedRosterSeats}
+                  maxSeats={selectedTable.maxSeats}
+                  seatLocks={selectedTable.seatLocks}
                   onSeatTap={(seatNumber) => setSelectedSeatNumber(seatNumber)}
                   onEmptySeatTap={(seatNumber) => setSelectedSeatNumber(seatNumber)}
+                  onLockedSeatTap={FEATURES.floorRedrawSeatLockV1 ? (seatNumber) => setSelectedSeatNumber(seatNumber) : undefined}
                 />
 
                 <section className="grid gap-2 sm:grid-cols-2">

@@ -1,22 +1,30 @@
-import { AlertTriangle, Plus } from "lucide-react";
+import { AlertTriangle, LockKeyhole, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   buildFloorSeatRoster,
   type FloorRosterSeat,
+  type FloorRosterSeatLock,
 } from "./floorTablePresentation";
 
 export function FloorSeatRoster({
   seats,
   onSeatTap,
   onEmptySeatTap,
+  maxSeats = 9,
+  seatLocks = [],
+  onLockedSeatTap,
   className,
 }: {
   seats: readonly FloorRosterSeat[];
   onSeatTap?: (seatNumber: number) => void;
   onEmptySeatTap?: (seatNumber: number) => void;
+  maxSeats?: 8 | 9;
+  seatLocks?: readonly FloorRosterSeatLock[];
+  onLockedSeatTap?: (seatNumber: number) => void;
   className?: string;
 }) {
-  const roster = buildFloorSeatRoster(seats);
+  const roster = buildFloorSeatRoster(seats, maxSeats);
+  const lockBySeat = new Map(seatLocks.map((lock) => [lock.seatNumber, lock]));
   const hasIntegrityIssue = (
     roster.duplicateSeatNumbers.length > 0
     || roster.outOfRangeSeatNumbers.length > 0
@@ -31,11 +39,11 @@ export function FloorSeatRoster({
             Danh sách người chơi
           </h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {occupiedCount}/9 ghế · chạm một ghế để thao tác
+            {occupiedCount}/{maxSeats} ghế · chạm một ghế để thao tác
           </p>
         </div>
         <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 font-mono text-xs text-primary">
-          9 MAX
+          {maxSeats} MAX
         </span>
       </div>
 
@@ -47,7 +55,7 @@ export function FloorSeatRoster({
               ? `Trùng dữ liệu ghế ${roster.duplicateSeatNumbers.join(", ")}. `
               : ""}
             {roster.outOfRangeSeatNumbers.length > 0
-              ? `Có ghế ngoài phạm vi 1–9: ${roster.outOfRangeSeatNumbers.join(", ")}. `
+              ? `Có ghế ngoài phạm vi 1–${maxSeats}: ${roster.outOfRangeSeatNumbers.join(", ")}. `
               : ""}
             Hãy tải lại và không thao tác cho tới khi dữ liệu được kiểm tra.
           </span>
@@ -56,7 +64,12 @@ export function FloorSeatRoster({
 
       <div className="mt-3 overflow-hidden rounded-2xl border border-border bg-card/55">
         {roster.slots.map(({ seatNumber, seat }) => {
-          const interactive = seat ? Boolean(onSeatTap) : Boolean(onEmptySeatTap);
+          const seatLock = lockBySeat.get(seatNumber);
+          const interactive = seat
+            ? Boolean(onSeatTap)
+            : seatLock
+              ? Boolean(onLockedSeatTap)
+              : Boolean(onEmptySeatTap);
           return (
             <button
               key={seatNumber}
@@ -66,6 +79,7 @@ export function FloorSeatRoster({
               disabled={!interactive || hasIntegrityIssue}
               onClick={() => {
                 if (seat) onSeatTap?.(seatNumber);
+                else if (seatLock) onLockedSeatTap?.(seatNumber);
                 else onEmptySeatTap?.(seatNumber);
               }}
               className={cn(
@@ -73,7 +87,11 @@ export function FloorSeatRoster({
                 interactive && "transition hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/45",
                 !interactive && "cursor-default",
               )}
-              aria-label={seat ? `Ghế ${seatNumber}, ${seat.playerName}` : `Ghế ${seatNumber}, Empty`}
+              aria-label={seat
+                ? `Ghế ${seatNumber}, ${seat.playerName}`
+                : seatLock
+                  ? `Ghế ${seatNumber}, đang khóa, ${seatLock.reason}`
+                  : `Ghế ${seatNumber}, Empty`}
             >
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border bg-background/80 font-mono text-sm text-muted-foreground">
                 {seatNumber}
@@ -94,6 +112,17 @@ export function FloorSeatRoster({
                     </span>
                   </span>
                   <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">Đang ngồi</span>
+                </>
+              ) : seatLock ? (
+                <>
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-400/10 text-amber-300" aria-hidden="true">
+                    <LockKeyhole className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-amber-100">Ghế đang khóa</span>
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">{seatLock.reason}</span>
+                  </span>
+                  {onLockedSeatTap && <span className="shrink-0 text-xs font-medium text-amber-300">Mở khóa</span>}
                 </>
               ) : (
                 <>
