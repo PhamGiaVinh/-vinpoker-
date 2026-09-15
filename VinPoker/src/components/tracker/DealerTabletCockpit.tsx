@@ -16,15 +16,24 @@ export function DealerTabletCockpit(props: CockpitProps) {
   useEffect(() => {
     let alive = true;
     setTrackerAllowed(false);
-    const client = createFloorTableControlV3Client(supabase.rpc.bind(supabase) as unknown as FloorTableControlV3Rpc);
+    let requestVersion = 0;
+    const rpc = supabase.rpc.bind(supabase) as unknown as FloorTableControlV3Rpc;
+    const client = createFloorTableControlV3Client(rpc);
     const refresh = async () => {
+      const version = ++requestVersion;
+      const publish = (allowed: boolean) => { if (alive && version === requestVersion) setTrackerAllowed(allowed); };
       try {
-        const result = await client.getTournamentTableRoster(hook.tournamentId);
-        const table = result.ok ? result.data.find((row) => row.tournamentTableId === hook.tournamentTableId) : null;
-        if (!table || table.controlMode !== "tracker") { if (alive) setTrackerAllowed(false); return; }
-        const authority = await client.validateTrackerContext({ tournamentId: hook.tournamentId, tournamentTableId: table.tournamentTableId, tableSessionId: table.tableSessionId, controlEpoch: table.controlEpoch });
-        if (alive) setTrackerAllowed(authority.ok && authority.data.ok === true);
-      } catch { if (alive) setTrackerAllowed(false); }
+        // Roster display metadata (names, seat locks, table numbers) is not writer authority.
+        const result = await rpc("get_floor_tournament_table_roster_v3", { p_tournament_id: hook.tournamentId });
+        const matches = !result.error && Array.isArray(result.data) ? result.data.filter((row) =>
+          row?.tournament_id === hook.tournamentId && row?.tournament_table_id === hook.tournamentTableId) : [];
+        const table = matches.length === 1 ? matches[0] : null;
+        if (!table || table.control_mode !== "tracker" || table.tournament_table_status !== "active"
+          || table.session_closed_at !== null || typeof table.table_session_id !== "string" || !table.table_session_id
+          || !Number.isSafeInteger(table.control_epoch) || table.control_epoch < 1) { publish(false); return; }
+        const authority = await client.validateTrackerContext({ tournamentId: hook.tournamentId, tournamentTableId: hook.tournamentTableId!, tableSessionId: table.table_session_id, controlEpoch: table.control_epoch });
+        publish(authority.ok && authority.data.ok === true);
+      } catch { publish(false); }
     };
     void refresh();
     const timer = window.setInterval(refresh, 15000);

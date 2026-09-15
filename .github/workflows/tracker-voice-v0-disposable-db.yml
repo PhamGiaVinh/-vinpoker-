@@ -34,6 +34,8 @@ on:
       - "VinPoker/supabase/functions/tournament-live-update/index.ts"
       - "VinPoker/src/lib/trackerVoice/**"
       - "VinPoker/src/components/tracker/voice/**"
+      - "VinPoker/src/components/tracker/DealerTabletCockpit*"
+      - "VinPoker/src/components/tracker/DealerShotClock*"
       - "VinPoker/src/components/cashier/tournament-live/handinput/**"
       - "VinPoker/tests/trackerVoice/**"
   workflow_dispatch:
@@ -492,6 +494,8 @@ jobs:
             tests/trackerVoice/finishSettlement.test.ts \
             src/lib/trackerVoice/canonicalRequest.test.ts \
             src/components/tracker/voice/TrackerVoicePanel.test.tsx \
+            src/components/tracker/DealerTabletCockpit.test.tsx \
+            src/components/tracker/DealerShotClock.test.tsx \
             tests/trackerVoice/boardAssist.contract.test.ts \
             tests/trackerVoice/holeCardsAssist.contract.test.ts \
             tests/trackerVoice/finishAssist.contract.test.ts \
