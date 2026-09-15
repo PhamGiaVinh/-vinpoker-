@@ -26,8 +26,11 @@ interface Metrics {
 export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: string; inv: Inventory | null; denoms: Denom[] }) {
   const [m, setM] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
+    setM(null);
+    setLoadError(false);
     if (!tournamentId) { setM(null); return; }
     let active = true;
     let requestInFlight = false;
@@ -71,6 +74,7 @@ export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: stri
       const leaderName = leader?.player_name ?? null;
       const leaderChips = leader?.chip_count != null ? Number(leader.chip_count) : null;
       if (!active) return;
+      setLoadError(false);
       setM({
         status: t?.status ?? null, players_remaining: t?.players_remaining ?? null, average_stack: t?.average_stack ?? null,
         current_level: t?.current_level ?? null, current_blinds: t?.current_blinds ?? null,
@@ -82,7 +86,7 @@ export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: stri
       });
       setLoading(false);
       } catch {
-        if (active) setLoading(false);
+        if (active) { setLoading(false); setLoadError(true); }
       } finally {
         requestInFlight = false;
       }
@@ -123,6 +127,9 @@ export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: stri
 
   return (
     <div className="operations-typography min-w-0 space-y-4">
+      {loadError && <p role="alert" className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+        Không tải được dữ liệu chip trên ghế. {m ? "Đang hiển thị lần tải thành công trước; chưa xác nhận số liệu hiện tại." : "Chưa có số liệu để hiển thị."}
+      </p>}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] items-start gap-3">
         <StatCard label="Kho chip đã phát" value={fmt(issuedInventoryValue)} accent
           sub={inv.reconciled ? "Kho đã đối soát nội bộ" : "Kho chưa đối soát"} />

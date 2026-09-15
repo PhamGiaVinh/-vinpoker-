@@ -67,7 +67,7 @@ export function TrackerOpsStatusRail({
   return (
     <section
       aria-label="Trạng thái vận hành"
-      className="grid gap-2 md:grid-cols-3"
+      className="operations-typography grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-2"
       data-testid="tracker-ops-status-rail"
     >
       {domains.map((domain) => {
@@ -76,7 +76,7 @@ export function TrackerOpsStatusRail({
         return (
           <div
             key={domain.label}
-            className={`min-h-[76px] rounded-2xl border px-3.5 py-3 ${toneClasses[domain.tone]}`}
+            className={`min-h-[76px] min-w-0 rounded-2xl border px-3.5 py-3 ${toneClasses[domain.tone]}`}
           >
             <div className="flex items-center justify-between gap-3">
               <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em]">

@@ -1,5 +1,12 @@
 import { expect, test } from "@playwright/test";
 
+test("chip source failure is unavailable, never a fabricated zero roster", async ({ page }) => {
+  await page.route("http://127.0.0.1:54321/**", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "local test unavailable" }) }));
+  await page.goto("/e2e/fixtures/operations-responsive.html");
+  await expect(page.getByRole("alert")).toContainText("Không tải được dữ liệu chip trên ghế");
+  await expect(page.getByText("0 ghế đang active", { exact: true })).toHaveCount(0);
+});
+
 test("chip metrics and narrow mode panel contain long names and large values", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
