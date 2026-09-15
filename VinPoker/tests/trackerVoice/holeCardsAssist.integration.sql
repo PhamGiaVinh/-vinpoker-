@@ -1,11 +1,45 @@
 \set ON_ERROR_STOP on
 
--- Runs after the action and Board disposable suites. It converts the synthetic
--- hand to a genuine two-player all-in runout without touching any live data.
+-- Runs after the action and Board disposable suites. Player A is all-in while
+-- Player B covers. Hole Cards remain blocked until Player B matches the top.
+UPDATE public.hand_players
+SET starting_stack = 40000, ending_stack = 40000
+WHERE hand_id = '86000000-0000-4000-8000-000000000001'
+  AND player_id = '82000000-0000-4000-8000-000000000002';
 INSERT INTO public.hand_actions(hand_id, player_id, entry_number, street, action_type, action_amount, action_order)
 VALUES
   ('86000000-0000-4000-8000-000000000001', '82000000-0000-4000-8000-000000000001', 1, 'preflop', 'all_in', 29900, 2),
-  ('86000000-0000-4000-8000-000000000001', '82000000-0000-4000-8000-000000000002', 1, 'preflop', 'all_in', 30000, 3);
+  ('86000000-0000-4000-8000-000000000001', '82000000-0000-4000-8000-000000000002', 1, 'preflop', 'call', 20000, 3);
+
+SELECT public._tracker_voice_hand_state_version('86000000-0000-4000-8000-000000000001') AS value \gset hole_state_unmatched_
+SET ROLE service_role;
+SELECT set_config('request.jwt.claims', '{"sub":"81200000-0000-4000-8000-000000000001","role":"service_role"}', false);
+SELECT public.commit_tracker_voice_hole_cards_v0(
+  '81200000-0000-4000-8000-000000000001',
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001',
+  '86000000-0000-4000-8000-000000000001',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'hole-provider-cover-unmatched',
+  :'hole_state_unmatched_value', 'voice-hole-cover-unmatched-0001', 'trace-hole-cover-unmatched-0001',
+  1, '["Kh", "Ks"]'::JSONB
+)::TEXT AS payload \gset hole_cover_unmatched_
+RESET ROLE;
+SELECT public.tracker_voice_test_assert(
+  :'hole_cover_unmatched_payload'::JSONB->>'error' = 'runout_reveal_not_authoritative'
+  AND (SELECT hole_cards = '[]'::JSONB FROM public.hand_players
+       WHERE hand_id = '86000000-0000-4000-8000-000000000001' AND seat_number = 1)
+  AND NOT EXISTS (
+    SELECT 1 FROM public.tracker_voice_events
+    WHERE idempotency_key = 'voice-hole-cover-unmatched-0001'
+  ),
+  'covering stack that still owes chips cannot reveal Hole Cards or write an event'
+);
+
+UPDATE public.hand_actions
+SET action_amount = 30000
+WHERE hand_id = '86000000-0000-4000-8000-000000000001'
+  AND player_id = '82000000-0000-4000-8000-000000000002'
+  AND action_order = 3;
 
 SELECT public._tracker_voice_hand_state_version('86000000-0000-4000-8000-000000000001') AS value \gset hole_state_initial_
 SET ROLE service_role;
@@ -192,5 +226,11 @@ SELECT public.tracker_voice_test_assert(
   AND has_function_privilege('service_role', 'public.commit_tracker_voice_hole_cards_v0(uuid,uuid,uuid,uuid,text,text,text,text,text,text,integer,jsonb)', 'EXECUTE'),
   'private Voice Hole Cards transaction is service-only'
 );
+
+-- Restore the shared fixture shape expected by the following Finish suite.
+UPDATE public.hand_players
+SET starting_stack = 30000, ending_stack = 30000
+WHERE hand_id = '86000000-0000-4000-8000-000000000001'
+  AND player_id = '82000000-0000-4000-8000-000000000002';
 
 SELECT 'TRACKER_VOICE_HOLE_CARDS_ASSIST_DISPOSABLE_DB_PASS' AS result;

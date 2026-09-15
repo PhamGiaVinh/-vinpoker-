@@ -12,6 +12,18 @@ import type {
   VoiceFinishProposalReceipt,
 } from "./types";
 
+async function throwEdgeFunctionError(error: { message: string; context?: Response }): Promise<never> {
+  let payload: { error?: string; code?: string } | null = null;
+  try {
+    payload = error.context
+      ? await error.context.clone().json() as { error?: string; code?: string }
+      : null;
+  } catch {
+    // Supabase may provide a non-JSON proxy response; preserve its own message.
+  }
+  throw new Error(payload?.error ?? payload?.code ?? error.message);
+}
+
 export async function loadTrackerVoiceRuntimeContext(
   tournamentId: string,
   tournamentTableId: string,
@@ -50,14 +62,7 @@ export async function validateTrackerVoiceEvent(
     },
   });
   if (error) {
-    try {
-      const context = (error as { context?: Response }).context;
-      const payload = context ? await context.clone().json() as { error?: string; code?: string } : null;
-      throw new Error(payload?.error ?? payload?.code ?? error.message);
-    } catch (caught) {
-      if (caught instanceof Error && caught.message !== error.message) throw caught;
-      throw new Error(error.message);
-    }
+    await throwEdgeFunctionError(error as { message: string; context?: Response });
   }
   const envelope = data as { data?: unknown; error?: string } | null;
   if (envelope?.error) throw new Error(envelope.error);
@@ -120,10 +125,16 @@ export async function commitTrackerVoiceHoleCards(
       voice_request: input.canonicalRequest,
     },
   });
-  if (error) throw new Error(error.message);
-  const envelope = data as { data?: VoiceHoleCardsCommitReceipt; error?: string } | null;
+  if (error) await throwEdgeFunctionError(error as { message: string; context?: Response });
+  const envelope = data as {
+    data?: VoiceHoleCardsCommitReceipt | { ok?: false; error?: string };
+    error?: string;
+  } | null;
   if (envelope?.error) throw new Error(envelope.error);
   const receipt = envelope?.data;
+  if (receipt?.ok === false && typeof receipt.error === "string") {
+    throw new Error(receipt.error);
+  }
   if (!receipt?.ok || receipt.redacted !== true || typeof receipt.player_id !== "string") {
     throw new Error("Voice bài tẩy không trả redacted canonical receipt hợp lệ.");
   }
