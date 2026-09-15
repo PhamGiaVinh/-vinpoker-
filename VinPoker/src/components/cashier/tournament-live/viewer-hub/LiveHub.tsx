@@ -169,7 +169,7 @@ function LiveHubContent({
   // plus the table/hand to show). Guard: only inject into component children.
   const cloneViewer = (extra: ViewerProps): ReactNode =>
     isValidElement(children) && typeof children.type !== "string"
-      ? cloneElement(children as ReactElement<ViewerProps>, { orientationOverride: viewerOrientation, spectator: true, ...extra })
+      ? cloneElement(children as ReactElement<ViewerProps>, { key: `${tournamentId}:${extra.selectedTableIdOverride ?? "default"}`, orientationOverride: viewerOrientation, spectator: true, ...extra })
       : children;
 
   // ── Legacy stacked layout (flag OFF) — byte-identical to before ────────────────
@@ -422,7 +422,9 @@ function LiveHubContent({
                 <div className="min-w-0 xl:col-start-1 xl:row-start-1">
                   <LiveHandFeed
                     tournamentId={tournamentId}
-                    featuredTableId={activeHandTableId}
+                    key={historyTableId ?? "all-updates"}
+                    featuredTableId={historyTableId ?? activeHandTableId}
+                    initialTableHistory={historyTableId !== null}
                     variant="updates"
                     tableNames={tableNames}
                     editorialPosts={editorialPosts}
@@ -437,15 +439,14 @@ function LiveHubContent({
           </TabsContent>
 
           <TabsContent value="history" className="mt-3 min-w-0 focus-visible:outline-none sm:mt-4">
-            {realtimeEnabled && !historyTableId ? <RealtimeTablesGrid
+            {realtimeEnabled ? <RealtimeTablesGrid
               catalog={publicSnapshot?.sections.tables?.catalog ?? []}
               tables={publicSnapshot?.sections.tables?.items ?? []}
               freshness={publicSnapshot?.sections.tables?.freshness}
               onVisibleTableIds={setVisibleTableIds}
               onView={(id) => setWatch({ kind: "live", tableId: id })}
-              onHistory={setHistoryTableId}
+              onHistory={(id) => { setHistoryTableId(id); onTabChange?.("updates"); }}
             /> : <div className="space-y-3">
-              {realtimeEnabled && <button type="button" onClick={() => setHistoryTableId(null)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border/60 px-3 text-sm font-bold"><ArrowLeft className="h-4 w-4" />Tất cả bàn</button>}
               <LiveHandFeed
                 tournamentId={tournamentId}
                 featuredTableId={historyTableId ?? activeHandTableId}

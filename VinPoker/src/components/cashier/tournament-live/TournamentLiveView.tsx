@@ -64,6 +64,7 @@ import {
 import { shouldCollectCommittedChips } from "@/lib/tracker-poker/livePotCollection";
 import { formatViewerBB, resolveViewerHandBigBlind } from "@/lib/tracker-poker/viewerAmounts";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
+import { loadLatestLiveHand } from "./loadLatestLiveHand";
 import { resolveViewerIdentity } from "./viewer-hub/viewerIdentity";
 import { resolveReplayCandidates, type ReplayTarget, type ReplayTargetState } from "./viewer-hub/replayTarget";
 import { deriveReplayHeaderMetadata } from "./viewer-hub/replayMetadata";
@@ -208,6 +209,7 @@ function TournamentLiveViewContent({
   const [liveCompletedHand, setLiveCompletedHand] = useState<ReplayHand | null>(null);
   const [livePayout, setLivePayout] = useState<ReplayRunoutPresentation | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const liveTableScope = selectedTableIdOverride ?? selectedTableId;
   const [tableNames, setTableNames] = useState<Record<string, string>>({});
   const [localRemaining, setLocalRemaining] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
@@ -299,13 +301,7 @@ function TournamentLiveViewContent({
         )
         .eq("tournament_id", tournamentId)
         .order("seat_number"),
-      supabase
-        .from("tournament_hands")
-        .select("id, hand_number, community_cards, pot_size, is_voided, status, button_seat, table_id")
-        .eq("tournament_id", tournamentId)
-        .eq("is_voided", false)
-        .order("created_at", { ascending: false })
-        .limit(1),
+      loadLatestLiveHand(tournamentId, liveTableScope),
       supabase.rpc("get_tournament_clock", { p_tournament_id: tournamentId }),
       supabase.from("tournaments").select("players_remaining, average_stack").eq("id", tournamentId).single(),
     ]);
@@ -732,7 +728,7 @@ function TournamentLiveViewContent({
     setSoftErrorAt(null);
     setLastUpdatedAt(new Date());
     setLoading(false);
-  }, [tournamentId, spectator]);
+  }, [tournamentId, spectator, liveTableScope]);
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current != null) {
@@ -767,7 +763,9 @@ function TournamentLiveViewContent({
     return () => window.clearInterval(id);
   }, [tournamentId, mode, handInProgress, loadAllData, spectator]);
 
-  // Reset all state when switching tournaments, then load.
+  useEffect(() => { setSelectedTableId(null); }, [tournamentId]);
+
+  // Reset the old hand, pending requests and effects before loading another table.
   useEffect(() => {
     if (!tournamentId) return;
     requestSeqRef.current += 1;
@@ -784,7 +782,6 @@ function TournamentLiveViewContent({
     setCommunityCards([]);
     setPotSize(0);
     setActions([]);
-    setSelectedTableId(null);
     setTableNames({});
     setFatalError(null);
     setSoftErrorAt(null);
@@ -1473,8 +1470,8 @@ function TournamentLiveViewContent({
   const effectiveTableId = useMemo(() => {
     if (replayTargetState.kind === "resolved") return replayTargetState.tableId;
     if (requestedReplayTarget) return null;
-    if (selectedTableIdOverride && tableIds.includes(selectedTableIdOverride)) return selectedTableIdOverride;
-    if (selectedTableId && tableIds.includes(selectedTableId)) return selectedTableId;
+    if (selectedTableIdOverride) return selectedTableIdOverride;
+    if (selectedTableId) return selectedTableId;
     if (handTableId && tableIds.includes(handTableId)) return handTableId;
     if (tableIds.length === 1) return tableIds[0];
     return null;
