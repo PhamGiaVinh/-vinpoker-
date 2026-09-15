@@ -77,18 +77,37 @@ export function useCompletedHandsFeed(
     const seq = ++seqRef.current;
     const want = pageCount * PAGE_SIZE;
 
-    let q = supabase
-      .from("tournament_hands")
-      .select("id, hand_number, created_at, community_cards, pot_size, button_seat, table_id, status, is_voided")
-      .eq("tournament_id", tournamentId)
-      .eq("is_voided", false)
-      .order("created_at", { ascending: false })
-      .limit(want + 1);
-    if (tableId) q = q.eq("table_id", tableId);
-    const { data: handRows } = await q;
+    let handRows: Array<RawHandRow & { status?: string; is_voided?: boolean }> = [];
+    if (FEATURES.publicSpectatorRealtimeV2) {
+      const { data } = await supabase.rpc("get_public_tournament_hand_catalog_v2" as never, {
+        p_tournament_id: tournamentId,
+        p_tournament_table_id: tableId,
+        p_limit: want + 1,
+      } as never);
+      const catalog = (data ?? {}) as unknown as { access?: string; items?: Array<{
+        id: string; handNumber: number; createdAt: string; board: string[]; pot: number | null;
+        buttonSeat: number; tableId: string | null; status: string; isVoided: boolean;
+      }> };
+      handRows = (catalog.items ?? []).map((hand) => ({
+        id: hand.id, hand_number: hand.handNumber, created_at: hand.createdAt,
+        community_cards: hand.board, pot_size: hand.pot, button_seat: hand.buttonSeat,
+        table_id: hand.tableId ?? "", status: hand.status, is_voided: hand.isVoided,
+      }));
+    } else {
+      let q = supabase
+        .from("tournament_hands")
+        .select("id, hand_number, created_at, community_cards, pot_size, button_seat, table_id, status, is_voided")
+        .eq("tournament_id", tournamentId)
+        .eq("is_voided", false)
+        .order("created_at", { ascending: false })
+        .limit(want + 1);
+      if (tableId) q = q.eq("table_id", tableId);
+      const { data } = await q;
+      handRows = (data ?? []) as unknown as RawHandRow[];
+    }
     if (seq !== seqRef.current) return;
 
-    const completed = (handRows ?? []).filter((h: { status?: string }) => h.status !== "in_progress");
+    const completed = handRows.filter((h: { status?: string }) => h.status !== "in_progress");
     const more = completed.length > want;
     const pageHands = completed.slice(0, want) as unknown as RawHandRow[];
     const ids = pageHands.map((h) => h.id);
@@ -102,31 +121,55 @@ export function useCompletedHandsFeed(
     // E1: prefer the per-hand snapshot (hand_players.player_name/avatar_url) — selected
     // only if present (feature-detect). handFeedDerive reads it per-row; the profMap below
     // is the tournament_seats fallback for rows the snapshot didn't capture (old hands).
-    const snap = await handPlayersHasSnapshot();
-    const hpCols = snap
-      ? "hand_id, player_id, seat_number, starting_stack, ending_stack, hole_cards, is_eliminated, player_name, avatar_url"
-      : "hand_id, player_id, seat_number, starting_stack, ending_stack, hole_cards, is_eliminated";
-    const [{ data: hp }, { data: ha }, { data: el }] = await Promise.all([
-      supabase.from("hand_players").select(hpCols).in("hand_id", ids),
-      supabase
-        .from("hand_actions")
-        .select(FEATURES.liveViewerPulseV2
+    let hp: RawHandPlayer[] = [];
+    let ha: RawHandAction[] = [];
+    let el: RawElimination[] = [];
+    if (FEATURES.publicSpectatorRealtimeV2) {
+      const publicHands = await Promise.all(ids.map(async (handId) => {
+        const { data } = await supabase.rpc("get_public_tournament_hand_v2" as never, {
+          p_tournament_id: tournamentId,
+          p_hand_id: handId,
+        } as never);
+        return (data ?? {}) as unknown as {
+          players?: Array<{ playerId: string; seatNumber: number; startingStack: number | null; endingStack: number | null; eliminated: boolean; name: string; avatarUrl: string | null; holeCards: string[] }>;
+          actions?: Array<{ id: string; playerId: string; street: string | null; actionType: string; amount: number | null; order: number }>;
+        };
+      }));
+      publicHands.forEach((publicHand, index) => {
+        const handId = ids[index];
+        hp.push(...(publicHand.players ?? []).map((player) => ({
+          hand_id: handId, player_id: player.playerId, seat_number: player.seatNumber,
+          starting_stack: player.startingStack, ending_stack: player.endingStack,
+          hole_cards: player.holeCards, is_eliminated: player.eliminated,
+          player_name: player.name, avatar_url: player.avatarUrl,
+        })));
+        ha.push(...(publicHand.actions ?? []).map((action) => ({
+          id: action.id, hand_id: handId, player_id: action.playerId,
+          street: action.street, action_type: action.actionType,
+          action_amount: action.amount, action_order: action.order,
+        })));
+      });
+    } else {
+      const snap = await handPlayersHasSnapshot();
+      const hpCols = snap
+        ? "hand_id, player_id, seat_number, starting_stack, ending_stack, hole_cards, is_eliminated, player_name, avatar_url"
+        : "hand_id, player_id, seat_number, starting_stack, ending_stack, hole_cards, is_eliminated";
+      const [hpResult, haResult, elResult] = await Promise.all([
+        supabase.from("hand_players").select(hpCols).in("hand_id", ids),
+        supabase.from("hand_actions").select(FEATURES.liveViewerPulseV2
           ? "id, hand_id, player_id, street, action_type, action_amount, action_order"
-          : "hand_id, player_id, action_type, action_amount, action_order")
-        .in("hand_id", ids)
-        .order("action_order"),
-      supabase
-        .from("tournament_eliminations")
-        .select("hand_id, player_id, position, prize")
-        .in("hand_id", ids),
-    ]);
+          : "hand_id, player_id, action_type, action_amount, action_order").in("hand_id", ids).order("action_order"),
+        supabase.from("tournament_eliminations").select("hand_id, player_id, position, prize").in("hand_id", ids),
+      ]);
+      hp = (hpResult.data ?? []) as unknown as RawHandPlayer[];
+      ha = (haResult.data ?? []) as unknown as RawHandAction[];
+      el = (elResult.data ?? []) as unknown as RawElimination[];
+    }
     if (seq !== seqRef.current) return;
 
     // Fallback roster (keyed by player_id, handFeedDerive already looks up by player_id)
     // — only for rows whose snapshot is missing, so the query is free once all snapshotted.
-    const needIds = ((hp ?? []) as any[])
-      .filter((p: any) => !p.player_name)
-      .map((p: any) => p.player_id);
+    const needIds = FEATURES.publicSpectatorRealtimeV2 ? [] : hp.filter((player) => !player.player_name).map((player) => player.player_id);
     const display = await fetchHandPlayerDisplay(tournamentId, needIds, { includeProfiles: FEATURES.liveViewerPulseV2 });
     if (seq !== seqRef.current) return;
 
@@ -154,9 +197,9 @@ export function useCompletedHandsFeed(
 
     const items = buildHandFeedItems(
       settledHands,
-      groupByHand(hp as unknown as RawHandPlayer[] | null),
-      groupByHand(ha as unknown as RawHandAction[] | null),
-      groupByHand(el as unknown as RawElimination[] | null),
+      groupByHand(hp),
+      groupByHand(ha),
+      groupByHand(el),
       profMap,
       { bigPotThresholdBB, viewerPulseV2: FEATURES.liveViewerPulseV2 },
     );

@@ -391,6 +391,13 @@ export const FEATURES = {
    */
   liveEventTabs: true,
   /**
+   * Public spectator snapshot v2: server-filtered table catalog, confirmed chip
+   * ranking and published payout data with per-section freshness metadata.
+   * Keep OFF until the migration + bounded worker are applied and guest UAT has
+   * proved that hidden cards never cross the public RPC boundary.
+   */
+  publicSpectatorRealtimeV2: false,
+  /**
    * ── Tracker Ops + Viewer UX upgrade program (RPT parity, plan 2026-07-02) ──
    * PR-F0 flag bootstrap: ALL program flags land here FIRST (default OFF) so the
    * parallel batch PRs never touch this file again (no rebase conflicts). Each flag

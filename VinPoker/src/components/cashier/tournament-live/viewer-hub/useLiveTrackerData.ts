@@ -47,7 +47,7 @@ const FEED_LIMIT = 8;
 const HAND_PLAYERS_LIMIT = 16;
 const STORY_LIMIT = 12;
 
-export function useLiveTrackerData(tournamentId: string | undefined): LiveTrackerHubData {
+export function useLiveTrackerData(tournamentId: string | undefined, enabled = true): LiveTrackerHubData {
   const [data, setData] = useState<LiveTrackerHubData>({
     liveTableCount: 0,
     tables: [],
@@ -68,7 +68,10 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
   const storyRef = useRef<HubStoryItem[]>([]);
 
   useEffect(() => {
-    if (!tournamentId) return;
+    if (!tournamentId || !enabled) {
+      setData({ liveTableCount: 0, tables: [], feed: [], chipLeader: null, storyFeed: [], activeHandTableId: null, loading: false });
+      return;
+    }
     let cancelled = false;
     const seq = ++seqRef.current;
     tableNamesRef.current = {};
@@ -121,7 +124,7 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
         });
         if (cancelled || seq !== seqRef.current) return;
         const m: Record<string, string> = {};
-        (Array.isArray(tablesData) ? tablesData : []).forEach((t: any) => {
+        (Array.isArray(tablesData) ? tablesData : []).forEach((t: { table_id?: string; table_name?: string }) => {
           if (t.table_id) m[t.table_id] = t.table_name || "";
         });
         tableNamesRef.current = m;
@@ -132,7 +135,7 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
         const { data: acts } = await supabase
           .from("hand_actions")
           .select("id, player_id, action_type, action_amount, action_order")
-          .eq("hand_id", (hands[0] as any).id)
+          .eq("hand_id", (hands[0] as { id: string }).id)
           .order("action_order", { ascending: false })
           .limit(FEED_LIMIT);
         if (cancelled || seq !== seqRef.current) return;
@@ -215,7 +218,7 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
       stopPolling();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [tournamentId]);
+  }, [enabled, tournamentId]);
 
   return data;
 }
