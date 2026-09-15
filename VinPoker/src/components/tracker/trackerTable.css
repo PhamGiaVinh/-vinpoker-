@@ -1,7 +1,7 @@
 .tracker-unified { min-width: 0; font-family: Arial, sans-serif; }
 .tracker-unified .tracker-seat { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 44px; }
 .tracker-unified .tracker-seat-avatar { align-self: flex-start; position: relative; z-index: 1; min-height: var(--tracker-top-height); }
-.tracker-unified .tracker-seat-cards { position: absolute; right: 0; top: 0; margin: 0; display: flex; gap: 1px; }
+.tracker-unified .tracker-seat-cards { position: absolute; right: 0; top: 0; margin: 0; display: flex; gap: 4px; }
 .tracker-unified .tracker-seat-cards > div { margin: 0; }
 .tracker-unified .tracker-seat-plate { width: 100%; box-sizing: border-box; margin-top: 5px; padding: 3px 4px; border: 1px solid #7c785b80; border-radius: 7px; background: #07110ff2; color: #f1f5f2; line-height: 1.15; min-width: 0; }
 .tracker-unified .tracker-seat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; font-size: clamp(10px,1.4cqi,13px); font-weight: 600; }

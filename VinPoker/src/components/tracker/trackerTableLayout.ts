@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import './trackerTable.css';
 
 // Physical seats: seat 1 is dealer-left, seat 9 dealer-right. No occupied-seat compaction.
-const portraitSeats = { 1: { l: 24, t: 90 }, 2: { l: 13, t: 69 }, 3: { l: 13, t: 35 }, 4: { l: 22, t: 15 }, 5: { l: 50, t: 8 }, 6: { l: 78, t: 15 }, 7: { l: 87, t: 35 }, 8: { l: 87, t: 69 }, 9: { l: 76, t: 90 } };
+const portraitSeats = { 1: { l: 24, t: 90 }, 2: { l: 16, t: 69 }, 3: { l: 16, t: 33 }, 4: { l: 18, t: 15 }, 5: { l: 50, t: 8 }, 6: { l: 82, t: 15 }, 7: { l: 84, t: 33 }, 8: { l: 84, t: 69 }, 9: { l: 76, t: 90 } };
 const landscapeSeats = { 1: { l: 34, t: 85 }, 2: { l: 12, t: 70 }, 3: { l: 12, t: 31 }, 4: { l: 30, t: 14 }, 5: { l: 50, t: 12 }, 6: { l: 70, t: 14 }, 7: { l: 88, t: 31 }, 8: { l: 88, t: 70 }, 9: { l: 66, t: 85 } };
 export const TRACKER_TABLE_GEOMETRY = {
   portrait: { aspect: '5 / 8', seats: portraitSeats, centerTop: '48%', centerW: '76%', vSize: '0px', maxW: '560px' },
@@ -26,7 +26,8 @@ export function trackerTableSizes(portrait: boolean) {
   return {
     board: { width: board, height: 'auto', aspectRatio: '5 / 7' } as CSSProperties,
     hole: { width: hole, height: 'auto', aspectRatio: '5 / 7' } as CSSProperties,
-    pod: { width: portrait ? 'clamp(72px,23cqi,88px)' : 'clamp(92px,12cqi,124px)', '--tracker-top-height': `calc(${hole} * 1.4)` } as CSSProperties,
+    // Reserve the actual avatar + two complete cards, including both gaps.
+    pod: { width: `calc(${avatar} + ${hole} * 2 + 8px)`, '--tracker-top-height': `calc(${hole} * 1.4)` } as CSSProperties,
     avatar: { width: avatar, height: avatar } as CSSProperties,
   };
 }

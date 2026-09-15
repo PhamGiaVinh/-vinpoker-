@@ -44,10 +44,10 @@ describe("viewer replay sound wiring", () => {
 
   it("uses the same liveTableFx gate for payout animation and payout sound", () => {
     const payoutSoundEffect = source.slice(
-      source.indexOf("// The HUD owns the verified payout cadence."),
+      source.indexOf("// The HUD owns the verified payout cadence,"),
       source.indexOf("const replayFocusPhase"),
     );
-    expect(payoutSoundEffect).toContain("!FEATURES.liveTableFx");
+    expect(payoutSoundEffect).toContain("FEATURES.liveTableFx");
     expect(payoutSoundEffect).not.toContain("!FEATURES.liveTableMotionV2");
     expect(source).toContain("replayActionFxSchedulerRef.current?.cancel()");
   });

@@ -16,6 +16,8 @@ export type PokerLiveSound =
   | "deal_flop"
   | "deal_turn"
   | "deal_river"
+  | "showdown"
+  | "hand_ranking"
   | "fold_muck"
   | "chip"
   // C4 (trackerActionSounds) — chips gathered into the pot on a street change /
@@ -43,11 +45,13 @@ const TRACKER_MP3_BY_KIND: Partial<Record<PokerLiveSound, string>> = {
   check: "/sounds/tracker/check.mp3",
   fold: "/sounds/tracker/fold.mp3",
   fold_muck: "/sounds/tracker/fold.mp3",
-  deal_flop: "/sounds/tracker/deal-flop.mp3",
-  deal_turn: "/sounds/tracker/deal-turn-river.mp3",
-  deal_river: "/sounds/tracker/deal-turn-river.mp3",
+  deal_flop: "/sounds/tracker/deal-flop-2534.mp3",
+  deal_turn: "/sounds/tracker/deal-turn-river-2535.mp3",
+  deal_river: "/sounds/tracker/deal-turn-river-2535.mp3",
   pot_collect: "/sounds/tracker/pot-collect.mp3",
-  pot_award: "/sounds/tracker/pot-award.mp3",
+  pot_award: "/sounds/tracker/pot-award-2531.mp3",
+  showdown: "/sounds/tracker/showdown-2533.mp3",
+  hand_ranking: "/sounds/tracker/hand-ranking-2536.mp3",
 };
 
 /** MP3 source a kind resolves to (exported so tests can pin flag-OFF byte-identity). */
@@ -58,6 +62,7 @@ export function mp3SrcFor(kind: PokerLiveSound): string | undefined {
 let audioContext: AudioContext | null = null;
 let userGestureSeen = false;
 let listenersAttached = false;
+let trackerGestureEnabled = false;
 const lastPlayedAt = new Map<PokerLiveSound, number>();
 
 // ── mute (player preference, persisted) ──────────────────────────────────────
@@ -83,15 +88,17 @@ function ensureGestureListeners() {
   listenersAttached = true;
 
   const markGesture = () => {
-    userGestureSeen = true;
-    window.removeEventListener("pointerdown", markGesture);
-    window.removeEventListener("keydown", markGesture);
-    window.removeEventListener("touchstart", markGesture);
+    markPokerSoundGesture(trackerGestureEnabled ? "tracker" : "legacy");
   };
 
   window.addEventListener("pointerdown", markGesture, { passive: true });
   window.addEventListener("keydown", markGesture);
   window.addEventListener("touchstart", markGesture, { passive: true });
+  // iOS may require touchend, and may suspend again after backgrounding.
+  window.addEventListener("touchend", markGesture, { passive: true });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stopTrackerPokerSounds();
+  });
 }
 
 function canPlay(kind: PokerLiveSound, bypassStoredMute = false) {
@@ -146,6 +153,8 @@ export function pokerSoundVolumeFor(kind: PokerLiveSound, profile: PokerLiveSoun
     case "deal_river": return 1;
     case "pot_collect": return 0.95;
     case "pot_award": return 1;
+    case "showdown":
+    case "hand_ranking": return 1;
     default: return 0.4;
   }
 }
@@ -154,18 +163,70 @@ export function pokerSoundVolumeFor(kind: PokerLiveSound, profile: PokerLiveSoun
 // enriched kinds only reach playMp3 via the flag-gated tracker map, so flag-OFF
 // behavior is unchanged (fold/check keep their legacy fallback).
 const SYNTH_FALLBACK_KINDS = new Set<PokerLiveSound>([
-  "fold", "check", "deal_flop", "deal_turn", "deal_river", "fold_muck", "chip", "pot_collect", "pot_award",
+  "fold", "check", "deal_flop", "deal_turn", "deal_river", "showdown", "hand_ranking", "fold_muck", "chip", "pot_collect", "pot_award",
 ]);
 
 const activeTrackerSounds = new Set<HTMLAudioElement>();
+const trackerBuffers = new Map<string, Promise<AudioBuffer>>();
+const trackerSources = new Set<AudioBufferSourceNode>();
+let trackerSoundGeneration = 0;
+
+/** Scheduled presentation cues must capture this before waiting, including pause. */
+export function trackerSoundCancellationToken(): number { return trackerSoundGeneration; }
+export function cancelPendingTrackerPokerSounds(): void { trackerSoundGeneration++; }
+
+function loadTrackerBuffer(ctx: AudioContext, src: string): Promise<AudioBuffer> {
+  const cached = trackerBuffers.get(src);
+  if (cached) return cached;
+  const pending = fetch(src).then(response => {
+    if (!response.ok) throw new Error("Tracker sound unavailable");
+    return response.arrayBuffer();
+  }).then(bytes => ctx.decodeAudioData(bytes)).catch(error => {
+    trackerBuffers.delete(src);
+    throw error;
+  });
+  trackerBuffers.set(src, pending);
+  return pending;
+}
+
+/** Delayed cues share the context unlocked by Play/unmute, including on iOS. */
+function playTrackerBuffer(kind: PokerLiveSound, src: string, ctx: AudioContext) {
+  const generation = trackerSoundGeneration;
+  const requestedAt = Date.now();
+  void loadTrackerBuffer(ctx, src).then(buffer => {
+    // A late download must not replay audio from a previous hand or street.
+    if (generation !== trackerSoundGeneration || document.hidden || Date.now() - requestedAt > 750 || ctx.state !== "running") return;
+    const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    source.buffer = buffer;
+    source.playbackRate.value = playbackRateFor(kind);
+    gain.gain.value = pokerSoundVolumeFor(kind, "tracker");
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    trackerSources.add(source);
+    source.onended = () => { trackerSources.delete(source); source.disconnect(); gain.disconnect(); };
+    source.start();
+  }).catch(() => {
+    if (generation === trackerSoundGeneration && !document.hidden && Date.now() - requestedAt <= 750 && ctx.state === "running" && SYNTH_FALLBACK_KINDS.has(kind)) {
+      playSynthOnContext(ctx, kind);
+    }
+  });
+}
 
 /** Cancel the previous hand's recorded cues without affecting Online Poker. */
 export function stopTrackerPokerSounds(): void {
+  cancelPendingTrackerPokerSounds();
+  for (const source of trackerSources) { source.stop(); }
+  trackerSources.clear();
   for (const sound of activeTrackerSounds) { sound.pause(); sound.currentTime = 0; }
   activeTrackerSounds.clear();
 }
 
 function playMp3(kind: PokerLiveSound, src: string, profile: PokerLiveSoundProfile) {
+  if (profile === "tracker") {
+    const ctx = ensureCtx();
+    if (ctx) { playTrackerBuffer(kind, src, ctx); return; }
+  }
   const audio = new Audio(src);
   if (profile === "tracker") {
     activeTrackerSounds.add(audio);
@@ -185,7 +246,7 @@ function playMp3(kind: PokerLiveSound, src: string, profile: PokerLiveSoundProfi
 /** Single lazy AudioContext (never create a second one). */
 function ensureCtx(): AudioContext | null {
   if (typeof window === "undefined") return null;
-  const AudioCtor = window.AudioContext || (window as any).webkitAudioContext;
+  const AudioCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioCtor) return null;
   audioContext ??= new AudioCtor();
   return audioContext;
@@ -247,6 +308,7 @@ function playSynthOnContext(ctx: AudioContext, kind: PokerLiveSound) {
         return;
       case "deal_turn":
       case "deal_river":
+      case "showdown":
         noiseBurst(ctx, now, 0.06, 2600, 1.4, 0.2, 1800);
         return;
       // Fold = cards mucked away: a longer, lower swoosh sweeping down.
@@ -270,6 +332,7 @@ function playSynthOnContext(ctx: AudioContext, kind: PokerLiveSound) {
       // A pot award rises rather than gathers. It is intentionally lower than
       // action audio so a Main/Side Pot sequence stays legible instead of noisy.
       case "pot_award":
+      case "hand_ranking":
         noiseBurst(ctx, now, 0.012, 3100, 3, 0.1, 3900);
         noiseBurst(ctx, now + 0.055, 0.011, 3900, 3.2, 0.09, 4700);
         noiseBurst(ctx, now + 0.11, 0.014, 4800, 3.4, 0.1, 5600);
@@ -322,17 +385,37 @@ function playSynth(kind: PokerLiveSound) {
   playSynthOnContext(ctx, kind);
 }
 
-export function markPokerSoundGesture() {
+export function markPokerSoundGesture(profile: PokerLiveSoundProfile = "legacy") {
+  if (profile === "tracker") trackerGestureEnabled = true;
   userGestureSeen = true;
+  ensureGestureListeners();
   const ctx = ensureCtx();
-  if (ctx?.state === "suspended") void ctx.resume().catch(() => {});
+  if (!ctx || ctx.state === "closed") return;
+  if (ctx.state !== "running") void ctx.resume().catch(() => {});
+  // Start a silent buffer synchronously within the touch/click handler. Merely
+  // remembering a gesture does not unlock future HTMLAudio elements on mobile.
+  const unlock = ctx.createBufferSource();
+  unlock.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+  unlock.connect(ctx.destination);
+  unlock.onended = () => unlock.disconnect();
+  unlock.start();
+  if (profile !== "tracker") return;
+  for (const src of new Set([...Object.values(TRACKER_MP3_BY_KIND), ...Object.values(MP3_BY_KIND)])) {
+    if (src) void loadTrackerBuffer(ctx, src).catch(() => {});
+  }
 }
 
 export function playPokerLiveSound(kind: PokerLiveSound, options?: PokerLiveSoundOptions) {
+  if (options?.profile === "tracker" && typeof document !== "undefined" && document.hidden) return;
   if (!canPlay(kind, options?.bypassStoredMute === true)) return;
   const src = mp3SrcFor(kind);
   if (src) {
     playMp3(kind, src, options?.profile ?? "legacy");
+    return;
+  }
+  if (options?.profile === "tracker") {
+    const ctx = ensureCtx();
+    if (ctx?.state === "running") playSynthOnContext(ctx, kind);
     return;
   }
   playSynth(kind);

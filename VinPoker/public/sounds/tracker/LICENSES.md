@@ -22,3 +22,27 @@
 
 If the rights to any source clip later turn out to be unclear, remove the corresponding
 MP3 and this entry; the sound engine falls back to its procedural synth automatically.
+
+## Owner replacement cues — 2026-09-15
+
+| Active file | Owner video | Extracted interval (seconds) | Decoded RMS / peak (dBFS) |
+|---|---|---|---|
+| hand-ranking-2536.mp3 | IMG_2536.MP4 | 1.06–2.88 | -24.3 / -4.7 |
+| deal-turn-river-2535.mp3 | IMG_2535.MP4 | 0.85–1.23 | -27.0 / -2.0 |
+| deal-flop-2534.mp3 | IMG_2534.MP4 | 2.29–2.87 | -24.9 / -2.5 |
+| showdown-2533.mp3 | IMG_2533.MP4 | 0.00–0.58 | -24.3 / -2.3 |
+| pot-award-2531.mp3 | IMG_2531.MP4 | 0.34–0.94 | -23.4 / -7.8 |
+
+Supplied by the owner for these specific Tracker effects. Source video stays local;
+only short audio cues ship. Flop preserves the three transients and their original
+spacing; turn and river share the single-card cue. Keep internal silences intact.
+
+FFmpeg: trim the intervals above, `loudnorm=I=-20:TP=-3:LRA=7`, then a -4 dB
+adjustment for the award only, `alimiter=limit=0.56:level=0:latency=1`, 5 ms fade-in,
+30 ms fade-out, mono 44.1 kHz, `libmp3lame -q:a 2`. Measurements above are after MP3
+decode; encoded true peaks differ from the limiter ceiling. Filename revisions
+avoid reusing cached earlier clips. Earlier assets are retained for rollback.
+
+Automated validation checks decoded content and browser playback. Listening quality,
+absence of background speech, and actual iPhone speaker output require owner UAT;
+they are not established by these measurements.

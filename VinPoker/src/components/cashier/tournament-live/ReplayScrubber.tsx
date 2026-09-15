@@ -213,7 +213,7 @@ export function ReplayScrubber({
 
   const pauseTo = (nextStep: number) => {
     if (hud) stopTrackerPokerSounds();
-    markPokerSoundGesture();
+    markPokerSoundGesture("tracker");
     frameSourceRef.current = "scrub";
     const entersVerifiedPayout = nextStep === lastIndex && hasVerifiedPayoutSequence;
     const reducedMotion = entersVerifiedPayout
@@ -229,7 +229,7 @@ export function ReplayScrubber({
   };
 
   const togglePlay = () => {
-    markPokerSoundGesture();
+    markPokerSoundGesture("tracker");
     if (hud && isPlaying) stopTrackerPokerSounds();
     if (runoutPresentation && runoutPresentation.phase !== "static") {
       setIsPlaying(playing => !playing);

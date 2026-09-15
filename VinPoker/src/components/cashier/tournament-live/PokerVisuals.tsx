@@ -465,8 +465,20 @@ export function TrackerVisualStyles() {
           to { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
         }
         @keyframes tracker-runout-board-reveal {
-          from { opacity: 0; transform: translateY(-5px) scale(1.1); }
+          from { opacity: 0; transform: perspective(600px) translateY(8px) rotateY(85deg) scale(.94); }
           to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes tracker-hole-flip {
+          from { opacity: 0; transform: perspective(600px) rotateY(85deg); }
+          to { opacity: 1; transform: perspective(600px) rotateY(0); }
+        }
+        .tracker-unified .tracker-seat-cards .tracker-card-reveal {
+          animation-name: tracker-hole-flip;
+          animation-duration: 360ms;
+        }
+        .tracker-unified [data-testid="board-cards"] .tracker-card-reveal:not(.tracker-runout-board-card) {
+          animation-name: tracker-runout-board-reveal;
+          animation-duration: 300ms;
         }
         @keyframes tracker-seat-pop {
           0% { transform: translate(-50%, -50%) scale(.94); opacity: .7; }
@@ -583,10 +595,10 @@ export function TrackerVisualStyles() {
         }
         .tracker-best-five-focus-glow .tracker-best-five-card,
         .tracker-best-five-focus-static .tracker-best-five-card {
-          outline: 2px solid hsl(var(--poker-gold) / .96);
-          outline-offset: 1px;
-          box-shadow: 0 0 0 2px rgba(255, 210, 80, .95), 0 0 12px rgba(255, 190, 50, .85), 0 0 24px rgba(255, 160, 20, .45);
-          filter: saturate(1.15) brightness(1.08) !important;
+          outline: none;
+          box-shadow: none;
+          /* Alpha-following light: no rectangular plate behind the SVG card. */
+          filter: drop-shadow(0 0 4px rgba(255, 210, 80, .85)) drop-shadow(0 0 9px rgba(255, 180, 40, .55)) brightness(1.08) !important;
         }
         .tracker-best-five-focus-active .tracker-non-best-five-card {
           opacity: .64 !important;

@@ -54,7 +54,7 @@ describe("pokerLiveSound — FX safety contract", () => {
     expect(pokerSoundVolumeFor("deal_river", "tracker")).toBe(1);
     expect(pokerSoundVolumeFor("pot_collect", "tracker")).toBe(0.95);
     expect(pokerSoundVolumeFor("pot_award", "tracker")).toBe(1);
-    expect(mp3SrcFor("pot_award")).toBe("/sounds/tracker/pot-award.mp3");
+    expect(mp3SrcFor("pot_award")).toBe("/sounds/tracker/pot-award-2531.mp3");
   });
 
   it("leaves the legacy Online Poker source levels unchanged", () => {
@@ -71,7 +71,7 @@ describe("pokerLiveSound — FX safety contract", () => {
     try {
       markPokerSoundGesture();
       playPokerLiveSound("pot_award", { profile: "tracker", bypassStoredMute: true });
-      expect(AudioMock).toHaveBeenCalledWith("/sounds/tracker/pot-award.mp3");
+      expect(AudioMock).toHaveBeenCalledWith("/sounds/tracker/pot-award-2531.mp3");
       expect(play).toHaveBeenCalledTimes(1);
       expect(audio.volume).toBe(1);
       stopTrackerPokerSounds();
