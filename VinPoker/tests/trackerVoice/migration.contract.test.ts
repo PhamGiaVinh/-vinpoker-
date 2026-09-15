@@ -212,7 +212,7 @@ describe("Tracker Voice V0 migration contract", () => {
   });
 
   it("requires the server-authoritative runtime gate after the build gate", () => {
-    expect(handInputConsole).toContain("FEATURES.trackerVoiceInput ? <TrackerVoicePanelGate hook={hook} /> : null");
+    expect(handInputConsole).toContain("FEATURES.trackerVoiceInput ? <TrackerVoicePanelGate hook={hook} compact={FEATURES.trackerTabletLayout} /> : null");
     expect(voiceGate).toContain("loadTrackerVoiceRuntimeContext");
     expect(voiceGate).toContain("isTrackerVoiceUiEnabled(runtime)");
     expect(isTrackerVoiceUiEnabled(runtimeFixture())).toBe(true);

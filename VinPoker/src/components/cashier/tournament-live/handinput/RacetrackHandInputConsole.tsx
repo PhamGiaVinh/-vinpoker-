@@ -506,7 +506,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
 
   // LOG
   const logBlock = <OperatorActionLog actions={hook.actions} communityCards={hook.communityCards} />;
-  const voiceBlock = FEATURES.trackerVoiceInput ? <TrackerVoicePanelGate hook={hook} compact /> : null;
+  const voiceBlock = FEATURES.trackerVoiceInput ? <TrackerVoicePanelGate hook={hook} compact={FEATURES.trackerTabletLayout} /> : null;
 
   // A4: flag ON → at ≥xl the felt sits in a LEFT column and the guided region + log in a
   // fixed RIGHT column (both visible without scrolling); below xl it's the single column.
