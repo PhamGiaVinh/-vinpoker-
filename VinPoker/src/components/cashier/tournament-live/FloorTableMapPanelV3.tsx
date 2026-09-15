@@ -271,7 +271,7 @@ export function FloorTableMapPanelV3({
       <OpenTableDialog open={openTable} onOpenChange={setOpenTable} tournamentId={tournament.id} onDone={() => void load()} />
 
       <Sheet open={selectedTable !== null} onOpenChange={(open) => { if (!open) setSelectedTableId(null); }}>
-        <SheetContent side="right" className="h-[100dvh] w-full overflow-y-auto pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-xl">
+        <SheetContent side="right" className="operations-typography h-[100dvh] w-full overflow-y-auto overscroll-contain pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-xl">
           {selectedTable && (
             <>
               <SheetHeader>

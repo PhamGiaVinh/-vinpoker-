@@ -56,7 +56,7 @@ export default function FloorDashboard() {
     : scopedIds.length > 0 ? `${scopedIds.length} CLB được phân quyền` : "Toàn quyền (Admin)";
 
   return (
-    <div className="container mx-auto p-3 md:p-6">
+    <div className="operations-typography container mx-auto min-w-0 p-3 md:p-6">
       <BackButton to="/" label={t("nav.schedule")} className="mb-2" />
       <div className="mb-4 flex items-center gap-3">
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/15 text-primary rounded-md text-xs font-bold border border-primary/30">

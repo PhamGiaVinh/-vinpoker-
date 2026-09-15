@@ -89,7 +89,7 @@ export function PrizePayoutTrackingSection({ tournamentId }: { tournamentId: str
 
   return (
     <div className="space-y-2 border-t border-border pt-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <HandCoins className="w-4 h-4 text-primary" />
           <span className="text-sm font-semibold">Đã trả thưởng</span>
@@ -125,7 +125,7 @@ export function PrizePayoutTrackingSection({ tournamentId }: { tournamentId: str
           {data.places.map((p) => (
             <div
               key={p.finishedPlace}
-              className="grid grid-cols-[2.5rem_1fr_auto] items-center gap-2 rounded border border-border/60 bg-muted/20 px-2 py-1.5"
+              className="grid grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-2 rounded border border-border/60 bg-muted/20 px-2 py-2 sm:grid-cols-[2.5rem_minmax(0,1fr)_auto]"
             >
               <span className="text-xs font-semibold text-muted-foreground">#{p.finishedPlace}</span>
               <div className="min-w-0">
@@ -133,7 +133,7 @@ export function PrizePayoutTrackingSection({ tournamentId }: { tournamentId: str
                 <div className="font-mono text-xs text-primary">{formatVND(p.prizeAmount)}</div>
               </div>
               {p.isPaid ? (
-                <Badge variant="outline" className="border-emerald-500/40 text-emerald-500 text-[10px] whitespace-nowrap">
+                <Badge variant="outline" className="col-start-2 w-fit max-w-full whitespace-normal border-emerald-500/40 text-emerald-500 text-[10px] sm:col-start-auto">
                   <CheckCircle2 className="w-3 h-3 mr-1" />
                   Đã trả{p.paidAt ? ` · ${fmtDate(p.paidAt)}` : ""}
                   {p.method && METHOD_LABEL[p.method] ? ` · ${METHOD_LABEL[p.method]}` : ""}
@@ -142,7 +142,7 @@ export function PrizePayoutTrackingSection({ tournamentId }: { tournamentId: str
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 text-xs"
+                  className="col-start-2 min-h-11 w-fit text-xs sm:col-start-auto"
                   onClick={() => { setMethod("cash"); setTarget(p); }}
                 >
                   Ghi nhận đã trả
@@ -154,7 +154,7 @@ export function PrizePayoutTrackingSection({ tournamentId }: { tournamentId: str
       )}
 
       <AlertDialog open={!!target} onOpenChange={(v) => { if (!busy && !v) setTarget(null); }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="operations-typography max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <AlertDialogHeader>
             <AlertDialogTitle>Xác nhận đã trả thưởng</AlertDialogTitle>
             <AlertDialogDescription asChild>
@@ -162,7 +162,7 @@ export function PrizePayoutTrackingSection({ tournamentId }: { tournamentId: str
                 <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1">
                   <div className="flex justify-between gap-2">
                     <span className="text-muted-foreground">Người nhận</span>
-                    <span className="font-medium">{target?.recipientName}</span>
+                    <span className="min-w-0 break-words text-right font-medium [overflow-wrap:anywhere]">{target?.recipientName}</span>
                   </div>
                   <div className="flex justify-between gap-2">
                     <span className="text-muted-foreground">Hạng</span>

@@ -137,20 +137,20 @@ export function ClockPanel({ tournamentId, refreshTrigger }: { tournamentId: str
     : false;
 
   return (
-    <Card className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
+    <Card className="operations-typography min-w-0 p-4 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-semibold">{t("tournamentLive.clock.title")}</div>
         <div className="flex items-center gap-2">
           <Button
             size="sm"
             variant={autoNextLevel ? "default" : "outline"}
             onClick={() => setAutoNextLevel(!autoNextLevel)}
-            className={autoNextLevel ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
+            className={`min-h-11 ${autoNextLevel ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}`}
           >
             <Timer className="w-3.5 h-3.5 mr-1" />
             {autoNextLevel ? "Auto" : "Manual"}
           </Button>
-          <Button size="sm" variant="outline" onClick={loadClock} disabled={loading}>
+          <Button size="sm" className="min-h-11" variant="outline" onClick={loadClock} disabled={loading}>
             <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? "animate-spin" : ""}`} />
             {t("tournamentLive.clock.refresh")}
           </Button>
@@ -220,7 +220,7 @@ export function ClockPanel({ tournamentId, refreshTrigger }: { tournamentId: str
           </div>
 
           {clock.current_level && (
-            <div className="text-sm space-y-1">
+            <div className="break-words text-sm space-y-1 [overflow-wrap:anywhere]">
               <div className="font-medium">{t("tournamentLive.clock.level")} {clock.current_level.level_number} {clock.current_level.is_break ? "(Break)" : ""}</div>
               <div className="text-muted-foreground">
                 {t("tournamentLive.clock.blinds")}: {clock.current_level.small_blind}/{clock.current_level.big_blind}
@@ -230,7 +230,7 @@ export function ClockPanel({ tournamentId, refreshTrigger }: { tournamentId: str
           )}
 
           {clock.next_level && (
-            <div className="text-xs text-muted-foreground">
+            <div className="break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">
               Next: {t("tournamentLive.clock.level")} {clock.next_level.level_number} · {clock.next_level.small_blind}/{clock.next_level.big_blind}
               {clock.next_level.ante > 0 ? ` · ${t("tournamentLive.clock.ante")}: ${clock.next_level.ante}` : ""}
             </div>

@@ -68,7 +68,7 @@ export default function DealerSwingDashboard() {
   const showSalaryV2 = FEATURES.salaryTabV2 || isAdmin || isClubAdmin || isClubOwner;
 
   return (
-    <div className="container mx-auto p-3 md:p-6">
+    <div className="operations-typography container mx-auto min-w-0 p-3 md:p-6">
       <div className="mb-4 flex items-center gap-3">
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/15 text-primary rounded-md text-xs font-bold border border-primary/30">
           <Table2 className="w-3.5 h-3.5" /> DEALER SWING
@@ -79,7 +79,7 @@ export default function DealerSwingDashboard() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className={`grid w-full ${showShiftPlanner ? "grid-cols-3" : "grid-cols-2"} h-auto`}>
+        <TabsList className={`grid w-full ${showShiftPlanner ? "grid-cols-3" : "grid-cols-2"} h-auto [&>button]:min-h-11 [&>button]:min-w-0 [&>button]:whitespace-normal [&>button]:px-2 [&>button]:text-xs sm:[&>button]:text-sm [&>button>svg]:shrink-0`}>
           <TabsTrigger value="swing"><Table2 className="w-4 h-4 mr-1" /> Dealer Swing</TabsTrigger>
           <TabsTrigger value="payroll"><Calculator className="w-4 h-4 mr-1" /> Bảng lương</TabsTrigger>
           {showShiftPlanner && (

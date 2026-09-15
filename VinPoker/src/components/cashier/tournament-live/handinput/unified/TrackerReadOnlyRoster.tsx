@@ -13,10 +13,10 @@ export function TrackerReadOnlyRoster({
   return (
     <section
       aria-label="Roster chỉ đọc từ Floor"
-      className="overflow-hidden rounded-[26px] border border-white/10 bg-[#100d12]/90"
+      className="operations-typography min-w-0 overflow-hidden rounded-[26px] border border-white/10 bg-[#100d12]/90"
       data-testid="tracker-readonly-roster"
     >
-      <div className="flex items-center justify-between gap-3 border-b border-white/8 px-4 py-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 px-4 py-3.5">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#d7b66f]">
             Roster từ Floor
@@ -31,13 +31,13 @@ export function TrackerReadOnlyRoster({
         </span>
       </div>
 
-      <div className="grid gap-px bg-white/[0.06] sm:grid-cols-2">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-px bg-white/[0.06]">
         {seats.map((seatNumber) => {
           const seat = roster.find((item) => item.seat_number === seatNumber);
           return (
             <div
               key={seatNumber}
-              className="min-h-[74px] bg-[#100d12] px-3.5 py-3"
+              className="min-h-[74px] min-w-0 bg-[#100d12] px-3.5 py-3"
             >
               {seat ? (
                 <div className="flex items-center gap-3">
@@ -54,14 +54,14 @@ export function TrackerReadOnlyRoster({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="rounded-md bg-[#d7b66f]/12 px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#d7b66f]">
+                      <span className="shrink-0 rounded-md bg-[#d7b66f]/12 px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#d7b66f]">
                         GHẾ {seatNumber}
                       </span>
                       <span className="truncate text-sm font-semibold text-[#f4eee5]">
                         {seat.display_name}
                       </span>
                     </div>
-                    <p className="mt-1 font-mono text-xs text-emerald-300">
+                    <p className="mt-1 break-words font-mono text-xs text-emerald-300 [overflow-wrap:anywhere]">
                       {CHIP_FORMATTER.format(seat.seat_stack)} chip
                       <span className="ml-2 text-[#8f848b]">
                         Entry #{seat.entry_number}

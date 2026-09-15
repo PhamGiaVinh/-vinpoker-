@@ -304,7 +304,7 @@ export default function SwingTableCard({
         </button>
       </PopoverTrigger>
 
-      <PopoverContent align="start" className="w-72 border-border bg-card p-3">
+      <PopoverContent align="start" collisionPadding={12} className="operations-typography max-h-[var(--radix-popover-content-available-height)] w-72 max-w-[calc(100vw-1.5rem)] overflow-y-auto overscroll-contain border-border bg-card p-3">
         <div className="mb-2 flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-foreground">{t.table_name}</div>

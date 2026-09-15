@@ -174,7 +174,7 @@ export function ChipOpsManager() {
       <div className="flex items-center gap-2">
         <Coins className="h-5 w-5 shrink-0 text-primary" />
         <Select value={tournamentId} onValueChange={onPick}>
-          <SelectTrigger className="w-full sm:w-[340px]"><SelectValue placeholder="Chọn giải đấu" /></SelectTrigger>
+          <SelectTrigger className="min-h-11 min-w-0 w-full sm:w-[340px] [&>span]:truncate"><SelectValue placeholder="Chọn giải đấu" /></SelectTrigger>
           <SelectContent>{tours.map((t) => <SelectItem key={t.id} value={t.id}>{t.name ?? t.id}</SelectItem>)}</SelectContent>
         </Select>
       </div>
@@ -185,7 +185,7 @@ export function ChipOpsManager() {
         </CardContent></Card>
       ) : (
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="flex h-auto flex-wrap justify-start gap-1">
+          <TabsList className="flex h-auto flex-wrap justify-start gap-1 [&>button]:min-h-11">
             <TabsTrigger value="overview">Tổng quan</TabsTrigger>
             <TabsTrigger value="setup">Setup stack</TabsTrigger>
             <TabsTrigger value="colorup">Color-Up</TabsTrigger>

@@ -24,7 +24,7 @@ export function FloorSeatRoster({
   const occupiedCount = roster.slots.filter((slot) => slot.seat != null).length;
 
   return (
-    <section className={className} aria-labelledby="floor-seat-roster-heading">
+    <section className={cn("operations-typography min-w-0", className)} aria-labelledby="floor-seat-roster-heading">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 id="floor-seat-roster-heading" className="text-sm font-semibold text-foreground">

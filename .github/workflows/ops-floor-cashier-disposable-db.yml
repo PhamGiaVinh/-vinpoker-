@@ -135,7 +135,7 @@ jobs:
           VITE_SUPABASE_PUBLISHABLE_KEY: local-publishable-key
           VITE_FLOOR_TABLE_CONTROL_V3: preview
           VITE_FLOOR_UAT_ENV: preview
-        run: npx playwright test e2e/ops-v3-floor-cashier.mock.spec.ts --workers=1
+        run: npx playwright test e2e/ops-v3-floor-cashier.mock.spec.ts e2e/operations-responsive.mock.spec.ts e2e/operations-clock-payout.mock.spec.ts --workers=1
 
       - name: Create isolated disposable fixture baseline
         working-directory: VinPoker

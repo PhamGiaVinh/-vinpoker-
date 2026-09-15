@@ -28,9 +28,8 @@ const MODES: readonly ModeSpec[] = [
 ];
 
 /**
- * Visual, accessible control-mode choice. The illustration is made from local
- * UI primitives rather than external images, so it works offline and conveys
- * meaning together with the visible policy text.
+ * Container-responsive control-mode choices. Narrow desktop sidebars stack the
+ * same options as mobile; no viewport breakpoint may squeeze the policy text.
  */
 export function FloorTableModePicker({
   value,
@@ -44,7 +43,7 @@ export function FloorTableModePicker({
   testIdPrefix?: string;
 }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Chọn loại bàn">
+    <div className="operations-typography grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3" role="radiogroup" aria-label="Chọn loại bàn">
       {MODES.map((item) => {
         const selected = value === item.mode;
         const tracker = item.mode === "tracker";
@@ -60,7 +59,7 @@ export function FloorTableModePicker({
             disabled={disabled}
             onClick={() => onChange(item.mode)}
             className={cn(
-              "group min-h-[88px] rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-55",
+              "group min-h-[88px] min-w-0 rounded-xl border p-3 text-left transition motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-55",
               selected
                 ? "border-[#c9a86a]/75 bg-[#c9a86a]/10 ring-1 ring-[#c9a86a]/35"
                 : "border-white/10 bg-black/15 hover:border-white/25 hover:bg-white/[0.045]",
