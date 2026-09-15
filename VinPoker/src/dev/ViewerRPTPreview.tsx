@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { TrackerViewerCardProvider, TrackerCardStyleToggle } from '@/components/tracker/TrackerCardStyle';
 import { Link, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Activity, History, Image as ImageIcon, Layers3, Trophy } from "lucide-react";
+import { Activity, Crown, Layers3, Radio } from "lucide-react";
 import { LiveFelt } from "@/components/cashier/tournament-live/LiveFelt";
 import { ReplayScrubber } from "@/components/cashier/tournament-live/ReplayScrubber";
 import { HandFeedCard } from "@/components/cashier/tournament-live/viewer-hub/HandFeedCard";
@@ -71,10 +71,9 @@ const post: TournamentPostViewModel = {
 
 const views = [
   { id: "updates", labelKey: "updates", fallback: "Cập nhật", Icon: Activity },
-  { id: "history", labelKey: "handHistory", fallback: "Lịch sử ván", Icon: History },
-  { id: "prizes", labelKey: "prizes", fallback: "Giải thưởng", Icon: Trophy },
+  { id: "tables", labelKey: "tablesLive", fallback: "Bàn LIVE", Icon: Radio },
+  { id: "leaders", labelKey: "leaders", fallback: "Xếp hạng", Icon: Crown },
   { id: "structure", labelKey: "structure", fallback: "Cấu trúc", Icon: Layers3 },
-  { id: "photos", labelKey: "photos", fallback: "Hình ảnh", Icon: ImageIcon },
 ] as const;
 
 export default function ViewerRPTPreview() {
@@ -146,9 +145,8 @@ function ViewerRPTPreviewContent() {
             </aside>
           </section>
         ) : view === "updates" ? (
-          <div className="space-y-4"><RealtimeTablesGrid catalog={previewCatalog} tables={previewTables} freshness={freshness} onVisibleTableIds={() => {}} onView={() => {}} onHistory={() => {}} /><div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.75fr)] xl:items-start">
+          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.75fr)] xl:items-start">
             <aside className="min-w-0 space-y-4 xl:col-start-2 xl:row-start-1">
-              <RealtimeRankingPanel loading={false} bigBlind={300_000} freshness={freshness} rows={previewTables[0].players.map((player) => ({ ...player, chips: player.stack, updatedAt: freshness.publishedAt }))} />
               <LiveStoryFeed rpt items={[{ id: "bubble", kind: "bubble", count: 10, label: "Bubble" }, { id: "elim", kind: "elimination", name: "MINH", count: 10, label: "Eliminated" }]} />
               <LiveUpdatesFeed rpt feed={[{ id: "a1", seatNumber: 2, playerName: "KIÊN", label: "ALL-IN 4.5M", kind: "allin", actionType: "all_in", amount: 4_500_000 }, { id: "a2", seatNumber: 5, playerName: "NAM", label: "Theo 4.5M", kind: "call", actionType: "call", amount: 4_500_000 }]} />
             </aside>
@@ -156,11 +154,14 @@ function ViewerRPTPreviewContent() {
               <TournamentPostCard post={post} onShare={() => {}} onViewHand={() => {}} />
               <HandFeedCard rpt item={handCard} tableName="Bàn Sakura" onShare={() => {}} onViewHand={() => {}} />
             </div>
-          </div></div>
-        ) : view === "history" ? (
-          <div className="space-y-3"><HandFeedCard rpt item={handCard} tableName="Bàn Sakura" onShare={() => {}} onViewHand={() => {}} /><HandFeedCard rpt item={{ ...handCard, handId: "fixture-140", handNumber: 140, tags: ["high_hand"], sidePotCount: 0 }} tableName="Bàn Sumi" onShare={() => {}} onViewHand={() => {}} /></div>
-        ) : view === "prizes" ? (
-          <RealtimePayoutPanel loading={false} published freshness={freshness} rows={[{ fromPlace: 1, toPlace: 1, amountPerPlayer: 1_500_000_000, playerName: "KIÊN", avatarUrl: null, resultStatus: "official" }, { fromPlace: 2, toPlace: 2, amountPerPlayer: 1_040_000_000, playerName: null, avatarUrl: null, resultStatus: "open" }, { fromPlace: 3, toPlace: 5, amountPerPlayer: 250_000_000, playerName: null, avatarUrl: null, resultStatus: "open" }]} />
+          </div>
+        ) : view === "tables" ? (
+          <RealtimeTablesGrid catalog={previewCatalog} tables={previewTables} freshness={freshness} onVisibleTableIds={() => {}} onView={() => {}} onHistory={() => {}} />
+        ) : view === "leaders" ? (
+          <div className="grid min-w-0 gap-4 xl:grid-cols-2 xl:items-start">
+            <RealtimeRankingPanel loading={false} bigBlind={300_000} freshness={freshness} rows={previewTables[0].players.map((player) => ({ ...player, chips: player.stack, updatedAt: freshness.publishedAt }))} />
+            <RealtimePayoutPanel loading={false} published freshness={freshness} rows={[{ fromPlace: 1, toPlace: 1, amountPerPlayer: 1_500_000_000, playerName: "KIÊN", avatarUrl: null, resultStatus: "official" }, { fromPlace: 2, toPlace: 2, amountPerPlayer: 1_040_000_000, playerName: null, avatarUrl: null, resultStatus: "open" }, { fromPlace: 3, toPlace: 5, amountPerPlayer: 250_000_000, playerName: null, avatarUrl: null, resultStatus: "open" }]} />
+          </div>
         ) : (
           <FixtureEmpty />
         )}

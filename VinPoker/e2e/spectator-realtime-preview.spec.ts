@@ -20,9 +20,8 @@ test.beforeAll(() => fs.mkdirSync(shots, { recursive: true }));
 for (const viewport of viewports) {
   test(`spectator tables fit ${viewport.name}`, async ({ page }) => {
     await page.setViewportSize(viewport);
-    await page.goto("/__dev/viewer-rpt?view=updates");
+    await page.goto("/__dev/viewer-rpt?view=tables");
     await expect(page.getByRole("region", { name: "Bàn trực tiếp" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Chip Ranking" })).toBeVisible();
     const geometry = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth }));
     expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width);
     const controls = await page.locator("button").evaluateAll((buttons) => buttons.map((button) => {
@@ -38,7 +37,8 @@ for (const viewport of viewports) {
 
 test("payout keeps grouped amount as per-player value", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/__dev/viewer-rpt?view=prizes");
+  await page.goto("/__dev/viewer-rpt?view=leaders");
+  await expect(page.getByRole("region", { name: "Chip Ranking" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Cơ cấu giải thưởng" })).toContainText("#3–5");
   await expect(page.getByRole("region", { name: "Cơ cấu giải thưởng" })).toContainText("250.000.000");
   await page.screenshot({ path: path.join(shots, "spectator-realtime-payout-mobile-390.png"), fullPage: true });
@@ -46,8 +46,18 @@ test("payout keeps grouped amount as per-player value", async ({ page }) => {
 
 test("table catalog paginates beyond the first six tables", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/__dev/viewer-rpt?view=updates&tables=many");
+  await page.goto("/__dev/viewer-rpt?view=tables&tables=many");
   await expect(page.getByText("Bàn 14", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Trang bàn tiếp theo" }).click();
   await expect(page.getByText("Bàn 21", { exact: true })).toBeVisible();
+});
+
+test("event navigation has exactly four top-level sections", async ({ page }) => {
+  await page.goto("/__dev/viewer-rpt?view=updates");
+  const navigation = page.getByRole("navigation", { name: "Trình xem ván đấu" });
+  await expect(navigation.getByRole("link")).toHaveCount(4);
+  await expect(navigation).toContainText("Cập nhật");
+  await expect(navigation).toContainText("Bàn LIVE");
+  await expect(navigation).toContainText("Xếp hạng");
+  await expect(navigation).toContainText("Cấu trúc");
 });

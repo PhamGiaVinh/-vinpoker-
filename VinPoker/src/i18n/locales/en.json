@@ -2889,7 +2889,7 @@
     "create": "Create"
   },
   "liveHub": {
-    "tabs": { "updates": "Updates", "handHistory": "Hand History", "prizes": "Prizes", "structure": "Structure", "photos": "Photos", "back": "Back" },
+    "tabs": { "updates": "Updates", "tablesLive": "Tables LIVE", "leaders": "Leaders", "handHistory": "Hand History", "prizes": "Prizes", "structure": "Structure", "photos": "Photos", "back": "Back" },
     "watch": {
       "title": "Live tables",
       "replay": "HAND REPLAY",

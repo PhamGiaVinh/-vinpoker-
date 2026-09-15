@@ -12,7 +12,7 @@
 import { cloneElement, isValidElement, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { TrackerViewerCardProvider, TrackerCardStyleToggle } from "@/components/tracker/TrackerCardStyle";
 import { useTranslation } from "react-i18next";
-import { Activity, History, Trophy, Layers3, Image as ImageIcon, ArrowLeft, Share2, X } from "lucide-react";
+import { Activity, History, Trophy, Layers3, Image as ImageIcon, ArrowLeft, Share2, X, Radio, Crown } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LiveHubHeader } from "./LiveHubHeader";
 import { LiveStatsBar } from "./LiveStatsBar";
@@ -291,8 +291,8 @@ function LiveHubContent({
   );
 
   const RPT_TAB_TRIGGER =
-    "min-h-11 shrink-0 snap-start rounded-none border-b-2 border-transparent bg-transparent px-3 text-xs font-bold text-muted-foreground shadow-none transition data-[state=active]:border-[hsl(var(--viewer-neon))] data-[state=active]:bg-[hsl(var(--viewer-neon)_/_0.08)] data-[state=active]:text-[hsl(var(--viewer-neon))] data-[state=active]:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4 sm:text-sm";
-  const panelValue = viewerTabToPanel(activeTab);
+    "min-h-11 min-w-[7.5rem] flex-1 shrink-0 snap-start rounded-none border-b-2 border-transparent bg-transparent px-3 text-xs font-bold text-muted-foreground shadow-none transition data-[state=active]:border-[hsl(var(--viewer-neon))] data-[state=active]:bg-[hsl(var(--viewer-neon)_/_0.08)] data-[state=active]:text-[hsl(var(--viewer-neon))] data-[state=active]:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:min-w-0 sm:px-4 sm:text-sm";
+  const panelValue = realtimeEnabled && activeTab === "photos" ? "updates" : viewerTabToPanel(activeTab);
 
   return (
     <div data-testid="viewer-rpt-shell" data-viewer-shell="rpt" className="min-w-0 space-y-3 animate-in fade-in-0 duration-500 motion-reduce:animate-none sm:space-y-4">
@@ -379,34 +379,32 @@ function LiveHubContent({
           </FeaturedTableCard>
         </section>
       ) : (
-        <Tabs value={panelValue} onValueChange={(value) => onTabChange?.(panelToViewerTab(value))} className="min-w-0 w-full">
+        <Tabs value={panelValue} onValueChange={(value) => {
+          if (realtimeEnabled && value === "history" && panelValue !== "history") setHistoryTableId(null);
+          onTabChange?.(panelToViewerTab(value));
+        }} className="min-w-0 w-full">
           <div className="sticky top-[env(safe-area-inset-top)] z-30 -mx-3 border-y border-border/45 bg-background/88 px-3 backdrop-blur-xl sm:-mx-1 sm:rounded-2xl sm:border sm:px-1">
             <div className="relative after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-8 after:bg-gradient-to-l after:from-background after:to-transparent sm:after:hidden">
               <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <TabsList className="inline-flex h-12 w-max min-w-full snap-x snap-mandatory justify-start gap-0 bg-transparent p-0">
-                  <TabsTrigger value="updates" className={RPT_TAB_TRIGGER}><Activity className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.updates", "Cập nhật")}</TabsTrigger>
-                  <TabsTrigger value="history" className={RPT_TAB_TRIGGER}><History className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.handHistory", "Lịch sử ván")}</TabsTrigger>
-                  <TabsTrigger value="prizes" className={RPT_TAB_TRIGGER}><Trophy className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.prizes", "Giải thưởng")}</TabsTrigger>
-                  <TabsTrigger value="structure" className={RPT_TAB_TRIGGER}><Layers3 className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.structure", "Cấu trúc")}</TabsTrigger>
-                  <TabsTrigger value="photos" className={RPT_TAB_TRIGGER}><ImageIcon className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.photos", "Hình ảnh")}</TabsTrigger>
+                  {realtimeEnabled ? <>
+                    <TabsTrigger value="updates" className={RPT_TAB_TRIGGER}><Activity className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.updates", "Cập nhật")}</TabsTrigger>
+                    <TabsTrigger value="history" className={RPT_TAB_TRIGGER}><Radio className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.tablesLive", "Bàn LIVE")}</TabsTrigger>
+                    <TabsTrigger value="prizes" className={RPT_TAB_TRIGGER}><Crown className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.leaders", "Xếp hạng")}</TabsTrigger>
+                    <TabsTrigger value="structure" className={RPT_TAB_TRIGGER}><Layers3 className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.structure", "Cấu trúc")}</TabsTrigger>
+                  </> : <>
+                    <TabsTrigger value="updates" className={RPT_TAB_TRIGGER}><Activity className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.updates", "Cập nhật")}</TabsTrigger>
+                    <TabsTrigger value="history" className={RPT_TAB_TRIGGER}><History className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.handHistory", "Lịch sử ván")}</TabsTrigger>
+                    <TabsTrigger value="prizes" className={RPT_TAB_TRIGGER}><Trophy className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.prizes", "Giải thưởng")}</TabsTrigger>
+                    <TabsTrigger value="structure" className={RPT_TAB_TRIGGER}><Layers3 className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.structure", "Cấu trúc")}</TabsTrigger>
+                    <TabsTrigger value="photos" className={RPT_TAB_TRIGGER}><ImageIcon className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.photos", "Hình ảnh")}</TabsTrigger>
+                  </>}
                 </TabsList>
               </div>
             </div>
           </div>
 
           <TabsContent value="updates" className="mt-3 min-w-0 focus-visible:outline-none sm:mt-4">
-            {realtimeEnabled && (
-              <div className="mb-4">
-                <RealtimeTablesGrid
-                  catalog={publicSnapshot?.sections.tables?.catalog ?? []}
-                  tables={publicSnapshot?.sections.tables?.items ?? []}
-                  freshness={publicSnapshot?.sections.tables?.freshness}
-                  onVisibleTableIds={setVisibleTableIds}
-                  onView={(id) => setWatch({ kind: "live", tableId: id })}
-                  onHistory={(id) => { setHistoryTableId(id); onTabChange?.("hands"); }}
-                />
-              </div>
-            )}
             <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.75fr)] xl:items-start">
               <aside className={`min-w-0 space-y-4 xl:col-start-2 xl:row-start-1 ${FEATURES.liveHandFeed ? "" : "xl:col-span-2 xl:col-start-1"}`}>
                 {!realtimeEnabled && <LiveTablesMap
@@ -419,14 +417,6 @@ function LiveHubContent({
                 />}
                 <LiveStoryFeed items={storyFeed} rpt />
                 <LiveUpdatesFeed feed={feed} rpt />
-                {realtimeEnabled && (
-                  <RealtimeRankingPanel
-                    rows={publicSnapshot?.sections.ranking?.items ?? []}
-                    bigBlind={publicSnapshot?.sections.ranking?.bigBlind ?? null}
-                    freshness={publicSnapshot?.sections.ranking?.freshness}
-                    loading={publicSnapshotLoading}
-                  />
-                )}
               </aside>
               {FEATURES.liveHandFeed && (
                 <div className="min-w-0 xl:col-start-1 xl:row-start-1">
@@ -447,24 +437,42 @@ function LiveHubContent({
           </TabsContent>
 
           <TabsContent value="history" className="mt-3 min-w-0 focus-visible:outline-none sm:mt-4">
-            <LiveHandFeed
-              tournamentId={tournamentId}
-              featuredTableId={historyTableId ?? activeHandTableId}
-              variant="history"
-              tableNames={tableNames}
-              onViewHand={handleViewHand}
-              onShare={onShareHand}
-            />
+            {realtimeEnabled && !historyTableId ? <RealtimeTablesGrid
+              catalog={publicSnapshot?.sections.tables?.catalog ?? []}
+              tables={publicSnapshot?.sections.tables?.items ?? []}
+              freshness={publicSnapshot?.sections.tables?.freshness}
+              onVisibleTableIds={setVisibleTableIds}
+              onView={(id) => setWatch({ kind: "live", tableId: id })}
+              onHistory={setHistoryTableId}
+            /> : <div className="space-y-3">
+              {realtimeEnabled && <button type="button" onClick={() => setHistoryTableId(null)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border/60 px-3 text-sm font-bold"><ArrowLeft className="h-4 w-4" />Tất cả bàn</button>}
+              <LiveHandFeed
+                tournamentId={tournamentId}
+                featuredTableId={historyTableId ?? activeHandTableId}
+                variant="history"
+                tableNames={tableNames}
+                onViewHand={handleViewHand}
+                onShare={onShareHand}
+              />
+            </div>}
           </TabsContent>
 
           <TabsContent value="prizes" className="mt-3 focus-visible:outline-none sm:mt-4">
             {realtimeEnabled ? (
-              <RealtimePayoutPanel
-                rows={publicSnapshot?.sections.payout?.items ?? []}
-                freshness={publicSnapshot?.sections.payout?.freshness}
-                published={publicSnapshot?.sections.payout?.published ?? false}
-                loading={publicSnapshotLoading}
-              />
+              <div className="grid min-w-0 gap-4 xl:grid-cols-2 xl:items-start">
+                <RealtimeRankingPanel
+                  rows={publicSnapshot?.sections.ranking?.items ?? []}
+                  bigBlind={publicSnapshot?.sections.ranking?.bigBlind ?? null}
+                  freshness={publicSnapshot?.sections.ranking?.freshness}
+                  loading={publicSnapshotLoading}
+                />
+                <RealtimePayoutPanel
+                  rows={publicSnapshot?.sections.payout?.items ?? []}
+                  freshness={publicSnapshot?.sections.payout?.freshness}
+                  published={publicSnapshot?.sections.payout?.published ?? false}
+                  loading={publicSnapshotLoading}
+                />
+              </div>
             ) : <PrizesPanel tournamentId={tournamentId} rpt />}
           </TabsContent>
 
@@ -472,9 +480,9 @@ function LiveHubContent({
             <StructurePanel tournamentId={tournamentId} currentLevel={currentLevel} rpt />
           </TabsContent>
 
-          <TabsContent value="photos" className="mt-3 focus-visible:outline-none sm:mt-4">
+          {!realtimeEnabled && <TabsContent value="photos" className="mt-3 focus-visible:outline-none sm:mt-4">
             <PhotosPanel tournamentId={tournamentId} rpt />
-          </TabsContent>
+          </TabsContent>}
         </Tabs>
       )}
     </div>
