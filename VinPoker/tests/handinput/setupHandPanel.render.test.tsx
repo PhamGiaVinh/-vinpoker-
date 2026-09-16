@@ -12,6 +12,7 @@ const base = {
   positions: new Map<number, string>(),
   buttonSeat: 1,
   onTapSeat: noop,
+  onResetButton: noop,
   onStartHand: noop,
   submitting: false,
   onVoid: noop,
@@ -32,6 +33,24 @@ describe("SetupHandPanel (engine setup step)", () => {
     );
     expect(html).toContain("Bắt đầu Hand");
     expect(html).not.toContain('disabled=""');
+  });
+
+  it("shows the automatic next button with a separate reset control", () => {
+    const html = renderToStaticMarkup(
+      <SetupHandPanel {...base} seats={[{ player_id: "p4", seat_number: 4, display_name: "Test 4", current_stack: 100, current_bet: 0 }]} handNumber={6} buttonSeat={4} buttonConfirmed lastHandId="previous" />
+    );
+    expect(html).toContain("BTN Ghế 4 · tự chuyển sau khi kết thúc ván");
+    expect(html).toContain("Đặt lại button");
+    expect(html).not.toContain("Chọn ghế BTN để bắt đầu ván");
+  });
+
+  it("requires manual selection after reset or when lineage is unavailable", () => {
+    const html = renderToStaticMarkup(
+      <SetupHandPanel {...base} seats={[{ player_id: "p4", seat_number: 4, display_name: "Test 4", current_stack: 100, current_bet: 0 }]} handNumber={6} buttonConfirmed={false} lastHandId="previous" />
+    );
+    expect(html).toContain("Chọn ghế BTN để bắt đầu ván");
+    expect(html).not.toContain("Đặt lại button");
+    expect(html).toContain('disabled=""');
   });
 
   it("offers Void Last Hand only when a previous hand exists", () => {

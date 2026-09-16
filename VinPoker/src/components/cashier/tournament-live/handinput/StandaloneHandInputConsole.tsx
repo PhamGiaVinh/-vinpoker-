@@ -105,6 +105,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           buttonSeat={hook.buttonSeat}
           buttonConfirmed={hook.buttonConfirmed}
           onTapSeat={hook.handleSeatTap}
+          onResetButton={hook.handleResetButton}
           onStartHand={hook.handleStartHand}
           submitting={disabled}
           lastHandId={hook.lastHandId}

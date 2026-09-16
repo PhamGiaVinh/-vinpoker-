@@ -1184,7 +1184,7 @@ export function useStandaloneHandInput(tournamentId: string) {
 
   const activeSeatNums = useMemo(() => players.map((p) => p.seat_number), [players]);
   // Dead-button SUGGESTION from the PREVIOUS hand's recorded blind positions. Pre-hand
-  // default; stays active until the operator overrides the button by tapping a seat.
+  // default; stays active until the operator explicitly resets and selects a seat.
   const deadButtonSuggestion = useMemo(
     () => nextButtonFromBlindLineage({
       maxSeats, occupiedSeats: activeSeatNums,
@@ -1231,7 +1231,7 @@ export function useStandaloneHandInput(tournamentId: string) {
   }, [activeSeatNums, buttonSeat, blindBbSeat]);
 
   // P2-5: pre-fill the suggested button (incl. a dead/empty seat) pre-hand, until the
-  // operator overrides by tapping a seat. Suggestion depends on prevBb/occupancy, not
+  // operator resets the button. Suggestion depends on prevBb/occupancy, not
   // buttonSeat → no loop.
   useEffect(() => {
     if (suggestionActive && !handStarted && deadButtonSuggestion) {
@@ -2045,8 +2045,15 @@ export function useStandaloneHandInput(tournamentId: string) {
   // already posted is harmless — sbPosted then drives the normal requirement again.
   const handleToggleDeadSb = () => setDeadSb((v) => !v);
 
+  const handleResetButton = () => {
+    if (handStarted || submitting || isReadOnly) return;
+    setButtonOverridden(true);
+    setButtonConfirmed(false);
+  };
+
   const handleSeatTap = (seat: RailSeat) => {
     if (!handStarted) {
+      if (buttonConfirmed || submitting || isReadOnly) return;
       setButtonSeat(seat.seat_number);
       setButtonConfirmed(true);
       setButtonOverridden(true); // P2-5: manual button → drop the dead-button suggestion
@@ -2062,6 +2069,7 @@ export function useStandaloneHandInput(tournamentId: string) {
   // Felt tap → resolve the seat number to a player, then reuse the rail-tap logic.
   const handleSeatNumberTap = (seatNumber: number) => {
     if (!handStarted) {
+      if (buttonConfirmed || submitting || isReadOnly) return;
       setButtonSeat(seatNumber);
       setButtonConfirmed(true);
       setButtonOverridden(true); // P2-5: manual button (incl. an empty seat → dead button)
@@ -3010,6 +3018,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     handlePostBlind,
     handleConfirmBlinds,
     handleToggleDeadSb,
+    handleResetButton,
     handleSeatTap,
     handleSeatNumberTap,
     handleUndo,

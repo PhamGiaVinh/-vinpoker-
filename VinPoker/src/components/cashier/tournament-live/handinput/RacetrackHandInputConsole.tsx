@@ -101,7 +101,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
   const bigBlind = hook.bigBlind;
   const disabled = hook.submitting || hook.isReadOnly || hook.actionSyncBlocked;
   // P2-5: include EMPTY physical seats so a DEAD button is visible on an empty seat
-  // and the operator can tap one to set it. TrackerRacetrack renders `isEmpty` seats.
+  // and the operator can select it after choosing "Đặt lại button". TrackerRacetrack renders `isEmpty` seats.
   const rich = FEATURES.trackerRacetrackRich;
   const occupiedVMs = toSeatVMs(hook.players, hook.positionsBySeat, rich, hook.playerHoleCards, hook.muckedPlayerIds);
   const occupiedNums = new Set(occupiedVMs.map((s) => s.seatNumber));
@@ -136,6 +136,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           buttonSeat={hook.buttonSeat}
           buttonConfirmed={hook.buttonConfirmed}
           onTapSeat={hook.handleSeatTap}
+          onResetButton={hook.handleResetButton}
           onStartHand={hook.handleStartHand}
           submitting={disabled}
           lastHandId={hook.lastHandId}

@@ -1,11 +1,10 @@
 // Setup step (engine mode) — the FIRST guided panel of a hand. Extracted from the
 // inline start-hand JSX so the engine wizard can own it; the manual branch keeps
 // its own inline copy byte-identical. Operator sets the hand number, taps the
-// dealer-button seat (mandatory confirm), then starts the hand. Behaviour matches
-// the original inline block exactly — this is a presentation-only extraction.
+// dealer-button seat for the first hand or an explicit reset, then starts the hand.
 
 import type { ReactNode } from "react";
-import { Play, Undo2 } from "lucide-react";
+import { Play, RotateCcw, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LiquidButton, LiquidGlassCard } from "@/components/kokonutui/liquid-glass-card";
 import { Input } from "@/components/ui/input";
@@ -19,6 +18,7 @@ interface SetupHandPanelProps {
   buttonSeat: number;
   buttonConfirmed: boolean;
   onTapSeat: (seat: RailSeat) => void;
+  onResetButton?: () => void;
   onStartHand: () => void;
   submitting: boolean;
   lastHandId: string | null;
@@ -46,6 +46,7 @@ export function SetupHandPanel({
   buttonSeat,
   buttonConfirmed,
   onTapSeat,
+  onResetButton,
   onStartHand,
   submitting,
   lastHandId,
@@ -75,14 +76,20 @@ export function SetupHandPanel({
             buttonSeat={buttonSeat}
             toActId={null}
             selectedActorId={null}
-            setupMode
+            setupMode={!buttonConfirmed}
+            selectionDisabled={buttonConfirmed || submitting}
             onTapSeat={onTapSeat}
           />
-          {!buttonConfirmed && (
-            <div className="mt-2 text-[11px] text-amber-300">
-              ⚠ Chạm vào ghế nút chia bài (BTN) để xác nhận trước khi bắt đầu hand.
-            </div>
-          )}
+          <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+            <span className={buttonConfirmed ? "text-emerald-300" : "text-amber-300"}>
+              {buttonConfirmed ? `BTN Ghế ${buttonSeat} · tự chuyển sau khi kết thúc ván` : "Chọn ghế BTN để bắt đầu ván."}
+            </span>
+            {buttonConfirmed && onResetButton && (
+              <Button type="button" size="sm" variant="outline" onClick={onResetButton} disabled={submitting}>
+                <RotateCcw className="mr-1 h-3.5 w-3.5" /> Đặt lại button
+              </Button>
+            )}
+          </div>
         </div>
       )}
       <LiquidButton
