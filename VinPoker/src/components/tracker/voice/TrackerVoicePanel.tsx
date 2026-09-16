@@ -104,7 +104,7 @@ interface VoiceFinishAttempt {
 }
 
 export const MIC_TEST_DURATION_MS = 30_000;
-export const ACTION_AUTO_COMMIT_MS = 3_000;
+export const ACTION_AUTO_COMMIT_MS = 1_800;
 const MAX_BUFFERED_TRANSCRIPTS = 20;
 const SPLIT_AMOUNT_CONTINUATION_MS = 4_000;
 
@@ -1121,6 +1121,11 @@ export function TrackerVoicePanel({
       setBufferStatus("Floor chưa hoàn tất correction. Transcript vẫn được giữ và không ghi action.");
       return;
     }
+    if (!hook.handId || nextRuntime.active_hand?.hand_id !== hook.handId) {
+      setBufferedEvents([]);
+      setBufferStatus("Hand đã thay đổi. Transcript cũ đã được bỏ; hãy đọc lại action nếu cần.");
+      return;
+    }
     const [nextEvent, ...remaining] = bufferedEvents;
     if (!nextEvent) return;
     setBufferedEvents(remaining);
@@ -1762,6 +1767,16 @@ export function TrackerVoicePanel({
             <p className="mt-1 text-[11px] leading-relaxed text-amber-100/70">
               {bufferStatus ?? "Không action nào được ghi trong khi correction pending."}
             </p>
+            <p className="mt-2 text-[11px] leading-relaxed text-amber-100/80">
+              Nếu hand còn mở, Dealer có thể chuyển sang Thủ công để sửa và tiếp tục. Hand đã lưu cần luồng sửa hand/Floor. Voice vẫn tạm dừng cho tới khi cảnh báo được xử lý.
+            </p>
+            <button
+              type="button"
+              onClick={() => { setBufferedEvents([]); setBufferStatus(null); }}
+              className="mt-3 min-h-11 w-full rounded-xl border border-amber-200/30 px-3 text-xs font-bold text-amber-100 outline-none focus-visible:ring-2 focus-visible:ring-amber-200"
+            >
+              Bỏ transcript chờ
+            </button>
             <button
               type="button"
               onClick={() => void revalidateBufferedEvent()}

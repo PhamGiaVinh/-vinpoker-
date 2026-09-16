@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import {
   listTrackerFloorAlerts,
   type TrackerFloorAlert,
@@ -24,6 +24,7 @@ function nextTransition(status: FloorAlertStatus): { action: string; label: stri
 }
 
 export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLaneProps) {
+  const supabase = useSupabaseClient();
   const [alerts, setAlerts] = useState<TrackerFloorAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,10 +40,17 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
     }
     setAlerts([...result.alerts]);
     setLoading(false);
-  }, [tournamentId]);
+  }, [supabase, tournamentId]);
 
   useEffect(() => {
     void reload();
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible") void reload();
+    }, 10_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void reload();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     const channel = supabase
       .channel(`tracker-floor-alerts:${tournamentId}`)
       .on(
@@ -52,12 +60,17 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
       )
       .subscribe();
     return () => {
+      window.clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisible);
       void supabase.removeChannel(channel);
     };
-  }, [reload, tournamentId]);
+  }, [reload, supabase, tournamentId]);
 
   const transition = async (alert: TrackerFloorAlert, action: string) => {
     if (transitioningId) return;
+    if (action === "resolve" && alert.correction_required && !window.confirm(
+      "Chỉ đánh dấu đã xử lý sau khi action/hand canonical đã được sửa và kiểm tra. Thao tác này mở lại Voice cho bàn. Tiếp tục?",
+    )) return;
     setTransitioningId(alert.id);
     const { data, error: rpcError } = await supabase.rpc("transition_tracker_floor_alert" as never, {
       p_alert_id: alert.id,
@@ -87,7 +100,7 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
             <p className="text-[11px] text-zinc-500">Lane vận hành riêng, không thay đổi Dealer Swing.</p>
           </div>
         </div>
-        <Button type="button" size="sm" variant="outline" onClick={() => void reload()} disabled={loading}>
+        <Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => void reload()} disabled={loading}>
           <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           Làm mới
         </Button>
@@ -130,6 +143,9 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
                     {alert.dealer_name || "Dealer"} · {new Date(alert.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
                   </p>
                   {alert.message && <p className="mt-2 line-clamp-2 text-xs text-zinc-300">{alert.message}</p>}
+                  {alert.correction_required && (
+                    <p className="mt-2 text-xs text-amber-200">Voice tạm dừng. Kiểm tra và sửa hand trước khi đánh dấu đã xử lý.</p>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button asChild size="sm" variant="outline" className="min-h-11">

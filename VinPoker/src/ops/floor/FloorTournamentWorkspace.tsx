@@ -4,6 +4,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import OpsTables from "@/pages/ops/OpsTables";
 import OpsTournamentCockpit from "@/pages/ops/OpsTournamentCockpit";
+import { TrackerFloorAlertLane } from "@/components/cashier/tournament-live/TrackerFloorAlertLane";
 import { cn } from "@/lib/utils";
 import { useTournamentOps } from "@/ops/workspace/TournamentOpsProvider";
 import {
@@ -83,6 +84,8 @@ export default function FloorTournamentWorkspace({ section }: { section: FloorTo
             </button>
           </div>
         )}
+
+        <TrackerFloorAlertLane tournamentId={snapshot.tournamentId} />
 
         <div key={`${section}:${tournament.revision}`} className="min-w-0">
           {section === "tables"
