@@ -21,6 +21,7 @@ ALTER TABLE public.club_cashiers ADD COLUMN granted_by uuid;
 ALTER TABLE public.tournaments ADD COLUMN free_rake_enabled boolean DEFAULT false;
 ALTER TABLE public.tournaments ADD COLUMN free_rake_slots integer DEFAULT 0;
 ALTER TABLE public.tournaments ADD COLUMN free_rake_used integer DEFAULT 0;
+ALTER TABLE public.tournaments ALTER COLUMN starting_stack SET DEFAULT 30000;
 ALTER TABLE public.tournaments DROP CONSTRAINT tournaments_status_check;
 ALTER TABLE public.tournaments ADD CONSTRAINT tournaments_status_check
   CHECK (status IN ('active','registering','completed','cancelled'));
