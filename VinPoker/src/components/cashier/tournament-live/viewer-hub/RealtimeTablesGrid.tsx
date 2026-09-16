@@ -6,6 +6,10 @@ import "./realtimeTablesGrid.css";
 import type { PublicFreshness, PublicTableCatalogItem, PublicTableSnapshot } from "./publicSnapshotTypes";
 
 const PAGE_SIZE = 6;
+const SEAT_POSITIONS = [
+  [50, 9], [76, 16], [88, 36], [88, 67], [74, 87],
+  [50, 91], [26, 87], [12, 67], [12, 36],
+] as const;
 
 function MiniTable({ table }: { table: PublicTableSnapshot }) {
   const playersBySeat = new Map(table.players.slice(0, 9).map((player) => [player.seatNumber, player]));
@@ -20,11 +24,9 @@ function MiniTable({ table }: { table: PublicTableSnapshot }) {
       {Array.from({ length: 9 }, (_, index) => {
         const seatNumber = index + 1;
         const player = playersBySeat.get(seatNumber);
-        const angle = (Math.PI * 2 * index) / 9 - Math.PI / 2;
-        const left = 50 + Math.cos(angle) * 39;
-        const top = 50 + Math.sin(angle) * 35;
+        const [left, top] = SEAT_POSITIONS[index];
         if (!player) return <span key={seatNumber} className="absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-dashed border-amber-300/35 bg-black/55 text-[8px] text-amber-100/60" style={{ left: `${left}%`, top: `${top}%` }}>{seatNumber}</span>;
-        return <div key={`${player.playerId}:${player.entryNumber}`} className="absolute w-[18%] max-w-[5.2rem] -translate-x-1/2 -translate-y-1/2 text-center" style={{ left: `${left}%`, top: `${top}%` }} data-seat-number={seatNumber}>
+        return <div key={`${player.playerId}:${player.entryNumber}`} className="absolute w-[14%] max-w-[4.2rem] -translate-x-1/2 -translate-y-1/2 text-center" style={{ left: `${left}%`, top: `${top}%` }} data-seat-number={seatNumber}>
           <div className="relative mx-auto flex h-8 w-8 items-center justify-center overflow-visible rounded-full border border-amber-300/80 bg-zinc-900 text-[10px] font-black text-white">
             {player.avatarUrl ? <img src={player.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" /> : player.name.slice(0, 2).toUpperCase()}
             {table.buttonSeat === player.seatNumber ? <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-300 px-0.5 text-[7px] font-black text-black">D</span> : null}
