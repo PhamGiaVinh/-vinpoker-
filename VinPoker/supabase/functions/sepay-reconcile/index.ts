@@ -2,9 +2,10 @@
 //
 // Cron-invoked (every ~5 min). For each ACTIVE club it pulls the SePay v2 transactions API (the
 // SOURCE OF TRUTH), stamps the matching bank_transactions rows api-verified (+ recovers webhook
-// misses / quarantined rows), then runs settle_bank_transaction(bt, SEPAY_AUTO_CONFIRM) over the
-// verified worklist. In Direction 1 SEPAY_AUTO_CONFIRM is false → settle is FLAG-ONLY: a discrepancy
-// is flagged for the cashier, an exact match is left for the cashier to confirm in the Settlement UI.
+// misses / quarantined rows), then routes the verified worklist by the club's
+// Cashier gate. Enabled clubs use the movement ledger for VINREG buy-ins;
+// legacy settlement remains for other references without auto-confirming
+// an unhandled buy-in. Disabled clubs keep the existing settlement flow.
 //
 // AUTH: gated by a single shared secret. The cron passes `X-Reconcile-Secret`; we timing-safe-compare
 // it to Deno.env SEPAY_RECONCILE_SECRET. Deployed --no-verify-jwt (the cron has no Supabase user JWT).
@@ -18,8 +19,8 @@
 // KILL-SWITCH: SEPAY_AUTO_CONFIRM (env, default false) is the authoritative auto-confirm switch. It is
 // read here (not hardcoded) so flipping it never requires a code change/redeploy. NOTE: even if set to
 // true today, settle still cannot auto-confirm because confirm_registration_and_assign_seat (P0-guard-v2)
-// rejects a headless caller (auth.uid()=NULL) — the auto path (Hướng 2) is not built. So this env is
-// inert-safe today; it is wired in the correct place for the future.
+// VINREG buy-ins use the server movement ledger for split payments. Other references keep
+// the existing settlement path. Both paths remain gated by the existing auto-confirm settings.
 //
 // RESILIENCE: one club failing (bad token, SePay down, 4xx) records last_pull_error and is SKIPPED —
 // the loop continues; the webhook keeps capturing realtime. retryFetch handles 429/5xx/network.
@@ -151,6 +152,13 @@ Deno.serve(async (req) => {
     try {
       if (!master) throw new Error("no_master_account_number");
 
+      // Fail closed if the Cashier gate cannot be read. A V2 club must never
+      // fall through to legacy auto-confirm without a movement ledger entry.
+      const { data: cashierSettings, error: cashierGateErr } = await admin
+        .from("cashier_tour_settings").select("enabled").eq("club_id", clubId).maybeSingle();
+      if (cashierGateErr) throw new Error(`cashier_gate_read_failed:${cashierGateErr.message}`);
+      const cashierEnabled = cashierSettings?.enabled === true;
+
       // Window: from last_pull_at − overlap, else first pull → back 24h. (Service-role read; non-secret
       // column only. If it errors, cfg stays undefined → safe 24h fallback.)
       let fromMs = nowMs - FIRST_LOOKBACK_MS;
@@ -190,13 +198,45 @@ Deno.serve(async (req) => {
       if (wlErr) throw new Error(`worklist_failed:${wlErr.message}`);
 
       let settled = 0;
+      let partial = 0;
+      let waitingSeat = 0;
+      let surplus = 0;
+      let seatingReview = 0;
       for (const bt of (worklist ?? []) as Array<{ id: string }>) {
-        const { error: sErr } = await admin.rpc("settle_bank_transaction", {
+        if (cashierEnabled) {
+          const { data: buyinResult, error: buyinErr } = await admin.rpc("cashier_record_verified_bank_v1", {
+            p_bank_transaction_id: bt.id,
+            p_auto_confirm: AUTO_CONFIRM,
+          });
+          if (buyinErr) { console.error("sepay-reconcile: buy-in recording failed", bt.id, buyinErr.message); continue; }
+          const buyin = buyinResult as { handled?: boolean; outcome?: string;
+            legacy_auto_confirm_allowed?: boolean } | null;
+          if (buyin?.handled) {
+            if (buyin.outcome === "paid_seated") settled++;
+            else if (buyin.outcome === "paid_waiting_seat") waitingSeat++;
+            else if (buyin.outcome === "partial_received") partial++;
+            else if (buyin.outcome === "surplus_received") surplus++;
+            else if (buyin.outcome === "paid_seating_review") seatingReview++;
+            continue;
+          }
+          // Only the server may classify an unhandled transaction as legacy.
+          // Re-entry and pre-V2 VINREG keep their existing auto path; an
+          // unhandled priced VINREG can never bypass the movement ledger.
+          if (buyin?.legacy_auto_confirm_allowed !== true) {
+            const { error: sErr } = await admin.rpc("settle_bank_transaction", {
+              p_bank_transaction_id: bt.id, p_auto_confirm: false,
+            });
+            if (sErr) console.error("sepay-reconcile: settle failed", bt.id, sErr.message);
+            continue;
+          }
+        }
+        // Keep legacy F&B/re-entry handling for explicitly classified rows.
+        const { data: legacyResult, error: sErr } = await admin.rpc("settle_bank_transaction", {
           p_bank_transaction_id: bt.id,
           p_auto_confirm: AUTO_CONFIRM,
         });
         if (sErr) { console.error("sepay-reconcile: settle failed", bt.id, sErr.message); continue; }
-        settled++;
+        if ((legacyResult as { outcome?: string } | null)?.outcome === "auto_confirmed") settled++;
       }
       totalSettled += settled;
 
@@ -204,7 +244,8 @@ Deno.serve(async (req) => {
       await admin.from("club_payment_config")
         .update({ last_pull_at: nowIso, last_pull_status: "ok", last_pull_error: null })
         .eq("club_id", clubId);
-      summary.push({ club_id: clubId, pulled: rows.length, settled, status: "ok" });
+      summary.push({ club_id: clubId, pulled: rows.length, settled, partial, waiting_seat: waitingSeat,
+        surplus, seating_review: seatingReview, status: "ok" });
     } catch (e) {
       const msg = (e as Error)?.message ?? String(e);
       console.error("sepay-reconcile: club failed", clubId, msg);
@@ -216,5 +257,14 @@ Deno.serve(async (req) => {
     }
   }
 
-  return jsonResponse(200, { ok: true, clubs: summary.length, settled: totalSettled, auto_confirm: AUTO_CONFIRM, results: summary });
+  // Paid registrations must keep retrying after Floor opens a table, including
+  // when SePay API is unavailable or a cash-only club has no SePay config.
+  const { data: retryResult, error: retryErr } = await admin.rpc("cashier_retry_paid_seating_v1", {
+    p_auto_confirm: AUTO_CONFIRM, p_limit: 500,
+  });
+  if (retryErr) console.error("sepay-reconcile: paid seating retry failed", retryErr.message);
+  const retry = retryResult as { attempted?: number; seated?: number } | null;
+
+  return jsonResponse(200, { ok: true, clubs: summary.length, settled: totalSettled,
+    auto_confirm: AUTO_CONFIRM, paid_seating_retry: retryErr ? "error" : retry, results: summary });
 });
