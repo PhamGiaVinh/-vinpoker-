@@ -46,6 +46,7 @@ CREATE TABLE public.club_members (
 );
 CREATE TABLE public.bank_transactions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), provider text, api_verified_at timestamptz,
+  provider_txn_id text, raw_payload jsonb,
   transfer_type text, amount bigint, status text, account_number text, content text,
   txn_ref text, club_id uuid, processed_at timestamptz,
   occurred_at timestamptz DEFAULT now(), created_at timestamptz DEFAULT now()
