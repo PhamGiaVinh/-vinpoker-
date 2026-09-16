@@ -6,6 +6,12 @@ BEGIN
 END;
 $roles$;
 CREATE SCHEMA floor_private;
+CREATE TABLE public.table_sessions (
+  id uuid PRIMARY KEY,
+  tournament_id uuid NOT NULL,
+  control_mode text NOT NULL,
+  closed_at timestamptz
+);
 CREATE TABLE public.tournaments (
   id uuid PRIMARY KEY,
   current_level_id uuid,

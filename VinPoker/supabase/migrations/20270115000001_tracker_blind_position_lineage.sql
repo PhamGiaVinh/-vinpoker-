@@ -14,6 +14,7 @@ BEGIN
         AND attname IN ('table_session_id', 'tracker_level_id', 'tracker_level_number',
           'tracker_small_blind', 'tracker_big_blind', 'tracker_bba', 'tracker_is_break')
         AND attnum > 0 AND NOT attisdropped) <> 7
+    OR to_regclass('public.table_sessions') IS NULL
     OR to_regclass('public.tournament_levels') IS NULL
     OR to_regclass('public.tournament_seats') IS NULL THEN
     RAISE EXCEPTION 'tracker_blind_floor_structure_dependency_missing';
@@ -31,6 +32,7 @@ SET search_path = ''
 AS $function$
 DECLARE
   v_tour record;
+  v_session record;
   v_level record;
   v_seats integer[];
   v_count integer;
@@ -41,6 +43,15 @@ DECLARE
   v_bb integer;
 BEGIN
   IF NEW.table_session_id IS NULL THEN RETURN NEW; END IF;
+
+  SELECT control_mode, closed_at INTO v_session
+  FROM public.table_sessions
+  WHERE id = NEW.table_session_id
+    AND tournament_id = NEW.tournament_id;
+  IF NOT FOUND OR v_session.closed_at IS NOT NULL THEN
+    RAISE EXCEPTION 'tracker_table_session_unavailable';
+  END IF;
+  IF v_session.control_mode IS DISTINCT FROM 'tracker' THEN RETURN NEW; END IF;
 
   SELECT current_level_id, current_level INTO v_tour
   FROM public.tournaments WHERE id = NEW.tournament_id;
@@ -256,7 +267,7 @@ BEGIN
     IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
     RETURN NEW;
   END IF;
-  IF v_hand.table_session_id IS NULL THEN
+  IF v_hand.tracker_level_number IS NULL THEN
     IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
     RETURN NEW;
   END IF;
