@@ -124,7 +124,7 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
         )}
         {alerts.map((alert) => {
           const primary = nextTransition(alert.status);
-          const handLink = `/tracker/hand-input?t=${encodeURIComponent(alert.tournament_id)}&tt=${encodeURIComponent(alert.tournament_table_id)}${alert.hand_id ? `&handId=${encodeURIComponent(alert.hand_id)}` : ""}`;
+          const handLink = `/tracker/hand-input?tournament=${encodeURIComponent(alert.tournament_id)}&tt=${encodeURIComponent(alert.tournament_table_id)}${alert.hand_id ? `&handId=${encodeURIComponent(alert.hand_id)}` : ""}`;
           return (
             <article
               key={alert.id}
