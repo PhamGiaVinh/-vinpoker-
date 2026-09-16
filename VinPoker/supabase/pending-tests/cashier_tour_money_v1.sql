@@ -574,4 +574,38 @@ BEGIN
     'wrong-club registration cannot start a refund');
 END $test$;
 
+-- More than two client-page sizes must still be counted and paged by SQL for
+-- the selected tour; Tour B cannot inherit Tour A's large arrival queue.
+INSERT INTO auth.users(id,aud,role,email,created_at,updated_at)
+SELECT ('a1000000-0000-4000-8000-'||lpad(g::text,12,'0'))::uuid,
+  'authenticated','authenticated','cashier-page-'||g||'@test.invalid',now(),now()
+FROM generate_series(1,220) g;
+INSERT INTO public.tournament_registrations
+  (tournament_id,player_id,club_id,buy_in,total_pay,reference_code,status)
+SELECT '93000000-0000-4000-8000-000000000001',
+  ('a1000000-0000-4000-8000-'||lpad(g::text,12,'0'))::uuid,
+  '92000000-0000-4000-8000-000000000001',6000000,6600000,
+  'VINREGPAGE'||lpad(g::text,4,'0'),'pending'
+FROM generate_series(1,220) g;
+SELECT set_config('request.jwt.claim.role','authenticated',true);
+SELECT set_config('request.jwt.claim.sub','91000000-0000-4000-8000-000000000001',true);
+DO $test$
+DECLARE v_first jsonb; v_last jsonb; v_other jsonb;
+BEGIN
+  v_first:=public.cashier_tour_worklist_v1(
+    '92000000-0000-4000-8000-000000000001',
+    '93000000-0000-4000-8000-000000000001','VINREGPAGE','counter',0,100);
+  v_last:=public.cashier_tour_worklist_v1(
+    '92000000-0000-4000-8000-000000000001',
+    '93000000-0000-4000-8000-000000000001','VINREGPAGE','counter',2,100);
+  v_other:=public.cashier_tour_worklist_v1(
+    '92000000-0000-4000-8000-000000000002',
+    '93000000-0000-4000-8000-000000000002','VINREGPAGE','all',0,100);
+  PERFORM pg_temp.cashier_assert((v_first#>>'{counts,total}')::integer=220
+    AND jsonb_array_length(v_first->'rows')=100
+    AND jsonb_array_length(v_last->'rows')=20
+    AND (v_other#>>'{counts,total}')::integer=0,
+    'tour-scoped SQL search counts and pages more than 200 arrivals');
+END $test$;
+
 ROLLBACK;
