@@ -20,6 +20,8 @@ import {
   updateTournamentLive,
 } from "@/ops/opsMutations";
 import type { Tournament } from "@/types/tournament";
+import { FloorVoiceAlertInbox } from "@/components/floor/FloorVoiceAlertInbox";
+import { FEATURES } from "@/lib/featureFlags";
 
 /**
  * Giải đấu (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads danh sách A1).
@@ -224,6 +226,13 @@ export default function OpsTournaments() {
         <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Giải đấu</h1>
         <p className="mt-0.5 text-[15px] text-[#9b8e97]">{clubName} · chạm 1 giải để thao tác</p>
       </header>
+
+      {FEATURES.trackerVoiceInput && (
+        <FloorVoiceAlertInbox
+          tournaments={allVMs}
+          onSelect={(id) => navigate(`/ops/floor/tournaments/${id}/tables?club=${encodeURIComponent(activeClub)}`)}
+        />
+      )}
 
       {metadataError && <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">{metadataError}</div>}
       <div className="rounded-xl bg-emerald-400/8 px-3 py-2 text-[12px] text-emerald-300/90">

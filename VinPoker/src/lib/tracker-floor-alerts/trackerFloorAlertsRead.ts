@@ -6,6 +6,7 @@ export interface TrackerFloorAlert {
   readonly id: string;
   readonly tournament_id: string;
   readonly tournament_table_id: string;
+  readonly physical_table_id: string;
   readonly hand_id: string | null;
   readonly dealer_name: string | null;
   readonly alert_kind: "wrong_action" | "call_floor";
@@ -30,6 +31,7 @@ function isAlert(value: unknown): value is TrackerFloorAlert {
   return typeof row.id === "string"
     && typeof row.tournament_id === "string"
     && typeof row.tournament_table_id === "string"
+    && typeof row.physical_table_id === "string"
     && typeof row.title === "string"
     && typeof row.created_at === "string"
     && ["open", "acknowledged", "in_progress", "resolved", "dismissed"].includes(String(row.status))

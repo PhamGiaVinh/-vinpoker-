@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -21,6 +21,7 @@ vi.mock("@/lib/tracker-floor-alerts/trackerFloorAlertsRead", () => ({
       id: "alert-1",
       tournament_id: "tournament-1",
       tournament_table_id: "table-1",
+      physical_table_id: "physical-1",
       hand_id: "hand-1",
       dealer_name: "Dealer",
       alert_kind: "wrong_action",
@@ -35,6 +36,15 @@ vi.mock("@/lib/tracker-floor-alerts/trackerFloorAlertsRead", () => ({
   })),
 }));
 
+vi.mock("@/lib/tracker-floor-alerts/useTrackerFloorAlertLocations", () => ({
+  useTrackerFloorAlertLocations: () => () => ({ tableNumber: 5, handNumber: 12 }),
+}));
+
+vi.mock("./HandHistoryPanel", () => ({
+  HandHistoryPanel: ({ initialHandId, readOnly }: { initialHandId: string; readOnly: boolean }) =>
+    <p>{initialHandId} {readOnly ? "chỉ xem" : "có sửa"}</p>,
+}));
+
 import { TrackerFloorAlertLane } from "./TrackerFloorAlertLane";
 
 afterEach(cleanup);
@@ -47,9 +57,12 @@ describe("TrackerFloorAlertLane", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: /Mở Tracker/i })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: /Mở đúng bàn/i })).toHaveAttribute(
       "href",
-      "/tracker/hand-input?tournament=tournament-1&tt=table-1&handId=hand-1",
+      "/tracker/hand-input?tournament=tournament-1&table=physical-1&handId=hand-1",
     );
+    expect(screen.getByText(/Bàn 5 · Hand #12/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Xem cả ván" }));
+    expect(screen.getByText("hand-1 chỉ xem")).toBeVisible();
   });
 });

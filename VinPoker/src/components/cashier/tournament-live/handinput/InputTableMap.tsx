@@ -41,6 +41,7 @@ interface InputTableMapProps {
   loadError?: string | null;
   onRetry?: () => void;
   selectionNotice?: string | null;
+  alertsByTable?: Readonly<Record<string, number>>;
 }
 
 /** Poker-table top-view "logo": felt oval + 6 seat marks + a centered label. */
@@ -72,6 +73,7 @@ export function InputTableMap({
   loadError = null,
   onRetry,
   selectionNotice = null,
+  alertsByTable = {},
 }: InputTableMapProps) {
   if (loadState === "loading") {
     return <div className="py-6 text-center text-sm text-muted-foreground">Đang tải danh sách bàn...</div>;
@@ -132,6 +134,11 @@ export function InputTableMap({
               </div>
               <div className="mt-1 truncate text-xs font-semibold text-foreground">{tbl.name}</div>
               <div className="text-[11px] text-muted-foreground">{tbl.playerCount} người chơi</div>
+              {(alertsByTable[tbl.physicalTableId] ?? 0) > 0 && (
+                <div className="mt-1 rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-200">
+                  {alertsByTable[tbl.physicalTableId]} cảnh báo cần Floor xử lý
+                </div>
+              )}
               {tbl.hasLiveHand && (
                 <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-300">
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" /> đang có hand
