@@ -167,6 +167,29 @@ function isRecord(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+// Exact audited dormant TEST record in the current club. Other unnumbered
+// records may still have legacy active assignments and must fail closed.
+const dormantLegacyTestTableId = "df74d2ca-f319-497b-8c7a-23eb39ff0cee";
+
+function isUnconfiguredLegacyTable(value: unknown): boolean {
+  return isRecord(value)
+    && value.game_table_id === dormantLegacyTestTableId
+    && value.table_name === "Bàn TEST 1"
+    && value.table_number === null
+    && value.operational_status === null
+    && value.availability_status === "preflight_required"
+    && value.table_session_id === null
+    && value.tournament_table_id === null
+    && value.session_type == null
+    && value.control_mode == null
+    && value.control_epoch == null
+    && value.revision == null
+    && value.tournament_id == null
+    && value.tournament_table_status == null
+    && value.active_dealer_assignment_id == null
+    && value.max_seats == null;
+}
+
 function nullableString(value: unknown): string | null | undefined {
   return value == null ? null : typeof value === "string" ? value : undefined;
 }
@@ -589,6 +612,7 @@ export function createFloorTableControlV3Client(
       const tableIds = new Set<string>();
       const tableNumbers = new Set<number>();
       for (const row of response.data) {
+        if (isUnconfiguredLegacyTable(row)) continue;
         const parsed = parseInventoryItem(row);
         if (parsed.ok === false) return { ok: false, error: parsed.error };
         if (tableIds.has(parsed.data.gameTableId) || tableNumbers.has(parsed.data.tableNumber)) {
@@ -609,6 +633,7 @@ export function createFloorTableControlV3Client(
       const tableIds = new Set<string>();
       const tableNumbers = new Set<number>();
       for (const row of response.data) {
+        if (isUnconfiguredLegacyTable(row)) continue;
         const parsed = parseTournamentInventoryItem(row);
         if (parsed.ok === false) return { ok: false, error: parsed.error };
         if (tableIds.has(parsed.data.gameTableId) || tableNumbers.has(parsed.data.tableNumber)) {
