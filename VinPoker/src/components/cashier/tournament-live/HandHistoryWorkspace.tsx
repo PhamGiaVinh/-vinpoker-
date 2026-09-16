@@ -21,7 +21,9 @@ import {
   runClientResettle,
   buildApplyResettleArgs,
   resettleHandEndStacks,
+  checkExpectedHandEndStacks,
   resettleChipChanges,
+  type ExpectedHandEndStack,
   type ResettleHandRow,
 } from "./resettleApply";
 import type { EditedTargetHand, ResettleBlock, ResettleForwardResult, ResettleOk } from "@/lib/tracker-poker/resettleForward";
@@ -229,6 +231,7 @@ export function HandHistoryWorkspace({
     targetRow: ResettleHandRow;
     laterRows: ResettleHandRow[];
     editedTarget: EditedTargetHand;
+    expectedEndingStacks: ExpectedHandEndStack[];
   } | null>(null);
 
   useEffect(() => {
@@ -455,7 +458,13 @@ export function HandHistoryWorkspace({
   };
 
   // Đợt G3 — run the resettle engine over the full forward chain and preview the result.
-  const handleResettle = async (editedTarget: EditedTargetHand, patch: HandEditPatch, reason: string) => {
+  const handleResettle = async (
+    editedTarget: EditedTargetHand,
+    patch: HandEditPatch,
+    reason: string,
+    _summary: string[],
+    expectedEndingStacks: ExpectedHandEndStack[],
+  ) => {
     const target = hands.find((h) => h.id === selectedHandId);
     if (!target) return;
     setResettleBusy(true);
@@ -574,6 +583,7 @@ export function HandHistoryWorkspace({
         targetRow,
         laterRows,
         editedTarget,
+        expectedEndingStacks,
       });
     } finally {
       setResettleBusy(false);
@@ -590,6 +600,14 @@ export function HandHistoryWorkspace({
     const changes = resettleChipChanges(ok);
     setResettleBusy(true);
     try {
+      const targetStackCheck = checkExpectedHandEndStacks(
+        resettleHandEndStacks(ok, rv.targetHandId, rv.targetRow.players),
+        rv.expectedEndingStacks,
+      );
+      if (!targetStackCheck.matchesEngine) {
+        toast.error("Stack thực tế chưa khớp kết quả engine. Hãy sửa action/bài/người thắng rồi tính lại; chưa có chip nào được đổi.");
+        return;
+      }
       // Guard 1 — a bust flip (alive<->busted) is NOT a chip re-attribution; the RPC would
       // refuse it AFTER the display edit already committed. Detect it up front and route to
       // void so we never leave display-edited-but-chips-unchanged on this path.
@@ -1042,7 +1060,7 @@ export function ResettlePreview({
   onConfirm,
   onClose,
 }: {
-  view: { result: ResettleForwardResult; targetHandId?: string };
+  view: { result: ResettleForwardResult; targetHandId?: string; expectedEndingStacks?: ExpectedHandEndStack[] };
   busy: boolean;
   players: { player_id: string; display_name: string; ending_stack: number }[];
   onConfirm: () => void;
@@ -1094,6 +1112,12 @@ export function ResettlePreview({
   const targetStacks = view.targetHandId
     ? resettleHandEndStacks(ok, view.targetHandId, players)
     : { rows: unchangedRows, beforeTotal: unchangedTotal, afterTotal: unchangedTotal, conserved: true };
+  const expectedStacks = view.expectedEndingStacks ?? targetStacks.rows.map((player) => ({
+    player_id: player.player_id,
+    entry_number: 1,
+    ending_stack: player.after,
+  }));
+  const stackCheck = checkExpectedHandEndStacks(targetStacks, expectedStacks);
   return (
     <div className="p-3 rounded-lg border border-emerald-500/40 bg-emerald-950/20 space-y-2">
       <div className="text-xs font-bold text-emerald-300">Xem trước — tính lại chip</div>
@@ -1104,23 +1128,24 @@ export function ResettlePreview({
       <div className="rounded-lg border border-emerald-500/25 bg-background/35 p-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
           <span className="font-semibold text-foreground">Stack cuối hand (engine tính lại)</span>
-          <span className={targetStacks.conserved ? "text-emerald-300" : "text-rose-300"}>
-            {targetStacks.conserved ? "Bảo toàn chip" : "Không bảo toàn chip — không thể xác nhận"}
+          <span className={targetStacks.conserved && stackCheck.matchesEngine ? "text-emerald-300" : "text-rose-300"}>
+            {targetStacks.conserved && stackCheck.matchesEngine ? "Khớp stack Floor và bảo toàn chip" : "Chưa khớp stack Floor — không thể xác nhận"}
           </span>
         </div>
         <div className="mt-2 grid gap-1 sm:grid-cols-2">
-          {targetStacks.rows.map((player) => (
-            <div key={player.player_id} className="flex items-center justify-between gap-3 rounded border border-border/40 px-2 py-1.5 text-[11px]">
+          {stackCheck.rows.map((player) => (
+            <div key={player.player_id} className={`flex items-center justify-between gap-3 rounded border px-2 py-1.5 text-[11px] ${player.matches ? "border-border/40" : "border-rose-500/50 bg-rose-950/20"}`}>
               <span className="min-w-0 truncate text-muted-foreground">{nameOf(player.player_id)}</span>
               <span className="shrink-0 font-mono">
                 {formatStack(player.before)} <span className="text-muted-foreground">→</span>{" "}
                 <strong className={player.after === 0 ? "text-rose-300" : "text-emerald-300"}>{formatStack(player.after)}</strong>
+                <span className={player.matches ? "ml-1 text-muted-foreground" : "ml-1 text-rose-300"}>/ thực tế {formatStack(player.expected)}</span>
               </span>
             </div>
           ))}
         </div>
         <p className="mt-2 text-[10px] text-muted-foreground">
-          Tổng: {formatStack(targetStacks.beforeTotal)} → {formatStack(targetStacks.afterTotal)}. Stack là kết quả từ action/winner server xác minh, không nhập tay.
+          Tổng: {formatStack(targetStacks.beforeTotal)} → {formatStack(targetStacks.afterTotal)}; Floor nhập {formatStack(stackCheck.expectedTotal)}. Stack là kết quả từ action/winner server xác minh, không ghi tay.
         </p>
       </div>
       {noChange ? (
@@ -1149,7 +1174,7 @@ export function ResettlePreview({
       <div className="flex gap-2 pt-0.5">
         <button
           type="button"
-          disabled={busy || noChange || !targetStacks.conserved}
+          disabled={busy || noChange || !targetStacks.conserved || !stackCheck.matchesEngine}
           onClick={onConfirm}
           className="text-xs font-semibold text-amber-100 border border-amber-500/60 bg-amber-500/15 rounded-lg px-3 py-1.5 hover:bg-amber-500/25 disabled:opacity-40"
         >

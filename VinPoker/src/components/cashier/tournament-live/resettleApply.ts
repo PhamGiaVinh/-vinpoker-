@@ -277,6 +277,19 @@ export interface HandEndStackPreview {
   conserved: boolean;
 }
 
+export interface ExpectedHandEndStack {
+  player_id: string;
+  entry_number: number;
+  ending_stack: number;
+}
+
+export interface ExpectedHandEndStackCheck {
+  rows: (HandEndStackPreviewRow & { expected: number; matches: boolean })[];
+  expectedTotal: number;
+  expectedConserved: boolean;
+  matchesEngine: boolean;
+}
+
 /**
  * Exact per-player ending stacks for the edited hand, not the final tournament
  * carry. This is the number a Floor/Tracker operator needs to inspect before
@@ -300,6 +313,34 @@ export function resettleHandEndStacks(
   const beforeTotal = rows.reduce((sum, player) => sum + player.before, 0);
   const afterTotal = rows.reduce((sum, player) => sum + player.after, 0);
   return { rows, beforeTotal, afterTotal, conserved: beforeTotal === afterTotal };
+}
+
+/**
+ * The operator may state the observed end stacks, but the values are an audit
+ * target only. A correction can proceed only when the replayed hand produces
+ * those same stacks and preserves the target hand's chip total.
+ */
+export function checkExpectedHandEndStacks(
+  preview: HandEndStackPreview,
+  expected: ExpectedHandEndStack[],
+): ExpectedHandEndStackCheck {
+  const expectedByPlayer = new Map(expected.map((item) => [item.player_id, item.ending_stack]));
+  const rows = preview.rows.map((row) => {
+    const expectedStack = expectedByPlayer.get(row.player_id);
+    return {
+      ...row,
+      expected: expectedStack ?? Number.NaN,
+      matches: expectedStack === row.after,
+    };
+  });
+  const expectedTotal = rows.reduce((sum, row) => sum + row.expected, 0);
+  const expectedConserved = Number.isSafeInteger(expectedTotal) && expectedTotal === preview.beforeTotal;
+  return {
+    rows,
+    expectedTotal,
+    expectedConserved,
+    matchesEngine: expectedConserved && rows.every((row) => Number.isSafeInteger(row.expected) && row.expected >= 0 && row.matches),
+  };
 }
 
 /** Per-player current→new chip preview (last recorded ending → resettled final). Pure —
