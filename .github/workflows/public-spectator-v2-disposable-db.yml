@@ -1,0 +1,45 @@
+name: Public spectator v2 disposable PostgreSQL 17
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/public-spectator-v2-disposable-db.yml"
+      - "VinPoker/supabase/pending-migrations/20270115000000_public_spectator_realtime_v2.sql"
+      - "VinPoker/tests/publicSpectatorV2/**"
+
+permissions:
+  contents: read
+
+jobs:
+  public-spectator-v2-disposable-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create isolated tournament and two-table baseline
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f tests/publicSpectatorV2/disposableDb.fixture.sql
+      - name: Apply exact proposed migration to disposable PostgreSQL only
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270115000000_public_spectator_realtime_v2.sql
+      - name: Verify recorded cards, table isolation, and stale revision fencing
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f tests/publicSpectatorV2/disposableDb.integration.sql

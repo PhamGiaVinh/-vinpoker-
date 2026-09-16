@@ -103,7 +103,7 @@ type LiveHandActionRow = {
 
 type PublicHandResponse = {
   actions?: Array<{ id: string; playerId: string; entryNumber: number; street: string | null; actionType: string; amount: number | null; order: number }>;
-  players?: Array<{ playerId: string; entryNumber: number; seatNumber: number; startingStack: number | null; endingStack: number | null; name: string; avatarUrl: string | null }>;
+  players?: Array<{ playerId: string; entryNumber: number; seatNumber: number; startingStack: number | null; endingStack: number | null; name: string; avatarUrl: string | null; holeCards: string[] }>;
 };
 
 const STREET_ORDER = ["preflop", "flop", "turn", "river"];
@@ -392,7 +392,7 @@ function TournamentLiveViewContent({
         handPlayers = (safe.players ?? []).map((player) => ({
           player_id: player.playerId, entry_number: player.entryNumber,
           seat_number: player.seatNumber, starting_stack: player.startingStack,
-          ending_stack: player.endingStack, hole_cards: [],
+          ending_stack: player.endingStack, hole_cards: player.holeCards ?? [],
           player_name: player.name, avatar_url: player.avatarUrl,
         }));
         hasIdentitySnapshot = true;

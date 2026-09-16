@@ -18,6 +18,7 @@ export interface PublicTablePlayer {
   name: string;
   avatarUrl: string | null;
   stack: number | null;
+  holeCards: string[];
 }
 
 export interface PublicTableSnapshot {

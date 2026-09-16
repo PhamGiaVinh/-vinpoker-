@@ -1,5 +1,7 @@
 .spectator-mini-table { aspect-ratio: 1.9; }
 .spectator-mini-card { width: clamp(28px, 7cqi, 44px); height: auto; aspect-ratio: 5 / 7; }
+.spectator-mini-holes { min-height: 0; }
+.spectator-mini-hole-card { width: clamp(18px, 4cqi, 24px); height: auto; aspect-ratio: 5 / 7; }
 @container (max-width: 420px) {
   .spectator-mini-table { aspect-ratio: 5 / 7; }
 }

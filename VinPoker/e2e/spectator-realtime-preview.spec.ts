@@ -52,6 +52,19 @@ test("table catalog paginates beyond the first six tables", async ({ page }) => 
   await expect(page.getByText("Bàn 21", { exact: true })).toBeVisible();
 });
 
+test("simultaneous tables show only each hand's recorded cards", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto("/__dev/viewer-rpt?view=tables");
+  const first = page.getByRole("article", { name: "Bàn 14" });
+  const second = page.getByRole("article", { name: "Bàn 15" });
+  await expect(first.locator('[data-card-code="QS"]')).toHaveCount(1);
+  await expect(first.locator('[data-card-code="QC"]')).toHaveCount(1);
+  await expect(second.locator('[data-card-code="8D"]')).toHaveCount(1);
+  await expect(second.locator('[data-card-code="8H"]')).toHaveCount(1);
+  await expect(first.locator('[data-card-code="8D"]')).toHaveCount(0);
+  await expect(second.locator('[data-card-code="QS"]')).toHaveCount(0);
+});
+
 test("event navigation has exactly four top-level sections", async ({ page }) => {
   await page.goto("/__dev/viewer-rpt?view=updates");
   const navigation = page.getByRole("navigation", { name: "Trình xem ván đấu" });
