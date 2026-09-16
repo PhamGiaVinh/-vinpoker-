@@ -21,7 +21,7 @@ const row = (id: string, name: string, reference: string) => ({
   legacy_detail_missing: false, cashier_seating_error: null,
 });
 
-async function installMockSession(page: Page, requests: string[]) {
+async function installMockSession(page: Page, requests: string[], cashGate?: Promise<void>) {
   await page.addInitScript(({ session, sessionExpiry, sessionToken }) => {
     localStorage.setItem("sb-127-auth-token", JSON.stringify({
       access_token: sessionToken, refresh_token: "mock-refresh-token",
@@ -74,6 +74,10 @@ async function installMockSession(page: Page, requests: string[]) {
       return json({ ok: true, rows: input.p_serving_tournament_id === tourA && input.p_query.toUpperCase().includes("BETA")
         ? [{ registration_id: registrationB, tournament_id: tourB, tournament_name: "Tour B · 11:00", player_name: "Khách Tour B" }] : [] });
     }
+    if (path.endsWith("/rpc/cashier_record_cash_buyin_v1")) {
+      await cashGate;
+      return json({ ok: true, payment_state: "paid", seating_state: "waiting" });
+    }
     if (path.includes("/rpc/")) return json([]);
     if (path.includes("/rest/v1/")) return json([]);
     return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
@@ -125,4 +129,37 @@ test("Tour B scan warns before switching and clears Tour A cash detail", async (
   await expect(scanner).toHaveValue("");
   await expect(page.getByRole("button", { name: /Khách Tour B/ })).toBeVisible();
   expect(requests.some((request) => /cashier_record_cash_buyin_v1/u.test(request))).toBe(false);
+});
+
+test("cash double-click sends one server intent and cannot switch tours in flight", async ({ page }) => {
+  const requests: string[] = [];
+  const cashBodies: Array<{ p_registration_id: string; p_amount: number; p_request_id: string }> = [];
+  let releaseCash!: () => void;
+  const cashGate = new Promise<void>((resolve) => { releaseCash = resolve; });
+  await installMockSession(page, requests, cashGate);
+  page.on("request", (request) => {
+    if (request.url().endsWith("/rpc/cashier_record_cash_buyin_v1")) {
+      cashBodies.push(request.postDataJSON());
+    }
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/ops/cashier/tour?club=${clubId}`);
+  await page.getByRole("button", { name: /Tour A · 10:00/ }).first().click();
+  await page.getByRole("button", { name: new RegExp(playerA) }).click();
+  await expect(page.getByRole("dialog", { name: new RegExp(playerA) })).toBeVisible();
+  await page.getByRole("button", { name: "Ghi nhận tiền mặt" }).evaluate((button: HTMLButtonElement) => {
+    button.click();
+    button.click();
+  });
+  await expect.poll(() => cashBodies.length).toBe(1);
+  await expect(page.getByRole("button", { name: /Tour B · 11:00/ }).first()).toBeDisabled();
+  await expect(page.getByRole("dialog", { name: new RegExp(playerA) })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tour A · 10:00" })).toBeVisible();
+  releaseCash();
+  await expect(page.getByText(`${playerA}: đã đủ tiền, đang chờ ghế.`)).toBeVisible();
+  await page.getByRole("button", { name: /Tour B · 11:00/ }).first().click();
+  await expect(page.getByRole("heading", { name: "Tour B · 11:00" })).toBeVisible();
+  expect(cashBodies).toHaveLength(1);
+  expect(cashBodies[0]).toMatchObject({ p_registration_id: registrationA, p_amount: 6_600_000 });
+  expect(cashBodies[0].p_request_id).toMatch(/^[0-9a-f-]{36}$/u);
 });
