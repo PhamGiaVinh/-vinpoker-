@@ -85,7 +85,7 @@
     {
       "version": "20270115000001",
       "filename": "20270115000001_tracker_blind_position_lineage.sql",
-      "sha256": "cbd681006c43fc5c432f04863af7e39a7f45f1aa8e69b06ab5d779ea8cb88b0c",
+      "sha256": "8ad8fcd6056a663ff024863adeb2697091be5384d217f32b1df7521a5f943ba2",
       "dependencies": ["20270114000012"],
       "runtimeEdgeDependency": false
     }
