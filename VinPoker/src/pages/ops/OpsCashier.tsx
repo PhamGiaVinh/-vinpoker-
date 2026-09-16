@@ -17,8 +17,6 @@ import { cn } from "@/lib/utils";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
-import { OPS_CASHIER_MUTATIONS_ENABLED } from "@/ops/opsMutations";
-import TourCashierWorkbench from "./TourCashierWorkbench";
 
 type OpsSupabaseClient = SupabaseClient<Database>;
 type CashierTab = "queue" | "receipts" | "status";
@@ -47,13 +45,6 @@ const TABS = [
 ] as const;
 
 export default function OpsCashier() {
-  const { selectedClubId } = useOpsWorkspace();
-  return OPS_CASHIER_MUTATIONS_ENABLED
-    ? <TourCashierWorkbench key={selectedClubId ?? "no-club"} />
-    : <LegacyOpsCashier />;
-}
-
-function LegacyOpsCashier() {
   const client = useSupabaseClient();
   const { user } = useOpsAuth();
   const capabilities = useOpsCapabilities();
