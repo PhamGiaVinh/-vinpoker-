@@ -5,6 +5,16 @@ const tournamentId = "20000000-0000-4000-8000-000000000004";
 const userId = "00000000-0000-4000-8000-000000000004";
 const futureExpiry = 4_102_444_800;
 const mockJwt = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjQxMDI0NDQ4MDAsInN1YiI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwNCJ9.";
+const mockUser = {
+  id: userId,
+  aud: "authenticated",
+  role: "authenticated",
+  email: "operator@example.test",
+  app_metadata: {},
+  user_metadata: {},
+  identities: [],
+  created_at: "2026-08-09T00:00:00.000Z",
+};
 
 const operatorScope = [{
   club_id: clubId,
@@ -31,25 +41,16 @@ const viewports = [
 ] as const;
 
 async function installMockOpsSession(page: Page, observedRequests: string[]) {
-  await page.addInitScript(({ token, expiry, actor }) => {
+  await page.addInitScript(({ token, expiry, user }) => {
     localStorage.setItem("sb-127-auth-token", JSON.stringify({
       access_token: token,
       refresh_token: "mock-refresh-token",
       expires_in: expiry - Math.floor(Date.now() / 1000),
       expires_at: expiry,
       token_type: "bearer",
-      user: {
-        id: actor,
-        aud: "authenticated",
-        role: "authenticated",
-        email: "operator@example.test",
-        app_metadata: {},
-        user_metadata: {},
-        identities: [],
-        created_at: "2026-08-09T00:00:00.000Z",
-      },
+      user,
     }));
-  }, { token: mockJwt, expiry: futureExpiry, actor: userId });
+  }, { token: mockJwt, expiry: futureExpiry, user: mockUser });
 
   await page.route("http://127.0.0.1:54321/**", async (route) => {
     const request = route.request();
@@ -60,6 +61,7 @@ async function installMockOpsSession(page: Page, observedRequests: string[]) {
       contentType: "application/json",
       body: JSON.stringify(body),
     });
+    if (path.endsWith("/auth/v1/user")) return json(mockUser);
     if (path.endsWith("/rpc/get_my_ops_capability_scope")) return json(operatorScope);
     if (path.endsWith("/rpc/get_my_ops_global_capability")) return json([{ is_super_admin: false }]);
     if (path.endsWith("/clubs")) return json([{ id: clubId, name: "CODEX SERVICE TEST CLUB" }]);

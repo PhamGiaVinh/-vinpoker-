@@ -56,3 +56,10 @@ SELECT 'b5000000-0000-4000-8000-000000000001','sepay','cashier-race-bank-1',
   '999100001',6600000,'in',r.reference_code,'unmatched',now(),'{}'::jsonb
 FROM public.tournament_registrations r
 WHERE r.player_id='b1000000-0000-4000-8000-000000000003';
+
+-- One hundred distinct app registrations for the same Tour A, used by the
+-- bounded parallel Cashier load step. None of these fixtures reaches Supabase.
+INSERT INTO auth.users(id,aud,role,email)
+SELECT ('b1000000-0000-4000-8000-'||lpad((1000+n)::text,12,'0'))::uuid,
+  'authenticated','authenticated','cashier-load-'||n||'@test.invalid'
+FROM generate_series(1,100) AS n;
