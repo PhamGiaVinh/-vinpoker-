@@ -81,6 +81,13 @@
       "sha256": "9aef4a34d59d4f309ed98aa6b9d7b11cf7b975067899a46a454d283e7e70a768",
       "dependencies": ["20270114000011"],
       "runtimeEdgeDependency": false
+    },
+    {
+      "version": "20270115000001",
+      "filename": "20270115000001_tracker_blind_position_lineage.sql",
+      "sha256": "cbd681006c43fc5c432f04863af7e39a7f45f1aa8e69b06ab5d779ea8cb88b0c",
+      "dependencies": ["20270114000012"],
+      "runtimeEdgeDependency": false
     }
   ],
   "heldSources": [
