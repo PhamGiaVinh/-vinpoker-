@@ -238,7 +238,7 @@ DECLARE v_payload jsonb; v_vector jsonb; BEGIN
         'players',CASE WHEN h.id IS NOT NULL THEN COALESCE((SELECT jsonb_agg(jsonb_build_object(
           'entryId',e.id,'playerId',hp.player_id,'entryNumber',hp.entry_number,'seatNumber',hp.seat_number,
           'name',COALESCE(NULLIF(hp.player_name,''),'Người chơi'),'avatarUrl',hp.avatar_url,
-          'stack',cc.chip_count) ORDER BY hp.seat_number)
+          'stack',cc.chip_count,'holeCards',COALESCE(hp.hole_cards,'[]'::jsonb)) ORDER BY hp.seat_number)
           FROM public.hand_players hp
           LEFT JOIN public.tournament_entries e ON e.tournament_id=p_tournament_id
             AND e.player_id=hp.player_id AND e.entry_no=hp.entry_number
@@ -248,7 +248,7 @@ DECLARE v_payload jsonb; v_vector jsonb; BEGIN
         ELSE COALESCE((SELECT jsonb_agg(jsonb_build_object(
           'entryId',s.entry_id,'playerId',s.player_id,'entryNumber',s.entry_number,'seatNumber',s.seat_number,
           'name',COALESCE(NULLIF(s.player_name,''),'Người chơi'),'avatarUrl',s.avatar_url,
-          'stack',cc.chip_count) ORDER BY s.seat_number)
+          'stack',cc.chip_count,'holeCards','[]'::jsonb) ORDER BY s.seat_number)
           FROM public.tournament_seats s LEFT JOIN public.tournament_chip_counts cc
             ON cc.tournament_id=s.tournament_id AND cc.player_id=s.player_id AND cc.entry_number=s.entry_number
           WHERE s.tournament_id=p_tournament_id AND s.tournament_table_id=tt.id
@@ -420,17 +420,19 @@ END; $$;
 REVOKE ALL ON FUNCTION public.get_public_tournament_viewer_snapshot_v2(uuid,uuid[],text[],jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_public_tournament_viewer_snapshot_v2(uuid,uuid[],text[],jsonb) TO anon, authenticated, service_role;
 
--- Public history seam. Hole cards deliberately fail closed until a separate
--- audit proves every writer's reveal authorization. Public settlement remains
--- available through its existing verified, source-revision-bound RPC.
+-- Public hand seam. Tracker only records hole cards after a player shows them
+-- to the dealer; the owner has approved publishing those recorded cards to
+-- spectators. Missing/unrecorded cards remain empty. The RPC never invents
+-- cards from settlement or other players' hands.
 CREATE OR REPLACE FUNCTION public.get_public_tournament_hand_v2(p_tournament_id uuid,p_hand_id uuid)
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
 SELECT COALESCE((SELECT jsonb_build_object('id',h.id,'tournamentId',h.tournament_id,'tableId',h.tournament_table_id,
   'tableSessionId',h.table_session_id,'handNumber',h.hand_number,'buttonSeat',h.button_seat,'status',h.status,
-  'board',COALESCE(h.community_cards,'[]'::jsonb),'pot',h.pot_size,'holeCardsPolicy','hidden',
+  'board',COALESCE(h.community_cards,'[]'::jsonb),'pot',h.pot_size,'holeCardsPolicy','recorded',
   'players',COALESCE((SELECT jsonb_agg(jsonb_build_object('playerId',hp.player_id,'entryNumber',hp.entry_number,'seatNumber',hp.seat_number,
     'name',COALESCE(NULLIF(hp.player_name,''),'Người chơi'),'avatarUrl',hp.avatar_url,
-    'startingStack',hp.starting_stack,'endingStack',hp.ending_stack,'eliminated',hp.is_eliminated,'holeCards','[]'::jsonb) ORDER BY hp.seat_number)
+    'startingStack',hp.starting_stack,'endingStack',hp.ending_stack,'eliminated',hp.is_eliminated,
+    'holeCards',COALESCE(hp.hole_cards,'[]'::jsonb)) ORDER BY hp.seat_number)
     FROM public.hand_players hp WHERE hp.hand_id=h.id),'[]'::jsonb),
   'actions',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',ha.id,'playerId',ha.player_id,'entryNumber',ha.entry_number,
     'street',ha.street,'actionType',ha.action_type,'amount',ha.action_amount,'order',ha.action_order) ORDER BY ha.action_order)

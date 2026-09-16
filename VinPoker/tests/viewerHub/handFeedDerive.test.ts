@@ -174,3 +174,10 @@ describe("filterByTags", () => {
     expect(noMatch).toHaveLength(0);
   });
 });
+
+
+it("uses stored hand blind rather than a short-stack blind post", () => {
+  const hand = { ...HAND, tracker_big_blind: BB * 2 };
+  const item = buildHandFeedItems([hand], new Map([["h1", PLAYERS]]), new Map([["h1", ACTIONS]]), new Map(), PROFILES)[0];
+  expect(item.bigBlind).toBe(BB * 2);
+});

@@ -79,7 +79,7 @@ export function LiveHubHeader({ title, clubName, clubId, subtitle, liveTableCoun
             </div>
 
             <div>
-              <h1 className="tracker-display max-w-[22ch] text-balance text-2xl font-bold leading-[1.05] tracking-[-0.025em] text-foreground sm:text-3xl lg:text-[2.15rem]">
+              <h1 className="tracker-display max-w-[44ch] text-balance text-2xl font-bold leading-[1.12] tracking-[-0.025em] text-foreground sm:text-3xl lg:text-[2.15rem]">
                 {title}
               </h1>
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">

@@ -75,21 +75,23 @@ export function useCompletedHandsFeed(
       return;
     }
     const seq = ++seqRef.current;
-    const want = pageCount * PAGE_SIZE;
+    const want = FEATURES.publicSpectatorRealtimeV2 ? Math.min(100, pageCount * PAGE_SIZE) : pageCount * PAGE_SIZE;
 
     let handRows: Array<RawHandRow & { status?: string; is_voided?: boolean }> = [];
     if (FEATURES.publicSpectatorRealtimeV2) {
-      const { data } = await supabase.rpc("get_public_tournament_hand_catalog_v2" as never, {
+      const { data, error } = await supabase.rpc("get_public_tournament_hand_catalog_v2" as never, {
         p_tournament_id: tournamentId,
         p_tournament_table_id: tableId,
         p_limit: want + 1,
       } as never);
-      const catalog = (data ?? {}) as unknown as { access?: string; items?: Array<{
-        id: string; handNumber: number; createdAt: string; board: string[]; pot: number | null;
+      const catalog = (data ?? {}) as unknown as { error?: string; access?: string; items?: Array<{
+        bigBlind?: number | null; id: string; handNumber: number; createdAt: string; board: string[]; pot: number | null;
         buttonSeat: number; tableId: string | null; status: string; isVoided: boolean;
       }> };
+      if (seq !== seqRef.current) return;
+      if (error || catalog.error) { setLoading(false); return; }
       handRows = (catalog.items ?? []).map((hand) => ({
-        id: hand.id, hand_number: hand.handNumber, created_at: hand.createdAt,
+        id: hand.id, hand_number: hand.handNumber, created_at: hand.createdAt, tracker_big_blind: hand.bigBlind,
         community_cards: hand.board, pot_size: hand.pot, button_seat: hand.buttonSeat,
         table_id: hand.tableId ?? "", status: hand.status, is_voided: hand.isVoided,
       }));
@@ -108,7 +110,7 @@ export function useCompletedHandsFeed(
     if (seq !== seqRef.current) return;
 
     const completed = handRows.filter((h: { status?: string }) => h.status !== "in_progress");
-    const more = completed.length > want;
+    const more = completed.length > want && (!FEATURES.publicSpectatorRealtimeV2 || want < 100);
     const pageHands = completed.slice(0, want) as unknown as RawHandRow[];
     const ids = pageHands.map((h) => h.id);
     if (ids.length === 0) {

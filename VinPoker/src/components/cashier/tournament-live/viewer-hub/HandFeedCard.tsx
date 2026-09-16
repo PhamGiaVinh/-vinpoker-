@@ -100,15 +100,15 @@ export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare
             {item.bigBlind <= 0 && <span className="w-full text-[10px] text-amber-300">{t("liveHub.replay.missingBlind", "Chưa có blind của hand")}</span>}
           </div>
 
-          <div data-testid="viewer-rpt-board" className="flex min-h-16 items-center gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label={t("liveHub.handFeed.board", "Bài chung") }>
+          <div data-testid="viewer-rpt-board" className="flex min-h-20 items-center justify-center gap-1.5 overflow-x-auto py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label={t("liveHub.handFeed.board", "Bài chung") }>
             {pad5(item.board).map((card, index) => (
               <PokerCard
                 key={index}
                 card={card}
                 size="md"
                 className={card
-                  ? "min-[390px]:h-20 min-[390px]:w-14 min-[390px]:text-lg ring-1 ring-white/10 shadow-[0_7px_18px_rgba(0,0,0,0.45)]"
-                  : "min-[390px]:h-20 min-[390px]:w-14 opacity-45"}
+                  ? "h-14 w-10 sm:h-[70px] sm:w-[50px] ring-1 ring-white/10 shadow-sm"
+                  : "h-14 w-10 sm:h-[70px] sm:w-[50px] opacity-45"}
               />
             ))}
           </div>

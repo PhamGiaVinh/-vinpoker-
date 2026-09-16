@@ -102,8 +102,9 @@ type LiveHandActionRow = {
 };
 
 type PublicHandResponse = {
+  bigBlind?: number | null;
   actions?: Array<{ id: string; playerId: string; entryNumber: number; street: string | null; actionType: string; amount: number | null; order: number }>;
-  players?: Array<{ playerId: string; entryNumber: number; seatNumber: number; startingStack: number | null; endingStack: number | null; name: string; avatarUrl: string | null }>;
+  players?: Array<{ playerId: string; entryNumber: number; seatNumber: number; startingStack: number | null; endingStack: number | null; name: string; avatarUrl: string | null; holeCards: string[] }>;
 };
 
 const STREET_ORDER = ["preflop", "flop", "turn", "river"];
@@ -354,6 +355,7 @@ function TournamentLiveViewContent({
     let nextHandId: string | null = null;
     let nextHandTableId: string | null = null;
     let nextButtonSeat = 1;
+    let sourceHandBigBlind = 0;
     let nextCommunity: string[] = [];
     let nextPot = 0;
     let nextActions: ActionLog[] = [];
@@ -368,6 +370,7 @@ function TournamentLiveViewContent({
     if (handsRes.data && handsRes.data.length > 0) {
       const hand = handsRes.data[0] as any;
       nextHandId = hand.id;
+      sourceHandBigBlind = hand.tracker_big_blind ?? 0;
       nextHandNumber = hand.hand_number;
       nextHandTableId = hand.table_id ?? null;
       nextButtonSeat = hand.button_seat || 1;
@@ -384,6 +387,13 @@ function TournamentLiveViewContent({
           p_hand_id: hand.id,
         } as never);
         const safe = (publicHand ?? {}) as PublicHandResponse;
+        sourceHandBigBlind = safe.bigBlind ?? 0;
+        seatInfos = (safe.players ?? []).map((player) => ({
+          player_id: player.playerId, display_name: player.name, avatar_url: player.avatarUrl,
+          seat_number: player.seatNumber, chip_count: Math.max(0, player.startingStack ?? 0),
+          is_active: true, table_id: hand.table_id ?? null, position: "",
+          hole_cards: player.holeCards ?? [],
+        }));
         actionData = (safe.actions ?? []).map((action) => ({
           id: action.id, player_id: action.playerId, entry_number: action.entryNumber,
           street: action.street, action_type: action.actionType,
@@ -392,7 +402,7 @@ function TournamentLiveViewContent({
         handPlayers = (safe.players ?? []).map((player) => ({
           player_id: player.playerId, entry_number: player.entryNumber,
           seat_number: player.seatNumber, starting_stack: player.startingStack,
-          ending_stack: player.endingStack, hole_cards: [],
+          ending_stack: player.endingStack, hole_cards: player.holeCards ?? [],
           player_name: player.name, avatar_url: player.avatarUrl,
         }));
         hasIdentitySnapshot = true;
@@ -673,11 +683,9 @@ function TournamentLiveViewContent({
     const capturedBlind = nextHandId && liveHandBlindRef.current?.handId === nextHandId
       ? liveHandBlindRef.current.bigBlind
       : 0;
-    const clockBigBlind = (clockRes.data as { current_level?: { big_blind?: number } | null } | null)
-      ?.current_level?.big_blind ?? 0;
     const nextHandBigBlind = nextHandId
       ? resolveViewerHandBigBlind({
-          explicitBigBlind: capturedBlind > 0 ? capturedBlind : nextInProgress ? clockBigBlind : 0,
+          explicitBigBlind: sourceHandBigBlind > 0 ? sourceHandBigBlind : capturedBlind,
           actions: nextActions,
           startingStacks: nextStartingStacks,
         })

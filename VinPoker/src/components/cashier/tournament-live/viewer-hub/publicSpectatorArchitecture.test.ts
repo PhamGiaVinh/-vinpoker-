@@ -15,11 +15,12 @@ describe("public spectator v2 boundary", () => {
     expect(migration).toMatch(/REVOKE ALL ON ALL TABLES IN SCHEMA spectator_projection_v2 FROM PUBLIC, anon, authenticated/);
   });
 
-  it("fails closed for hole cards at the public hand seam", () => {
-    expect(migration).toContain("'holeCards','[]'::jsonb");
-    expect(migration).toContain("'holeCardsPolicy','hidden'");
+  it("publishes only hole cards recorded after a player shows them to the dealer", () => {
+    expect(migration).toContain("'holeCards',COALESCE(hp.hole_cards,'[]'::jsonb)");
+    expect(migration).toContain("'holeCardsPolicy','recorded'");
     expect(migration).toContain("get_public_tournament_hand_catalog_v2");
     expect(viewer).toMatch(/FEATURES\.publicSpectatorRealtimeV2[\s\S]+get_public_tournament_hand_v2/);
+    expect(viewer).toContain("hole_cards: player.holeCards ?? []");
     expect(viewer).toMatch(/publicV2[\s\S]+public:tournament-viewer-v2/);
     expect(handFeed).toMatch(/FEATURES\.publicSpectatorRealtimeV2[\s\S]+get_public_tournament_hand_catalog_v2/);
   });

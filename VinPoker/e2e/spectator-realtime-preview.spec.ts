@@ -52,6 +52,37 @@ test("table catalog paginates beyond the first six tables", async ({ page }) => 
   await expect(page.getByText("Bàn 21", { exact: true })).toBeVisible();
 });
 
+test("simultaneous tables show only each hand's recorded cards", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto("/__dev/viewer-rpt?view=tables");
+  const first = page.getByRole("article", { name: "Bàn 14" });
+  const second = page.getByRole("article", { name: "Bàn 15" });
+  await expect(first.locator('[data-card-code="QS"]')).toHaveCount(1);
+  await expect(first.locator('[data-card-code="QC"]')).toHaveCount(1);
+  await expect(second.locator('[data-card-code="8D"]')).toHaveCount(1);
+  await expect(second.locator('[data-card-code="8H"]')).toHaveCount(1);
+  await expect(first.locator('[data-card-code="8D"]')).toHaveCount(0);
+  await expect(second.locator('[data-card-code="QS"]')).toHaveCount(0);
+});
+
+for (const viewport of [{ width: 320, height: 720 }, { width: 1366, height: 768 }]) {
+  test(`nine-seat table keeps player boxes separate at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/__dev/viewer-rpt?view=tables&tables=dense");
+    const seats = page.getByRole("article", { name: "Bàn 14" }).locator("[data-seat-number]");
+    await expect(seats).toHaveCount(9);
+    const boxes = await seats.evaluateAll((nodes) => nodes.map((node) => {
+      const rect = node.getBoundingClientRect();
+      return { seat: node.getAttribute("data-seat-number"), left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+    }));
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      expect(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top,
+        `Ghế ${a.seat} đè ghế ${b.seat}`).toBe(true);
+    }
+  });
+}
+
 test("event navigation has exactly four top-level sections", async ({ page }) => {
   await page.goto("/__dev/viewer-rpt?view=updates");
   const navigation = page.getByRole("navigation", { name: "Trình xem ván đấu" });
