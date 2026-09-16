@@ -1768,7 +1768,7 @@ export function TrackerVoicePanel({
               {bufferStatus ?? "Không action nào được ghi trong khi correction pending."}
             </p>
             <p className="mt-2 text-[11px] leading-relaxed text-amber-100/80">
-              Dealer có thể chuyển sang Thủ công để sửa và tiếp tục hand. Voice vẫn tạm dừng cho tới khi cảnh báo được xử lý.
+              Nếu hand còn mở, Dealer có thể chuyển sang Thủ công để sửa và tiếp tục. Hand đã lưu cần luồng sửa hand/Floor. Voice vẫn tạm dừng cho tới khi cảnh báo được xử lý.
             </p>
             <button
               type="button"
