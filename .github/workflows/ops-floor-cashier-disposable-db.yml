@@ -12,6 +12,7 @@ on:
       - "VinPoker/src/components/ops/shared/**"
       - "VinPoker/src/components/cashier/tournament-live/OpenTableDialog.tsx"
       - "VinPoker/src/components/cashier/OfflineBuyInPanel.tsx"
+      - "VinPoker/src/components/TournamentRegisterModal.test.tsx"
       - "VinPoker/src/components/floor/useFloorTournaments.ts"
       - "VinPoker/src/hooks/useTournaments.ts"
       - "VinPoker/src/pages/SuperAdmin.tsx"
@@ -74,6 +75,7 @@ jobs:
         run: >-
           npx vitest run
           src/ops/opsMutations.test.ts
+          src/components/TournamentRegisterModal.test.tsx
           tests/opsFloorCashier
 
       - name: Run focused Quant Q0 source tests
@@ -89,6 +91,7 @@ jobs:
         run: >-
           npx eslint
           src/OpsApp.tsx
+          src/components/TournamentRegisterModal.test.tsx
           src/components/ops/OpsShell.tsx
           src/components/cashier/tournament-live/OpenTableDialog.tsx
           src/components/ops/shared/FloorPlayerActions.tsx
