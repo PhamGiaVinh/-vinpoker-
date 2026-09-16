@@ -18,6 +18,8 @@ export interface LiveHandFeedProps {
   /** Default table being watched; null means there is no table-scoped option. */
   featuredTableId?: string | null;
   variant?: "history" | "updates";
+  /** History links open Updates with the chosen table and hands filter selected. */
+  initialTableHistory?: boolean;
   tableNames?: Record<string, string>;
   editorialPosts?: TournamentPostViewModel[];
   focusedPostId?: string | null;
@@ -48,6 +50,7 @@ export function LiveHandFeed({
   tournamentId,
   featuredTableId,
   variant = "history",
+  initialTableHistory = false,
   tableNames = {},
   editorialPosts = [],
   focusedPostId = null,
@@ -58,8 +61,8 @@ export function LiveHandFeed({
   const { t } = useTranslation();
   const rpt = FEATURES.liveViewerRPTShell;
   const [tagFilter, setTagFilter] = useState<HandFeedTag[]>([]);
-  const [allTables, setAllTables] = useState<boolean>(rpt);
-  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const [allTables, setAllTables] = useState<boolean>(rpt && !initialTableHistory);
+  const [kindFilter, setKindFilter] = useState<KindFilter>(initialTableHistory ? "hands" : "all");
   const [search, setSearch] = useState("");
 
   const { items, loading, hasMore, loadMore } = useCompletedHandsFeed(tournamentId, {
