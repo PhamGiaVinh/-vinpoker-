@@ -6627,6 +6627,11 @@
       "version": "20270114000012",
       "filename": "20270114000012_floor_v3_numbered_available_table.sql",
       "sha256": "9aef4a34d59d4f309ed98aa6b9d7b11cf7b975067899a46a454d283e7e70a768"
+    },
+    {
+      "version": "20270115000001",
+      "filename": "20270115000001_tracker_blind_position_lineage.sql",
+      "sha256": "e9332940de9e51f9caec599b949a1f3e16d210c9cef3ef83d2f29f93b331c681"
     }
   ],
   "counts": {

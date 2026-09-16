@@ -33,7 +33,7 @@ describe("Hand #4 resume workflow contracts", () => {
     const tableLoad = source.slice(source.indexOf("const handleTableChange ="), source.indexOf("const handlePickTable ="));
 
     expect(tableLoad).toContain('.select("id, button_seat, status, is_voided")');
-    expect(tableLoad).toContain('.eq("table_session_id", loadedSessionId)');
+    expect(tableLoad).toContain('.filter("table_session_id", "eq", loadedSessionId)');
     expect(tableLoad).toContain('lastHand.status === "completed" && !lastHand.is_voided');
     expect(tableLoad).toContain("readBlindLineage(lastHand.id)");
     expect(tableLoad).toContain("setLastBlindLineage(previousLineage)");

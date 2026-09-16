@@ -957,7 +957,7 @@ export function useStandaloneHandInput(tournamentId: string) {
           .select("id, button_seat, status, is_voided")
           .eq("tournament_id", tournamentId)
           .eq("table_id", newTableId)
-          .eq("table_session_id", loadedSessionId)
+          .filter("table_session_id", "eq", loadedSessionId)
           .order("hand_number", { ascending: false })
           .limit(1).maybeSingle()
         : { data: null };
