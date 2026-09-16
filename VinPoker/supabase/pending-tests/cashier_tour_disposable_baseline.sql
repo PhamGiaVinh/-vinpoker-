@@ -13,6 +13,14 @@ $$;
 CREATE OR REPLACE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$
   SELECT nullif(current_setting('request.jwt.claim.role',true),'')
 $$;
+-- Live Floor authority also includes the club owner; the shared Ops fixture
+-- models only explicit Floor grants, so align this isolated contract here.
+CREATE OR REPLACE FUNCTION public.is_club_floor(p_user uuid,p_club uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM public.club_floors f WHERE f.club_id=p_club AND f.user_id=p_user)
+    OR EXISTS (SELECT 1 FROM public.clubs c WHERE c.id=p_club AND c.owner_id=p_user)
+    OR public.has_role(p_user,'super_admin'::public.app_role)
+$$;
 
 ALTER TABLE public.clubs ADD COLUMN name text;
 ALTER TABLE public.clubs ADD COLUMN region text;
