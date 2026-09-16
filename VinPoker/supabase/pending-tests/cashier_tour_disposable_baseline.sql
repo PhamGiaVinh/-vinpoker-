@@ -43,6 +43,8 @@ ALTER TABLE public.tournament_registrations ADD COLUMN cancellation_reason text;
 ALTER TABLE public.tournament_registrations ADD COLUMN updated_at timestamptz DEFAULT now();
 ALTER TABLE public.tournament_entries ADD COLUMN busted_at timestamptz;
 ALTER TABLE public.tournament_entries ALTER COLUMN source SET DEFAULT 'online';
+ALTER TABLE public.game_tables ADD COLUMN table_type text DEFAULT 'cash';
+ALTER TABLE public.game_tables ADD COLUMN table_number integer;
 ALTER TABLE public.seat_draw_receipts ADD COLUMN issued_at timestamptz DEFAULT now();
 ALTER TABLE public.seat_draw_receipts ADD COLUMN cancelled_at timestamptz;
 
