@@ -13,6 +13,8 @@ $$;
 CREATE OR REPLACE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$
   SELECT nullif(current_setting('request.jwt.claim.role',true),'')
 $$;
+GRANT USAGE ON SCHEMA auth TO authenticated;
+GRANT EXECUTE ON FUNCTION auth.uid(),auth.role() TO authenticated;
 -- Live Floor authority also includes the club owner; the shared Ops fixture
 -- models only explicit Floor grants, so align this isolated contract here.
 CREATE OR REPLACE FUNCTION public.is_club_floor(p_user uuid,p_club uuid)
@@ -41,6 +43,7 @@ ALTER TABLE public.tournament_registrations ADD COLUMN cancelled_at timestamptz;
 ALTER TABLE public.tournament_registrations ADD COLUMN cancelled_by uuid;
 ALTER TABLE public.tournament_registrations ADD COLUMN cancellation_reason text;
 ALTER TABLE public.tournament_registrations ADD COLUMN updated_at timestamptz DEFAULT now();
+GRANT INSERT,UPDATE ON public.tournament_registrations TO authenticated;
 ALTER TABLE public.tournament_entries ADD COLUMN busted_at timestamptz;
 ALTER TABLE public.tournament_entries ALTER COLUMN source SET DEFAULT 'online';
 ALTER TABLE public.game_tables ADD COLUMN table_type text DEFAULT 'cash';
