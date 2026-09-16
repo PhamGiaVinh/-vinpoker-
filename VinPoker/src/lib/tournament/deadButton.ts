@@ -34,6 +34,9 @@ export interface DeadButtonInput {
   prevBbSeat: number | null;
 }
 
+export { nextButtonFromBlindLineage } from "../../../supabase/functions/_shared/pokerEngine/blindLineage.ts";
+export type { BlindLineageInput } from "../../../supabase/functions/_shared/pokerEngine/blindLineage.ts";
+
 /** Occupied seats within the physical ring, de-duplicated and sorted. */
 function liveRing(maxSeats: number, occupiedSeats: number[]): number[] {
   return [...new Set(occupiedSeats)]

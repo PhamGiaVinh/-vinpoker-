@@ -28,16 +28,16 @@ describe("Hand #4 resume workflow contracts", () => {
     expect(backToMap).toContain("setTableReloadAttempt((attempt) => attempt + 1)");
   });
 
-  it("restores the previous persisted BB before suggesting the next button", () => {
+  it("restores same-session blind lineage before suggesting the next button", () => {
     const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
     const tableLoad = source.slice(source.indexOf("const handleTableChange ="), source.indexOf("const handlePickTable ="));
 
-    expect(tableLoad).toContain('.select("id, button_seat")');
-    expect(tableLoad).toContain('.eq("action_type", "post_bb")');
-    expect(tableLoad).toContain('.from("hand_players")');
-    expect(tableLoad).toContain("previousBbSeat = lastBbPlayer?.seat_number ?? null");
-    expect(tableLoad).toContain("setLastBbSeat(previousBbSeat)");
-    expect(tableLoad).toContain("prevBbSeat: previousBbSeat");
+    expect(tableLoad).toContain('.select("id, button_seat, status, is_voided")');
+    expect(tableLoad).toContain('.eq("table_session_id", loadedSessionId)');
+    expect(tableLoad).toContain('lastHand.status === "completed" && !lastHand.is_voided');
+    expect(tableLoad).toContain("readBlindLineage(lastHand.id)");
+    expect(tableLoad).toContain("setLastBlindLineage(previousLineage)");
+    expect(tableLoad).toContain("previousSbPosition: previousLineage?.previousSbPosition ?? null");
   });
 
   it("uses the dead-button engine after both manual and Voice hand completion", () => {
@@ -48,8 +48,9 @@ describe("Hand #4 resume workflow contracts", () => {
     const manualFinish = source.slice(manualStart, source.indexOf("try {", manualStart));
 
     for (const finishPath of [voiceFinish, manualFinish]) {
-      expect(finishPath).toContain('action.action_type === "post_bb"');
-      expect(finishPath).toContain("nextButtonTournament({ maxSeats, occupiedSeats: activeNums, prevBbSeat: currentBbSeat })");
+      expect(finishPath).toContain("await readBlindLineage(");
+      expect(finishPath).toContain("nextButtonFromBlindLineage({");
+      expect(finishPath).toContain("setButtonConfirmed(Boolean(nextSuggestion))");
       expect(finishPath).not.toContain("setButtonSeat(nextButton(activeNums, buttonSeat))");
     }
   });
