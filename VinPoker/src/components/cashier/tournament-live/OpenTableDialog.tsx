@@ -74,6 +74,7 @@ export function OpenTableDialog({
 }) {
   const supabase = useSupabaseClient();
   const [catalog, setCatalog] = useState<FloorTableCatalogRow[]>([]);
+  const [unconfiguredTables, setUnconfiguredTables] = useState<string[]>([]);
   const [v3GameTableIdByNumber, setV3GameTableIdByNumber] = useState<Record<number, string>>({});
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
   const [controlMode, setControlMode] = useState<FloorTableControlMode>("manual");
@@ -95,6 +96,7 @@ export function OpenTableDialog({
     const sequence = ++requestSequence.current;
     setLoadingCatalog(true);
     setCatalogError(null);
+    setUnconfiguredTables([]);
     try {
       if (tableControlV3.enabled) {
         if (tableControlV3.redrawSeatLockEnabled) {
@@ -107,8 +109,9 @@ export function OpenTableDialog({
             return;
           }
           const tableIds: Record<number, string> = {};
-          for (const item of inventory.data) tableIds[item.tableNumber] = item.gameTableId;
+          for (const item of inventory.data) if (item.tableNumber != null) tableIds[item.tableNumber] = item.gameTableId;
           setV3GameTableIdByNumber(tableIds);
+          setUnconfiguredTables(inventory.data.filter((item) => item.tableNumber == null).map((item) => item.tableName || "Bàn chưa chuẩn hóa"));
           setCatalog(inventory.data.map((item) => ({
             table_number: item.tableNumber,
             status: item.availabilityStatus === "current_tournament" ? "active" : null,
@@ -139,8 +142,9 @@ export function OpenTableDialog({
           return;
         }
         const tableIds: Record<number, string> = {};
-        for (const item of inventory.data) tableIds[item.tableNumber] = item.gameTableId;
+        for (const item of inventory.data) if (item.tableNumber != null) tableIds[item.tableNumber] = item.gameTableId;
         setV3GameTableIdByNumber(tableIds);
+        setUnconfiguredTables(inventory.data.filter((item) => item.tableNumber == null).map((item) => item.tableName || "Bàn chưa chuẩn hóa"));
         setCatalog(inventory.data.map((item) => ({
           table_number: item.tableNumber,
           status: item.tournamentTableStatus,
@@ -269,6 +273,12 @@ export function OpenTableDialog({
               Đang tải trạng thái 100 số bàn…
             </div>
           ) : (
+            <div className="space-y-4">
+              {unconfiguredTables.length > 0 && (
+                <p role="status" className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-3 text-sm text-amber-100">
+                  {unconfiguredTables.length} bàn cũ chưa có số chuẩn ({unconfiguredTables.join(", ")}). Các bàn này không thể chọn; cần đối soát trước khi đưa vào kho bàn V3.
+                </p>
+              )}
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]">
               <div className="order-2 lg:order-1">
               <FloorTableNumberPicker
@@ -331,6 +341,7 @@ export function OpenTableDialog({
                   </div>
                 </div>
               </section>
+            </div>
             </div>
           )}
         </div>

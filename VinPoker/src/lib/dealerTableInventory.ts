@@ -9,7 +9,7 @@ export type DealerOperationalTable = {
   opened_at: string | null;
   dealer_open_operation_id: string | null;
   table_type: "tournament" | "cash" | "vip" | null;
-  table_number: number;
+  table_number: number | null;
   availability_status: FloorTableInventoryItem["availabilityStatus"];
   table_session_id: string | null;
   tournament_id: string | null;
@@ -41,7 +41,7 @@ export function projectDealerOperationalTable(
     club_id: clubId,
     shift_id: null,
     status: item.availabilityStatus === "in_use" ? "active" : inactiveStatus,
-    table_name: item.tableName?.trim() || `Bàn ${item.tableNumber}`,
+    table_name: item.tableName?.trim() || (item.tableNumber == null ? "Bàn chưa chuẩn hóa" : `Bàn ${item.tableNumber}`),
     opened_at: null,
     dealer_open_operation_id: null,
     table_type: item.sessionType,

@@ -288,6 +288,7 @@ SELECT public.floor_table_v3_assert(
 \ir ../../supabase/migrations/20270114000006_tracker_roster_canonical_entry_link.sql
 \ir ../../supabase/migrations/20270114000007_floor_v3_roster_seat_display_name.sql
 \ir ../../supabase/migrations/20270114000011_floor_redraw_seat_lock_v1.sql
+\ir ../../supabase/migrations/20270114000012_floor_v3_numbered_available_table.sql
 
 DO $$
 DECLARE
@@ -336,6 +337,27 @@ BEGIN
     INSERT INTO public.game_tables (club_id, table_name, table_number)
     VALUES ('00000000-0000-0000-0000-000000000010', 'Bàn 101', 101);
     RAISE EXCEPTION 'expected table number range constraint';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  BEGIN
+    INSERT INTO public.game_tables (club_id, table_name, operational_status)
+    VALUES ('00000000-0000-0000-0000-000000000010', 'Bàn thiếu số', 'available');
+    RAISE EXCEPTION 'expected available table to require a number';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  BEGIN
+    UPDATE public.game_tables SET operational_status = 'available'
+    WHERE id = '00000000-0000-0000-0000-000000000504';
+    RAISE EXCEPTION 'expected legacy unnumbered table to remain unavailable';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  BEGIN
+    UPDATE public.game_tables SET table_number = NULL, operational_status = 'disabled'
+    WHERE id = '00000000-0000-0000-0000-000000000501';
+    RAISE EXCEPTION 'expected numbered table to keep its number';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
 END;

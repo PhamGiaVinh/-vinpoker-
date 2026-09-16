@@ -40,7 +40,7 @@ export function FloorRedrawDialogV1({
   const playerCount = useMemo(() => tables.reduce((sum, table) => sum + table.seats.length, 0), [tables]);
   const requiredTableCount = Math.max(1, Math.ceil(playerCount / capacity));
   const selectable = useMemo(
-    () => inventory.filter((item) => item.availabilityStatus === "available" || item.availabilityStatus === "current_tournament"),
+    () => inventory.filter((item) => item.tableNumber != null && (item.availabilityStatus === "available" || item.availabilityStatus === "current_tournament")),
     [inventory],
   );
 
@@ -62,7 +62,7 @@ export function FloorRedrawDialogV1({
         setInventory(result.data);
         const current = result.data
           .filter((item) => item.availabilityStatus === "current_tournament")
-          .sort((a, b) => a.tableNumber - b.tableNumber)
+          .sort((a, b) => (a.tableNumber ?? 101) - (b.tableNumber ?? 101))
           .map((item) => item.gameTableId);
         setSelectedIds(current.slice(0, Math.max(1, Math.ceil(playerCount / 9))));
       }
@@ -79,7 +79,7 @@ export function FloorRedrawDialogV1({
         .sort((a, b) => {
           const aCurrent = a.availabilityStatus === "current_tournament" ? 0 : 1;
           const bCurrent = b.availabilityStatus === "current_tournament" ? 0 : 1;
-          return aCurrent - bCurrent || a.tableNumber - b.tableNumber;
+          return aCurrent - bCurrent || (a.tableNumber ?? 101) - (b.tableNumber ?? 101);
         })
         .map((item) => item.gameTableId);
       return [...valid, ...fill].slice(0, requiredTableCount);

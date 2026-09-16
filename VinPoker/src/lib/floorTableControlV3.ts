@@ -56,7 +56,7 @@ export type FloorTableInventoryAvailability =
 
 export type FloorTableInventoryItem = {
   gameTableId: string;
-  tableNumber: number;
+  tableNumber: number | null;
   tableName: string | null;
   operationalStatus: "available" | "maintenance" | "disabled" | "retired" | null;
   availabilityStatus: FloorTableInventoryAvailability;
@@ -73,7 +73,7 @@ export type FloorTableInventoryItem = {
 
 export type FloorTournamentInventoryItem = {
   gameTableId: string;
-  tableNumber: number;
+  tableNumber: number | null;
   tableName: string | null;
   operationalStatus: "available" | "maintenance" | "disabled" | "retired" | null;
   availabilityStatus: "available" | "current_tournament" | "maintenance" | "disabled" | "retired" | "preflight_required";
@@ -167,29 +167,6 @@ function isRecord(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-// Exact audited dormant TEST record in the current club. Other unnumbered
-// records may still have legacy active assignments and must fail closed.
-const dormantLegacyTestTableId = "df74d2ca-f319-497b-8c7a-23eb39ff0cee";
-
-function isUnconfiguredLegacyTable(value: unknown): boolean {
-  return isRecord(value)
-    && value.game_table_id === dormantLegacyTestTableId
-    && value.table_name === "Bàn TEST 1"
-    && value.table_number === null
-    && value.operational_status === null
-    && value.availability_status === "preflight_required"
-    && value.table_session_id === null
-    && value.tournament_table_id === null
-    && value.session_type == null
-    && value.control_mode == null
-    && value.control_epoch == null
-    && value.revision == null
-    && value.tournament_id == null
-    && value.tournament_table_status == null
-    && value.active_dealer_assignment_id == null
-    && value.max_seats == null;
-}
-
 function nullableString(value: unknown): string | null | undefined {
   return value == null ? null : typeof value === "string" ? value : undefined;
 }
@@ -230,10 +207,7 @@ function parseInventoryItem(value: unknown): FloorTableControlV3Result<FloorTabl
   if (
     typeof gameTableId !== "string"
     || !gameTableId
-    || typeof tableNumber !== "number"
-    || !Number.isInteger(tableNumber)
-    || tableNumber < 1
-    || tableNumber > 100
+    || (tableNumber !== null && (typeof tableNumber !== "number" || !Number.isInteger(tableNumber) || tableNumber < 1 || tableNumber > 100))
     || tableName === undefined
     || ![null, "available", "maintenance", "disabled", "retired"].includes(operationalStatus)
     || typeof availabilityStatus !== "string"
@@ -254,6 +228,9 @@ function parseInventoryItem(value: unknown): FloorTableControlV3Result<FloorTabl
   if (
     (availabilityStatus === "in_use" && (!tableSessionId || !sessionType || controlEpoch == null || revision == null))
     || (sessionType === "tournament" && (!tournamentId || !tournamentTableId))
+    || (tableNumber === null && (operationalStatus === "available" || availabilityStatus !== (operationalStatus ?? "preflight_required") || !tableName?.trim()
+      || tableSessionId || tournamentTableId || sessionType || controlMode || controlEpoch != null || revision != null
+      || tournamentId || tournamentTableStatus || activeDealerAssignmentId))
   ) {
     return { ok: false, error: "V3_INVENTORY_ROW_INCONSISTENT" };
   }
@@ -294,7 +271,7 @@ function parseTournamentInventoryItem(value: unknown): FloorTableControlV3Result
   const maxSeats = nullableInteger(value.max_seats);
   if (
     typeof gameTableId !== "string" || !gameTableId
-    || typeof tableNumber !== "number" || !Number.isSafeInteger(tableNumber) || tableNumber < 1 || tableNumber > 100
+    || (tableNumber !== null && (typeof tableNumber !== "number" || !Number.isSafeInteger(tableNumber) || tableNumber < 1 || tableNumber > 100))
     || tableName === undefined
     || ![null, "available", "maintenance", "disabled", "retired"].includes(operationalStatus)
     || typeof availabilityStatus !== "string"
@@ -313,6 +290,10 @@ function parseTournamentInventoryItem(value: unknown): FloorTableControlV3Result
     availabilityStatus === "current_tournament"
     && (!tableSessionId || !tournamentTableId || !controlMode || controlEpoch == null || revision == null || maxSeats == null)
   ) {
+    return { ok: false, error: "V3_TOURNAMENT_INVENTORY_ROW_INCONSISTENT" };
+  }
+  if (tableNumber === null && (operationalStatus === "available" || availabilityStatus !== (operationalStatus ?? "preflight_required") || !tableName?.trim()
+    || tableSessionId || tournamentTableId || controlMode || controlEpoch != null || revision != null || maxSeats != null)) {
     return { ok: false, error: "V3_TOURNAMENT_INVENTORY_ROW_INCONSISTENT" };
   }
   return {
@@ -612,14 +593,13 @@ export function createFloorTableControlV3Client(
       const tableIds = new Set<string>();
       const tableNumbers = new Set<number>();
       for (const row of response.data) {
-        if (isUnconfiguredLegacyTable(row)) continue;
         const parsed = parseInventoryItem(row);
         if (parsed.ok === false) return { ok: false, error: parsed.error };
-        if (tableIds.has(parsed.data.gameTableId) || tableNumbers.has(parsed.data.tableNumber)) {
+        if (tableIds.has(parsed.data.gameTableId) || (parsed.data.tableNumber !== null && tableNumbers.has(parsed.data.tableNumber))) {
           return { ok: false, error: "V3_INVENTORY_DUPLICATE_PHYSICAL_TABLE" };
         }
         tableIds.add(parsed.data.gameTableId);
-        tableNumbers.add(parsed.data.tableNumber);
+        if (parsed.data.tableNumber !== null) tableNumbers.add(parsed.data.tableNumber);
         inventory.push(parsed.data);
       }
       return { ok: true, data: inventory };
@@ -633,14 +613,13 @@ export function createFloorTableControlV3Client(
       const tableIds = new Set<string>();
       const tableNumbers = new Set<number>();
       for (const row of response.data) {
-        if (isUnconfiguredLegacyTable(row)) continue;
         const parsed = parseTournamentInventoryItem(row);
         if (parsed.ok === false) return { ok: false, error: parsed.error };
-        if (tableIds.has(parsed.data.gameTableId) || tableNumbers.has(parsed.data.tableNumber)) {
+        if (tableIds.has(parsed.data.gameTableId) || (parsed.data.tableNumber !== null && tableNumbers.has(parsed.data.tableNumber))) {
           return { ok: false, error: "V3_TOURNAMENT_INVENTORY_DUPLICATE_PHYSICAL_TABLE" };
         }
         tableIds.add(parsed.data.gameTableId);
-        tableNumbers.add(parsed.data.tableNumber);
+        if (parsed.data.tableNumber !== null) tableNumbers.add(parsed.data.tableNumber);
         inventory.push(parsed.data);
       }
       return { ok: true, data: inventory };

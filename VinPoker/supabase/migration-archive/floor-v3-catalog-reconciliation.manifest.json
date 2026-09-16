@@ -6622,6 +6622,11 @@
       "version": "20270114000011",
       "filename": "20270114000011_floor_redraw_seat_lock_v1.sql",
       "sha256": "8012f98809db053c0c8c32791877c6cf2a2446099e761a870dd6e9a658a4265d"
+    },
+    {
+      "version": "20270114000012",
+      "filename": "20270114000012_floor_v3_numbered_available_table.sql",
+      "sha256": "9aef4a34d59d4f309ed98aa6b9d7b11cf7b975067899a46a454d283e7e70a768"
     }
   ],
   "counts": {

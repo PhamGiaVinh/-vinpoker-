@@ -94,7 +94,7 @@ describe("floorTableControlV3 browser boundary", () => {
     });
   });
 
-  it("omits only the audited dormant TEST table from the shared inventory", async () => {
+  it("quarantines every unnumbered inactive inventory row without hiding it", async () => {
     const dormant = { ...inventoryRow, game_table_id: "df74d2ca-f319-497b-8c7a-23eb39ff0cee", table_name: "Bàn TEST 1", table_number: null,
       operational_status: null, availability_status: "preflight_required" };
     const rpc = vi.fn().mockResolvedValue({ data: [dormant, inventoryRow], error: null });
@@ -102,20 +102,33 @@ describe("floorTableControlV3 browser boundary", () => {
 
     await expect(client.getClubTableInventory("club-a")).resolves.toEqual({
       ok: true,
-      data: [expect.objectContaining({ gameTableId: "table-5", tableNumber: 5 })],
+      data: [
+        expect.objectContaining({ gameTableId: dormant.game_table_id, tableNumber: null, availabilityStatus: "preflight_required" }),
+        expect.objectContaining({ gameTableId: "table-5", tableNumber: 5 }),
+      ],
     });
 
     rpc.mockResolvedValue({ data: [{ ...dormant, table_session_id: "active-session", availability_status: "in_use" }], error: null });
     await expect(client.getClubTableInventory("club-a")).resolves.toEqual({
       ok: false,
-      error: "V3_INVENTORY_ROW_MALFORMED",
+      error: "V3_INVENTORY_ROW_INCONSISTENT",
     });
 
     rpc.mockResolvedValue({ data: [{ ...dormant, game_table_id: "another-unnumbered-table" }], error: null });
-    await expect(client.getClubTableInventory("club-a")).resolves.toEqual({
-      ok: false,
-      error: "V3_INVENTORY_ROW_MALFORMED",
-    });
+    await expect(client.getClubTableInventory("club-a")).resolves.toMatchObject({ ok: true, data: [expect.objectContaining({ tableNumber: null })] });
+
+    rpc.mockResolvedValue({ data: [dormant, { ...dormant, game_table_id: "another-unnumbered-table" }], error: null });
+    await expect(client.getClubTableInventory("club-a")).resolves.toMatchObject({ ok: true, data: [
+      expect.objectContaining({ tableNumber: null }), expect.objectContaining({ tableNumber: null }),
+    ] });
+
+    rpc.mockResolvedValue({ data: [{ ...dormant, operational_status: "disabled", availability_status: "disabled" }], error: null });
+    await expect(client.getClubTableInventory("club-a")).resolves.toMatchObject({ ok: true, data: [
+      expect.objectContaining({ tableNumber: null, availabilityStatus: "disabled" }),
+    ] });
+
+    rpc.mockResolvedValue({ data: [{ ...dormant, operational_status: "available", availability_status: "available" }], error: null });
+    await expect(client.getClubTableInventory("club-a")).resolves.toEqual({ ok: false, error: "V3_INVENTORY_ROW_INCONSISTENT" });
   });
 
   it("sends a caller-provided idempotency receipt when opening a physical table", async () => {
@@ -202,7 +215,7 @@ describe("floorTableControlV3 browser boundary", () => {
     expect(rpc).toHaveBeenCalledWith("get_floor_tournament_table_inventory_v1", { p_tournament_id: "tournament-a" });
   });
 
-  it("omits only the audited dormant TEST table from the tournament picker", async () => {
+  it("keeps unnumbered tables visible as preflight-only in tournament inventory", async () => {
     const dormant = {
       game_table_id: "df74d2ca-f319-497b-8c7a-23eb39ff0cee", table_number: null, table_name: "Bàn TEST 1",
       operational_status: null, availability_status: "preflight_required",
@@ -211,12 +224,14 @@ describe("floorTableControlV3 browser boundary", () => {
     };
     const rpc = vi.fn().mockResolvedValue({ data: [dormant], error: null });
     const client = clientFrom(rpc, true, true);
-    await expect(client.getTournamentTableInventory("tournament-a")).resolves.toEqual({ ok: true, data: [] });
+    await expect(client.getTournamentTableInventory("tournament-a")).resolves.toMatchObject({
+      ok: true, data: [expect.objectContaining({ tableNumber: null, availabilityStatus: "preflight_required" })],
+    });
 
     rpc.mockResolvedValue({ data: [{ ...dormant, table_session_id: "active-session", availability_status: "current_tournament" }], error: null });
     await expect(client.getTournamentTableInventory("tournament-a")).resolves.toEqual({
       ok: false,
-      error: "V3_TOURNAMENT_INVENTORY_ROW_MALFORMED",
+      error: "V3_TOURNAMENT_INVENTORY_ROW_INCONSISTENT",
     });
   });
 

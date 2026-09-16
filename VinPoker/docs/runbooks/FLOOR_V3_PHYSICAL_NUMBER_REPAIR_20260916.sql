@@ -152,6 +152,15 @@ BEGIN
   END IF;
 
   IF EXISTS (
+    SELECT 1 FROM public.game_tables actual
+    WHERE actual.operational_status = 'available'
+      AND actual.table_number IS NULL
+      AND NOT EXISTS (SELECT 1 FROM floor_v3_number_repair expected WHERE expected.id = actual.id)
+  ) THEN
+    RAISE EXCEPTION 'floor_v3_repair_unmapped_available_unnumbered_table';
+  END IF;
+
+  IF EXISTS (
     SELECT 1 FROM floor_v3_number_repair expected
     WHERE (EXISTS (SELECT 1 FROM floor_v3_legacy_active_hold hold_row WHERE hold_row.id = expected.id))
       IS DISTINCT FROM (
