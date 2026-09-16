@@ -44,4 +44,15 @@ describe("Ops Floor and Cashier workspace routing", () => {
     expect(cashier).toContain('.eq("club_id", clubId)');
     expect(cashier).not.toContain("allowedClubIds[0]");
   });
+
+  it("mounts the tour counter only behind both preview flags and cashier capability", () => {
+    const app = source("src/OpsApp.tsx");
+    const mutations = source("src/ops/opsMutations.ts");
+    expect(app).toContain('path="/ops/cashier/tour"');
+    expect(app).toContain('element={OPS_CASHIER_MUTATIONS_ENABLED');
+    expect(app).toContain('<OpsModuleGate capability="cashier"><TourCashierWorkbench /></OpsModuleGate>');
+    expect(app).toContain('<Navigate to="/ops/cashier" replace />');
+    expect(mutations).toContain('import.meta.env.VITE_OPS_CASHIER_MUTATIONS === "preview" &&');
+    expect(mutations).toContain('import.meta.env.VITE_FLOOR_UAT_ENV === "preview"');
+  });
 });
