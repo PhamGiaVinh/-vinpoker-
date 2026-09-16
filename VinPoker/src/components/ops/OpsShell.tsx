@@ -2,6 +2,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Layers3, UserRound } from "lucide-react";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { getOpsModuleByPath } from "@/ops/registry/opsModuleRegistry";
+import { OPS_CASHIER_MUTATIONS_ENABLED } from "@/ops/opsMutations";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
 import "@/components/ops/ops-ios.css";
 
@@ -11,6 +12,8 @@ export default function OpsShell() {
   const capabilities = useOpsCapabilities();
   const workspace = useOpsWorkspace();
   const module = getOpsModuleByPath(location.pathname);
+  const moduleState = location.pathname === "/ops/cashier/tour" && OPS_CASHIER_MUTATIONS_ENABLED
+    ? "PREVIEW" : module?.defaultState;
   const clubName = workspace.selectedClubId
     ? capabilities.clubs.find((club) => club.id === workspace.selectedClubId)?.name
       ?? workspace.verifiedSuperAdminClubs.get(workspace.selectedClubId)?.club_name
@@ -33,7 +36,7 @@ export default function OpsShell() {
               <span className="text-sm font-semibold tracking-wide text-white">VINPOKER OPS</span>
               {module && (
                 <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-semibold text-[#b9c9c0]">
-                  {module.defaultState}
+                  {moduleState}
                 </span>
               )}
             </div>
