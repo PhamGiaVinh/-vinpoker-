@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { BuyinReceiptSnapshot } from "@/components/tournament/seat/buyinReceipt";
 
 const registration = vi.hoisted(() => ({
   bank_name: null as string | null,
@@ -21,7 +22,11 @@ vi.mock("@/integrations/supabase/client", () => ({
   })) } },
 }));
 vi.mock("@/components/tournament/seat/buyinReceipt", () => ({
-  fetchBuyinReceipt: vi.fn(async () => null), toSeatReceiptData: vi.fn(),
+  fetchBuyinReceipt: vi.fn(async () => null), toSeatReceiptData: vi.fn((receipt) => receipt),
+}));
+vi.mock("@/components/tournament/seat/SeatReceiptDialog", () => ({
+  SeatReceiptDialog: ({ receipt }: { receipt: BuyinReceiptSnapshot }) =>
+    <div data-testid="confirmed-buyin-receipt">{receipt.receipt_code}</div>,
 }));
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -36,9 +41,12 @@ vi.mock("@/components/kokonutui/liquid-glass-card", () => ({
 }));
 
 import { TournamentRegisterModal } from "./TournamentRegisterModal";
+import { fetchBuyinReceipt } from "@/components/tournament/seat/buyinReceipt";
+import { supabase } from "@/integrations/supabase/client";
 
 describe("TournamentRegisterModal payment options", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     registration.bank_name = null;
     registration.account_number = null;
     registration.account_holder = null;
@@ -62,5 +70,23 @@ describe("TournamentRegisterModal payment options", () => {
     expect(screen.getByText("999000001")).toBeInTheDocument();
     expect(screen.getByText("tournamentRegister.autoVerifyHint")).toBeInTheDocument();
     expect(screen.queryByText("tournamentRegister.counterCashOnly")).not.toBeInTheDocument();
+  });
+
+  it("shows the server-confirmed receipt without registering or notifying twice", async () => {
+    const onCompleted = vi.fn();
+    vi.mocked(fetchBuyinReceipt).mockResolvedValueOnce({
+      registration_id: "registration-test", receipt_code: "RECEIPT-TEST", qr_value: "RECEIPT-TEST",
+      reference_code: "VINREGTEST", status: "confirmed", payment_state: "confirmed",
+      club: { name: "CLB TEST", address: null, logo_url: null },
+      player_name: "Người chơi TEST", tournament_name: "Tour A", total_pay: 6_600_000,
+      completed_at: "2026-09-17T03:05:00Z", completed_at_source: "confirmed_at",
+      table_number: 1, seat_number: 2, starting_stack: null,
+    });
+    render(<TournamentRegisterModal tournamentId="tour-test" tournamentName="Tour A"
+      open onClose={vi.fn()} onCompleted={onCompleted} />);
+    expect(await screen.findByTestId("confirmed-buyin-receipt")).toHaveTextContent("RECEIPT-TEST");
+    expect(fetchBuyinReceipt).toHaveBeenCalledWith({ registrationId: "registration-test" });
+    expect(supabase.functions.invoke).toHaveBeenCalledTimes(1);
+    expect(onCompleted).toHaveBeenCalledTimes(1);
   });
 });
