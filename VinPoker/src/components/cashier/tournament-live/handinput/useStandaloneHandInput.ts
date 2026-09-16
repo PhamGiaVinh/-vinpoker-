@@ -20,7 +20,7 @@ import { toast } from "sonner";
 import type { Card } from "@/components/shared/CardSlotPicker";
 import { getSeatPositions } from "@/lib/tournament/button";
 import { nextButtonFromBlindLineage } from "@/lib/tournament/deadButton";
-import { readBlindLineage, type RecordedBlindLineage } from "@/lib/tournament/readBlindLineage";
+import { readBlindLineage, readHandBlindLevel, type RecordedBlindLineage } from "@/lib/tournament/readBlindLineage";
 import {
   replayActions,
   deriveResumeStreet,
@@ -211,6 +211,7 @@ export function useStandaloneHandInput(tournamentId: string) {
   // cleared when the restored snapshot is no longer a runout.
   const holeCardsBroadcastRef = useRef(false);
   const [blindLevelSnapshot, setBlindLevelSnapshot] = useState<BlindLevelSnapshot | null>(null);
+  const [blindLevelCanonical, setBlindLevelCanonical] = useState(false);
   const [blindsConfirmedLocal, setBlindsConfirmedLocal] = useState(false);
   // P2-3: operator marks this hand as having a dead small blind (no SB posted).
   const [deadSb, setDeadSb] = useState(false);
@@ -632,6 +633,8 @@ export function useStandaloneHandInput(tournamentId: string) {
     setRevealDone(false);
     holeCardsBroadcastRef.current = false;
     setBlindLevelSnapshot(null);
+    setBlindLevelCanonical(false);
+    setBlindFetchedAt(null);
     setBlindsConfirmedLocal(false);
     setDeadSb(false);
     setButtonOverridden(false); // P2-5: new hand → the dead-button suggestion drives the button again
@@ -1379,7 +1382,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     const cl = ((data as any)?.current_level ?? null) as ClockLevel | null;
     setLiveLevelNumber(cl?.level_number ?? null);
     setLiveLevel(cl);
-    if (cl && (cl.big_blind ?? 0) > 0 && !sbPosted && !bbPosted) {
+    if (cl && (cl.big_blind ?? 0) > 0 && !blindLevelCanonical && !sbPosted && !bbPosted) {
       const snap = snapshotBlindLevel(cl);
       setBlindLevelSnapshot(snap);
       setSbAmount(snap.small_blind);
@@ -1389,7 +1392,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     } else {
       toast.info("Đã cập nhật mức blind hiện tại (ván đã đặt blind — không đổi số).");
     }
-  }, [tournamentId, sbPosted, bbPosted]);
+  }, [tournamentId, blindLevelCanonical, sbPosted, bbPosted]);
 
   const isReview = Object.keys(endingStacks).length > 0;
   const isSummary = isReview;
@@ -1486,6 +1489,22 @@ export function useStandaloneHandInput(tournamentId: string) {
         const nestedError = typeof handData?.error === "string" ? handData.error : null;
         throw new Error(nestedError ?? await readEdgeError(error, data));
       }
+      let frozenLevel: BlindLevelSnapshot | null;
+      try {
+        frozenLevel = await readHandBlindLevel(handData.hand_id);
+      } catch (readError) {
+        setOrphanHand({ id: handData.hand_id, hand_number: Number(handNumber) });
+        throw readError;
+      }
+      if (!frozenLevel) {
+        setOrphanHand({ id: handData.hand_id, hand_number: Number(handNumber) });
+        throw new Error("Hand đã tạo nhưng thiếu blind structure từ Floor. Dừng post blind và gọi Floor.");
+      }
+      setBlindLevelSnapshot(frozenLevel);
+      setBlindLevelCanonical(true);
+      setSbAmount(frozenLevel.small_blind);
+      setBbAmount(frozenLevel.big_blind);
+      setLiveLevelNumber(frozenLevel.level_number);
       if (!await claimHandLock(handData.hand_id)) {
         setOrphanHand({ id: handData.hand_id, hand_number: Number(handNumber) });
         markSync("error");
@@ -1533,6 +1552,14 @@ export function useStandaloneHandInput(tournamentId: string) {
       if (handErr || !hand) throw new Error(handErr?.message || "Không tải được hand đang diễn ra");
       if (actErr) throw new Error(actErr.message);
       if (!tableLoadGuardRef.current.isCurrent(loadToken)) return false;
+      const frozenLevel = await readHandBlindLevel(targetOrphan.id);
+      if (!tableLoadGuardRef.current.isCurrent(loadToken)) return false;
+      if (frozenLevel) {
+        setBlindLevelSnapshot(frozenLevel);
+        setBlindLevelCanonical(true);
+        setSbAmount(frozenLevel.small_blind);
+        setBbAmount(frozenLevel.big_blind);
+      }
       const rows = (actionRows ?? []) as ResumeActionRow[];
 
       const stored = Array.isArray(hand.community_cards) ? (hand.community_cards as unknown[]) : [];
@@ -2936,6 +2963,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     firstActorSeat,
     isHeadsUp,
     blindLevelSnapshot,
+    blindLevelCanonical,
     blindLevelMissing,
     blindLevelChanged,
     sbAmount,

@@ -7,6 +7,46 @@ export interface RecordedBlindLineage {
   previousBbSeat: number;
 }
 
+export interface RecordedBlindLevel {
+  level_number: number;
+  small_blind: number;
+  big_blind: number;
+  ante: number;
+}
+
+/** The level frozen by the server when Start Hand inserted this hand. */
+export async function readHandBlindLevel(handId: string): Promise<RecordedBlindLevel | null> {
+  const { data, error } = await supabase.from("tournament_hands")
+    .select("tracker_level_number,tracker_small_blind,tracker_big_blind,tracker_bba")
+    .eq("id", handId).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("tracker_hand_blind_snapshot_missing");
+  const row = data as unknown as {
+    tracker_level_number: number | null;
+    tracker_small_blind: number | null;
+    tracker_big_blind: number | null;
+    tracker_bba: number | null;
+  };
+  if (row.tracker_level_number == null && row.tracker_small_blind == null
+    && row.tracker_big_blind == null && row.tracker_bba == null) return null;
+  if (row.tracker_level_number == null || row.tracker_small_blind == null
+    || row.tracker_big_blind == null || row.tracker_bba == null) {
+    throw new Error("tracker_hand_blind_snapshot_incomplete");
+  }
+  if (![row.tracker_level_number, row.tracker_small_blind,
+    row.tracker_big_blind, row.tracker_bba].every(Number.isInteger)
+    || row.tracker_level_number < 1 || row.tracker_small_blind <= 0
+    || row.tracker_big_blind <= row.tracker_small_blind || row.tracker_bba < 0) {
+    throw new Error("tracker_hand_blind_snapshot_invalid");
+  }
+  return {
+    level_number: row.tracker_level_number,
+    small_blind: row.tracker_small_blind,
+    big_blind: row.tracker_big_blind,
+    ante: row.tracker_bba,
+  };
+}
+
 /** Read a completed hand's blind evidence, including pre-migration blind posts. */
 export async function readBlindLineage(handId: string): Promise<RecordedBlindLineage | null> {
   const [handResult, actionResult, playerResult] = await Promise.all([

@@ -40,6 +40,20 @@ describe("Hand #4 resume workflow contracts", () => {
     expect(tableLoad).toContain("previousSbPosition: previousLineage?.previousSbPosition ?? null");
   });
 
+  it("uses the Floor level frozen in the hand for start and resume", () => {
+    const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
+    const start = source.slice(source.indexOf("const handleStartHand ="), source.indexOf("const handleContinueOrphan ="));
+    const resume = source.slice(source.indexOf("const handleContinueOrphan ="), source.indexOf("const handleVoidOrphan ="));
+    expect(start).toContain("await readHandBlindLevel(handData.hand_id)");
+    expect(start.indexOf("setBlindLevelSnapshot(frozenLevel)")).toBeLessThan(start.indexOf("setHandStarted(true)"));
+    expect(resume).toContain("await readHandBlindLevel(targetOrphan.id)");
+    expect(source).toContain("!blindLevelCanonical && !sbPosted && !bbPosted");
+    for (const file of ["StandaloneHandInputConsole.tsx", "RacetrackHandInputConsole.tsx"]) {
+      expect(read(`src/components/cashier/tournament-live/handinput/${file}`))
+        .toContain("lockedAmounts={hook.blindLevelCanonical}");
+    }
+  });
+
   it("uses the dead-button engine after both manual and Voice hand completion", () => {
     const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
     const voiceStart = source.indexOf("const applyVoiceFinishReceipt =");

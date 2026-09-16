@@ -31,6 +31,8 @@ interface BlindSetupPanelProps {
   ante: number;
   /** No blind level from Floor → show a manual-override warning. */
   levelMissing: boolean;
+  /** New hands use the Floor level frozen by the canonical Start Hand writer. */
+  lockedAmounts?: boolean;
   sbAmount: number;
   bbAmount: number;
   onSbAmountChange: (n: number) => void;
@@ -79,6 +81,7 @@ function BlindRow({
   posted,
   onPost,
   disabled,
+  lockedAmounts,
 }: {
   role: "post_sb" | "post_bb";
   seat: number | null;
@@ -88,6 +91,7 @@ function BlindRow({
   posted: boolean;
   onPost: (type: "post_sb" | "post_bb", playerId: string, amount: number) => void;
   disabled?: boolean;
+  lockedAmounts?: boolean;
 }) {
   const label = role === "post_sb" ? "Small Blind" : "Big Blind";
   const isAllIn = !!player && amount >= player.current_stack && player.current_stack > 0;
@@ -103,7 +107,7 @@ function BlindRow({
         type="number"
         className="h-8 w-24 text-sm font-mono text-right"
         value={amount}
-        disabled={disabled || posted}
+        disabled={disabled || posted || lockedAmounts}
         onChange={(e) => onAmountChange(Number(e.target.value) || 0)}
       />
       <div className="flex-1 text-[10px] text-muted-foreground">
@@ -136,6 +140,7 @@ export function BlindSetupPanel({
   levelNumber,
   ante,
   levelMissing,
+  lockedAmounts,
   sbAmount,
   bbAmount,
   onSbAmountChange,
@@ -182,7 +187,7 @@ export function BlindSetupPanel({
 
       {provenance && (
         <div className="text-[10px] text-muted-foreground">
-          Tự lấy từ clock giải: <span className="text-emerald-300">{provenance}</span> — có thể sửa số trước khi post.
+          {lockedAmounts ? "Chốt từ blind structure Floor khi Start Hand" : "Tự lấy từ clock giải"}: <span className="text-emerald-300">{provenance}</span>
         </div>
       )}
 
@@ -216,9 +221,9 @@ export function BlindSetupPanel({
             <span className="text-muted-foreground">{seatLabel(players, sbSeat)}</span>
           </div>
         ) : (
-          <BlindRow role="post_sb" seat={sbSeat} player={sbPlayer} amount={sbAmount} onAmountChange={onSbAmountChange} posted={sbPosted} onPost={onPost} disabled={disabled} />
+          <BlindRow role="post_sb" seat={sbSeat} player={sbPlayer} amount={sbAmount} onAmountChange={onSbAmountChange} posted={sbPosted} onPost={onPost} disabled={disabled} lockedAmounts={lockedAmounts} />
         )}
-        <BlindRow role="post_bb" seat={bbSeat} player={bbPlayer} amount={bbAmount} onAmountChange={onBbAmountChange} posted={bbPosted} onPost={onPost} disabled={disabled} />
+        <BlindRow role="post_bb" seat={bbSeat} player={bbPlayer} amount={bbAmount} onAmountChange={onBbAmountChange} posted={bbPosted} onPost={onPost} disabled={disabled} lockedAmounts={lockedAmounts} />
       </div>
 
       {onToggleDeadSb && (

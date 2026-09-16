@@ -206,6 +206,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           levelNumber={hook.blindLevelSnapshot?.level_number ?? null}
           ante={hook.blindLevelSnapshot?.ante ?? 0}
           levelMissing={hook.blindLevelMissing}
+          lockedAmounts={hook.blindLevelCanonical}
           sbAmount={hook.sbAmount}
           bbAmount={hook.bbAmount}
           onSbAmountChange={hook.setSbAmount}
@@ -219,14 +220,14 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           onToggleDeadSb={hook.handleToggleDeadSb}
           // A1: provenance + one-tap posting — flag OFF → props absent (byte-identical).
           provenance={
-            FEATURES.trackerBlindAutoSeed && hook.blindLevelSnapshot && !hook.blindLevelMissing
+            (FEATURES.trackerBlindAutoSeed || hook.blindLevelCanonical) && hook.blindLevelSnapshot && !hook.blindLevelMissing
               ? `SB ${formatStack(hook.blindLevelSnapshot.small_blind)} · BB ${formatStack(hook.blindLevelSnapshot.big_blind)}${
                   hook.blindLevelSnapshot.ante > 0 ? ` · Ante ${formatStack(hook.blindLevelSnapshot.ante)}` : ""
                 }${hook.blindFetchedAt ? ` · lấy ${hook.blindFetchedAt.toTimeString().slice(0, 5)}` : ""}`
               : undefined
           }
           onPostBoth={FEATURES.trackerBlindAutoSeed ? hook.handlePostBothBlinds : undefined}
-          onRefreshLevel={FEATURES.trackerWorkflowAids ? hook.refreshLiveLevel : undefined}
+          onRefreshLevel={FEATURES.trackerWorkflowAids && !hook.blindLevelCanonical ? hook.refreshLiveLevel : undefined}
         />
       );
     }
