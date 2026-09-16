@@ -4,12 +4,16 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FloorAlertHandReview } from "./FloorAlertHandReview";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import {
   listTrackerFloorAlerts,
   type TrackerFloorAlert,
   type TrackerFloorAlertStatus,
 } from "@/lib/tracker-floor-alerts/trackerFloorAlertsRead";
+import { trackerFloorAlertLink } from "@/lib/tracker-floor-alerts/trackerFloorAlertLink";
+import { useTrackerFloorAlertLocations } from "@/lib/tracker-floor-alerts/useTrackerFloorAlertLocations";
 
 type FloorAlertStatus = TrackerFloorAlertStatus;
 interface TrackerFloorAlertLaneProps {
@@ -29,6 +33,8 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [transitioningId, setTransitioningId] = useState<string | null>(null);
+  const [reviewAlert, setReviewAlert] = useState<TrackerFloorAlert | null>(null);
+  const locationFor = useTrackerFloorAlertLocations(supabase, alerts);
 
   const reload = useCallback(async () => {
     setError(null);
@@ -124,7 +130,8 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
         )}
         {alerts.map((alert) => {
           const primary = nextTransition(alert.status);
-          const handLink = `/tracker/hand-input?tournament=${encodeURIComponent(alert.tournament_id)}&tt=${encodeURIComponent(alert.tournament_table_id)}${alert.hand_id ? `&handId=${encodeURIComponent(alert.hand_id)}` : ""}`;
+          const handLink = trackerFloorAlertLink(alert);
+          const location = locationFor(alert);
           return (
             <article
               key={alert.id}
@@ -142,15 +149,27 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
                   <p className="text-xs text-zinc-400">
                     {alert.dealer_name || "Dealer"} · {new Date(alert.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
                   </p>
+                  <p className="mt-1 text-xs font-semibold text-amber-100">
+                    {location?.tableNumber != null ? `Bàn ${location.tableNumber}` : "Đang tải bàn"}
+                    {location?.handNumber != null ? ` · Hand #${location.handNumber}` : ""}
+                  </p>
+                  {alert.alert_kind === "wrong_action" && (
+                    <p className="mt-1 text-xs text-zinc-300">Action sai chưa được chỉ rõ; xem toàn bộ nhật ký ván trước khi sửa.</p>
+                  )}
                   {alert.message && <p className="mt-2 line-clamp-2 text-xs text-zinc-300">{alert.message}</p>}
                   {alert.correction_required && (
                     <p className="mt-2 text-xs text-amber-200">Voice tạm dừng. Kiểm tra và sửa hand trước khi đánh dấu đã xử lý.</p>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {alert.hand_id && (
+                    <Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => setReviewAlert(alert)}>
+                      Xem cả ván
+                    </Button>
+                  )}
                   <Button asChild size="sm" variant="outline" className="min-h-11">
                     <Link to={handLink}>
-                      Mở Tracker <ExternalLink className="ml-2 h-3.5 w-3.5" />
+                      Mở đúng bàn <ExternalLink className="ml-2 h-3.5 w-3.5" />
                     </Link>
                   </Button>
                   {primary && (
@@ -171,6 +190,23 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
           );
         })}
       </div>
+      <Dialog open={!!reviewAlert} onOpenChange={(open) => { if (!open) setReviewAlert(null); }}>
+        <DialogContent className="max-h-[90dvh] max-w-5xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Nhật ký toàn ván · chỉ xem</DialogTitle>
+            <DialogDescription>Xem action đã ghi; không sửa hoặc chốt kết quả từ cửa sổ này.</DialogDescription>
+          </DialogHeader>
+          {reviewAlert?.hand_id && (
+            <FloorAlertHandReview
+              key={reviewAlert.hand_id}
+              tournamentId={reviewAlert.tournament_id}
+              tournamentTableId={reviewAlert.tournament_table_id}
+              physicalTableId={reviewAlert.physical_table_id}
+              handId={reviewAlert.hand_id}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

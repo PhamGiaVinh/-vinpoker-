@@ -4,6 +4,7 @@ import { useFloorTournaments } from "./useFloorTournaments";
 import type { ClubRow } from "./TournamentManagerShared";
 import { DailyTournamentsBoard } from "./DailyTournamentsBoard";
 import { MultiDayTournamentsBoard } from "./MultiDayTournamentsBoard";
+import { FloorVoiceAlertInbox } from "./FloorVoiceAlertInbox";
 
 /**
  * Floor landing — the entry point of Floor tournament management. A segmented
@@ -38,6 +39,9 @@ export function FloorTournamentsLanding({ clubIds, clubs, onSelect }: { clubIds:
 
   return (
     <div className="space-y-3">
+      {FEATURES.trackerVoiceInput && (
+        <FloorVoiceAlertInbox tournaments={data.tours} onSelect={onSelect} />
+      )}
       <div className="flex w-full gap-1 rounded-lg bg-muted/40 p-1 sm:w-fit">
         {segBtn("daily", "Giải thường")}
         {showMulti && segBtn("multi", "Multi-day")}

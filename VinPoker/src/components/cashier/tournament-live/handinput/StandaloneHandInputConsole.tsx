@@ -19,6 +19,7 @@ import { FEATURES } from "@/lib/featureFlags";
 import { displayCard, type Card } from "@/components/shared/CardSlotPicker";
 import { LiveFelt } from "../LiveFelt";
 import { InputTableMap } from "./InputTableMap";
+import { useInputTableAlerts } from "./useInputTableAlerts";
 import { SetupHandPanel } from "./SetupHandPanel";
 import { ChipQuickEditPanel } from "./ChipQuickEditPanel";
 import { SeatSetupPanel } from "./SeatSetupPanel";
@@ -42,6 +43,7 @@ type MobileTab = "table" | "action" | "log";
 
 export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput }) {
   const [tab, setTab] = useState<MobileTab>("action");
+  const alertsByTable = useInputTableAlerts(hook.tournamentId);
 
   // No table chosen yet → operator table picker (full screen).
   if (!hook.tableId) {
@@ -56,6 +58,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           loadError={hook.tableLoadError}
           onRetry={hook.retryTableLoad}
           selectionNotice={hook.tableSelectionNotice}
+          alertsByTable={alertsByTable}
         />
       </div>
     );
