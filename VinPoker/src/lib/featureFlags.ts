@@ -393,10 +393,11 @@ export const FEATURES = {
   /**
    * Public spectator snapshot v2: server-filtered table catalog, confirmed chip
    * ranking and published payout data with per-section freshness metadata.
-   * Keep OFF until the migration + bounded worker are applied and guest UAT has
-   * proved that hidden cards never cross the public RPC boundary.
+   * Owner-approved public rollout after the read contract, bounded worker and
+   * TEST tournament snapshot were verified in production. Only recorded cards
+   * are published through the public hand RPC.
    */
-  publicSpectatorRealtimeV2: false,
+  publicSpectatorRealtimeV2: true,
   /**
    * ── Tracker Ops + Viewer UX upgrade program (RPT parity, plan 2026-07-02) ──
    * PR-F0 flag bootstrap: ALL program flags land here FIRST (default OFF) so the
