@@ -485,7 +485,10 @@ BEGIN
     UPDATE public.tournament_registrations SET status='confirmed',confirmed_at=now()
       WHERE id=v_reg_id;
   EXCEPTION WHEN OTHERS THEN
-    IF SQLERRM <> 'Server-priced registration fields are server-owned' THEN RAISE; END IF;
+    -- BEFORE UPDATE triggers run by name; the insufficient-payment guard can
+    -- reject this before the browser-owned-column guard sees the same write.
+    IF SQLERRM NOT IN ('Server-priced registration fields are server-owned',
+      'Verified buy-in total is insufficient for confirmation') THEN RAISE; END IF;
     v_blocked:=true;
   END;
   IF NOT v_blocked THEN RAISE EXCEPTION 'cashier test failed: player self-confirmed without payment'; END IF;
