@@ -3,6 +3,19 @@ import assert from 'node:assert/strict';
 import { run, STOP_SQL } from './activate-public-spectator.mjs';
 
 const env = { SUPABASE_PROJECT_REF: 'orlesggcjamwuknxwcpk', SUPABASE_ACCESS_TOKEN: 'test-only' };
+test('prepares Edge secret when the management API returns an empty success body', async () => {
+  const calls = [];
+  const fake = async (url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push({ url, query: body.query });
+    if (url.endsWith('/secrets')) return { ok: true, status: 201, json: async () => { throw new SyntaxError('empty body'); } };
+    return { ok: true, status: 201, json: async () => body.query.includes('AS ready')
+      ? [{ ready: true }] : body.query.includes('decrypted_secret')
+        ? [{ decrypted_secret: 'a'.repeat(64) }] : [] };
+  };
+  assert.deepEqual(await run('prepare', env, fake), { prepared: true });
+  assert.equal(calls.at(-1).url.endsWith('/secrets'), true);
+});
 test('starts cron only after denied guest probe, authorized worker, and drained backlog', async () => {
   const calls = [];
   const fake = async (url, options) => {

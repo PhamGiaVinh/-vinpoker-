@@ -13,13 +13,21 @@ export async function run(mode, env = process.env, fetcher = fetch) {
   if (!['prepare', 'activate', 'stop'].includes(mode)) throw new Error('invalid_mode');
   if (env.SUPABASE_PROJECT_REF !== PROJECT || !env.SUPABASE_ACCESS_TOKEN) throw new Error('invalid_project_or_credentials');
   async function management(path, body) {
-    const response = await fetcher(`https://api.supabase.com/v1/projects/${PROJECT}/${path}`, {
-      method: 'POST', headers: { Authorization: `Bearer ${env.SUPABASE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body), signal: AbortSignal.timeout(30_000),
-    });
+    let response;
+    try {
+      response = await fetcher(`https://api.supabase.com/v1/projects/${PROJECT}/${path}`, {
+        method: 'POST', headers: { Authorization: `Bearer ${env.SUPABASE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), signal: AbortSignal.timeout(30_000),
+      });
+    } catch {
+      throw new Error(`management_${path.replace('/', '_')}_network`);
+    }
     // Never echo response bodies: Vault/API responses can contain credentials.
-    if (!response.ok) throw new Error(`management_${response.status}`);
-    return response.json();
+    if (!response.ok) throw new Error(`management_${path.replace('/', '_')}_${response.status}`);
+    // Bulk-create secrets can succeed without a JSON body. The response is not
+    // needed, and parsing it would fail after the secret was already stored.
+    if (path === 'secrets') return undefined;
+    try { return await response.json(); } catch { throw new Error(`management_${path.replace('/', '_')}_invalid_response`); }
   }
   const sql = (query) => management('database/query', { query });
   if (mode === 'stop') {
