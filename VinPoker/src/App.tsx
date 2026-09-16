@@ -145,6 +145,8 @@ const DevPublicTournamentEventPreview = import.meta.env.DEV
 // from production. Reached only at /__dev/tracker; not linked anywhere.
 const DevTrackerPreview = import.meta.env.DEV ? lazy(() => import("./components/tracker/TrackerInputPreview")) : null;
 const DevDealerTabletPreview = import.meta.env.DEV ? lazy(() => import("./dev/DealerTabletPreview")) : null;
+// DEV-only fixture for the Floor/Tracker completed-hand correction workspace.
+const DevHandCorrectionPreview = import.meta.env.DEV ? lazy(() => import("./dev/HandCorrectionPreview")) : null;
 // DEV-ONLY visual harness for the member-card design (cashier → Cấp lại thẻ). Fixture-rendered — no
 // Supabase. Same import.meta.env.DEV gate → route + chunk stripped from production. Reached only at /__dev/card.
 const DevCardPreview = import.meta.env.DEV ? lazy(() => import("./dev/CardPreview")) : null;
@@ -232,6 +234,10 @@ const App = () => {
 
   if (import.meta.env.DEV && window.location.pathname === "/__dev/dealer-tablet" && DevDealerTabletPreview) {
     return <BrowserRouter><Suspense fallback={<RouteLoader />}><DevDealerTabletPreview /></Suspense></BrowserRouter>;
+  }
+
+  if (import.meta.env.DEV && window.location.pathname === "/__dev/hand-correction" && DevHandCorrectionPreview) {
+    return <BrowserRouter><Suspense fallback={<RouteLoader />}><DevHandCorrectionPreview /></Suspense></BrowserRouter>;
   }
 
   if (isTrackerVoiceUatPreviewRoute && DevTrackerVoiceV0Preview) {
