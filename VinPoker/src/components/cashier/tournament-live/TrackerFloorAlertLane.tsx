@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import {
   listTrackerFloorAlerts,
   type TrackerFloorAlert,
@@ -24,6 +24,7 @@ function nextTransition(status: FloorAlertStatus): { action: string; label: stri
 }
 
 export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLaneProps) {
+  const supabase = useSupabaseClient();
   const [alerts, setAlerts] = useState<TrackerFloorAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +40,7 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
     }
     setAlerts([...result.alerts]);
     setLoading(false);
-  }, [tournamentId]);
+  }, [supabase, tournamentId]);
 
   useEffect(() => {
     void reload();
@@ -63,7 +64,7 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
       document.removeEventListener("visibilitychange", onVisible);
       void supabase.removeChannel(channel);
     };
-  }, [reload, tournamentId]);
+  }, [reload, supabase, tournamentId]);
 
   const transition = async (alert: TrackerFloorAlert, action: string) => {
     if (transitioningId) return;
