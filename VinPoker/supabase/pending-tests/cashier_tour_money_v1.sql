@@ -148,6 +148,14 @@ BEGIN
      1300000,'in',v_ref,'unmatched',now(),'{}'::jsonb);
 
   v_bank := public.cashier_record_verified_bank_v1(
+    '95000000-0000-4000-8000-000000000001',false);
+  PERFORM pg_temp.cashier_assert(v_bank->>'handled'='false'
+    AND (SELECT status='unmatched' FROM public.bank_transactions
+      WHERE id='95000000-0000-4000-8000-000000000001')
+    AND NOT EXISTS(SELECT 1 FROM public.cashier_buyin_movements
+      WHERE bank_transaction_id='95000000-0000-4000-8000-000000000001'),
+    'disabled auto-confirm leaves verified bank transfer unallocated for later retry');
+  v_bank := public.cashier_record_verified_bank_v1(
     '95000000-0000-4000-8000-000000000001',true);
   PERFORM pg_temp.cashier_assert(v_bank->>'outcome'='partial_received'
     AND (v_bank->>'applied')::bigint=1300000, 'verified bank partial is allocated once');
