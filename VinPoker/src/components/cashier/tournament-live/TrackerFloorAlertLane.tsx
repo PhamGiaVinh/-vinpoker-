@@ -100,7 +100,7 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
             <p className="text-[11px] text-zinc-500">Lane vận hành riêng, không thay đổi Dealer Swing.</p>
           </div>
         </div>
-        <Button type="button" size="sm" variant="outline" onClick={() => void reload()} disabled={loading}>
+        <Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => void reload()} disabled={loading}>
           <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           Làm mới
         </Button>
