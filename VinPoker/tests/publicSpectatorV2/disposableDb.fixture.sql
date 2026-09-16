@@ -7,14 +7,23 @@ CREATE SCHEMA auth;
 CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$
   SELECT current_setting('request.jwt.claim.role', true)
 $$;
+CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
+  SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
+$$;
+GRANT USAGE ON SCHEMA auth TO authenticated;
+CREATE FUNCTION public.is_club_owner(p_user_id uuid,p_club_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT p_user_id=p_club_id
+$$;
 CREATE SCHEMA realtime;
 CREATE FUNCTION realtime.send(jsonb,text,text,boolean) RETURNS void LANGUAGE plpgsql AS $$ BEGIN RETURN; END; $$;
 
 CREATE TABLE public.tournaments (
-  id uuid PRIMARY KEY, deleted_at timestamptz, current_level integer, current_level_id uuid
+  id uuid PRIMARY KEY, club_id uuid, deleted_at timestamptz, current_level integer, current_level_id uuid
 );
 CREATE TABLE public.tournament_levels (
-  id uuid PRIMARY KEY, tournament_id uuid, level_number integer, big_blind numeric
+  id uuid PRIMARY KEY, tournament_id uuid, level_number integer,
+  small_blind numeric, big_blind numeric, ante numeric
 );
 CREATE TABLE public.table_sessions (id uuid PRIMARY KEY, tournament_id uuid);
 CREATE TABLE public.tournament_tables (
@@ -34,6 +43,7 @@ CREATE TABLE public.tournament_hands (
   id uuid PRIMARY KEY, tournament_id uuid, tournament_table_id uuid, table_session_id uuid,
   hand_number integer, button_seat integer, community_cards jsonb DEFAULT '[]',
   pot_size numeric, tracker_small_blind numeric, tracker_big_blind numeric,
+  tracker_level_number integer, tracker_bba numeric,
   status text, is_voided boolean DEFAULT false, created_at timestamptz DEFAULT now()
 );
 CREATE TABLE public.hand_players (
@@ -58,9 +68,10 @@ CREATE TABLE public.tournament_eliminations (
 );
 
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
+GRANT SELECT ON public.tournaments TO anon, authenticated;
 
-INSERT INTO public.tournaments(id,current_level) VALUES
-  ('10000000-0000-4000-8000-000000000001',1);
+INSERT INTO public.tournaments(id,club_id,current_level) VALUES
+  ('10000000-0000-4000-8000-000000000001','80000000-0000-4000-8000-000000000001',1);
 INSERT INTO public.tournament_levels(id,tournament_id,level_number,big_blind) VALUES
   ('11000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',1,200000);
 INSERT INTO public.table_sessions(id,tournament_id) VALUES

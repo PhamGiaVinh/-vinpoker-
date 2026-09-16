@@ -3,25 +3,25 @@ import { describe, expect, it, vi } from "vitest";
 import { RealtimeTablesGrid } from "./RealtimeTablesGrid";
 import type { PublicTableSnapshot } from "./publicSnapshotTypes";
 
-vi.mock("../PokerVisuals", () => ({ PokerCard: ({ card }: { card: string }) => <span>{card}</span> }));
+vi.mock("../PokerVisuals", () => ({ PokerCard: ({ card }: { card: string }) => <span>{card}</span>, CardBack: () => <span data-testid="card-back" /> }));
 const makeTable = (id: string): PublicTableSnapshot => ({
   tableId: id, tableSessionId: `session-${id}`, name: `Bàn ${id}`, handId: `hand-${id}`,
   handNumber: 1, buttonSeat: 1, street: "flop", board: ["AS", "KH", "2C"], pot: 1000,
   bigBlind: 200, smallBlind: 100, trackerState: "live", players: [{ entryId: `entry-${id}`,
-    playerId: `player-${id}`, entryNumber: 1, seatNumber: 1, name: `Player ${id}`, avatarUrl: null, stack: 2000 }],
+    playerId: `player-${id}`, entryNumber: 1, seatNumber: 1, name: `Player ${id}`, avatarUrl: null, stack: 2000, holeCards: [], isFolded: false }],
   latestAction: { playerId: `player-${id}`, entryNumber: 1, actionType: "call", amount: 200 },
 });
 
 describe("simultaneous public tables", () => {
   it("updates each table's board, pot and action independently, keeping history scoped", () => {
-    const tables = [makeTable("2"), makeTable("5")];
+    const tables = [makeTable("2"), makeTable("5"), makeTable("7"), makeTable("9")];
     const props = { tables, catalog: tables.map(t => ({ tableId: t.tableId, name: t.name, playerCount: 1, searchPlayers: [] })),
       onVisibleTableIds: vi.fn(), onView: vi.fn(), onHistory: vi.fn() };
     const { rerender } = render(<RealtimeTablesGrid {...props} />);
     const table2 = within(screen.getByRole("article", { name: "Bàn 2" }));
     const table5 = within(screen.getByRole("article", { name: "Bàn 5" }));
     rerender(<RealtimeTablesGrid {...props} tables={[{ ...tables[0], board: ["AS", "KH", "2C", "TD"], pot: 1500,
-      latestAction: { ...tables[0].latestAction!, actionType: "bet", amount: 500 } }, tables[1]]} />);
+      latestAction: { ...tables[0].latestAction!, actionType: "bet", amount: 500 } }, tables[1], tables[2], tables[3]]} />);
     expect(table2.getByText("TD")).toBeInTheDocument();
     expect(table2.getByText("POT 7.5 BB")).toBeInTheDocument();
     expect(table2.getByText(/bet 2.5 BB/)).toBeInTheDocument();
@@ -29,6 +29,25 @@ describe("simultaneous public tables", () => {
     expect(table5.getByText("POT 5 BB")).toBeInTheDocument();
     table2.getByRole("button", { name: "Lịch sử" }).click();
     expect(props.onHistory).toHaveBeenCalledWith("2");
-    expect(props.onVisibleTableIds).toHaveBeenCalledWith(["2", "5"]);
+    expect(props.onVisibleTableIds).toHaveBeenCalledWith(["2", "5", "7", "9"]);
   });
+});
+
+it("shows four simultaneous actions without opening a table and restores folded avatars", () => {
+  const tables = ["1", "2", "3", "4"].map(makeTable);
+  const props = { catalog: tables.map(t => ({ tableId: t.tableId, name: t.name, playerCount: 1, searchPlayers: [] })), onVisibleTableIds: vi.fn(), onView: vi.fn(), onHistory: vi.fn() };
+  const { rerender } = render(<RealtimeTablesGrid {...props} tables={tables} />);
+  const actions = ["fold", "call", "all_in", "raise"];
+  rerender(<RealtimeTablesGrid {...props} tables={tables.map((table, i) => ({ ...table,
+    pot: 1000 + i * 200, latestAction: { ...table.latestAction!, actionType: actions[i], amount: i * 200 },
+    players: [{ ...table.players[0], isFolded: i === 0, isAllIn: i === 2, lastAction: { actionType: actions[i], amount: i * 200 } }],
+  }))} />);
+  for (let i = 0; i < 4; i++) {
+    const article = screen.getByRole("article", { name: 'Bàn ' + (i + 1) });
+    expect(article.querySelector('[data-action="' + actions[i] + '"]')).not.toBeNull();
+    expect(within(article).getByText('POT ' + (5 + i) + ' BB')).toBeInTheDocument();
+    expect(within(article).queryAllByTestId('card-back')).toHaveLength(i === 0 ? 0 : 2);
+    expect(article.querySelector('.spectator-mini-avatar')).not.toBeNull();
+  }
+  expect(props.onView).not.toHaveBeenCalled();
 });

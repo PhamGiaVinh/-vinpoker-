@@ -1,3 +1,4 @@
+import { useTournamentTableAppearance } from "@/components/tracker/useTournamentTableAppearance";
 import { useState, useEffect, useMemo, useRef, useCallback, type ComponentProps } from "react";
 import { TrackerViewerCardProvider, TrackerCardStyleToggle } from "@/components/tracker/TrackerCardStyle";
 import { FEATURES } from "@/lib/featureFlags";
@@ -103,6 +104,9 @@ type LiveHandActionRow = {
 
 type PublicHandResponse = {
   bigBlind?: number | null;
+  smallBlind?: number | null;
+  levelNumber?: number | null;
+  ante?: number | null;
   actions?: Array<{ id: string; playerId: string; entryNumber: number; street: string | null; actionType: string; amount: number | null; order: number }>;
   players?: Array<{ playerId: string; entryNumber: number; seatNumber: number; startingStack: number | null; endingStack: number | null; name: string; avatarUrl: string | null; holeCards: string[] }>;
 };
@@ -189,6 +193,8 @@ function TournamentLiveViewContent({
     big_blind: number;
     ante: number;
   } | null>(null);
+  const appearance = useTournamentTableAppearance(tournamentId);
+  const [liveHandBlinds, setLiveHandBlinds] = useState<{ sb: number; bb: number; ante: number; level?: number | null } | null>(null);
   const [liveHandBigBlind, setLiveHandBigBlind] = useState(0);
   const [playersRemaining, setPlayersRemaining] = useState(0);
   const [averageStack, setAverageStack] = useState(0);
@@ -356,6 +362,7 @@ function TournamentLiveViewContent({
     let nextHandTableId: string | null = null;
     let nextButtonSeat = 1;
     let sourceHandBigBlind = 0;
+    let nextHandBlinds: typeof liveHandBlinds = null;
     let nextCommunity: string[] = [];
     let nextPot = 0;
     let nextActions: ActionLog[] = [];
@@ -371,6 +378,7 @@ function TournamentLiveViewContent({
       const hand = handsRes.data[0] as any;
       nextHandId = hand.id;
       sourceHandBigBlind = hand.tracker_big_blind ?? 0;
+      if (sourceHandBigBlind > 0 && hand.tracker_small_blind != null) nextHandBlinds = { sb: hand.tracker_small_blind, bb: sourceHandBigBlind, ante: hand.tracker_bba ?? 0, level: hand.tracker_level_number };
       nextHandNumber = hand.hand_number;
       nextHandTableId = hand.table_id ?? null;
       nextButtonSeat = hand.button_seat || 1;
@@ -388,6 +396,7 @@ function TournamentLiveViewContent({
         } as never);
         const safe = (publicHand ?? {}) as PublicHandResponse;
         sourceHandBigBlind = safe.bigBlind ?? 0;
+        nextHandBlinds = sourceHandBigBlind > 0 && safe.smallBlind != null ? { sb: safe.smallBlind, bb: sourceHandBigBlind, ante: safe.ante ?? 0, level: safe.levelNumber } : null;
         seatInfos = (safe.players ?? []).map((player) => ({
           player_id: player.playerId, display_name: player.name, avatar_url: player.avatarUrl,
           seat_number: player.seatNumber, chip_count: Math.max(0, player.startingStack ?? 0),
@@ -708,6 +717,7 @@ function TournamentLiveViewContent({
     setLiveRunout(nextRunout);
     setLiveBettingRoundComplete(nextBettingRoundComplete);
     setLiveHandBigBlind(nextHandBigBlind);
+    setLiveHandBlinds(nextHandBlinds);
     setLiveCompletedHand(nextLiveCompletedHand);
 
     if (clockRes.data && !clockRes.error) {
@@ -798,6 +808,7 @@ function TournamentLiveViewContent({
     setToActId(null);
     setLiveBettingRoundComplete(false);
     setLiveHandBigBlind(0);
+    setLiveHandBlinds(null);
     liveHandBlindRef.current = null;
     setMode("live");
     setReplayHandId(null);
@@ -1318,21 +1329,15 @@ function TournamentLiveViewContent({
   );
   const replayHeaderMetadata = useMemo(() => deriveReplayHeaderMetadata(selectedReplayHand), [selectedReplayHand]);
 
-  // PR-A1 (liveFeltCompact) status bar blinds. Live = the clock level; replay = the
-  // HAND's own posts (sb/ante scanned from its actions, bb via detectBigBlind — the
-  // clock may have moved on). bb<=0 → null → the bar hides the segment (never fake).
+  // Keep the displayed level tied to this hand, even after the live clock advances.
   const compactFelt = spectator && FEATURES.liveFeltCompact;
   const feltBlinds = useMemo(() => {
-    if (!compactFelt) return null;
     if (mode === "replay") {
-      if (!selectedReplayHand || replayBigBlind <= 0) return null;
-      const sb = selectedReplayHand.actions.find((a) => a.action_type === "post_sb")?.action_amount ?? 0;
-      const ante = selectedReplayHand.actions.find((a) => a.action_type === "post_ante")?.action_amount ?? 0;
-      return { sb, bb: replayBigBlind, ante };
+      if (!selectedReplayHand || replayBigBlind <= 0 || selectedReplayHand.small_blind == null) return null;
+      return { sb: selectedReplayHand.small_blind, bb: replayBigBlind, ante: selectedReplayHand.ante ?? 0, level: selectedReplayHand.level_number };
     }
-    if (!clockData || clockData.big_blind <= 0) return null;
-    return { sb: clockData.small_blind, bb: clockData.big_blind, ante: clockData.ante };
-  }, [compactFelt, mode, selectedReplayHand, replayBigBlind, clockData]);
+    return liveHandBlinds;
+  }, [mode, selectedReplayHand, replayBigBlind, liveHandBlinds]);
 
   // trackerShowdownRevealOrder (spectator): the player_ids in the order they should
   // table their cards at showdown — last aggressor on the final betting street first,
@@ -1915,6 +1920,7 @@ function TournamentLiveViewContent({
               chipPush={spectator && FEATURES.liveTableFx ? chipPush : null}
               compact={compactFelt}
               blinds={feltBlinds}
+              appearance={appearance.data}
               runout={!isReplay && liveRunout}
               collectCommittedChips={collectCommittedChips}
               revealOrder={revealOrder}

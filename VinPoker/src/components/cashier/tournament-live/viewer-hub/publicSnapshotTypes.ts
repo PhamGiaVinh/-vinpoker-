@@ -19,6 +19,9 @@ export interface PublicTablePlayer {
   avatarUrl: string | null;
   stack: number | null;
   holeCards: string[];
+  isFolded?: boolean;
+  isAllIn?: boolean;
+  lastAction?: { actionType: string; amount: number } | null;
 }
 
 export interface PublicTableSnapshot {
@@ -31,6 +34,8 @@ export interface PublicTableSnapshot {
   street: string | null;
   board: string[] | null;
   pot: number | null;
+  levelNumber?: number | null;
+  ante?: number | null;
   smallBlind: number | null;
   bigBlind: number | null;
   latestAction?: {

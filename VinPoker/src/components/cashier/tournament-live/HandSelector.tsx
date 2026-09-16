@@ -19,6 +19,10 @@ interface HandRow {
   community_cards: string[] | null;
   button_seat: number | null;
   pot_size: number | null;
+  tracker_big_blind?: number;
+  tracker_small_blind?: number | null;
+  tracker_bba?: number | null;
+  tracker_level_number?: number | null;
 }
 
 interface HandSelectorProps {
@@ -61,7 +65,7 @@ export function HandSelector({
     (async () => {
       let q = supabase
         .from("tournament_hands")
-        .select("id, hand_number, created_at, community_cards, button_seat, pot_size, status, is_voided, table_id")
+        .select("id, hand_number, created_at, community_cards, button_seat, pot_size, tracker_big_blind, tracker_small_blind, tracker_bba, tracker_level_number, status, is_voided, table_id")
         .eq("tournament_id", tournamentId)
         .eq("is_voided", false)
         .order("created_at", { ascending: false })
@@ -86,6 +90,7 @@ export function HandSelector({
           community_cards: h.community_cards,
           button_seat: h.button_seat,
           pot_size: h.pot_size,
+          tracker_big_blind: h.tracker_big_blind, tracker_small_blind: h.tracker_small_blind, tracker_bba: h.tracker_bba, tracker_level_number: h.tracker_level_number,
         }));
       setHands(rows);
       setLoadingList(false);
@@ -141,6 +146,7 @@ export function HandSelector({
           button_seat: row.button_seat || 1,
           community_cards: (row.community_cards as string[]) || [],
           stored_pot_size: row.pot_size,
+          big_blind: row.tracker_big_blind, small_blind: row.tracker_small_blind, ante: row.tracker_bba, level_number: row.tracker_level_number,
           players: (handPlayers ?? []).map((p: any) => ({
             player_id: p.player_id,
             seat_number: p.seat_number,
@@ -197,7 +203,7 @@ export function HandSelector({
       void (async () => {
         const { data, error } = await supabase
           .from("tournament_hands")
-          .select("id, table_id, hand_number, created_at, community_cards, button_seat, pot_size, status, is_voided")
+          .select("id, table_id, hand_number, created_at, community_cards, button_seat, pot_size, tracker_big_blind, tracker_small_blind, tracker_bba, tracker_level_number, status, is_voided")
           .eq("tournament_id", tournamentId)
           .eq("id", replayTargetState.handId)
           .eq("is_voided", false)

@@ -1,3 +1,5 @@
+import { TableLogo, TableBlinds } from '@/components/tracker/TableIdentity';
+import { tableAppearanceStyle, type TableAppearance } from '@/components/tracker/tableAppearance';
 // Presentational poker felt for the Tournament Live tracker.
 //
 // PURE component (no data-fetching / realtime / polling — that stays in the
@@ -312,7 +314,8 @@ export interface LiveFeltProps {
    * bb<=0 → the blinds segment is hidden (never fabricated). Live passes the clock
    * level; replay passes the HAND's own detected blinds.
    */
-  blinds?: { sb: number; bb: number; ante: number } | null;
+  blinds?: { sb: number; bb: number; ante: number; level?: number | null } | null;
+  appearance?: TableAppearance;
   /**
    * UAT wave 2 (Fix 1 companion): the live hand is an all-in RUNOUT — betting is
    * closed, the board is being dealt out. The status bar's to-act segment shows
@@ -380,6 +383,7 @@ export function LiveFelt({
   viewerLayout = false,
   compact = false,
   blinds = null,
+  appearance,
   runout = false,
   collectCommittedChips = false,
   showdownResult = null,
@@ -733,7 +737,8 @@ export function LiveFelt({
           aria-hidden="true"
           className="absolute inset-0"
           style={{
-            borderRadius: "9999px",
+            ...tableAppearanceStyle(appearance),
+            borderRadius: unified ? (portrait ? '38% / 22%' : '28% / 42%') : '9999px',
             // viewerLayout (V2) → RPT-style BLACK felt + a thin neon-green rim hint.
             // `neon` (old viewerNeon-only path) keeps the green felt; default =
             // burgundy operator/TV felt.
@@ -805,6 +810,7 @@ export function LiveFelt({
               )}
             </div>
           )}
+          {unified && <><TableLogo url={appearance?.logoUrl} /><TableBlinds {...blinds} /></>}
           {/* Board — revealed cards face up. VIEWER: undealt slots render NOTHING (the
               face-down placeholders sat in front of the top-center seats, covering their
               pods/stacks/bet chips preflop). Operator/TV keep the V-logo backs → byte-identical. */}
@@ -1141,7 +1147,7 @@ export function LiveFelt({
                 {/* Compact: face-DOWN backs are dropped entirely (RPT pods carry no cards
                     until a reveal) — the short felt can't afford the extra pod height.
                     Revealed cards (showdown/all-in) still render. Non-compact unchanged. */}
-                {(unified || !compactActive || (seat.hole_cards && seat.hole_cards.length === 2)) && (
+                {!seat.is_folded && (unified || !compactActive || (seat.hole_cards && seat.hole_cards.length === 2)) && (
                 <div
                   data-testid="seat-holecards"
                   className={`mt-0.5 flex justify-center gap-0.5${unified ? ' tracker-seat-cards' : ''}`}

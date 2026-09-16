@@ -1,3 +1,5 @@
+import { TableLogo, TableBlinds } from './TableIdentity';
+import { tableAppearanceStyle } from './tableAppearance';
 // PR-A — Tracker Racetrack Hand-Input UI: the felt + 9 physical seats + board + pot.
 // Presentational only; decides nothing about pot/winner/stack/legality.
 //
@@ -89,6 +91,7 @@ function CommunityCard({ card }: { card: string }) {
 /** Rich per-seat hole cards: face-down backs by default; faces only at showdown/reveal
  *  for revealed, non-mucked players (never leaks a value). */
 function HoleCards({ seat, showFaces, cardStyle }: { seat: SeatVM; showFaces: boolean; cardStyle?: CSSProperties }) {
+  if (seat.isFolded) return null;
   const cards = seat.holeCards ?? [];
   const revealed = showFaces && !seat.isMucked && cards.some(Boolean);
   return (
@@ -434,6 +437,8 @@ export function TrackerRacetrack({
   betChips = false,
   dealerFix = false,
   feltV2 = false,
+  appearance,
+  blinds,
 }: TrackerRacetrackProps) {
   const { t } = useTranslation();
   const unified = !!useTrackerCardStyle();
@@ -513,7 +518,7 @@ export function TrackerRacetrack({
       ref={layout.ref}
       data-tracker-table={unified ? (portrait ? 'portrait' : 'landscape') : undefined}
       className={unified ? 'tracker-unified relative mx-auto my-4 w-full rounded-[9999px]' : `relative w-full rounded-[9999px] min-h-[360px] ${rich ? (portrait ? 'overflow-visible' : 'overflow-hidden') : 'overflow-hidden aspect-[13/6]'}`}
-      style={unified ? { ...TRACKER_FELT_STYLE, aspectRatio: sharedGeo.aspect, maxWidth: sharedGeo.maxW, containerType: 'inline-size' } : rich ? { ...RICH_FELT, aspectRatio: portraitFix ? PORTRAIT_FIX_ASPECT : geo.aspect, minHeight: portraitFix ? PORTRAIT_FIX_MIN_H : undefined, containerType: 'inline-size' } : FELT}
+      style={unified ? { ...TRACKER_FELT_STYLE, ...tableAppearanceStyle(appearance), borderRadius: portrait ? '38% / 22%' : '28% / 42%', aspectRatio: sharedGeo.aspect, maxWidth: sharedGeo.maxW, containerType: 'inline-size' } : rich ? { ...RICH_FELT, aspectRatio: portraitFix ? PORTRAIT_FIX_ASPECT : geo.aspect, minHeight: portraitFix ? PORTRAIT_FIX_MIN_H : undefined, containerType: 'inline-size' } : FELT}
     >
       {/* Center: pot + board */}
       <div
@@ -525,6 +530,7 @@ export function TrackerRacetrack({
             rich ? 'tracker-display text-[hsl(var(--poker-gold)/0.7)]' : 'text-white/40'
           }`}
         >
+          {unified && <TableLogo url={appearance?.logoUrl} />}
           {t('liveHub.felt.potTotal', 'Tổng Pot')}
         </div>
         <div
@@ -555,6 +561,7 @@ export function TrackerRacetrack({
             ))}
           </div>
         )}
+        {unified && <TableBlinds {...blinds} />}
         <div data-testid="board-cards" className="mt-2.5 inline-flex justify-center gap-1.5">
           {boardCards.map((card, i) =>
             rich || unified ? (

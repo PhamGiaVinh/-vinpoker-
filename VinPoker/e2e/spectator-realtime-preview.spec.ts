@@ -65,6 +65,34 @@ test("simultaneous tables show only each hand's recorded cards", async ({ page }
   await expect(second.locator('[data-card-code="QS"]')).toHaveCount(0);
 });
 
+test("four tables update fold, call, all-in and raise without opening a table", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/__dev/viewer-rpt?view=tables&motion=live");
+  const expected = [
+    ["Bàn 14", "fold"], ["Bàn 15", "call"],
+    ["Bàn 20", "all_in"], ["Bàn 21", "raise"],
+  ] as const;
+  for (const [name, action] of expected) {
+    const table = page.getByRole("article", { name });
+    await expect(table.locator(`[data-action="${action}"]`)).toBeVisible();
+    await expect(table.locator("[data-testid=table-center-blinds]")).toContainText("Level 11");
+  }
+  await expect(page.getByRole("article", { name: "Bàn 14" }).locator("[data-action=call]")).toBeVisible({ timeout: 5000 });
+  await expect(page.getByRole("article", { name: "Bàn 20" }).locator("[data-action=raise]")).toBeVisible();
+  await expect(page.locator("[data-hand-id]")).toHaveCount(4);
+});
+
+test("appearance preview changes felt before save without touching live data", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/__dev/viewer-rpt?view=appearance");
+  const preview = page.locator(".spectator-mini-table");
+  await expect(preview).toBeVisible();
+  await page.getByRole("button", { name: /Màu mặt bàn #521b23/ }).click();
+  await expect(preview).toHaveCSS("--table-felt", "#521b23");
+  await expect(page.getByText("Dữ liệu minh họa · thay đổi chỉ áp dụng sau khi lưu.")).toBeVisible();
+  await page.screenshot({ path: path.join(shots, "spectator-table-appearance-mobile-390.png"), fullPage: true });
+});
+
 for (const viewport of [{ width: 320, height: 720 }, { width: 1366, height: 768 }]) {
   test(`nine-seat table keeps player boxes separate at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);

@@ -1,9 +1,9 @@
 .tracker-unified { min-width: 0; font-family: Arial, sans-serif; }
 .tracker-unified .tracker-seat { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 44px; }
-.tracker-unified .tracker-seat-avatar { align-self: flex-start; position: relative; z-index: 1; min-height: var(--tracker-top-height); }
-.tracker-unified .tracker-seat-cards { position: absolute; right: 0; top: 0; margin: 0; display: flex; gap: 4px; }
+.tracker-unified .tracker-seat-avatar { align-self: center; position: relative; z-index: 1; min-height: var(--tracker-top-height); }
+.tracker-unified .tracker-seat-cards { position: absolute; left: 50%; transform: translateX(-50%); z-index: 2; top: 0; margin: 0; display: flex; gap: 4px; }
 .tracker-unified .tracker-seat-cards > div { margin: 0; }
-.tracker-unified .tracker-seat-plate { width: 100%; box-sizing: border-box; margin-top: 5px; padding: 3px 4px; border: 1px solid #7c785b80; border-radius: 7px; background: #07110ff2; color: #f1f5f2; line-height: 1.15; min-width: 0; }
+.tracker-unified .tracker-seat-plate { position: relative; z-index: 3; width: 100%; box-sizing: border-box; margin-top: 5px; padding: 3px 4px; border: 1px solid #7c785b80; border-radius: 7px; background: #07110ff2; color: #f1f5f2; line-height: 1.15; min-width: 0; }
 .tracker-unified .tracker-seat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; font-size: clamp(10px,1.4cqi,13px); font-weight: 600; }
 .tracker-unified .tracker-seat-stack { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; color: #86ddb5; font-size: clamp(11px,1.5cqi,14px); font-weight: 700; font-variant-numeric: tabular-nums; }
 .tracker-unified [data-seat-selected='true'] { outline: 2px solid #d7b764; outline-offset: 4px; border-radius: 8px; }

@@ -3485,4 +3485,31 @@
       "loss": "Thua"
     }
   }
+,
+  "tableAppearance": {
+    "title": "Giao diện bàn chơi",
+    "description": "Áp dụng màu và logo cho tất cả bàn của giải này.",
+    "feltColor": "Màu mặt bàn",
+    "railColor": "Màu viền bàn",
+    "logo": "Logo trên bàn",
+    "uploadLogo": "Tải logo lên",
+    "fileHelp": "PNG, JPG hoặc WebP · tối đa 2 MB. Nên dùng ảnh nền trong suốt.",
+    "removeLogo": "Gỡ logo",
+    "reset": "Về mặc định",
+    "preview": "Xem trước",
+    "previewNote": "Dữ liệu minh họa · thay đổi chỉ áp dụng sau khi lưu.",
+    "save": "Lưu giao diện",
+    "saving": "Đang xử lý…",
+    "saved": "Đã lưu giao diện bàn",
+    "saveError": "Chưa lưu được. Vui lòng thử lại.",
+    "uploadError": "Không tải được logo. Vui lòng thử lại.",
+    "loading": "Đang tải giao diện…",
+    "loadError": "Không tải được giao diện đã lưu.",
+    "retry": "Thử lại",
+    "blindsUnavailable": "Chưa có blind của hand",
+    "level": "Level {{n}}",
+    "noHandData": "Chưa có dữ liệu",
+    "player": "Người chơi",
+    "playerCards": "Bài của {{name}}"
+  }
 }

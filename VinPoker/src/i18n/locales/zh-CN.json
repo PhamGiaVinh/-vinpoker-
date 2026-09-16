@@ -3124,4 +3124,31 @@
       "loss": "输"
     }
   }
+,
+  "tableAppearance": {
+    "title": "牌桌外观",
+    "description": "将颜色和标志应用到本赛事的所有牌桌。",
+    "feltColor": "桌布颜色",
+    "railColor": "桌边颜色",
+    "logo": "牌桌标志",
+    "uploadLogo": "上传标志",
+    "fileHelp": "PNG、JPG 或 WebP · 最大 2 MB。建议使用透明背景。",
+    "removeLogo": "移除标志",
+    "reset": "恢复默认",
+    "preview": "预览",
+    "previewNote": "示例数据 · 保存后生效。",
+    "save": "保存外观",
+    "saving": "处理中…",
+    "saved": "牌桌外观已保存",
+    "saveError": "保存失败，请重试。",
+    "uploadError": "标志上传失败，请重试。",
+    "loading": "正在加载外观…",
+    "loadError": "无法加载已保存的外观。",
+    "retry": "重试",
+    "blindsUnavailable": "本手牌盲注不可用",
+    "level": "第 {{n}} 级",
+    "noHandData": "暂无牌局数据",
+    "player": "玩家",
+    "playerCards": "{{name}} 的手牌"
+  }
 }

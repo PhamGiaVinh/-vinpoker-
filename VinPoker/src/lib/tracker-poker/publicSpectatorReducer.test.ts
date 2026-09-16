@@ -42,3 +42,16 @@ describe("reducePublicSpectatorPayload", () => {
     expect(result.items).toEqual([item]);
   });
 });
+
+it("publishes each seat's last confirmed action and fold state without changing chip totals", () => {
+  const players = [{ playerId: 'a', entryNumber: 1, seatNumber: 1, startingStack: 1000 }, { playerId: 'b', entryNumber: 1, seatNumber: 2, startingStack: 1000 }];
+  const payload = { items: [{ tableId: '1', trackerState: 'live', buttonSeat: 1, players, actions: [
+    { playerId: 'a', entryNumber: 1, street: 'preflop', actionType: 'post_sb', amount: 50, order: 1 },
+    { playerId: 'b', entryNumber: 1, street: 'preflop', actionType: 'post_bb', amount: 100, order: 2 },
+    { playerId: 'a', entryNumber: 1, street: 'preflop', actionType: 'fold', amount: 0, order: 3 },
+  ] }, { tableId: '2', trackerState: 'live', buttonSeat: 1, players, actions: [] }] };
+  const result = reducePublicSpectatorPayload('tables', payload) as { items: { pot: number; players: { stack: number; isFolded: boolean; lastAction: unknown }[] }[] };
+  expect(result.items[0].players[0]).toMatchObject({ isFolded: true, stack: 950, lastAction: { actionType: 'fold', amount: 0 } });
+  expect(result.items[1].players[0]).toMatchObject({ isFolded: false, stack: 1000, lastAction: null });
+  for (const table of result.items) expect(table.pot + table.players.reduce((sum, player) => sum + player.stack, 0)).toBe(2000);
+});

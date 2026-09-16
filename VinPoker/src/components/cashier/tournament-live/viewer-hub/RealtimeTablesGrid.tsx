@@ -1,48 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, History, Radio, Search, Users } from "lucide-react";
-import { PokerCard } from "../PokerVisuals";
-import { formatViewerBBOrUnavailable } from "@/lib/tracker-poker/viewerAmounts";
+import { SpectatorMiniTable } from "./SpectatorMiniTable";
+import type { TableAppearance } from "@/components/tracker/tableAppearance";
 import "./realtimeTablesGrid.css";
 import type { PublicFreshness, PublicTableCatalogItem, PublicTableSnapshot } from "./publicSnapshotTypes";
 
 const PAGE_SIZE = 6;
-const SEAT_POSITIONS = [
-  [50, 9], [72, 16], [88, 36], [88, 67], [72, 87],
-  [50, 91], [28, 87], [12, 67], [12, 36],
-] as const;
-
-function MiniTable({ table }: { table: PublicTableSnapshot }) {
-  const playersBySeat = new Map(table.players.slice(0, 9).map((player) => [player.seatNumber, player]));
-  const latestActor = table.latestAction ? table.players.find((player) => player.playerId === table.latestAction?.playerId && player.entryNumber === table.latestAction.entryNumber) : null;
-  return (
-    <div className="spectator-mini-table relative mx-auto w-full rounded-[46%] border border-amber-400/55 bg-[radial-gradient(circle_at_50%_45%,#174b39,#0b2b22_70%)] shadow-[inset_0_0_0_5px_rgba(0,0,0,.34),0_18px_45px_rgba(0,0,0,.2)]" data-hand-id={table.handId ?? undefined}>
-      <div className="absolute inset-[27%_22%] flex flex-col items-center justify-center text-center">
-        <span className="tracker-num text-sm font-black text-amber-200">{table.pot == null ? "Chưa có dữ liệu" : `POT ${formatViewerBBOrUnavailable(table.pot, table.bigBlind ?? 0)}`}</span>
-        {table.board && table.board.length > 0 && <span className="mt-1 flex justify-center gap-1">{table.board.map((card, index) => <PokerCard key={`${index}:${card}`} card={card} size="sm" className="spectator-mini-card" />)}</span>}
-        {table.latestAction && <span className="mt-2 max-w-full truncate rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-300">{latestActor?.name ?? "Người chơi"} · {table.latestAction.actionType.replaceAll("_", " ")}{table.latestAction.amount != null && table.latestAction.amount > 0 ? ` ${formatViewerBBOrUnavailable(table.latestAction.amount, table.bigBlind ?? 0)}` : ""}</span>}
-      </div>
-      {Array.from({ length: 9 }, (_, index) => {
-        const seatNumber = index + 1;
-        const player = playersBySeat.get(seatNumber);
-        const [left, top] = SEAT_POSITIONS[index];
-        if (!player) return <span key={seatNumber} className="absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-dashed border-amber-300/35 bg-black/55 text-[8px] text-amber-100/60" style={{ left: `${left}%`, top: `${top}%` }}>{seatNumber}</span>;
-        return <div key={`${player.playerId}:${player.entryNumber}`} className="spectator-mini-seat absolute w-[14%] max-w-[5.2rem] -translate-x-1/2 -translate-y-1/2 text-center" style={{ left: `${left}%`, top: `${top}%` }} data-seat-number={seatNumber} title={player.name}>
-          <div className="relative mx-auto flex h-8 w-8 items-center justify-center overflow-visible rounded-full border border-amber-300/80 bg-zinc-900 text-[10px] font-black text-white">
-            {player.avatarUrl ? <img src={player.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" /> : player.name.slice(0, 2).toUpperCase()}
-            {table.buttonSeat === player.seatNumber ? <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-300 px-0.5 text-[7px] font-black text-black">D</span> : null}
-          </div>
-          {player.holeCards?.length > 0 && <div className="spectator-mini-holes mx-auto flex justify-center gap-0.5" aria-label={`Bài của ${player.name}`}>
-            {player.holeCards.slice(0, 2).map((card, cardIndex) => <PokerCard key={`${cardIndex}:${card}`} card={card} size="xs" className="spectator-mini-hole-card" />)}
-          </div>}
-          <div className="spectator-mini-label mt-0.5 truncate rounded-md border border-amber-400/35 bg-black/75 px-1 py-0.5 font-bold text-white">{player.name}</div>
-          <div className="spectator-mini-label tracker-num font-bold text-emerald-300">{formatViewerBBOrUnavailable(player.stack, table.bigBlind ?? 0)}</div>
-        </div>;
-      })}
-    </div>
-  );
-}
-
-export function RealtimeTablesGrid({ catalog, tables, freshness, onVisibleTableIds, onView, onHistory }: { catalog: PublicTableCatalogItem[]; tables: PublicTableSnapshot[]; freshness?: PublicFreshness; onVisibleTableIds: (ids: string[]) => void; onView: (id: string) => void; onHistory: (id: string) => void }) {
+export function RealtimeTablesGrid({ catalog, tables, freshness, appearance, onVisibleTableIds, onView, onHistory }: { appearance?: TableAppearance; catalog: PublicTableCatalogItem[]; tables: PublicTableSnapshot[]; freshness?: PublicFreshness; onVisibleTableIds: (ids: string[]) => void; onView: (id: string) => void; onHistory: (id: string) => void }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const filtered = useMemo(() => {
@@ -72,7 +36,7 @@ export function RealtimeTablesGrid({ catalog, tables, freshness, onVisibleTableI
         const table = tableById.get(summary.tableId);
         return <article key={summary.tableId} className="min-w-0 rounded-2xl border border-border/55 bg-card/55 p-3 sm:p-4 [container-type:inline-size]" aria-label={summary.name}>
         <header className="mb-3 flex items-center justify-between gap-2"><div className="min-w-0"><h3 className="truncate text-lg font-black">{summary.name}</h3><p className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3.5 w-3.5" />{summary.playerCount} người chơi {table?.trackerState === "live" && <span className="inline-flex items-center gap-1 text-emerald-400"><Radio className="h-3 w-3" /> LIVE</span>}</p></div><button type="button" onClick={() => onHistory(summary.tableId)} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-border/60 px-3 text-xs font-bold"><History className="h-4 w-4" /> Lịch sử</button></header>
-        {table ? <button type="button" onClick={() => onView(table.tableId)} className="block min-h-11 w-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--viewer-neon))]" aria-label={`Xem ${table.name}`}><MiniTable table={table} /></button> : <div className="flex aspect-[1.9/1] items-center justify-center rounded-[46%] border border-dashed border-border/60 text-xs text-muted-foreground">Đang tải dữ liệu bàn…</div>}
+        {table ? <button type="button" onClick={() => onView(table.tableId)} className="block min-h-11 w-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--viewer-neon))]" aria-label={`Xem ${table.name}`}><SpectatorMiniTable table={table} appearance={appearance} /></button> : <div className="flex aspect-[1.9/1] items-center justify-center rounded-[46%] border border-dashed border-border/60 text-xs text-muted-foreground">Đang tải dữ liệu bàn…</div>}
       </article>;
       })}
     </div>}

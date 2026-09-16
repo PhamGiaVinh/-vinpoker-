@@ -1,3 +1,4 @@
+import { TableAppearanceEditor } from "@/components/tracker/TableAppearanceEditor";
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
@@ -363,7 +364,7 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
         (() => {
           const TAB_DEFS = [
             { value: "table_map", icon: Grid3x3, label: "Sơ đồ bàn", render: () => <FloorTableMapPanel tournament={selectedTournament} refreshTrigger={refreshTrigger} /> },
-            { value: "live_view", icon: Eye, label: t("tournamentLive.liveView.title"), render: () => <TournamentLiveView tournamentId={selectedTournament.id} /> },
+            { value: "live_view", icon: Eye, label: t("tournamentLive.liveView.title"), render: () => <div className="space-y-3"><div className="flex justify-end"><TableAppearanceEditor tournamentId={selectedTournament.id} /></div><TournamentLiveView tournamentId={selectedTournament.id} /></div> },
             { value: "clock", icon: Clock, label: t("tournamentLive.clock.title"), render: () => <ClockPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
             { value: "queue", icon: ListOrdered, label: "Hàng chờ", render: () => (
               <>

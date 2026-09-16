@@ -1,3 +1,6 @@
+import { TableAppearanceForm } from "@/components/tracker/TableAppearanceEditor";
+import { DEFAULT_TABLE_APPEARANCE } from "@/components/tracker/tableAppearance";
+import type { PublicTableSnapshot } from "@/components/cashier/tournament-live/viewer-hub/publicSnapshotTypes";
 // DEV-only visual harness for the public Viewer shell. The route is gated in
 // App.tsx and tree-shaken from production. All content is deterministic fixture
 // data; no Supabase client, auth state, or real player data is used here.
@@ -84,7 +87,7 @@ function ViewerRPTPreviewContent() {
   const [params] = useSearchParams();
   const { t, i18n } = useTranslation();
   const requestedView = params.get("view") || "updates";
-  const view = requestedView === "replay" ? "replay" : views.some((item) => item.id === requestedView) ? requestedView : "updates";
+  const view = ["replay", "appearance"].includes(requestedView) ? requestedView : views.some((item) => item.id === requestedView) ? requestedView : "updates";
   const state = params.get("state") || "ready";
   const language = params.get("lang") === "en" ? "en" : "vi";
   const replayHand = useMemo(() => buildFixtureHand("allin-sidepots", 6), []);
@@ -97,13 +100,28 @@ function ViewerRPTPreviewContent() {
 
   const bb = detectBigBlind(replayHand);
   const formatBB = (chips: number) => bb > 0 ? `${(chips / bb).toFixed(1).replace(/\.0$/, "")} BB` : null;
-  const previewTables = [{ tableId: "table-1", tableSessionId: "session-1", name: "Bàn 14", handId: "hand-141", handNumber: 141, buttonSeat: 2, street: "turn", board: ["4S", "AC", "6D", "QH"], pot: 18_600_000, smallBlind: 150_000, bigBlind: 300_000, trackerState: "live" as const, players: visualSeats.slice(0, 6).map((seat, index) => ({ entryId: `entry-${index}`, playerId: seat.player_id, entryNumber: 1, seatNumber: seat.seat_number, name: fixtureNames[index], avatarUrl: null, stack: seat.chip_count, holeCards: index === 0 ? ["QS", "QC"] : [] })) }];
+  const [tick, setTick] = useState(0);
+  const animated = params.get("motion") === "live";
+  useEffect(() => { if (!animated) return; const timer = setInterval(() => setTick(n => n + 1), 2000); return () => clearInterval(timer); }, [animated]);
+  const previewTables: PublicTableSnapshot[] = [{ tableId: "table-1", tableSessionId: "session-1", name: "Bàn 14", handId: "hand-141", handNumber: 141, buttonSeat: 2, street: "turn", board: ["4S", "AC", "6D", "QH"], pot: 18_600_000, smallBlind: 150_000, bigBlind: 300_000, levelNumber: 11, ante: 300_000, trackerState: "live" as const, players: visualSeats.slice(0, 6).map((seat, index) => ({ entryId: `entry-${index}`, playerId: seat.player_id, entryNumber: 1, seatNumber: seat.seat_number, name: fixtureNames[index], avatarUrl: null, stack: 12000000 + index * 300000, isFolded: false, isAllIn: false, holeCards: index === 0 ? ["QS", "QC"] : [] })) }];
   if (params.get("tables") === "dense") previewTables[0].players.push(...[7, 8, 9].map((seatNumber) => ({
     entryId: `dense-entry-${seatNumber}`, playerId: `dense-player-${seatNumber}`, entryNumber: 1,
-    seatNumber, name: `TEST ${seatNumber}`, avatarUrl: null, stack: 2_000_000,
+    seatNumber, isFolded: false, isAllIn: false, name: `TEST ${seatNumber}`, avatarUrl: null, stack: 2_000_000,
     holeCards: seatNumber === 8 ? ["2S", "2H"] : [],
   })));
   previewTables.push({ ...previewTables[0], tableId: "table-2", tableSessionId: "session-2", name: "Bàn 15", handId: "hand-28", handNumber: 28, street: "flop", board: ["AS", "TH", "7C"], pot: 3_000_000, players: previewTables[0].players.slice(0, 6).map((player, index) => ({ ...player, entryId: `other-entry-${index}`, playerId: `other-player-${index}`, name: ["HẢI", "TRANG", "PHÚC", "QUÂN", "THẢO", "ĐỨC"][index], holeCards: index === 1 ? ["8D", "8H"] : [] })) });
+  for (const [i, name] of ["Bàn 20", "Bàn 21"].entries()) previewTables.push({ ...previewTables[i], tableId: `table-${i + 3}`, name, handId: `independent-${i}`, board: i === 0 ? [] : ["2S", "JH", "6C", "9D", "7D"], pot: i === 0 ? 450000 : 9000000 });
+  const labels = ["fold", "call", "all_in", "raise"];
+  previewTables.forEach((table, i) => {
+    const actorIndex = i === 0 ? 2 : i === 1 ? 3 : 4;
+    const actionType = labels[(i + tick) % labels.length];
+    const amount = actionType === 'fold' ? 0 : actionType === 'all_in' ? 15000000 : 600000;
+    table.players = table.players.map((player, index) => ({ ...player,
+      ...(index === actorIndex ? { isFolded: actionType === 'fold', isAllIn: actionType === 'all_in', lastAction: { actionType, amount }, stack: actionType === 'all_in' ? 0 : 12000000 - tick * 300000 } : {}) }));
+    const actor = table.players[actorIndex];
+    table.latestAction = { playerId: actor.playerId, entryNumber: 1, actionType, amount };
+    table.pot = (table.pot ?? 0) + tick * (i + 1) * 300000;
+  });
   const previewCatalog = params.get("tables") === "many"
     ? Array.from({ length: 8 }, (_, index) => ({
       tableId: index === 0 ? previewTables[0].tableId : `table-${index + 1}`,
@@ -121,8 +139,9 @@ function ViewerRPTPreviewContent() {
       data-language={language}
       className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_12%_-8%,hsl(var(--viewer-neon)_/_0.12),transparent_34%),radial-gradient(circle_at_88%_22%,hsl(var(--poker-felt)_/_0.1),transparent_31%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--card)_/_0.45))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] text-foreground sm:pl-[max(1.25rem,env(safe-area-inset-left))] sm:pr-[max(1.25rem,env(safe-area-inset-right))] sm:pt-4 lg:pl-[max(1.75rem,env(safe-area-inset-left))] lg:pr-[max(1.75rem,env(safe-area-inset-right))]"
     >
+      <p className="mb-2 text-center text-xs text-amber-200">DEMO · Dữ liệu minh họa{animated ? " · 4 bàn tự cập nhật cùng lúc" : ""}</p>
       <div className="mx-auto min-w-0 max-w-[1480px] space-y-3 sm:space-y-4">
-        <LiveHubHeader rpt title="VinPoker Sakura Championship" clubName="Royal Poker Club" liveTableCount={2} guarantee={3_000_000_000} buyIn={15_000_000} startingStack={50_000} playersRemaining={10} lastUpdated={new Date()} onShare={() => {}} />
+        <LiveHubHeader rpt title="VinPoker Sakura Championship" clubName="Royal Poker Club" liveTableCount={4} guarantee={3_000_000_000} buyIn={15_000_000} startingStack={50_000} playersRemaining={10} lastUpdated={new Date()} onShare={() => {}} />
         <LiveStatsBar prizePool={3_420_000_000} playersRemaining={10} chipLeader={{ playerName: "KIÊN", seatNumber: 2, chipCount: 21_300_000 }} rpt />
 
         {view !== "replay" && (
@@ -141,7 +160,7 @@ function ViewerRPTPreviewContent() {
           </nav>
         )}
 
-        {state === "loading" ? <FixtureLoading /> : state === "error" ? <FixtureError /> : state === "empty" ? <FixtureEmpty /> : view === "replay" ? (
+        {view === "appearance" ? <TableAppearanceForm initial={DEFAULT_TABLE_APPEARANCE} onSave={async () => {}} onUpload={async file => URL.createObjectURL(file)} /> : state === "loading" ? <FixtureLoading /> : state === "error" ? <FixtureError /> : state === "empty" ? <FixtureEmpty /> : view === "replay" ? (
           <section className="grid min-w-0 grid-cols-1 gap-3 min-[1200px]:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] min-[1200px]:items-start">
             <div className="min-w-0 rounded-2xl border border-border/55 bg-card/55 p-2 sm:p-3">
               <LiveFelt seats={visualSeats} lastActorId={frame.lastActorId} displayCards={frame.displayCards} potSize={frame.potSize} potBreakdown={frame.potBreakdown} multiTableUnresolved={false} handNumber={replayHand.hand_number} latestAction={frame.latestAction} formatBB={formatBB} buttonSeat={replayHand.button_seat} viewerLayout compact tableFx={false} blinds={{ sb: bb / 2, bb, ante: 0 }} />

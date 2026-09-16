@@ -9,8 +9,8 @@ export const TRACKER_TABLE_GEOMETRY = {
   landscape: { aspect: '1.9 / 1', seats: landscapeSeats, centerTop: '51%', centerW: '52%', vSize: '0px', maxW: '1200px' },
 };
 export const TRACKER_FELT_STYLE: CSSProperties = {
-  background: 'radial-gradient(ellipse at 50% 42%, #163f33, #0c251e 66%, #07120f)',
-  boxShadow: 'inset 0 0 0 7px #0a0d0c, inset 0 0 0 8px #a68b4c, inset 0 0 0 13px #111b17, inset 0 0 50px #0008, 0 12px 28px #0005',
+  background: 'radial-gradient(ellipse at 50% 42%, transparent, #0009), var(--table-felt, #143d32)',
+  boxShadow: 'inset 0 0 0 7px #0a0d0c, inset 0 0 0 8px var(--table-rail, #a68b4c), inset 0 0 0 13px #111b17, inset 0 0 50px #0008, 0 12px 28px #0005',
 };
 export function trackerBetPoint(point: { l: number; t: number }, portrait: boolean) {
   if (!portrait) return { l: point.l + (50 - point.l) * 0.3, t: point.t + (51 - point.t) * 0.3 };
@@ -26,8 +26,8 @@ export function trackerTableSizes(portrait: boolean) {
   return {
     board: { width: board, height: 'auto', aspectRatio: '5 / 7' } as CSSProperties,
     hole: { width: hole, height: 'auto', aspectRatio: '5 / 7' } as CSSProperties,
-    // Reserve the actual avatar + two complete cards, including both gaps.
-    pod: { width: `calc(${avatar} + ${hole} * 2 + 8px)`, '--tracker-top-height': `calc(${hole} * 1.4)` } as CSSProperties,
+    // Cards sit over the avatar; reserve both complete faces with a small gap.
+    pod: { width: `calc(${hole} * 2 + 8px)`, '--tracker-top-height': `calc(${hole} * 1.4)` } as CSSProperties,
     avatar: { width: avatar, height: avatar } as CSSProperties,
   };
 }
