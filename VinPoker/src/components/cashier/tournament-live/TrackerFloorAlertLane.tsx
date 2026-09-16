@@ -4,8 +4,8 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { HandHistoryPanel } from "./HandHistoryPanel";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FloorAlertHandReview } from "./FloorAlertHandReview";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import {
   listTrackerFloorAlerts,
@@ -192,14 +192,17 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
       </div>
       <Dialog open={!!reviewAlert} onOpenChange={(open) => { if (!open) setReviewAlert(null); }}>
         <DialogContent className="max-h-[90dvh] max-w-5xl overflow-y-auto">
-          <DialogHeader><DialogTitle>Nhật ký toàn ván · chỉ xem</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Nhật ký toàn ván · chỉ xem</DialogTitle>
+            <DialogDescription>Xem action đã ghi; không sửa hoặc chốt kết quả từ cửa sổ này.</DialogDescription>
+          </DialogHeader>
           {reviewAlert?.hand_id && (
-            <HandHistoryPanel
+            <FloorAlertHandReview
               key={reviewAlert.hand_id}
               tournamentId={reviewAlert.tournament_id}
-              initialTableId={reviewAlert.tournament_table_id}
-              initialHandId={reviewAlert.hand_id}
-              readOnly
+              tournamentTableId={reviewAlert.tournament_table_id}
+              physicalTableId={reviewAlert.physical_table_id}
+              handId={reviewAlert.hand_id}
             />
           )}
         </DialogContent>

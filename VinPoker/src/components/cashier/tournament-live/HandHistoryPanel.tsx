@@ -141,7 +141,6 @@ type HandHistoryPanelProps = {
   onSelectionChange?: (selection: HandHistorySelection) => void;
   workspaceMode?: boolean;
   enableHistoricalBatchControls?: boolean;
-  readOnly?: boolean;
 };
 
 type TrackerTableOption = {
@@ -196,7 +195,6 @@ export function HandHistoryPanel({
   onSelectionChange,
   workspaceMode = false,
   enableHistoricalBatchControls = false,
-  readOnly = false,
 }: HandHistoryPanelProps) {
   const [hands, setHands] = useState<HandRecord[]>([]);
   const [selectedHandId, setSelectedHandId] = useState<string | null>(initialHandId);
@@ -738,7 +736,7 @@ export function HandHistoryPanel({
 
   return (
     <div className="space-y-3">
-      {!readOnly && FEATURES.trackerHistoricalSettlementDisplay && enableHistoricalBatchControls && settlementCandidates.length > 0 && (
+      {FEATURES.trackerHistoricalSettlementDisplay && enableHistoricalBatchControls && settlementCandidates.length > 0 && (
         <HistoricalSettlementBatchControl
           tournamentId={tournamentId}
           candidates={settlementCandidates}
@@ -861,7 +859,7 @@ export function HandHistoryPanel({
                     <ExternalLink className="mr-2 h-4 w-4" /> Xem replay
                   </Link>
                 </Button>
-                {!readOnly && FEATURES.trackerHandHistoryEdit && editSupported && !editMode &&
+                {FEATURES.trackerHandHistoryEdit && editSupported && !editMode &&
                   selectedHand.status === "completed" && !selectedHand.is_voided && (
                     <Button
                       type="button"
@@ -877,7 +875,7 @@ export function HandHistoryPanel({
               </div>
             </div>
 
-            {!readOnly && FEATURES.trackerHistoricalSettlementDisplay && !editMode &&
+            {FEATURES.trackerHistoricalSettlementDisplay && !editMode &&
               selectedHand.status === "completed" && !selectedHand.is_voided && (
                 <HistoricalSettlementDisplayControl
                   tournamentId={tournamentId}

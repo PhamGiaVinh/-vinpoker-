@@ -40,9 +40,8 @@ vi.mock("@/lib/tracker-floor-alerts/useTrackerFloorAlertLocations", () => ({
   useTrackerFloorAlertLocations: () => () => ({ tableNumber: 5, handNumber: 12 }),
 }));
 
-vi.mock("./HandHistoryPanel", () => ({
-  HandHistoryPanel: ({ initialHandId, readOnly }: { initialHandId: string; readOnly: boolean }) =>
-    <p>{initialHandId} {readOnly ? "chỉ xem" : "có sửa"}</p>,
+vi.mock("./FloorAlertHandReview", () => ({
+  FloorAlertHandReview: ({ handId }: { handId: string }) => <p>{handId} chỉ xem</p>,
 }));
 
 import { TrackerFloorAlertLane } from "./TrackerFloorAlertLane";
