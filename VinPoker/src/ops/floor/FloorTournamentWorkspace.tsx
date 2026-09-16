@@ -7,6 +7,8 @@ import OpsTournamentCockpit from "@/pages/ops/OpsTournamentCockpit";
 import { TrackerFloorAlertLane } from "@/components/cashier/tournament-live/TrackerFloorAlertLane";
 import { cn } from "@/lib/utils";
 import { useTournamentOps } from "@/ops/workspace/TournamentOpsProvider";
+import { OPS_CASHIER_MUTATIONS_ENABLED } from "@/ops/opsMutations";
+import FloorRefundClearance from "./FloorRefundClearance";
 import {
   FLOOR_TOURNAMENT_SECTIONS,
   type FloorTournamentSection,
@@ -91,6 +93,7 @@ export default function FloorTournamentWorkspace({ section }: { section: FloorTo
           {section === "tables"
             ? <OpsTables tournamentId={snapshot.tournamentId} />
             : <OpsTournamentCockpit section={section} />}
+          {section === "players" && OPS_CASHIER_MUTATIONS_ENABLED && <FloorRefundClearance />}
         </div>
       </section>
 

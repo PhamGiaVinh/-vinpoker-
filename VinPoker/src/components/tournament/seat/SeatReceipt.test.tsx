@@ -49,4 +49,14 @@ describe("SeatReceipt", () => {
     expect(screen.getByText("Chưa xếp bàn")).toBeInTheDocument();
     expect(screen.queryByText(/Bàn .*Ghế/)).not.toBeInTheDocument();
   });
+
+  it("marks a paid refund without presenting the receipt as confirmed", () => {
+    render(<SeatReceipt tournamentName="TEST" playerName="Người chơi" status="refunded"
+      tableNumber={null} seatNumber={null} receiptCode="SEAT-RECEIPT-QR"
+      qrValue="SEAT-RECEIPT-QR" totalPay={6_600_000} />);
+
+    expect(screen.getByText("Đã hoàn tiền")).toBeInTheDocument();
+    expect(screen.queryByText("Đã xác nhận")).not.toBeInTheDocument();
+    expect(screen.getByText("6.600.000 VND")).toBeInTheDocument();
+  });
 });

@@ -60,11 +60,12 @@ export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
       return;
     }
     win.document.write(
-      `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${displayReceipt?.confirmationCode ?? displayReceipt?.receiptCode ?? "Receipt"}</title>` +
+      `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Buy-in Receipt</title>` +
         `<style>@page{size:80mm auto;margin:0}html,body{width:80mm;margin:0;padding:0;background:#fff}body{display:block}section{margin:0!important;border:0!important;border-radius:0!important;max-width:80mm!important;break-inside:avoid}</style>` +
         `</head><body>${ref.current.outerHTML}</body></html>`,
     );
     win.document.close();
+    win.document.title = displayReceipt?.confirmationCode ?? displayReceipt?.receiptCode ?? "Receipt";
     win.focus();
     // Let the browser lay out the inline SVG before printing.
     setTimeout(() => win.print(), 250);
@@ -90,7 +91,9 @@ export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
       const hMm = (canvas.height / 2) * PX_TO_MM;
       const pdf = new jsPDF({ orientation: wMm > hMm ? "l" : "p", unit: "mm", format: [wMm, hMm] });
       pdf.addImage(imgData, "PNG", 0, 0, wMm, hMm);
-      pdf.save(`receipt-${displayReceipt.confirmationCode ?? displayReceipt.receiptCode ?? "buyin"}.pdf`);
+      const filenameCode = (displayReceipt.confirmationCode ?? displayReceipt.receiptCode ?? "buyin")
+        .replace(/[^A-Za-z0-9_-]/g, "_");
+      pdf.save(`receipt-${filenameCode}.pdf`);
     } catch {
       // Fall back to the print window if the PDF libs are unavailable.
       printReceipt();

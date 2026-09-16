@@ -21,9 +21,9 @@ interface RegInfo {
   reference_code: string;
   total_pay: number;
   breakdown: { buy_in: number; club_fee?: number; service_fee?: number; platform_fee?: number };
-  bank_name: string;
-  account_number: string;
-  account_holder: string;
+  bank_name: string | null;
+  account_number: string | null;
+  account_holder: string | null;
   qr_code_url?: string | null;
   bank_bin?: string | null;
   committed_at?: string;
@@ -33,6 +33,7 @@ interface RegInfo {
   already_registered?: boolean;
   free_rake_applied?: boolean;
   savings?: number;
+  price_detail_available?: boolean;
 }
 
 type EdgeErrorBody = { error?: string };
@@ -74,10 +75,14 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
   const [proofUrl, setProofUrl] = useState<string | null>(null);
   const [proofSubmitted, setProofSubmitted] = useState(false);
   const [confirmedReceipt, setConfirmedReceipt] = useState<BuyinReceiptSnapshot | null>(null);
+  const [paymentSnapshot, setPaymentSnapshot] = useState<BuyinReceiptSnapshot | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
+  const onCompletedRef = useRef(onCompleted);
+  const completionNotified = useRef(false);
   const translateRef = useRef(t);
   onCloseRef.current = onClose;
+  onCompletedRef.current = onCompleted;
   translateRef.current = t;
   const userId = user?.id;
 
@@ -86,7 +91,9 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
     let mounted = true;
     (async () => {
       setInfo(null);
+      completionNotified.current = false;
       setConfirmedReceipt(null);
+      setPaymentSnapshot(null);
       setProofUrl(null);
       setProofSubmitted(false);
       setLoading(true);
@@ -130,8 +137,14 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
     let current = true;
     const refreshReceipt = async () => {
       const snapshot = await fetchBuyinReceipt({ registrationId: info.registration_id });
-      if (!current || !snapshot || snapshot.status !== "confirmed" || !snapshot.receipt_code) return;
+      if (!current || !snapshot) return;
+      setPaymentSnapshot(snapshot);
+      if (snapshot.status !== "confirmed" || !snapshot.receipt_code) return;
       setConfirmedReceipt(snapshot);
+      if (!completionNotified.current) {
+        completionNotified.current = true;
+        onCompletedRef.current?.();
+      }
       window.dispatchEvent(new Event("vinpoker:registration-changed"));
     };
     void refreshReceipt();
@@ -146,13 +159,16 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
 
 
   const transferContent = info ? `VINPoker ${info.reference_code}` : "";
+  const paidWaitingSeat = paymentSnapshot?.payment_state === "paid_waiting_seat";
+  const remainingToTransfer = paymentSnapshot?.remaining_amount ?? info?.total_pay ?? 0;
+  const hasBankTransfer = !!info?.bank_name && !!info.account_number && !!info.account_holder;
 
   // Dynamic VietQR (NAPAS): prefer the explicit bank_bin (Stage 2), else the name map (legacy/UAT).
   // Memo = the BARE reference_code (uppercased) so SePay's \y(VINREG…|REENTRY…)\y match is unambiguous.
   // Built client-side from data the modal already has; any bad input → null → static QR fallback.
   // Deterministic (no nonce/timestamp) so the QR is stable across re-renders.
   const vietqrPayload = useMemo(() => {
-    if (!info) return null;
+    if (!info?.bank_name || !info.account_number) return null;
     // Prefer an explicit bank_bin (Stage 2); treat blank/empty as absent so it falls through to the
     // name map (legacy/UAT) rather than hard-skipping the dynamic QR.
     const bin = (info.bank_bin && info.bank_bin.trim()) || normalizeBankNameToBin(info.bank_name);
@@ -161,13 +177,13 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
       return buildVietQrPayload({
         bin,
         accountNumber: info.account_number,
-        amount: info.total_pay,
+        amount: remainingToTransfer,
         memo: info.reference_code.toUpperCase(),
       });
     } catch {
       return null;
     }
-  }, [info]);
+  }, [info, remainingToTransfer]);
 
   const copy = (txt: string, lbl: string) => {
     navigator.clipboard.writeText(txt);
@@ -225,6 +241,9 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
 
   const cancelReg = async () => {
     if (!info) return;
+    if ((paymentSnapshot?.received_amount ?? 0) > 0) {
+      toast.error(t("tournamentRegister.paidCannotCancel")); return;
+    }
     if (!confirm(t("tournamentRegister.confirmCancel"))) return;
     setCancelling(true);
     const { error } = await supabase
@@ -268,7 +287,9 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
               <div className="rounded-xl border border-success/30 bg-success/5 p-3 flex items-start gap-2">
                 <Sparkles className="w-4 h-4 text-success mt-0.5 shrink-0" />
                 <div className="text-xs text-success font-semibold">
-                  {t("tournamentRegister.freeRakeBanner", { savings: formatStack(info.savings ?? 0) })}
+                  {typeof info.savings === "number"
+                    ? t("tournamentRegister.freeRakeBanner", { savings: formatStack(info.savings) })
+                    : t("tournamentRegister.historicFreeRake")}
                 </div>
               </div>
             )}
@@ -295,11 +316,30 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
                 <span className="font-mono font-bold text-primary text-base">{formatVND(info.total_pay)}</span>
               </div>
             </LiquidGlassCard>
+            {info.price_detail_available === false && <p className="text-xs text-muted-foreground">{t("tournamentRegister.historicPriceDetail")}</p>}
+
+            {paymentSnapshot?.payment_state === "partial" && (
+              <div role="status" className="rounded-xl border border-success/40 bg-success/5 p-3 text-sm">
+                {t("tournamentRegister.partialVerified", {
+                  received: formatVND(paymentSnapshot.received_amount ?? 0),
+                  remaining: formatVND(remainingToTransfer),
+                })}
+              </div>
+            )}
+            {paidWaitingSeat && (
+              <div role="status" className="rounded-xl border border-success/40 bg-success/5 p-4 text-sm font-semibold">
+                {t("tournamentRegister.paidWaitingSeat")}
+              </div>
+            )}
+            {!paidWaitingSeat && hasBankTransfer && <p className="text-xs text-muted-foreground">{t("tournamentRegister.autoVerifyHint")}</p>}
+            {!paidWaitingSeat && !hasBankTransfer && <p role="status" className="rounded-xl border border-primary/30 bg-card p-3 text-sm">{t("tournamentRegister.counterCashOnly")}</p>}
 
 
             {/* Bank info */}
-            <div className="rounded-xl border border-primary/30 bg-card p-3 space-y-2">
+            {!paidWaitingSeat && <>
+            {hasBankTransfer && <div className="rounded-xl border border-primary/30 bg-card p-3 space-y-2">
               <div className="text-xs font-semibold text-primary">{t("tournamentRegister.transferInfo")}</div>
+              {remainingToTransfer !== info.total_pay && <p className="text-xs text-success">{t("tournamentRegister.transferRemaining", { amount: formatVND(remainingToTransfer) })}</p>}
               <div className="text-sm">
                 <div className="flex justify-between gap-2"><span className="text-muted-foreground text-xs">{t("tournamentRegister.bank")}</span><span className="font-medium">{info.bank_name}</span></div>
                 <div className="flex justify-between gap-2"><span className="text-muted-foreground text-xs">{t("tournamentRegister.accountHolder")}</span><span className="font-medium">{info.account_holder}</span></div>
@@ -308,7 +348,7 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
                     <div className="text-[10px] uppercase text-muted-foreground">{t("tournamentRegister.accountNumber")}</div>
                     <div className="font-mono font-bold text-primary">{info.account_number}</div>
                   </div>
-                  <Button size="icon" variant="ghost" onClick={() => copy(info.account_number, t("tournamentRegister.labelAccountNumber"))}><Copy className="w-4 h-4" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => copy(info.account_number!, t("tournamentRegister.labelAccountNumber"))}><Copy className="w-4 h-4" /></Button>
                 </div>
               </div>
               {FEATURES.dynamicVietQr && vietqrPayload ? (
@@ -324,22 +364,22 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
                   <img src={info.qr_code_url} alt="QR" className="w-full max-w-[200px] mx-auto rounded border" />
                 )
               )}
-            </div>
+            </div>}
 
             {/* Reference code */}
             <div className="rounded-xl border border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-[10px] uppercase text-muted-foreground">{t("tournamentRegister.transferContentLabel")}</div>
-                <div className="font-mono font-bold text-primary truncate">{transferContent}</div>
+                <div className="text-[10px] uppercase text-muted-foreground">{t(hasBankTransfer ? "tournamentRegister.transferContentLabel" : "tournamentRegister.counterCodeLabel")}</div>
+                <div className="font-mono font-bold text-primary truncate">{hasBankTransfer ? transferContent : info.reference_code}</div>
               </div>
-              <Button size="icon" variant="ghost" onClick={() => copy(transferContent, t("tournamentRegister.labelTransferContent"))}><Copy className="w-4 h-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => copy(hasBankTransfer ? transferContent : info.reference_code, t("tournamentRegister.labelTransferContent"))}><Copy className="w-4 h-4" /></Button>
             </div>
 
             {/* Proof upload */}
-            <div className="rounded-xl border border-border bg-card/40 p-3 space-y-2">
+            {hasBankTransfer && <div className="rounded-xl border border-border bg-card/40 p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="text-xs">
-                  <div className="font-semibold">{t("tournamentRegister.proofTitle")} <span className="text-destructive">*</span></div>
+                  <div className="font-semibold">{t("tournamentRegister.proofTitle")}</div>
                   <div className="text-[10px] text-muted-foreground">{t("tournamentRegister.proofHint")}</div>
                 </div>
                 {proofUrl ? (
@@ -362,19 +402,20 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
                   <img src={proofUrl} alt="Tx" className="w-full max-h-40 object-contain rounded-md border" />
                 </a>
               )}
-            </div>
+            </div>}
 
             {/* Actions */}
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1 text-destructive border-destructive/40 hover:bg-destructive/10"
-                onClick={cancelReg} disabled={cancelling || submitting || proofSubmitted}>
+                onClick={cancelReg} disabled={cancelling || submitting || proofSubmitted || (paymentSnapshot?.received_amount ?? 0) > 0}>
                 {t("tournamentRegister.cancelReg")}
               </Button>
-              <Button className="flex-1 gradient-neon text-primary-foreground font-bold"
+              {hasBankTransfer && <Button className="flex-1 gradient-neon text-primary-foreground font-bold"
                 onClick={markTransferred} disabled={submitting || uploading || proofSubmitted || !proofUrl}>
                 {proofSubmitted ? t("tournamentRegister.sentWaiting") : submitting ? t("tournamentRegister.sending") : !proofUrl ? t("tournamentRegister.needProof") : t("tournamentRegister.transferred")}
-              </Button>
+              </Button>}
             </div>
+            </>}
           </div>
         )}
       </DialogContent>
