@@ -49,14 +49,14 @@ describe("Finance club scope", () => {
     await waitFor(() => expect(pending.has("club-a")).toBe(true));
     mock.selectedClubId = "club-b";
     view.rerender(<OpsFinanceWorkspace />);
-    expect(screen.getByText("Club B: loading")).toBeInTheDocument();
+    expect(screen.getByText("Club B: loading")).toBeTruthy();
     await waitFor(() => expect(pending.has("club-b")).toBe(true));
 
     await act(async () => { pending.get("club-b")?.({ revenue: { total: 200 } }); });
-    expect(screen.getByText("Club B: 200")).toBeInTheDocument();
+    expect(screen.getByText("Club B: 200")).toBeTruthy();
     await act(async () => { pending.get("club-a")?.({ revenue: { total: 100 } }); });
-    expect(screen.getByText("Club B: 200")).toBeInTheDocument();
-    expect(screen.queryByText("Club B: 100")).not.toBeInTheDocument();
+    expect(screen.getByText("Club B: 200")).toBeTruthy();
+    expect(screen.queryByText("Club B: 100")).toBeNull();
   });
 
   it("does not show already-loaded Club A totals under Club B while B loads", async () => {
@@ -67,11 +67,11 @@ describe("Finance club scope", () => {
     const view = render(<OpsFinanceWorkspace />);
     await waitFor(() => expect(pending.has("club-a")).toBe(true));
     await act(async () => { pending.get("club-a")?.({ revenue: { total: 100 } }); });
-    expect(screen.getByText("Club A: 100")).toBeInTheDocument();
+    expect(screen.getByText("Club A: 100")).toBeTruthy();
 
     mock.selectedClubId = "club-b";
     view.rerender(<OpsFinanceWorkspace />);
-    expect(screen.getByText("Club B: loading")).toBeInTheDocument();
-    expect(screen.queryByText("Club B: 100")).not.toBeInTheDocument();
+    expect(screen.getByText("Club B: loading")).toBeTruthy();
+    expect(screen.queryByText("Club B: 100")).toBeNull();
   });
 });
