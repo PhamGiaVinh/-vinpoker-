@@ -6,7 +6,7 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.role','authenticated',true);
 SELECT set_config('request.jwt.claim.sub','b1000000-0000-4000-8000-000000000001',true);
 SELECT public.cashier_record_cash_buyin_v1(
-  r.id,6600000,
+  r.id,r.total_pay,
   ('b6000000-0000-4000-8000-'||lpad((1000+(:'customer')::integer)::text,12,'0'))::uuid)
 FROM public.tournament_registrations r
 WHERE r.player_id=('b1000000-0000-4000-8000-'||lpad((1000+(:'customer')::integer)::text,12,'0'))::uuid;

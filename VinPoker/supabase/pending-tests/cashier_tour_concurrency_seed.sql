@@ -63,3 +63,5 @@ INSERT INTO auth.users(id,aud,role,email)
 SELECT ('b1000000-0000-4000-8000-'||lpad((1000+n)::text,12,'0'))::uuid,
   'authenticated','authenticated','cashier-load-'||n||'@test.invalid'
 FROM generate_series(1,100) AS n;
+UPDATE public.tournaments SET free_rake_enabled=true,free_rake_slots=1,free_rake_used=0
+WHERE id='b3000000-0000-4000-8000-000000000001';
