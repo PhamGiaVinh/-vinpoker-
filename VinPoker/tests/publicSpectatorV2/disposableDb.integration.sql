@@ -15,6 +15,9 @@ BEGIN
   v_hand_b := public.get_public_tournament_hand_v2(
     '10000000-0000-4000-8000-000000000001',
     '60000000-0000-4000-8000-000000000002');
+  IF (v_hand_a->>'bigBlind')::numeric <> 200000 THEN
+    RAISE EXCEPTION 'immutable hand blind is missing';
+  END IF;
   IF v_hand_a #>> '{players,0,holeCards,0}' <> 'QS'
     OR v_hand_b #>> '{players,0,holeCards,0}' <> '8D'
     OR v_hand_a::text LIKE '%8D%' OR v_hand_b::text LIKE '%QS%' THEN
@@ -33,6 +36,10 @@ BEGIN
     IF v_job->>'component'='tables' AND jsonb_array_length(v_source #> '{payload,items}') <> 2 THEN
       RAISE EXCEPTION 'expected two independent live tables: %',v_source;
     END IF;
+    IF v_job->>'component'='tables' AND (
+      v_source #> '{payload,items,0,actions}' IS NULL OR
+      (v_source #>> '{payload,items,0,players,0,startingStack}')::numeric <> 2000000
+    ) THEN RAISE EXCEPTION 'canonical live reducer input missing'; END IF;
     IF NOT public.publish_public_spectator_projection_v2(
       (v_job->>'tournament_id')::uuid,v_job->>'component',v_job->>'group_key',
       (v_job->>'fencing_token')::uuid,v_source->'sourceVector',v_source->'payload') THEN

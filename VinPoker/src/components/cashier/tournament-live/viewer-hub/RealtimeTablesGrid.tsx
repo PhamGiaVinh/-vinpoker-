@@ -7,8 +7,8 @@ import type { PublicFreshness, PublicTableCatalogItem, PublicTableSnapshot } fro
 
 const PAGE_SIZE = 6;
 const SEAT_POSITIONS = [
-  [50, 9], [76, 16], [88, 36], [88, 67], [74, 87],
-  [50, 91], [26, 87], [12, 67], [12, 36],
+  [50, 9], [72, 16], [88, 36], [88, 67], [72, 87],
+  [50, 91], [28, 87], [12, 67], [12, 36],
 ] as const;
 
 function MiniTable({ table }: { table: PublicTableSnapshot }) {
@@ -26,7 +26,7 @@ function MiniTable({ table }: { table: PublicTableSnapshot }) {
         const player = playersBySeat.get(seatNumber);
         const [left, top] = SEAT_POSITIONS[index];
         if (!player) return <span key={seatNumber} className="absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-dashed border-amber-300/35 bg-black/55 text-[8px] text-amber-100/60" style={{ left: `${left}%`, top: `${top}%` }}>{seatNumber}</span>;
-        return <div key={`${player.playerId}:${player.entryNumber}`} className="absolute w-[14%] max-w-[4.2rem] -translate-x-1/2 -translate-y-1/2 text-center" style={{ left: `${left}%`, top: `${top}%` }} data-seat-number={seatNumber}>
+        return <div key={`${player.playerId}:${player.entryNumber}`} className="spectator-mini-seat absolute w-[14%] max-w-[5.2rem] -translate-x-1/2 -translate-y-1/2 text-center" style={{ left: `${left}%`, top: `${top}%` }} data-seat-number={seatNumber} title={player.name}>
           <div className="relative mx-auto flex h-8 w-8 items-center justify-center overflow-visible rounded-full border border-amber-300/80 bg-zinc-900 text-[10px] font-black text-white">
             {player.avatarUrl ? <img src={player.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" /> : player.name.slice(0, 2).toUpperCase()}
             {table.buttonSeat === player.seatNumber ? <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-300 px-0.5 text-[7px] font-black text-black">D</span> : null}
@@ -34,8 +34,8 @@ function MiniTable({ table }: { table: PublicTableSnapshot }) {
           {player.holeCards?.length > 0 && <div className="spectator-mini-holes mx-auto flex justify-center gap-0.5" aria-label={`Bài của ${player.name}`}>
             {player.holeCards.slice(0, 2).map((card, cardIndex) => <PokerCard key={`${cardIndex}:${card}`} card={card} size="xs" className="spectator-mini-hole-card" />)}
           </div>}
-          <div className="mt-0.5 truncate rounded-md border border-amber-400/35 bg-black/75 px-1 py-0.5 text-[9px] font-bold text-white">{player.name}</div>
-          <div className="tracker-num text-[9px] font-bold text-emerald-300">{formatViewerBBOrUnavailable(player.stack, table.bigBlind ?? 0)}</div>
+          <div className="spectator-mini-label mt-0.5 truncate rounded-md border border-amber-400/35 bg-black/75 px-1 py-0.5 font-bold text-white">{player.name}</div>
+          <div className="spectator-mini-label tracker-num font-bold text-emerald-300">{formatViewerBBOrUnavailable(player.stack, table.bigBlind ?? 0)}</div>
         </div>;
       })}
     </div>

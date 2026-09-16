@@ -53,6 +53,7 @@ export const CATEGORY_RANK: Record<HandCategory, number> = {
 
 // ── Raw row shapes (what the hook fetches; kept loose for forward-compat) ──────────
 export interface RawHandRow {
+  tracker_big_blind?: number | null;
   id: string;
   hand_number: number;
   created_at: string;
@@ -202,6 +203,7 @@ export function buildHandFeedItems(
     const board = (h.community_cards ?? []).filter((c): c is string => !!c);
 
     const bb = resolveViewerHandBigBlind({
+      explicitBigBlind: h.tracker_big_blind,
       actions,
       startingStacks: new Map(rawPlayers.map((player) => [player.player_id, clampChips(player.starting_stack)])),
     });

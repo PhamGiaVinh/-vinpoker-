@@ -102,7 +102,7 @@ function LiveHubContent({
     realtimeEnabled ? visibleTableIds : tables.map((table) => table.tableId),
   );
   const realtimeTables = publicSnapshot?.access === "public"
-    ? (publicSnapshot.sections.tables?.items ?? []).map((table) => ({ tableId: table.tableId, name: table.name, playerCount: table.players.length }))
+    ? (publicSnapshot.sections.tables?.catalog ?? []).map((table) => ({ tableId: table.tableId, name: table.name, playerCount: table.playerCount }))
     : [];
   const displayedTables = realtimeEnabled ? realtimeTables : tables;
   const displayedLiveTableCount = realtimeEnabled
@@ -386,7 +386,7 @@ function LiveHubContent({
           <div className="sticky top-[env(safe-area-inset-top)] z-30 -mx-3 border-y border-border/45 bg-background/88 px-3 backdrop-blur-xl sm:-mx-1 sm:rounded-2xl sm:border sm:px-1">
             <div className="relative after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-8 after:bg-gradient-to-l after:from-background after:to-transparent sm:after:hidden">
               <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <TabsList className="inline-flex h-12 w-max min-w-full snap-x snap-mandatory justify-start gap-0 bg-transparent p-0">
+                <TabsList className="inline-flex h-12 w-max min-w-full snap-x snap-mandatory justify-start gap-0 bg-transparent p-0 [&>[role=tab]]:flex-1">
                   {realtimeEnabled ? <>
                     <TabsTrigger value="updates" className={RPT_TAB_TRIGGER}><Activity className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.updates", "Cập nhật")}</TabsTrigger>
                     <TabsTrigger value="history" className={RPT_TAB_TRIGGER}><Radio className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.tablesLive", "Bàn LIVE")}</TabsTrigger>
@@ -405,8 +405,8 @@ function LiveHubContent({
           </div>
 
           <TabsContent value="updates" className="mt-3 min-w-0 focus-visible:outline-none sm:mt-4">
-            <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.75fr)] xl:items-start">
-              <aside className={`min-w-0 space-y-4 xl:col-start-2 xl:row-start-1 ${FEATURES.liveHandFeed ? "" : "xl:col-span-2 xl:col-start-1"}`}>
+            <div className={`grid min-w-0 gap-4 ${realtimeEnabled ? "" : "xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.75fr)] xl:items-start"}`}>
+              {!realtimeEnabled && <aside className={`min-w-0 space-y-4 xl:col-start-2 xl:row-start-1 ${FEATURES.liveHandFeed ? "" : "xl:col-span-2 xl:col-start-1"}`}>
                 {!realtimeEnabled && <LiveTablesMap
                   tables={displayedTables}
                   activeTableId={null}
@@ -417,7 +417,7 @@ function LiveHubContent({
                 />}
                 <LiveStoryFeed items={storyFeed} rpt />
                 <LiveUpdatesFeed feed={feed} rpt />
-              </aside>
+              </aside>}
               {FEATURES.liveHandFeed && (
                 <div className="min-w-0 xl:col-start-1 xl:row-start-1">
                   <LiveHandFeed

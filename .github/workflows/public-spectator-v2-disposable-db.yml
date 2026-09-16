@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/public-spectator-v2-disposable-db.yml"
-      - "VinPoker/supabase/pending-migrations/20270115000000_public_spectator_realtime_v2.sql"
+      - "VinPoker/supabase/pending-migrations/2027011500000*_public_spectator_*.sql"
       - "VinPoker/tests/publicSpectatorV2/**"
 
 permissions:
@@ -40,6 +40,9 @@ jobs:
       - name: Apply exact proposed migration to disposable PostgreSQL only
         working-directory: VinPoker
         run: psql -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270115000000_public_spectator_realtime_v2.sql
+      - name: Apply live display correction
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270115000001_public_spectator_live_display.sql
       - name: Verify recorded cards, table isolation, and stale revision fencing
         working-directory: VinPoker
         run: psql -v ON_ERROR_STOP=1 -f tests/publicSpectatorV2/disposableDb.integration.sql

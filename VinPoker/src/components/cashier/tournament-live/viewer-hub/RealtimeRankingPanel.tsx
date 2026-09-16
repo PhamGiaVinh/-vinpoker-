@@ -17,9 +17,9 @@ export function RealtimeRankingPanel({ rows, bigBlind, freshness, loading }: { r
       </header>
       {rows.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted-foreground">Chưa có stack xác nhận</p> : (
         <ol className="divide-y divide-border/35">
-          {rows.map((row, index) => <li key={`${row.playerId}:${row.entryNumber}`} className="grid min-h-12 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 px-4">
-            <span className="tracker-num text-sm text-muted-foreground">{index + 1}</span>
-            <span className="truncate text-sm font-semibold">{row.name}</span>
+          {rows.map((row, index) => <li key={`${row.playerId}:${row.entryNumber}`} className={`grid min-h-[60px] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 px-4 ${index === 0 ? "bg-amber-400/10" : ""}`}>
+            <span className={`tracker-num flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${index === 0 ? "bg-amber-300 text-black" : index === 1 ? "bg-slate-300 text-black" : index === 2 ? "bg-amber-800 text-white" : "text-muted-foreground"}`}>{index + 1}</span>
+            <span className="flex min-w-0 items-center gap-2 text-sm font-semibold">{row.avatarUrl && <img src={row.avatarUrl} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />}<span className="truncate">{row.name}</span></span>
             <span className="text-right">
               <span className="tracker-num block text-sm font-extrabold text-[hsl(var(--viewer-neon))]">{row.chips == null ? "—" : formatStack(row.chips)}</span>
               {row.chips != null && formatBigBlinds(row.chips, bigBlind) ? <span className="tracker-num block text-[10px] text-muted-foreground">{formatBigBlinds(row.chips, bigBlind)}</span> : null}

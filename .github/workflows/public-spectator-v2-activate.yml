@@ -1,0 +1,78 @@
+name: Activate reviewed spectator realtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Exact reviewed SHA reachable from main
+        required: true
+        type: string
+      mode:
+        description: Activate worker or stop projection safely
+        required: true
+        default: activate
+        type: choice
+        options: [activate, stop]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: spectator-production-activation
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require main source and protected reviewer gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ inputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          gh api "repos/${GITHUB_REPOSITORY}/environments/dealer-swing-production-critical" \
+            --jq '.protection_rules | any(.type == "required_reviewers" and ((.reviewers // []) | length > 0))' | grep -qx true
+  activate:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: dealer-swing-production-critical
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check activation script
+        run: node --test VinPoker/scripts/deploy/activate-public-spectator.test.mjs
+      - name: Install pinned Supabase CLI
+        if: inputs.mode == 'activate'
+        run: npm install --global supabase@2.101.0
+      - name: Prepare dedicated worker secret
+        if: inputs.mode == 'activate'
+        run: node VinPoker/scripts/deploy/activate-public-spectator.mjs prepare
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      - name: Deploy exact spectator worker
+        if: inputs.mode == 'activate'
+        working-directory: VinPoker
+        run: supabase functions deploy public-spectator-projector-v2 --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      - name: Verify worker and activate single dispatcher, or stop
+        run: node VinPoker/scripts/deploy/activate-public-spectator.mjs "$MODE"
+        env:
+          MODE: ${{ inputs.mode }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
