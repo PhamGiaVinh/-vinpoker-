@@ -4,6 +4,8 @@
 -- Five noncanonical TEST tables remain unnumbered. Only the exact, audited
 -- dormant Bàn TEST 1 is omitted by the accompanying frontend change; the
 -- other four stay fail-closed because some have active legacy assignments.
+-- Seven canonical tables with active legacy assignments but no V3 session
+-- receive operational_status='disabled' to prevent a second active use.
 -- Rollback: separately review an exact-ID reverse update before any new session
 -- uses these numbers; do not casually restore the whole physical backup.
 BEGIN;
@@ -128,12 +130,57 @@ VALUES
   ('5eda7681-040d-4184-aabb-97c222eb622d'::uuid, '22222222-2222-2222-2222-222222222222'::uuid, 'Bàn 99', 99, 'inactive'),
   ('66eee7ab-4fdf-4440-9eb0-2f3fe5046bbf'::uuid, '22222222-2222-2222-2222-222222222222'::uuid, 'Bàn 100', 100, 'inactive');
 
+CREATE TEMP TABLE floor_v3_legacy_active_hold (id uuid PRIMARY KEY) ON COMMIT DROP;
+INSERT INTO floor_v3_legacy_active_hold (id) VALUES
+  ('48dcc6bd-e674-4ab1-8870-b1eef3ded8ba'::uuid), -- CLB 111 Bàn 3
+  ('d4082d14-83e4-4b0e-b00b-89a5db46a1ea'::uuid), -- CLB 111 Bàn 4
+  ('88fdffab-48b0-4921-926b-a6efe288db2b'::uuid), -- CLB 111 Bàn 5
+  ('7630869d-862d-4e6a-a220-745257dd92c8'::uuid), -- CLB 222 Bàn 1
+  ('7d200ce7-8c30-4704-85a3-fa5c98990e67'::uuid), -- CLB 222 Bàn 10
+  ('66eee7ab-4fdf-4440-9eb0-2f3fe5046bbf'::uuid), -- CLB 222 Bàn 100
+  ('6ab7831b-6519-43bd-a9d4-b0859da7be65'::uuid); -- CLB 222 Bàn 11
+
 DO $repair$
 DECLARE
   v_updated integer;
 BEGIN
   IF (SELECT count(*) FROM floor_v3_number_repair) <> 105 THEN
     RAISE EXCEPTION 'floor_v3_repair_map_incomplete';
+  END IF;
+  IF (SELECT count(*) FROM floor_v3_legacy_active_hold) <> 7 THEN
+    RAISE EXCEPTION 'floor_v3_repair_legacy_hold_map_incomplete';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM floor_v3_number_repair expected
+    WHERE (EXISTS (SELECT 1 FROM floor_v3_legacy_active_hold hold_row WHERE hold_row.id = expected.id))
+      IS DISTINCT FROM (
+        EXISTS (
+          SELECT 1 FROM public.tournament_tables assignment_row
+          WHERE assignment_row.status = 'active'
+            AND (assignment_row.table_id = expected.id OR assignment_row.game_table_id = expected.id)
+        ) AND NOT EXISTS (
+          SELECT 1 FROM public.table_sessions session_row
+          WHERE session_row.game_table_id = expected.id AND session_row.closed_at IS NULL
+        )
+      )
+  ) THEN
+    RAISE EXCEPTION 'floor_v3_repair_legacy_active_set_drift';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM floor_v3_number_repair expected
+    JOIN public.dealer_assignments dealer_row
+      ON dealer_row.table_id = expected.id
+    WHERE dealer_row.released_at IS NULL
+      AND dealer_row.status IN ('assigned', 'on_break')
+      AND NOT EXISTS (
+        SELECT 1 FROM public.table_sessions session_row
+        WHERE session_row.game_table_id = expected.id
+          AND session_row.closed_at IS NULL
+      )
+  ) THEN
+    RAISE EXCEPTION 'floor_v3_repair_legacy_dealer_without_session';
   END IF;
 
   IF EXISTS (
@@ -144,7 +191,9 @@ BEGIN
        OR actual.table_name IS DISTINCT FROM expected.expected_name
        OR actual.status IS DISTINCT FROM expected.expected_status
        OR (actual.table_number IS NOT NULL AND actual.table_number <> expected.expected_number)
-       OR (actual.operational_status IS NOT NULL AND actual.operational_status <> 'available')
+       OR (actual.operational_status IS NOT NULL AND actual.operational_status <>
+           CASE WHEN EXISTS (SELECT 1 FROM floor_v3_legacy_active_hold hold_row WHERE hold_row.id=expected.id)
+             THEN 'disabled' ELSE 'available' END)
   ) THEN
     RAISE EXCEPTION 'floor_v3_repair_source_drift';
   END IF;
@@ -223,7 +272,11 @@ BEGIN
 
   UPDATE public.game_tables actual
   SET table_number = expected.expected_number,
-      operational_status = 'available'
+      operational_status = CASE
+        WHEN EXISTS (SELECT 1 FROM floor_v3_legacy_active_hold hold_row WHERE hold_row.id=expected.id)
+          THEN 'disabled'
+        ELSE 'available'
+      END
   FROM floor_v3_number_repair expected
   WHERE actual.id = expected.id
     AND actual.table_number IS NULL
@@ -234,7 +287,9 @@ BEGIN
     SELECT 1 FROM floor_v3_number_repair expected
     JOIN public.game_tables actual ON actual.id = expected.id
     WHERE actual.table_number IS DISTINCT FROM expected.expected_number
-       OR actual.operational_status IS DISTINCT FROM 'available'
+       OR actual.operational_status IS DISTINCT FROM CASE
+            WHEN EXISTS (SELECT 1 FROM floor_v3_legacy_active_hold hold_row WHERE hold_row.id=expected.id)
+              THEN 'disabled' ELSE 'available' END
   ) THEN
     RAISE EXCEPTION 'floor_v3_repair_postcondition_failed';
   END IF;
