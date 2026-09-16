@@ -38,6 +38,8 @@ ALTER TABLE public.seat_draw_receipts ADD COLUMN issued_at timestamptz DEFAULT n
 ALTER TABLE public.seat_draw_receipts ADD COLUMN cancelled_at timestamptz;
 
 CREATE TABLE public.profiles (user_id uuid PRIMARY KEY, display_name text, phone text);
+INSERT INTO public.profiles(user_id,display_name) VALUES
+  ('91000000-0000-4000-8000-000000000004','Người chơi TEST');
 CREATE TABLE public.club_members (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), club_id uuid, player_user_id uuid,
   full_name text, phone text, member_card_id text, updated_at timestamptz DEFAULT now()
