@@ -576,6 +576,8 @@ END $test$;
 
 -- More than two client-page sizes must still be counted and paged by SQL for
 -- the selected tour; Tour B cannot inherit Tour A's large arrival queue.
+SELECT set_config('request.jwt.claim.role','service_role',true);
+SELECT set_config('request.jwt.claim.sub','',true);
 INSERT INTO auth.users(id,aud,role,email,created_at,updated_at)
 SELECT ('a1000000-0000-4000-8000-'||lpad(g::text,12,'0'))::uuid,
   'authenticated','authenticated','cashier-page-'||g||'@test.invalid',now(),now()
