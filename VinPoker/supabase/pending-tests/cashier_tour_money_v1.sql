@@ -136,7 +136,7 @@ BEGIN
   PERFORM pg_temp.cashier_assert(v_lookup->>'ok'='true'
     AND jsonb_array_length(v_lookup->'rows')=1
     AND v_lookup->'rows'->0->>'tournament_id'='93000000-0000-4000-8000-000000000003',
-    'other-tour lookup excludes serving tour in SQL');
+    'other-tour lookup excludes serving tour in SQL: '||v_lookup::text);
   PERFORM set_config('request.jwt.claim.role','service_role',true);
   PERFORM set_config('request.jwt.claim.sub','',true);
 
