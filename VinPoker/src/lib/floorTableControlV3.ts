@@ -190,7 +190,7 @@ function parseInventoryItem(value: unknown): FloorTableControlV3Result<FloorTabl
   if (!isRecord(value)) return { ok: false, error: "V3_INVENTORY_ROW_MALFORMED" };
 
   const gameTableId = value.game_table_id;
-  const tableNumber = value.table_number;
+  const tableNumber = nullableInteger(value.table_number);
   const tableName = nullableString(value.table_name);
   const operationalStatus = nullableString(value.operational_status);
   const availabilityStatus = value.availability_status;
@@ -207,7 +207,8 @@ function parseInventoryItem(value: unknown): FloorTableControlV3Result<FloorTabl
   if (
     typeof gameTableId !== "string"
     || !gameTableId
-    || (tableNumber !== null && (typeof tableNumber !== "number" || !Number.isInteger(tableNumber) || tableNumber < 1 || tableNumber > 100))
+    || tableNumber === undefined
+    || (tableNumber !== null && (!Number.isInteger(tableNumber) || tableNumber < 1 || tableNumber > 100))
     || tableName === undefined
     || ![null, "available", "maintenance", "disabled", "retired"].includes(operationalStatus)
     || typeof availabilityStatus !== "string"
@@ -259,7 +260,7 @@ function parseInventoryItem(value: unknown): FloorTableControlV3Result<FloorTabl
 function parseTournamentInventoryItem(value: unknown): FloorTableControlV3Result<FloorTournamentInventoryItem> {
   if (!isRecord(value)) return { ok: false, error: "V3_TOURNAMENT_INVENTORY_ROW_MALFORMED" };
   const gameTableId = value.game_table_id;
-  const tableNumber = value.table_number;
+  const tableNumber = nullableInteger(value.table_number);
   const tableName = nullableString(value.table_name);
   const operationalStatus = nullableString(value.operational_status);
   const availabilityStatus = value.availability_status;
@@ -271,7 +272,8 @@ function parseTournamentInventoryItem(value: unknown): FloorTableControlV3Result
   const maxSeats = nullableInteger(value.max_seats);
   if (
     typeof gameTableId !== "string" || !gameTableId
-    || (tableNumber !== null && (typeof tableNumber !== "number" || !Number.isSafeInteger(tableNumber) || tableNumber < 1 || tableNumber > 100))
+    || tableNumber === undefined
+    || (tableNumber !== null && (!Number.isSafeInteger(tableNumber) || tableNumber < 1 || tableNumber > 100))
     || tableName === undefined
     || ![null, "available", "maintenance", "disabled", "retired"].includes(operationalStatus)
     || typeof availabilityStatus !== "string"
