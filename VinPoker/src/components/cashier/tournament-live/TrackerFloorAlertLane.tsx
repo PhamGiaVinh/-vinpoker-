@@ -43,6 +43,13 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
 
   useEffect(() => {
     void reload();
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible") void reload();
+    }, 10_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void reload();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     const channel = supabase
       .channel(`tracker-floor-alerts:${tournamentId}`)
       .on(
@@ -52,12 +59,17 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
       )
       .subscribe();
     return () => {
+      window.clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisible);
       void supabase.removeChannel(channel);
     };
   }, [reload, tournamentId]);
 
   const transition = async (alert: TrackerFloorAlert, action: string) => {
     if (transitioningId) return;
+    if (action === "resolve" && alert.correction_required && !window.confirm(
+      "Chỉ đánh dấu đã xử lý sau khi action/hand canonical đã được sửa và kiểm tra. Thao tác này mở lại Voice cho bàn. Tiếp tục?",
+    )) return;
     setTransitioningId(alert.id);
     const { data, error: rpcError } = await supabase.rpc("transition_tracker_floor_alert" as never, {
       p_alert_id: alert.id,
@@ -130,6 +142,9 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
                     {alert.dealer_name || "Dealer"} · {new Date(alert.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
                   </p>
                   {alert.message && <p className="mt-2 line-clamp-2 text-xs text-zinc-300">{alert.message}</p>}
+                  {alert.correction_required && (
+                    <p className="mt-2 text-xs text-amber-200">Voice tạm dừng. Kiểm tra và sửa hand trước khi đánh dấu đã xử lý.</p>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button asChild size="sm" variant="outline" className="min-h-11">

@@ -7,7 +7,7 @@ import {
   type ValidatedVoiceEventReceipt,
 } from "@/lib/trackerVoice";
 import type { StandaloneHandInput } from "@/components/cashier/tournament-live/handinput/useStandaloneHandInput";
-import { TrackerVoicePanel } from "./TrackerVoicePanel";
+import { ACTION_AUTO_COMMIT_MS, TrackerVoicePanel } from "./TrackerVoicePanel";
 import type { TrackerVoiceDiagnosticSnapshot } from "./TrackerVoicePanel";
 
 function hookFixture(): StandaloneHandInput {
@@ -247,7 +247,8 @@ describe("TrackerVoicePanel", () => {
     expect(applyVoiceBoardReceipt).toHaveBeenCalledOnce();
   });
 
-  it("auto-commits a validated Assist action after the visible three-second countdown", async () => {
+  it("auto-commits a validated Assist action after the visible 1.8-second countdown", async () => {
+    expect(ACTION_AUTO_COMMIT_MS).toBe(1_800);
     const provider = new MockRealtimeTranscriptionProvider();
     const handleVoiceAction = vi.fn(async () => true);
     render(
@@ -265,7 +266,7 @@ describe("TrackerVoicePanel", () => {
 
     expect(await screen.findByRole("timer", { name: "Đếm ngược tự ghi action" })).toBeInTheDocument();
     expect(handleVoiceAction).not.toHaveBeenCalled();
-    await waitFor(() => expect(handleVoiceAction).toHaveBeenCalledOnce(), { timeout: 4_000 });
+    await waitFor(() => expect(handleVoiceAction).toHaveBeenCalledOnce(), { timeout: 3_000 });
     expect(await screen.findByText(/Canonical receipt đã được Viewer\/Replay nhận/)).toBeInTheDocument();
   });
 
@@ -316,7 +317,7 @@ describe("TrackerVoicePanel", () => {
 
     act(() => provider.emit("báo sai", { final: true, id: "hands-free-report-wrong" }));
     await waitFor(() => expect(screen.queryByRole("timer", { name: "Đếm ngược tự ghi action" })).not.toBeInTheDocument());
-    await new Promise((resolve) => setTimeout(resolve, 3_100));
+    await new Promise((resolve) => setTimeout(resolve, ACTION_AUTO_COMMIT_MS + 100));
     expect(handleVoiceAction).not.toHaveBeenCalled();
   }, 8_000);
 
@@ -958,6 +959,28 @@ describe("TrackerVoicePanel", () => {
     fireEvent.click(confirm);
     expect(await screen.findByText(/Canonical receipt đã được Viewer\/Replay nhận/)).toBeInTheDocument();
     expect(handleVoiceAction).toHaveBeenCalledOnce();
+  });
+
+  it("lets Dealer discard buffered speech without writing an action", async () => {
+    const provider = new MockRealtimeTranscriptionProvider();
+    const handleVoiceAction = vi.fn(async () => true);
+    const validateEventOverride = vi.fn(async () => ({
+      ...validatedReceipt,
+      execution_result: "alert_opened" as const,
+      correction_pending: true,
+      alert_id: "floor-alert-1",
+    }));
+    renderPanel({ ...hookFixture(), handleVoiceAction }, provider, validateEventOverride);
+    fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
+    await screen.findByText("Microphone đã kết nối");
+    act(() => provider.emit("báo sai action", { final: true, id: "wrong-action-discard" }));
+    expect(await screen.findByText("Alert đã vào hàng đợi Floor.")).toBeInTheDocument();
+    act(() => provider.emit("seat three call", { final: true, id: "buffered-discard" }));
+    expect(await screen.findByText("1 transcript đang chờ Floor")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Bỏ transcript chờ" }));
+    expect(screen.queryByText("1 transcript đang chờ Floor")).not.toBeInTheDocument();
+    expect(validateEventOverride).toHaveBeenCalledOnce();
+    expect(handleVoiceAction).not.toHaveBeenCalled();
   });
 
   it("shows the live RMS meter and enables the bounded iPad mic test", async () => {

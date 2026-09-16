@@ -355,6 +355,10 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
         />
       )}
 
+      {selectedTournament && mode === "floor" && FEATURES.trackerVoiceInput && (
+        <TrackerFloorAlertLane tournamentId={selectedTournament.id} />
+      )}
+
       {selectedTournament ? (
         (() => {
           const TAB_DEFS = [
@@ -363,9 +367,6 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
             { value: "clock", icon: Clock, label: t("tournamentLive.clock.title"), render: () => <ClockPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
             { value: "queue", icon: ListOrdered, label: "Hàng chờ", render: () => (
               <>
-                {FEATURES.trackerVoiceInput && (
-                  <TrackerFloorAlertLane tournamentId={selectedTournament.id} />
-                )}
                 <RegistrationQueuePanel
                   tournamentId={selectedTournament.id}
                   tournamentName={selectedTournament.name}
