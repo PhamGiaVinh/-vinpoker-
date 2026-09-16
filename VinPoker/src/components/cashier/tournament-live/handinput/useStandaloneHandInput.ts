@@ -18,8 +18,9 @@ import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { Card } from "@/components/shared/CardSlotPicker";
-import { nextButton, getSeatPositions } from "@/lib/tournament/button";
-import { nextButtonTournament } from "@/lib/tournament/deadButton";
+import { getSeatPositions } from "@/lib/tournament/button";
+import { nextButtonFromBlindLineage } from "@/lib/tournament/deadButton";
+import { readBlindLineage, readHandBlindLevel, type RecordedBlindLineage } from "@/lib/tournament/readBlindLineage";
 import {
   replayActions,
   deriveResumeStreet,
@@ -196,11 +197,9 @@ export function useStandaloneHandInput(tournamentId: string) {
   const [betAmount, setBetAmount] = useState("");
   const [buttonSeat, setButtonSeat] = useState<number>(1);
   const [buttonConfirmed, setButtonConfirmed] = useState(false);
-  // P2-5 dead-button: physical seat capacity of the table (tournament_tables.max_seats),
-  // the previous hand's posted-BB seat (in-memory, drives the BB-anchored suggestion),
-  // and whether the operator has manually overridden the suggested button this hand.
+  // Preceding hand blind positions drive only the next-hand suggestion.
   const [maxSeats, setMaxSeats] = useState<number>(9);
-  const [lastBbSeat, setLastBbSeat] = useState<number | null>(null);
+  const [lastBlindLineage, setLastBlindLineage] = useState<RecordedBlindLineage | null>(null);
   const [buttonOverridden, setButtonOverridden] = useState(false);
   const [selectedWinners, setSelectedWinners] = useState<string[]>([]);
   const [muckedPlayerIds, setMuckedPlayerIds] = useState<Set<string>>(new Set());
@@ -212,6 +211,7 @@ export function useStandaloneHandInput(tournamentId: string) {
   // cleared when the restored snapshot is no longer a runout.
   const holeCardsBroadcastRef = useRef(false);
   const [blindLevelSnapshot, setBlindLevelSnapshot] = useState<BlindLevelSnapshot | null>(null);
+  const [blindLevelCanonical, setBlindLevelCanonical] = useState(false);
   const [blindsConfirmedLocal, setBlindsConfirmedLocal] = useState(false);
   // P2-3: operator marks this hand as having a dead small blind (no SB posted).
   const [deadSb, setDeadSb] = useState(false);
@@ -633,6 +633,8 @@ export function useStandaloneHandInput(tournamentId: string) {
     setRevealDone(false);
     holeCardsBroadcastRef.current = false;
     setBlindLevelSnapshot(null);
+    setBlindLevelCanonical(false);
+    setBlindFetchedAt(null);
     setBlindsConfirmedLocal(false);
     setDeadSb(false);
     setButtonOverridden(false); // P2-5: new hand → the dead-button suggestion drives the button again
@@ -838,7 +840,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       setButtonConfirmed(false);
       // P2-5: a fresh table load resets the dead-button anchor → the first hand has no
       // suggestion (operator sets the button); subsequent hands auto-suggest.
-      setLastBbSeat(null);
+      setLastBlindLineage(null);
       setButtonOverridden(false);
       // A5: a stale orphan from the PREVIOUS table must never leak into this one —
       // re-armed below only if the NEW table actually has one in progress.
@@ -854,12 +856,13 @@ export function useStandaloneHandInput(tournamentId: string) {
       // P2-5: physical seat capacity for the dead-button ring (read-only; default 9).
       const { data: tableMeta } = await supabase
         .from("tournament_tables")
-        .select("max_seats")
+        .select("max_seats, table_session_id")
         .eq("tournament_id", tournamentId)
         .eq("table_id", newTableId)
         .maybeSingle();
       if (!isCurrentLoad()) return;
       const loadedMaxSeats = (tableMeta as any)?.max_seats ?? 9;
+      const loadedSessionId = (tableMeta as any)?.table_session_id ?? null;
       setMaxSeats(loadedMaxSeats);
 
       // trackerSeatSetup: pull the per-seat avatar_url under the flag. If the migration
@@ -952,47 +955,28 @@ export function useStandaloneHandInput(tournamentId: string) {
         .map((s) => s.seat_number)
         .sort((a, b) => a - b);
 
-      const { data: lastHand } = await supabase
-        .from("tournament_hands")
-        .select("id, button_seat")
-        .eq("tournament_id", tournamentId)
-        .eq("table_id", newTableId)
-        .order("hand_number", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data: lastHand } = loadedSessionId
+        ? await supabase.from("tournament_hands")
+          .select("id, button_seat, status, is_voided")
+          .eq("tournament_id", tournamentId)
+          .eq("table_id", newTableId)
+          .filter("table_session_id", "eq", loadedSessionId)
+          .order("hand_number", { ascending: false })
+          .limit(1).maybeSingle()
+        : { data: null };
 
       if (!isCurrentLoad()) return;
-      let previousBbSeat: number | null = null;
-      let previousBbReadFailed = false;
-      if (lastHand?.id) {
-        const { data: lastBbAction, error: lastBbActionError } = await supabase
-          .from("hand_actions")
-          .select("player_id, entry_number")
-          .eq("hand_id", lastHand.id)
-          .eq("action_type", "post_bb")
-          .order("action_order", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        previousBbReadFailed = !!lastBbActionError;
-        if (!lastBbActionError && lastBbAction?.player_id) {
-          const { data: lastBbPlayer, error: lastBbPlayerError } = await supabase
-            .from("hand_players")
-            .select("seat_number")
-            .eq("hand_id", lastHand.id)
-            .eq("player_id", lastBbAction.player_id)
-            .eq("entry_number", lastBbAction.entry_number)
-            .maybeSingle();
-          previousBbReadFailed = !!lastBbPlayerError;
-          if (!lastBbPlayerError) previousBbSeat = lastBbPlayer?.seat_number ?? null;
-        }
-      }
-
+      const previousLineage = lastHand?.id && lastHand.status === "completed" && !lastHand.is_voided
+        ? await readBlindLineage(lastHand.id) : null;
       if (!isCurrentLoad()) return;
-      setLastBbSeat(previousBbSeat);
-      const restoredSuggestion = nextButtonTournament({
+      setLastBlindLineage(previousLineage);
+      const restoredSuggestion = nextButtonFromBlindLineage({
         maxSeats: loadedMaxSeats,
         occupiedSeats: activeNums,
-        prevBbSeat: previousBbSeat,
+        previousDealtSeats: previousLineage?.previousDealtSeats ?? [],
+        previousButtonSeat: previousLineage?.previousButtonSeat ?? null,
+        previousSbPosition: previousLineage?.previousSbPosition ?? null,
+        previousBbSeat: previousLineage?.previousBbSeat ?? null,
       });
       if (restoredSuggestion) {
         setButtonSeat(restoredSuggestion.buttonSeat);
@@ -1001,9 +985,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         setButtonSeat(lastHand?.button_seat ?? activeNums[0] ?? 1);
         setButtonConfirmed(false);
         if (lastHand?.id) {
-          toast.warning(previousBbReadFailed
-            ? "Không đọc được BB của hand trước. Hãy chọn BTN thủ công."
-            : "Hand trước chưa có BB hợp lệ. Hãy chọn BTN thủ công.");
+          toast.warning("Không đủ vị trí blind của hand trước để gợi ý BTN. Hãy chọn BTN thủ công.");
         }
       }
 
@@ -1198,19 +1180,20 @@ export function useStandaloneHandInput(tournamentId: string) {
     return s;
   }, [communityCards, playerHoleCards]);
 
-  const positionsBySeat = useMemo(
-    () => getSeatPositions(players.map((p) => p.seat_number), buttonSeat),
-    [players, buttonSeat]
-  );
-
   const bigBlind = useMemo(() => actions.find((a) => a.action_type === "post_bb")?.amount ?? 0, [actions]);
 
   const activeSeatNums = useMemo(() => players.map((p) => p.seat_number), [players]);
-  // P2-5 dead-button SUGGESTION (BB-anchored on the PREVIOUS hand's BB). Pre-hand
-  // default; stays active until the operator overrides the button by tapping a seat.
+  // Dead-button SUGGESTION from the PREVIOUS hand's recorded blind positions. Pre-hand
+  // default; stays active until the operator explicitly resets and selects a seat.
   const deadButtonSuggestion = useMemo(
-    () => nextButtonTournament({ maxSeats, occupiedSeats: activeSeatNums, prevBbSeat: lastBbSeat }),
-    [maxSeats, activeSeatNums, lastBbSeat]
+    () => nextButtonFromBlindLineage({
+      maxSeats, occupiedSeats: activeSeatNums,
+      previousDealtSeats: lastBlindLineage?.previousDealtSeats ?? [],
+      previousButtonSeat: lastBlindLineage?.previousButtonSeat ?? null,
+      previousSbPosition: lastBlindLineage?.previousSbPosition ?? null,
+      previousBbSeat: lastBlindLineage?.previousBbSeat ?? null,
+    }),
+    [maxSeats, activeSeatNums, lastBlindLineage]
   );
   const suggestionActive = !!deadButtonSuggestion && !buttonOverridden;
   const rawBlinds = useMemo(() => blindSeats(activeSeatNums, buttonSeat), [activeSeatNums, buttonSeat]);
@@ -1223,6 +1206,24 @@ export function useStandaloneHandInput(tournamentId: string) {
   const effectiveDeadSb = (suggestionActive && deadButtonSuggestion!.deadSb) || deadSb;
   // The engine honors the dead-button BB only while the suggestion is active.
   const bbSeatOverride = suggestionActive ? deadButtonSuggestion!.bbSeat : undefined;
+  const positionsBySeat = useMemo(() => {
+    const positions = getSeatPositions(activeSeatNums, buttonSeat);
+    const sbSeat = handStarted
+      ? actions.find((action) => action.action_type === "post_sb")?.seat_number ?? null
+      : blindSbSeat;
+    const bbSeat = handStarted
+      ? actions.find((action) => action.action_type === "post_bb")?.seat_number ?? null
+      : blindBbSeat;
+    for (const [seat, label] of positions) {
+      if (label === "BTN" || label === "SB" || label === "BB" || label === "BTN/SB") {
+        positions.set(seat, "");
+      }
+    }
+    if (activeSeatNums.includes(buttonSeat)) positions.set(buttonSeat, activeSeatNums.length === 2 ? "BTN/SB" : "BTN");
+    if (sbSeat != null && activeSeatNums.includes(sbSeat) && sbSeat !== buttonSeat) positions.set(sbSeat, "SB");
+    if (bbSeat != null && activeSeatNums.includes(bbSeat)) positions.set(bbSeat, "BB");
+    return positions;
+  }, [activeSeatNums, buttonSeat, handStarted, actions, blindSbSeat, blindBbSeat]);
   const firstActorSeat = useMemo(() => {
     if (blindBbSeat == null) return firstPreflopActor(activeSeatNums, buttonSeat);
     const ring = [...activeSeatNums].sort((a, b) => a - b);
@@ -1230,7 +1231,7 @@ export function useStandaloneHandInput(tournamentId: string) {
   }, [activeSeatNums, buttonSeat, blindBbSeat]);
 
   // P2-5: pre-fill the suggested button (incl. a dead/empty seat) pre-hand, until the
-  // operator overrides by tapping a seat. Suggestion depends on prevBb/occupancy, not
+  // operator resets the button. Suggestion depends on prevBb/occupancy, not
   // buttonSeat → no loop.
   useEffect(() => {
     if (suggestionActive && !handStarted && deadButtonSuggestion) {
@@ -1381,7 +1382,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     const cl = ((data as any)?.current_level ?? null) as ClockLevel | null;
     setLiveLevelNumber(cl?.level_number ?? null);
     setLiveLevel(cl);
-    if (cl && (cl.big_blind ?? 0) > 0 && !sbPosted && !bbPosted) {
+    if (cl && (cl.big_blind ?? 0) > 0 && !blindLevelCanonical && !sbPosted && !bbPosted) {
       const snap = snapshotBlindLevel(cl);
       setBlindLevelSnapshot(snap);
       setSbAmount(snap.small_blind);
@@ -1391,7 +1392,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     } else {
       toast.info("Đã cập nhật mức blind hiện tại (ván đã đặt blind — không đổi số).");
     }
-  }, [tournamentId, sbPosted, bbPosted]);
+  }, [tournamentId, blindLevelCanonical, sbPosted, bbPosted]);
 
   const isReview = Object.keys(endingStacks).length > 0;
   const isSummary = isReview;
@@ -1488,6 +1489,22 @@ export function useStandaloneHandInput(tournamentId: string) {
         const nestedError = typeof handData?.error === "string" ? handData.error : null;
         throw new Error(nestedError ?? await readEdgeError(error, data));
       }
+      let frozenLevel: BlindLevelSnapshot | null;
+      try {
+        frozenLevel = await readHandBlindLevel(handData.hand_id);
+      } catch (readError) {
+        setOrphanHand({ id: handData.hand_id, hand_number: Number(handNumber) });
+        throw readError;
+      }
+      if (!frozenLevel) {
+        setOrphanHand({ id: handData.hand_id, hand_number: Number(handNumber) });
+        throw new Error("Hand đã tạo nhưng thiếu blind structure từ Floor. Dừng post blind và gọi Floor.");
+      }
+      setBlindLevelSnapshot(frozenLevel);
+      setBlindLevelCanonical(true);
+      setSbAmount(frozenLevel.small_blind);
+      setBbAmount(frozenLevel.big_blind);
+      setLiveLevelNumber(frozenLevel.level_number);
       if (!await claimHandLock(handData.hand_id)) {
         setOrphanHand({ id: handData.hand_id, hand_number: Number(handNumber) });
         markSync("error");
@@ -1535,6 +1552,14 @@ export function useStandaloneHandInput(tournamentId: string) {
       if (handErr || !hand) throw new Error(handErr?.message || "Không tải được hand đang diễn ra");
       if (actErr) throw new Error(actErr.message);
       if (!tableLoadGuardRef.current.isCurrent(loadToken)) return false;
+      const frozenLevel = await readHandBlindLevel(targetOrphan.id);
+      if (!tableLoadGuardRef.current.isCurrent(loadToken)) return false;
+      if (frozenLevel) {
+        setBlindLevelSnapshot(frozenLevel);
+        setBlindLevelCanonical(true);
+        setSbAmount(frozenLevel.small_blind);
+        setBbAmount(frozenLevel.big_blind);
+      }
       const rows = (actionRows ?? []) as ResumeActionRow[];
 
       const stored = Array.isArray(hand.community_cards) ? (hand.community_cards as unknown[]) : [];
@@ -2020,8 +2045,15 @@ export function useStandaloneHandInput(tournamentId: string) {
   // already posted is harmless — sbPosted then drives the normal requirement again.
   const handleToggleDeadSb = () => setDeadSb((v) => !v);
 
+  const handleResetButton = () => {
+    if (handStarted || submitting || isReadOnly) return;
+    setButtonOverridden(true);
+    setButtonConfirmed(false);
+  };
+
   const handleSeatTap = (seat: RailSeat) => {
     if (!handStarted) {
+      if (buttonConfirmed || submitting || isReadOnly) return;
       setButtonSeat(seat.seat_number);
       setButtonConfirmed(true);
       setButtonOverridden(true); // P2-5: manual button → drop the dead-button suggestion
@@ -2037,6 +2069,7 @@ export function useStandaloneHandInput(tournamentId: string) {
   // Felt tap → resolve the seat number to a player, then reuse the rail-tap logic.
   const handleSeatNumberTap = (seatNumber: number) => {
     if (!handStarted) {
+      if (buttonConfirmed || submitting || isReadOnly) return;
       setButtonSeat(seatNumber);
       setButtonConfirmed(true);
       setButtonOverridden(true); // P2-5: manual button (incl. an empty seat → dead button)
@@ -2416,17 +2449,24 @@ export function useStandaloneHandInput(tournamentId: string) {
     playTrackerSoundOnce(playedSoundsRef.current, handId, "hand_end", "pot_collect");
     markSync("sent", `Voice Assist đã lưu Hand #${Number(handNumber)}`);
     setLastHandId(receipt.hand_id);
-    const currentBbSeat = actions.find((action) => action.action_type === "post_bb")?.seat_number ?? null;
-    const nextSuggestion = nextButtonTournament({ maxSeats, occupiedSeats: activeNums, prevBbSeat: currentBbSeat });
-    setButtonSeat(nextSuggestion?.buttonSeat ?? nextButton(activeNums, buttonSeat));
-    setLastBbSeat(currentBbSeat);
+    const currentLineage = await readBlindLineage(receipt.hand_id);
+    const nextSuggestion = nextButtonFromBlindLineage({
+      maxSeats, occupiedSeats: activeNums,
+      previousDealtSeats: currentLineage?.previousDealtSeats ?? [],
+      previousButtonSeat: currentLineage?.previousButtonSeat ?? null,
+      previousSbPosition: currentLineage?.previousSbPosition ?? null,
+      previousBbSeat: currentLineage?.previousBbSeat ?? null,
+    });
+    if (nextSuggestion) setButtonSeat(nextSuggestion.buttonSeat);
+    setButtonConfirmed(Boolean(nextSuggestion));
+    setLastBlindLineage(currentLineage);
     setButtonOverridden(false);
     setPlayers((previous) => survivorsAfterHand(previous, activeNums, serverEndingStacks));
     setHandId(null);
     setHandStarted(false);
     resetHand();
     return true;
-  }, [actions, buttonSeat, handId, handNumber, markSync, maxSeats, resetHand, tableId, tournamentId]);
+  }, [handId, handNumber, markSync, maxSeats, resetHand, tableId, tournamentId]);
 
   // B2 — all-in runout ONE-SCREEN: persist EVERY remaining board street in one
   // operator gesture. Sends the SAME cumulative update_community_cards payload as
@@ -2681,10 +2721,17 @@ export function useStandaloneHandInput(tournamentId: string) {
         .filter((s) => s.player_id && s.is_active !== false)
         .map((s) => s.seat_number)
         .sort((a, b) => a - b);
-      const currentBbSeat = actions.find((action) => action.action_type === "post_bb")?.seat_number ?? null;
-      const nextSuggestion = nextButtonTournament({ maxSeats, occupiedSeats: activeNums, prevBbSeat: currentBbSeat });
-      setButtonSeat(nextSuggestion?.buttonSeat ?? nextButton(activeNums, buttonSeat));
-      setLastBbSeat(currentBbSeat);
+      const currentLineage = await readBlindLineage(recordedHandId);
+      const nextSuggestion = nextButtonFromBlindLineage({
+        maxSeats, occupiedSeats: activeNums,
+        previousDealtSeats: currentLineage?.previousDealtSeats ?? [],
+        previousButtonSeat: currentLineage?.previousButtonSeat ?? null,
+        previousSbPosition: currentLineage?.previousSbPosition ?? null,
+        previousBbSeat: currentLineage?.previousBbSeat ?? null,
+      });
+      if (nextSuggestion) setButtonSeat(nextSuggestion.buttonSeat);
+      setButtonConfirmed(Boolean(nextSuggestion));
+      setLastBlindLineage(currentLineage);
       setButtonOverridden(false);
       if (refreshedSeats) {
         setPlayers((prev) => survivorsAfterHand(prev, activeNums, endingStacks));
@@ -2924,6 +2971,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     firstActorSeat,
     isHeadsUp,
     blindLevelSnapshot,
+    blindLevelCanonical,
     blindLevelMissing,
     blindLevelChanged,
     sbAmount,
@@ -2970,6 +3018,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     handlePostBlind,
     handleConfirmBlinds,
     handleToggleDeadSb,
+    handleResetButton,
     handleSeatTap,
     handleSeatNumberTap,
     handleUndo,

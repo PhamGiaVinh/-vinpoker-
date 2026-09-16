@@ -19,6 +19,8 @@
 // against the engine (tests/pokerEngine/deadButton.test.ts).
 
 import type { TournamentBlindPlacement } from './types.ts';
+export { nextButtonFromBlindLineage } from './blindLineage.ts';
+export type { BlindLineageInput, BlindLineagePlacement } from './blindLineage.ts';
 
 export interface DeadButtonInput {
   /** Physical seat capacity of the table (tournament_tables.max_seats, 2..10). */

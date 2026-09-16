@@ -105,6 +105,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           buttonSeat={hook.buttonSeat}
           buttonConfirmed={hook.buttonConfirmed}
           onTapSeat={hook.handleSeatTap}
+          onResetButton={hook.handleResetButton}
           onStartHand={hook.handleStartHand}
           submitting={disabled}
           lastHandId={hook.lastHandId}
@@ -167,6 +168,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           levelNumber={hook.blindLevelSnapshot?.level_number ?? null}
           ante={hook.blindLevelSnapshot?.ante ?? 0}
           levelMissing={hook.blindLevelMissing}
+          lockedAmounts={hook.blindLevelCanonical}
           sbAmount={hook.sbAmount}
           bbAmount={hook.bbAmount}
           onSbAmountChange={hook.setSbAmount}
@@ -178,7 +180,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           disabled={disabled}
           deadSb={hook.deadSb}
           onToggleDeadSb={hook.handleToggleDeadSb}
-          onRefreshLevel={FEATURES.trackerWorkflowAids ? hook.refreshLiveLevel : undefined}
+          onRefreshLevel={FEATURES.trackerWorkflowAids && !hook.blindLevelCanonical ? hook.refreshLiveLevel : undefined}
         />
       );
     }

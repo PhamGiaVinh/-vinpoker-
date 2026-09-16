@@ -101,7 +101,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
   const bigBlind = hook.bigBlind;
   const disabled = hook.submitting || hook.isReadOnly || hook.actionSyncBlocked;
   // P2-5: include EMPTY physical seats so a DEAD button is visible on an empty seat
-  // and the operator can tap one to set it. TrackerRacetrack renders `isEmpty` seats.
+  // and the operator can select it after choosing "Đặt lại button". TrackerRacetrack renders `isEmpty` seats.
   const rich = FEATURES.trackerRacetrackRich;
   const occupiedVMs = toSeatVMs(hook.players, hook.positionsBySeat, rich, hook.playerHoleCards, hook.muckedPlayerIds);
   const occupiedNums = new Set(occupiedVMs.map((s) => s.seatNumber));
@@ -136,6 +136,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           buttonSeat={hook.buttonSeat}
           buttonConfirmed={hook.buttonConfirmed}
           onTapSeat={hook.handleSeatTap}
+          onResetButton={hook.handleResetButton}
           onStartHand={hook.handleStartHand}
           submitting={disabled}
           lastHandId={hook.lastHandId}
@@ -206,6 +207,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           levelNumber={hook.blindLevelSnapshot?.level_number ?? null}
           ante={hook.blindLevelSnapshot?.ante ?? 0}
           levelMissing={hook.blindLevelMissing}
+          lockedAmounts={hook.blindLevelCanonical}
           sbAmount={hook.sbAmount}
           bbAmount={hook.bbAmount}
           onSbAmountChange={hook.setSbAmount}
@@ -219,14 +221,14 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           onToggleDeadSb={hook.handleToggleDeadSb}
           // A1: provenance + one-tap posting — flag OFF → props absent (byte-identical).
           provenance={
-            FEATURES.trackerBlindAutoSeed && hook.blindLevelSnapshot && !hook.blindLevelMissing
+            (FEATURES.trackerBlindAutoSeed || hook.blindLevelCanonical) && hook.blindLevelSnapshot && !hook.blindLevelMissing
               ? `SB ${formatStack(hook.blindLevelSnapshot.small_blind)} · BB ${formatStack(hook.blindLevelSnapshot.big_blind)}${
                   hook.blindLevelSnapshot.ante > 0 ? ` · Ante ${formatStack(hook.blindLevelSnapshot.ante)}` : ""
                 }${hook.blindFetchedAt ? ` · lấy ${hook.blindFetchedAt.toTimeString().slice(0, 5)}` : ""}`
               : undefined
           }
           onPostBoth={FEATURES.trackerBlindAutoSeed ? hook.handlePostBothBlinds : undefined}
-          onRefreshLevel={FEATURES.trackerWorkflowAids ? hook.refreshLiveLevel : undefined}
+          onRefreshLevel={FEATURES.trackerWorkflowAids && !hook.blindLevelCanonical ? hook.refreshLiveLevel : undefined}
         />
       );
     }

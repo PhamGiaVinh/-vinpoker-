@@ -24,6 +24,7 @@ interface SeatRailProps {
   toActId: string | null;
   selectedActorId: string | null;
   setupMode?: boolean;
+  selectionDisabled?: boolean;
   onTapSeat: (seat: RailSeat) => void;
 }
 
@@ -74,6 +75,7 @@ export function SeatRail({
   toActId,
   selectedActorId,
   setupMode = false,
+  selectionDisabled = false,
   onTapSeat,
 }: SeatRailProps) {
   const ordered = [...seats].sort((a, b) => a.seat_number - b.seat_number);
@@ -111,6 +113,7 @@ export function SeatRail({
               key={s.player_id}
               type="button"
               onClick={() => onTapSeat(s)}
+              disabled={selectionDisabled}
               className={`shrink-0 w-[78px] text-center rounded-xl border ${border} ${ring} p-1.5 transition ${
                 s.is_folded ? "opacity-55 bg-card/40" : s.is_all_in ? "bg-red-950/20" : "bg-card hover:border-amber-400/60"
               }`}

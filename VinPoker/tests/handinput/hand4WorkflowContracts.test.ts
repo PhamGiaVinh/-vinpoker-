@@ -28,16 +28,30 @@ describe("Hand #4 resume workflow contracts", () => {
     expect(backToMap).toContain("setTableReloadAttempt((attempt) => attempt + 1)");
   });
 
-  it("restores the previous persisted BB before suggesting the next button", () => {
+  it("restores same-session blind lineage before suggesting the next button", () => {
     const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
     const tableLoad = source.slice(source.indexOf("const handleTableChange ="), source.indexOf("const handlePickTable ="));
 
-    expect(tableLoad).toContain('.select("id, button_seat")');
-    expect(tableLoad).toContain('.eq("action_type", "post_bb")');
-    expect(tableLoad).toContain('.from("hand_players")');
-    expect(tableLoad).toContain("previousBbSeat = lastBbPlayer?.seat_number ?? null");
-    expect(tableLoad).toContain("setLastBbSeat(previousBbSeat)");
-    expect(tableLoad).toContain("prevBbSeat: previousBbSeat");
+    expect(tableLoad).toContain('.select("id, button_seat, status, is_voided")');
+    expect(tableLoad).toContain('.filter("table_session_id", "eq", loadedSessionId)');
+    expect(tableLoad).toContain('lastHand.status === "completed" && !lastHand.is_voided');
+    expect(tableLoad).toContain("readBlindLineage(lastHand.id)");
+    expect(tableLoad).toContain("setLastBlindLineage(previousLineage)");
+    expect(tableLoad).toContain("previousSbPosition: previousLineage?.previousSbPosition ?? null");
+  });
+
+  it("uses the Floor level frozen in the hand for start and resume", () => {
+    const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
+    const start = source.slice(source.indexOf("const handleStartHand ="), source.indexOf("const handleContinueOrphan ="));
+    const resume = source.slice(source.indexOf("const handleContinueOrphan ="), source.indexOf("const handleVoidOrphan ="));
+    expect(start).toContain("await readHandBlindLevel(handData.hand_id)");
+    expect(start.indexOf("setBlindLevelSnapshot(frozenLevel)")).toBeLessThan(start.indexOf("setHandStarted(true)"));
+    expect(resume).toContain("await readHandBlindLevel(targetOrphan.id)");
+    expect(source).toContain("!blindLevelCanonical && !sbPosted && !bbPosted");
+    for (const file of ["StandaloneHandInputConsole.tsx", "RacetrackHandInputConsole.tsx"]) {
+      expect(read(`src/components/cashier/tournament-live/handinput/${file}`))
+        .toContain("lockedAmounts={hook.blindLevelCanonical}");
+    }
   });
 
   it("uses the dead-button engine after both manual and Voice hand completion", () => {
@@ -48,8 +62,9 @@ describe("Hand #4 resume workflow contracts", () => {
     const manualFinish = source.slice(manualStart, source.indexOf("try {", manualStart));
 
     for (const finishPath of [voiceFinish, manualFinish]) {
-      expect(finishPath).toContain('action.action_type === "post_bb"');
-      expect(finishPath).toContain("nextButtonTournament({ maxSeats, occupiedSeats: activeNums, prevBbSeat: currentBbSeat })");
+      expect(finishPath).toContain("await readBlindLineage(");
+      expect(finishPath).toContain("nextButtonFromBlindLineage({");
+      expect(finishPath).toContain("setButtonConfirmed(Boolean(nextSuggestion))");
       expect(finishPath).not.toContain("setButtonSeat(nextButton(activeNums, buttonSeat))");
     }
   });
