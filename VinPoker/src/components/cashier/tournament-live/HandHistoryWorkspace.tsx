@@ -19,6 +19,7 @@ import {
 import { createHandHistoryLoadGuard } from "./handHistoryLoadGuard";
 import {
   runClientResettle,
+  buildServerSettlementEdit,
   buildApplyResettleArgs,
   resettleHandEndStacks,
   checkExpectedHandEndStacks,
@@ -590,9 +591,9 @@ export function HandHistoryWorkspace({
     }
   };
 
-  // Đợt G3 — commit: save display edits (F2 edit_completed_hand) THEN apply the chip
-  // re-attribution (G2 apply_resettle_forward). Two-tier degrade on 42883; a latest-hand
-  // bust flip is refused by the RPC (elimination_change_use_void) → route to void.
+  // Legacy fallback keeps the old two-step path. When the explicit atomic
+  // capability is available, the dedicated Edge writer recomputes actions and
+  // ending stacks server-side before one transaction commits anything.
   const handleResettleConfirm = async () => {
     if (!resettleView || !resettleView.result.ok) return;
     const rv = resettleView;
@@ -606,6 +607,43 @@ export function HandHistoryWorkspace({
       );
       if (!targetStackCheck.matchesEngine) {
         toast.error("Stack thực tế chưa khớp kết quả engine. Hãy sửa action/bài/người thắng rồi tính lại; chưa có chip nào được đổi.");
+        return;
+      }
+      if (FEATURES.trackerAtomicResettle) {
+        if (!isTrackerAtomicResettleAvailable()) {
+          toast.error("Tính lại chip nguyên tử chưa sẵn sàng trên máy chủ. Không có thay đổi nào được gửi; hãy chờ owner xác nhận DB và Edge đã áp dụng.");
+          return;
+        }
+        if (
+          (rv.editedTarget.manualWinnerIds?.length ?? 0) > 0
+          || (rv.editedTarget.muckedPlayerIds?.length ?? 0) > 0
+        ) {
+          toast.error("Đường sửa nguyên tử không nhận người thắng hoặc muck chọn tay. Hãy sửa action, Board và bài đã table để máy chủ tự tính; nếu không đủ dữ liệu, hãy hoàn tác ván rồi nhập lại.");
+          return;
+        }
+        const serverEdit = buildServerSettlementEdit(rv.patch);
+        if (Object.keys(serverEdit).length === 0) {
+          toast.error("Chưa có action, Board hoặc bài để máy chủ tính lại. Không thể đổi chip chỉ từ stack hoặc người thắng chọn tay.");
+          return;
+        }
+        const { data, error } = await supabase.functions.invoke("tournament-live-resettle-commit", {
+          body: {
+            tournament_id: tournamentId,
+            hand_id: rv.targetHandId,
+            correction_reason: rv.reason,
+            edit: serverEdit,
+            expected_target_ending_stacks: rv.expectedEndingStacks,
+            idempotency_key: crypto.randomUUID(),
+          },
+        });
+        if (error || (data as any)?.ok === false) {
+          toast.error((data as any)?.message || error?.message || "Không thể sửa hand và tính lại chip nguyên tử.");
+          return;
+        }
+        toast.success("Đã sửa hand và tính lại chip theo receipt máy chủ.");
+        setResettleView(null);
+        setEditMode(false);
+        loadHands();
         return;
       }
       // Guard 1 — a bust flip (alive<->busted) is NOT a chip re-attribution; the RPC would
@@ -638,32 +676,6 @@ export function HandHistoryWorkspace({
       if (drifted) {
         toast.error("Chip hiện tại khác lúc xem trước (có ván mới, nạp thêm chip, hoặc chỉnh tay). Bấm 'Sửa & tính lại chip' lại — nếu vẫn báo thế này thì chip đã đổi NGOÀI ván bài, phải chỉnh tay hoặc void, không tính lại tự động được.");
         setResettleView(null);
-        loadHands();
-        return;
-      }
-
-      // 1) Display edits (board/holes/actions) — never touches chips.
-      if (FEATURES.trackerAtomicResettle) {
-        if (!isTrackerAtomicResettleAvailable()) {
-          toast.error("Tính lại chip nguyên tử chưa sẵn sàng trên máy chủ. Không có thay đổi nào được gửi; hãy chờ owner xác nhận DB và Edge đã áp dụng.");
-          return;
-        }
-        const { data, error } = await supabase.functions.invoke("tournament-live-resettle", {
-          body: {
-            tournament_id: tournamentId,
-            hand_id: rv.targetHandId,
-            reason: rv.reason,
-            edit: rv.patch,
-            idempotency_key: crypto.randomUUID(),
-          },
-        });
-        if (error || (data as any)?.ok === false) {
-          toast.error((data as any)?.message || error?.message || "Không thể sửa và tính lại chip nguyên tử.");
-          return;
-        }
-        toast.success(`Đã sửa và tính lại chip nguyên tử — ${(data as any)?.changed_players ?? 0} người đổi chip.`);
-        setResettleView(null);
-        setEditMode(false);
         loadHands();
         return;
       }

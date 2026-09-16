@@ -21,6 +21,7 @@ import {
   type ResettleOk,
   type ResettleStreet,
 } from "@/lib/tracker-poker/resettleForward";
+import type { HandEditPatch } from "./handEditDiff";
 
 /** A completed hand as HandHistoryPanel fetches it (target + each later hand). */
 export interface ResettleHandRow {
@@ -262,6 +263,34 @@ export interface ChipChange {
   before: number;
   after: number;
   delta: number;
+}
+
+/**
+ * The atomic Edge route accepts only operator intent. It deliberately omits
+ * client pot/side-pot values because the server rebuilds both from validated
+ * actions before writing the correction receipt.
+ */
+export function buildServerSettlementEdit(patch: HandEditPatch) {
+  const edit: {
+    communityCards?: string[];
+    holeCards?: { player_id: string; entry_number: number; hole_cards: string[] }[];
+    actions?: {
+      player_id: string;
+      entry_number: number;
+      street: string;
+      action_type: string;
+      action_amount: number;
+      action_order: number;
+    }[];
+  } = {};
+  if (patch.p_community_cards !== null) edit.communityCards = [...patch.p_community_cards];
+  if (patch.p_hole_cards !== null) {
+    edit.holeCards = patch.p_hole_cards.map((row) => ({ ...row, hole_cards: [...row.hole_cards] }));
+  }
+  if (patch.p_actions !== null) {
+    edit.actions = patch.p_actions.map((row) => ({ ...row }));
+  }
+  return edit;
 }
 
 export interface HandEndStackPreviewRow {
