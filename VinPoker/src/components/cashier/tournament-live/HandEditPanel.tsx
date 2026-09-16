@@ -16,17 +16,22 @@ import {
 } from "./handEditDiff";
 import { buildEditedTarget } from "./resettleApply";
 import type { EditedTargetHand } from "@/lib/tracker-poker/resettleForward";
+import { validateHandEditActions } from "./handEditValidation";
 
 export interface HandEditPanelPlayer {
   player_id: string;
   entry_number: number;
   display_name: string;
+  seat_number: number;
+  starting_stack: number;
+  ending_stack: number;
   hole_cards: string[];
 }
 export interface HandEditPanelProps {
   board: string[];
   players: HandEditPanelPlayer[];
   actions: EditAction[];
+  buttonSeat: number;
   saving?: boolean;
   onCancel: () => void;
   onSave: (patch: HandEditPatch, reason: string, summary: string[]) => void;
@@ -55,7 +60,7 @@ export function HandEditPanel(props: HandEditPanelProps) {
   return <TrackerInputCardProvider><HandEditPanelContent {...props} /></TrackerInputCardProvider>;
 }
 
-function HandEditPanelContent({ board, players, actions, saving, onCancel, onSave, resettleEnabled, onResettle, onEditChange }: HandEditPanelProps) {
+function HandEditPanelContent({ board, players, actions, buttonSeat, saving, onCancel, onSave, resettleEnabled, onResettle, onEditChange }: HandEditPanelProps) {
   const [boardSlots, setBoardSlots] = useState<(Card | null)[]>(toSlots(board, 5));
   const [holes, setHoles] = useState<Record<string, (Card | null)[]>>(() => {
     const m: Record<string, (Card | null)[]> = {};
@@ -102,8 +107,13 @@ function HandEditPanelContent({ board, players, actions, saving, onCancel, onSav
   };
   const patch = buildHandEditPatch(original, edited);
   const dirty = hasHandEdit(patch);
-  const canSave = dirty && reason.trim().length >= 3 && !saving;
-  const canResettle = !!resettleEnabled && !!onResettle && dirty && reason.trim().length >= 3 && !saving;
+  const actionValidation = validateHandEditActions(players, rows, buttonSeat);
+  const validationByOrder = new Map(actionValidation.assessments.map((item) => [item.action_order, item]));
+  // Board/holes-only corrections keep the existing correction contract. Any action edit
+  // must pass the shared reducer's advisory check before it can be sent to the server.
+  const actionsValid = patch.p_actions === null || actionValidation.ok;
+  const canSave = dirty && actionsValid && reason.trim().length >= 3 && !saving;
+  const canResettle = !!resettleEnabled && !!onResettle && dirty && actionsValid && reason.trim().length >= 3 && !saving;
 
   const submit = () => {
     if (!canSave) return;
@@ -180,38 +190,65 @@ function HandEditPanelContent({ board, players, actions, saving, onCancel, onSav
 
       <div>
         <div className="text-[11px] font-semibold text-muted-foreground mb-1">
-          Hành động (sửa loại/số tiền, hoặc xoá dòng)
+          Hành động (sửa loại/số chip thêm vào, hoặc xoá dòng)
         </div>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/50 bg-background/40 px-2.5 py-2 text-[11px]">
+          <span className="text-muted-foreground">Pot dựng lại từ action: <strong className="font-mono text-foreground">{actionValidation.potSize.toLocaleString("vi-VN")}</strong></span>
+          <span className={actionValidation.ok ? "font-medium text-emerald-300" : "font-medium text-rose-300"}>
+            {actionValidation.ok ? "Chuỗi action hợp lệ theo engine" : "Có action cần sửa trước khi lưu"}
+          </span>
+        </div>
+        <p className="mb-2 text-[11px] text-muted-foreground">
+          Call, bet và raise dùng số chip thêm vào ở action đó, không phải tổng mức raise-to. Engine hiển thị mức cần theo và mức raise tối thiểu cho từng dòng.
+        </p>
         <div className="space-y-1 max-h-[240px] overflow-y-auto pr-1">
-          {rows.map((a, i) => (
-            <div key={a.action_order} className="grid grid-cols-[28px_1fr_96px_92px_28px] gap-2 items-center text-xs">
-              <span className="text-muted-foreground tabular-nums">#{a.action_order}</span>
-              <span className="truncate">{nameOf(a)} · {a.street}</span>
-              <select
-                className="h-7 rounded border border-border bg-background px-1 text-xs"
-                value={a.action_type}
-                onChange={(e) => setRows((prev) => prev.map((r, ri) => (ri === i ? { ...r, action_type: e.target.value } : r)))}
-              >
-                {ACTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <input
-                type="number"
-                min={0}
-                className="h-7 rounded border border-border bg-background px-1 text-xs"
-                value={a.action_amount}
-                onChange={(e) => setRows((prev) => prev.map((r, ri) => (ri === i ? { ...r, action_amount: Math.max(0, parseInt(e.target.value) || 0) } : r)))}
-              />
-              <button
-                type="button"
-                aria-label="Xoá dòng"
-                className="text-red-400 hover:text-red-300"
-                onClick={() => setRows((prev) => prev.filter((_, ri) => ri !== i))}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+          {rows.map((a, i) => {
+            const check = validationByOrder.get(a.action_order);
+            return (
+              <div key={a.action_order} className={`rounded-lg border p-2 ${check?.legal ? "border-emerald-500/20 bg-emerald-950/10" : "border-rose-500/35 bg-rose-950/10"}`}>
+                <div className="grid grid-cols-[28px_minmax(0,1fr)_88px_82px_28px] gap-2 items-center text-xs">
+                  <span className="text-muted-foreground tabular-nums">#{a.action_order}</span>
+                  <span className="truncate">{nameOf(a)} · {a.street}</span>
+                  <select
+                    aria-label={`Loại action ${a.action_order}`}
+                    className="h-8 rounded border border-border bg-background px-1 text-xs"
+                    value={a.action_type}
+                    onChange={(e) => setRows((prev) => prev.map((r, ri) => (ri === i ? { ...r, action_type: e.target.value } : r)))}
+                  >
+                    {ACTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <input
+                    type="number"
+                    min={0}
+                    aria-label={`Số chip action ${a.action_order}`}
+                    className="h-8 rounded border border-border bg-background px-1 text-xs"
+                    value={a.action_amount}
+                    onChange={(e) => setRows((prev) => prev.map((r, ri) => (ri === i ? { ...r, action_amount: Math.max(0, parseInt(e.target.value) || 0) } : r)))}
+                  />
+                  <button
+                    type="button"
+                    aria-label={`Xoá action ${a.action_order}`}
+                    className="text-red-400 hover:text-red-300"
+                    onClick={() => setRows((prev) => prev.filter((_, ri) => ri !== i))}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <p className={`mt-1 text-[10px] leading-snug ${check?.legal ? "text-emerald-200" : "text-rose-200"}`}>
+                  {check?.message ?? "Đang kiểm tra action..."}
+                  {check?.stackBefore != null && ` Stack trước: ${check.stackBefore.toLocaleString("vi-VN")}.`}
+                  {check?.requiredAmount != null && ` Cần theo: ${check.requiredAmount.toLocaleString("vi-VN")}.`}
+                  {check?.minimumAmount != null && ` Tối thiểu: ${check.minimumAmount.toLocaleString("vi-VN")}.`}
+                </p>
+              </div>
+            );
+          })}
         </div>
+        {!actionsValid && (
+          <p role="alert" className="mt-2 text-[11px] leading-snug text-rose-300">
+            Chưa gửi chỉnh sửa action. Hãy sửa các dòng đỏ; máy chủ vẫn sẽ kiểm tra lại trước khi ghi.
+          </p>
+        )}
       </div>
 
       <div>

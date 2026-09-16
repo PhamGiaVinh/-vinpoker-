@@ -8,7 +8,7 @@ const app = read("src/App.tsx");
 const dashboard = read("src/pages/TrackerDashboard.tsx");
 const layout = read("src/components/Layout.tsx");
 const workspace = read("src/pages/TrackerHandHistory.tsx");
-const panel = read("src/components/cashier/tournament-live/HandHistoryPanel.tsx");
+const panel = read("src/components/cashier/tournament-live/HandHistoryWorkspace.tsx");
 const batch = read("src/components/cashier/tournament-live/HistoricalSettlementBatchControl.tsx");
 
 describe("tracker hand history workspace capability", () => {

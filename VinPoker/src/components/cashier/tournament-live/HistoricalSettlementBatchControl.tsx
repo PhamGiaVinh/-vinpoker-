@@ -12,7 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { FEATURES } from "@/lib/featureFlags";
 import { parseHistoricalSettlementDisplayPreview } from "@/lib/tracker-poker/historicalSettlementDisplay";
 import { diagnoseHistoricalSettlementInvocation } from "@/lib/tracker-poker/historicalSettlementDiagnostics";
@@ -62,6 +62,7 @@ function resultLabel(result: HistoricalSettlementPreviewResult | HistoricalSettl
 }
 
 export function HistoricalSettlementBatchControl({ tournamentId, candidates, onSelectHand, onCommitted }: Props) {
+  const supabase = useSupabaseClient();
   const [previews, setPreviews] = useState<HistoricalSettlementPreviewResult[]>([]);
   const [commits, setCommits] = useState<HistoricalSettlementCommitResult[]>([]);
   const [progress, setProgress] = useState({ completed: 0, total: 0 });

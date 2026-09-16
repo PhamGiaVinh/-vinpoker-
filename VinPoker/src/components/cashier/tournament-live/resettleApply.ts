@@ -264,6 +264,44 @@ export interface ChipChange {
   delta: number;
 }
 
+export interface HandEndStackPreviewRow {
+  player_id: string;
+  before: number;
+  after: number;
+}
+
+export interface HandEndStackPreview {
+  rows: HandEndStackPreviewRow[];
+  beforeTotal: number;
+  afterTotal: number;
+  conserved: boolean;
+}
+
+/**
+ * Exact per-player ending stacks for the edited hand, not the final tournament
+ * carry. This is the number a Floor/Tracker operator needs to inspect before
+ * approving a forward re-settle. It never accepts operator-entered stacks.
+ */
+export function resettleHandEndStacks(
+  result: ResettleOk,
+  handId: string,
+  players: { player_id: string; ending_stack: number }[],
+): HandEndStackPreview {
+  const endings = new Map(
+    result.changes
+      .filter((change) => change.hand_id === handId)
+      .map((change) => [change.player_id, change.after_ending]),
+  );
+  const rows = players.map((player) => ({
+    player_id: player.player_id,
+    before: player.ending_stack,
+    after: endings.get(player.player_id) ?? player.ending_stack,
+  }));
+  const beforeTotal = rows.reduce((sum, player) => sum + player.before, 0);
+  const afterTotal = rows.reduce((sum, player) => sum + player.after, 0);
+  return { rows, beforeTotal, afterTotal, conserved: beforeTotal === afterTotal };
+}
+
 /** Per-player current→new chip preview (last recorded ending → resettled final). Pure —
  *  the caller adds display names. */
 export function resettleChipChanges(result: ResettleOk): ChipChange[] {

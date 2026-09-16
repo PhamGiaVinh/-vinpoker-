@@ -40,8 +40,8 @@ vi.mock("@/lib/tracker-floor-alerts/useTrackerFloorAlertLocations", () => ({
   useTrackerFloorAlertLocations: () => () => ({ tableNumber: 5, handNumber: 12 }),
 }));
 
-vi.mock("./FloorAlertHandReview", () => ({
-  FloorAlertHandReview: ({ handId }: { handId: string }) => <p>{handId} chỉ xem</p>,
+vi.mock("./HandHistoryWorkspace", () => ({
+  HandHistoryWorkspace: ({ initialHandId }: { initialHandId: string }) => <p>{initialHandId} workspace sửa hand</p>,
 }));
 
 import { TrackerFloorAlertLane } from "./TrackerFloorAlertLane";
@@ -61,7 +61,7 @@ describe("TrackerFloorAlertLane", () => {
       "/tracker/hand-input?tournament=tournament-1&table=physical-1&handId=hand-1",
     );
     expect(screen.getByText(/Bàn 5 · Hand #12/)).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Xem cả ván" }));
-    expect(screen.getByText("hand-1 chỉ xem")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra & sửa hand" }));
+    expect(screen.getByText("hand-1 workspace sửa hand")).toBeVisible();
   });
 });
