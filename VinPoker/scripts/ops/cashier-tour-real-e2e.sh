@@ -30,26 +30,36 @@ fi
 # This first start only downloads/prepares the pinned CLI service images.
 exclude_services="imgproxy,logflare,mailpit,postgres-meta,realtime,storage-api,studio,supavisor,vector"
 df -h / | tail -n 1
-supabase start --exclude "$exclude_services" >"$test_root/prepare.log" 2>&1 || {
+set +e
+supabase start --exclude "$exclude_services" >"$test_root/prepare.log" 2>&1
+prepare_rc=$?
+set -e
+if (( prepare_rc != 0 )) || ! supabase status --output json >"$test_root/prepare-status.json" 2>"$test_root/prepare-status.err"; then
+  echo "Empty Supabase start/status failed (start exit $prepare_rc)" >&2
   tail -n 25 "$test_root/prepare.log" >&2
   docker ps -a --format 'Container startup: {{.Names}} {{.Status}}' >&2
   df -h / | tail -n 1 >&2
   docker system df >&2
   exit 1
-}
+fi
 supabase stop --no-backup >/dev/null 2>&1
 docker pull mcr.microsoft.com/playwright:v1.60.0-noble >/dev/null
 
 docker network create --driver bridge --internal \
   -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 "$network" >/dev/null
 
+set +e
 supabase start --network-id "$network" \
   --exclude "$exclude_services" \
-  >"$test_root/isolated-start.log" 2>&1 || {
+  >"$test_root/isolated-start.log" 2>&1
+isolated_rc=$?
+set -e
+if (( isolated_rc != 0 )) || ! supabase status --output json >"$test_root/isolated-status.json" 2>"$test_root/isolated-status.err"; then
+  echo "Isolated Supabase start/status failed (start exit $isolated_rc)" >&2
   tail -n 25 "$test_root/isolated-start.log" >&2
   docker ps -a --filter 'name=supabase_db_' --format 'DB startup: {{.Status}}' >&2
   exit 1
-}
+fi
 
 mapfile -t containers < <(docker ps -q --filter "network=$network")
 if (( ${#containers[@]} < 4 )); then
