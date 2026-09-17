@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+repo_root="$(pwd)"
 
 # This job has no production secrets or linked project. No application SQL or
 # handler is loaded until the outbound-network proof succeeds.
@@ -203,5 +204,37 @@ for target in 'http://example.com' 'http://1.1.1.1'; do
   fi
 done
 echo "ISOLATION_PROOF: DB/pg_net/Edge/browser outbound denied; local Auth reachable; cron off"
-echo "E2E_NOT_READY: application schema and browser assertions are not installed yet" >&2
+
+# Only after the network proof: load the unmodified repository migration chain
+# into the unlinked disposable project. The historical SQL contains cron/pg_net
+# callers, so the firewall and disabled scheduler must stay active throughout.
+mkdir -p "$test_root/supabase/migrations"
+cp -a "$repo_root/supabase/migrations/." "$test_root/supabase/migrations/"
+cashier_migration='20270115000003_cashier_tour_money_v1.sql'
+if [[ "$(sha256sum "$repo_root/supabase/migrations/$cashier_migration" | cut -d ' ' -f 1)" != \
+      "$(sha256sum "$test_root/supabase/migrations/$cashier_migration" | cut -d ' ' -f 1)" ]]; then
+  echo "Cashier migration differs from the checked-out source" >&2
+  exit 1
+fi
+set +e
+timeout 25m supabase migration up --local >"$test_root/migration.log" 2>&1
+migration_rc=$?
+set -e
+if (( migration_rc != 0 )); then
+  echo "Canonical migration chain failed on isolated Supabase (exit $migration_rc)" >&2
+  tail -n 45 "$test_root/migration.log" >&2
+  exit 1
+fi
+applied="$(docker exec "$db_container" psql -X -Atq -U postgres -d postgres \
+  -c "SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version = '20270115000003'")"
+if [[ "$applied" != 1 ]]; then
+  echo "Cashier migration was not recorded exactly once on disposable DB" >&2
+  exit 1
+fi
+if [[ "$(docker exec "$db_container" psql -X -Atq -U postgres -d postgres -c 'SHOW cron.launch_active_jobs')" != 'off' ]]; then
+  echo "Disposable cron guard changed during migration" >&2
+  exit 1
+fi
+echo "SCHEMA_PROOF: canonical migrations applied; Cashier migration exactly once; cron remains off"
+echo "E2E_NOT_READY: synthetic Auth/Edge/browser business assertions are not installed yet" >&2
 exit 1
