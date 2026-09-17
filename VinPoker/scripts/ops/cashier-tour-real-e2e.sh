@@ -152,16 +152,17 @@ docker exec "$browser_probe" node -e \
   }
 docker stop "$browser_probe" >/dev/null
 
-docker exec "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U supabase_admin -d postgres \
-  -c 'CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA extensions' \
-  -c "ALTER SYSTEM SET cron.launch_active_jobs = 'off'" \
-  -c 'SELECT pg_reload_conf()' >/dev/null
+docker exec "$db_container" sh -c 'test -n "$POSTGRES_PASSWORD" &&
+  PGPASSWORD="$POSTGRES_PASSWORD" psql -X -q -v ON_ERROR_STOP=1 -U supabase_admin -d postgres \
+    -c "CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA extensions" \
+    -c "ALTER SYSTEM SET cron.launch_active_jobs = off" \
+    -c "SELECT pg_reload_conf()"' >/dev/null
 if [[ "$(docker exec "$db_container" psql -X -Atq -U postgres -d postgres -c 'SHOW cron.launch_active_jobs')" != 'off' ]]; then
   echo "Could not disable disposable DB cron jobs" >&2
   exit 1
 fi
-docker exec "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U supabase_admin -d postgres \
-  -c 'CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions' >/dev/null
+docker exec "$db_container" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -X -q -v ON_ERROR_STOP=1 \
+  -U supabase_admin -d postgres -c "CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions"' >/dev/null
 
 pg_net_request() {
   local url="$1" request_id response attempt
