@@ -317,6 +317,9 @@ export type Database = {
         Row: {
           buyin: number | null
           created_at: string
+          delete_reason: string | null
+          deleted_at: string | null
+          deleted_by: string | null
           entries: number | null
           entry_date: string
           game_type: string
@@ -327,12 +330,16 @@ export type Database = {
           profit_loss: number | null
           rake: number | null
           stakes: string | null
+          purge_after: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           buyin?: number | null
           created_at?: string
+          delete_reason?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           entries?: number | null
           entry_date?: string
           game_type: string
@@ -343,12 +350,16 @@ export type Database = {
           profit_loss?: number | null
           rake?: number | null
           stakes?: string | null
+          purge_after?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           buyin?: number | null
           created_at?: string
+          delete_reason?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           entries?: number | null
           entry_date?: string
           game_type?: string
@@ -359,6 +370,7 @@ export type Database = {
           profit_loss?: number | null
           rake?: number | null
           stakes?: string | null
+          purge_after?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -13687,6 +13699,10 @@ export type Database = {
       }
       auto_soft_delete_old_tournaments: { Args: never; Returns: number }
       bridge_shift_checkins_to_pool: { Args: never; Returns: number }
+      purge_deleted_bankroll_entries: { Args: never; Returns: number }
+      restore_bankroll_entry: { Args: { p_entry_id: string }; Returns: boolean }
+      soft_delete_all_bankroll_entries: { Args: { p_reason?: string }; Returns: number }
+      soft_delete_bankroll_entry: { Args: { p_entry_id: string; p_reason?: string }; Returns: number }
       bulk_update_stacks: {
         Args: { p_tournament_id: string; p_updates: Json }
         Returns: Json

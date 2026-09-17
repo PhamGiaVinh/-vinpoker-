@@ -17,6 +17,10 @@ export interface BankrollEntry {
   profit_loss: number | null;
   notes: string | null;
   created_at: string;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
+  purge_after?: string | null;
 }
 
 export const entryNetPL = (e: BankrollEntry): number => {
