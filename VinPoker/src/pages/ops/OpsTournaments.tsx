@@ -230,7 +230,7 @@ export default function OpsTournaments() {
       {FEATURES.trackerVoiceInput && (
         <FloorVoiceAlertInbox
           tournaments={allVMs}
-          onSelect={(id) => navigate(`/ops/floor/tournaments/${id}/tables?club=${encodeURIComponent(activeClub)}`)}
+          onSelect={(id, alertId) => navigate(`/ops/floor/tournaments/${id}/tables?club=${encodeURIComponent(activeClub)}&alert=${encodeURIComponent(alertId)}`)}
         />
       )}
 

@@ -1,46 +1,37 @@
-import { toast } from "sonner";
-import { AlertQueueItem } from "@/components/ops/shared/AlertQueueItem";
-import { FinancialWarningCard } from "@/components/ops/shared/FinancialWarningCard";
-import { RoleLockedAction } from "@/components/ops/shared/RoleLockedAction";
-import { MockChip } from "@/components/ops/shared/MockChip";
-import { MOCK_OP_ALERTS, MOCK_FIN_LINES } from "@/components/ops/mock/opsData";
+import { useNavigate } from "react-router-dom";
+import { FloorVoiceAlertInbox } from "@/components/floor/FloorVoiceAlertInbox";
+import { useTournaments } from "@/hooks/useTournaments";
+import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
+import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
 
-/**
- * Cảnh báo (mobileOpsV2) — hàng đợi sự cố + cảnh báo Tài chính READ-ONLY, phong cách iOS.
- * Floor KHÔNG thao tác tiền. DỮ LIỆU MẪU. docs/design/ios-floor-ux-spec.md §10–11.
- */
 export default function OpsAlerts() {
+  const navigate = useNavigate();
+  const { selectedClubId } = useOpsWorkspace();
+  const { floorClubIds, isSuperAdmin, loading: scopeLoading, scopeError } = useOpsCapabilities();
+  const activeClub = selectedClubId && (isSuperAdmin || floorClubIds.includes(selectedClubId))
+    ? selectedClubId
+    : undefined;
+  const { data: tournaments, isLoading, error } = useTournaments(activeClub);
+
   return (
-    <div className="ios-in space-y-6 pt-2">
+    <div className="ios-in space-y-4 pt-2">
       <header className="px-1">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="min-w-0 truncate text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Cảnh báo</h1>
-          <MockChip />
-        </div>
-        <p className="mt-0.5 text-[15px] text-[#9b8e97]">{MOCK_OP_ALERTS.length} việc cần xử lý</p>
+        <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Cảnh báo Floor</h1>
+        <p className="mt-1 text-sm text-[#9b8e97]">Chạm cảnh báo để xem toàn bộ action của đúng ván.</p>
       </header>
-
-      <section>
-        <h3 className="mb-2 px-1 text-[13px] font-semibold uppercase tracking-wide text-[#9b8e97]">Cần xử lý</h3>
-        <div className="ios-group">
-          {MOCK_OP_ALERTS.map((a) => (
-            <AlertQueueItem
-              key={a.id}
-              icon={a.icon}
-              subject={a.subject}
-              detail={a.detail}
-              status={a.status}
-              onTap={() => toast("Mở luồng xử lý (bản mẫu)")}
-            />
-          ))}
-        </div>
-      </section>
-
-      <section className="space-y-2.5">
-        <h3 className="px-1 text-[13px] font-semibold uppercase tracking-wide text-[#9b8e97]">Cảnh báo tài chính (đọc)</h3>
-        <FinancialWarningCard lines={MOCK_FIN_LINES} />
-        <RoleLockedAction label="Mở Tài chính &amp; Đối soát" mode="desktopOnly" reason="trên máy tính" />
-      </section>
+      {!activeClub && !scopeLoading && <p className="rounded-xl border border-amber-400/30 p-4 text-sm text-amber-200">Chọn CLB bạn được phân quyền Floor để xem cảnh báo.</p>}
+      {scopeError && <p className="text-sm text-rose-300">Không tải được quyền Floor: {scopeError}</p>}
+      {activeClub && isLoading && <p className="text-sm text-zinc-400">Đang tải cảnh báo...</p>}
+      {activeClub && error && <p className="text-sm text-rose-300">Không tải được giải đấu: {error.message}</p>}
+      {activeClub && !isLoading && !error && (
+        <>
+          <FloorVoiceAlertInbox
+            tournaments={(tournaments ?? []).map((tournament) => ({ id: tournament.id, name: tournament.name }))}
+            onSelect={(tournamentId, alertId) => navigate(`/ops/floor/tournaments/${tournamentId}/tables?club=${encodeURIComponent(activeClub)}&alert=${encodeURIComponent(alertId)}`)}
+          />
+          <p className="px-1 text-xs text-[#9b8e97]">Nếu hand đã void, Floor có thể đóng cảnh báo sau khi kiểm tra nhật ký. Hand đang mở cần Dealer sửa thủ công; hand đã lưu cần luồng sửa hand.</p>
+        </>
+      )}
     </div>
   );
 }

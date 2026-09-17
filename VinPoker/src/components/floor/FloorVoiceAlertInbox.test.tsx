@@ -36,8 +36,7 @@ describe("FloorVoiceAlertInbox", () => {
     render(<MemoryRouter><FloorVoiceAlertInbox tournaments={[{ id: "tour-1", name: "Giải TEST" }]} onSelect={onSelect} /></MemoryRouter>);
 
     expect(await screen.findByText(/Bàn 5 · Hand #12/)).toBeVisible();
-    expect(screen.getByRole("link", { name: /Sai action.*Bàn 5.*Hand #12.*Chạm để mở bàn/i })).toHaveAttribute("href", "/tracker/hand-input?tournament=tour-1&table=physical-5&handId=hand-12");
-    fireEvent.click(screen.getByRole("button", { name: "Xem cảnh báo Floor" }));
-    expect(onSelect).toHaveBeenCalledWith("tour-1");
+    fireEvent.click(screen.getByRole("button", { name: /Sai action.*Bàn 5.*Hand #12.*Xem toàn bộ ván/i }));
+    expect(onSelect).toHaveBeenCalledWith("tour-1", "alert-1");
   });
 });

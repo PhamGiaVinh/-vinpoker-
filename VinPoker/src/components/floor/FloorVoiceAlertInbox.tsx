@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AlertTriangle } from "lucide-react";
-import { Link } from "react-router-dom";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
-import { trackerFloorAlertLink } from "@/lib/tracker-floor-alerts/trackerFloorAlertLink";
 import { useTrackerFloorAlertLocations } from "@/lib/tracker-floor-alerts/useTrackerFloorAlertLocations";
 
 type TournamentRef = { id: string; name: string };
@@ -19,7 +17,7 @@ type AlertRow = {
 
 export function FloorVoiceAlertInbox({ tournaments, onSelect }: {
   tournaments: readonly TournamentRef[];
-  onSelect: (tournamentId: string) => void;
+  onSelect: (tournamentId: string, alertId: string) => void;
 }) {
   const client = useSupabaseClient() as SupabaseClient;
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
@@ -81,20 +79,15 @@ export function FloorVoiceAlertInbox({ tournaments, onSelect }: {
             key={alert.id}
             className="rounded-xl border border-amber-300/20 bg-black/20 px-3 py-2 text-sm text-foreground"
           >
-            <Link className="block rounded-lg p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300" to={trackerFloorAlertLink(alert)}>
+            <button className="block w-full rounded-lg p-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300" type="button" onClick={() => onSelect(alert.tournament_id, alert.id)}>
               <span className="block font-semibold">{alert.title}</span>
               <span className="block text-xs text-muted-foreground">
                 {names.get(alert.tournament_id) ?? "Giải đấu"} · {location?.tableNumber != null ? `Bàn ${location.tableNumber}` : "Bàn đang tải"}
                 {location?.handNumber != null ? ` · Hand #${location.handNumber}` : ""}
               </span>
-              <span className="mt-1 block text-xs text-amber-100">Action sai: chưa được chỉ rõ. Xem nhật ký ván trước khi sửa.</span>
-              <span className="mt-1 block text-xs font-semibold text-amber-300">Chạm để mở bàn →</span>
-            </Link>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <button className="min-h-11 rounded-lg border border-amber-300/30 px-3 text-amber-200" type="button" onClick={() => onSelect(alert.tournament_id)}>
-                Xem cảnh báo Floor
-              </button>
-            </div>
+              <span className="mt-1 block text-xs text-amber-100">{location?.handVoided ? "Hand đã void; Floor cần đóng cảnh báo." : "Action sai chưa được chỉ rõ; xem toàn bộ action để tìm chỗ cần sửa."}</span>
+              <span className="mt-1 block text-xs font-semibold text-amber-300">{location?.handStatus === "completed" && !location?.handVoided ? "Xem toàn bộ ván và sửa hand →" : "Xem toàn bộ ván →"}</span>
+            </button>
           </div>;
         })}
       </div>
