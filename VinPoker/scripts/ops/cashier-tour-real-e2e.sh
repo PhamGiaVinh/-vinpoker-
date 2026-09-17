@@ -12,8 +12,15 @@ done
 
 test_root="$(mktemp -d -t cashier-e2e-XXXXXXXX)"
 network="cashier-e2e-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
+bridge=""
+firewall_chain="CASHIER_E2E"
 cleanup() {
   supabase stop --workdir "$test_root" --no-backup >/dev/null 2>&1 || true
+  if [[ -n "$bridge" ]]; then
+    sudo iptables -w -D DOCKER-USER -i "$bridge" -j "$firewall_chain" >/dev/null 2>&1 || true
+    sudo iptables -w -F "$firewall_chain" >/dev/null 2>&1 || true
+    sudo iptables -w -X "$firewall_chain" >/dev/null 2>&1 || true
+  fi
   docker network rm "$network" >/dev/null 2>&1 || true
   rm -rf -- "$test_root"
 }
@@ -45,8 +52,27 @@ fi
 supabase stop --no-backup >/dev/null 2>&1
 docker pull mcr.microsoft.com/playwright:v1.60.0-noble >/dev/null
 
-docker network create --driver bridge --internal \
+docker network create --driver bridge \
   -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 "$network" >/dev/null
+network_json="$(docker network inspect "$network")"
+if [[ "$(jq -r '.[0].EnableIPv6' <<<"$network_json")" != "false" ]]; then
+  echo "Unexpected IPv6 on Cashier E2E bridge" >&2
+  exit 1
+fi
+subnet="$(jq -r '.[0].IPAM.Config[0].Subnet' <<<"$network_json")"
+gateway="$(jq -r '.[0].IPAM.Config[0].Gateway' <<<"$network_json")"
+bridge="br-$(jq -r '.[0].Id[:12]' <<<"$network_json")"
+if [[ -z "$subnet" || -z "$gateway" || ! "$bridge" =~ ^br-[0-9a-f]{12}$ ]]; then
+  echo "Could not resolve exact test bridge/subnet" >&2
+  exit 1
+fi
+sudo iptables -w -N "$firewall_chain"
+sudo iptables -w -A "$firewall_chain" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+sudo iptables -w -A "$firewall_chain" -d "$gateway/32" -j REJECT
+sudo iptables -w -A "$firewall_chain" -d "$subnet" -j RETURN
+sudo iptables -w -A "$firewall_chain" -j REJECT
+sudo iptables -w -I DOCKER-USER 1 -i "$bridge" -j "$firewall_chain"
+sudo iptables -w -C DOCKER-USER -i "$bridge" -j "$firewall_chain"
 
 set +e
 supabase start --network-id "$network" \
