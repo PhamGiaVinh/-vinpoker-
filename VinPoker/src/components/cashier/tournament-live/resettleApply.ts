@@ -21,6 +21,7 @@ import {
   type ResettleOk,
   type ResettleStreet,
 } from "@/lib/tracker-poker/resettleForward";
+import type { HandEditPatch } from "./handEditDiff";
 
 /** A completed hand as HandHistoryPanel fetches it (target + each later hand). */
 export interface ResettleHandRow {
@@ -262,6 +263,113 @@ export interface ChipChange {
   before: number;
   after: number;
   delta: number;
+}
+
+/**
+ * The atomic Edge route accepts only operator intent. It deliberately omits
+ * client pot/side-pot values because the server rebuilds both from validated
+ * actions before writing the correction receipt.
+ */
+export function buildServerSettlementEdit(patch: HandEditPatch) {
+  const edit: {
+    communityCards?: string[];
+    holeCards?: { player_id: string; entry_number: number; hole_cards: string[] }[];
+    actions?: {
+      player_id: string;
+      entry_number: number;
+      street: string;
+      action_type: string;
+      action_amount: number;
+      action_order: number;
+    }[];
+  } = {};
+  if (patch.p_community_cards !== null) edit.communityCards = [...patch.p_community_cards];
+  if (patch.p_hole_cards !== null) {
+    edit.holeCards = patch.p_hole_cards.map((row) => ({ ...row, hole_cards: [...row.hole_cards] }));
+  }
+  if (patch.p_actions !== null) {
+    edit.actions = patch.p_actions.map((row) => ({ ...row }));
+  }
+  return edit;
+}
+
+export interface HandEndStackPreviewRow {
+  player_id: string;
+  before: number;
+  after: number;
+}
+
+export interface HandEndStackPreview {
+  rows: HandEndStackPreviewRow[];
+  beforeTotal: number;
+  afterTotal: number;
+  conserved: boolean;
+}
+
+export interface ExpectedHandEndStack {
+  player_id: string;
+  entry_number: number;
+  ending_stack: number;
+}
+
+export interface ExpectedHandEndStackCheck {
+  rows: (HandEndStackPreviewRow & { expected: number; matches: boolean })[];
+  expectedTotal: number;
+  expectedConserved: boolean;
+  matchesEngine: boolean;
+}
+
+/**
+ * Exact per-player ending stacks for the edited hand, not the final tournament
+ * carry. This is the number a Floor/Tracker operator needs to inspect before
+ * approving a forward re-settle. It never accepts operator-entered stacks.
+ */
+export function resettleHandEndStacks(
+  result: ResettleOk,
+  handId: string,
+  players: { player_id: string; ending_stack: number }[],
+): HandEndStackPreview {
+  const endings = new Map(
+    result.changes
+      .filter((change) => change.hand_id === handId)
+      .map((change) => [change.player_id, change.after_ending]),
+  );
+  const rows = players.map((player) => ({
+    player_id: player.player_id,
+    before: player.ending_stack,
+    after: endings.get(player.player_id) ?? player.ending_stack,
+  }));
+  const beforeTotal = rows.reduce((sum, player) => sum + player.before, 0);
+  const afterTotal = rows.reduce((sum, player) => sum + player.after, 0);
+  return { rows, beforeTotal, afterTotal, conserved: beforeTotal === afterTotal };
+}
+
+/**
+ * The operator may state the observed end stacks, but the values are an audit
+ * target only. A correction can proceed only when the replayed hand produces
+ * those same stacks and preserves the target hand's chip total.
+ */
+export function checkExpectedHandEndStacks(
+  preview: HandEndStackPreview,
+  expected: ExpectedHandEndStack[],
+): ExpectedHandEndStackCheck {
+  const expectedByPlayer = new Map(expected.map((item) => [item.player_id, item.ending_stack]));
+  const rows = preview.rows.map((row) => {
+    const expectedStack = expectedByPlayer.get(row.player_id);
+    return {
+      ...row,
+      expected: expectedStack ?? Number.NaN,
+      matches: expectedStack === row.after,
+    };
+  });
+  const expectedTotal = rows.reduce((sum, row) => sum + row.expected, 0);
+  const expectedConserved = Number.isSafeInteger(expectedTotal) && expectedTotal === preview.beforeTotal;
+  return {
+    rows,
+    expectedTotal,
+    expectedConserved,
+    matchesEngine: expectedConserved && rows.every((row) => Number.isSafeInteger(row.expected) && row.expected >= 0 && row.matches),
+  };
 }
 
 /** Per-player current→new chip preview (last recorded ending → resettled final). Pure —

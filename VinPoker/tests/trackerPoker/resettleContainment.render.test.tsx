@@ -22,8 +22,8 @@ describe("resettle manual-winner containment", () => {
         }}
         busy={false}
         players={[
-          { player_id: "limitless", display_name: "Limitless" },
-          { player_id: "kayhan", display_name: "Kayhan Mokri" },
+          { player_id: "limitless", display_name: "Limitless", ending_stack: 1000 },
+          { player_id: "kayhan", display_name: "Kayhan Mokri", ending_stack: 1000 },
         ]}
         onConfirm={vi.fn()}
         onClose={vi.fn()}

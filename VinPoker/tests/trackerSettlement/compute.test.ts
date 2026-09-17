@@ -76,9 +76,9 @@ describe("authoritative settlement computation", () => {
     input.players = input.players.map((player) => ({ ...player, hole_cards: [] }));
     input.edit = {
       actions: [
-        action("hand-8", "fold-a", "limitless", "bet", 100, 1),
+        action("hand-8", "fold-a", "limitless", "post_sb", 50, 1),
         action("hand-8", "fold-b", "kayhan", "post_bb", 100, 2),
-        action("hand-8", "fold-c", "kayhan", "fold", 0, 3),
+        action("hand-8", "fold-c", "limitless", "fold", 0, 3),
       ],
     };
     input.liveStacks = input.liveStacks.map((stack) => stack.player_id === "limitless"
@@ -88,7 +88,7 @@ describe("authoritative settlement computation", () => {
       ? { ...player, ending_stack: 17_300_000 }
       : { ...player, ending_stack: 47_400_000 });
     const result = await computeAuthoritativeSettlement(input);
-    expect(result.privateOutcome.pots[0].winnerIds).toEqual(["limitless"]);
+    expect(result.privateOutcome.pots[0].winnerIds).toEqual(["kayhan"]);
     expect(result.privateOutcome.handRanks).toEqual([]);
   });
 
@@ -114,8 +114,29 @@ describe("authoritative settlement computation", () => {
 
   it("rejects an action stream that commits more than the starting stack", async () => {
     const input = hand8Input();
-    input.edit = { actions: [action("hand-8", "bad", "limitless", "all_in", 17_400_001, 1)] };
+    input.actions = [action("hand-8", "bad", "limitless", "all_in", 17_400_001, 1)];
     await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("target_action_exceeds_stack");
+  });
+
+  it("replays edited actions with strict call amounts before settlement", async () => {
+    const input = hand8Input();
+    input.edit = {
+      actions: [
+        action("hand-8", "edited-a", "kayhan", "bet", 100, 1),
+        action("hand-8", "edited-b", "limitless", "call", 50, 2),
+      ],
+    };
+    await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("edited_action_invalid:2:AMOUNT_MISMATCH");
+  });
+
+  it("rejects an edited action from a seat that is not the server-derived actor", async () => {
+    const input = hand8Input();
+    input.edit = {
+      actions: [
+        action("hand-8", "edited-a", "limitless", "bet", 100, 1),
+      ],
+    };
+    await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("edited_action_invalid:1:OUT_OF_TURN");
   });
 
   it("uses the database revision consistently in the outcome and target source anchor", async () => {
@@ -126,6 +147,13 @@ describe("authoritative settlement computation", () => {
     const result = await computeAuthoritativeSettlement(input);
     expect(result.privateOutcome.sourceRevision).toBe(7);
     expect(result.privateOutcome.privateEvidence.sourceChain[0].sourceRevision).toBe(7);
+  });
+
+  it("uses the server-selected correction revision for the persisted outcome", async () => {
+    const input = hand8Input();
+    input.settlementRevisionOverride = 4;
+    const result = await computeAuthoritativeSettlement(input);
+    expect(result.privateOutcome.settlementRevision).toBe(4);
   });
 });
 

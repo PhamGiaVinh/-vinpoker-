@@ -12,7 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import {
   parseHistoricalSettlementDisplayPreview,
   type HistoricalSettlementDisplayPreview,
@@ -77,6 +77,7 @@ export function HistoricalSettlementDisplayControl({
   handNumber,
   onVerified,
 }: HistoricalSettlementDisplayControlProps) {
+  const supabase = useSupabaseClient();
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<HistoricalSettlementDisplayPreview | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);

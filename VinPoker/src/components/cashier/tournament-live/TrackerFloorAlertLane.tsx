@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FloorAlertHandReview } from "./FloorAlertHandReview";
+import { HandHistoryWorkspace } from "./HandHistoryWorkspace";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import {
   listTrackerFloorAlerts,
@@ -164,7 +164,7 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
                 <div className="flex flex-wrap gap-2">
                   {alert.hand_id && (
                     <Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => setReviewAlert(alert)}>
-                      Xem cả ván
+                      Kiểm tra & sửa hand
                     </Button>
                   )}
                   <Button asChild size="sm" variant="outline" className="min-h-11">
@@ -191,18 +191,20 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
         })}
       </div>
       <Dialog open={!!reviewAlert} onOpenChange={(open) => { if (!open) setReviewAlert(null); }}>
-        <DialogContent className="max-h-[90dvh] max-w-5xl overflow-y-auto">
+        <DialogContent className="max-h-[92dvh] max-w-6xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Nhật ký toàn ván · chỉ xem</DialogTitle>
-            <DialogDescription>Xem action đã ghi; không sửa hoặc chốt kết quả từ cửa sổ này.</DialogDescription>
+            <DialogTitle>Kiểm tra & sửa hand</DialogTitle>
+            <DialogDescription>
+              Chọn action cần sửa, kiểm tra số theo/raise và xem trước stack cuối hand. Máy chủ vẫn là nơi duy nhất xác minh và ghi kết quả.
+            </DialogDescription>
           </DialogHeader>
           {reviewAlert?.hand_id && (
-            <FloorAlertHandReview
+            <HandHistoryWorkspace
               key={reviewAlert.hand_id}
               tournamentId={reviewAlert.tournament_id}
-              tournamentTableId={reviewAlert.tournament_table_id}
-              physicalTableId={reviewAlert.physical_table_id}
-              handId={reviewAlert.hand_id}
+              initialTableId={reviewAlert.tournament_table_id ?? reviewAlert.physical_table_id}
+              initialHandId={reviewAlert.hand_id}
+              workspaceMode
             />
           )}
         </DialogContent>
