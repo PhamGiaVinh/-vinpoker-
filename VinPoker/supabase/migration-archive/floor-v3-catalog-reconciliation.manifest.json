@@ -1316,6 +1316,18 @@
     {
       "version": "20270115000002",
       "name": "tournament_table_appearance"
+    },
+    {
+      "version": "20260912002956",
+      "name": "ops_intelligence_context_v1"
+    },
+    {
+      "version": "20260916220242",
+      "name": "public_spectator_realtime_v2"
+    },
+    {
+      "version": "20260917000215",
+      "name": "public_spectator_live_display"
     }
   ],
   "remoteHistoryReceipts": [
@@ -1639,6 +1651,48 @@
         "filename": "20270115000002_tournament_table_appearance.sql",
         "path": "supabase/pending-migrations/20270115000002_tournament_table_appearance.sql",
         "sha256": "559c90188a84c6f77216180bd4e26b57088de17faea2d49c8121cd8892f2f8fb"
+      }
+    },
+    {
+      "remoteVersion": "20260912002956",
+      "remoteName": "ops_intelligence_context_v1",
+      "receiptFilename": "20260912002956_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20260912002956_remote_history_receipt.sql",
+      "receiptSha256": "802838f084e66d5f53948e6f99bf05920b53ef835674148881ebf38b97d9550a",
+      "remoteLedgerEvidence": "linked read-only ledger statement matched pending source after trailing whitespace normalization 2026-09-17",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20260910152624_ops_intelligence_context_v1.sql",
+        "path": "supabase/pending-migrations/20260910152624_ops_intelligence_context_v1.sql",
+        "sha256": "8fd34fb18d6c05e6bfd828ced72f45a6a003897b0158ee39b7600a37bc99c8f9"
+      }
+    },
+    {
+      "remoteVersion": "20260916220242",
+      "remoteName": "public_spectator_realtime_v2",
+      "receiptFilename": "20260916220242_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20260916220242_remote_history_receipt.sql",
+      "receiptSha256": "0bfbcbbc6ef337910a28bc446cc13c558750bdb89c991df4013191a9021244a0",
+      "remoteLedgerEvidence": "linked read-only ledger statement matched pending source after LF normalization 2026-09-17",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270115000000_public_spectator_realtime_v2.sql",
+        "path": "supabase/pending-migrations/20270115000000_public_spectator_realtime_v2.sql",
+        "sha256": "3bfd9ecb3f4e0799669761fdc80e7dbb1cdbb9a1c7a0f229ff68672e3e4e945f"
+      }
+    },
+    {
+      "remoteVersion": "20260917000215",
+      "remoteName": "public_spectator_live_display",
+      "receiptFilename": "20260917000215_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20260917000215_remote_history_receipt.sql",
+      "receiptSha256": "6bcca9aaaf7bc3d9bf9452b4f0340ae2168d9e06a7541e28bd14efa33bb6d605",
+      "remoteLedgerEvidence": "linked read-only ledger statement matched pending source after LF normalization and final newline 2026-09-17",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270115000001_public_spectator_live_display.sql",
+        "path": "supabase/pending-migrations/20270115000001_public_spectator_live_display.sql",
+        "sha256": "6fd63ce2f66915fdf28531c1219df29728aa58eeaa55cd92f428d67883272f52"
       }
     }
   ],
@@ -6686,7 +6740,7 @@
     "superseded": 31,
     "neverReplay": 220,
     "legacyUnappliedNotForReplay": 4,
-    "remoteHistoryReceipts": 23,
+    "remoteHistoryReceipts": 26,
     "pendingSources": 3,
     "unresolved": 1,
     "nonVersionedSources": 1
