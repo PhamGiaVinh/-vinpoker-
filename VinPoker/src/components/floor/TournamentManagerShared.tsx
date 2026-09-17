@@ -8,14 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, Save, ListOrdered, Play, History, Award, Dices, Loader2 } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
 import { LiveStateEditor } from "@/components/LiveStateEditor";
 import { BlindEditorPanel } from "@/components/cashier/tournament-live/BlindEditorPanel";
+import { BlindDraftBuilder } from "@/components/cashier/tournament-live/BlindDraftBuilder";
 import { formatDateTime, formatVND } from "@/lib/format";
 import { BLIND_PRESETS, type BlindLevel, type BlindTemplate } from "@/lib/blindPresets";
+import { isValidBlindDraft } from "@/lib/blindDraftSuggest";
 import { withTournamentCreateLiveStatus } from "@/lib/tournamentCreateCompatibility";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -322,6 +324,7 @@ export const NewTournamentDialog = ({
   const [clubId, setClubId] = useState(defaultClubId);
   const [f, setF] = useState({ name: "", start_time: "", buy_in: 1000000, rake_amount: 0, service_fee_amount: 0, guarantee_amount: "", starting_stack: 20000, location: "", description: "", game_type: "nlh", minutes_per_level: 20, late_reg_close_level: 6 });
   const [blindChoice, setBlindChoice] = useState("none");
+  const [draftLevels, setDraftLevels] = useState<BlindLevel[]>([]);
   const [clubTemplates, setClubTemplates] = useState<BlindTemplate[]>([]);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"single" | "multi">(lockMode ?? "single");
@@ -347,6 +350,7 @@ export const NewTournamentDialog = ({
   }, [open, clubId]);
 
   const resolveLevels = (choice: string): BlindLevel[] => {
+    if (choice === "draft") return draftLevels;
     if (choice.startsWith("preset:")) return BLIND_PRESETS.find((p) => p.key === choice.slice(7))?.levels ?? [];
     if (choice.startsWith("tpl:")) return (clubTemplates.find((t) => t.id === choice.slice(4))?.levels ?? []) as BlindLevel[];
     return [];
@@ -358,6 +362,7 @@ export const NewTournamentDialog = ({
     if (!f.name) return toast.error("Nhập tên Main Event");
     if (!finalStart) return toast.error("Chọn giờ Final Day");
     if (!flightCount || flightCount < 1 || flightCount > 11) return toast.error("Số flight 1–11 (A–K)");
+    if (blindChoice === "draft" && !isValidBlindDraft(draftLevels)) return toast.error("Review the blind draft before creating this event.");
     setBusy(true);
     try {
       const levels = resolveLevels(blindChoice);
@@ -390,6 +395,7 @@ export const NewTournamentDialog = ({
     if (FEATURES.multiDayTournaments && mode === "multi") return submitMultiDay();
     if (!f.name || !f.start_time) return toast.error("Please fill all required fields");
     if (!clubId) return toast.error("Chọn câu lạc bộ");
+    if (blindChoice === "draft" && !isValidBlindDraft(draftLevels)) return toast.error("Review the blind draft before creating this tournament.");
     setBusy(true);
     try {
       const { data: created, error } = await supabase.from("tournaments").insert(withTournamentCreateLiveStatus({
@@ -408,7 +414,12 @@ export const NewTournamentDialog = ({
           const { error: lvlErr } = await (supabase as any)
             .from("tournament_levels")
             .insert(levels.map((l) => ({ tournament_id: created.id, ...l })));
-          if (lvlErr) toast.error("Tạo giải OK nhưng nạp cấu trúc blind lỗi: " + lvlErr.message);
+          if (lvlErr) {
+            toast.error("Tournament created, but blind levels were not saved: " + lvlErr.message + ". Set them in the Blind tab before opening play.");
+            setOpen(false);
+            onCreated();
+            return;
+          }
         }
       }
       toast.success("Tournament created");
@@ -424,7 +435,7 @@ export const NewTournamentDialog = ({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild><Button size="sm" variant="outline" className="border-primary/50 text-primary"><Plus className="w-4 h-4 mr-1" />{triggerLabel}</Button></DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{titleLabel}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{titleLabel}</DialogTitle><DialogDescription>Configure this tournament before creating it. Blind suggestions remain editable drafts until saved.</DialogDescription></DialogHeader>
         <div className="space-y-2">
           {multiClub && (
             <>
@@ -473,8 +484,8 @@ export const NewTournamentDialog = ({
           <div><Label>GTD cam kết (VND)</Label><Input type="number" min={0} value={f.guarantee_amount} onChange={e => setF({ ...f, guarantee_amount: e.target.value })} placeholder="Để trống nếu chưa có GTD" /></div>
           <p className="text-[11px] text-muted-foreground -mt-1">Cam kết của floor. Để trống = chưa có GTD (sẽ hiện “thiếu GTD”), không suy ra từ prize pool.</p>
           <div className="grid grid-cols-2 gap-2">
-            <div><Label>Starting stack</Label><Input type="number" value={f.starting_stack} onChange={e => setF({ ...f, starting_stack: +e.target.value })} /></div>
-            <div><Label>Minutes / level</Label><Input type="number" value={f.minutes_per_level} onChange={e => setF({ ...f, minutes_per_level: +e.target.value })} /></div>
+            <div><Label htmlFor="tour-starting-stack">Starting stack</Label><Input id="tour-starting-stack" type="number" value={f.starting_stack} onChange={e => { setF({ ...f, starting_stack: +e.target.value }); setDraftLevels([]); if (blindChoice === "draft") setBlindChoice("none"); }} /></div>
+            <div><Label>Minutes / level</Label><Input type="number" value={f.minutes_per_level} onChange={e => { setF({ ...f, minutes_per_level: +e.target.value }); setDraftLevels([]); if (blindChoice === "draft") setBlindChoice("none"); }} /></div>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div><Label>Late reg close at level</Label><Input type="number" value={f.late_reg_close_level} onChange={e => setF({ ...f, late_reg_close_level: +e.target.value })} /></div>
@@ -489,6 +500,7 @@ export const NewTournamentDialog = ({
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Để trống (đặt sau ở tab Blind)</SelectItem>
+                  {FEATURES.blindDraftSuggest && draftLevels.length > 0 && <SelectItem value="draft">Reviewed draft ({draftLevels.length} levels)</SelectItem>}
                   {clubTemplates.length > 0 && (
                     <SelectGroup>
                       <SelectLabel>Mẫu CLB</SelectLabel>
@@ -502,6 +514,10 @@ export const NewTournamentDialog = ({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground -mt-1">Chọn cấu trúc có sẵn để giải chạy được ngay (đồng hồ/tracker đọc theo cấu trúc này).</p>
+              {FEATURES.blindDraftSuggest && <BlindDraftBuilder key={`${f.starting_stack}:${f.minutes_per_level}`}
+                startingStack={Number(f.starting_stack)} levelMinutes={Number(f.minutes_per_level)} disabled={busy}
+                onUse={levels => { setDraftLevels(levels); setBlindChoice("draft"); }}
+              />}
             </>
           )}
           <Button onClick={submit} disabled={busy} className="w-full gradient-neon text-primary-foreground border-0">{busy ? "Đang tạo…" : "Create"}</Button>
