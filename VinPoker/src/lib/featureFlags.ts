@@ -1500,6 +1500,10 @@ export const FEATURES = {
    * ẩn, payout không đổi. Flip true sau khi apply migration 20261238000000 + UAT Preview.
    */
   payoutSatelliteManual: true,
+  /** Server-locked Satellite award plans and mode-specific setup. SOURCE ONLY; keep
+   * OFF until the plan migration, ticket ledger, Cashier redemption, legal review,
+   * and authenticated TEST UAT are all approved. This does not enable ticket use. */
+  satelliteAwardsV1: false,
   /**
    * TV payout board — two-tier display (PR-5). Collapses a LIVE_STANDARD run's equal-amount
    * bands (e.g. ranks 10-12) into one "10–12" row instead of 3 duplicate rows, and raises the

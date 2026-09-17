@@ -311,12 +311,12 @@ export const AuditHistoryDialog = ({ tournament }: { tournament: any }) => {
   );
 };
 
-// ── Create dialog (single + multi-day). `lockMode` locks one kind + hides the toggle. ──
+// ── Create dialog. `lockMode` keeps each mode in its own Floor entry point. ──
 export const NewTournamentDialog = ({
   clubs, defaultClubId, multiClub, onCreated, lockMode,
 }: {
   clubs: ClubRow[]; defaultClubId: string; multiClub: boolean; onCreated: () => void;
-  lockMode?: "single" | "multi";
+  lockMode?: "single" | "multi" | "satellite";
 }) => {
   const [open, setOpen] = useState(false);
   const [clubId, setClubId] = useState(defaultClubId);
@@ -324,7 +324,7 @@ export const NewTournamentDialog = ({
   const [blindChoice, setBlindChoice] = useState("none");
   const [clubTemplates, setClubTemplates] = useState<BlindTemplate[]>([]);
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<"single" | "multi">(lockMode ?? "single");
+  const [mode, setMode] = useState<"single" | "multi" | "satellite">(lockMode ?? "single");
   const [itmPercent, setItmPercent] = useState("");
   const [flightCount, setFlightCount] = useState(3);
   const [finalStart, setFinalStart] = useState("");
@@ -394,6 +394,7 @@ export const NewTournamentDialog = ({
     try {
       const { data: created, error } = await supabase.from("tournaments").insert(withTournamentCreateLiveStatus({
         club_id: clubId, name: f.name, start_time: new Date(f.start_time).toISOString(),
+        ...(FEATURES.satelliteAwardsV1 ? { operations_mode: mode === "satellite" ? "satellite" : "standard" } : {}),
         buy_in: Number(f.buy_in), rake_amount: Number(f.rake_amount) || 0,
         ...(FEATURES.tournamentServiceFee ? { service_fee_amount: Number(f.service_fee_amount) || 0 } : {}),
         guarantee_amount: parseGtd(f.guarantee_amount),
@@ -417,8 +418,8 @@ export const NewTournamentDialog = ({
     } finally { setBusy(false); }
   };
 
-  const triggerLabel = lockMode === "multi" ? "Tạo Multi-day" : lockMode === "single" ? "Tạo giải thường" : "Tạo giải";
-  const titleLabel = lockMode === "multi" ? "Tạo Multi-day Event" : lockMode === "single" ? "Tạo giải thường" : "Tạo giải đấu";
+  const triggerLabel = lockMode === "satellite" ? "Create Satellite" : lockMode === "multi" ? "Tạo Multi-day" : lockMode === "single" ? "Tạo giải thường" : "Tạo giải";
+  const titleLabel = lockMode === "satellite" ? "Create Satellite tournament" : lockMode === "multi" ? "Tạo Multi-day Event" : lockMode === "single" ? "Tạo giải thường" : "Tạo giải đấu";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -443,6 +444,7 @@ export const NewTournamentDialog = ({
               <button type="button" onClick={() => setMode("multi")} className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors ${mode === "multi" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>Multi-day (nhiều flight)</button>
             </div>
           )}
+          {mode === "satellite" && <p className="rounded border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">Satellite mode: create the event here, then lock ticket and cash awards in Payout before results are closed. A ticket covers the exact target buy-in and fees. No in-app transfer or deal tools.</p>}
           <Label>{mode === "multi" ? "Tên Main Event" : "Name"}</Label><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder={mode === "multi" ? "VD: Main Event" : ""} />
           <Label>{mode === "multi" ? "Giờ bắt đầu flight (mặc định — sửa từng flight sau)" : "Start time"}</Label><Input type="datetime-local" value={f.start_time} onChange={e => setF({ ...f, start_time: e.target.value })} />
           {mode === "multi" && (
