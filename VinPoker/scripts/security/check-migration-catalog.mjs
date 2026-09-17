@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -223,6 +224,18 @@ export function findMigrationCatalogProblems(
         const floorFiles = new Set(
           reconciliation.floorActiveAllowlist.map((entry) => entry.filename),
         );
+        const ownerGatedFiles = new Set();
+        for (const expected of reconciliation.ownerGatedActiveAllowlist ?? []) {
+          const row = activeRows.find((candidate) => candidate.filename === expected.filename);
+          const hash = row && createHash("sha256")
+            .update(row.source.replace(/\r\n/g, "\n"), "utf8")
+            .digest("hex");
+          if (!row || row.version !== expected.version || hash !== expected.sha256 || ownerGatedFiles.has(expected.filename)) {
+            invalidFiles.push(`owner-gated active migration missing or hash drift ${expected.filename}`);
+          } else {
+            ownerGatedFiles.add(expected.filename);
+          }
+        }
         const sourceOnlyVoiceFiles = trackerVoiceRelease.filenames;
         const activeByFilename = new Set(activeRows.map((row) => row.filename));
         const activeByVersion = new Set(activeRows.map((row) => row.version));
@@ -260,6 +273,7 @@ export function findMigrationCatalogProblems(
         for (const row of activeRows) {
           if (
             floorFiles.has(row.filename) ||
+            ownerGatedFiles.has(row.filename) ||
             sourceOnlyVoiceFiles.has(row.filename) ||
             remoteVersions.has(row.version)
           ) continue;
