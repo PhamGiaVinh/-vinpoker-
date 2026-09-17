@@ -227,6 +227,17 @@ fi
 docker exec "$db_container" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -X -q -v ON_ERROR_STOP=1 \
   -U supabase_admin -d postgres -c "DROP SCHEMA storage CASCADE"' \
   >"$test_root/storage-replace.log" 2>&1
+# The live catalog places pg_trgm operators in public, while a fresh local
+# Supabase project may place that extension elsewhere (or omit it).
+pg_trgm_schema="$(docker exec "$db_container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  -c "SELECT n.nspname FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace WHERE e.extname='pg_trgm'")"
+if [[ -z "$pg_trgm_schema" ]]; then
+  docker exec "$db_container" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -X -q -v ON_ERROR_STOP=1 \
+    -U supabase_admin -d postgres -c "CREATE EXTENSION pg_trgm WITH SCHEMA public"' >/dev/null
+elif [[ "$pg_trgm_schema" != public ]]; then
+  docker exec "$db_container" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -X -q -v ON_ERROR_STOP=1 \
+    -U supabase_admin -d postgres -c "ALTER EXTENSION pg_trgm SET SCHEMA public"' >/dev/null
+fi
 set +e
 docker exec -i "$db_container" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -X -q -v ON_ERROR_STOP=1 \
   -U supabase_admin -d postgres' \
