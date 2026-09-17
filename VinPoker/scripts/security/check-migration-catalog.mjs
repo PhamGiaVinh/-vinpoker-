@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -223,6 +224,27 @@ export function findMigrationCatalogProblems(
         const floorFiles = new Set(
           reconciliation.floorActiveAllowlist.map((entry) => entry.filename),
         );
+        const forwardFiles = new Set();
+        const latestRemoteVersion = [...remoteVersions].sort().at(-1);
+        for (const approved of reconciliation.approvedForwardMigrations ?? []) {
+          const row = activeRows.find((candidate) => candidate.filename === approved.filename);
+          if (!row || row.version !== approved.version) {
+            invalidFiles.push(`approved forward migration is not active ${approved.filename}`);
+            continue;
+          }
+          if (forwardFiles.has(approved.filename) || approved.version <= latestRemoteVersion) {
+            invalidFiles.push(`invalid approved forward migration ${approved.filename}`);
+            continue;
+          }
+          const sha256 = createHash("sha256")
+            .update(row.source.replace(/\r\n/gu, "\n"))
+            .digest("hex");
+          if (sha256 !== approved.sha256) {
+            invalidFiles.push(`approved forward migration checksum mismatch ${approved.filename}`);
+            continue;
+          }
+          forwardFiles.add(approved.filename);
+        }
         const sourceOnlyVoiceFiles = trackerVoiceRelease.filenames;
         const activeByFilename = new Set(activeRows.map((row) => row.filename));
         const activeByVersion = new Set(activeRows.map((row) => row.version));
@@ -260,6 +282,7 @@ export function findMigrationCatalogProblems(
         for (const row of activeRows) {
           if (
             floorFiles.has(row.filename) ||
+            forwardFiles.has(row.filename) ||
             sourceOnlyVoiceFiles.has(row.filename) ||
             remoteVersions.has(row.version)
           ) continue;

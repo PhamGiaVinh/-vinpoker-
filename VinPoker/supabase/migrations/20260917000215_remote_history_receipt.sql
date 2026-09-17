@@ -1,0 +1,6 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20260917000215
+-- Remote ledger name: public_spectator_live_display
+-- This version already exists in the linked production migration ledger.
+-- The historical source is not replayable from the active catalog.
+-- This comment-only file preserves local lineage metadata and MUST NOT represent a schema change.

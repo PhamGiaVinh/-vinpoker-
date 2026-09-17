@@ -1186,6 +1186,18 @@
       "name": "20270113000001_dealer_payroll_statement_ft_ui_contract"
     },
     {
+      "version": "20260912002956",
+      "name": "ops_intelligence_context_v1"
+    },
+    {
+      "version": "20260916220242",
+      "name": "public_spectator_realtime_v2"
+    },
+    {
+      "version": "20260917000215",
+      "name": "public_spectator_live_display"
+    },
+    {
       "version": "20260921000000",
       "name": "club_intel_f1_foundation"
     },
@@ -1622,6 +1634,33 @@
         "path": "supabase/migration-archive/remote-history/recovered-source/20270113000001_dealer_payroll_statement_ft_ui_contract.sql",
         "sha256": "1bbf588918b3c15d084c29b3600d87ddbdcc60379986ac679517bfd39b297848"
       }
+    },
+    {
+      "remoteVersion": "20260912002956",
+      "remoteName": "ops_intelligence_context_v1",
+      "receiptFilename": "20260912002956_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20260912002956_remote_history_receipt.sql",
+      "receiptSha256": "14dd0d22eb2b65e40ace247f290b4cdc9d3aee2d3231094899cab3b3b68bdae2",
+      "remoteLedgerEvidence": "linked read-only ledger row present",
+      "sourceRecovered": "NO"
+    },
+    {
+      "remoteVersion": "20260916220242",
+      "remoteName": "public_spectator_realtime_v2",
+      "receiptFilename": "20260916220242_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20260916220242_remote_history_receipt.sql",
+      "receiptSha256": "0026f804dd09b6d28704e7b265a2a1ba8ea2234a4dddfd5c88b3037b0a4a7fe9",
+      "remoteLedgerEvidence": "linked read-only ledger row present",
+      "sourceRecovered": "NO"
+    },
+    {
+      "remoteVersion": "20260917000215",
+      "remoteName": "public_spectator_live_display",
+      "receiptFilename": "20260917000215_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20260917000215_remote_history_receipt.sql",
+      "receiptSha256": "2438e295ff2d1c70bdf096b6d74f18c0a9a1a6316979bc11e6346e2e70bed632",
+      "remoteLedgerEvidence": "linked read-only ledger row present",
+      "sourceRecovered": "NO"
     }
   ],
   "historicalSources": [
@@ -6639,13 +6678,20 @@
       "sha256": "815561c2f764da6907598218ceb033a6a85cb1c6aef5c6678d8c0c1593aabd15"
     }
   ],
+  "approvedForwardMigrations": [
+    {
+      "version": "20270115000003",
+      "filename": "20270115000003_bankroll_soft_delete_restore.sql",
+      "sha256": "fe8fb7572090c8c2e5a3dd2541c6b1a6680f937afa0f2171702236c11c1d1d22"
+    }
+  ],
   "counts": {
     "historicalSources": 258,
     "remoteEquivalent": 9,
     "superseded": 31,
     "neverReplay": 219,
     "legacyUnappliedNotForReplay": 4,
-    "remoteHistoryReceipts": 22,
+    "remoteHistoryReceipts": 25,
     "pendingSources": 3,
     "unresolved": 0,
     "nonVersionedSources": 1

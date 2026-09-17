@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,6 +30,34 @@ test("accepts unique versioned migrations and ignores non-versioned helpers", ()
       assert.deepEqual(findMigrationCatalogProblems(migrations), []);
     },
   );
+});
+
+test("approved forward migration must match its reviewed checksum", () => {
+  const filename = "20270115000003_bankroll_soft_delete_restore.sql";
+  const source = "select 1;\n";
+  withCatalog([{ name: filename, source }], (migrations) => {
+    const manifestPath = join(migrations, "manifest.json");
+    writeFileSync(manifestPath, JSON.stringify({
+      schemaVersion: 1,
+      kind: "floor-v3-catalog-reconciliation",
+      registeredProductionHead: "20270115000002",
+      remoteLedgerVersions: [],
+      floorActiveAllowlist: [],
+      historicalSources: [],
+      pendingSources: [],
+      remoteHistoryReceipts: [],
+      approvedForwardMigrations: [{
+        version: "20270115000003",
+        filename,
+        sha256: createHash("sha256").update(source).digest("hex"),
+      }],
+    }));
+    assert.deepEqual(findMigrationCatalogProblems(migrations, manifestPath), []);
+    writeFileSync(join(migrations, filename), "select 2;\n");
+    assert.ok(findMigrationCatalogProblems(migrations, manifestPath).some(
+      (problem) => problem.includes("checksum mismatch"),
+    ));
+  });
 });
 
 test("rejects every migration file sharing a version", () => {
