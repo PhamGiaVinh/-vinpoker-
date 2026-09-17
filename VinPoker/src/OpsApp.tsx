@@ -10,7 +10,7 @@ import { OpsAuthProvider } from "@/ops/auth/OpsAuthProvider";
 import { OpsCapabilityProvider } from "@/ops/auth/OpsCapabilityProvider";
 import { OpsTournamentScopeGate } from "@/ops/auth/OpsTournamentScopeGate";
 import { OpsWorkspaceProvider } from "@/ops/workspace/OpsWorkspaceProvider";
-import { OPS_TOUR_CASHIER_ENABLED } from "@/ops/opsMutations";
+import { OPS_TOUR_CASHIER_ENABLED } from "@/lib/featureFlags";
 import {
   OpsEntryResolver,
   OpsModuleGate,

@@ -48,6 +48,7 @@ describe("Ops Floor and Cashier workspace routing", () => {
   it("mounts Tour Cashier behind its own build gate and cashier capability", () => {
     const app = source("src/OpsApp.tsx");
     const mutations = source("src/ops/opsMutations.ts");
+    const flags = source("src/lib/featureFlags.ts");
     const shell = source("src/components/ops/OpsShell.tsx");
     const workbench = source("src/pages/ops/TourCashierWorkbench.tsx");
     const cashier = source("src/pages/ops/OpsCashier.tsx");
@@ -60,7 +61,7 @@ describe("Ops Floor and Cashier workspace routing", () => {
     expect(cashier).toContain('Mở quầy Buy-in theo tour');
     expect(workbench).toContain('!OPS_TOUR_CASHIER_ENABLED');
     expect(workbench).toContain('|| !OPS_TOUR_CASHIER_ENABLED');
-    expect(mutations).toContain('OPS_TOUR_CASHIER_ENABLED = isTourCashierBuildEnabled(import.meta.env.VITE_OPS_TOUR_CASHIER)');
+    expect(flags).toContain('OPS_TOUR_CASHIER_ENABLED = isTourCashierBuildEnabled(import.meta.env.VITE_OPS_TOUR_CASHIER)');
     expect(mutations).toContain('import.meta.env.VITE_OPS_CASHIER_MUTATIONS === "preview" &&');
     expect(mutations).toContain('import.meta.env.VITE_FLOOR_UAT_ENV === "preview"');
   });

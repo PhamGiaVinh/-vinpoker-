@@ -3,7 +3,8 @@ import { AlertTriangle, ArrowLeft, Check, Clock3, Loader2, RefreshCw, Search, Wa
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
-import { assertMutationOk, OPS_TOUR_CASHIER_ENABLED } from "@/ops/opsMutations";
+import { assertMutationOk } from "@/ops/opsMutations";
+import { OPS_TOUR_CASHIER_ENABLED } from "@/lib/featureFlags";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 import { normalizeCashierScan } from "./cashierScan";

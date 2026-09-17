@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import { isTourCashierBuildEnabled } from "@/lib/featureFlags";
 
 export type OpsClient = SupabaseClient<Database>;
 
@@ -10,8 +9,6 @@ export type OpsClient = SupabaseClient<Database>;
 export const OPS_CASHIER_MUTATIONS_ENABLED =
   import.meta.env.VITE_OPS_CASHIER_MUTATIONS === "preview" &&
   import.meta.env.VITE_FLOOR_UAT_ENV === "preview";
-
-export const OPS_TOUR_CASHIER_ENABLED = isTourCashierBuildEnabled(import.meta.env.VITE_OPS_TOUR_CASHIER);
 
 type JsonRecord = Record<string, unknown>;
 

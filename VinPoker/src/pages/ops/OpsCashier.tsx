@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
-import { OPS_TOUR_CASHIER_ENABLED } from "@/ops/opsMutations";
+import { OPS_TOUR_CASHIER_ENABLED } from "@/lib/featureFlags";
 
 type OpsSupabaseClient = SupabaseClient<Database>;
 type CashierTab = "queue" | "receipts" | "status";

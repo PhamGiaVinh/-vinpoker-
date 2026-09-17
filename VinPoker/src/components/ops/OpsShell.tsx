@@ -2,7 +2,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Layers3, UserRound } from "lucide-react";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { getOpsModuleByPath } from "@/ops/registry/opsModuleRegistry";
-import { OPS_TOUR_CASHIER_ENABLED } from "@/ops/opsMutations";
+import { OPS_TOUR_CASHIER_ENABLED } from "@/lib/featureFlags";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
 import "@/components/ops/ops-ios.css";
 
