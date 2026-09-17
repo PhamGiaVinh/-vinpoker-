@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   TrendingUp, TrendingDown, Wallet, Target, Percent, BarChart3, Plus, Settings as SettingsIcon,
-  Download, Pencil, Trash2, Info, AlertTriangle, ChevronDown,
+  Download, Pencil, Trash2, ArchiveRestore, Info, AlertTriangle, ChevronDown,
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis,
@@ -66,6 +66,8 @@ export default function BankrollManager() {
   const [customTo, setCustomTo] = useState("");
   const [genLoading, setGenLoading] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState<string | null>(null);
 
   const {
     data,
@@ -92,11 +94,17 @@ export default function BankrollManager() {
             ror_threshold: Number(sRes.data.ror_threshold) || 5,
           }
         : DEFAULT_SETTINGS;
-      return { entries: ((eRes.data as any) ?? []) as BankrollEntry[], settings };
+      const allEntries = (eRes.data ?? []) as unknown as BankrollEntry[];
+      return {
+        entries: allEntries.filter((entry) => !entry.deleted_at),
+        trashedEntries: allEntries.filter((entry) => !!entry.deleted_at),
+        settings,
+      };
     },
   });
 
-  const entries: BankrollEntry[] = data?.entries ?? [];
+  const entries: BankrollEntry[] = useMemo(() => data?.entries ?? [], [data?.entries]);
+  const trashedEntries: BankrollEntry[] = useMemo(() => data?.trashedEntries ?? [], [data?.trashedEntries]);
   const settings: Settings = data?.settings ?? DEFAULT_SETTINGS;
   const loading = isLoading && !data;
   const load = () => { refetch(); };
@@ -108,7 +116,16 @@ export default function BankrollManager() {
     const count = 80 + Math.floor(Math.random() * 21);
     const now = Date.now();
     const threeMonthsAgo = now - 90 * 86400_000;
-    const rows: any[] = [];
+    const rows: Array<{
+      user_id: string;
+      entry_date: string;
+      game_type: "tournament";
+      buyin: number;
+      rake: number;
+      prize_won: number;
+      entries: number;
+      notes: null;
+    }> = [];
     for (let i = 0; i < count; i++) {
       const buyin = buyins[Math.floor(Math.random() * buyins.length)];
       const rake = Math.round(buyin * 0.1 * 100) / 100;
@@ -153,9 +170,11 @@ export default function BankrollManager() {
   const clearAllData = async () => {
     if (!user) return;
     if (!confirm(t("bankroll.clearConfirm"))) return;
-    const { error } = await supabase.from("bankroll_entries").delete().eq("user_id", user.id);
+    const { data: count, error } = await supabase.rpc("soft_delete_all_bankroll_entries", {
+      p_reason: "user_requested_bulk",
+    });
     if (error) return toast.error(error.message);
-    toast.success(t("bankroll.clearedAll"));
+    toast.success(t("bankroll.movedToTrashCount", { count: Number(count) || 0 }));
     load();
   };
 
@@ -228,9 +247,24 @@ export default function BankrollManager() {
 
   const handleDelete = async (id: string) => {
     if (!confirm(t("bankroll.deleteConfirm"))) return;
-    const { error } = await supabase.from("bankroll_entries").delete().eq("id", id);
+    const { error } = await supabase.rpc("soft_delete_bankroll_entry", {
+      p_entry_id: id,
+      p_reason: "user_requested",
+    });
     if (error) return toast.error(error.message);
-    toast.success(t("bankroll.deleted"));
+    toast.success(t("bankroll.movedToTrash"));
+    load();
+  };
+
+  const restoreEntry = async (id: string) => {
+    setRestoreLoading(id);
+    const { data: restored, error } = await supabase.rpc("restore_bankroll_entry", {
+      p_entry_id: id,
+    });
+    setRestoreLoading(null);
+    if (error) return toast.error(error.message);
+    if (restored !== true) return toast.error(t("bankroll.restoreExpired"));
+    toast.success(t("bankroll.restored"));
     load();
   };
 
@@ -322,6 +356,11 @@ export default function BankrollManager() {
                 </Button>
               </>
             )}
+            <Button variant="outline" size="sm" onClick={() => setTrashOpen(true)}>
+              <ArchiveRestore className="w-4 h-4" />
+              {t("bankroll.trash")}
+              {trashedEntries.length > 0 && <Badge variant="secondary" className="ml-1">{trashedEntries.length}</Badge>}
+            </Button>
             <Button variant="outline" size="sm" onClick={exportCSV}>
               <Download className="w-4 h-4" /> CSV
             </Button>
@@ -592,6 +631,15 @@ export default function BankrollManager() {
           settings={settings}
           onSave={saveSettings}
         />
+
+        <TrashDialog
+          open={trashOpen}
+          onOpenChange={setTrashOpen}
+          entries={trashedEntries}
+          currency={currency}
+          restoreLoading={restoreLoading}
+          onRestore={restoreEntry}
+        />
       </div>
     </TooltipProvider>
   );
@@ -645,6 +693,97 @@ function RiskRow({
       </div>
       <span className={`font-mono tabular-nums font-semibold ${valueClass ?? ""}`}>{value}</span>
     </div>
+  );
+}
+
+function TrashDialog({
+  open,
+  onOpenChange,
+  entries,
+  currency,
+  restoreLoading,
+  onRestore,
+}: {
+  open: boolean;
+  onOpenChange: (value: boolean) => void;
+  entries: BankrollEntry[];
+  currency: string;
+  restoreLoading: string | null;
+  onRestore: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  const now = Date.now();
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ArchiveRestore className="w-5 h-5 text-primary" />
+            {t("bankroll.trashTitle")}
+          </DialogTitle>
+        </DialogHeader>
+
+        <p className="text-sm text-muted-foreground">{t("bankroll.trashDescription")}</p>
+
+        {entries.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-8 text-center">{t("bankroll.trashEmpty")}</p>
+        ) : (
+          <div className="max-h-[55vh] overflow-y-auto space-y-2 pr-1">
+            {entries.map((entry) => {
+              const deletedAt = entry.deleted_at ? new Date(entry.deleted_at) : null;
+              const purgeAt = entry.purge_after ? new Date(entry.purge_after) : null;
+              const canRestore = !!purgeAt && purgeAt.getTime() > now;
+              const daysLeft = canRestore && purgeAt
+                ? Math.ceil((purgeAt.getTime() - now) / 86400000)
+                : 0;
+              const amount = entry.game_type === "tournament"
+                ? fmtMoney((entry.buyin ?? 0) * (entry.entries ?? 1), currency)
+                : `${entry.stakes || "-"} · ${entry.hours ?? 0}h`;
+
+              return (
+                <Card key={entry.id} className="p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{entry.entry_date}</span>
+                        <Badge variant="outline" className="text-[10px]">
+                          {entry.game_type === "tournament" ? t("bankroll.typeMTT") : t("bankroll.typeCash")}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {amount} · {t("bankroll.colPrize")} {fmtMoney(entry.prize_won ?? 0, currency)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {deletedAt ? `${t("bankroll.deletedAt")}: ${deletedAt.toLocaleString("vi-VN")}` : t("bankroll.trashMissingDeadline")}
+                      </p>
+                      <p className={`text-xs ${canRestore ? "text-warning" : "text-destructive"}`}>
+                        {canRestore && purgeAt
+                          ? `${t("bankroll.purgeAt")}: ${purgeAt.toLocaleString("vi-VN")} (${t("bankroll.daysLeft", { count: daysLeft })})`
+                          : t("bankroll.restoreExpired")}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!canRestore || restoreLoading === entry.id}
+                      onClick={() => onRestore(entry.id)}
+                    >
+                      <ArchiveRestore className="w-4 h-4" />
+                      {restoreLoading === entry.id ? t("bankroll.restoring") : t("bankroll.restore")}
+                    </Button>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>{t("bankroll.cancel")}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
