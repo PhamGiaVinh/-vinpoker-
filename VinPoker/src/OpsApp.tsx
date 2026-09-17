@@ -10,6 +10,7 @@ import { OpsAuthProvider } from "@/ops/auth/OpsAuthProvider";
 import { OpsCapabilityProvider } from "@/ops/auth/OpsCapabilityProvider";
 import { OpsTournamentScopeGate } from "@/ops/auth/OpsTournamentScopeGate";
 import { OpsWorkspaceProvider } from "@/ops/workspace/OpsWorkspaceProvider";
+import { OPS_CASHIER_MUTATIONS_ENABLED } from "@/ops/opsMutations";
 import {
   OpsEntryResolver,
   OpsModuleGate,
@@ -26,6 +27,7 @@ const OpsAlertsHub = lazy(() => import("@/ops/pages/OpsAlertsHub"));
 const OpsTournaments = lazy(() => import("@/pages/ops/OpsTournaments"));
 const OpsTables = lazy(() => import("@/pages/ops/OpsTables"));
 const OpsCashier = lazy(() => import("@/pages/ops/OpsCashier"));
+const TourCashierWorkbench = lazy(() => import("@/pages/ops/TourCashierWorkbench"));
 const FloorTournamentWorkspace = lazy(() => import("@/ops/floor/FloorTournamentWorkspace"));
 const OpsTrackerWorkspace = lazy(() => import("@/ops/tracker/OpsTrackerWorkspace"));
 const OpsDealerControlWorkspace = lazy(() => import("@/ops/dealer-control/OpsDealerControlWorkspace"));
@@ -125,6 +127,12 @@ export default function OpsApp() {
                       <Route
                         path="/ops/cashier"
                         element={<OpsModuleGate capability="cashier"><OpsCashier /></OpsModuleGate>}
+                      />
+                      <Route
+                        path="/ops/cashier/tour"
+                        element={OPS_CASHIER_MUTATIONS_ENABLED
+                          ? <OpsModuleGate capability="cashier"><TourCashierWorkbench /></OpsModuleGate>
+                          : <Navigate to="/ops/cashier" replace />}
                       />
                       <Route path="/ops/tracker" element={<OpsModuleGate capability="tracker"><OpsTrackerWorkspace /></OpsModuleGate>} />
                       <Route path="/ops/dealer-swing" element={<OpsModuleGate capability="dealer-control"><OpsDealerControlWorkspace /></OpsModuleGate>} />

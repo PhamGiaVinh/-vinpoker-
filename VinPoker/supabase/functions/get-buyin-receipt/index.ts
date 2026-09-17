@@ -183,9 +183,23 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (error) throw new Error(error.message);
       receipt = data as Record<string, any> | null;
+      if (!receipt && registration.status === "cancelled") {
+        // A refunded buy-in keeps its original QR as an auditable, visibly
+        // cancelled receipt. Never invent a new code after cancellation.
+        const { data: cancelledReceipt, error: cancelledError } = await admin
+          .from("seat_draw_receipts")
+          .select(receiptColumns)
+          .eq("registration_id", registration.id)
+          .eq("status", "cancelled")
+          .order("issued_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (cancelledError) throw new Error(cancelledError.message);
+        receipt = cancelledReceipt as Record<string, any> | null;
+      }
     }
 
-    const [clubResult, memberResult, profileResult] = await Promise.all([
+    const [clubResult, memberResult, profileResult, refundResult, movementResult] = await Promise.all([
       admin.from("clubs").select("name, address, tv_logo_url").eq(
         "id",
         tournament.club_id,
@@ -197,11 +211,19 @@ Deno.serve(async (req) => {
         .limit(1).maybeSingle(),
       admin.from("profiles").select("display_name").eq("user_id", playerId)
         .maybeSingle(),
+      registration?.id
+        ? admin.from("cashier_refund_requests").select("status,paid_at")
+          .eq("registration_id", registration.id).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      registration?.id
+        ? admin.from("cashier_buyin_movements").select("applied_amount")
+          .eq("registration_id", registration.id).eq("purpose", "buyin").eq("direction", "in")
+        : Promise.resolve({ data: null, error: null }),
     ]);
-    if (clubResult.error || memberResult.error || profileResult.error) {
+    if (clubResult.error || memberResult.error || profileResult.error || refundResult.error || movementResult.error) {
       throw new Error(
         clubResult.error?.message ?? memberResult.error?.message ??
-          profileResult.error?.message,
+          profileResult.error?.message ?? refundResult.error?.message ?? movementResult.error?.message,
       );
     }
 
@@ -210,6 +232,16 @@ Deno.serve(async (req) => {
     const profileName = (profileResult.data?.display_name ?? "").trim();
     const completedAt = registration?.confirmed_at ?? receipt?.issued_at ??
       null;
+    const movementRows = movementResult.data ?? [];
+    const receivedAmount = movementRows.length
+      ? movementRows.reduce((sum: number, row: { applied_amount: number }) => sum + Number(row.applied_amount), 0)
+      : null;
+    const remainingAmount = receivedAmount === null || !registration
+      ? null : Math.max(0, Number(registration.total_pay) - receivedAmount);
+    const paymentState = refundResult.data?.status === "paid" ? "refunded"
+      : registration?.status === "confirmed" ? "confirmed"
+        : receivedAmount === null ? "unverified"
+          : remainingAmount === 0 ? "paid_waiting_seat" : "partial";
 
     return jsonResp(req, {
       receipt: {
@@ -218,8 +250,12 @@ Deno.serve(async (req) => {
         // Do not replace this with reference_code: operations scanners already rely on receipt_code.
         qr_value: receipt?.receipt_code ?? null,
         reference_code: registration?.reference_code ?? null,
-        status: registration?.status ??
+        status: refundResult.data?.status === "paid" ? "refunded" : registration?.status ??
           (receipt?.cancelled_at ? "cancelled" : "confirmed"),
+        payment_state: paymentState,
+        received_amount: receivedAmount,
+        remaining_amount: remainingAmount,
+        refunded_at: refundResult.data?.status === "paid" ? refundResult.data.paid_at : null,
         club: {
           name: clubResult.data?.name ?? null,
           address: clubResult.data?.address ?? null,

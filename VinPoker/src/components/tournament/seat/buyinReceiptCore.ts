@@ -7,6 +7,9 @@ export type BuyinReceiptSnapshot = {
   qr_value: string | null;
   reference_code: string | null;
   status: string;
+  payment_state?: "unverified" | "partial" | "paid_waiting_seat" | "confirmed" | "refunded";
+  received_amount?: number | null;
+  remaining_amount?: number | null;
   club: {
     name: string | null;
     address: string | null;

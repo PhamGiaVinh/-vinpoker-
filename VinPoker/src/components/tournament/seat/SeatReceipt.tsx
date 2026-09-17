@@ -74,6 +74,7 @@ export const SeatReceipt = forwardRef<HTMLDivElement, SeatReceiptData>(
     const { t } = useTranslation();
     const hasSeat = tableNumber != null && seatNumber != null;
     const isConfirmed = status === "confirmed";
+    const isRefunded = status === "refunded";
     const completionLabel = completedAtSource === "issued_at"
       ? t("seatReceipt.issuedAt")
       : t("seatReceipt.completedAt");
@@ -119,6 +120,11 @@ export const SeatReceipt = forwardRef<HTMLDivElement, SeatReceiptData>(
           {isConfirmed ? (
             <div style={{ display: "inline-block", marginTop: 9, border: "1px solid #1f6f43", color: "#1f6f43", padding: "3px 7px", fontSize: 10, fontWeight: 800, letterSpacing: 0.45, textTransform: "uppercase" }}>
               {t("seatReceipt.confirmed")}
+            </div>
+          ) : null}
+          {isRefunded ? (
+            <div style={{ display: "inline-block", marginTop: 9, border: "1px solid #9f341c", color: "#9f341c", padding: "3px 7px", fontSize: 10, fontWeight: 800, letterSpacing: 0.45, textTransform: "uppercase" }}>
+              {t("seatReceipt.refunded")}
             </div>
           ) : null}
         </div>

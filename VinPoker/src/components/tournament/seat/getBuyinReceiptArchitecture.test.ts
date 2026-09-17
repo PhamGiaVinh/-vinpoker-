@@ -18,11 +18,19 @@ describe("get-buyin-receipt boundary", () => {
 
   it("requires caller ownership or a scoped staff authorization and remains read-only", () => {
     expect(handler).toContain("canReadBuyinReceipt");
-    expect(handler).toContain('admin.rpc("is_club_owner"');
-    expect(handler).toContain('admin.rpc("is_club_cashier"');
+    expect(handler).toMatch(/admin\.rpc\(\s*"is_club_owner"/);
+    expect(handler).toMatch(/admin\.rpc\(\s*"is_club_cashier"/);
     expect(handler).toContain('.eq("role", "super_admin")');
     expect(handler).not.toMatch(/\.(?:insert|update|delete|upsert)\s*\(/);
     expect(handler).not.toContain("tournament-register");
     expect(handler).not.toContain("tournament-reentry");
+  });
+
+  it("retains the original QR for a cancelled registration without creating a receipt", () => {
+    const authorization = handler.indexOf("canReadBuyinReceipt({ callerId, playerId, staffAuthorized })");
+    const cancelledLookup = handler.indexOf('registration.status === "cancelled"');
+    expect(cancelledLookup).toBeGreaterThan(authorization);
+    expect(handler).toContain('.eq("status", "cancelled")');
+    expect(handler).toContain("receipt = cancelledReceipt");
   });
 });
