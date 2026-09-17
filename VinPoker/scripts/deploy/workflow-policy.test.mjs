@@ -254,7 +254,7 @@ test("schema capture requires owner dispatch on exact main and retains no raw ou
   assert.match(schemaCaptureWorkflow, /test "\$TARGET_SHA" = "\$GITHUB_SHA"/);
   assert.match(schemaCaptureWorkflow, /git rev-parse origin\/main/);
   assert.doesNotMatch(schemaCaptureWorkflow, /required_reviewers/);
-  assert.match(schemaCaptureWorkflow, /supabase db dump --linked --schema public,storage,floor_private/);
+  assert.match(schemaCaptureWorkflow, /supabase db dump --linked --schema public,storage,floor_private,private,spectator_projection_v2/);
   assert.match(schemaCaptureWorkflow, /sanitize-live-public-schema-artifact\.mjs/);
   assert.match(schemaCaptureWorkflow, /validate-live-public-schema-artifact\.mjs/);
   assert.match(schemaCaptureWorkflow, /raw_schema_path="\$\{RUNNER_TEMP\}\/live-public-schema\.raw\.sql"/);
