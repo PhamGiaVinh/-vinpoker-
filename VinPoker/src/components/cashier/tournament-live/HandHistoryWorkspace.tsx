@@ -206,6 +206,7 @@ export function HandHistoryWorkspace({
   const supabase = useSupabaseClient();
   const [hands, setHands] = useState<HandRecord[]>([]);
   const [selectedHandId, setSelectedHandId] = useState<string | null>(initialHandId);
+  const [showHandPicker, setShowHandPicker] = useState(!workspaceMode || !initialHandId);
   const [loading, setLoading] = useState(false);
   // F2 — completed-hand editor (flag trackerHandHistoryEdit). editSupported degrades to
   // false on a 42883 (RPC not applied) so the button hides honestly.
@@ -238,9 +239,10 @@ export function HandHistoryWorkspace({
   useEffect(() => {
     setSelectedTableId(initialTableId || "all");
     setSelectedHandId(initialHandId);
+    setShowHandPicker(!workspaceMode || !initialHandId);
     setEditMode(false);
     setResettleView(null);
-  }, [initialHandId, initialTableId, tournamentId]);
+  }, [initialHandId, initialTableId, tournamentId, workspaceMode]);
 
   useEffect(() => {
     if (!tournamentId) return;
@@ -755,6 +757,7 @@ export function HandHistoryWorkspace({
 
   const selectHand = (handId: string) => {
     setSelectedHandId(handId);
+    setShowHandPicker(false);
     setEditMode(false);
     setResettleView(null);
     onSelectionChange?.({
@@ -780,8 +783,13 @@ export function HandHistoryWorkspace({
         />
       )}
 
+      {workspaceMode && initialHandId && (
+        <Button type="button" variant="outline" className="min-h-11 w-full xl:hidden" onClick={() => setShowHandPicker((current) => !current)}>
+          {showHandPicker ? "Ẩn danh sách hand" : "Chọn hand khác"}
+        </Button>
+      )}
       <div className={`grid grid-cols-1 gap-3 ${workspaceMode ? "xl:grid-cols-[320px_minmax(0,1fr)]" : "lg:grid-cols-[280px_1fr]"}`}>
-      <div className="space-y-2">
+      <div className={`space-y-2 ${workspaceMode && initialHandId && !showHandPicker ? "hidden xl:block" : ""}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-semibold"><History className="h-4 w-4 text-emerald-300" /> Lịch sử hand</div>
           <Button size="sm" variant="outline" onClick={loadHands} disabled={loading} className="min-h-11 text-xs">
