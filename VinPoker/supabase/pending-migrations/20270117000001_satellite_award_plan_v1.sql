@@ -131,14 +131,14 @@ BEGIN
   FOR v_line IN SELECT value FROM jsonb_array_elements(p_awards) LOOP
     IF jsonb_typeof(v_line) IS DISTINCT FROM 'object'
        OR COALESCE(v_line->>'position','') !~ '^[1-9][0-9]{0,4}$'
-       OR COALESCE(v_line->>'ticketCount','0') !~ '^[0-9]{1,2}$'
+       OR COALESCE(v_line->>'ticketCount','0') !~ '^[01]$'
        OR COALESCE(v_line->>'cashVnd','0') !~ '^[0-9]{1,15}$' THEN
       RAISE EXCEPTION 'satellite_award_line_invalid' USING ERRCODE = '22023';
     END IF;
     v_position := (v_line->>'position')::integer;
     v_tickets := COALESCE(v_line->>'ticketCount','0')::integer;
     v_cash := COALESCE(v_line->>'cashVnd','0')::bigint;
-    IF v_position = ANY(v_seen_positions) OR v_tickets > 10
+    IF v_position = ANY(v_seen_positions) OR v_tickets > 1
        OR (v_tickets = 0 AND v_cash = 0) THEN
       RAISE EXCEPTION 'satellite_award_line_duplicate_or_empty' USING ERRCODE = '22023';
     END IF;

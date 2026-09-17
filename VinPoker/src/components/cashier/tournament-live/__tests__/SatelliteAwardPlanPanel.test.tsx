@@ -80,6 +80,16 @@ beforeEach(() => {
 });
 
 describe("SatelliteAwardPlanPanel", () => {
+  it("rejects two tickets for one finishing place before calling the server", async () => {
+    render(<SatelliteAwardPlanPanel tournamentId="source" clubId="club" />);
+    fireEvent.keyDown(await screen.findByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "Main Event · Flight 1C" }));
+    fireEvent.change(await screen.findByLabelText("Tickets"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview obligations" }));
+    expect(toast.error).toHaveBeenCalledWith("Use unique ranks, at most one ticket per rank, and a non-negative cash amount.");
+    expect(h.rpc).not.toHaveBeenCalledWith("satellite_award_plan_v1", expect.anything());
+  });
+
   it("fails closed on a plan read error and offers Retry, not an empty editable plan", async () => {
     h.getResult = { data: null, error: { message: "plan read failed" } };
     render(<SatelliteAwardPlanPanel tournamentId="source" clubId="club" />);
