@@ -8,6 +8,7 @@ import { isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
 import { toast } from "sonner";
 import { FEATURES, isTrackerAtomicResettleAvailable } from "@/lib/featureFlags";
 import { HandEditPanel } from "./HandEditPanel";
+import { FloorHandActionReview } from "./FloorHandActionReview";
 import { HistoricalSettlementDisplayControl } from "./HistoricalSettlementDisplayControl";
 import { HistoricalSettlementBatchControl } from "./HistoricalSettlementBatchControl";
 import type { HistoricalSettlementBatchCandidate } from "@/lib/tracker-poker/historicalSettlementBatch";
@@ -207,6 +208,7 @@ export function HandHistoryWorkspace({
   const [hands, setHands] = useState<HandRecord[]>([]);
   const [selectedHandId, setSelectedHandId] = useState<string | null>(initialHandId);
   const [showHandPicker, setShowHandPicker] = useState(!workspaceMode || !initialHandId);
+  const [editActionOrder, setEditActionOrder] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   // F2 — completed-hand editor (flag trackerHandHistoryEdit). editSupported degrades to
   // false on a 42883 (RPC not applied) so the button hides honestly.
@@ -759,6 +761,7 @@ export function HandHistoryWorkspace({
     setSelectedHandId(handId);
     setShowHandPicker(false);
     setEditMode(false);
+    setEditActionOrder(null);
     setResettleView(null);
     onSelectionChange?.({
       tableId: selectedTableId === "all" ? null : selectedTableId,
@@ -769,6 +772,7 @@ export function HandHistoryWorkspace({
   const selectTable = (tableId: string) => {
     setSelectedTableId(tableId);
     setSelectedHandId(null);
+    setEditActionOrder(null);
     onSelectionChange?.({ tableId: tableId === "all" ? null : tableId, handId: null });
   };
 
@@ -918,6 +922,21 @@ export function HandHistoryWorkspace({
               </div>
             </div>
 
+            {workspaceMode && !editMode && (
+              <FloorHandActionReview
+                key={selectedHand.id}
+                handNumber={selectedHand.hand_number}
+                tableName={tables.find((table) => table.id === selectedHand.table_id)?.name ?? "Bàn đã chọn"}
+                potSize={selectedHand.pot_size}
+                buttonSeat={selectedHand.button_seat}
+                seats={selectedHand.players.map((player) => ({ seat_number: player.seat_number, display_name: player.display_name }))}
+                actions={selectedHand.actions}
+                canEdit={FEATURES.trackerHandHistoryEdit && editSupported && selectedHand.status === "completed" && !selectedHand.is_voided}
+                isVoided={selectedHand.is_voided}
+                onEditAction={(order) => { setEditActionOrder(order); setEditMode(true); }}
+              />
+            )}
+
             {selectedHand.status === "in_progress" && !selectedHand.is_voided && (
               <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2.5 text-xs text-amber-100">
                 Hand đang chạy: mở đúng bàn để dùng Undo hoặc thao tác Tracker canonical. Workspace này không ghi đè action hay chip đã có trong hand đang chơi; sau khi kết thúc hand, Floor có thể mở lại tại đây để kiểm tra và tính lại toàn bộ chuỗi.
@@ -937,6 +956,7 @@ export function HandHistoryWorkspace({
             {editMode ? (
               <>
               <HandEditPanel
+                initialActionOrder={editActionOrder}
                 board={selectedHand.community_cards}
                 players={selectedHand.players.map((p) => ({
                   player_id: p.player_id,
@@ -1031,7 +1051,7 @@ export function HandHistoryWorkspace({
               ))}
             </div>
 
-            <div className="bg-card border border-border/30 rounded-lg p-2.5 shadow-sm">
+            {!workspaceMode && <div className="bg-card border border-border/30 rounded-lg p-2.5 shadow-sm">
               <div className="text-[10px] font-bold text-amber-400 uppercase tracking-wider mb-2 pb-2 border-b border-border/20">
                 Action Log
               </div>
@@ -1055,7 +1075,7 @@ export function HandHistoryWorkspace({
                   </div>
                 ))}
               </div>
-            </div>
+            </div>}
             </>
             )}
           </>

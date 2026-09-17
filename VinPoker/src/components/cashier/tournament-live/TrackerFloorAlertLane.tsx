@@ -221,8 +221,8 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
           return next;
         }, { replace: true });
       } }}>
-        <DialogContent className="max-h-[92dvh] max-w-6xl overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="left-0 top-0 h-[100dvh] max-h-none max-w-none translate-x-0 translate-y-0 overflow-x-hidden overflow-y-auto rounded-none border-0 px-3 pb-8 pt-12 sm:left-[50%] sm:top-[50%] sm:h-auto sm:max-h-[92dvh] sm:max-w-6xl sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:border sm:p-6">
+          <DialogHeader className="text-left">
             <DialogTitle>{reviewAlert && locationFor(reviewAlert)?.handVoided ? "Xem ván đã void" : "Kiểm tra & sửa hand"}</DialogTitle>
             <DialogDescription>
               {reviewAlert && locationFor(reviewAlert)?.handVoided
