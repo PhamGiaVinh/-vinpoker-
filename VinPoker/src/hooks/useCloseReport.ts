@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { FEATURES } from "@/lib/featureFlags";
 import {
   computeCloseReport,
   type CloseReportInput,
@@ -32,8 +33,10 @@ export interface CloseTournamentResult {
   clubRevenue?: number;
 }
 
+type PreviewTotals = CloseReportTotals & { satelliteVoucherTransferTotal?: number };
+
 export function useCloseReport(tournamentId: string | null | undefined) {
-  const [report, setReport] = useState<CloseReportTotals | null>(null);
+  const [report, setReport] = useState<PreviewTotals | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [alreadyClosed, setAlreadyClosed] = useState(false);
@@ -85,7 +88,31 @@ export function useCloseReport(tournamentId: string | null | undefined) {
         })),
       };
 
-      setReport(computeCloseReport(input));
+      const totals: PreviewTotals = computeCloseReport(input);
+      if (FEATURES.satelliteAwardsV1) {
+        const { data: voucherData, error: voucherError } = await supabase.rpc(
+          "satellite_target_voucher_summary_v1" as "close_tournament", {
+            p_target_tournament_id: tournamentId,
+          } as never);
+        if (voucherError) throw voucherError;
+        const voucher = voucherData as unknown as {
+          ok?: boolean; grossRegistrationVnd?: string; voucherTransferVnd?: string;
+          nonVoucherRegistrationVnd?: string;
+        } | null;
+        const gross = Number(voucher?.grossRegistrationVnd);
+        const transfer = Number(voucher?.voucherTransferVnd);
+        const nonVoucher = Number(voucher?.nonVoucherRegistrationVnd);
+        if (voucher?.ok !== true || !Number.isSafeInteger(gross)
+          || !Number.isSafeInteger(transfer) || !Number.isSafeInteger(nonVoucher)
+          || gross !== totals.cashInTotal || gross !== transfer + nonVoucher) {
+          throw new Error("Satellite voucher preview does not reconcile");
+        }
+        totals.satelliteVoucherTransferTotal = transfer;
+        totals.cashInTotal = nonVoucher;
+        // cashierBalance remains the tour settlement balance, including the
+        // internal transfer. It is not the physical drawer balance.
+      }
+      setReport(totals);
       setAlreadyClosed(!!closedRes?.data);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "load_failed");
@@ -102,7 +129,8 @@ export function useCloseReport(tournamentId: string | null | undefined) {
   const closeTournament = useCallback(
     async (reason?: string): Promise<CloseTournamentResult> => {
       if (!tournamentId) return { ok: false, error: "no_tournament" };
-      const { data, error: rpcErr } = await supabase.rpc("close_tournament", {
+      const { data, error: rpcErr } = await supabase.rpc((FEATURES.satelliteAwardsV1
+        ? "satellite_close_tournament_v1" : "close_tournament") as "close_tournament", {
         p_tournament_id: tournamentId,
         p_reason: reason ?? null,
       });

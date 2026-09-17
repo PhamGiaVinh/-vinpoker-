@@ -7,6 +7,9 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SatelliteFundingPanel } from "./SatelliteFundingPanel";
+import { SatelliteTicketCodeRotation } from "./SatelliteTicketCodeRotation";
+import { QRCodeSVG } from "qrcode.react";
 
 type AwardInput = { position: string; ticketCount: string; cashVnd: string };
 type Target = { id: string; name: string; start_time: string };
@@ -73,6 +76,8 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
   const [recipients, setRecipients] = useState<Record<number, string>>({});
   const [issueConfirmed, setIssueConfirmed] = useState(false);
   const [issueError, setIssueError] = useState<string | null>(null);
+  const [fundingLocked, setFundingLocked] = useState(false);
+  const [canRotate, setCanRotate] = useState(false);
   const seq = useRef(0);
 
   const load = useCallback(async () => {
@@ -85,7 +90,7 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
         planRpc("satellite_get_award_plan_v1", { p_source_tournament_id: tournamentId }),
         supabase.from("tournaments")
           .select("id,name,start_time")
-          .eq("club_id", clubId).eq("operations_mode", "standard")
+          .eq("club_id", clubId).filter("operations_mode", "eq", "standard")
           .in("status", ["scheduled", "live"])
           .is("registration_closed_at", null).neq("id", tournamentId)
           .order("start_time", { ascending: true }),
@@ -169,7 +174,7 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
   };
 
   const issue = async () => {
-    if (!locked?.awardLines || issuance?.issued || busy || !issueConfirmed) return;
+    if (!locked?.awardLines || issuance?.issued || busy || !issueConfirmed || !fundingLocked) return;
     const results = locked.awardLines.map(line => ({ position: line.position, playerId: recipients[line.position] }));
     if (results.some(row => !row.playerId) || new Set(results.map(row => row.playerId)).size !== results.length) {
       setIssueError("Assign one distinct confirmed player to every ranked award.");
@@ -201,17 +206,23 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
       <p className="text-sm text-primary">Locked{locked.lockedAt ? ` · ${new Date(locked.lockedAt).toLocaleString()}` : ""}</p>
       <dl className="grid gap-2 text-sm sm:grid-cols-2"><div><dt className="text-muted-foreground">Exact target</dt><dd>{targets.find(t => t.id === locked.targetTournamentId)?.name ?? locked.targetTournamentId}</dd></div><div><dt className="text-muted-foreground">Ticket value · buy-in + fees</dt><dd>{money(locked.targetEntryPriceVnd)}</dd></div><div><dt className="text-muted-foreground">Tickets to issue</dt><dd>{locked.ticketTotal}</dd></div><div><dt className="text-muted-foreground">Cash owed</dt><dd>{money(locked.cashTotalVnd)}</dd></div></dl>
       <p className="text-xs text-muted-foreground">Total ticket + cash obligation: {money(locked.totalLiabilityVnd)}. Issuance, redemption, and pool reconciliation are separate server steps.</p>
+      <SatelliteFundingPanel key={issuance?.issued ? "issued" : "not-issued"} sourceTournamentId={tournamentId} onLockedChange={setFundingLocked}
+        onOwnerChange={setCanRotate} />
       <div className="space-y-3 border-t border-border pt-3">
         <h3 className="text-sm font-semibold">Ticket issuance</h3>
         {issuance?.issued ? <div role="status" className="space-y-2"><p className="text-sm text-emerald-400">Issued {issuance.ticketTotal} / {locked.ticketTotal} tickets</p>
           <p className="text-xs text-muted-foreground">Serials are for reconciliation; redemption codes are private. Never display this list on the tournament TV.</p>
-          <div className="max-h-64 space-y-2 overflow-auto">{issuance.tickets?.map(ticket => <div key={ticket.serial} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-border p-2 text-xs"><strong>#{ticket.serial}</strong><span>Rank {ticket.position}</span><span>{candidates.find(c => c.playerId === ticket.winnerPlayerId)?.displayName ?? ticket.winnerPlayerId}</span><span>{ticket.status}</span><code className="break-all select-all">{ticket.code}</code></div>)}</div>
+          <div className="max-h-64 space-y-2 overflow-auto">{issuance.tickets?.map(ticket => <div key={ticket.serial} className="space-y-2 rounded border border-border p-2 text-xs"><div className="flex flex-wrap items-center gap-x-3 gap-y-1"><strong>#{ticket.serial}</strong><span>Rank {ticket.position}</span><span>{candidates.find(c => c.playerId === ticket.winnerPlayerId)?.displayName ?? ticket.winnerPlayerId}</span><span>{ticket.status}</span><code className="break-all select-all">{ticket.code}</code></div>
+            {ticket.status === "issued" && <details className="w-fit"><summary className="cursor-pointer text-amber-400">Show private ticket QR</summary><div className="mt-2 inline-block rounded bg-white p-2"><QRCodeSVG value={ticket.code} size={144} level="M" marginSize={1} /></div><p className="text-xs text-muted-foreground">Deliver privately to the bearer; never show on TV.</p></details>}
+            {canRotate && ticket.status === "issued" && <SatelliteTicketCodeRotation
+              sourceTournamentId={tournamentId} serial={ticket.serial} code={ticket.code}
+              onRotated={() => void load()} />}</div>)}</div>
         </div> : <>
           <p className="text-xs text-muted-foreground">After the source tour is closed, assign each prize rank to its confirmed winner. Ticket value includes the target buy-in and all fees. Issuing is permanent.</p>
           {locked.awardLines?.map(line => <div key={line.position} className="grid gap-1 sm:grid-cols-[8rem_1fr] sm:items-center"><Label htmlFor={`winner-${line.position}`}>Rank {line.position} · {line.ticketCount} ticket{line.ticketCount === 1 ? "" : "s"}</Label><Select value={recipients[line.position] ?? ""} onValueChange={value => { setRecipients(current => ({ ...current, [line.position]: value })); setIssueConfirmed(false); setIssueError(null); }}><SelectTrigger id={`winner-${line.position}`}><SelectValue placeholder="Select confirmed player" /></SelectTrigger><SelectContent>{candidates.map(candidate => <SelectItem key={candidate.playerId} value={candidate.playerId}>{candidate.displayName}</SelectItem>)}</SelectContent></Select></div>)}
-          <label className="flex items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5" checked={issueConfirmed} onChange={e => setIssueConfirmed(e.target.checked)} />I confirm the final ranks, winners, target tour and {locked.ticketTotal} ticket obligations. Cash prizes and pool reconciliation remain separate.</label>
+          <label className="flex items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5" checked={issueConfirmed} onChange={e => setIssueConfirmed(e.target.checked)} />I confirm the final ranks, winners, target tour and {locked.ticketTotal} ticket obligations. Source funding must already be locked.</label>
           {issueError && <p role="alert" className="text-sm text-destructive">{issueError}</p>}
-          <Button type="button" disabled={busy || !issueConfirmed || candidates.length === 0} onClick={() => void issue()}>Issue tickets</Button>
+          <Button type="button" disabled={busy || !fundingLocked || !issueConfirmed || candidates.length === 0} onClick={() => void issue()}>Issue tickets</Button>
         </>}
       </div>
     </div> : <>
