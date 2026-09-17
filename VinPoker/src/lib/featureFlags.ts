@@ -688,9 +688,10 @@ export const FEATURES = {
   floorAtomicPayout: false,
   /**
    * Atomic completed-hand edit and forward resettle through the dedicated Edge path.
-   * OFF preserves the existing operator edit flow; Hand #8 must not use this before UAT.
+   * The controlled production rollout is owner-approved. The build acknowledgement
+   * remains mandatory before the browser may invoke the write path.
    */
-  trackerAtomicResettle: false,
+  trackerAtomicResettle: true,
   /**
    * Owner-only verification for completed historical hands. The control asks
    * the server to prove existing rows before it creates a display outcome for
