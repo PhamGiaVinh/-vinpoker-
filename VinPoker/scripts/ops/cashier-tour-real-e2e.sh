@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_root="$(pwd)"
+schema_dir="${SCHEMA_ARTIFACT_DIRECTORY:-}"
+if [[ -z "$schema_dir" || ! -f "$schema_dir/live-public-schema.sql" ||
+      ! -f "$schema_dir/live-public-schema.sha256" ]]; then
+  echo "Verified schema-only baseline artifact is required" >&2
+  exit 1
+fi
+(cd "$schema_dir" && sha256sum --check --status live-public-schema.sha256)
 
 # This job has no production secrets or linked project. No application SQL or
 # handler is loaded until the outbound-network proof succeeds.
@@ -205,36 +212,51 @@ for target in 'http://example.com' 'http://1.1.1.1'; do
 done
 echo "ISOLATION_PROOF: DB/pg_net/Edge/browser outbound denied; local Auth reachable; cron off"
 
-# Only after the network proof: load the unmodified repository migration chain
-# into the unlinked disposable project. The historical SQL contains cron/pg_net
-# callers, so the firewall and disabled scheduler must stay active throughout.
-mkdir -p "$test_root/supabase/migrations"
-cp -a "$repo_root/supabase/migrations/." "$test_root/supabase/migrations/"
-cashier_migration='20270115000003_cashier_tour_money_v1.sql'
-if [[ "$(sha256sum "$repo_root/supabase/migrations/$cashier_migration" | cut -d ' ' -f 1)" != \
-      "$(sha256sum "$test_root/supabase/migrations/$cashier_migration" | cut -d ' ' -f 1)" ]]; then
-  echo "Cashier migration differs from the checked-out source" >&2
+# Only after the network proof: restore the owner-captured current public and
+# storage schema into the real local Supabase stack. Historical migrations are
+# not replayable from zero; no Auth/API/Edge service or RLS rule is stubbed.
+set +e
+docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  <"$schema_dir/live-public-schema.sql" >"$test_root/schema-restore.log" 2>&1
+restore_rc=$?
+set -e
+if (( restore_rc != 0 )); then
+  echo "Sanitized current-schema restore failed on isolated Supabase (exit $restore_rc)" >&2
+  tail -n 35 "$test_root/schema-restore.log" >&2
   exit 1
 fi
+baseline_state="$(docker exec "$db_container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  -c "SELECT to_regclass('public.tournament_registrations') IS NOT NULL,
+    to_regclass('public.cashier_buyin_movements') IS NULL")"
+if [[ "$baseline_state" != 't|t' ]]; then
+  echo "Captured baseline is incomplete or already has the Cashier migration" >&2
+  exit 1
+fi
+cashier_migration='20270115000003_cashier_tour_money_v1.sql'
 set +e
-timeout 25m supabase migration up --local >"$test_root/migration.log" 2>&1
+timeout 10m docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  <"$repo_root/supabase/migrations/$cashier_migration" >"$test_root/migration.log" 2>&1
 migration_rc=$?
 set -e
 if (( migration_rc != 0 )); then
-  echo "Canonical migration chain failed on isolated Supabase (exit $migration_rc)" >&2
+  echo "Exact Cashier migration failed on isolated current-schema baseline (exit $migration_rc)" >&2
   tail -n 45 "$test_root/migration.log" >&2
   exit 1
 fi
-applied="$(docker exec "$db_container" psql -X -Atq -U postgres -d postgres \
-  -c "SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version = '20270115000003'")"
-if [[ "$applied" != 1 ]]; then
-  echo "Cashier migration was not recorded exactly once on disposable DB" >&2
+applied_state="$(docker exec "$db_container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  -c "SELECT to_regclass('public.cashier_buyin_movements') IS NOT NULL,
+    to_regprocedure('public.cashier_create_app_registration_v1(uuid,uuid)') IS NOT NULL,
+    has_function_privilege('anon','public.cashier_create_app_registration_v1(uuid,uuid)','EXECUTE'),
+    has_function_privilege('service_role','public.cashier_create_app_registration_v1(uuid,uuid)','EXECUTE'),
+    (SELECT count(*) FROM public.cashier_tour_settings WHERE enabled)")"
+if [[ "$applied_state" != 't|t|f|t|0' ]]; then
+  echo "Cashier schema/ACL/default-off postcondition failed ($applied_state)" >&2
   exit 1
 fi
 if [[ "$(docker exec "$db_container" psql -X -Atq -U postgres -d postgres -c 'SHOW cron.launch_active_jobs')" != 'off' ]]; then
   echo "Disposable cron guard changed during migration" >&2
   exit 1
 fi
-echo "SCHEMA_PROOF: canonical migrations applied; Cashier migration exactly once; cron remains off"
+echo "SCHEMA_PROOF: captured current schema restored; exact Cashier SQL applied; RPC ACL and default-off verified; cron remains off"
 echo "E2E_NOT_READY: synthetic Auth/Edge/browser business assertions are not installed yet" >&2
 exit 1
