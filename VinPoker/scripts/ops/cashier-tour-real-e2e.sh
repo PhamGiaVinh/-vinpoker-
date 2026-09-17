@@ -54,8 +54,8 @@ if [[ -z "$prepare_edge" ]]; then
   echo "Preparation stack has no Edge runtime to cache" >&2
   exit 1
 fi
-docker inspect "$prepare_edge" --format 'Edge cache mounts: {{json .Mounts}}' |
-  jq -r 'split("Edge cache mounts: ")[1] | fromjson | map({Type,Destination})'
+docker inspect "$prepare_edge" --format '{{json .Mounts}}' |
+  jq -c 'map({Type,Destination})'
 docker exec "$prepare_edge" sh -c 'du -sh /root/.cache/deno /home/deno/.cache/deno 2>/dev/null || true'
 supabase stop --no-backup >/dev/null 2>&1
 docker pull mcr.microsoft.com/playwright:v1.60.0-noble >/dev/null
