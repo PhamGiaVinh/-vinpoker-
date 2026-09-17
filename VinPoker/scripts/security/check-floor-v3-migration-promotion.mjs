@@ -304,6 +304,15 @@ function evaluatePromotion({
         reconciliation.remoteLedgerVersions.map((entry) => entry.version),
       );
       const floorAllowlist = new Set(expectedFloorFilenames);
+      const ownerGatedFiles = new Set();
+      for (const expected of reconciliation.ownerGatedActiveAllowlist ?? []) {
+        const row = activeByFilename.get(expected.filename);
+        if (!row || row.version !== expected.version || row.sha256 !== expected.sha256 || ownerGatedFiles.has(expected.filename)) {
+          failures.push(`owner-gated active migration missing or hash drift: ${expected.filename}`);
+        } else {
+          ownerGatedFiles.add(expected.filename);
+        }
+      }
       const receiptByVersion = new Map();
       for (const receipt of reconciliation.remoteHistoryReceipts) {
         if (receiptByVersion.has(receipt.remoteVersion)) {
@@ -361,6 +370,7 @@ function evaluatePromotion({
       for (const row of active) {
         if (
           floorAllowlist.has(row.filename) ||
+          ownerGatedFiles.has(row.filename) ||
           trackerVoiceRelease.filenames.has(row.filename)
         ) continue;
         if (!remoteVersions.has(row.version)) {
