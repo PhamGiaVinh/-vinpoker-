@@ -32,6 +32,8 @@ BEGIN
     'f3000000-0000-4000-8000-000000000001',
     'f3000000-0000-4000-8000-000000000002',4);
   IF v_quote->>'entryCount'<>'33' OR
+     v_quote->>'collectionVerified'<>'false' OR
+     v_quote->>'fundingBasis'<>'confirmed_registrations_not_verified_cash' OR
      v_quote->>'sourceRegistrationGrossVnd'<>'39600000' OR
      v_quote->>'sourceEntryFeesVnd'<>'6600000' OR
      v_quote->>'sourcePoolVnd'<>'33000000' OR

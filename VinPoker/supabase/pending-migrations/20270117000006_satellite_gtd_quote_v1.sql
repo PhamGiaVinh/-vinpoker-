@@ -97,6 +97,8 @@ BEGIN
   END IF;
   RETURN jsonb_build_object(
     'ok',true,'provisional',NOT public.is_tournament_registration_closed(v_source.id),
+    'collectionVerified',false,
+    'fundingBasis','confirmed_registrations_not_verified_cash',
     'sourceTournamentId',v_source.id,'targetTournamentId',v_target.id,
     'entryCount',v_entry_count,'guaranteedTickets',p_guaranteed_tickets,
     'targetEntryPriceVnd',v_price::bigint::text,
