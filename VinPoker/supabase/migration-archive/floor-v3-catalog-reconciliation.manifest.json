@@ -6618,6 +6618,25 @@
       "lineageEvidence": "NEVER_APPLIED; historical source retained only in never-apply archive"
     },
     {
+      "version": "20270114000008",
+      "filename": "20270114000008_tracker_start_hand_floor_v3_identity.sql",
+      "classification": "SCHEMA_EFFECT_PRESENT_LEDGER_PROVENANCE_UNKNOWN",
+      "sourceOnly": false,
+      "superseded": true,
+      "unapplied": false,
+      "hasData": false,
+      "aliasVersions": [],
+      "reason": "Function, enabled trigger, owner, grants and comment match the live contract, but this version has no live ledger row; do not replay while Tracker is running",
+      "sourceOnlyEvidence": false,
+      "supersededEvidence": true,
+      "bucket": "historical-never-replay",
+      "archivePath": "supabase/migration-archive/historical-never-replay/20270114000008_tracker_start_hand_floor_v3_identity.sql",
+      "sha256": "e6296d1f3ab854e86448078415bca36bb8079fce3ed6fe521d01d2f1328124a5",
+      "ledgerVersionPresent": false,
+      "originalPath": "supabase/migrations/20270114000008_tracker_start_hand_floor_v3_identity.sql",
+      "lineageEvidence": "LIVE_SCHEMA_EFFECT_PRESENT; LEDGER_PROVENANCE_UNKNOWN; preserve source without replay"
+    },
+    {
       "version": "20270115000002",
       "filename": "20270115000002_tracker_hand_correction_commit_receipt.sql",
       "classification": "SCHEMA_EFFECT_PRESENT_LEDGER_PROVENANCE_UNKNOWN",
@@ -6714,11 +6733,6 @@
       "sha256": "96fc97eb9c0e46b4da25e3ee4c4bbc0860a74823abde49eae069541218773275"
     },
     {
-      "version": "20270114000008",
-      "filename": "20270114000008_tracker_start_hand_floor_v3_identity.sql",
-      "sha256": "e6296d1f3ab854e86448078415bca36bb8079fce3ed6fe521d01d2f1328124a5"
-    },
-    {
       "version": "20270114000011",
       "filename": "20270114000011_floor_redraw_seat_lock_v1.sql",
       "sha256": "8012f98809db053c0c8c32791877c6cf2a2446099e761a870dd6e9a658a4265d"
@@ -6735,10 +6749,10 @@
     }
   ],
   "counts": {
-    "historicalSources": 259,
+    "historicalSources": 260,
     "remoteEquivalent": 9,
     "superseded": 31,
-    "neverReplay": 220,
+    "neverReplay": 221,
     "legacyUnappliedNotForReplay": 4,
     "remoteHistoryReceipts": 26,
     "pendingSources": 3,
