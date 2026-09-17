@@ -92,7 +92,7 @@ for (const width of [375, 430, 1280]) {
     await installMockSession(page, requests);
     await page.setViewportSize({ width, height: 844 });
     await page.goto(`/ops/cashier/tour?club=${clubId}`);
-    await expect(page.getByText("PREVIEW", { exact: true })).toBeVisible();
+    await expect(page.getByText("ACTIVE", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: /Tour A · 10:00/ }).first().click();
     const scanner = page.getByPlaceholder("Quét QR, thẻ hội viên, mã CK; hoặc tìm tên, số điện thoại");
     await expect(scanner).toBeVisible();

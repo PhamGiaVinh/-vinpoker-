@@ -10,7 +10,7 @@ import { OpsAuthProvider } from "@/ops/auth/OpsAuthProvider";
 import { OpsCapabilityProvider } from "@/ops/auth/OpsCapabilityProvider";
 import { OpsTournamentScopeGate } from "@/ops/auth/OpsTournamentScopeGate";
 import { OpsWorkspaceProvider } from "@/ops/workspace/OpsWorkspaceProvider";
-import { OPS_CASHIER_MUTATIONS_ENABLED } from "@/ops/opsMutations";
+import { OPS_TOUR_CASHIER_ENABLED } from "@/ops/opsMutations";
 import {
   OpsEntryResolver,
   OpsModuleGate,
@@ -130,7 +130,7 @@ export default function OpsApp() {
                       />
                       <Route
                         path="/ops/cashier/tour"
-                        element={OPS_CASHIER_MUTATIONS_ENABLED
+                        element={OPS_TOUR_CASHIER_ENABLED
                           ? <OpsModuleGate capability="cashier"><TourCashierWorkbench /></OpsModuleGate>
                           : <Navigate to="/ops/cashier" replace />}
                       />

@@ -2,7 +2,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Layers3, UserRound } from "lucide-react";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { getOpsModuleByPath } from "@/ops/registry/opsModuleRegistry";
-import { OPS_CASHIER_MUTATIONS_ENABLED } from "@/ops/opsMutations";
+import { OPS_TOUR_CASHIER_ENABLED } from "@/ops/opsMutations";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
 import "@/components/ops/ops-ios.css";
 
@@ -12,8 +12,8 @@ export default function OpsShell() {
   const capabilities = useOpsCapabilities();
   const workspace = useOpsWorkspace();
   const module = getOpsModuleByPath(location.pathname);
-  const moduleState = location.pathname === "/ops/cashier/tour" && OPS_CASHIER_MUTATIONS_ENABLED
-    ? "PREVIEW" : module?.defaultState;
+  const moduleState = location.pathname === "/ops/cashier/tour" && OPS_TOUR_CASHIER_ENABLED
+    ? "ACTIVE" : module?.defaultState;
   const clubName = workspace.selectedClubId
     ? capabilities.clubs.find((club) => club.id === workspace.selectedClubId)?.name
       ?? workspace.verifiedSuperAdminClubs.get(workspace.selectedClubId)?.club_name

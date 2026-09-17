@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowLeft, Check, Clock3, Loader2, RefreshCw, Search, Wa
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
-import { assertMutationOk, OPS_CASHIER_MUTATIONS_ENABLED } from "@/ops/opsMutations";
+import { assertMutationOk, OPS_TOUR_CASHIER_ENABLED } from "@/ops/opsMutations";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 import { normalizeCashierScan } from "./cashierScan";
@@ -304,7 +304,7 @@ export default function TourCashierWorkbench() {
   };
 
   const mutate = async (name: string, args: Record<string, unknown>, onSuccess: (result: Record<string, unknown>) => void) => {
-    if (!OPS_CASHIER_MUTATIONS_ENABLED || mutationLock.current) return;
+    if (!OPS_TOUR_CASHIER_ENABLED || mutationLock.current) return;
     mutationLock.current = true; setBusy(true); setError(null); setNotice(null);
     try {
       const { data, error: rpcError } = await client.rpc(name as never, args as never);
@@ -525,7 +525,7 @@ export default function TourCashierWorkbench() {
               : <div className="mt-5 space-y-3"><label className="block text-sm">Nhận tiền mặt (VND)
                 <input ref={cashInput} inputMode="numeric" disabled={busy} value={cashAmount} onChange={(event) => { cashAttempt.current = null; setCashAmount(event.target.value); }}
                   className="mt-1 min-h-12 w-full rounded-xl border border-white/15 bg-[#08120d] p-3 text-lg text-white" /></label>
-                <button type="button" disabled={!shift || busy || selected.legacy_detail_missing || !OPS_CASHIER_MUTATIONS_ENABLED || !worklist?.enabled} onClick={recordCash}
+                <button type="button" disabled={!shift || busy || selected.legacy_detail_missing || !OPS_TOUR_CASHIER_ENABLED || !worklist?.enabled} onClick={recordCash}
                   className="min-h-12 w-full rounded-xl bg-[#89ef9e] px-4 font-bold text-[#092014] disabled:opacity-40">{busy ? "Đang ghi nhận…" : "Ghi nhận tiền mặt"}</button>
                 {!shift && <p className="text-xs text-amber-200">Mở ca chung trước khi nhận tiền mặt.</p>}
                 {selected.legacy_detail_missing && <p className="text-xs text-amber-200">Đăng ký cũ chưa có giá server đã chốt. Không thu qua quầy mới; đối soát hoặc tạo lại đăng ký hợp lệ sau khi xử lý bản cũ.</p>}

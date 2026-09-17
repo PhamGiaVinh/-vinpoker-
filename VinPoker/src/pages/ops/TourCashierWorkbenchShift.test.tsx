@@ -38,7 +38,7 @@ vi.mock("@/ops/workspace/OpsWorkspaceProvider", () => ({
   useOpsWorkspace: () => ({ selectedClubId: "club-a" }),
 }));
 vi.mock("@/ops/opsMutations", () => ({
-  OPS_CASHIER_MUTATIONS_ENABLED: true,
+  OPS_TOUR_CASHIER_ENABLED: true,
   assertMutationOk: (data: unknown) => data,
 }));
 vi.mock("@/components/tournament/seat/SeatReceiptDialog", () => ({ SeatReceiptDialog: () => null }));

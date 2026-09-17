@@ -8,6 +8,11 @@ export function isTrackerVoiceBuildEnabled(value: unknown): boolean {
   return value === "true";
 }
 
+// Only the Tour Cashier surface uses this build flag; server club/role gates still apply.
+export function isTourCashierBuildEnabled(value: unknown): boolean {
+  return value === "production";
+}
+
 /**
  * Floor Table Control V3 is dark unless the build supplies one exact approved
  * flag/environment pair. Truthy-looking, partial, or mixed values stay OFF.

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- legacy read rows are normalized below */
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   ClipboardList,
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
+import { OPS_TOUR_CASHIER_ENABLED } from "@/ops/opsMutations";
 
 type OpsSupabaseClient = SupabaseClient<Database>;
 type CashierTab = "queue" | "receipts" | "status";
@@ -119,6 +121,15 @@ export default function OpsCashier() {
           </span>
         </div>
       </header>
+
+      {OPS_TOUR_CASHIER_ENABLED && (
+        <Link
+          to={`/ops/cashier/tour?club=${encodeURIComponent(clubId)}`}
+          className="inline-flex min-h-11 items-center rounded-2xl bg-emerald-300 px-4 text-sm font-semibold text-emerald-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          Mở quầy Buy-in theo tour
+        </Link>
+      )}
 
       {capabilities.metadataError && (
         <div className="rounded-2xl border border-amber-300/15 bg-amber-300/8 px-4 py-3 text-sm text-amber-100">
