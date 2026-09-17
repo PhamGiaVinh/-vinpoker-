@@ -10,7 +10,7 @@ for forbidden in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SEPAY_RECONCILE_SECR
   fi
 done
 
-test_root="$(mktemp -d)"
+test_root="$(mktemp -d -t cashier-e2e-XXXXXXXX)"
 network="cashier-e2e-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
 cleanup() {
   supabase stop --workdir "$test_root" --no-backup >/dev/null 2>&1 || true
@@ -29,12 +29,16 @@ fi
 # The temporary project has no application migrations or function source.
 # This first start only downloads/prepares the pinned CLI service images.
 exclude_services="imgproxy,logflare,mailpit,postgres-meta,realtime,storage-api,studio,supavisor,vector"
+df -h / | tail -n 1
 supabase start --exclude "$exclude_services" >"$test_root/prepare.log" 2>&1 || {
   tail -n 25 "$test_root/prepare.log" >&2
-  docker ps -a --filter 'name=supabase_db_' --format 'DB startup: {{.Status}}' >&2
+  docker ps -a --format 'Container startup: {{.Names}} {{.Status}}' >&2
+  df -h / | tail -n 1 >&2
+  docker system df >&2
   exit 1
 }
 supabase stop --no-backup >/dev/null 2>&1
+docker pull mcr.microsoft.com/playwright:v1.60.0-noble >/dev/null
 
 docker network create --driver bridge --internal \
   -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 "$network" >/dev/null

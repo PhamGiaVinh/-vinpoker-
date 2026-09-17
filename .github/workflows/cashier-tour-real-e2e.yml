@@ -36,7 +36,6 @@ jobs:
           supabase start --help | grep -q -- '--network-id'
           supabase start --help | grep -q -- '--exclude'
           npm ci --ignore-scripts --no-audit --no-fund
-          docker pull mcr.microsoft.com/playwright:v1.60.0-noble
       - name: Isolate empty local Supabase before any application migration
         working-directory: VinPoker
         run: bash scripts/ops/cashier-tour-real-e2e.sh
