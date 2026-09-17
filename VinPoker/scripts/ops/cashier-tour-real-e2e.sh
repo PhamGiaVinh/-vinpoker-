@@ -49,6 +49,14 @@ if (( prepare_rc != 0 )) || ! supabase status --output json >"$test_root/prepare
   docker system df >&2
   exit 1
 fi
+prepare_edge="$(docker ps -q --filter 'name=supabase_edge_runtime_')"
+if [[ -z "$prepare_edge" ]]; then
+  echo "Preparation stack has no Edge runtime to cache" >&2
+  exit 1
+fi
+docker inspect "$prepare_edge" --format 'Edge cache mounts: {{json .Mounts}}' |
+  jq -r 'split("Edge cache mounts: ")[1] | fromjson | map({Type,Destination})'
+docker exec "$prepare_edge" sh -c 'du -sh /root/.cache/deno /home/deno/.cache/deno 2>/dev/null || true'
 supabase stop --no-backup >/dev/null 2>&1
 docker pull mcr.microsoft.com/playwright:v1.60.0-noble >/dev/null
 
@@ -144,6 +152,49 @@ docker exec "$browser_probe" node -e \
   }
 docker stop "$browser_probe" >/dev/null
 
-echo "PARTIAL_ISOLATION_PROOF: DB/browser outbound denied; local Auth reachable; Edge and pg_net still unproven"
-echo "E2E_NOT_READY: pg_net proof, schema and browser assertions are not installed yet" >&2
+docker exec "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  -c 'CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA extensions' \
+  -c "ALTER SYSTEM SET cron.launch_active_jobs = 'off'" \
+  -c 'SELECT pg_reload_conf()' >/dev/null
+if [[ "$(docker exec "$db_container" psql -X -Atq -U postgres -d postgres -c 'SHOW cron.launch_active_jobs')" != 'off' ]]; then
+  echo "Could not disable disposable DB cron jobs" >&2
+  exit 1
+fi
+docker exec "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  -c 'CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions' >/dev/null
+
+pg_net_request() {
+  local url="$1" request_id response attempt
+  request_id="$(docker exec "$db_container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres \
+    -c "SELECT net.http_get(url := '$url', timeout_milliseconds := 3000)")"
+  if [[ ! "$request_id" =~ ^[0-9]+$ ]]; then
+    echo "pg_net did not enqueue a request" >&2
+    exit 1
+  fi
+  for attempt in {1..20}; do
+    response="$(docker exec "$db_container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres \
+      -c "SELECT coalesce(status_code::text, 'none') || '|' || coalesce(error_msg, '') FROM net._http_response WHERE id = $request_id")"
+    if [[ -n "$response" ]]; then
+      printf '%s' "$response"
+      return
+    fi
+    sleep 1
+  done
+  echo "pg_net request $request_id had no completed response" >&2
+  exit 1
+}
+internal_result="$(pg_net_request "http://$gateway_container:8000/auth/v1/health")"
+if [[ ! "$internal_result" =~ ^2[0-9][0-9]\| ]]; then
+  echo "pg_net could not reach local Auth ($internal_result)" >&2
+  exit 1
+fi
+for target in 'http://example.com' 'http://1.1.1.1'; do
+  external_result="$(pg_net_request "$target")"
+  if [[ ! "$external_result" =~ ^none\|.+ ]]; then
+    echo "pg_net external result is not a proved network denial ($external_result)" >&2
+    exit 1
+  fi
+done
+echo "PARTIAL_ISOLATION_PROOF: DB/pg_net/browser outbound denied; local Auth reachable; cron off; Edge still unproven"
+echo "E2E_NOT_READY: Edge isolation, schema and browser assertions are not installed yet" >&2
 exit 1
