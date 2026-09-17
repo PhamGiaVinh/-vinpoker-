@@ -272,7 +272,7 @@ for (const snippet of [
   "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
   "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
   "supabase@2.101.0",
-  "supabase db dump --linked --schema public",
+  "supabase db dump --linked --schema public,storage,floor_private",
   "sanitize-live-public-schema-artifact.mjs",
   "validate-live-public-schema-artifact.mjs",
   "retention-days: 3",
