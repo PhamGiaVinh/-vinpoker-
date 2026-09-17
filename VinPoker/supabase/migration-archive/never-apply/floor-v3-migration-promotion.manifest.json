@@ -88,13 +88,6 @@
       "sha256": "8ad8fcd6056a663ff024863adeb2697091be5384d217f32b1df7521a5f943ba2",
       "dependencies": ["20270114000012"],
       "runtimeEdgeDependency": false
-    },
-    {
-      "version": "20270115000002",
-      "filename": "20270115000002_tracker_hand_correction_commit_receipt.sql",
-      "sha256": "815561c2f764da6907598218ceb033a6a85cb1c6aef5c6678d8c0c1593aabd15",
-      "dependencies": ["20270115000001"],
-      "runtimeEdgeDependency": true
     }
   ],
   "heldSources": [

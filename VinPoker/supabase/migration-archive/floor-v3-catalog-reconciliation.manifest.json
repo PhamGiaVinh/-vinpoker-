@@ -1312,6 +1312,10 @@
     {
       "version": "20270112000008",
       "name": "tracker_voice_gemini_live_provider"
+    },
+    {
+      "version": "20270115000002",
+      "name": "tournament_table_appearance"
     }
   ],
   "remoteHistoryReceipts": [
@@ -1621,6 +1625,20 @@
         "filename": "20270113000001_dealer_payroll_statement_ft_ui_contract.sql",
         "path": "supabase/migration-archive/remote-history/recovered-source/20270113000001_dealer_payroll_statement_ft_ui_contract.sql",
         "sha256": "1bbf588918b3c15d084c29b3600d87ddbdcc60379986ac679517bfd39b297848"
+      }
+    },
+    {
+      "remoteVersion": "20270115000002",
+      "remoteName": "tournament_table_appearance",
+      "receiptFilename": "20270115000002_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270115000002_remote_history_receipt.sql",
+      "receiptSha256": "b5f473b2e8693a44d9ff26b73124a6d094835378b0a73db8eb4bf84d43c19247",
+      "remoteLedgerEvidence": "linked read-only ledger row and live schema objects verified 2026-09-17",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270115000002_tournament_table_appearance.sql",
+        "path": "supabase/pending-migrations/20270115000002_tournament_table_appearance.sql",
+        "sha256": "559c90188a84c6f77216180bd4e26b57088de17faea2d49c8121cd8892f2f8fb"
       }
     }
   ],
@@ -6544,6 +6562,26 @@
       "ledgerVersionPresent": false,
       "originalPath": "supabase/migrations/20270113000006_floor_table_control_v3_roster_read_contract.sql",
       "lineageEvidence": "NEVER_APPLIED; historical source retained only in never-apply archive"
+    },
+    {
+      "version": "20270115000002",
+      "filename": "20270115000002_tracker_hand_correction_commit_receipt.sql",
+      "classification": "SCHEMA_EFFECT_PRESENT_LEDGER_PROVENANCE_UNKNOWN",
+      "sourceOnly": false,
+      "superseded": true,
+      "unapplied": false,
+      "hasData": false,
+      "aliasVersions": [],
+      "reason": "Live ledger version belongs to tournament_table_appearance; Tracker column, RPC and service-role-only grant are present, but this SQL must not replay into a running session",
+      "sourceOnlyEvidence": false,
+      "supersededEvidence": true,
+      "bucket": "historical-never-replay",
+      "archivePath": "supabase/migration-archive/historical-never-replay/20270115000002_tracker_hand_correction_commit_receipt.sql",
+      "sha256": "815561c2f764da6907598218ceb033a6a85cb1c6aef5c6678d8c0c1593aabd15",
+      "ledgerVersionPresent": true,
+      "ledgerName": "tournament_table_appearance",
+      "originalPath": "supabase/migrations/20270115000002_tracker_hand_correction_commit_receipt.sql",
+      "lineageEvidence": "LIVE_SCHEMA_EFFECT_PRESENT; SAME_VERSION_DIFFERENT_LEDGER_NAME; preserve source without replay"
     }
   ],
   "pendingSources": [
@@ -6632,22 +6670,17 @@
       "version": "20270115000001",
       "filename": "20270115000001_tracker_blind_position_lineage.sql",
       "sha256": "8ad8fcd6056a663ff024863adeb2697091be5384d217f32b1df7521a5f943ba2"
-    },
-    {
-      "version": "20270115000002",
-      "filename": "20270115000002_tracker_hand_correction_commit_receipt.sql",
-      "sha256": "815561c2f764da6907598218ceb033a6a85cb1c6aef5c6678d8c0c1593aabd15"
     }
   ],
   "counts": {
-    "historicalSources": 258,
+    "historicalSources": 259,
     "remoteEquivalent": 9,
     "superseded": 31,
-    "neverReplay": 219,
+    "neverReplay": 220,
     "legacyUnappliedNotForReplay": 4,
-    "remoteHistoryReceipts": 22,
+    "remoteHistoryReceipts": 23,
     "pendingSources": 3,
-    "unresolved": 0,
+    "unresolved": 1,
     "nonVersionedSources": 1
   },
   "safety": {

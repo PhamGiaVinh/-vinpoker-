@@ -1,0 +1,9 @@
+-- Source-only receipt for live project orlesggcjamwuknxwcpk.
+-- The live migration ledger records version 20270115000002 as
+-- tournament_table_appearance. Its SQL source remains under pending-migrations;
+-- the corresponding table, RLS policies and read RPCs were verified read-only.
+-- A different Tracker migration had reused this version in the local catalog.
+-- That SQL is preserved byte-for-byte in historical-never-replay; its live
+-- column/RPC/grants were verified independently, but its ledger provenance is
+-- not asserted here. Do not replay it or change a running Tracker session.
+-- This receipt intentionally executes no SQL.
