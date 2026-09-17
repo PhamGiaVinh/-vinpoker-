@@ -1,0 +1,46 @@
+// @vitest-environment jsdom
+
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { FloorHandActionReview, type ReviewAction } from "./FloorHandActionReview";
+
+const actions: ReviewAction[] = [
+  { action_order: 1, street: "preflop", seat_number: 4, display_name: "Test 4", action_type: "post_sb", action_amount: 100000 },
+  { action_order: 2, street: "preflop", seat_number: 6, display_name: "Test 6", action_type: "post_bb", action_amount: 200000 },
+  { action_order: 3, street: "preflop", seat_number: 8, display_name: "Test 8", action_type: "call", action_amount: 200000 },
+  { action_order: 4, street: "flop", seat_number: 8, display_name: "Test 8", action_type: "check", action_amount: 0 },
+];
+
+const base = {
+  handNumber: 12,
+  tableName: "Bàn 5",
+  potSize: 600000,
+  buttonSeat: 2,
+  seats: [{ seat_number: 4, display_name: "Test 4" }, { seat_number: 6, display_name: "Test 6" }, { seat_number: 8, display_name: "Test 8" }],
+  actions,
+  canEdit: true,
+  isVoided: false,
+};
+
+afterEach(cleanup);
+
+describe("FloorHandActionReview", () => {
+  it("shows the full action order and opens the exact selected row", () => {
+    const onEditAction = vi.fn();
+    render(<FloorHandActionReview {...base} onEditAction={onEditAction} />);
+    expect(screen.getByText("Bàn 5 · Hand #12")).toBeVisible();
+    expect(screen.getByText(/Cảnh báo chưa chỉ rõ action sai/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /#3.*Ghế 8.*Call 200.000/ }));
+    expect(screen.getByText(/Trước: #2.*Big blind 200.000/)).toBeVisible();
+    expect(screen.getByText(/Sau: #4.*Check/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Sửa action #3" }));
+    expect(onEditAction).toHaveBeenCalledWith(3);
+  });
+
+  it("does not offer correction for a voided hand", () => {
+    render(<FloorHandActionReview {...base} canEdit={false} isVoided onEditAction={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /#3.*Ghế 8.*Call 200.000/ }));
+    expect(screen.queryByRole("button", { name: /Sửa action/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Hand đã void: chỉ đối chiếu/)).toBeVisible();
+  });
+});
