@@ -28,8 +28,10 @@ fi
 
 # The temporary project has no application migrations or function source.
 # This first start only downloads/prepares the pinned CLI service images.
-supabase start --exclude analytics,imgproxy,inbucket,meta,realtime,storage,studio,vector >"$test_root/prepare.log" 2>&1 || {
+exclude_services="imgproxy,logflare,mailpit,postgres-meta,realtime,storage-api,studio,supavisor,vector"
+supabase start --exclude "$exclude_services" >"$test_root/prepare.log" 2>&1 || {
   tail -n 25 "$test_root/prepare.log" >&2
+  docker ps -a --filter 'name=supabase_db_' --format 'DB startup: {{.Status}}' >&2
   exit 1
 }
 supabase stop --no-backup >/dev/null 2>&1
@@ -38,9 +40,10 @@ docker network create --driver bridge --internal \
   -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 "$network" >/dev/null
 
 supabase start --network-id "$network" \
-  --exclude analytics,imgproxy,inbucket,meta,realtime,storage,studio,vector \
+  --exclude "$exclude_services" \
   >"$test_root/isolated-start.log" 2>&1 || {
   tail -n 25 "$test_root/isolated-start.log" >&2
+  docker ps -a --filter 'name=supabase_db_' --format 'DB startup: {{.Status}}' >&2
   exit 1
 }
 
