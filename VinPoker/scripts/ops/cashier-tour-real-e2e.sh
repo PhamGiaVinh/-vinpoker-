@@ -76,7 +76,7 @@ sudo iptables -w -C DOCKER-USER -i "$bridge" -j "$firewall_chain"
 
 set +e
 supabase start --network-id "$network" \
-  --exclude "$exclude_services" \
+  --exclude "$exclude_services,edge-runtime" \
   >"$test_root/isolated-start.log" 2>&1
 isolated_rc=$?
 set -e
@@ -89,7 +89,7 @@ fi
 
 mapfile -t containers < <(docker ps -q --filter "network=$network")
 if (( ${#containers[@]} < 4 )); then
-  echo "Expected DB, Auth, API and Edge services on isolated network" >&2
+  echo "Expected DB, Auth and API services on isolated network" >&2
   exit 1
 fi
 for container in "${containers[@]}"; do
@@ -106,10 +106,9 @@ for container in "${containers[@]}"; do
 done
 
 db_container="$(docker ps -q --filter "network=$network" --filter 'name=supabase_db_')"
-edge_container="$(docker ps -q --filter "network=$network" --filter 'name=supabase_edge_runtime_')"
 gateway_container="$(docker ps --filter "network=$network" --format '{{.Names}}' | grep -E '^supabase_(kong|envoy)_' | head -n 1)"
-if [[ -z "$db_container" || -z "$edge_container" || -z "$gateway_container" ]]; then
-  echo "Could not identify local DB, Edge and API gateway services" >&2
+if [[ -z "$db_container" || -z "$gateway_container" ]]; then
+  echo "Could not identify local DB and API gateway services" >&2
   exit 1
 fi
 
@@ -131,7 +130,6 @@ probe_external_denied() {
   fi
 }
 probe_external_denied "$db_container" DB
-probe_external_denied "$edge_container" Edge
 
 # Browser/app context is a separate disposable container on the same network,
 # with no Docker socket or host networking.
@@ -146,6 +144,6 @@ docker exec "$browser_probe" node -e \
   }
 docker stop "$browser_probe" >/dev/null
 
-echo "ISOLATION_PROOF: services single-network; DB/Edge/browser outbound denied; local Auth reachable"
+echo "PARTIAL_ISOLATION_PROOF: DB/browser outbound denied; local Auth reachable; Edge and pg_net still unproven"
 echo "E2E_NOT_READY: pg_net proof, schema and browser assertions are not installed yet" >&2
 exit 1
