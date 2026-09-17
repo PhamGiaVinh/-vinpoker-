@@ -216,7 +216,8 @@ echo "ISOLATION_PROOF: DB/pg_net/Edge/browser outbound denied; local Auth reacha
 # storage schema into the real local Supabase stack. Historical migrations are
 # not replayable from zero; no Auth/API/Edge service or RLS rule is stubbed.
 set +e
-docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+docker exec -i "$db_container" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -X -q -v ON_ERROR_STOP=1 \
+  -U supabase_admin -d postgres' \
   <"$schema_dir/live-public-schema.sql" >"$test_root/schema-restore.log" 2>&1
 restore_rc=$?
 set -e
