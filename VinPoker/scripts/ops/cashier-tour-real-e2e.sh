@@ -57,6 +57,10 @@ fi
 docker inspect "$prepare_edge" --format '{{json .Mounts}}' |
   jq -c 'map({Type,Destination})'
 docker exec "$prepare_edge" sh -c 'du -sh /root/.cache/deno /home/deno/.cache/deno 2>/dev/null || true'
+edge_source_image="$(docker inspect "$prepare_edge" --format '{{.Config.Image}}')"
+edge_cache_image="cashier-edge-prepared:${GITHUB_RUN_ID:-local}"
+docker commit "$prepare_edge" "$edge_cache_image" >/dev/null
+docker image tag "$edge_cache_image" "$edge_source_image"
 supabase stop --no-backup >/dev/null 2>&1
 docker pull mcr.microsoft.com/playwright:v1.60.0-noble >/dev/null
 
@@ -84,7 +88,7 @@ sudo iptables -w -C DOCKER-USER -i "$bridge" -j "$firewall_chain"
 
 set +e
 supabase start --network-id "$network" \
-  --exclude "$exclude_services,edge-runtime" \
+  --exclude "$exclude_services" \
   >"$test_root/isolated-start.log" 2>&1
 isolated_rc=$?
 set -e
@@ -96,8 +100,8 @@ if (( isolated_rc != 0 )) || ! supabase status --output json >"$test_root/isolat
 fi
 
 mapfile -t containers < <(docker ps -q --filter "network=$network")
-if (( ${#containers[@]} < 4 )); then
-  echo "Expected DB, Auth and API services on isolated network" >&2
+if (( ${#containers[@]} < 5 )); then
+  echo "Expected DB, Auth, API and Edge services on isolated network" >&2
   exit 1
 fi
 for container in "${containers[@]}"; do
@@ -114,9 +118,10 @@ for container in "${containers[@]}"; do
 done
 
 db_container="$(docker ps -q --filter "network=$network" --filter 'name=supabase_db_')"
+edge_container="$(docker ps -q --filter "network=$network" --filter 'name=supabase_edge_runtime_')"
 gateway_container="$(docker ps --filter "network=$network" --format '{{.Names}}' | grep -E '^supabase_(kong|envoy)_' | head -n 1)"
-if [[ -z "$db_container" || -z "$gateway_container" ]]; then
-  echo "Could not identify local DB and API gateway services" >&2
+if [[ -z "$db_container" || -z "$edge_container" || -z "$gateway_container" ]]; then
+  echo "Could not identify local DB, Edge and API gateway services" >&2
   exit 1
 fi
 
@@ -138,6 +143,7 @@ probe_external_denied() {
   fi
 }
 probe_external_denied "$db_container" DB
+probe_external_denied "$edge_container" Edge
 
 # Browser/app context is a separate disposable container on the same network,
 # with no Docker socket or host networking.
@@ -196,6 +202,6 @@ for target in 'http://example.com' 'http://1.1.1.1'; do
     exit 1
   fi
 done
-echo "PARTIAL_ISOLATION_PROOF: DB/pg_net/browser outbound denied; local Auth reachable; cron off; Edge still unproven"
-echo "E2E_NOT_READY: Edge isolation, schema and browser assertions are not installed yet" >&2
+echo "ISOLATION_PROOF: DB/pg_net/Edge/browser outbound denied; local Auth reachable; cron off"
+echo "E2E_NOT_READY: application schema and browser assertions are not installed yet" >&2
 exit 1
