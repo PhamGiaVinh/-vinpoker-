@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/public-spectator-v2-disposable-db.yml"
       - "VinPoker/supabase/pending-migrations/2027011500000*_public_spectator_*.sql"
+      - "VinPoker/supabase/pending-migrations/20270115000002_tournament_table_appearance.sql"
       - "VinPoker/tests/publicSpectatorV2/**"
 
 permissions:
@@ -46,3 +47,9 @@ jobs:
       - name: Verify recorded cards, table isolation, and stale revision fencing
         working-directory: VinPoker
         run: psql -v ON_ERROR_STOP=1 -f tests/publicSpectatorV2/disposableDb.integration.sql
+      - name: Apply additive table appearance contract
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270115000002_tournament_table_appearance.sql
+      - name: Verify appearance tenant policy and hand blind identity
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f tests/publicSpectatorV2/tableAppearance.integration.sql

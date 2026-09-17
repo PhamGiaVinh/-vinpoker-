@@ -32,7 +32,7 @@ function reduceLiveTable(value: unknown): unknown {
   const { actions, ...table } = value;
   const players = Array.isArray(table.players) ? table.players.filter(isRecord) : [];
   const key = (row: Record<string, unknown>) => `${row.playerId}:${row.entryNumber}`;
-  const unknown = () => ({ ...table, pot: null, players: players.map((p) => ({ ...p, stack: null })) });
+  const unknown = () => ({ ...table, pot: null, players: players.map((p) => ({ ...p, stack: null, isFolded: undefined, isAllIn: undefined, lastAction: null })) });
   if (!players.length || !Array.isArray(actions) || players.some((p) =>
     !Number.isSafeInteger(p.startingStack) || Number(p.startingStack) < 0 || !Number.isInteger(p.entryNumber))) return unknown();
   const identities = new Set(players.map(key));
@@ -48,9 +48,13 @@ function reduceLiveTable(value: unknown): unknown {
   }
   const runtime = reduceHand(players.map((p) => ({ player_id: key(p), seat_number: Number(p.seatNumber),
     starting_stack: Number(p.startingStack) })), canonical, Number(table.buttonSeat) || 0);
+  const lastActions = new Map<string, { actionType: string; amount: number }>();
+  for (const action of [...canonical].sort((a, b) => a.action_order - b.action_order)) {
+    lastActions.set(action.player_id, { actionType: action.action_type, amount: action.action_amount });
+  }
   const byIdentity = new Map(runtime.players.map((p) => [p.player_id, p]));
   return { ...table, pot: runtime.players.reduce((total, p) => total + p.total_bet, 0),
-    players: players.map((p) => ({ ...p, stack: byIdentity.get(key(p))?.stack ?? null })) };
+    players: players.map((p) => ({ ...p, stack: byIdentity.get(key(p))?.stack ?? null, isFolded: byIdentity.get(key(p))?.is_folded ?? false, isAllIn: byIdentity.get(key(p))?.is_all_in ?? false, lastAction: lastActions.get(key(p)) ?? null })) };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

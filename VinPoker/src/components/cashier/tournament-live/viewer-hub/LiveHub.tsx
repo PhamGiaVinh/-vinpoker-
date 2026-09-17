@@ -1,3 +1,4 @@
+import { useTournamentTableAppearance } from "@/components/tracker/useTournamentTableAppearance";
 // Public "Live Poker Event Hub" shell (Viewer Event Hub).
 // Composes the hub header + stats bar around the spectator content. Presentational
 // only; the caller supplies tournament meta and the live view (as `children`), so
@@ -95,6 +96,7 @@ function LiveHubContent({
   const realtimeEnabled = FEATURES.publicSpectatorRealtimeV2;
   const [visibleTableIds, setVisibleTableIds] = useState<string[]>([]);
   const [historyTableId, setHistoryTableId] = useState<string | null>(null);
+  const appearance = useTournamentTableAppearance(tournamentId);
   const { liveTableCount, tables, feed, chipLeader, storyFeed, activeHandTableId } = useLiveTrackerData(tournamentId, !realtimeEnabled);
   const { snapshot: publicSnapshot, loading: publicSnapshotLoading, networkError } = usePublicSpectatorSnapshot(
     tournamentId,
@@ -439,7 +441,7 @@ function LiveHubContent({
           </TabsContent>
 
           <TabsContent value="history" className="mt-3 min-w-0 focus-visible:outline-none sm:mt-4">
-            {realtimeEnabled ? <RealtimeTablesGrid
+            {realtimeEnabled ? <RealtimeTablesGrid appearance={appearance.data}
               catalog={publicSnapshot?.sections.tables?.catalog ?? []}
               tables={publicSnapshot?.sections.tables?.items ?? []}
               freshness={publicSnapshot?.sections.tables?.freshness}

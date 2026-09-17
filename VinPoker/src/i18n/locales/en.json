@@ -3485,4 +3485,31 @@
       "loss": "Loss"
     }
   }
+,
+  "tableAppearance": {
+    "title": "Table appearance",
+    "description": "Apply colors and logo to every table in this tournament.",
+    "feltColor": "Felt color",
+    "railColor": "Rail color",
+    "logo": "Table logo",
+    "uploadLogo": "Upload logo",
+    "fileHelp": "PNG, JPG or WebP · up to 2 MB. A transparent background works best.",
+    "removeLogo": "Remove logo",
+    "reset": "Reset to default",
+    "preview": "Preview",
+    "previewNote": "Sample data · changes apply after saving.",
+    "save": "Save appearance",
+    "saving": "Working…",
+    "saved": "Table appearance saved",
+    "saveError": "Could not save. Please try again.",
+    "uploadError": "Could not upload the logo. Please try again.",
+    "loading": "Loading appearance…",
+    "loadError": "Could not load the saved appearance.",
+    "retry": "Try again",
+    "blindsUnavailable": "Hand blinds unavailable",
+    "level": "Level {{n}}",
+    "noHandData": "No hand data",
+    "player": "Player",
+    "playerCards": "{{name}}’s cards"
+  }
 }

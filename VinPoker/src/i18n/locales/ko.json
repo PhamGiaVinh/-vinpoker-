@@ -3120,4 +3120,31 @@
       "loss": "패배"
     }
   }
+,
+  "tableAppearance": {
+    "title": "테이블 디자인",
+    "description": "이 토너먼트의 모든 테이블에 색상과 로고를 적용합니다.",
+    "feltColor": "펠트 색상",
+    "railColor": "테두리 색상",
+    "logo": "테이블 로고",
+    "uploadLogo": "로고 업로드",
+    "fileHelp": "PNG, JPG 또는 WebP · 최대 2 MB. 투명 배경을 권장합니다.",
+    "removeLogo": "로고 제거",
+    "reset": "기본값으로 복원",
+    "preview": "미리보기",
+    "previewNote": "예시 데이터 · 저장 후 적용됩니다.",
+    "save": "디자인 저장",
+    "saving": "처리 중…",
+    "saved": "테이블 디자인 저장 완료",
+    "saveError": "저장하지 못했습니다. 다시 시도하세요.",
+    "uploadError": "로고를 업로드하지 못했습니다. 다시 시도하세요.",
+    "loading": "디자인 불러오는 중…",
+    "loadError": "저장된 디자인을 불러올 수 없습니다.",
+    "retry": "다시 시도",
+    "blindsUnavailable": "핸드 블라인드 정보 없음",
+    "level": "레벨 {{n}}",
+    "noHandData": "핸드 데이터 없음",
+    "player": "플레이어",
+    "playerCards": "{{name}}의 카드"
+  }
 }

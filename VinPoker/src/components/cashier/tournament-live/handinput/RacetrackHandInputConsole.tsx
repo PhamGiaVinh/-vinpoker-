@@ -1,3 +1,4 @@
+import { useTournamentTableAppearance } from "@/components/tracker/useTournamentTableAppearance";
 // Racetrack variant of the standalone operator console (PR-B).
 //
 // SAME engine: it takes the SAME `useStandaloneHandInput` hook as
@@ -81,6 +82,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
   const tabletLandscape = useDealerTabletLandscape();
 
   // No table chosen → operator table picker (full screen).
+  const appearance = useTournamentTableAppearance(hook.tournamentId);
   if (!hook.tableId) {
     return (
       <div className="mx-auto max-w-3xl">
@@ -410,6 +412,8 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
       </div>
     ) : (
       <TrackerRacetrack
+        appearance={appearance.data}
+        blinds={hook.blindLevelSnapshot ? { sb: hook.blindLevelSnapshot.small_blind, bb: hook.blindLevelSnapshot.big_blind, ante: hook.blindLevelSnapshot.ante, level: hook.blindLevelSnapshot.level_number } : null}
         portrait={FEATURES.trackerTabletLayout && tabletLandscape ? false : undefined}
         seats={seatVMs}
         actingSeatNumber={hook.actorPlayer?.seat_number ?? null}

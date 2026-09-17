@@ -46,6 +46,8 @@ export interface SeatVM {
 }
 
 export interface TrackerRacetrackProps {
+  appearance?: import('./tableAppearance').TableAppearance;
+  blinds?: { sb: number; bb: number; ante: number; level?: number | null } | null;
   seats: SeatVM[];
   actingSeatNumber: number | null;
   dealerSeatNumber?: number | null; // optional "D" button puck

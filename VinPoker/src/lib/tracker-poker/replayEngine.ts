@@ -52,6 +52,9 @@ export interface ReplayHand {
   stored_pot_size?: number | null;
   /** Big blind for BB display (0/undefined → no BB shown). */
   big_blind?: number;
+  small_blind?: number | null;
+  ante?: number | null;
+  level_number?: number | null;
   players: ReplayHandPlayer[];
   actions: ReplayHandAction[];
   /** Fresh, public-safe settlement returned by get_public_tournament_settlement. */

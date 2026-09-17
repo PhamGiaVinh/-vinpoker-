@@ -14,6 +14,7 @@
 // byte-identical when absent.
 
 import { useState } from "react";
+import { useTournamentTableAppearance } from "@/components/tracker/useTournamentTableAppearance";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { displayCard, type Card } from "@/components/shared/CardSlotPicker";
@@ -44,6 +45,7 @@ type MobileTab = "table" | "action" | "log";
 export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput }) {
   const [tab, setTab] = useState<MobileTab>("action");
   const alertsByTable = useInputTableAlerts(hook.tournamentId);
+  const appearance = useTournamentTableAppearance(hook.tournamentId);
 
   // No table chosen yet → operator table picker (full screen).
   if (!hook.tableId) {
@@ -67,14 +69,10 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
   const bigBlind = hook.bigBlind;
   const formatBB = (n: number): string | null =>
     bigBlind > 0 ? `${(n / bigBlind).toFixed(1).replace(/\.0$/, "")} BB` : null;
-  const feltBlinds =
-    bigBlind > 0
-      ? {
-          sb: hook.sbAmount > 0 ? hook.sbAmount : bigBlind / 2,
-          bb: bigBlind,
-          ante: hook.blindLevelSnapshot?.ante ?? 0,
-        }
-      : null;
+  const feltBlinds = hook.blindLevelSnapshot && hook.blindLevelSnapshot.big_blind > 0
+    ? { sb: hook.blindLevelSnapshot.small_blind, bb: hook.blindLevelSnapshot.big_blind,
+        ante: hook.blindLevelSnapshot.ante, level: hook.blindLevelSnapshot.level_number }
+    : null;
 
   const seatInfo = playersToSeatInfo(hook.players, {
     tableId: hook.tableId,
@@ -414,6 +412,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
               viewerLayout
               compact
               blinds={feltBlinds}
+              appearance={appearance.data}
               runout={hook.allInRunout}
             />
           )}
