@@ -282,5 +282,17 @@ if [[ "$(docker exec "$db_container" psql -X -Atq -U postgres -d postgres -c 'SH
   exit 1
 fi
 echo "SCHEMA_PROOF: captured current schema restored; exact Cashier SQL applied; RPC ACL and default-off verified; cron remains off"
+set +e
+timeout 10m docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  <"$repo_root/supabase/pending-tests/cashier_tour_money_v1.sql" \
+  >"$test_root/cashier-money-test.log" 2>&1
+money_test_rc=$?
+set -e
+if (( money_test_rc != 0 )); then
+  echo "Cashier money/seat rollback-only test failed on captured schema (exit $money_test_rc)" >&2
+  tail -n 45 "$test_root/cashier-money-test.log" >&2
+  exit 1
+fi
+echo "MONEY_PROOF: Cashier money/seat rollback-only SQL assertions passed on captured schema"
 echo "E2E_NOT_READY: synthetic Auth/Edge/browser business assertions are not installed yet" >&2
 exit 1
