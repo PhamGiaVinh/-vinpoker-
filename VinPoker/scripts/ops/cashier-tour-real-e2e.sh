@@ -215,6 +215,18 @@ echo "ISOLATION_PROOF: DB/pg_net/Edge/browser outbound denied; local Auth reacha
 # Only after the network proof: restore the owner-captured current public and
 # storage schema into the real local Supabase stack. Historical migrations are
 # not replayable from zero; no Auth/API/Edge service or RLS rule is stubbed.
+# The empty local stack ships its own Storage schema. Replace only that schema
+# on this disposable, network-isolated database so the captured live definition
+# can be restored without duplicate built-in types such as storage.buckettype.
+storage_rows="$(docker exec "$db_container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  -c "SELECT (SELECT count(*) FROM storage.buckets), (SELECT count(*) FROM storage.objects)")"
+if [[ "$storage_rows" != '0|0' ]]; then
+  echo "Disposable Storage schema is not empty; refusing baseline replacement" >&2
+  exit 1
+fi
+docker exec "$db_container" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -X -q -v ON_ERROR_STOP=1 \
+  -U supabase_admin -d postgres -c "DROP SCHEMA storage CASCADE"' \
+  >"$test_root/storage-replace.log" 2>&1
 set +e
 docker exec -i "$db_container" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -X -q -v ON_ERROR_STOP=1 \
   -U supabase_admin -d postgres' \
