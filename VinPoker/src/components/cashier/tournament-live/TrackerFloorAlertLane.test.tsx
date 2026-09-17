@@ -4,15 +4,24 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const { rpc, maybeSingle, voidState, handRow } = vi.hoisted(() => ({
+  rpc: vi.fn(async () => ({ data: { ok: true }, error: null })),
+  maybeSingle: vi.fn(async () => ({ data: handRow.value, error: null })),
+  voidState: { value: false },
+  handRow: { value: { id: "hand-1", is_voided: true } },
+}));
 const channel = { on: vi.fn(), subscribe: vi.fn() };
 channel.on.mockReturnValue(channel);
 
-vi.mock("@/integrations/supabase/SupabaseClientContext", () => ({
-  useSupabaseClient: () => ({
+vi.mock("@/integrations/supabase/SupabaseClientContext", () => {
+  const client = {
     channel: () => channel,
     removeChannel: vi.fn(),
-  }),
-}));
+    rpc,
+    from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ maybeSingle }) }) }) }),
+  };
+  return { useSupabaseClient: () => client };
+});
 
 vi.mock("@/lib/tracker-floor-alerts/trackerFloorAlertsRead", () => ({
   listTrackerFloorAlerts: vi.fn(async () => ({
@@ -37,7 +46,7 @@ vi.mock("@/lib/tracker-floor-alerts/trackerFloorAlertsRead", () => ({
 }));
 
 vi.mock("@/lib/tracker-floor-alerts/useTrackerFloorAlertLocations", () => ({
-  useTrackerFloorAlertLocations: () => () => ({ tableNumber: 5, handNumber: 12 }),
+  useTrackerFloorAlertLocations: () => () => ({ tableNumber: 5, handNumber: 12, handVoided: voidState.value }),
 }));
 
 vi.mock("./HandHistoryWorkspace", () => ({
@@ -46,22 +55,38 @@ vi.mock("./HandHistoryWorkspace", () => ({
 
 import { TrackerFloorAlertLane } from "./TrackerFloorAlertLane";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); voidState.value = false; handRow.value.is_voided = true; rpc.mockClear(); maybeSingle.mockClear(); });
 
 describe("TrackerFloorAlertLane", () => {
-  it("opens Tracker with the tournament parameter required by the console", async () => {
+  it("opens the exact hand action history from a Floor alert deep link", async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={["/ops/floor/tournaments/tournament-1/tables?club=club-1&alert=alert-1"]}>
         <TrackerFloorAlertLane tournamentId="tournament-1" />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: /Mở đúng bàn/i })).toHaveAttribute(
-      "href",
-      "/tracker/hand-input?tournament=tournament-1&table=physical-1&handId=hand-1",
-    );
+    expect(await screen.findByText("hand-1 workspace sửa hand")).toBeVisible();
     expect(screen.getByText(/Bàn 5 · Hand #12/)).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra & sửa hand" }));
-    expect(screen.getByText("hand-1 workspace sửa hand")).toBeVisible();
+  });
+
+  it("only dismisses a voided hand after a fresh server check", async () => {
+    voidState.value = true;
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<MemoryRouter><TrackerFloorAlertLane tournamentId="tournament-1" /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: /Hand đã void: đóng cảnh báo/i }));
+    await vi.waitFor(() => expect(rpc).toHaveBeenCalledWith("transition_tracker_floor_alert", expect.objectContaining({
+      p_alert_id: "alert-1", p_expected_version: 1, p_transition: "dismiss",
+    })));
+    expect(maybeSingle).toHaveBeenCalledOnce();
+    vi.mocked(window.confirm).mockRestore();
+  });
+
+  it("does not clear the alert when the server no longer confirms void", async () => {
+    voidState.value = true;
+    handRow.value.is_voided = false;
+    render(<MemoryRouter><TrackerFloorAlertLane tournamentId="tournament-1" /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: /Hand đã void: đóng cảnh báo/i }));
+    await vi.waitFor(() => expect(maybeSingle).toHaveBeenCalledOnce());
+    expect(rpc).not.toHaveBeenCalled();
   });
 });

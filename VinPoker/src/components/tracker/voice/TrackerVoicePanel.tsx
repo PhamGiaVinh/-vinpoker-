@@ -1117,13 +1117,17 @@ export function TrackerVoicePanel({
 
   const revalidateBufferedEvent = async () => {
     const nextRuntime = await refreshRuntime();
-    if (!nextRuntime || nextRuntime.correction_pending) {
-      setBufferStatus("Floor chưa hoàn tất correction. Transcript vẫn được giữ và không ghi action.");
+    if (!nextRuntime) {
+      setBufferStatus("Không đọc được trạng thái bàn. Transcript chưa được gửi; hãy thử lại.");
       return;
     }
     if (!hook.handId || nextRuntime.active_hand?.hand_id !== hook.handId) {
       setBufferedEvents([]);
       setBufferStatus("Hand đã thay đổi. Transcript cũ đã được bỏ; hãy đọc lại action nếu cần.");
+      return;
+    }
+    if (nextRuntime.correction_pending) {
+      setBufferStatus("Floor còn cảnh báo chưa xử lý. Mở Cảnh báo Floor để xem hand/action; hand đã void có nút đóng cảnh báo. Voice không ghi action lúc này.");
       return;
     }
     const [nextEvent, ...remaining] = bufferedEvents;

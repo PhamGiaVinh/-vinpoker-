@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { FEATURES } from "@/lib/featureFlags";
 import { useFloorTournaments } from "./useFloorTournaments";
 import type { ClubRow } from "./TournamentManagerShared";
@@ -16,6 +17,7 @@ import { FloorVoiceAlertInbox } from "./FloorVoiceAlertInbox";
 export function FloorTournamentsLanding({ clubIds, clubs, onSelect }: { clubIds: string[]; clubs: ClubRow[]; onSelect: (id: string) => void }) {
   const data = useFloorTournaments(clubIds);
   const [view, setView] = useState<"daily" | "multi">("daily");
+  const [, setSearchParams] = useSearchParams();
 
   const multiClub = clubs.length > 1;
   const clubNameMap = Object.fromEntries(clubs.map((c) => [c.id, c.name]));
@@ -40,7 +42,14 @@ export function FloorTournamentsLanding({ clubIds, clubs, onSelect }: { clubIds:
   return (
     <div className="space-y-3">
       {FEATURES.trackerVoiceInput && (
-        <FloorVoiceAlertInbox tournaments={data.tours} onSelect={onSelect} />
+        <FloorVoiceAlertInbox tournaments={data.tours} onSelect={(tournamentId, alertId) => {
+          setSearchParams((current) => {
+            const next = new URLSearchParams(current);
+            next.set("alert", alertId);
+            return next;
+          });
+          onSelect(tournamentId);
+        }} />
       )}
       <div className="flex w-full gap-1 rounded-lg bg-muted/40 p-1 sm:w-fit">
         {segBtn("daily", "Giải thường")}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, BellRing, Check, ExternalLink, Loader2, RefreshCw } from "lucide-react";
-import { Link } from "react-router-dom";
+import { AlertTriangle, BellRing, Check, Loader2, RefreshCw } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import {
   type TrackerFloorAlert,
   type TrackerFloorAlertStatus,
 } from "@/lib/tracker-floor-alerts/trackerFloorAlertsRead";
-import { trackerFloorAlertLink } from "@/lib/tracker-floor-alerts/trackerFloorAlertLink";
 import { useTrackerFloorAlertLocations } from "@/lib/tracker-floor-alerts/useTrackerFloorAlertLocations";
 
 type FloorAlertStatus = TrackerFloorAlertStatus;
@@ -29,6 +28,8 @@ function nextTransition(status: FloorAlertStatus): { action: string; label: stri
 
 export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLaneProps) {
   const supabase = useSupabaseClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const targetAlertId = searchParams.get("alert");
   const [alerts, setAlerts] = useState<TrackerFloorAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,8 +73,29 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
     };
   }, [reload, supabase, tournamentId]);
 
-  const transition = async (alert: TrackerFloorAlert, action: string) => {
+  useEffect(() => {
+    if (!targetAlertId || loading) return;
+    const target = alerts.find((alert) => alert.id === targetAlertId);
+    if (target?.hand_id) setReviewAlert(target);
+  }, [alerts, loading, targetAlertId]);
+
+  const transition = async (alert: TrackerFloorAlert, action: string, note: string | null = null) => {
     if (transitioningId) return;
+    if (action === "dismiss") {
+      if (!alert.hand_id || !locationFor(alert)?.handVoided) return;
+      const { data: hand, error: handError } = await supabase.from("tournament_hands")
+        .select("id,is_voided")
+        .eq("id", alert.hand_id)
+        .eq("tournament_id", alert.tournament_id)
+        .maybeSingle();
+      if (handError || hand?.is_voided !== true) {
+        toast.error("Không xác minh được hand đã void trên máy chủ. Cảnh báo vẫn giữ nguyên.");
+        return;
+      }
+    }
+    if (action === "dismiss" && !window.confirm(
+      "Hand này đã VOID trên máy chủ. Đóng cảnh báo sẽ mở lại Voice cho bàn; transcript cũ không được tự phát lại. Bạn đã kiểm tra toàn bộ ván và muốn tiếp tục?",
+    )) return;
     if (action === "resolve" && alert.correction_required && !window.confirm(
       "Chỉ đánh dấu đã xử lý sau khi action/hand canonical đã được sửa và kiểm tra. Thao tác này mở lại Voice cho bàn. Tiếp tục?",
     )) return;
@@ -82,13 +104,14 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
       p_alert_id: alert.id,
       p_expected_version: alert.version,
       p_transition: action,
-      p_note: null,
+      p_note: note,
       p_idempotency_key: `floor-alert:${crypto.randomUUID()}`,
     } as never);
     const payload = data as unknown as { ok?: boolean; error?: string } | null;
     if (rpcError || !payload?.ok) {
       toast.error(payload?.error ?? rpcError?.message ?? "Không cập nhật được cảnh báo.");
     } else {
+      if (action === "dismiss") toast.success("Đã đóng cảnh báo hand void. Dealer hãy tải lại trạng thái Voice; không phát lại transcript cũ.");
       await reload();
     }
     setTransitioningId(null);
@@ -130,7 +153,6 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
         )}
         {alerts.map((alert) => {
           const primary = nextTransition(alert.status);
-          const handLink = trackerFloorAlertLink(alert);
           const location = locationFor(alert);
           return (
             <article
@@ -152,27 +174,28 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
                   <p className="mt-1 text-xs font-semibold text-amber-100">
                     {location?.tableNumber != null ? `Bàn ${location.tableNumber}` : "Đang tải bàn"}
                     {location?.handNumber != null ? ` · Hand #${location.handNumber}` : ""}
+                    {location?.handVoided ? " · ĐÃ VOID" : ""}
                   </p>
                   {alert.alert_kind === "wrong_action" && (
                     <p className="mt-1 text-xs text-zinc-300">Action sai chưa được chỉ rõ; xem toàn bộ nhật ký ván trước khi sửa.</p>
                   )}
                   {alert.message && <p className="mt-2 line-clamp-2 text-xs text-zinc-300">{alert.message}</p>}
                   {alert.correction_required && (
-                    <p className="mt-2 text-xs text-amber-200">Voice tạm dừng. Kiểm tra và sửa hand trước khi đánh dấu đã xử lý.</p>
+                    <p className="mt-2 text-xs text-amber-200">{location?.handVoided ? "Hand đã void. Floor kiểm tra nhật ký rồi đóng cảnh báo để mở lại Voice." : "Voice tạm dừng. Kiểm tra và sửa hand trước khi đánh dấu đã xử lý."}</p>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {alert.hand_id && (
                     <Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => setReviewAlert(alert)}>
-                      Kiểm tra & sửa hand
+                      {location?.handStatus === "completed" && !location?.handVoided ? "Xem action / Sửa hand" : "Xem toàn bộ action"}
                     </Button>
                   )}
-                  <Button asChild size="sm" variant="outline" className="min-h-11">
-                    <Link to={handLink}>
-                      Mở đúng bàn <ExternalLink className="ml-2 h-3.5 w-3.5" />
-                    </Link>
-                  </Button>
-                  {primary && (
+                  {alert.correction_required && location?.handVoided && alert.hand_id && (
+                    <Button type="button" size="sm" variant="outline" className="min-h-11" disabled={transitioningId === alert.id} onClick={() => void transition(alert, "dismiss", `Hand ${alert.hand_id} đã void; Floor kiểm tra và đóng cảnh báo.`)}>
+                      Hand đã void: đóng cảnh báo
+                    </Button>
+                  )}
+                  {primary && !location?.handVoided && (
                     <Button
                       type="button"
                       size="sm"
@@ -190,12 +213,23 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
           );
         })}
       </div>
-      <Dialog open={!!reviewAlert} onOpenChange={(open) => { if (!open) setReviewAlert(null); }}>
+      <Dialog open={!!reviewAlert} onOpenChange={(open) => { if (!open) {
+        setReviewAlert(null);
+        if (targetAlertId) setSearchParams((current) => {
+          const next = new URLSearchParams(current);
+          next.delete("alert");
+          return next;
+        }, { replace: true });
+      } }}>
         <DialogContent className="max-h-[92dvh] max-w-6xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Kiểm tra & sửa hand</DialogTitle>
+            <DialogTitle>{reviewAlert && locationFor(reviewAlert)?.handVoided ? "Xem ván đã void" : "Kiểm tra & sửa hand"}</DialogTitle>
             <DialogDescription>
-              Chọn action cần sửa, kiểm tra số theo/raise và xem trước stack cuối hand. Máy chủ vẫn là nơi duy nhất xác minh và ghi kết quả.
+              {reviewAlert && locationFor(reviewAlert)?.handVoided
+                ? "Hand đã void: chỉ xem nhật ký để đối chiếu. Không sửa hoặc phát lại action của hand này."
+                : reviewAlert && locationFor(reviewAlert)?.handStatus === "in_progress"
+                  ? "Hand còn mở: xem action để xác định chỗ sai, sau đó Dealer sửa bằng thao tác thủ công trên bàn. Không ghi đè lịch sử từ Floor."
+                  : "Chọn action cần sửa, kiểm tra số theo/raise và xem trước stack cuối hand. Máy chủ vẫn là nơi duy nhất xác minh và ghi kết quả."}
             </DialogDescription>
           </DialogHeader>
           {reviewAlert?.hand_id && (
