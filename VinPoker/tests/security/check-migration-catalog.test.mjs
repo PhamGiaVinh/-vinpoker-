@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -327,6 +328,42 @@ test("fails a replayable historical migration when reconciliation is supplied", 
       findMigrationCatalogProblems(migrations, reconciliation),
       ["replayable historical migration not reconciled 20260605000001_unreconciled.sql"],
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("owner-gated Cashier migration requires its exact active source hash", () => {
+  const filename = "20270115000003_cashier_tour_money_v1.sql";
+  const source = "-- cashier migration\nselect 1;\n";
+  const root = mkdtempSync(join(tmpdir(), "vinpoker-cashier-catalog-"));
+  const migrations = join(root, "migrations");
+  const reconciliation = join(root, "reconciliation.json");
+  mkdirSync(migrations);
+  try {
+    const path = join(migrations, filename);
+    writeFileSync(path, source, "utf8");
+    writeFileSync(reconciliation, JSON.stringify({
+      schemaVersion: 1,
+      kind: "floor-v3-catalog-reconciliation",
+      registeredProductionHead: "20270112000008",
+      remoteLedgerVersions: [],
+      remoteHistoryReceipts: [],
+      historicalSources: [],
+      pendingSources: [],
+      floorActiveAllowlist: [],
+      ownerGatedActiveAllowlist: [{
+        version: "20270115000003",
+        filename,
+        sha256: createHash("sha256").update(source).digest("hex"),
+      }],
+    }), "utf8");
+    assert.deepEqual(findMigrationCatalogProblems(migrations, reconciliation), []);
+    writeFileSync(path, `${source}select 2;\n`, "utf8");
+    assert.deepEqual(findMigrationCatalogProblems(migrations, reconciliation), [
+      `owner-gated active migration missing or hash drift ${filename}`,
+      `unexpected active migration outside Floor allowlist ${filename}`,
+    ]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

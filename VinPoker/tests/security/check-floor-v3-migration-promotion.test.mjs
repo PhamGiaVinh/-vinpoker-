@@ -108,7 +108,7 @@ function runFixture(options, appliedVersions, pushPlan = null) {
   }
 }
 
-function runReconciliationFixture({ activeHistorical = false, activePending = false } = {}) {
+function runReconciliationFixture({ activeHistorical = false, activePending = false, cashierSource = null, pushPlan = exactPlan } = {}) {
   const paths = fixture({});
   const historicalFilename = "20260605000001_legacy.sql";
   const historicalSource = "-- preserved historical source\n";
@@ -130,6 +130,9 @@ function runReconciliationFixture({ activeHistorical = false, activePending = fa
   const remoteReceiptFilename = `${remoteVersion}_remote_history_receipt.sql`;
   const remoteReceiptSource = `-- remote history receipt\n-- version ${remoteVersion}\n`;
   writeFileSync(join(paths.migrations, remoteReceiptFilename), remoteReceiptSource, "utf8");
+  const cashierFilename = "20270115000003_cashier_tour_money_v1.sql";
+  if (cashierSource !== null)
+    writeFileSync(join(paths.migrations, cashierFilename), cashierSource, "utf8");
   const reconciliationPath = join(paths.root, "reconciliation.json");
   writeFileSync(
     reconciliationPath,
@@ -157,6 +160,11 @@ function runReconciliationFixture({ activeHistorical = false, activePending = fa
         sha256: hash(pendingSource),
       }],
       floorActiveAllowlist: FLOOR.map(([version, filename]) => ({ version, filename })),
+      ownerGatedActiveAllowlist: cashierSource === null ? [] : [{
+        version: "20270115000003",
+        filename: cashierFilename,
+        sha256: hash("-- cashier source\n"),
+      }],
       counts: { historicalSources: 1 },
     }),
     "utf8",
@@ -167,7 +175,7 @@ function runReconciliationFixture({ activeHistorical = false, activePending = fa
       archiveDirectory: paths.archive,
       manifestPath: paths.manifestPath,
       reconciliationManifestPath: reconciliationPath,
-      pushPlan: exactPlan,
+      pushPlan,
     });
   } finally {
     rmSync(paths.root, { recursive: true, force: true });
@@ -358,6 +366,21 @@ test("fails when a historical migration remains replayable", () => {
 test("accepts a comment-only remote history receipt with ledger evidence", () => {
   const result = runReconciliationFixture();
   assert.equal(result.pass, true);
+});
+
+test("accepts exact owner-gated Cashier source but excludes it from Floor push plan", () => {
+  const cashier = { version: "20270115000003", filename: "20270115000003_cashier_tour_money_v1.sql" };
+  const accepted = runReconciliationFixture({ cashierSource: "-- cashier source\n" });
+  assert.equal(accepted.pass, true);
+  const drifted = runReconciliationFixture({ cashierSource: "-- changed cashier source\n" });
+  assert.equal(drifted.pass, false);
+  assert.match(drifted.failures.join("\n"), /owner-gated active migration missing or hash drift/);
+  const extraPush = runReconciliationFixture({
+    cashierSource: "-- cashier source\n",
+    pushPlan: { ...exactPlan, plannedMigrations: [...exactPlan.plannedMigrations, cashier] },
+  });
+  assert.equal(extraPush.pass, false);
+  assert.equal(extraPush.status, "FLOOR_V3_PROMOTION_BLOCKED_ACTUAL_EXTRA_PUSH");
 });
 
 test("fails when an unrelated pending migration is active", () => {

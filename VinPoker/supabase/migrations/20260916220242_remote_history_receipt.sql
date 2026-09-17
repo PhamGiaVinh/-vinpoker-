@@ -1,0 +1,6 @@
+-- Source-only receipt for live project orlesggcjamwuknxwcpk.
+-- Live ledger version 20260916220242 is public_spectator_realtime_v2.
+-- Its stored statement matches pending-migrations/
+-- 20270115000000_public_spectator_realtime_v2.sql after LF normalization.
+-- Already applied remotely; do not replay the pending SQL.
+-- This receipt intentionally executes no SQL.

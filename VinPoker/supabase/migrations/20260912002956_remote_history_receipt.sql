@@ -1,0 +1,6 @@
+-- Source-only receipt for live project orlesggcjamwuknxwcpk.
+-- Live ledger version 20260912002956 is ops_intelligence_context_v1.
+-- Its stored statement matches pending-migrations/
+-- 20260910152624_ops_intelligence_context_v1.sql after trailing whitespace.
+-- Already applied remotely; do not replay the pending SQL.
+-- This receipt intentionally executes no SQL.
