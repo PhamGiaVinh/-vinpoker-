@@ -51,3 +51,19 @@ it("shows four simultaneous actions without opening a table and restores folded 
   }
   expect(props.onView).not.toHaveBeenCalled();
 });
+
+it("renders a completed hand as a static historical snapshot with raw-chip fallback", () => {
+  const table = {
+    ...makeTable("completed"),
+    trackerState: "last_completed" as const,
+    pot: 300,
+    bigBlind: null,
+    players: [{ ...makeTable("completed").players[0], stack: 0, holeCards: ["AS", "KD"], isFolded: false }],
+  };
+  render(<RealtimeTablesGrid catalog={[{ tableId: table.tableId, name: table.name, playerCount: 1, searchPlayers: [] }]} tables={[table]} onVisibleTableIds={vi.fn()} onView={vi.fn()} onHistory={vi.fn()} />);
+  const article = screen.getByRole("article", { name: "Bàn completed" });
+  expect(within(article).getByText("Ván gần nhất")).toBeInTheDocument();
+  expect(within(article).getByText("POT CỦA VÁN 300 · — BB")).toBeInTheDocument();
+  expect(within(article).getByText("0 · — BB")).toBeInTheDocument();
+  expect(within(article).queryAllByTestId("card-back")).toHaveLength(0);
+});

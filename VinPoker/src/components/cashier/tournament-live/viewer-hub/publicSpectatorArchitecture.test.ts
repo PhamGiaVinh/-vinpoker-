@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 
 const root = resolve(process.cwd());
 const migration = readFileSync(resolve(root, "supabase/pending-migrations/20270115000000_public_spectator_realtime_v2.sql"), "utf8");
+const lastHandMigration = readFileSync(resolve(root, "supabase/pending-migrations/20270115000003_public_spectator_last_hand_history.sql"), "utf8");
 const flags = readFileSync(resolve(root, "src/lib/featureFlags.ts"), "utf8");
 const viewer = readFileSync(resolve(root, "src/components/cashier/tournament-live/TournamentLiveView.tsx"), "utf8");
 const handFeed = readFileSync(resolve(root, "src/components/cashier/tournament-live/viewer-hub/useCompletedHandsFeed.ts"), "utf8");
@@ -59,5 +60,16 @@ describe("public spectator v2 boundary", () => {
     expect(migration).not.toMatch(/UPDATE\s+public\.tournament_chip_counts/i);
     expect(migration).not.toMatch(/UPDATE\s+public\.tournament_entries/i);
     expect(migration).not.toMatch(/INSERT\s+INTO\s+public\.tournament_eliminations/i);
+  });
+
+  it("keeps last-completed and history scoped to a canonical table/session", () => {
+    expect(lastHandMigration).toContain("get_public_tournament_table_live_or_last_hand_v2");
+    expect(lastHandMigration).toContain("th.table_session_id = s.table_session_id");
+    expect(lastHandMigration).toContain("'last_completed'");
+    expect(lastHandMigration).toContain("ORDER BY h.created_at DESC, h.id DESC");
+    expect(lastHandMigration).toContain("(h.created_at, h.id) < (p_before_created_at, p_before_id)");
+    expect(lastHandMigration).toContain("get_public_tournament_table_hand_v2");
+    expect(lastHandMigration).toContain("SET search_path = ''");
+    expect(lastHandMigration).toMatch(/GRANT EXECUTE ON FUNCTION public\.get_public_tournament_table_history_v2[\s\S]+TO anon, authenticated, service_role/);
   });
 });
