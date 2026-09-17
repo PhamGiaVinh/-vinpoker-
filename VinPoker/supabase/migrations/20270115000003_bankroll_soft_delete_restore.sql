@@ -1,5 +1,8 @@
 -- Bankroll safety: user deletes are reversible for seven days.
--- This migration intentionally moves all delete/purge authority to server-side functions.
+-- Promoted from pending source 20260917000000 after the 20270115000002 live head.
+-- This migration moves all delete/purge authority to server-side functions.
+-- Rollback: use a new reviewed forward migration; do not restore an old whole-DB
+-- backup without assessing writes after the recovery point.
 
 ALTER TABLE public.bankroll_entries
   ADD COLUMN IF NOT EXISTS deleted_at timestamptz,
@@ -36,7 +39,13 @@ REVOKE ALL ON TABLE public.bankroll_entry_audit FROM PUBLIC, anon, authenticated
 DROP POLICY IF EXISTS "Users insert own bankroll entries" ON public.bankroll_entries;
 CREATE POLICY "Users insert own bankroll entries"
 ON public.bankroll_entries FOR INSERT
-WITH CHECK (auth.uid() = user_id AND deleted_at IS NULL);
+WITH CHECK (
+  auth.uid() = user_id
+  AND deleted_at IS NULL
+  AND deleted_by IS NULL
+  AND delete_reason IS NULL
+  AND purge_after IS NULL
+);
 
 DROP POLICY IF EXISTS "Users update own bankroll entries" ON public.bankroll_entries;
 CREATE POLICY "Users update own bankroll entries"
@@ -46,8 +55,13 @@ WITH CHECK (auth.uid() = user_id AND deleted_at IS NULL);
 
 DROP POLICY IF EXISTS "Users delete own bankroll entries" ON public.bankroll_entries;
 REVOKE DELETE, TRUNCATE ON TABLE public.bankroll_entries FROM PUBLIC, anon, authenticated;
-REVOKE UPDATE (deleted_at, deleted_by, delete_reason, purge_after)
-  ON TABLE public.bankroll_entries FROM PUBLIC, anon, authenticated;
+-- A column REVOKE cannot override an existing table-level UPDATE grant.
+-- Remove table UPDATE first, then allow only fields edited by SessionFormDialog.
+REVOKE UPDATE ON TABLE public.bankroll_entries FROM PUBLIC, anon, authenticated;
+GRANT UPDATE (
+  user_id, entry_date, game_type, buyin, rake, prize_won,
+  entries, stakes, hours, profit_loss, notes
+) ON TABLE public.bankroll_entries TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.soft_delete_bankroll_entry(
   p_entry_id uuid,
@@ -56,7 +70,7 @@ CREATE OR REPLACE FUNCTION public.soft_delete_bankroll_entry(
 RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_actor uuid := auth.uid();
@@ -96,7 +110,7 @@ CREATE OR REPLACE FUNCTION public.soft_delete_all_bankroll_entries(
 RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_actor uuid := auth.uid();
@@ -132,7 +146,7 @@ CREATE OR REPLACE FUNCTION public.restore_bankroll_entry(p_entry_id uuid)
 RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_actor uuid := auth.uid();
@@ -170,7 +184,7 @@ CREATE OR REPLACE FUNCTION public.purge_deleted_bankroll_entries()
 RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_count integer;
