@@ -33,8 +33,8 @@ INSERT INTO public.satellite_award_plans
 VALUES
   ('c3000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000002',
    'c2000000-0000-4000-8000-000000000001',6600000,
-   '[{"position":1,"ticketCount":2,"cashVnd":"500000"},{"position":2,"ticketCount":1,"cashVnd":"0"}]',
-   3,500000,20300000,'c1000000-0000-4000-8000-000000000001');
+   '[{"position":1,"ticketCount":1,"cashVnd":"0"},{"position":2,"ticketCount":0,"cashVnd":"500000"}]',
+   1,500000,7100000,'c1000000-0000-4000-8000-000000000001');
 
 SELECT set_config('request.jwt.claim.sub','c1000000-0000-4000-8000-000000000001',true);
 DO $test$
@@ -58,26 +58,26 @@ BEGIN
   IF v_preview->>'locked' <> 'false' OR v_preview->>'sourcePoolVnd' <> '2000000'
      OR v_preview->>'sourceConfirmedGrossVnd' <> '2200000'
      OR v_preview->>'sourceEntryFeesVnd' <> '200000'
-     OR v_preview->>'ticketLiabilityVnd' <> '19800000'
+     OR v_preview->>'ticketLiabilityVnd' <> '6600000'
      OR v_preview->>'cashLiabilityVnd' <> '500000'
-     OR v_preview->>'overlayVnd' <> '18300000'
+     OR v_preview->>'overlayVnd' <> '5100000'
      OR v_preview->>'remainingVnd' <> '0'
      OR EXISTS(SELECT 1 FROM public.satellite_award_funding
                WHERE source_tournament_id='c3000000-0000-4000-8000-000000000001') THEN
     RAISE EXCEPTION 'funding preview was wrong or wrote data';
   END IF;
-  v_locked := public.satellite_approve_funding_v1('c3000000-0000-4000-8000-000000000001',18300000,true);
+  v_locked := public.satellite_approve_funding_v1('c3000000-0000-4000-8000-000000000001',5100000,true);
   IF v_locked->>'locked' <> 'true' OR
      (SELECT source_pool_vnd+overlay_vnd-ticket_liability_vnd-cash_liability_vnd-remaining_vnd
       FROM public.satellite_award_funding
       WHERE source_tournament_id='c3000000-0000-4000-8000-000000000001') <> 0 THEN
     RAISE EXCEPTION 'funding conservation failed';
   END IF;
-  PERFORM public.satellite_approve_funding_v1('c3000000-0000-4000-8000-000000000001',18300000,true);
+  PERFORM public.satellite_approve_funding_v1('c3000000-0000-4000-8000-000000000001',5100000,true);
   PERFORM public.satellite_issue_tickets_v1('c3000000-0000-4000-8000-000000000001',v_results);
   IF (SELECT count(*) FROM public.satellite_tickets
-      WHERE source_tournament_id='c3000000-0000-4000-8000-000000000001') <> 3 THEN
-    RAISE EXCEPTION 'funded issue did not create exactly three tickets';
+      WHERE source_tournament_id='c3000000-0000-4000-8000-000000000001') <> 1 THEN
+    RAISE EXCEPTION 'funded issue did not create exactly one ticket';
   END IF;
 END $test$;
 
@@ -109,7 +109,7 @@ INSERT INTO public.satellite_award_plans
 VALUES ('c3000000-0000-4000-8000-000000000003',
   'c3000000-0000-4000-8000-000000000004',
   'c2000000-0000-4000-8000-000000000001',6600000,
-  '[{"position":1,"ticketCount":5,"cashVnd":"0"}]',5,0,33000000,
+  '[{"position":1,"ticketCount":1,"cashVnd":"0"},{"position":2,"ticketCount":1,"cashVnd":"0"},{"position":3,"ticketCount":1,"cashVnd":"0"},{"position":4,"ticketCount":1,"cashVnd":"0"},{"position":5,"ticketCount":1,"cashVnd":"0"}]',5,0,33000000,
   'c1000000-0000-4000-8000-000000000001');
 DO $test$
 DECLARE v_check jsonb;

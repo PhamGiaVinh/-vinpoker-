@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS public.satellite_tickets (
   voided_by uuid REFERENCES auth.users(id),
   void_reason text,
   CONSTRAINT satellite_tickets_serial_unique UNIQUE (source_tournament_id, serial_no),
+  CONSTRAINT satellite_tickets_award_position_unique UNIQUE (source_tournament_id, award_position),
   CONSTRAINT satellite_tickets_code_unique UNIQUE (redemption_code),
   CONSTRAINT satellite_tickets_status_shape CHECK (
     (status = 'issued' AND redeemed_at IS NULL AND redeemed_by IS NULL
