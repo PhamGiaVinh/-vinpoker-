@@ -6610,6 +6610,14 @@
       "reason": "post-production-head Tracker Voice Board Assist migration; source-only pending owner-gated rollout"
     }
   ],
+  "ownerGatedActiveAllowlist": [
+    {
+      "version": "20270115000003",
+      "filename": "20270115000003_cashier_tour_money_v1.sql",
+      "sha256": "083ac776a361c1c00684b0eccd01465967e9777926ae073bc9fdcf97a4356df3",
+      "domain": "cashier"
+    }
+  ],
   "floorActiveAllowlist": [
     {
       "version": "20270112000009",

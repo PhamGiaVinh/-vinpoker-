@@ -1,6 +1,6 @@
 -- Cashier tour buy-in: one immutable record for each actual cash/bank movement.
--- Pending source only: outside Supabase's active migrations catalog until
--- owner-gated TEST UAT, migration reconciliation, and controlled promotion.
+-- Prepared source for a separate owner-gated Cashier V2 migration apply.
+-- Applying schema alone leaves cashier_tour_settings.enabled false.
 -- ROLLBACK: disable the Cashier V2 client and SePay worker first. Keep movement,
 -- shift and refund rows for audit; restore the previous worker, then ship a new
 -- migration to revoke these RPCs. Never delete recorded money history.
