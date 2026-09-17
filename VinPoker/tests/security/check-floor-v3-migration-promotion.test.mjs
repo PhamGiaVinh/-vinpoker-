@@ -108,7 +108,7 @@ function runFixture(options, appliedVersions, pushPlan = null) {
   }
 }
 
-function runReconciliationFixture({ activeHistorical = false, activePending = false } = {}) {
+function runReconciliationFixture({ activeHistorical = false, activePending = false, forward = false, forwardHashDrift = false } = {}) {
   const paths = fixture({});
   const historicalFilename = "20260605000001_legacy.sql";
   const historicalSource = "-- preserved historical source\n";
@@ -130,6 +130,9 @@ function runReconciliationFixture({ activeHistorical = false, activePending = fa
   const remoteReceiptFilename = `${remoteVersion}_remote_history_receipt.sql`;
   const remoteReceiptSource = `-- remote history receipt\n-- version ${remoteVersion}\n`;
   writeFileSync(join(paths.migrations, remoteReceiptFilename), remoteReceiptSource, "utf8");
+  const forwardFilename = "20270115000003_bankroll_soft_delete_restore.sql";
+  const forwardSource = "-- approved Bankroll forward migration\n";
+  if (forward) writeFileSync(join(paths.migrations, forwardFilename), forwardSource, "utf8");
   const reconciliationPath = join(paths.root, "reconciliation.json");
   writeFileSync(
     reconciliationPath,
@@ -157,6 +160,11 @@ function runReconciliationFixture({ activeHistorical = false, activePending = fa
         sha256: hash(pendingSource),
       }],
       floorActiveAllowlist: FLOOR.map(([version, filename]) => ({ version, filename })),
+      approvedForwardMigrations: forward ? [{
+        version: "20270115000003",
+        filename: forwardFilename,
+        sha256: hash(forwardHashDrift ? "different source" : forwardSource),
+      }] : [],
       counts: { historicalSources: 1 },
     }),
     "utf8",
@@ -173,6 +181,13 @@ function runReconciliationFixture({ activeHistorical = false, activePending = fa
     rmSync(paths.root, { recursive: true, force: true });
   }
 }
+
+test("accepts only a checksum-locked approved forward migration outside Floor", () => {
+  assert.equal(runReconciliationFixture({ forward: true }).pass, true);
+  const drift = runReconciliationFixture({ forward: true, forwardHashDrift: true });
+  assert.equal(drift.pass, false);
+  assert.match(drift.failures.join("\n"), /invalid approved forward migration/);
+});
 
 const exactPlan = {
   commandMode: "dry-run",

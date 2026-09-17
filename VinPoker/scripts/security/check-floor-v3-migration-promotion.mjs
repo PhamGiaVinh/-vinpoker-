@@ -304,6 +304,21 @@ function evaluatePromotion({
         reconciliation.remoteLedgerVersions.map((entry) => entry.version),
       );
       const floorAllowlist = new Set(expectedFloorFilenames);
+      const approvedForward = new Set();
+      const latestRemoteVersion = [...remoteVersions].sort().at(-1);
+      for (const approved of reconciliation.approvedForwardMigrations ?? []) {
+        const row = activeByFilename.get(approved.filename);
+        if (
+          !row || row.version !== approved.version ||
+          approved.version <= latestRemoteVersion ||
+          approvedForward.has(approved.filename) ||
+          row.sha256 !== approved.sha256
+        ) {
+          failures.push(`invalid approved forward migration: ${approved.filename}`);
+          continue;
+        }
+        approvedForward.add(approved.filename);
+      }
       const receiptByVersion = new Map();
       for (const receipt of reconciliation.remoteHistoryReceipts) {
         if (receiptByVersion.has(receipt.remoteVersion)) {
@@ -361,6 +376,7 @@ function evaluatePromotion({
       for (const row of active) {
         if (
           floorAllowlist.has(row.filename) ||
+          approvedForward.has(row.filename) ||
           trackerVoiceRelease.filenames.has(row.filename)
         ) continue;
         if (!remoteVersions.has(row.version)) {
