@@ -87,7 +87,7 @@ describe("Hand #4 resume workflow contracts", () => {
     expect(FEATURES.cashierReentry).toBe(false);
     expect(FEATURES.registrationExtensions).toBe(false);
     expect(FEATURES.trackerUnifiedOpsFlow).toBe(false);
-    expect(FEATURES.trackerAtomicResettle).toBe(false);
+    expect(FEATURES.trackerAtomicResettle).toBe(true);
 
     const reentry = read("src/components/cashier/ReentryPanel.tsx");
     const queue = read("src/components/cashier/tournament-live/RegistrationQueuePanel.tsx");

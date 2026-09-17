@@ -14,8 +14,8 @@ describe("tracker atomic resettle capability gate", () => {
     expect(canUseTrackerAtomicResettle(true, true)).toBe(true);
   });
 
-  it("defaults the source flag off", () => {
-    expect(FEATURES.trackerAtomicResettle).toBe(false);
+  it("enables the source flag only with the deployment acknowledgement", () => {
+    expect(FEATURES.trackerAtomicResettle).toBe(true);
   });
 
   it("checks capability before the atomic Edge invocation", () => {
