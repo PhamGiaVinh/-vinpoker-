@@ -78,6 +78,11 @@ interface TournamentRow {
 }
 
 export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
+  // A tournament switch must discard previews, edits and late async results.
+  return <TournamentPayoutPanel key={tournamentId} tournamentId={tournamentId} />;
+}
+
+function TournamentPayoutPanel({ tournamentId }: { tournamentId: string }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tour, setTour] = useState<TournamentRow | null>(null);
@@ -178,8 +183,12 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
         (supabase as any).from("tournament_entries").select("id", { count: "exact", head: true }).eq("tournament_id", tournamentId).neq("status", "cancelled"),
       ]);
       if (te) throw te;
-      if (prizesRes?.error || runRes?.error || cntRes?.error) {
-        throw prizesRes?.error || runRes?.error || cntRes?.error;
+      if (prizesRes?.error) throw prizesRes.error;
+      if (runRes?.error) throw runRes.error;
+      if (cntRes?.error) throw cntRes.error;
+      if (!t || t.id !== tournamentId || !Array.isArray(prizesRes?.data)
+        || !Number.isSafeInteger(cntRes?.count) || cntRes.count < 0) {
+        throw new Error("Không tải được dữ liệu payout đầy đủ. Vui lòng thử lại.");
       }
       setTour(t as TournamentRow);
       const prizes = ((prizesRes?.data ?? []) as any[]).map((p) => ({ position: Number(p.position), amount: Number(p.amount), percentage: Number(p.percentage) }));
