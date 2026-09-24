@@ -437,3 +437,42 @@ if [[ "$edge_state" != '1|1|1|1|1|t|1' ]]; then
   exit 1
 fi
 echo "EDGE_PROOF: real local Auth + gateway + tournament-register + fake-SePay reconcile produced one payment, seat, receipt and notice"
+
+# Build the real UI against this local gateway and render it in Chromium. The
+# browser performs real Auth/Data API calls; no request route is intercepted.
+(cd "$repo_root" && \
+  VITE_SUPABASE_URL="http://$gateway_container:8000" \
+  VITE_SUPABASE_PUBLISHABLE_KEY="$anon_key" \
+  VITE_OPS_TOUR_CASHIER=production \
+  npm run build >/dev/null)
+app_container="$(docker run -d --rm --network "$network" --network-alias cashier-app \
+  --volume "$repo_root:/app:ro" --workdir /app \
+  mcr.microsoft.com/playwright:v1.60.0-noble \
+  npm run preview -- --host 0.0.0.0 --port 8080)"
+ephemeral_containers+=("$app_container")
+app_ready=false
+for _ in {1..60}; do
+  if docker exec "$app_container" node -e \
+    'fetch("http://127.0.0.1:8080/ops/cashier/tour").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))'; then
+    app_ready=true
+    break
+  fi
+  sleep 1
+done
+if [[ "$app_ready" != true ]]; then
+  echo "Cashier UI preview did not become ready" >&2
+  docker logs "$app_container" --tail 40 >&2
+  exit 1
+fi
+storage_key="sb-${gateway_container%%.*}-auth-token"
+docker run --rm --network "$network" \
+  --volume "$repo_root:/app:ro" --workdir /app \
+  --env PLAYWRIGHT_BASE_URL='http://cashier-app:8080' \
+  --env LOCAL_SUPABASE_URL="http://$gateway_container:8000" \
+  --env LOCAL_SUPABASE_ANON_KEY="$anon_key" \
+  --env LOCAL_OWNER_EMAIL="$owner_email" \
+  --env LOCAL_OWNER_PASSWORD="$owner_password" \
+  --env LOCAL_SUPABASE_STORAGE_KEY="$storage_key" \
+  mcr.microsoft.com/playwright:v1.60.0-noble \
+  npx playwright test e2e/cashier-tour-real.spec.ts --output=/tmp/cashier-playwright-results
+echo "BROWSER_PROOF: real Chromium rendered the seated Cashier row through local Auth and Data API without interception"
