@@ -166,8 +166,8 @@ export function TvDisplaysPanel({ tournamentId, tournamentName, clubId, tourname
 
   return (
     <div className="space-y-4">
-      {/* Live preview of the running TV screen + the per-club branding button (top, always visible) */}
-      <TvLivePreviewCard tournamentId={tournamentId} action={<TvBrandingEditor clubId={clubId} />} />
+      {/* The layout is shared by this tournament or its parent Main Event. */}
+      <TvLivePreviewCard tournamentId={tournamentId} action={<TvBrandingEditor tournamentId={tournamentId} />} />
 
       {/* Pair a new TV */}
       <Card className="p-4 space-y-3">

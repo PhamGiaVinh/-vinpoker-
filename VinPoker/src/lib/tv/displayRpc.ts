@@ -28,7 +28,7 @@ export async function rpcGetTvDisplayState(
   displayToken: string,
 ): Promise<{ data: unknown; error: string | null }> {
   const functionName = FEATURES.tvLayoutEditorV1
-    ? "get_tv_display_state_v2"
+    ? "get_tv_display_state_v3"
     : "get_tv_display_state";
   const { data, error } = await rpc(functionName, { p_display_token: displayToken });
   return { data, error: error?.message ?? null };

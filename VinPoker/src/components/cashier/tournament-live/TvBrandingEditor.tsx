@@ -44,8 +44,9 @@ function RangeControl({ label, value, min, max, onChange }: {
   );
 }
 
-export function TvBrandingEditor({ clubId }: { clubId: string }) {
+export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
   const [open, setOpen] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [brandName, setBrandName] = useState("");
@@ -53,6 +54,17 @@ export function TvBrandingEditor({ clubId }: { clubId: string }) {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    if (!FEATURES.tvLayoutEditorV1) return;
+    let active = true;
+    setCanEdit(false);
+    void rpc("can_edit_tv_tournament_layout_v1", { p_tournament_id: tournamentId }).then(({ data, error }) => {
+      if (active) setCanEdit(!error && data === true);
+    });
+    return () => { active = false; };
+  }, [tournamentId]);
 
   useEffect(() => {
     if (!open || !FEATURES.tvLayoutEditorV1) return;
@@ -60,31 +72,29 @@ export function TvBrandingEditor({ clubId }: { clubId: string }) {
     setLoading(true);
     setLoadError(null);
     (async () => {
-      const { data, error } = await supabase
-        .from("clubs")
-        .select("tv_logo_url, tv_brand_name, tv_bg_url, tv_layout_config" as never)
-        .eq("id", clubId)
-        .maybeSingle();
+      const { data, error } = await rpc("get_tv_tournament_branding_v1", { p_tournament_id: tournamentId });
       if (cancelled) return;
       if (error || !data) {
-        setLoadError(error?.message ?? "Club TV settings were not found.");
+        setLoadError(error?.message ?? "Tournament TV settings were not found.");
         setLoading(false);
         return;
       }
       const row = data as unknown as {
-        tv_logo_url: string | null;
-        tv_brand_name: string | null;
-        tv_bg_url: string | null;
-        tv_layout_config: unknown;
+        logo_url: string | null;
+        brand_name: string | null;
+        background_url: string | null;
+        layout: unknown;
+        revision: number;
       };
-      setLogoUrl(row.tv_logo_url);
-      setBgUrl(row.tv_bg_url);
-      setBrandName(row.tv_brand_name ?? "");
-      setLayout(parseTvBrandingLayout(row.tv_layout_config));
+      setLogoUrl(row.logo_url);
+      setBgUrl(row.background_url);
+      setBrandName(row.brand_name ?? "");
+      setLayout(parseTvBrandingLayout(row.layout));
+      setRevision(row.revision);
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [open, clubId]);
+  }, [open, tournamentId]);
 
   const previewStyle = useMemo(() => ({
     backgroundImage: bgUrl
@@ -101,25 +111,28 @@ export function TvBrandingEditor({ clubId }: { clubId: string }) {
   const save = async () => {
     setSaving(true);
     try {
-      const { data, error } = await rpc("save_tv_branding_layout_v1", {
-        p_club_id: clubId,
+      const { data, error } = await rpc("save_tv_tournament_layout_v1", {
+        p_tournament_id: tournamentId,
+        p_expected_revision: revision,
         p_brand_name: brandName.trim(),
         p_logo_url: logoUrl?.trim() ?? "",
         p_bg_url: bgUrl?.trim() ?? "",
         p_layout: serializeTvBrandingLayout(layout),
       });
       if (error || !data) {
-        toast.error(error?.message ?? "The TV layout was not saved.");
+        toast.error(error?.message?.includes("tv_layout_stale_revision")
+          ? "Another operator published a new layout. Reopen the editor before saving."
+          : error?.message ?? "The TV layout was not saved.");
         return;
       }
-      toast.success("TV branding saved. Paired screens update on their next refresh.");
+      toast.success("TV layout published. Screens update on their next refresh.");
       setOpen(false);
     } finally {
       setSaving(false);
     }
   };
 
-  if (!FEATURES.tvLayoutEditorV1) return null;
+  if (!FEATURES.tvLayoutEditorV1 || !canEdit) return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -130,7 +143,7 @@ export function TvBrandingEditor({ clubId }: { clubId: string }) {
       </DialogTrigger>
       <DialogContent className="max-h-[94vh] max-w-6xl overflow-y-auto p-0">
         <DialogHeader className="border-b px-5 py-4">
-          <DialogTitle className="flex items-center gap-2"><Palette className="h-4 w-4 text-emerald-400" /> Club TV layout</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Palette className="h-4 w-4 text-emerald-400" /> Tournament TV layout</DialogTitle>
         </DialogHeader>
 
         {loading ? (
@@ -171,8 +184,8 @@ export function TvBrandingEditor({ clubId }: { clubId: string }) {
 
             <section className="space-y-5 p-5">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                <div className="space-y-1.5"><Label className="text-xs">Club logo</Label><ProofUploader folder="club/tv-logo" value={logoUrl} onChange={setLogoUrl} /></div>
-                <div className="space-y-1.5"><Label className="text-xs">TV background</Label><ProofUploader folder="club/tv-bg" value={bgUrl} onChange={setBgUrl} /></div>
+                <div className="space-y-1.5"><Label className="text-xs">Tournament logo</Label><ProofUploader folder="tv/branding-logo" value={logoUrl} onChange={setLogoUrl} /></div>
+                <div className="space-y-1.5"><Label className="text-xs">TV background</Label><ProofUploader folder="tv/branding-background" value={bgUrl} onChange={setBgUrl} /></div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                 <div className="space-y-1.5"><Label htmlFor="tv-brand-name" className="text-xs">Brand name</Label><Input id="tv-brand-name" value={brandName} onChange={(event) => setBrandName(event.target.value)} maxLength={40} placeholder="VINPOKER" /></div>
@@ -198,8 +211,8 @@ export function TvBrandingEditor({ clubId }: { clubId: string }) {
         )}
 
         <DialogFooter className="border-t px-5 py-4 sm:justify-between">
-          <Button type="button" variant="ghost" className="gap-2" disabled={loading || !!loadError || saving} onClick={() => setLayout({ ...DEFAULT_TV_BRANDING_LAYOUT })}><RotateCcw className="h-4 w-4" /> Reset layout</Button>
-          <Button type="button" className="gap-2" onClick={save} disabled={loading || !!loadError || saving}><Save className="h-4 w-4" /> {saving ? "Saving…" : "Save TV layout"}</Button>
+          <Button type="button" variant="ghost" className="gap-2" disabled={loading || !!loadError || saving} onClick={() => { setLayout({ ...DEFAULT_TV_BRANDING_LAYOUT }); setLogoUrl(null); setBgUrl(null); setBrandName(""); }}><RotateCcw className="h-4 w-4" /> Restore defaults</Button>
+          <Button type="button" className="gap-2" onClick={save} disabled={loading || !!loadError || saving}><Save className="h-4 w-4" /> {saving ? "Publishing…" : "Publish TV layout"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

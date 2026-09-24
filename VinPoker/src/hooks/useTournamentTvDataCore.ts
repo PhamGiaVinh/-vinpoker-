@@ -75,12 +75,9 @@ export function useTournamentTvDataCore(
     }
     const seq = ++requestSeqRef.current;
 
-    const clubFields = FEATURES.tvLayoutEditorV1
-      ? "name, cover_url, tv_logo_url, tv_brand_name, tv_bg_url, tv_layout_config"
-      : "name, cover_url, tv_logo_url, tv_brand_name, tv_bg_url";
     const { data: tournament, error: tournamentError } = await supabase
       .from("tournaments")
-      .select(`name, status, players_remaining, average_stack, prize_pool, starting_stack, guarantee_amount, buy_in, rake_amount, club:clubs(${clubFields})`)
+      .select("name, status, players_remaining, average_stack, prize_pool, starting_stack, guarantee_amount, buy_in, rake_amount, club:clubs(name, cover_url, tv_logo_url, tv_brand_name, tv_bg_url)")
       .eq("id", tournamentId)
       .maybeSingle();
     if (seq !== requestSeqRef.current) return;
@@ -100,7 +97,7 @@ export function useTournamentTvDataCore(
       return;
     }
 
-    const [clockRes, levelsRes, regsRes, seatsRes, prizesRes, satRes] = await Promise.all([
+    const [clockRes, levelsRes, regsRes, seatsRes, prizesRes, satRes, brandingRes] = await Promise.all([
       supabase.rpc("get_tournament_clock", { p_tournament_id: tournamentId }),
       supabase
         .from("tournament_levels")
@@ -128,11 +125,18 @@ export function useTournamentTvDataCore(
         .select("satellite_payout" as never)
         .eq("id", tournamentId)
         .maybeSingle(),
+      FEATURES.tvLayoutEditorV1
+        ? (supabase.rpc as any)("get_tv_tournament_branding_v1", { p_tournament_id: tournamentId })
+        : Promise.resolve({ data: null, error: null }),
     ]);
     if (seq !== requestSeqRef.current) return;
 
     const clock = clockRes.data as unknown as ClockRpcPayload | null;
     if (clockRes.error || !clock || clock.error) {
+      setState("error");
+      return;
+    }
+    if (FEATURES.tvLayoutEditorV1 && (brandingRes.error || !brandingRes.data)) {
       setState("error");
       return;
     }
@@ -144,6 +148,19 @@ export function useTournamentTvDataCore(
     };
 
     const row = tournament as unknown as TvTournamentRow;
+    if (FEATURES.tvLayoutEditorV1 && row.club) {
+      const branding = brandingRes.data as {
+        logo_url: string | null; brand_name: string | null;
+        background_url: string | null; layout: unknown;
+      };
+      row.club = {
+        ...row.club,
+        tv_logo_url: branding.logo_url,
+        tv_brand_name: branding.brand_name,
+        tv_bg_url: branding.background_url,
+        tv_layout_config: branding.layout,
+      };
+    }
     // Best-effort satellite (source-only column): missing-column error → null, không phá màn hình.
     row.satellite_payout = satRes.error
       ? null
