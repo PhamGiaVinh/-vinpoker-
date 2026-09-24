@@ -20,6 +20,10 @@ export interface TvDisplayConfig {
   theme: string;
   announcement: string | null;
   club_name: string | null;
+  club_logo_url?: string | null;
+  club_brand_name?: string | null;
+  club_background_url?: string | null;
+  club_layout?: unknown;
 }
 
 export interface TvDisplayTournament {
@@ -67,7 +71,19 @@ export function mapDisplayStateToTvData(
       players_remaining: t.players_remaining,
       average_stack: t.average_stack,
       prize_pool: t.prize_pool,
-      club: payload.display?.club_name ? { name: payload.display.club_name } : null,
+      starting_stack: null,
+      guarantee_amount: null,
+      buy_in: null,
+      rake_amount: null,
+      satellite_payout: null,
+      club: payload.display?.club_name ? {
+        name: payload.display.club_name,
+        cover_url: null,
+        tv_logo_url: payload.display.club_logo_url ?? null,
+        tv_brand_name: payload.display.club_brand_name ?? null,
+        tv_bg_url: payload.display.club_background_url ?? null,
+        tv_layout_config: payload.display.club_layout,
+      } : null,
     },
     levels: payload.levels ?? [],
     // Same clamp as PR B: walk-ins may not exist in tournament_registrations.

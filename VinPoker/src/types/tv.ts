@@ -4,6 +4,7 @@
 // never show placeholders for data the schema does not have yet.
 
 import type { SatellitePayout } from "@/lib/satellitePayout";
+import type { TvBrandingLayout } from "@/lib/tv/brandingLayout";
 
 export interface TvLevel {
   levelNumber: number;
@@ -30,6 +31,8 @@ export interface TvData {
   tournamentName: string;
   clubName: string;
   clubLogoUrl?: string | null;
+  /** Sanitized per-club positioning/font controls. */
+  brandingLayout?: TvBrandingLayout;
   /** Per-club brand name shown under the logo on the clock (clubs.tv_brand_name,
    *  fallback club name). Defaults to "VINPOKER" in the clock when absent. */
   brandName?: string | null;
