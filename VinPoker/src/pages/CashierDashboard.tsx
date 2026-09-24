@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,7 @@ import { TournamentRegistrationsTab } from "@/components/admin/TournamentRegistr
 import { OfflineBuyInPanel } from "@/components/cashier/OfflineBuyInPanel";
 import { ReentryPanel } from "@/components/cashier/ReentryPanel";
 import { SePaySettlementTab } from "@/components/cashier/SePaySettlementTab";
-import { FEATURES } from "@/lib/featureFlags";
+import { FEATURES, OPS_TOUR_CASHIER_ENABLED } from "@/lib/featureFlags";
 import { PROFILE_REVIEW_ENABLED } from "@/lib/profileReviewGate";
 import {
   LayoutDashboard, Coins, Users as UsersIcon, FileBarChart, Loader2, CheckCircle2, XCircle,
@@ -114,13 +114,22 @@ export default function CashierDashboard() {
   // until FEATURES.sepayReconcile flips; admins/club owners see it for UAT.
   const showSettlement = clubIds.length > 0 && (FEATURES.sepayReconcile || isAdmin || isClubOwner);
 
+  // Keep existing Cashier links, including saved ?tab=offline_buyin URLs, on the
+  // server-backed tour counter once its production build gate is enabled.
+  if (section === "offline_buyin" && showOfflineBuyIn && OPS_TOUR_CASHIER_ENABLED) {
+    const destination = clubs.length === 1
+      ? `/ops/cashier/tour?club=${encodeURIComponent(clubs[0].id)}`
+      : "/ops";
+    return <Navigate to={destination} replace />;
+  }
+
   const navItems: { key: SectionKey; label: string; icon: any }[] = [
     { key: "overview", label: "Tổng quan", icon: LayoutDashboard },
     { key: "staking", label: "Staking", icon: Coins },
     { key: "members", label: "Thành viên", icon: UsersIcon },
     { key: "reports", label: "Doanh thu", icon: FileBarChart },
     ...(showRegistrations ? [{ key: "tournament_registrations" as SectionKey, label: "Đăng ký giải", icon: Ticket }] : []),
-    ...(showOfflineBuyIn ? [{ key: "offline_buyin" as SectionKey, label: "Buy-in tại quầy", icon: UserPlus }] : []),
+    ...(showOfflineBuyIn ? [{ key: "offline_buyin" as SectionKey, label: OPS_TOUR_CASHIER_ENABLED ? "Buy-in theo tour" : "Buy-in tại quầy", icon: UserPlus }] : []),
     ...(showReentry ? [{ key: "reentry" as SectionKey, label: "Re-entry", icon: RotateCcw }] : []),
     ...(showSettlement ? [{ key: "sepay_settlement" as SectionKey, label: "Đối soát SePay", icon: Banknote }] : []),
   ];
