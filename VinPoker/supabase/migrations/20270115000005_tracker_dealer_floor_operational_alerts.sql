@@ -117,7 +117,7 @@ BEGIN
     AND attendance.check_out_time IS NULL
   FOR SHARE OF d, da, attendance;
   IF NOT FOUND THEN
-    RETURN pg_catalog.jsonb_build_object('ok', false, 'dealer_assignment_changed');
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'dealer_assignment_changed');
   END IF;
 
   IF v_prior.id IS NOT NULL THEN

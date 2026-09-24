@@ -55,7 +55,7 @@ describe("Dealer Floor operational alert", () => {
     expect(window.sessionStorage.length).toBe(0);
   });
 
-  it("retains an uncertain request if the assignment changes before retry", async () => {
+  it.each(["dealer_assignment_not_unique", "dealer_assignment_changed"])("retains an uncertain request after %s before retry", async (reason) => {
     vi.mocked(supabase.rpc).mockRejectedValueOnce(new Error("network lost"));
     render(<DealerFloorAlertControls {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Gọi Floor" }));
@@ -63,7 +63,7 @@ describe("Dealer Floor operational alert", () => {
     const firstCall = vi.mocked(supabase.rpc).mock.calls[0][1] as { p_request_id: string };
 
     vi.mocked(supabase.rpc).mockResolvedValueOnce({
-      data: { ok: false, error: "dealer_assignment_not_unique" }, error: null,
+      data: { ok: false, error: reason }, error: null,
     } as never);
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra lại yêu cầu đang chờ" }));
     await screen.findByText(/Không còn quyền xác minh yêu cầu cũ/);
