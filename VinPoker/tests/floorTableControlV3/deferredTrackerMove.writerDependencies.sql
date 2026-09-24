@@ -28,7 +28,6 @@ CREATE TABLE public.tournament_eliminations (
   entry_number integer NOT NULL, hand_id uuid NOT NULL,
   position integer NOT NULL, prize numeric NOT NULL
 );
-CREATE TABLE public.tracker_voice_configs (id uuid PRIMARY KEY);
 CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE
 AS $$ SELECT pg_catalog.jsonb_build_object('role', 'authenticated') $$;
 CREATE OR REPLACE FUNCTION public.tracker_unified_ops_lock_tournament(p_tournament_id uuid)
