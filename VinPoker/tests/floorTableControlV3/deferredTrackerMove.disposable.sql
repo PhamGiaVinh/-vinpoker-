@@ -2,6 +2,7 @@
 -- Runs after disposableDb.serverContract.sql and rosterActionsRepair.disposable.sql.
 -- Exact TEST IDs only; the CI PostgreSQL service is discarded after this job.
 \ir ../../supabase/migrations/20270115000007_floor_deferred_tracker_move_v1.sql
+\ir ../../supabase/migrations/20270115000008_floor_v3_tracker_legacy_projection.sql
 
 INSERT INTO public.club_trackers (club_id, user_id) VALUES
   ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001');
@@ -61,21 +62,16 @@ BEGIN
     '00000000-0000-0000-0000-000000000842', (v_tracker->>'tournament_table_id')::uuid,
     1, 1, '00000000-0000-0000-0000-000000001144');
   PERFORM public.floor_table_v3_assert((v_result->>'ok')::boolean, 'Tracker existing entry seats');
-  -- Exact record_hand still requires the legacy Tracker projection for a
-  -- player who was already in the hand. Model that pre-existing runtime
-  -- contract here; the queued newcomer must acquire it from migration 00007.
-  UPDATE public.tournament_tables
-  SET table_id = '00000000-0000-0000-0000-000000000542'::uuid
-  WHERE id = (v_tracker->>'tournament_table_id')::uuid;
-  UPDATE public.tournament_seats
-  SET table_id = (v_tracker->>'tournament_table_id')::uuid
-  WHERE entry_id = '00000000-0000-0000-0000-000000000842' AND is_active;
-  UPDATE public.tournament_entries
-  SET table_id = '00000000-0000-0000-0000-000000000542'::uuid,
-      seat_number = 1,
-      seat_id = (SELECT id FROM public.tournament_seats
-        WHERE entry_id = '00000000-0000-0000-0000-000000000842' AND is_active)
-  WHERE id = '00000000-0000-0000-0000-000000000842';
+  PERFORM public.floor_table_v3_assert(
+    (SELECT table_id = game_table_id FROM public.tournament_tables
+      WHERE id = (v_tracker->>'tournament_table_id')::uuid)
+    AND EXISTS (SELECT 1 FROM public.tournament_seats s
+      JOIN public.tournament_entries e ON e.id = s.entry_id
+      WHERE s.entry_id = '00000000-0000-0000-0000-000000000842'
+        AND s.is_active AND s.table_id = (v_tracker->>'tournament_table_id')::uuid
+        AND e.table_id = '00000000-0000-0000-0000-000000000542'::uuid
+        AND e.seat_id = s.id AND e.seat_number = s.seat_number),
+    'V3 opening and initial seating project the exact legacy Tracker IDs');
 
   INSERT INTO public.tournament_hands (tournament_id, table_id, hand_number, status)
   VALUES ('00000000-0000-0000-0000-000000000141',

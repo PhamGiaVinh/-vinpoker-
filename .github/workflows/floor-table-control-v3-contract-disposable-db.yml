@@ -14,6 +14,7 @@ on:
       - "VinPoker/supabase/migrations/20270115000005_floor_roster_actions_repair.sql"
       - "VinPoker/supabase/migrations/20270115000006_floor_break_eligible_destinations.sql"
       - "VinPoker/supabase/migrations/20270115000007_floor_deferred_tracker_move_v1.sql"
+      - "VinPoker/supabase/migrations/20270115000008_floor_v3_tracker_legacy_projection.sql"
       - "VinPoker/scripts/production/repairs/repair_tracker_test_roster_entries_ban5.sql"
       - "VinPoker/scripts/production/repairs/repair_tracker_test_roster_tournament_table_link_ban5.sql"
       - "VinPoker/src/lib/floorTableControlV3.ts"
