@@ -1095,6 +1095,10 @@ export function useStandaloneHandInput(tournamentId: string) {
       });
       if (!identity) return;
       if (identity.kind === "stale") return;
+      if (FEATURES.floorDeferredTrackerMoveV1) {
+        setAvailableTables((previous) => previous.map((table) =>
+          table.id === newTableId ? { ...table, hasLiveHand: identity.kind === "resume" } : table));
+      }
       if (identity.kind === "resume") {
         setOrphanHand(identity.hand);
         setAutoResumeArmed(identity.hand.id); // A5: fires once seats for THIS table have loaded
