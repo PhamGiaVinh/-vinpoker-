@@ -28,6 +28,16 @@ CREATE TABLE public.tournament_eliminations (
   entry_number integer NOT NULL, hand_id uuid NOT NULL,
   position integer NOT NULL, prize numeric NOT NULL
 );
+-- record_hand resolves the service-role dealer branch even for a normal
+-- authenticated Tracker call, so provide its read-only join dependencies.
+CREATE TABLE public.dealers (
+  id uuid PRIMARY KEY, user_id uuid NOT NULL, club_id uuid NOT NULL
+);
+CREATE TABLE public.dealer_assignments (
+  dealer_id uuid NOT NULL REFERENCES public.dealers(id),
+  table_id uuid NOT NULL,
+  status text NOT NULL
+);
 CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE
 AS $$ SELECT pg_catalog.jsonb_build_object('role', 'authenticated') $$;
 CREATE OR REPLACE FUNCTION public.tracker_unified_ops_lock_tournament(p_tournament_id uuid)
