@@ -277,6 +277,8 @@ export const FEATURES = {
    * Flip to true ONLY after the RPC is applied live in a controlled DB session.
    */
   blindEditorSave: true,
+  // Editable suggestion in tournament setup; the existing create flow owns saving.
+  blindDraftSuggest: false,
   /**
    * Reusable blind-structure templates ("thư viện cấu trúc blind"). Default **OFF**
    * because it needs both the `update_blind_structure` RPC (20260825000000) AND the
