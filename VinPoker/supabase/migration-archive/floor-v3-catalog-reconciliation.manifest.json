@@ -6797,11 +6797,6 @@
       "version": "20270115000007",
       "filename": "20270115000007_floor_deferred_tracker_move_v1.sql",
       "sha256": "c31d096ab2db3825a5e2f540bd98aca65a7335a2278871c9f130103eaef124be"
-    },
-    {
-      "version": "20270115000008",
-      "filename": "20270115000008_floor_v3_tracker_legacy_projection.sql",
-      "sha256": "9c4186d797726ef9a2d74421d7b7d72917f44a4a83c2802d664bc1668f72226b"
     }
   ],
   "counts": {
