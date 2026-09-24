@@ -149,6 +149,28 @@ describe("floorTableControlV3 browser boundary", () => {
     });
   });
 
+  it("sends the complete stale-state fence for Free Sit", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: { ok: true, waiting_status: "registered" }, error: null });
+    const client = clientFrom(rpc);
+
+    await expect(client.freeSitPlayer({
+      entryId: "entry-a",
+      expectedRevision: 4,
+      expectedControlEpoch: 2,
+      expectedChipCount: 62500,
+      requestId: "request-free-sit",
+      reason: "floor_v3_operator_free_sit",
+    })).resolves.toMatchObject({ ok: true });
+    expect(rpc).toHaveBeenCalledWith("floor_free_sit_player_v1", {
+      p_entry_id: "entry-a",
+      p_expected_revision: 4,
+      p_expected_control_epoch: 2,
+      p_expected_chip_count: 62500,
+      p_request_id: "request-free-sit",
+      p_reason: "floor_v3_operator_free_sit",
+    });
+  });
+
   it("requires the Tracker fencing tuple instead of only a table id", async () => {
     const rpc = vi.fn().mockResolvedValue({ data: { ok: true }, error: null });
     const client = clientFrom(rpc);

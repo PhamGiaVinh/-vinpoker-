@@ -6699,7 +6699,14 @@
       "reason": "Cashier V2 remains a separate owner-gated money rollout; do not co-apply it with Floor Free Sit"
     }
   ],
-  "ownerGatedActiveAllowlist": [],
+  "ownerGatedActiveAllowlist": [
+    {
+      "version": "20270115000004",
+      "filename": "20270115000004_floor_free_sit_v1.sql",
+      "sha256": "1793827efb0814cb3da4a23ce14181ff216eff5726f23d76581e70eb8ca17a2c",
+      "domain": "floor"
+    }
+  ],
   "floorActiveAllowlist": [
     {
       "version": "20270112000009",

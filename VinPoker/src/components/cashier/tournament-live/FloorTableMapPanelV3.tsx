@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRightLeft, Loader2, LockKeyhole, Plus, RadioTower, RefreshCw, RotateCcw, Shuffle, UnlockKeyhole, UserRoundX, UsersRound } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Loader2, LockKeyhole, Plus, RadioTower, RefreshCw, RotateCcw, Shuffle, UnlockKeyhole, UserRoundMinus, UserRoundX, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,7 @@ function v3ErrorMessage(error: string): string {
     case "no_table_available": return "Chưa có bàn đích đủ ghế để chuyển toàn bộ người chơi.";
     case "entry_not_found": return "Không tìm thấy entry này trong giải. Hãy tải lại danh sách người chơi.";
     case "entry_not_active": return "Entry này không còn ở trạng thái có thể thao tác.";
+    case "entry_not_free_sittable": return "Entry thủ công này chưa có đường xếp lại an toàn từ Waiting nên Free Sit đã bị chặn.";
     case "entry_already_seated": return "Người chơi này đã có ghế ở một bàn khác.";
     case "entry_not_seated":
     case "no_active_v3_seat": return "Người chơi không còn ở ghế này. Hãy tải lại roster.";
@@ -104,6 +105,7 @@ export function FloorTableMapPanelV3({
   const [modeOpen, setModeOpen] = useState(false);
   const [nextMode, setNextMode] = useState<"manual" | "tracker">("manual");
   const [pendingBustSeat, setPendingBustSeat] = useState<FloorTableRosterSeat | null>(null);
+  const [pendingFreeSitSeat, setPendingFreeSitSeat] = useState<FloorTableRosterSeat | null>(null);
   const [pendingTableAction, setPendingTableAction] = useState<PendingTableAction | null>(null);
   const [redrawOpen, setRedrawOpen] = useState(false);
   const [lockReason, setLockReason] = useState("Giữ ghế cho vận hành");
@@ -197,6 +199,7 @@ export function FloorTableMapPanelV3({
     setMoveDestinationId("");
     setMoveSeatNumber(null);
     setPendingBustSeat(null);
+    setPendingFreeSitSeat(null);
     setPendingTableAction(null);
     setLockReason("Giữ ghế cho vận hành");
   }, [selectedSeatNumber, selectedTableId]);
@@ -286,7 +289,7 @@ export function FloorTableMapPanelV3({
             </select>
           </label>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-3">
           <Button data-ops-action="floor.player.move" className="min-h-12" disabled={busy || !moveDestination || moveSeatNumber == null} onClick={() => void run("Đã chuyển người chơi.", () => v3.movePlayerSeat({
             entryId: seat.entryId,
             toTournamentTableId: moveDestination!.tournamentTableId,
@@ -297,6 +300,11 @@ export function FloorTableMapPanelV3({
           }))}>
             <ArrowRightLeft className="mr-2 h-4 w-4" /> Chuyển ghế
           </Button>
+          {FEATURES.floorFreeSitV1 && (
+            <Button data-ops-action="floor.player.open_free_sit" variant="outline" className="min-h-12" disabled={busy} onClick={() => setPendingFreeSitSeat(seat)}>
+              <UserRoundMinus className="mr-2 h-4 w-4" /> Free Sit
+            </Button>
+          )}
           <Button data-ops-action="floor.player.open_bust" variant="destructive" className="min-h-12" disabled={busy || trackerChipBlocked} onClick={() => setPendingBustSeat(seat)}>
             <UserRoundX className="mr-2 h-4 w-4" /> Loại khỏi giải
           </Button>
@@ -538,6 +546,51 @@ export function FloorTableMapPanelV3({
           )}
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={pendingFreeSitSeat !== null} onOpenChange={(open) => { if (!open) setPendingFreeSitSeat(null); }}>
+        <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Move player to Waiting?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-left">
+                <p>The player stays in the tournament. Their current stack is preserved, this seat becomes available, and the player returns to Waiting for a later seat assignment.</p>
+                {selectedTable && pendingFreeSitSeat && (
+                  <dl className="rounded-xl border border-border bg-card/55 p-3 text-sm text-foreground">
+                    <div className="flex justify-between gap-3"><dt>Player</dt><dd className="min-w-0 truncate font-semibold">{pendingFreeSitSeat.displayName}</dd></div>
+                    <div className="mt-1 flex justify-between gap-3"><dt>Current seat</dt><dd>Table {selectedTable.tableNumber} · Seat {pendingFreeSitSeat.seatNumber}</dd></div>
+                    <div className="mt-1 flex justify-between gap-3"><dt>Entry</dt><dd>{pendingFreeSitSeat.entryNo}</dd></div>
+                    <div className="mt-1 flex justify-between gap-3"><dt>Stack preserved</dt><dd>{formatStack(pendingFreeSitSeat.chipCount)}</dd></div>
+                  </dl>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-ops-action="floor.player.cancel_free_sit" className="min-h-12">Keep Seat</AlertDialogCancel>
+            <AlertDialogAction
+              data-ops-action="floor.player.free_sit"
+              className="min-h-12"
+              disabled={busy || !selectedTable || !pendingFreeSitSeat}
+              onClick={async (event) => {
+                event.preventDefault();
+                if (!selectedTable || !pendingFreeSitSeat) return;
+                const seat = pendingFreeSitSeat;
+                const ok = await run("Player moved to Waiting with stack preserved.", () => v3.freeSitPlayer({
+                  entryId: seat.entryId,
+                  expectedRevision: selectedTable.sessionRevision,
+                  expectedControlEpoch: selectedTable.controlEpoch,
+                  expectedChipCount: seat.chipCount,
+                  requestId: crypto.randomUUID(),
+                  reason: "floor_v3_operator_free_sit",
+                }));
+                if (ok) setPendingFreeSitSeat(null);
+              }}
+            >
+              Confirm Free Sit
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={pendingBustSeat !== null} onOpenChange={(open) => { if (!open) setPendingBustSeat(null); }}>
         <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md rounded-2xl">
