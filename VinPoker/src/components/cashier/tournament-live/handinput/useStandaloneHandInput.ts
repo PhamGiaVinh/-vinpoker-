@@ -412,6 +412,49 @@ export function useStandaloneHandInput(tournamentId: string) {
           return;
         }
 
+        if (FEATURES.floorDeferredTrackerMoveV1) {
+          const { data: contextData, error: contextError } = await supabase.rpc(
+            "get_tracker_hand_input_tables_v3" as any, { p_tournament_id: tournamentId },
+          );
+          if (!isCurrentRequest()) return;
+          const context = contextData as { ok?: boolean; tables?: unknown[] } | null;
+          if (contextError || !context?.ok || !Array.isArray(context.tables)) {
+            setTableLoadState("error");
+            setTableLoadError("Không thể tải phiên bàn Tracker. Hãy thử lại.");
+            return;
+          }
+          const parsed = context.tables.map((raw) => {
+            const row = raw as Record<string, unknown>;
+            if (typeof row.table_id !== "string" || typeof row.tournament_table_id !== "string"
+              || typeof row.table_name !== "string" || typeof row.player_count !== "number"
+              || typeof row.has_live_hand !== "boolean"
+              || !Number.isInteger(row.max_seats)
+              || (row.table_session_id !== null && typeof row.table_session_id !== "string")
+              || (row.table_session_id !== null && typeof row.control_epoch !== "number")) return null;
+            return {
+              id: row.table_id,
+              physicalTableId: row.table_id,
+              tournamentTableId: row.tournament_table_id,
+              tableSessionId: row.table_session_id,
+              controlEpoch: row.control_epoch as number | null,
+              maxSeats: row.max_seats as number,
+              name: row.table_name,
+              playerCount: row.player_count,
+              hasLiveHand: row.has_live_hand,
+            };
+          });
+          if (parsed.some((row) => row === null)
+            || new Set(parsed.map((row) => row?.id)).size !== parsed.length) {
+            setTableLoadState("error");
+            setTableLoadError("Dữ liệu phiên bàn không hợp lệ. Hãy tải lại.");
+            return;
+          }
+          loadedTablesTournamentRef.current = tournamentId;
+          setAvailableTables(parsed as InputTableSummary[]);
+          setTableLoadState("ready");
+          return;
+        }
+
         const { data, error: tablesError } = await supabase.rpc("get_tournament_tables", { p_tournament_id: tournamentId });
         if (!isCurrentRequest()) return;
         if (tablesError) {
@@ -858,11 +901,12 @@ export function useStandaloneHandInput(tournamentId: string) {
         .from("tournament_tables")
         .select("max_seats, table_session_id")
         .eq("tournament_id", tournamentId)
-        .eq("table_id", newTableId)
+        .eq(FEATURES.floorDeferredTrackerMoveV1 && tbl?.tableSessionId ? "id" : "table_id",
+          FEATURES.floorDeferredTrackerMoveV1 && tbl?.tableSessionId ? tbl.tournamentTableId! : newTableId)
         .maybeSingle();
       if (!isCurrentLoad()) return;
-      const loadedMaxSeats = (tableMeta as any)?.max_seats ?? 9;
-      const loadedSessionId = (tableMeta as any)?.table_session_id ?? null;
+      const loadedMaxSeats = tbl?.maxSeats ?? (tableMeta as any)?.max_seats ?? 9;
+      const loadedSessionId = tbl?.tableSessionId ?? (tableMeta as any)?.table_session_id ?? null;
       setMaxSeats(loadedMaxSeats);
 
       // trackerSeatSetup: pull the per-seat avatar_url under the flag. If the migration
@@ -874,13 +918,15 @@ export function useStandaloneHandInput(tournamentId: string) {
       let loadedSeats: any[] | null = null;
       let error: any = null;
       if (wantAvatar) {
-        const r = await supabase
+        let seatQuery = supabase
           .from("tournament_seats")
           .select(`${baseCols}, avatar_url`)
           .eq("tournament_id", tournamentId)
-          .eq("table_id", newTableId)
-          .eq("is_active", true)
-          .order("seat_number");
+          .eq("is_active", true);
+        seatQuery = loadedSessionId && tbl?.tournamentTableId
+          ? seatQuery.eq("tournament_table_id", tbl.tournamentTableId).eq("table_session_id", loadedSessionId)
+          : seatQuery.eq("table_id", newTableId);
+        const r = await seatQuery.order("seat_number");
         if (!isCurrentLoad()) return;
         if (r.error && (r.error as any).code === "42703") {
           setAvatarSupported(false);
@@ -890,13 +936,15 @@ export function useStandaloneHandInput(tournamentId: string) {
         }
       }
       if (loadedSeats === null && error === null) {
-        const r = await supabase
+        let seatQuery = supabase
           .from("tournament_seats")
           .select(baseCols)
           .eq("tournament_id", tournamentId)
-          .eq("table_id", newTableId)
-          .eq("is_active", true)
-          .order("seat_number");
+          .eq("is_active", true);
+        seatQuery = loadedSessionId && tbl?.tournamentTableId
+          ? seatQuery.eq("tournament_table_id", tbl.tournamentTableId).eq("table_session_id", loadedSessionId)
+          : seatQuery.eq("table_id", newTableId);
+        const r = await seatQuery.order("seat_number");
         if (!isCurrentLoad()) return;
         loadedSeats = r.data as any[] | null;
         error = r.error;
@@ -910,7 +958,16 @@ export function useStandaloneHandInput(tournamentId: string) {
       }
       if (!loadedSeats?.length) {
         setPlayers([]);
+        if (FEATURES.floorDeferredTrackerMoveV1) {
+          setAvailableTables((previous) => previous.map((table) =>
+            table.id === newTableId ? { ...table, playerCount: 0, hasLiveHand: false } : table));
+        }
         return;
+      }
+
+      if (FEATURES.floorDeferredTrackerMoveV1) {
+        setAvailableTables((previous) => previous.map((table) =>
+          table.id === newTableId ? { ...table, playerCount: loadedSeats.length } : table));
       }
 
       const newPlayers: PlayerState[] = loadedSeats.map((s) => ({
@@ -1479,6 +1536,12 @@ export function useStandaloneHandInput(tournamentId: string) {
           handNumber,
           handTime: new Date().toISOString(),
           buttonSeat,
+          tableSessionId: FEATURES.floorDeferredTrackerMoveV1
+            ? availableTables.find((table) => table.id === tableId)?.tableSessionId : null,
+          tournamentTableId: FEATURES.floorDeferredTrackerMoveV1
+            ? availableTables.find((table) => table.id === tableId)?.tournamentTableId : null,
+          controlEpoch: FEATURES.floorDeferredTrackerMoveV1
+            ? availableTables.find((table) => table.id === tableId)?.controlEpoch : null,
         }),
       });
       const handData = data?.data || data;
@@ -2425,6 +2488,16 @@ export function useStandaloneHandInput(tournamentId: string) {
   /** Applies a completed canonical Finish receipt without sending a second record_hand request. */
   const applyVoiceFinishReceipt = useCallback(async (receipt: VoiceFinishCommitReceipt) => {
     if (!handId || receipt.hand_id !== handId) return false;
+    if (FEATURES.floorDeferredTrackerMoveV1
+      && availableTables.find((table) => table.id === tableId)?.tableSessionId) {
+      setHandId(null);
+      setHandStarted(false);
+      resetHand({ loadNextHandNumber: false });
+      await handleTableChange(tableId);
+      setLastHandId(receipt.hand_id);
+      markSync("sent", `Voice Assist đã lưu Hand #${Number(handNumber)}`);
+      return true;
+    }
     const { data: refreshedSeats, error } = await supabase
       .from("tournament_seats")
       .select("seat_number, player_id, is_active, chip_count")
@@ -2466,7 +2539,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     setHandStarted(false);
     resetHand();
     return true;
-  }, [handId, handNumber, markSync, maxSeats, resetHand, tableId, tournamentId]);
+  }, [availableTables, handId, handNumber, handleTableChange, markSync, maxSeats, resetHand, tableId, tournamentId]);
 
   // B2 — all-in runout ONE-SCREEN: persist EVERY remaining board street in one
   // operator gesture. Sends the SAME cumulative update_community_cards payload as
@@ -2710,6 +2783,15 @@ export function useStandaloneHandInput(tournamentId: string) {
       playTrackerSoundOnce(playedSoundsRef.current, recordedHandId, "hand_end", "pot_collect");
       markSync("sent", `Hand #${Number(handNumber)} đã lưu`);
       setLastHandId(recordedHandId);
+      if (FEATURES.floorDeferredTrackerMoveV1
+        && availableTables.find((table) => table.id === tableId)?.tableSessionId) {
+        setHandId(null);
+        setHandStarted(false);
+        resetHand({ loadNextHandNumber: false });
+        await handleTableChange(tableId);
+        setLastHandId(recordedHandId);
+        return;
+      }
       const { data: refreshedSeats } = await supabase
         .from("tournament_seats")
         .select("seat_number, player_id, is_active")

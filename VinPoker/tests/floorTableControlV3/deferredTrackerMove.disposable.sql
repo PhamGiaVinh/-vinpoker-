@@ -3,6 +3,7 @@
 -- Exact TEST IDs only; the CI PostgreSQL service is discarded after this job.
 \ir ../../supabase/migrations/20270115000007_floor_deferred_tracker_move_v1.sql
 \ir ../../supabase/migrations/20270115000008_tracker_record_hand_v3_identity.sql
+\ir ../../supabase/migrations/20270115000009_tracker_v3_hand_start_context.sql
 
 INSERT INTO public.club_trackers (club_id, user_id) VALUES
   ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001');
@@ -26,6 +27,14 @@ SELECT public.floor_table_v3_assert(
   AND NOT has_function_privilege('anon', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE')
   AND NOT has_table_privilege('authenticated', 'public.floor_pending_tracker_moves', 'INSERT'),
   'deferred move queue is caller-bound and has no direct table write');
+SELECT public.floor_table_v3_assert(
+  has_function_privilege('authenticated', 'public.get_tracker_hand_input_tables_v3(uuid)', 'EXECUTE')
+  AND has_function_privilege('authenticated',
+    'public.start_tracker_hand_v3(uuid,uuid,uuid,bigint,integer,timestamptz,uuid,integer)', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.get_tracker_hand_input_tables_v3(uuid)', 'EXECUTE')
+  AND NOT has_function_privilege('anon',
+    'public.start_tracker_hand_v3(uuid,uuid,uuid,bigint,integer,timestamptz,uuid,integer)', 'EXECUTE'),
+  'Tracker V3 read/start RPCs are authenticated-only');
 
 INSERT INTO public.tournaments (id, club_id, status) VALUES
   ('00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000010', 'active');
@@ -75,15 +84,59 @@ BEGIN
         AND e.table_id IS NULL),
     'V3 opening and seating keep legacy table IDs empty');
 
-  INSERT INTO public.tournament_hands (tournament_id, table_id, hand_number, status)
-  VALUES ('00000000-0000-0000-0000-000000000141',
-    (v_tracker->>'tournament_table_id')::uuid, 1, 'in_progress') RETURNING id INTO v_hand;
-  INSERT INTO public.hand_players (
-    hand_id, tournament_id, player_id, entry_number, seat_number, starting_stack
-  ) VALUES (
-    v_hand, '00000000-0000-0000-0000-000000000141',
-    '00000000-0000-0000-0000-000000000942', 1, 1, 40000
-  );
+  PERFORM pg_catalog.set_config('request.jwt.claim.sub',
+    '00000000-0000-0000-0000-000000000099', true);
+  v_result := public.get_tracker_hand_input_tables_v3(
+    '00000000-0000-0000-0000-000000000141');
+  PERFORM public.floor_table_v3_assert(v_result->>'error' = 'actor_not_allowed',
+    'unrelated authenticated actor cannot list Tracker leases');
+  v_result := public.start_tracker_hand_v3(
+    '00000000-0000-0000-0000-000000000141',
+    (v_tracker->>'tournament_table_id')::uuid, (v_tracker->>'table_session_id')::uuid,
+    1, 1, pg_catalog.now(), NULL, 1);
+  PERFORM public.floor_table_v3_assert(v_result->>'error' = 'actor_not_allowed',
+    'unrelated authenticated actor cannot start a Tracker hand');
+  PERFORM pg_catalog.set_config('request.jwt.claim.sub',
+    '00000000-0000-0000-0000-000000000001', true);
+
+  v_result := public.get_tracker_hand_input_tables_v3(
+    '00000000-0000-0000-0000-000000000141');
+  PERFORM public.floor_table_v3_assert(
+    (v_result->>'ok')::boolean
+    AND EXISTS (SELECT 1 FROM pg_catalog.jsonb_array_elements(v_result->'tables') row_item
+      WHERE row_item->>'table_id' = '00000000-0000-0000-0000-000000000542'
+        AND row_item->>'tournament_table_id' = v_tracker->>'tournament_table_id'
+        AND row_item->>'table_session_id' = v_tracker->>'table_session_id'
+        AND (row_item->>'control_epoch')::bigint = 1
+        AND (row_item->>'player_count')::integer = 1),
+    'Tracker table picker exposes fresh V3 table and seated player');
+
+  v_result := public.start_tracker_hand_v3(
+    '00000000-0000-0000-0000-000000000141',
+    (v_tracker->>'tournament_table_id')::uuid, (v_tracker->>'table_session_id')::uuid,
+    0, 1, pg_catalog.now(), '00000000-0000-0000-0000-000000000001', 1);
+  PERFORM public.floor_table_v3_assert(v_result->>'error' = 'STALE_TRACKER_CONTEXT',
+    'stale epoch cannot start a Tracker hand');
+  v_result := public.start_tracker_hand_v3(
+    '00000000-0000-0000-0000-000000000141',
+    (v_tracker->>'tournament_table_id')::uuid, (v_tracker->>'table_session_id')::uuid,
+    1, 1, pg_catalog.now(), '00000000-0000-0000-0000-000000000001', 1);
+  PERFORM public.floor_table_v3_assert(v_result->>'status' = 'success',
+    'Tracker starts exact V3 hand without legacy table ID: ' || v_result::text);
+  v_hand := (v_result->>'hand_id')::uuid;
+  PERFORM public.floor_table_v3_assert(
+    (SELECT count(*) = 1 FROM public.hand_players WHERE hand_id = v_hand)
+    AND (SELECT table_session_id = (v_tracker->>'table_session_id')::uuid
+      AND tournament_table_id = (v_tracker->>'tournament_table_id')::uuid
+      FROM public.tournament_hands WHERE id = v_hand),
+    'V3 hand seeds current roster and stores fenced session identity');
+  v_result := public.start_tracker_hand_v3(
+    '00000000-0000-0000-0000-000000000141',
+    (v_tracker->>'tournament_table_id')::uuid, (v_tracker->>'table_session_id')::uuid,
+    1, 1, pg_catalog.now(), '00000000-0000-0000-0000-000000000001', 1);
+  PERFORM public.floor_table_v3_assert(v_result->>'error' = 'table_has_active_hand',
+    'double-click cannot create a second live Tracker hand');
+
   PERFORM public.floor_table_v3_assert(
     (SELECT h.table_session_id = (v_tracker->>'table_session_id')::uuid
      FROM public.tournament_hands h WHERE h.id = v_hand),
@@ -193,23 +246,29 @@ BEGIN
       WHERE id = (v_tracker->>'table_session_id')::uuid),
     'terminal move advances both session revisions');
 
-  INSERT INTO public.tournament_hands (tournament_id, table_id, hand_number, status)
-  VALUES ('00000000-0000-0000-0000-000000000141',
-    '00000000-0000-0000-0000-000000000542', 2, 'in_progress') RETURNING id INTO v_hand;
+  v_result := public.get_tracker_hand_input_tables_v3(
+    '00000000-0000-0000-0000-000000000141');
   PERFORM public.floor_table_v3_assert(
-    (SELECT h.table_session_id = (v_tracker->>'table_session_id')::uuid
-     FROM public.tournament_hands h WHERE h.id = v_hand)
-    AND floor_private.floor_table_v3_has_active_hand(
-      '00000000-0000-0000-0000-000000000141',
-      (v_tracker->>'tournament_table_id')::uuid, (v_tracker->>'table_session_id')::uuid),
-    'physical-ID Tracker hand resolves to the same active session');
-  INSERT INTO public.hand_players (
-    hand_id, tournament_id, player_id, entry_number, seat_number, starting_stack
-  ) VALUES
-    (v_hand, '00000000-0000-0000-0000-000000000141',
-      '00000000-0000-0000-0000-000000000942', 1, 1, 40000),
-    (v_hand, '00000000-0000-0000-0000-000000000141',
-      '00000000-0000-0000-0000-000000000941', 1, 2, 30000);
+    EXISTS (SELECT 1 FROM pg_catalog.jsonb_array_elements(v_result->'tables') row_item
+      WHERE row_item->>'table_session_id' = v_tracker->>'table_session_id'
+        AND (row_item->>'player_count')::integer = 2
+        AND (row_item->>'has_live_hand')::boolean = false),
+    'Tracker picker sees moved entrant after the hand ends');
+
+  v_retry := public.start_tracker_hand_v3(
+    '00000000-0000-0000-0000-000000000141',
+    (v_tracker->>'tournament_table_id')::uuid, (v_tracker->>'table_session_id')::uuid,
+    1, 2, pg_catalog.now(), '00000000-0000-0000-0000-000000000001', 1);
+  PERFORM public.floor_table_v3_assert(
+    v_retry->>'status' = 'success',
+    'next Tracker hand starts on same lease after queued move: ' || v_retry::text);
+  v_hand := (v_retry->>'hand_id')::uuid;
+  PERFORM public.floor_table_v3_assert(
+    (SELECT count(*) = 2 FROM public.hand_players WHERE hand_id = v_hand)
+    AND EXISTS (SELECT 1 FROM public.hand_players
+      WHERE hand_id = v_hand AND player_id = '00000000-0000-0000-0000-000000000941'
+        AND seat_number = 2 AND starting_stack = 30000),
+    'next hand snapshots both original and moved entrants from V3 roster');
   v_retry := public.record_hand(
     '00000000-0000-0000-0000-000000000141',
     '00000000-0000-0000-0000-000000000542', 2, pg_catalog.now(),

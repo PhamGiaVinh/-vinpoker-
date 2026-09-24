@@ -51,6 +51,9 @@ export function buildStartHandBody(p: {
   handNumber: number | string;
   handTime: string;
   buttonSeat: number;
+  tableSessionId?: string | null;
+  tournamentTableId?: string | null;
+  controlEpoch?: number | null;
 }) {
   return {
     tournament_id: p.tournamentId,
@@ -59,6 +62,11 @@ export function buildStartHandBody(p: {
     hand_number: Number(p.handNumber),
     hand_time: p.handTime,
     button_seat: p.buttonSeat,
+    ...(p.tableSessionId ? {
+      table_session_id: p.tableSessionId,
+      tournament_table_id: p.tournamentTableId,
+      control_epoch: p.controlEpoch,
+    } : {}),
   };
 }
 

@@ -12,6 +12,10 @@ export interface InputTableSummary {
   physicalTableId: string;
   /** Canonical tournament_tables.id used by Voice/runtime RPCs. */
   tournamentTableId: string | null;
+  /** V3 fencing context. Null for historical legacy assignments. */
+  tableSessionId?: string | null;
+  controlEpoch?: number | null;
+  maxSeats?: number;
   name: string;
   /** Active players currently seated at this table. */
   playerCount: number;

@@ -8,6 +8,8 @@ ALTER TABLE public.tournament_hands
   ADD COLUMN community_cards jsonb NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN pot_size integer NOT NULL DEFAULT 0,
   ADD COLUMN side_pots jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN created_by uuid,
+  ADD COLUMN button_seat integer,
   ADD COLUMN locked_by_user_id uuid,
   ADD COLUMN locked_at timestamptz;
 ALTER TABLE public.hand_players
