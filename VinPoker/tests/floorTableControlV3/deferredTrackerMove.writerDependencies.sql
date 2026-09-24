@@ -33,11 +33,7 @@ CREATE TABLE public.tournament_eliminations (
 CREATE TABLE public.dealers (
   id uuid PRIMARY KEY, user_id uuid NOT NULL, club_id uuid NOT NULL
 );
-CREATE TABLE public.dealer_assignments (
-  dealer_id uuid NOT NULL REFERENCES public.dealers(id),
-  table_id uuid NOT NULL,
-  status text NOT NULL
-);
+ALTER TABLE public.dealer_assignments ADD COLUMN dealer_id uuid REFERENCES public.dealers(id);
 CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE
 AS $$ SELECT pg_catalog.jsonb_build_object('role', 'authenticated') $$;
 CREATE OR REPLACE FUNCTION public.tracker_unified_ops_lock_tournament(p_tournament_id uuid)
