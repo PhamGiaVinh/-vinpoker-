@@ -147,7 +147,9 @@ $$;
 -- 8-max break capacity uses actual eligible seat numbers, not 9 minus occupancy.
 INSERT INTO public.game_tables (id, club_id, table_name, table_number, operational_status)
 VALUES ('00000000-0000-0000-0000-000000000534',
-        '00000000-0000-0000-0000-000000000010', 'Bàn 34', 34, 'available');
+        '00000000-0000-0000-0000-000000000010', 'Bàn 34', 34, 'available'),
+       ('00000000-0000-0000-0000-000000000535',
+        '00000000-0000-0000-0000-000000000010', 'Bàn 35', 35, 'available');
 INSERT INTO public.tournament_entries
   (id, tournament_id, registration_id, player_id, entry_no, current_stack, status)
 VALUES ('00000000-0000-0000-0000-000000000834',
@@ -156,7 +158,7 @@ VALUES ('00000000-0000-0000-0000-000000000834',
         '00000000-0000-0000-0000-000000000934', 1, 30000, 'registered');
 DO $$
 DECLARE
-  v_source jsonb; v_result jsonb; v_target public.tournament_tables%ROWTYPE;
+  v_source jsonb; v_result jsonb; v_other jsonb; v_target public.tournament_tables%ROWTYPE;
   v_source_id uuid; v_revision bigint; v_n integer;
   v_entry_id uuid; v_player_id uuid;
 BEGIN
@@ -223,6 +225,20 @@ BEGIN
       WHERE entry_id = '00000000-0000-0000-0000-000000000834'
         AND tournament_table_id = v_target.id AND seat_number = 8 AND is_active),
     'one freed 8-max seat receives exactly one player');
+  v_other := public.floor_open_tournament_table_v3(
+    '00000000-0000-0000-0000-000000000131',
+    '00000000-0000-0000-0000-000000000535', 'manual',
+    '00000000-0000-0000-0000-000000001185');
+  PERFORM public.floor_table_v3_assert((v_other->>'ok')::boolean,
+    'mixed-capacity 9-max destination opens');
+  PERFORM public.floor_table_v3_assert(
+    (SELECT pg_catalog.count(*) = 9 FROM floor_private.floor_break_eligible_seats_v1(
+      '00000000-0000-0000-0000-000000000131', v_source_id))
+    AND NOT EXISTS (
+      SELECT 1 FROM floor_private.floor_break_eligible_seats_v1(
+        '00000000-0000-0000-0000-000000000131', v_source_id) eligible
+      WHERE eligible.tournament_table_id = v_target.id AND eligible.seat_number = 9),
+    'mixed 8-max full and 9-max empty yields exactly nine valid seats');
 END;
 $$;
 
