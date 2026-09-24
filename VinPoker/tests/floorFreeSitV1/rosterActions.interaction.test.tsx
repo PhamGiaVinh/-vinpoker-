@@ -1,0 +1,105 @@
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { vi, describe, expect, it } from "vitest";
+import { FloorTableMapPanelV3 } from "@/components/cashier/tournament-live/FloorTableMapPanelV3";
+import type { Tournament } from "@/types/tournament";
+
+const fixture = vi.hoisted(() => ({
+  longName: "CODEX_FLOOR_UAT_20260724114346_7ff93193_CASHIER",
+  client: {
+    enabled: true,
+    getTournamentTableRoster: vi.fn(),
+    getSeatableEntries: vi.fn(),
+    getRestorableEntries: vi.fn(),
+    getPendingTrackerMoves: vi.fn(),
+    movePlayerSeat: vi.fn(),
+    queueTrackerMove: vi.fn(),
+    cancelPendingTrackerMove: vi.fn(),
+    deferredTrackerMoveEnabled: true,
+  },
+}));
+
+vi.mock("@/integrations/supabase/SupabaseClientContext", () => ({ useSupabaseClient: () => ({}) }));
+vi.mock("@/lib/floorTableControlV3", () => ({ createFloorTableControlV3Client: () => fixture.client }));
+vi.mock("@/components/ops/shared/FloorTableRosterIndex", () => ({
+  FloorTableRosterIndex: ({ onOpen }: { onOpen: (id: string) => void }) =>
+    <button onClick={() => onOpen("table-1")}>Mở Bàn 4</button>,
+}));
+vi.mock("@/components/ops/shared/FloorSeatRoster", () => ({
+  FloorSeatRoster: ({ onSeatTap }: { onSeatTap: (seat: number) => void }) =>
+    <button onClick={() => onSeatTap(1)}>Mở Ghế 1</button>,
+}));
+vi.mock("@/components/cashier/tournament-live/OpenTableDialog", () => ({ OpenTableDialog: () => null }));
+vi.mock("@/components/cashier/tournament-live/FloorRedrawDialogV1", () => ({ FloorRedrawDialogV1: () => null }));
+
+function setup() {
+  vi.clearAllMocks();
+  fixture.client.getTournamentTableRoster.mockResolvedValue({ ok: true, data: [{
+    tournamentId: "tour-1", tournamentTableId: "table-1", gameTableId: "physical-1",
+    tableNumber: 4, tableName: "Bàn 4", tableSessionId: "session-1",
+    sessionRevision: 3, controlMode: "manual", controlEpoch: 1,
+    maxSeats: 9, tournamentTableStatus: "active", sessionClosedAt: null,
+    activeDealerAssignmentId: null, seatLocks: [], seats: [{
+      seatNumber: 1, entryId: "entry-1", playerId: "player-1",
+      displayName: fixture.longName, entryNo: 1, chipCount: 30_000_000, isActive: true,
+    }],
+  }, {
+    tournamentId: "tour-1", tournamentTableId: "table-2", gameTableId: "physical-2",
+    tableNumber: 5, tableName: "Bàn 5", tableSessionId: "session-2",
+    sessionRevision: 4, controlMode: "tracker", controlEpoch: 1,
+    maxSeats: 9, tournamentTableStatus: "active", sessionClosedAt: null,
+    activeDealerAssignmentId: null, seatLocks: [], seats: [],
+  }] });
+  fixture.client.getSeatableEntries.mockResolvedValue({ ok: true, data: [] });
+  fixture.client.getRestorableEntries.mockResolvedValue({ ok: true, data: [] });
+  fixture.client.getPendingTrackerMoves.mockResolvedValue({ ok: true, data: [] });
+  render(<FloorTableMapPanelV3 tournament={{ id: "tour-1" } as Tournament} refreshTrigger={0} />);
+}
+
+describe("Floor roster mobile actions", () => {
+  it("reveals destination controls only after Move is selected", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Ghế 1" }));
+    expect(screen.queryByLabelText("Bàn đích")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Chuyển người" }));
+    expect(screen.getByLabelText("Bàn đích")).toBeTruthy();
+    expect(screen.getByLabelText("Ghế đích")).toBeTruthy();
+  });
+
+  it("keeps long names inside Vietnamese action dialogs", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Ghế 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Loại khỏi giải" }));
+    const dialog = screen.getByRole("alertdialog");
+    expect(within(dialog).getByText(fixture.longName).className).toContain("break-all");
+    expect(dialog.className).toContain("operations-typography");
+    expect(dialog.className).toContain("w-[calc(100vw-2rem)]");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Giữ người chơi" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Rời ghế" }));
+    expect(within(screen.getByRole("alertdialog")).getByText(/giữ nguyên chip và trở về danh sách chờ/)).toBeTruthy();
+  });
+
+  it("queues a move into a running Tracker table and shows the reserved seat", async () => {
+    setup();
+    fixture.client.movePlayerSeat.mockResolvedValue({ ok: false, error: "destination_table_has_active_hand" });
+    fixture.client.queueTrackerMove.mockResolvedValue({ ok: true, data: { queued: true, pending_move_id: "pending-1" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Ghế 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chuyển người" }));
+    fireEvent.change(screen.getByLabelText("Bàn đích"), { target: { value: "table-2" } });
+    fireEvent.change(screen.getByLabelText("Ghế đích"), { target: { value: "2" } });
+    fixture.client.getPendingTrackerMoves.mockResolvedValue({ ok: true, data: [{
+      pendingMoveId: "pending-1", entryId: "entry-1", sourceTournamentTableId: "table-1",
+      destinationTournamentTableId: "table-2", destinationSeatNumber: 2,
+      status: "pending", resolutionReason: null, requestedAt: "2026-09-24T00:00:00Z",
+    }] });
+    fireEvent.click(screen.getByRole("button", { name: "Chuyển đến Bàn 5 · Ghế 2" }));
+    await waitFor(() => expect(fixture.client.queueTrackerMove).toHaveBeenCalledWith(expect.objectContaining({
+      entryId: "entry-1", toTournamentTableId: "table-2", toSeatNumber: 2,
+    })));
+    expect(fixture.client.movePlayerSeat).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Chờ hết ván · Bàn 5 · Ghế 2")).toBeTruthy();
+  });
+});

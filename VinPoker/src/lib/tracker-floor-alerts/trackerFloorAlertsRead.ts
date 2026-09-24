@@ -9,13 +9,21 @@ export interface TrackerFloorAlert {
   readonly physical_table_id: string;
   readonly hand_id: string | null;
   readonly dealer_name: string | null;
-  readonly alert_kind: "wrong_action" | "call_floor";
+  readonly alert_kind: "wrong_action" | "call_floor" | "display_issue";
   readonly priority: "high" | "urgent";
   readonly status: TrackerFloorAlertStatus;
   readonly version: number;
   readonly correction_required: boolean;
   readonly title: string;
   readonly message: string | null;
+  readonly source_action_id?: string | null;
+  readonly source_action_snapshot?: {
+    readonly action_order?: number;
+    readonly action_type?: string;
+    readonly action_amount?: number;
+    readonly player_id?: string;
+  } | null;
+  readonly source_state_fingerprint?: string | null;
   readonly created_at: string;
 }
 
@@ -35,13 +43,17 @@ function isAlert(value: unknown): value is TrackerFloorAlert {
     && typeof row.title === "string"
     && typeof row.created_at === "string"
     && ["open", "acknowledged", "in_progress", "resolved", "dismissed"].includes(String(row.status))
-    && ["wrong_action", "call_floor"].includes(String(row.alert_kind))
+    && ["wrong_action", "call_floor", "display_issue"].includes(String(row.alert_kind))
     && ["high", "urgent"].includes(String(row.priority))
     && Number.isSafeInteger(row.version)
     && typeof row.correction_required === "boolean"
     && (row.hand_id === null || typeof row.hand_id === "string")
     && (row.dealer_name === null || typeof row.dealer_name === "string")
-    && (row.message === null || typeof row.message === "string");
+    && (row.message === null || typeof row.message === "string")
+    && (row.source_action_id === undefined || row.source_action_id === null || typeof row.source_action_id === "string")
+    && (row.source_state_fingerprint === undefined || row.source_state_fingerprint === null || typeof row.source_state_fingerprint === "string")
+    && (row.source_action_snapshot === undefined || row.source_action_snapshot === null
+      || (typeof row.source_action_snapshot === "object" && !Array.isArray(row.source_action_snapshot)));
 }
 
 /** Read-only shared loader. It intentionally has no subscriptions or transitions. */

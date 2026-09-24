@@ -500,6 +500,8 @@ export const FEATURES = {
    * is byte-identical to today. Presentational only — no data/handler change.
    */
   trackerTabletLayout: true,
+  // Only deploy this bundle after the operational Floor alert RPC is live and verified.
+  trackerOperationalFloorAlerts: true,
   /**
    * Felt UI v2 (owner "fix UI UX toàn bộ" wave): bigger seat pods on the RICH operator
    * felt — 44px avatars (was 32px), full player names on up to 2 lines (no more
@@ -935,6 +937,9 @@ export const FEATURES = {
    * verified migration application and authenticated UAT.
    */
   floorFreeSitV1: true,
+  // Server-reserved Tracker destination seats apply only after the active hand
+  // ends. Keep OFF until the exact pending-move migration is live and UATed.
+  floorDeferredTrackerMoveV1: false,
   /**
    * Persisted 8/9-max redraw + empty-seat locks. Dark by default and separate
    * from Floor V3 because its additive tables/RPCs require their own DB gate.

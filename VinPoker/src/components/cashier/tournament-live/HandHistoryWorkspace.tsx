@@ -95,6 +95,7 @@ interface HandRecord {
     action_type: string;
     action_amount: number;
     action_order: number;
+    id: string;
     player_id: string;
     entry_number: number;
   }[];
@@ -146,6 +147,7 @@ export type HandHistoryPanelProps = {
   tournamentId: string;
   initialTableId?: string | null;
   initialHandId?: string | null;
+  initialActionId?: string | null;
   onSelectionChange?: (selection: HandHistorySelection) => void;
   workspaceMode?: boolean;
   enableHistoricalBatchControls?: boolean;
@@ -200,6 +202,7 @@ export function HandHistoryWorkspace({
   tournamentId,
   initialTableId = null,
   initialHandId = null,
+  initialActionId = null,
   onSelectionChange,
   workspaceMode = false,
   enableHistoricalBatchControls = false,
@@ -397,6 +400,7 @@ export function HandHistoryWorkspace({
       const identity = identityMap.get(playerIdentityKey(action.hand_id, action.player_id, action.entry_number))
         ?? [...identityMap.entries()].find(([key]) => key.startsWith(`${action.hand_id}:${action.player_id}:`))?.[1];
       actionMap.get(action.hand_id)!.push({
+        id: action.id,
         street: action.street || "preflop",
         display_name: identity?.name || "Người chơi",
         seat_number: identity?.seat ?? 0,
@@ -931,6 +935,7 @@ export function HandHistoryWorkspace({
                 buttonSeat={selectedHand.button_seat}
                 seats={selectedHand.players.map((player) => ({ seat_number: player.seat_number, display_name: player.display_name }))}
                 actions={selectedHand.actions}
+                initialActionId={initialActionId}
                 canEdit={FEATURES.trackerHandHistoryEdit && editSupported && selectedHand.status === "completed" && !selectedHand.is_voided}
                 isVoided={selectedHand.is_voided}
                 onEditAction={(order) => { setEditActionOrder(order); setEditMode(true); }}

@@ -125,8 +125,8 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
             <BellRing className="h-5 w-5" />
           </span>
           <div>
-            <h3 className="text-sm font-semibold text-zinc-100">Voice & Floor Alerts</h3>
-            <p className="text-[11px] text-zinc-500">Lane vận hành riêng, không thay đổi Dealer Swing.</p>
+            <h3 className="text-sm font-semibold text-zinc-100">Cảnh báo bàn Tracker</h3>
+            <p className="text-[11px] text-zinc-500">Dealer gửi trực tiếp hoặc qua Voice; không thay đổi Dealer Swing.</p>
           </div>
         </div>
         <Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => void reload()} disabled={loading}>
@@ -148,7 +148,7 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
         )}
         {!loading && !error && alerts.length === 0 && (
           <div className="flex min-h-20 items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 text-xs text-zinc-500">
-            <Check className="h-4 w-4 text-emerald-400" /> Không có cảnh báo Voice đang mở
+            <Check className="h-4 w-4 text-emerald-400" /> Không có cảnh báo bàn đang mở
           </div>
         )}
         {alerts.map((alert) => {
@@ -176,9 +176,16 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
                     {location?.handNumber != null ? ` · Hand #${location.handNumber}` : ""}
                     {location?.handVoided ? " · ĐÃ VOID" : ""}
                   </p>
-                  {alert.alert_kind === "wrong_action" && (
+                  {alert.alert_kind === "wrong_action" && !alert.source_action_id && (
                     <p className="mt-1 text-xs text-zinc-300">Action sai chưa được chỉ rõ; xem toàn bộ nhật ký ván trước khi sửa.</p>
                   )}
+                  {alert.alert_kind === "display_issue" && <p className="mt-1 text-xs text-zinc-300">Vấn đề hiển thị; không khóa hand hoặc thay đổi poker state.</p>}
+                  {alert.source_action_id && <p className="mt-1 text-xs text-amber-100">
+                    Action gốc {alert.source_action_snapshot?.action_order != null ? `#${alert.source_action_snapshot.action_order}` : "đã chọn"}
+                    {alert.source_action_snapshot?.action_type ? ` · ${alert.source_action_snapshot.action_type}` : ""}
+                    {alert.source_action_snapshot?.action_amount != null ? ` · ${alert.source_action_snapshot.action_amount.toLocaleString("vi-VN")}` : ""}
+                    <span className="block break-all text-[10px] text-zinc-500">ID {alert.source_action_id}</span>
+                  </p>}
                   {alert.message && <p className="mt-2 line-clamp-2 text-xs text-zinc-300">{alert.message}</p>}
                   {alert.correction_required && (
                     <p className="mt-2 text-xs text-amber-200">{location?.handVoided ? "Hand đã void. Floor kiểm tra nhật ký rồi đóng cảnh báo để mở lại Voice." : "Voice tạm dừng. Kiểm tra và sửa hand trước khi đánh dấu đã xử lý."}</p>
@@ -238,6 +245,7 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
               tournamentId={reviewAlert.tournament_id}
               initialTableId={reviewAlert.tournament_table_id ?? reviewAlert.physical_table_id}
               initialHandId={reviewAlert.hand_id}
+              initialActionId={reviewAlert.source_action_id ?? null}
               workspaceMode
             />
           )}
