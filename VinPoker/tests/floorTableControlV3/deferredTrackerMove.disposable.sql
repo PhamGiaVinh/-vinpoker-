@@ -31,19 +31,21 @@ INSERT INTO public.tournaments (id, club_id, status) VALUES
   ('00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000010', 'active');
 INSERT INTO public.game_tables (id, club_id, table_name, table_number, operational_status) VALUES
   ('00000000-0000-0000-0000-000000000541', '00000000-0000-0000-0000-000000000010', 'TEST Source', 41, 'available'),
-  ('00000000-0000-0000-0000-000000000542', '00000000-0000-0000-0000-000000000010', 'TEST Tracker', 42, 'available');
+  ('00000000-0000-0000-0000-000000000542', '00000000-0000-0000-0000-000000000010', 'TEST Tracker', 42, 'available'),
+  ('00000000-0000-0000-0000-000000000543', '00000000-0000-0000-0000-000000000010', 'TEST Legacy', 43, 'available');
 INSERT INTO public.tournament_entries
   (id, tournament_id, registration_id, player_id, entry_no, current_stack, status)
 VALUES
   ('00000000-0000-0000-0000-000000000841', '00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000a41', '00000000-0000-0000-0000-000000000941', 1, 30000, 'registered'),
   ('00000000-0000-0000-0000-000000000842', '00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000a42', '00000000-0000-0000-0000-000000000942', 1, 40000, 'registered'),
-  ('00000000-0000-0000-0000-000000000843', '00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000a43', '00000000-0000-0000-0000-000000000943', 1, 50000, 'registered');
+  ('00000000-0000-0000-0000-000000000843', '00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000a43', '00000000-0000-0000-0000-000000000943', 1, 50000, 'registered'),
+  ('00000000-0000-0000-0000-000000000844', '00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000a44', '00000000-0000-0000-0000-000000000944', 1, 20000, 'seated');
 
 DO $$
 DECLARE
   v_source jsonb; v_tracker jsonb; v_result jsonb; v_retry jsonb;
   v_source_revision bigint; v_tracker_revision bigint;
-  v_hand uuid;
+  v_hand uuid; v_legacy_tt uuid;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
   v_source := public.floor_open_tournament_table_v3(
@@ -224,6 +226,45 @@ BEGIN
     '00000000-0000-0000-0000-000000000001');
   PERFORM public.floor_table_v3_assert((v_retry->>'ok')::boolean,
     'next Tracker hand accepts moved player with physical table identity: ' || v_retry::text);
+
+  -- A historical assignment and seat carry only their legacy table IDs.
+  -- The replacement hand writer must preserve that separate old read path.
+  INSERT INTO public.tournament_tables (
+    tournament_id, table_id, table_number, max_seats, status
+  ) VALUES (
+    '00000000-0000-0000-0000-000000000141',
+    '00000000-0000-0000-0000-000000000543', 43, 9, 'active'
+  ) RETURNING id INTO v_legacy_tt;
+  INSERT INTO public.tournament_seats (
+    tournament_id, player_id, entry_number, table_id, seat_number,
+    chip_count, entry_id, is_active, status
+  ) VALUES (
+    '00000000-0000-0000-0000-000000000141',
+    '00000000-0000-0000-0000-000000000944', 1,
+    v_legacy_tt, 1, 20000,
+    '00000000-0000-0000-0000-000000000844', true, 'active');
+  UPDATE public.tournament_entries
+  SET table_id = '00000000-0000-0000-0000-000000000543'::uuid,
+      seat_number = 1
+  WHERE id = '00000000-0000-0000-0000-000000000844';
+  INSERT INTO public.tournament_hands (tournament_id, table_id, hand_number, status)
+  VALUES ('00000000-0000-0000-0000-000000000141',
+    v_legacy_tt, 1, 'in_progress') RETURNING id INTO v_hand;
+  INSERT INTO public.hand_players (
+    hand_id, tournament_id, player_id, entry_number, seat_number, starting_stack
+  ) VALUES (v_hand, '00000000-0000-0000-0000-000000000141',
+    '00000000-0000-0000-0000-000000000944', 1, 1, 20000);
+  v_retry := public.record_hand(
+    '00000000-0000-0000-0000-000000000141',
+    v_legacy_tt, 1, pg_catalog.now(),
+    pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+      'player_id', '00000000-0000-0000-0000-000000000944',
+      'entry_number', 1, 'seat_number', 1, 'starting_stack', 20000,
+      'ending_stack', 20000, 'is_eliminated', false)),
+    '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, 0,
+    '00000000-0000-0000-0000-000000000001');
+  PERFORM public.floor_table_v3_assert((v_retry->>'ok')::boolean,
+    'hand writer still accepts historical legacy table and seat: ' || v_retry::text);
 END;
 $$;
 
