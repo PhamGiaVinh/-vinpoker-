@@ -564,9 +564,17 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.USERIDVERRCEL }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
 
+      - name: Pull Vercel project settings
+        run: vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+        working-directory: target-source
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.USERIDVERRCEL }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
+
       - name: Build exact frontend source
-        run: vercel env run --environment=production -- npm run build
-        working-directory: target-source/VinPoker
+        run: vercel env run --environment=production -- npm --prefix VinPoker run build
+        working-directory: target-source
         env:
           VITE_SUPABASE_URL: "https://orlesggcjamwuknxwcpk.supabase.co"
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
@@ -583,7 +591,6 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
         run: |
           set -euo pipefail
-          vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
           mkdir -p .vercel/output/static
           cp -r VinPoker/dist/. .vercel/output/static/
           node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/verify-app-shell-routing.mjs" \
