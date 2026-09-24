@@ -87,6 +87,38 @@ output, restore method, and writes during export outside Git/chat/vault.
 The scheduled physical backup alone is not fresh enough if writes followed it.
 If a safe credential or recovery method is unavailable, do not apply.
 
+## Selective versioned apply (prepared, not executed)
+
+After the recovery gate and fresh read-only precheck pass, use a fresh temporary
+Supabase project directory containing **only** the reviewed version-11 file.
+Do not copy the repository's full `supabase/migrations` directory. Pin the PR
+head at execution time against the reviewed GitHub SHA; stop if it differs.
+Pin the target project to `orlesggcjamwuknxwcpk`. Before invoking the CLI,
+require the source SHA-256 above, an empty staged migrations directory, and a
+staged directory containing exactly that one filename. Confirm the live ledger
+still has 03, lacks 11, and lacks 06–10. An unexpected history or a CLI plan
+showing anything other than 11 is a stop condition, not a reason to use
+`--include-all`, `migration repair`, or `db push`.
+
+Use the CLI's versioned `supabase migration up --linked` from that isolated
+directory only after secure credential verification. It must create the real
+version-11 ledger entry itself; never insert or fake that row manually. Keep
+the apply output and final SQL checksum in the private release evidence.
+This mechanism is source-prepared but has **not** been exercised against live;
+the controlled apply gate remains closed.
+
+## When owner says `DB_PASSWORD_ROTATED`
+
+1. Verify the newly rotated credential with a read-only probe and update the
+   protected secret store if applicable; never reuse or print the old value.
+2. Create and verify a fresh restorable recovery point, then repeat project,
+   ledger, function-MD5, source-head, SHA-256, and one-file allowlist prechecks.
+3. Run only the selective version-11 apply above. Check the function, ACL,
+   ledger and business-state hashes; require 06–10 still absent.
+4. Once DB and CI gates pass, merge #1304, verify the exact production Vercel
+   source SHA, then perform read-only production smoke. Do not create a live
+   refund or buy-in merely for this smoke test.
+
 ## Read-only postcheck after an owner-approved exact apply
 
 Repeat the precheck ledger and business-state query. Require one new ledger row
