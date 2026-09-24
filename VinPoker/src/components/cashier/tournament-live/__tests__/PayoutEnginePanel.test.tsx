@@ -9,12 +9,16 @@ const h = vi.hoisted(() => ({
     id: "t1", buy_in: 1_000_000, rake_amount: 200_000, prize_pool: null as number | null,
     itm_places: null as number | null, registration_closed_at: null as string | null,
     live_status: null as string | null, event_id: null as string | null, club_id: "c1",
+    operations_mode: "standard",
     planned_itm_percent: null as number | null, planned_payout_archetype: null as string | null,
     planned_min_cash_x: null as number | null, planned_rounding_unit: null as number | null,
   },
   prizes: [] as any[],
   appliedRun: null as any,
   entriesCount: 10,
+  prizesError: null as { message: string } | null,
+  runError: null as { message: string } | null,
+  entriesError: null as { message: string } | null,
   tournamentsUpdateError: null as { message: string } | null,
   // RETURNING rows của UPDATE tournaments (RLS lọc → []). Mặc định 1 row = update thành công.
   tournamentsUpdateRows: [{ id: "t1" }] as { id: string }[],
@@ -24,7 +28,7 @@ const h = vi.hoisted(() => ({
     error: null,
   })),
   rpc: vi.fn(async (name: string, _a: any): Promise<any> => {
-    if (name === "get_tournament_prizes") return { data: h.prizes, error: null };
+    if (name === "get_tournament_prizes") return { data: h.prizes, error: h.prizesError };
     if (name === "prepare_payout_snapshot") return { data: { run_id: "run-1" }, error: null };
     if (name === "save_tournament_prizes_v2") return { data: { status: "saved" }, error: null };
     return { data: null, error: null };
@@ -33,8 +37,9 @@ const h = vi.hoisted(() => ({
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // Mutable feature flags — the panel reads FEATURES.payoutCustomMode for the CUSTOM gate.
-const flags = vi.hoisted(() => ({ payoutCustomMode: false, payoutCustomTemplates: false, payoutPlannedSettings: false }));
+const flags = vi.hoisted(() => ({ payoutCustomMode: false, payoutCustomTemplates: false, payoutPlannedSettings: false, satelliteAwardsV1: false }));
 vi.mock("@/lib/featureFlags", () => ({ FEATURES: flags }));
+vi.mock("../SatelliteAwardPlanPanel", () => ({ SatelliteAwardPlanPanel: () => <div>Satellite awards isolated</div> }));
 vi.mock("@/integrations/supabase/client", () => {
   const makeChain = (table: string) => {
     const chain: any = {};
@@ -43,7 +48,7 @@ vi.mock("@/integrations/supabase/client", () => {
     chain.eq = vi.fn(() => chain);
     chain.neq = vi.fn(() => chain);
     chain.single = vi.fn(async () => (table === "tournaments" ? { data: h.tour, error: null } : { data: null, error: null }));
-    chain.maybeSingle = vi.fn(async () => (table === "tournament_payout_runs" ? { data: h.appliedRun, error: null } : { data: null, error: null }));
+    chain.maybeSingle = vi.fn(async () => (table === "tournament_payout_runs" ? { data: h.appliedRun, error: h.runError } : { data: null, error: null }));
     chain.order = vi.fn(() => chain);
     chain.insert = vi.fn(async () => ({ data: null, error: null }));
     chain.update = vi.fn((payload: any) => { isUpdate = true; if (table === "tournaments") h.lastTournamentsUpdatePayload = payload; return chain; });
@@ -51,7 +56,7 @@ vi.mock("@/integrations/supabase/client", () => {
     chain.then = (resolve: any) => resolve(
       table === "tournaments" && isUpdate
         ? { data: h.tournamentsUpdateError ? null : h.tournamentsUpdateRows, error: h.tournamentsUpdateError }
-        : { data: [], count: h.entriesCount, error: null },
+        : { data: [], count: h.entriesCount, error: table === "tournament_entries" ? h.entriesError : null },
     ); // entries/templates/planned-save awaited directly
     return chain;
   };
@@ -69,17 +74,18 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  h.tour.registration_closed_at = null; h.tour.live_status = null; h.tour.event_id = null;
+  h.tour.registration_closed_at = null; h.tour.live_status = null; h.tour.event_id = null; h.tour.operations_mode = "standard";
   h.tour.planned_itm_percent = null; h.tour.planned_payout_archetype = null;
   h.tour.planned_min_cash_x = null; h.tour.planned_rounding_unit = null;
   h.prizes = []; h.appliedRun = null; h.entriesCount = 10; h.tournamentsUpdateError = null;
+  h.prizesError = null; h.runError = null; h.entriesError = null;
   h.tournamentsUpdateRows = [{ id: "t1" }];
-  flags.payoutCustomMode = false; flags.payoutCustomTemplates = false; flags.payoutPlannedSettings = false;
+  flags.payoutCustomMode = false; flags.payoutCustomTemplates = false; flags.payoutPlannedSettings = false; flags.satelliteAwardsV1 = false;
   h.invoke.mockClear(); h.rpc.mockClear();
   (toast.error as any).mockClear(); (toast.success as any).mockClear();
   h.invoke.mockImplementation(async () => ({ data: { result: { rows: [{ position: 1, amount: 7_600_000, percentage: 76 }, { position: 2, amount: 2_400_000, percentage: 24 }], itmPlaces: 2, effectiveFloor: 2_400_000, archetype: "DAILY", warnings: [] }, prizePool: 10_000_000 }, error: null }));
   h.rpc.mockImplementation(async (name: string) => {
-    if (name === "get_tournament_prizes") return { data: h.prizes, error: null };
+    if (name === "get_tournament_prizes") return { data: h.prizes, error: h.prizesError };
     if (name === "prepare_payout_snapshot") return { data: { run_id: "run-1" }, error: null };
     if (name === "save_tournament_prizes_v2") return { data: { status: "saved" }, error: null };
     return { data: null, error: null };
@@ -91,6 +97,28 @@ const officialState = () => {
   h.prizes = [{ position: 1, percentage: 76, amount: 7_600_000 }, { position: 2, percentage: 24, amount: 2_400_000 }];
   h.appliedRun = { source: "close", entries_snapshot: 10, itm_places: 2, prize_pool_snapshot: 10_000_000 };
 };
+
+describe("PayoutEnginePanel — Satellite routing", () => {
+  it("does not read one-day payout sources for a Satellite", async () => {
+    flags.satelliteAwardsV1 = true;
+    h.tour.operations_mode = "satellite";
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    expect(await screen.findByText("Satellite awards isolated")).toBeTruthy();
+    expect(h.rpc.mock.calls.some((call) => call[0] === "get_tournament_prizes")).toBe(false);
+  });
+});
+
+describe("PayoutEnginePanel — load failures", () => {
+  it.each(["prizes", "run", "entries"] as const)("blocks payout actions when %s fails to load", async (source) => {
+    if (source === "prizes") h.prizesError = { message: "prizes failed" };
+    if (source === "run") h.runError = { message: "run failed" };
+    if (source === "entries") h.entriesError = { message: "entries failed" };
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    expect(await screen.findByText(`${source} failed`)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Thử lại/ })).toBeTruthy();
+    expect(screen.queryByText(/Xem trước/)).toBeNull();
+  });
+});
 
 describe("PayoutEnginePanel — preview is forecast-only (does NOT close registration)", () => {
   it("Xem trước calls compute-payouts mode=preview and NEVER prepare_payout_snapshot", async () => {

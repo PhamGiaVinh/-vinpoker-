@@ -19,6 +19,7 @@ import { seedCustomLadder, suggestLadderFromRank1, type SuggestedLadder, type Su
 import { groupPayoutRows } from "@/lib/tv/payoutBands";
 import { PrizePayoutTrackingSection } from "./PrizePayoutTrackingSection";
 import { SatellitePayoutEditor } from "./SatellitePayoutEditor";
+import { SatelliteAwardPlanPanel } from "./SatelliteAwardPlanPanel";
 
 // PR-3: flag-gated (FEATURES.payoutEngine) operator UI for the "Engine 3-neo" payout backend
 // (PR-2a RPCs + PR-2b compute-payouts Edge). Forecast preview (no persist) · one-way close-and-
@@ -73,6 +74,7 @@ interface TournamentRow {
   registration_closed_at: string | null; live_status: string | null; event_id: string | null; club_id: string;
   planned_itm_percent?: number | null; planned_payout_archetype?: string | null;
   planned_min_cash_x?: number | null; planned_rounding_unit?: number | null;
+  operations_mode?: string;
 }
 
 export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
@@ -132,6 +134,7 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   const isClosed = !!tour?.registration_closed_at || tour?.live_status === "finished";
   const hasOfficial = officialRows.length > 0;
   const isMultiDay = !!tour?.event_id;
+  const isSatellite = FEATURES.satelliteAwardsV1 && tour?.operations_mode === "satellite";
   const editedManually = appliedRun?.source === "manual_edit";
   const isCustom = archetype === "CUSTOM";
 
@@ -153,15 +156,31 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   const load = useCallback(async () => {
     setLoading(true); setLoadError(null);
     try {
+      // Satellite award plans do not depend on the one-day payout engine's prize/run
+      // reads. Resolve the mode first so an unrelated payout-source failure cannot
+      // hide the TD's locked Satellite decision. This preflight only runs when enabled.
+      if (FEATURES.satelliteAwardsV1) {
+        const { data: satelliteTour, error: modeError } = await (supabase as any)
+          .from("tournaments").select("id, club_id, operations_mode, buy_in, rake_amount, prize_pool, itm_places, registration_closed_at, live_status, event_id")
+          .eq("id", tournamentId).single();
+        if (modeError) throw modeError;
+        if (satelliteTour?.operations_mode === "satellite") {
+          setTour(satelliteTour as TournamentRow);
+          return;
+        }
+      }
       const [{ data: t, error: te }, prizesRes, runRes, cntRes] = await Promise.all([
         // (supabase as any): registration_closed_at + planned_* are live (PR-2a) but not in the
         // generated types.ts (no regen) — treat tournaments as any here, same as the rows/entries reads.
-        (supabase as any).from("tournaments").select("id, buy_in, rake_amount, prize_pool, itm_places, registration_closed_at, live_status, event_id, club_id, planned_itm_percent, planned_payout_archetype, planned_min_cash_x, planned_rounding_unit").eq("id", tournamentId).single(),
+        (supabase as any).from("tournaments").select(`id, buy_in, rake_amount, prize_pool, itm_places, registration_closed_at, live_status, event_id, club_id, planned_itm_percent, planned_payout_archetype, planned_min_cash_x, planned_rounding_unit${FEATURES.satelliteAwardsV1 ? ", operations_mode" : ""}`).eq("id", tournamentId).single(),
         (supabase.rpc as any)("get_tournament_prizes", { p_tournament_id: tournamentId }),
         (supabase as any).from("tournament_payout_runs").select("*").eq("tournament_id", tournamentId).eq("status", "applied").maybeSingle(),
         (supabase as any).from("tournament_entries").select("id", { count: "exact", head: true }).eq("tournament_id", tournamentId).neq("status", "cancelled"),
       ]);
       if (te) throw te;
+      if (prizesRes?.error || runRes?.error || cntRes?.error) {
+        throw prizesRes?.error || runRes?.error || cntRes?.error;
+      }
       setTour(t as TournamentRow);
       const prizes = ((prizesRes?.data ?? []) as any[]).map((p) => ({ position: Number(p.position), amount: Number(p.amount), percentage: Number(p.percentage) }));
       setOfficialRows(prizes);
@@ -458,6 +477,10 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
       </div>
     );
   };
+
+  if (isSatellite && tour) {
+    return <SatelliteAwardPlanPanel tournamentId={tournamentId} clubId={tour.club_id} />;
+  }
 
   return (
     <div className="space-y-4">
