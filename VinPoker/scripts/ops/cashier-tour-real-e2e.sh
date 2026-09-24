@@ -340,6 +340,31 @@ if (( money_test_rc != 0 )); then
 fi
 echo "MONEY_PROOF: Cashier money/seat rollback-only SQL assertions passed on captured schema"
 
+refund_migration='20270115000011_cashier_refund_without_floor_clearance.sql'
+set +e
+timeout 10m docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  <"$repo_root/supabase/pending-migrations/$refund_migration" >"$test_root/refund-migration.log" 2>&1
+refund_migration_rc=$?
+set -e
+if (( refund_migration_rc != 0 )); then
+  echo "Exact Cashier refund migration failed on isolated schema (exit $refund_migration_rc)" >&2
+  tail -n 45 "$test_root/refund-migration.log" >&2
+  exit 1
+fi
+set +e
+timeout 10m docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 \
+  -v cashier_no_floor=on -U postgres -d postgres \
+  <"$repo_root/supabase/pending-tests/cashier_tour_money_v1.sql" \
+  >"$test_root/refund-money-test.log" 2>&1
+refund_money_rc=$?
+set -e
+if (( refund_money_rc != 0 )); then
+  echo "Cashier refund rollback-only assertions failed on isolated schema (exit $refund_money_rc)" >&2
+  tail -n 45 "$test_root/refund-money-test.log" >&2
+  exit 1
+fi
+echo "REFUND_PROOF: exact migration 11 and rollback-only waiting-seat/historical refund assertions passed"
+
 # Load the real handlers only after outbound denial, then exercise them through
 # the real local Auth, API gateway, Edge runtime and captured production schema.
 rm -rf -- supabase/functions/edge-dependency-cache
@@ -446,6 +471,16 @@ if [[ "$edge_state" != '1|1|1|1|1|t|1' ]]; then
 fi
 echo "EDGE_PROOF: real local Auth + gateway + tournament-register + fake-SePay reconcile produced one payment, seat, receipt and notice"
 
+refund_fixture="$(docker exec -i "$db_container" psql -X -Atq -v ON_ERROR_STOP=1 \
+  -v player_id="$player_id" -v owner_id="$owner_id" -U postgres -d postgres \
+  <"$repo_root/supabase/pending-tests/cashier_tour_real_refund_fixture.sql")"
+refund_registration_id="$(jq -er '.registration_id' <<<"$refund_fixture")"
+refund_reference_code="$(jq -er '.reference_code' <<<"$refund_fixture")"
+if [[ ! "$refund_registration_id" =~ $uuid_pattern || -z "$refund_reference_code" ]]; then
+  echo "Disposable waiting-seat refund fixture is invalid" >&2
+  exit 1
+fi
+
 # Build the real UI against this local gateway and render it in Chromium. The
 # browser performs real Auth/Data API calls; no request route is intercepted.
 (cd "$repo_root" && \
@@ -481,6 +516,23 @@ docker run --rm --network "$browser_network" \
   --env LOCAL_OWNER_EMAIL="$owner_email" \
   --env LOCAL_OWNER_PASSWORD="$owner_password" \
   --env LOCAL_SUPABASE_STORAGE_KEY="$storage_key" \
+  --env LOCAL_REFUND_REGISTRATION_ID="$refund_registration_id" \
+  --env LOCAL_REFUND_REFERENCE_CODE="$refund_reference_code" \
   mcr.microsoft.com/playwright:v1.60.0-noble \
   npx playwright test e2e/cashier-tour-real.spec.ts --output=/tmp/cashier-playwright-results
 echo "BROWSER_PROOF: real Chromium rendered the seated Cashier row through local Auth and Data API without interception"
+
+refund_state="$(docker exec "$db_container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres -c \
+  "SELECT (SELECT status='paid' FROM public.cashier_refund_requests WHERE registration_id='$refund_registration_id'::uuid),
+    (SELECT status='cancelled' FROM public.tournament_registrations WHERE id='$refund_registration_id'::uuid),
+    (SELECT coalesce(sum(applied_amount),0) FROM public.cashier_buyin_movements
+      WHERE registration_id='$refund_registration_id'::uuid AND purpose='refund' AND direction='out'),
+    (SELECT count(*) FROM public.cashier_buyin_movements
+      WHERE registration_id='$refund_registration_id'::uuid AND purpose='refund' AND direction='out'),
+    (SELECT count(*) FROM public.tournament_entries WHERE registration_id='$refund_registration_id'::uuid),
+    (SELECT count(*) FROM public.seat_draw_receipts WHERE registration_id='$refund_registration_id'::uuid);")"
+if [[ "$refund_state" != 't|t|6600000|1|0|0' ]]; then
+  echo "Browser waiting-seat refund postcondition failed ($refund_state)" >&2
+  exit 1
+fi
+echo "REFUND_BROWSER_PROOF: Tour B waiting-seat refund paid once, registration closed, no seat/receipt"

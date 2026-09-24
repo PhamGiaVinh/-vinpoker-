@@ -14,6 +14,10 @@ on:
       - "VinPoker/supabase/functions/tournament-register/**"
       - "VinPoker/supabase/functions/sepay-reconcile/**"
       - "VinPoker/supabase/migrations/20270115000003_cashier_tour_money_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270115000011_cashier_refund_without_floor_clearance.sql"
+      - "VinPoker/supabase/pending-tests/cashier_tour_money_v1.sql"
+      - "VinPoker/supabase/pending-tests/cashier_tour_real_refund_fixture.sql"
+      - "VinPoker/src/pages/ops/TourCashierWorkbench.tsx"
   workflow_dispatch:
 
 permissions:
@@ -48,17 +52,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin main
-          main_sha="$(git rev-parse origin/main)"
-          capture_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/capture-live-public-schema.yml/runs?event=workflow_dispatch&status=success&branch=main&per_page=5")"
-          capture_id="$(jq -er --arg owner "$GITHUB_REPOSITORY_OWNER" --arg sha "$main_sha" '
-            .workflow_runs | map(select(.conclusion == "success" and .head_sha == $sha
-              and (.actor.login | ascii_downcase) == ($owner | ascii_downcase))) | .[0].id
-          ' <<<"$capture_json")"
+          # This owner capture predates live Cashier 03 and is schema-only.
+          # A fresh capture would already include 03, so it cannot be used as
+          # the pre-03 baseline for this isolated migration chain.
+          capture_id=35982674365
+          capture_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$capture_id")"
+          jq -e --arg owner "$GITHUB_REPOSITORY_OWNER" --argjson id "$capture_id" '
+            .id == $id and .conclusion == "success" and .event == "workflow_dispatch"
+              and .head_branch == "main"
+              and (.actor.login | ascii_downcase) == ($owner | ascii_downcase)
+          ' <<<"$capture_json" >/dev/null
           gh run download "$capture_id" -n live-public-schema -D "${RUNNER_TEMP}/cashier-schema"
           node scripts/deploy/validate-live-public-schema-artifact.mjs \
             --artifact-directory "${RUNNER_TEMP}/cashier-schema"
-          echo "Schema baseline: owner capture run $capture_id at main $main_sha"
+          echo "Schema baseline: owner capture run $capture_id (pre-Cashier-03)"
       - name: Isolate empty local Supabase before any application migration
         working-directory: VinPoker
         env:

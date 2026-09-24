@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const required = [
   "LOCAL_SUPABASE_URL",
@@ -6,12 +6,14 @@ const required = [
   "LOCAL_OWNER_EMAIL",
   "LOCAL_OWNER_PASSWORD",
   "LOCAL_SUPABASE_STORAGE_KEY",
+  "LOCAL_REFUND_REGISTRATION_ID",
+  "LOCAL_REFUND_REFERENCE_CODE",
 ];
 for (const name of required) {
   if (!process.env[name]) throw new Error(`missing ${name}`);
 }
 
-test("real Auth and Cashier backend render the completed seated buy-in", async ({ page }) => {
+async function loginOwner(page: Page) {
   const api = process.env.LOCAL_SUPABASE_URL!.replace(/\/$/, "");
   const anon = process.env.LOCAL_SUPABASE_ANON_KEY!;
   const response = await fetch(`${api}/auth/v1/token?grant_type=password`, {
@@ -29,6 +31,11 @@ test("real Auth and Cashier backend render the completed seated buy-in", async (
   await page.addInitScript(({ key, value }) => {
     localStorage.setItem(key, JSON.stringify(value));
   }, { key: process.env.LOCAL_SUPABASE_STORAGE_KEY!, value: session });
+  return session.access_token as string;
+}
+
+test("real Auth and Cashier backend render the completed seated buy-in", async ({ page }) => {
+  await loginOwner(page);
 
   const pageErrors: string[] = [];
   const requestFailures: string[] = [];
@@ -56,4 +63,49 @@ test("real Auth and Cashier backend render the completed seated buy-in", async (
   await expect(page.getByText(/Bàn 1, ghế \d+/u)).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(pageErrors).toEqual([]);
+});
+
+test("real Cashier UI refunds a waiting Tour B registration while serving Tour A", async ({ page }) => {
+  const token = await loginOwner(page);
+  const registrationId = process.env.LOCAL_REFUND_REGISTRATION_ID!;
+  const referenceCode = process.env.LOCAL_REFUND_REFERENCE_CODE!;
+  await page.setViewportSize({ width: 375, height: 844 });
+  await page.goto("/ops/cashier/tour?club=a2000000-0000-4000-8000-000000000001");
+  await expect(page.getByText("ACTIVE", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /Cashier Edge TEST Tour/ }).first().click();
+  await expect(page.getByRole("heading", { level: 1, name: "Cashier Edge TEST Tour" })).toBeVisible();
+  await page.getByPlaceholder("Quét QR, thẻ hội viên, mã CK; hoặc tìm tên, số điện thoại").fill(referenceCode);
+  await page.getByRole("button", { name: "Xem đăng ký tour này" }).click();
+  await expect(page.getByRole("dialog", { name: /Chi tiết buy-in/ })
+    .getByText("Tour của lượt này: Cashier Edge TEST Tour B")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Cashier Edge TEST Tour" })).toBeVisible();
+
+  const detail = page.getByRole("dialog", { name: /Chi tiết buy-in/ });
+  await detail.getByLabel("Lý do").fill("TEST refund before seating");
+  const requestResponse = page.waitForResponse((response) => response.url().endsWith("/rpc/cashier_request_refund_v1"));
+  await detail.getByRole("button", { name: "Yêu cầu hoàn tiền" }).click();
+  const requested = await requestResponse;
+  expect(requested.request().postDataJSON().p_registration_id).toBe(registrationId);
+  expect((await requested.json()).ok).toBe(true);
+  await detail.getByLabel("Tiền mặt").fill("6600000");
+  await detail.getByLabel("Chuyển khoản").fill("0");
+  await detail.getByLabel("Bằng chứng chi hoàn").fill("TEST paid in isolated cashier E2E");
+  page.once("dialog", (dialog) => dialog.accept());
+  const payoutResponse = page.waitForResponse((response) => response.url().endsWith("/rpc/cashier_complete_refund_v1"));
+  await detail.getByRole("button", { name: "Ghi nhận đã chi hoàn" }).click();
+  const payout = await payoutResponse;
+  expect((await payout.json()).ok).toBe(true);
+
+  const retry = await page.evaluate(async ({ api, anon, accessToken, refundId }) => {
+    const response = await fetch(`${api}/rest/v1/rpc/cashier_complete_refund_v1`, {
+      method: "POST",
+      headers: { apikey: anon, Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_refund_id: refundId, p_cash_amount: 6600000,
+        p_bank_amount: 0, p_bank_reference: "", p_evidence: "TEST retry in isolated cashier E2E" }),
+    });
+    return { status: response.status, body: await response.json() };
+  }, { api: process.env.LOCAL_SUPABASE_URL!, anon: process.env.LOCAL_SUPABASE_ANON_KEY!,
+    accessToken: token, refundId: (await requested.json()).refund_id as string });
+  expect(retry.status).toBe(200);
+  expect(retry.body.already_paid).toBe(true);
 });
