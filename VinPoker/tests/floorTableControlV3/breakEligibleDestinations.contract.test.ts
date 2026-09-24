@@ -11,8 +11,12 @@ describe("Floor V3 break eligible destinations", () => {
   it("counts and assigns only destinations without an active hand", () => {
     expect(source).toContain("CREATE OR REPLACE FUNCTION public.floor_break_table_v3");
     expect(source).toContain("floor_table_v3_has_active_hand(v_tournament.id, v_source_table.id, v_source_session.id)");
-    const guard = "AND NOT floor_private.floor_table_v3_has_active_hand(v_tournament.id, target.id, target_session.id)";
-    expect(source.split(guard).length - 1).toBe(2);
+    expect(source).toContain("floor_table_v3_has_active_hand(");
+    expect(source).toContain("floor_break_eligible_seats_v1(v_tournament.id, v_source_table.id)");
+    expect(source).toContain("generate_series(1, target.max_seats)");
+    expect(source).toContain("table_session_seat_locks");
+    expect(source).toContain("floor_break_pending_reservations_v1");
+    expect(source).not.toContain("sum(9 - occupied.count_active)");
     expect(source).not.toContain("destination_table_has_active_hand");
     expect(source).toContain("'insufficient_capacity'");
   });

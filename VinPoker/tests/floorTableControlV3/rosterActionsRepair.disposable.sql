@@ -144,4 +144,86 @@ BEGIN
 END;
 $$;
 
+-- 8-max break capacity uses actual eligible seat numbers, not 9 minus occupancy.
+INSERT INTO public.game_tables (id, club_id, table_name, table_number, operational_status)
+VALUES ('00000000-0000-0000-0000-000000000534',
+        '00000000-0000-0000-0000-000000000010', 'Bàn 34', 34, 'available');
+INSERT INTO public.tournament_entries
+  (id, tournament_id, registration_id, player_id, entry_no, current_stack, status)
+VALUES ('00000000-0000-0000-0000-000000000834',
+        '00000000-0000-0000-0000-000000000131',
+        '00000000-0000-0000-0000-000000000a34',
+        '00000000-0000-0000-0000-000000000934', 1, 30000, 'registered');
+DO $$
+DECLARE
+  v_source jsonb; v_result jsonb; v_target public.tournament_tables%ROWTYPE;
+  v_source_id uuid; v_revision bigint; v_n integer;
+  v_entry_id uuid; v_player_id uuid;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
+  SELECT * INTO v_target FROM public.tournament_tables
+  WHERE game_table_id = '00000000-0000-0000-0000-000000000533' AND status = 'active';
+  UPDATE public.tournament_tables SET max_seats = 8 WHERE id = v_target.id;
+  v_source := public.floor_open_tournament_table_v3(
+    '00000000-0000-0000-0000-000000000131',
+    '00000000-0000-0000-0000-000000000534', 'manual',
+    '00000000-0000-0000-0000-000000001141');
+  PERFORM public.floor_table_v3_assert((v_source->>'ok')::boolean, '8-max test source opens');
+  v_source_id := (v_source->>'tournament_table_id')::uuid;
+  v_result := public.floor_assign_entry_to_seat(
+    '00000000-0000-0000-0000-000000000834', v_source_id, 1,
+    (v_source->>'revision')::bigint, '00000000-0000-0000-0000-000000001142');
+  PERFORM public.floor_table_v3_assert((v_result->>'ok')::boolean, '8-max test source seats');
+  v_revision := (v_result->>'revision')::bigint;
+  FOR v_n IN 2..8 LOOP
+    v_entry_id := ('00000000-0000-0000-0000-' || pg_catalog.lpad(pg_catalog.to_hex(850 + v_n), 12, '0'))::uuid;
+    v_player_id := ('00000000-0000-0000-0000-' || pg_catalog.lpad(pg_catalog.to_hex(950 + v_n), 12, '0'))::uuid;
+    INSERT INTO public.tournament_entries
+      (id, tournament_id, registration_id, player_id, entry_no, current_stack, status)
+    VALUES (v_entry_id, '00000000-0000-0000-0000-000000000131',
+            ('00000000-0000-0000-0000-' || pg_catalog.lpad(pg_catalog.to_hex(1050 + v_n), 12, '0'))::uuid,
+            v_player_id, 1, 10000, 'seated');
+    INSERT INTO public.tournament_seats
+      (tournament_id, player_id, entry_number, table_id, tournament_table_id,
+       table_session_id, seat_number, chip_count, is_active, entry_id, status)
+    VALUES ('00000000-0000-0000-0000-000000000131', v_player_id, 1,
+            v_target.id, v_target.id, v_target.table_session_id,
+            v_n, 10000, true, v_entry_id, 'active');
+  END LOOP;
+  PERFORM public.floor_table_v3_assert(
+    (SELECT pg_catalog.count(*) = 0 FROM floor_private.floor_break_eligible_seats_v1(
+      '00000000-0000-0000-0000-000000000131', v_source_id)),
+    'full 8-max has zero capacity and never offers seat 9');
+  v_result := public.floor_break_table_v3(v_source_id, v_revision,
+    '00000000-0000-0000-0000-000000001143');
+  PERFORM public.floor_table_v3_assert(
+    v_result->>'error' = 'insufficient_capacity'
+    AND EXISTS (SELECT 1 FROM public.tournament_seats WHERE entry_id =
+      '00000000-0000-0000-0000-000000000834' AND is_active),
+    'full 8-max break fails before changing any source seat');
+  UPDATE public.tournament_seats SET is_active = false, status = 'moved'
+  WHERE tournament_table_id = v_target.id AND seat_number = 8 AND is_active;
+  INSERT INTO public.table_session_seat_locks
+    (tournament_id, tournament_table_id, table_session_id, seat_number, reason, locked_by)
+  VALUES ('00000000-0000-0000-0000-000000000131', v_target.id,
+          v_target.table_session_id, 8, 'TEST reserved seat',
+          '00000000-0000-0000-0000-000000000001');
+  PERFORM public.floor_table_v3_assert(
+    (SELECT pg_catalog.count(*) = 0 FROM floor_private.floor_break_eligible_seats_v1(
+      '00000000-0000-0000-0000-000000000131', v_source_id)),
+    'locked empty seat does not count as capacity');
+  UPDATE public.table_session_seat_locks SET unlocked_at = pg_catalog.now(),
+    unlocked_by = '00000000-0000-0000-0000-000000000001'
+  WHERE table_session_id = v_target.table_session_id AND seat_number = 8;
+  v_result := public.floor_break_table_v3(v_source_id, v_revision,
+    '00000000-0000-0000-0000-000000001144');
+  PERFORM public.floor_table_v3_assert((v_result->>'ok')::boolean
+    AND (v_result->>'moved_count')::integer = 1
+    AND EXISTS (SELECT 1 FROM public.tournament_seats
+      WHERE entry_id = '00000000-0000-0000-0000-000000000834'
+        AND tournament_table_id = v_target.id AND seat_number = 8 AND is_active),
+    'one freed 8-max seat receives exactly one player');
+END;
+$$;
+
 SELECT 'FLOOR_ROSTER_ACTIONS_REPAIR_DISPOSABLE_PASS' AS result;

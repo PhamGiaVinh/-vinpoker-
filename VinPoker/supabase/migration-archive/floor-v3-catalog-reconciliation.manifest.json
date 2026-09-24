@@ -6892,12 +6892,12 @@
     {
       "version": "20270115000007",
       "filename": "20270115000007_floor_break_eligible_destinations.sql",
-      "sha256": "37df6b13ea22be8a89eb3aa7325d89de99aa995979d06bbe1e7eb191dff6fd20"
+      "sha256": "68938dc71f5b947849bba59e253a41ccb9c04a3548934090037b5153fd2eab87"
     },
     {
       "version": "20270115000008",
       "filename": "20270115000008_floor_deferred_tracker_move_v1.sql",
-      "sha256": "c31d096ab2db3825a5e2f540bd98aca65a7335a2278871c9f130103eaef124be"
+      "sha256": "44f8267583dc1e28c66f76b2df81576edba148737b134ac246e180e421280472"
     },
     {
       "version": "20270115000009",

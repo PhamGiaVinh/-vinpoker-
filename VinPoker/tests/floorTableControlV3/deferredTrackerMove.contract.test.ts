@@ -25,6 +25,8 @@ describe("deferred Floor move into active Tracker table", () => {
     expect(sql).toContain("SET table_id = v_destination.game_table_id, seat_id = v_new_seat_id");
     expect(sql).toContain("v_destination.id,\n        v_destination.id, v_destination_session.id");
     expect(sql).toContain("REVOKE ALL ON TABLE public.floor_pending_tracker_moves FROM PUBLIC, anon, authenticated, service_role");
+    expect(sql).toContain("CREATE OR REPLACE VIEW floor_private.floor_break_pending_reservations_v1");
+    expect(sql).not.toContain("GRANT EXECUTE ON FUNCTION public.floor_queue_tracker_move_v1");
   });
 
   it("finishes V3 hands from explicit session and seat identity without legacy writes", () => {

@@ -23,10 +23,24 @@ BEFORE UPDATE OF chip_count ON public.tournament_seats
 FOR EACH ROW EXECUTE FUNCTION public.deferred_test_fail_after_terminal();
 
 SELECT public.floor_table_v3_assert(
-  has_function_privilege('authenticated', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE')
+  NOT has_function_privilege('authenticated', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE')
   AND NOT has_function_privilege('anon', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE')
   AND NOT has_table_privilege('authenticated', 'public.floor_pending_tracker_moves', 'INSERT'),
-  'deferred move queue is caller-bound and has no direct table write');
+  'deferred move queue is closed before the release gate');
+SET ROLE authenticated;
+DO $$ BEGIN
+  BEGIN
+    PERFORM public.floor_queue_tracker_move_v1(NULL,NULL,NULL,NULL,NULL,NULL);
+    RAISE EXCEPTION 'queue writer unexpectedly callable before release';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END $$;
+RESET ROLE;
+GRANT EXECUTE ON FUNCTION public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)
+  TO authenticated;
+SELECT public.floor_table_v3_assert(
+  has_function_privilege('authenticated', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE'),
+  'release grant makes queue writer caller-bound');
 SELECT public.floor_table_v3_assert(
   has_function_privilege('authenticated', 'public.get_tracker_hand_input_tables_v3(uuid)', 'EXECUTE')
   AND has_function_privilege('authenticated',
