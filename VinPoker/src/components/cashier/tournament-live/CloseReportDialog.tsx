@@ -120,12 +120,14 @@ export default function CloseReportDialog({ open, onOpenChange, tournamentId, to
                 <div className="text-[11px] font-medium text-muted-foreground mb-1">TIỀN VÀO</div>
                 <Row label="Buy-in" sub="pass-through" amount={fmt(report.buyInTotal)} />
                 <Row label="Doanh thu club" sub="rake + phí DV" amount={fmt(report.clubRevenue)} accent />
-                <Row label="Tiền mặt vào" amount={fmt(report.cashInTotal)} />
+                <Row label={report.satelliteVoucherTransferTotal ? "Non-voucher registrations" : "Tiền mặt vào"} amount={fmt(report.cashInTotal)} />
+                {Boolean(report.satelliteVoucherTransferTotal) && <Row label="Satellite ticket transfer" sub="not new cash" amount={fmt(report.satelliteVoucherTransferTotal ?? 0)} />}
               </div>
               <div className="rounded-lg border border-border p-3">
                 <div className="text-[11px] font-medium text-muted-foreground mb-1">TIỀN RA</div>
                 <Row label="Prize trả hạng" sub="pass-through" amount={fmt(report.prizeTotal)} />
-                <Row label="Số dư quầy" sub="vào − ra" amount={fmt(report.cashierBalance)} />
+                <Row label={report.satelliteVoucherTransferTotal ? "Settlement balance" : "Số dư quầy"}
+                  sub={report.satelliteVoucherTransferTotal ? "includes internal transfer" : "vào − ra"} amount={fmt(report.cashierBalance)} />
               </div>
             </div>
 
@@ -133,8 +135,10 @@ export default function CloseReportDialog({ open, onOpenChange, tournamentId, to
               <div className="flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2">
                 <CheckCircle2 className="w-5 h-5 text-primary flex-shrink-0" />
                 <div className="text-sm">
-                  <div className="font-medium">Số dư quầy khớp — chênh 0₫</div>
-                  <div className="text-xs text-muted-foreground">Doanh thu club {fmt(report.clubRevenue)} = tiền vào − tiền ra</div>
+                  <div className="font-medium">{report.satelliteVoucherTransferTotal ? "Settlement reconciled" : "Số dư quầy khớp — chênh 0₫"}</div>
+                  <div className="text-xs text-muted-foreground">{report.satelliteVoucherTransferTotal
+                    ? `Club fees ${fmt(report.clubRevenue)} = non-voucher registrations + Satellite transfers − prizes.`
+                    : `Doanh thu club ${fmt(report.clubRevenue)} = tiền vào − tiền ra`}</div>
                 </div>
               </div>
             ) : (

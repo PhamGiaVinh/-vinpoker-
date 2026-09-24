@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { FEATURES } from "@/lib/featureFlags";
 
 export type OpsClient = SupabaseClient<Database>;
 
@@ -102,7 +103,8 @@ export async function updateTournamentLive(client: OpsClient, input: {
 
 export async function closeTournament(client: OpsClient, tournamentId: string): Promise<JsonRecord> {
   if (!OPS_CASHIER_MUTATIONS_ENABLED) throw new Error("money_path_disabled");
-  const { data, error } = await client.rpc("close_tournament", {
+  const { data, error } = await client.rpc((FEATURES.satelliteAwardsV1
+    ? "satellite_close_tournament_v1" : "close_tournament") as "close_tournament", {
     p_tournament_id: tournamentId,
     p_reason: "ops_floor_close",
   });

@@ -17,13 +17,14 @@ const h = vi.hoisted(() => ({
   issuanceResult: { data: { ok: true, issued: false }, error: null } as RpcResult,
   candidatesResult: { data: { ok: true, players: [{ playerId: "player-1", displayName: "Player One" }] }, error: null } as RpcResult,
   issueResult: { data: { ok: true, issued: true, ticketTotal: 1, tickets: [{ serial: 1, code: "private-code", position: 1, winnerPlayerId: "player-1", status: "issued" }] }, error: null } as RpcResult,
+  fundingResult: { data: { ok: true, locked: true, canApprove: true, sourceConfirmedGrossVnd: "7920000", sourceEntryFeesVnd: "1320000", sourcePoolVnd: "6600000", ticketLiabilityVnd: "6600000", cashLiabilityVnd: "0", overlayVnd: "0", remainingVnd: "0" }, error: null } as RpcResult,
   rpc: vi.fn(),
 }));
 
 vi.mock("@/integrations/supabase/client", () => {
   const makeChain = () => {
     const chain: Record<string, unknown> = {};
-    for (const method of ["select", "eq", "in", "is", "neq", "order"]) chain[method] = vi.fn(() => chain);
+    for (const method of ["select", "eq", "filter", "in", "is", "neq", "order"]) chain[method] = vi.fn(() => chain);
     chain.then = (resolve: (value: unknown) => unknown) => resolve({ data: h.targets, error: h.targetError });
     return chain;
   };
@@ -54,12 +55,24 @@ beforeEach(() => {
   h.issuanceResult = { data: { ok: true, issued: false }, error: null };
   h.candidatesResult = { data: { ok: true, players: [{ playerId: "player-1", displayName: "Player One" }] }, error: null };
   h.issueResult = { data: { ok: true, issued: true, ticketTotal: 1, tickets: [{ serial: 1, code: "private-code", position: 1, winnerPlayerId: "player-1", status: "issued" }] }, error: null };
+  h.fundingResult = { data: { ok: true, locked: true, canApprove: true, sourceConfirmedGrossVnd: "7920000", sourceEntryFeesVnd: "1320000", sourcePoolVnd: "6600000", ticketLiabilityVnd: "6600000", cashLiabilityVnd: "0", overlayVnd: "0", remainingVnd: "0" }, error: null };
   h.rpc.mockReset();
-  h.rpc.mockImplementation(async (name: string) => {
+  h.rpc.mockImplementation(async (name: string, args: { p_lock?: boolean }) => {
     if (name === "satellite_get_award_plan_v1") return h.getResult;
     if (name === "satellite_get_issuance_v1") return h.issuanceResult;
     if (name === "satellite_get_award_candidates_v1") return h.candidatesResult;
     if (name === "satellite_issue_tickets_v1") return h.issueResult;
+    if (name === "satellite_get_funding_v1") return h.fundingResult;
+    if (name === "satellite_approve_funding_v1") return { data: {
+      ok: true, locked: args.p_lock === true,
+      sourceConfirmedGrossVnd: "2400000", sourceEntryFeesVnd: "400000",
+      sourcePoolVnd: "2000000", ticketLiabilityVnd: "6600000",
+      cashLiabilityVnd: "0", overlayVnd: "4600000", remainingVnd: "0",
+    }, error: null };
+    if (name === "satellite_get_transfer_summary_v1") return { data: {
+      ok: true, issuedCount: 1, redeemedCount: 0, issuedValueVnd: "6600000",
+      transferredValueVnd: "0", outstandingValueVnd: "6600000", unissuedValueVnd: "0",
+    }, error: null };
     return h.planResult;
   });
   vi.mocked(toast.error).mockClear();
@@ -78,7 +91,7 @@ describe("SatelliteAwardPlanPanel", () => {
   });
 
   it("shows an immutable server-locked plan and no lock control", async () => {
-    h.getResult = { data: { ...h.planResult.data, locked: true }, error: null };
+    h.getResult = { data: { ...(h.planResult.data as Record<string, unknown>), locked: true }, error: null };
     render(<SatelliteAwardPlanPanel tournamentId="source" clubId="club" />);
     expect(await screen.findByText("6,600,000 VND")).toBeTruthy();
     expect(screen.getByText("Main Event · Flight 1C")).toBeTruthy();
@@ -97,7 +110,7 @@ describe("SatelliteAwardPlanPanel", () => {
       p_awards: [{ position: 1, ticketCount: 1, cashVnd: "0" }], p_lock: false,
     }));
     fireEvent.click(screen.getByRole("checkbox"));
-    h.planResult = { data: { ...h.planResult.data, locked: true }, error: null };
+    h.planResult = { data: { ...(h.planResult.data as Record<string, unknown>), locked: true }, error: null };
     fireEvent.click(screen.getByRole("button", { name: "Lock award plan" }));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Satellite award plan locked"));
     expect(h.rpc).toHaveBeenCalledWith("satellite_award_plan_v1", expect.objectContaining({ p_lock: true }));
@@ -120,19 +133,49 @@ describe("SatelliteAwardPlanPanel", () => {
     expect(screen.queryByRole("button", { name: "Issue tickets" })).toBeNull();
   });
 
+  it("does not allow issuance when source funding is not locked", async () => {
+    h.getResult = { data: { ...(h.planResult.data as Record<string, unknown>), locked: true }, error: null };
+    h.fundingResult = { data: { ok: true, locked: false, canApprove: false }, error: null };
+    render(<SatelliteAwardPlanPanel tournamentId="source" clubId="club" />);
+    const issueButton = await screen.findByRole("button", { name: "Issue tickets" });
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(await screen.findByRole("option", { name: "Player One" }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(issueButton).toHaveProperty("disabled", true);
+    expect(h.rpc).not.toHaveBeenCalledWith("satellite_issue_tickets_v1", expect.anything());
+  });
+
+  it("requires owner review of the exact pool and overlay before locking funding", async () => {
+    h.getResult = { data: { ...(h.planResult.data as Record<string, unknown>), locked: true }, error: null };
+    h.fundingResult = { data: { ok: true, locked: false, canApprove: true }, error: null };
+    render(<SatelliteAwardPlanPanel tournamentId="source" clubId="club" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Preview source funding" }));
+    await screen.findByText("Club overlay required: 4,600,000 VND");
+    const lockFunding = screen.getByRole("button", { name: "Lock funding" });
+    expect(lockFunding).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("checkbox", { name: /approve this exact source funding/ }));
+    fireEvent.click(lockFunding);
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("satellite_approve_funding_v1", {
+      p_source_tournament_id: "source", p_overlay_vnd: "4600000", p_lock: true,
+    }));
+    expect(await screen.findByText("Club overlay approved")).toBeTruthy();
+  });
+
   it("requires an assigned winner and confirmation before issuing once", async () => {
-    h.getResult = { data: { ...h.planResult.data, locked: true }, error: null };
+    h.getResult = { data: { ...(h.planResult.data as Record<string, unknown>), locked: true }, error: null };
     render(<SatelliteAwardPlanPanel tournamentId="source" clubId="club" />);
     const issueButton = await screen.findByRole("button", { name: "Issue tickets" });
     expect(issueButton).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("combobox"));
     fireEvent.click(await screen.findByRole("option", { name: "Player One" }));
     fireEvent.click(screen.getByRole("checkbox"));
+    await waitFor(() => expect(issueButton).toHaveProperty("disabled", false));
     fireEvent.click(issueButton);
     await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("satellite_issue_tickets_v1", {
       p_source_tournament_id: "source", p_results: [{ position: 1, playerId: "player-1" }],
     }));
     expect(await screen.findByText("Issued 1 / 1 tickets")).toBeTruthy();
+    expect(screen.getByText("Show private ticket QR")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Issue tickets" })).toBeNull();
   });
 });

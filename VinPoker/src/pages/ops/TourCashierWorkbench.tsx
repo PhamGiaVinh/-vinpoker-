@@ -7,6 +7,8 @@ import { assertMutationOk, OPS_CASHIER_MUTATIONS_ENABLED } from "@/ops/opsMutati
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 import { normalizeCashierScan } from "./cashierScan";
+import { FEATURES } from "@/lib/featureFlags";
+import { SatelliteTicketRedemption } from "./SatelliteTicketRedemption";
 
 type Tour = { id: string; name: string; start_time: string | null; status: string; registration_closed_at?: string | null };
 type Bucket = "counter" | "completed" | "waiting_seat" | "needs_review" | "all";
@@ -15,6 +17,7 @@ type Row = {
   reference_code: string; total_pay: number; received: number; bucket: Bucket;
   receipt_code: string | null; table_number: number | null; seat_number: number | null;
   legacy_detail_missing: boolean; cashier_seating_error: string | null;
+  voucher_serial?: number; voucher_source?: string;
 };
 type Worklist = { ok: boolean; error?: string; enabled: boolean; updated_at: string; counts: Record<string, number>; rows: Row[] };
 type Lookup = { registration_id: string; tournament_id: string; tournament_name: string; player_name: string };
@@ -75,6 +78,7 @@ export default function TourCashierWorkbench() {
   const [refundBankRef, setRefundBankRef] = useState("");
   const [refundEvidence, setRefundEvidence] = useState("");
   const [busy, setBusy] = useState(false);
+  const [satelliteBusy, setSatelliteBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -151,10 +155,31 @@ export default function TourCashierWorkbench() {
         p_page: page, p_limit: 50,
       } as never);
       if (!active || version !== requestVersion.current) return;
-      setLoading(false);
-      if (rpcError) { scanPending.current = false; setError(rpcError.message); return; }
+      if (rpcError) { setLoading(false); scanPending.current = false; setError(rpcError.message); return; }
       const result = data as unknown as Worklist;
-      if (!result?.ok) { scanPending.current = false; setError(result?.error ?? "Không tải được danh sách tour."); return; }
+      if (!result?.ok) { setLoading(false); scanPending.current = false; setError(result?.error ?? "Không tải được danh sách tour."); return; }
+      if (FEATURES.satelliteAwardsV1 && result.rows.length) {
+        const { data: voucherData, error: voucherError } = await client.rpc(
+          "satellite_redemptions_for_worklist_v1" as never, {
+            p_target_tournament_id: tourId,
+            p_registration_ids: result.rows.map(row => row.id),
+          } as never);
+        if (!active || version !== requestVersion.current) return;
+        const voucherResult = voucherData as { ok?: boolean; rows?: Array<{
+          registrationId: string; serial: number; sourceTournamentName: string; bearerName?: string;
+        }> } | null;
+        if (voucherError || voucherResult?.ok !== true || !Array.isArray(voucherResult.rows)) {
+          setLoading(false); scanPending.current = false; setWorklist(null);
+          setError(voucherError?.message ?? "Could not verify Satellite ticket tender."); return;
+        }
+        const vouchers = new Map(voucherResult.rows.map(row => [row.registrationId, row]));
+        result.rows = result.rows.map(row => {
+          const voucher = vouchers.get(row.id);
+          return voucher ? { ...row, player_name: voucher.bearerName || row.player_name,
+            voucher_serial: voucher.serial, voucher_source: voucher.sourceTournamentName } : row;
+        });
+      }
+      setLoading(false);
       setError(null);
       setWorklist(result);
       setSelected((current) => current ? result.rows.find((row) => row.id === current.id) ?? null : null);
@@ -277,7 +302,7 @@ export default function TourCashierWorkbench() {
   }, [client, selectedId, revision]);
 
   const changeTour = (next: string | null) => {
-    if (mutationLock.current) return;
+    if (mutationLock.current || satelliteBusy) return;
     requestVersion.current++;
     setTourId(next);
     if (clubId) {
@@ -353,11 +378,11 @@ export default function TourCashierWorkbench() {
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={refresh} className="min-h-11 rounded-xl border border-white/15 px-3" aria-label="Làm mới"><RefreshCw className="h-4 w-4" /></button>
-          <button type="button" onClick={() => changeTour(null)} className="min-h-11 rounded-xl border border-white/15 px-4 text-sm">Tất cả tour</button>
+          <button type="button" disabled={satelliteBusy} onClick={() => changeTour(null)} className="min-h-11 rounded-xl border border-white/15 px-4 text-sm">Tất cả tour</button>
         </div>
       </div>
       <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Chọn tour phục vụ">
-        {tours.map((tour) => <button key={tour.id} type="button" disabled={busy} onClick={() => changeTour(tour.id)}
+        {tours.map((tour) => <button key={tour.id} type="button" disabled={busy || satelliteBusy} onClick={() => changeTour(tour.id)}
           className={`min-h-11 shrink-0 rounded-xl px-4 text-left text-sm ${tourId === tour.id ? "bg-[#89ef9e] font-bold text-[#092014]" : "border border-white/15 bg-white/5"}`}>
           {tour.name} · {dateTime(tour.start_time)}
         </button>)}
@@ -445,6 +470,9 @@ export default function TourCashierWorkbench() {
         className="min-h-16 rounded-xl border border-white/10 p-3 text-left hover:border-emerald-300/50">{tour.name}<span className="block text-xs text-[#a9baae]">{dateTime(tour.start_time)} · {tour.status}</span></button>)}</div>
       <p className="mt-4 text-sm text-amber-200">Chưa phân bổ / khoản thừa toàn CLB: {issueCountLabel}. <a href="/cashier?tab=sepay_settlement" className="underline underline-offset-2">Mở đối soát SePay</a></p>
     </section> : <>
+      {FEATURES.satelliteAwardsV1 && <SatelliteTicketRedemption tournamentId={tourId}
+        enabled={Boolean(worklist?.enabled) && OPS_CASHIER_MUTATIONS_ENABLED && !activeTour?.registration_closed_at}
+        onRedeemed={refresh} onBusyChange={setSatelliteBusy} />}
       <label className="relative block"><Search className="absolute left-4 top-3.5 h-5 w-5 text-[#9caf9f]" />
         <input ref={scanner} autoFocus disabled={busy} value={query} onChange={(event) => {
           requestVersion.current++;
@@ -494,7 +522,7 @@ export default function TourCashierWorkbench() {
               className={`flex min-h-20 w-full flex-col gap-1 border-b border-white/10 p-4 text-left last:border-0 hover:bg-white/5 ${selected?.id === row.id ? "bg-emerald-300/10" : ""}`}>
               <span className="flex w-full flex-wrap items-center justify-between gap-2"><strong className="min-w-0 truncate">{row.player_name}</strong><span className="font-mono text-sm">Còn {formatMoney(remaining)}</span></span>
               <span className="flex w-full flex-wrap justify-between gap-2 text-xs text-[#a9baae]"><span>{row.phone ?? row.member_card_id ?? row.reference_code}</span>
-                <span>{row.legacy_detail_missing ? "Lịch sử: thiếu chi tiết khoản thu" : `Đã xác minh ${formatMoney(row.received)}`} · {row.receipt_code ? `Bàn ${row.table_number}, ghế ${row.seat_number}` : row.status === "confirmed" ? "Đã xác nhận · thiếu phiếu" : row.bucket === "needs_review" ? `Ghế lỗi: ${row.cashier_seating_error ?? "cần kiểm tra"}` : row.bucket === "waiting_seat" ? "Chờ ghế" : "Chờ thanh toán"}</span></span>
+                <span>{row.voucher_serial ? `Satellite ticket #${row.voucher_serial} · ${row.voucher_source}` : row.legacy_detail_missing ? "Lịch sử: thiếu chi tiết khoản thu" : `Đã xác minh ${formatMoney(row.received)}`} · {row.receipt_code ? `Bàn ${row.table_number}, ghế ${row.seat_number}` : row.status === "confirmed" ? "Đã xác nhận · thiếu phiếu" : row.bucket === "needs_review" ? `Ghế lỗi: ${row.cashier_seating_error ?? "cần kiểm tra"}` : row.bucket === "waiting_seat" ? "Chờ ghế" : "Chờ thanh toán"}</span></span>
             </button>;
           })}
           <div className="flex justify-between p-3 text-sm"><button type="button" disabled={busy || page===0 || !worklist} onClick={() => { requestVersion.current++; setPage((value) => value-1); setSelected(null); setWorklist(null); }} className="min-h-11 rounded-lg border border-white/15 px-3 disabled:opacity-40">Trước</button>
@@ -506,7 +534,7 @@ export default function TourCashierWorkbench() {
           <p className="mt-1 break-all font-mono text-xs text-[#a9baae]">{selected.reference_code}</p>
           <div className="mt-5 space-y-2 rounded-xl border border-white/10 p-4 text-sm">
             <p className="flex justify-between gap-3"><span>Buy-in đã chốt</span><strong>{formatMoney(selected.total_pay)}</strong></p>
-            <p className="flex justify-between gap-3"><span>Đã xác minh</span><strong>{selected.legacy_detail_missing ? "Thiếu chi tiết lịch sử" : formatMoney(selected.received)}</strong></p>
+            <p className="flex justify-between gap-3"><span>{selected.voucher_serial ? "Satellite ticket" : "Đã xác minh"}</span><strong>{selected.voucher_serial ? `#${selected.voucher_serial} · no cash received` : selected.legacy_detail_missing ? "Thiếu chi tiết lịch sử" : formatMoney(selected.received)}</strong></p>
             <p className="flex justify-between gap-3 border-t border-white/10 pt-2"><span>Còn thiếu</span><strong className="text-[#89ef9e]">{selected.status === "confirmed" ? "Không thu thêm" : formatMoney(Math.max(0,selected.total_pay-selected.received))}</strong></p>
           </div>
           {selected.receipt_code ? <div className="mt-5 space-y-2 text-sm text-emerald-200">
@@ -531,7 +559,8 @@ export default function TourCashierWorkbench() {
                 {selected.legacy_detail_missing && <p className="text-xs text-amber-200">Đăng ký cũ chưa có giá server đã chốt. Không thu qua quầy mới; đối soát hoặc tạo lại đăng ký hợp lệ sau khi xử lý bản cũ.</p>}
               </div>}
           <p className="mt-5 text-xs text-[#a9baae]">Khách chưa có tài khoản cần đăng ký app trước; sau đó <a className="underline underline-offset-2" href="/cashier?tab=members">duyệt liên kết hội viên</a>. In thẻ là tùy chọn. Không dùng ảnh chuyển khoản thay xác minh SePay.</p>
-          {(selected.bucket === "completed" || selected.bucket === "waiting_seat" || selected.bucket === "needs_review") &&
+          {selected.voucher_serial && <p className="mt-4 text-xs text-amber-200">Voucher tender is not cash. Do not use cash refund for this registration; request a controlled voucher reversal.</p>}
+          {!selected.voucher_serial && (selected.bucket === "completed" || selected.bucket === "waiting_seat" || selected.bucket === "needs_review") &&
             <div className="mt-6 space-y-3 border-t border-white/10 pt-5">
               <h3 className="font-semibold">Hoàn tiền lượt buy-in</h3>
               {!currentRefundRead || currentRefundRead.loading ? <p role="status" className="text-sm text-[#a9baae]">Đang kiểm tra trạng thái hoàn tiền…</p>
