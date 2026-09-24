@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mock = vi.hoisted(() => ({
@@ -24,13 +24,13 @@ vi.mock("@/integrations/supabase/client", () => ({
     }),
   },
 }));
+vi.mock("@/components/DocumentRedirect", () => ({
+  DocumentRedirect: ({ to, preserveCurrentLocation }: { to: string; preserveCurrentLocation: boolean }) => (
+    <div data-testid="document-redirect" data-preserve={String(preserveCurrentLocation)}>{to}</div>
+  ),
+}));
 
 import CashierDashboard from "./CashierDashboard";
-
-function Destination() {
-  const location = useLocation();
-  return <div>{`${location.pathname}${location.search}`}</div>;
-}
 
 describe("Cashier tour entry", () => {
   beforeEach(() => { mock.clubs = [{ id: "club-a", name: "Club A" }]; });
@@ -38,17 +38,17 @@ describe("Cashier tour entry", () => {
   it("sends a saved legacy buy-in link to the scoped tour counter", async () => {
     render(<MemoryRouter initialEntries={["/cashier?tab=offline_buyin"]}><Routes>
       <Route path="/cashier" element={<CashierDashboard />} />
-      <Route path="/ops/cashier/tour" element={<Destination />} />
     </Routes></MemoryRouter>);
     expect(await screen.findByText("/ops/cashier/tour?club=club-a")).toBeInTheDocument();
+    expect(screen.getByTestId("document-redirect")).toHaveAttribute("data-preserve", "false");
   });
 
   it("asks a multi-club cashier to select a workspace instead of guessing a club", async () => {
     mock.clubs = [{ id: "club-a", name: "Club A" }, { id: "club-b", name: "Club B" }];
     render(<MemoryRouter initialEntries={["/cashier?tab=offline_buyin"]}><Routes>
       <Route path="/cashier" element={<CashierDashboard />} />
-      <Route path="/ops" element={<Destination />} />
     </Routes></MemoryRouter>);
     expect(await screen.findByText("/ops")).toBeInTheDocument();
+    expect(screen.getByTestId("document-redirect")).toHaveAttribute("data-preserve", "false");
   });
 });
