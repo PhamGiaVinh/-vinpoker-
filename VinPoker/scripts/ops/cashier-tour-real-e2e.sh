@@ -20,6 +20,7 @@ done
 
 test_root="$(mktemp -d -t cashier-e2e-XXXXXXXX)"
 network="cashier-e2e-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
+browser_network=""
 bridge=""
 firewall_chain="CASHIER_E2E"
 stack_containers=()
@@ -36,6 +37,9 @@ cleanup() {
     sudo iptables -w -D DOCKER-USER -i "$bridge" -j "$firewall_chain" >/dev/null 2>&1 || true
     sudo iptables -w -F "$firewall_chain" >/dev/null 2>&1 || true
     sudo iptables -w -X "$firewall_chain" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$browser_network" ]]; then
+    docker network rm "$browser_network" >/dev/null 2>&1 || true
   fi
   docker network rm "$network" >/dev/null 2>&1 || true
   rm -rf -- "$test_root"
@@ -170,8 +174,9 @@ if [[ -z "$db_container" || -z "$edge_container" || -z "$gateway_container" ]]; 
   exit 1
 fi
 browser_gateway="cashier-api"
-docker network disconnect "$network" "$gateway_container"
-docker network connect --alias "$browser_gateway" "$network" "$gateway_container"
+browser_network="cashier-browser-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
+docker network create --internal "$browser_network" >/dev/null
+docker network connect --alias "$browser_gateway" "$browser_network" "$gateway_container"
 
 probe_external_denied() {
   local context="$1" label="$2" status
@@ -195,7 +200,7 @@ probe_external_denied "$edge_container" Edge
 
 # Browser/app context is a separate disposable container on the same network,
 # with no Docker socket or host networking.
-browser_probe="$(docker run -d --rm --network "$network" \
+browser_probe="$(docker run -d --rm --network "$browser_network" \
   mcr.microsoft.com/playwright:v1.60.0-noble sleep 90)"
 probe_external_denied "$browser_probe" Browser
 docker exec "$browser_probe" node -e \
@@ -448,7 +453,7 @@ echo "EDGE_PROOF: real local Auth + gateway + tournament-register + fake-SePay r
   VITE_SUPABASE_PUBLISHABLE_KEY="$anon_key" \
   VITE_OPS_TOUR_CASHIER=production \
   npm run build >/dev/null)
-app_container="$(docker run -d --rm --network "$network" --network-alias cashier-app \
+app_container="$(docker run -d --rm --network "$browser_network" --network-alias cashier-app \
   --volume "$repo_root:/app:ro" --workdir /app \
   mcr.microsoft.com/playwright:v1.60.0-noble \
   node /app/supabase/pending-tests/static-preview-server.mjs)"
@@ -468,7 +473,7 @@ if [[ "$app_ready" != true ]]; then
   exit 1
 fi
 storage_key="sb-${browser_gateway%%.*}-auth-token"
-docker run --rm --network "$network" \
+docker run --rm --network "$browser_network" \
   --volume "$repo_root:/app:ro" --workdir /app \
   --env PLAYWRIGHT_BASE_URL='http://cashier-app:8080' \
   --env LOCAL_SUPABASE_URL="http://$browser_gateway:8000" \
