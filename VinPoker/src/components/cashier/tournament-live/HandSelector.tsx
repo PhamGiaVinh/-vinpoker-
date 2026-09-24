@@ -10,6 +10,7 @@ import type { ReplayHand } from "@/lib/tracker-poker/replayEngine";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
 import { parseReplayPublicSettlement } from "@/lib/tracker-poker/replaySettlement";
 import { replayTargetForHand, type ReplayTarget, type ReplayTargetState } from "./viewer-hub/replayTarget";
+import { parsePublicTableHistoryPage } from "./viewer-hub/publicTableHistory";
 
 interface HandRow {
   id: string;
@@ -25,6 +26,10 @@ interface HandRow {
   tracker_level_number?: number | null;
 }
 
+type PublicReplayPlayer = { playerId: string; seatNumber: number; name?: string | null; startingStack?: number | null; endingStack?: number | null; avatarUrl?: string | null; holeCards?: string[] };
+type PublicReplayAction = { id: string; playerId: string; street?: string | null; actionType: string; amount?: number | null; order: number };
+type PublicReplayPayload = { id?: string; handNumber?: number; buttonSeat?: number | null; board?: string[]; pot?: number | null; players?: PublicReplayPlayer[]; actions?: PublicReplayAction[] };
+
 interface HandSelectorProps {
   tournamentId: string;
   /** When set, only hands on this table are offered (never mix tables). */
@@ -39,6 +44,8 @@ interface HandSelectorProps {
   replayTargetState?: ReplayTargetState;
   /** Replace a deep-linked target before loading a different hand. */
   onSelectReplayTarget?: (target: ReplayTarget) => void;
+  /** Public viewer reads history/replay only through scoped RPCs. */
+  spectator?: boolean;
 }
 
 export function HandSelector({
@@ -50,6 +57,7 @@ export function HandSelector({
   replayTarget = null,
   replayTargetState = { kind: "idle" },
   onSelectReplayTarget,
+  spectator = false,
 }: HandSelectorProps) {
   const [hands, setHands] = useState<HandRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -63,6 +71,38 @@ export function HandSelector({
     setLoadingList(true);
     setListError(null);
     (async () => {
+      if (spectator) {
+        if (!tableId) {
+          setHands([]);
+          setListError("Chọn bàn để xem lịch sử hand.");
+          setLoadingList(false);
+          return;
+        }
+        const { data, error } = await supabase.rpc("get_public_tournament_table_history_v2" as never, {
+          p_tournament_id: tournamentId,
+          p_tournament_table_id: tableId,
+          p_limit: 50,
+          p_before_created_at: null,
+          p_before_id: null,
+        } as never);
+        if (cancelled) return;
+        const page = error ? null : parsePublicTableHistoryPage(data, tournamentId, tableId);
+        if (!page || page.access === "revoked") {
+          setHands([]);
+          setListError(error?.message || "Không thể tải lịch sử hand công khai.");
+          setLoadingList(false);
+          return;
+        }
+        setHands(page.items.map((hand) => ({
+          id: hand.handId, table_id: tableId, hand_number: hand.handNumber ?? 0,
+          created_at: hand.createdAt, community_cards: hand.board, button_seat: null,
+          pot_size: hand.pot, tracker_big_blind: hand.bigBlind ?? undefined,
+          tracker_small_blind: hand.smallBlind, tracker_bba: hand.ante,
+          tracker_level_number: hand.levelNumber ?? undefined,
+        })));
+        setLoadingList(false);
+        return;
+      }
       let q = supabase
         .from("tournament_hands")
         .select("id, hand_number, created_at, community_cards, button_seat, pot_size, tracker_big_blind, tracker_small_blind, tracker_bba, tracker_level_number, status, is_voided, table_id")
@@ -98,7 +138,7 @@ export function HandSelector({
     return () => {
       cancelled = true;
     };
-  }, [tournamentId, tableId]);
+  }, [tournamentId, tableId, spectator]);
 
   const loadHand = useCallback(
     async (row: HandRow) => {
@@ -108,6 +148,42 @@ export function HandSelector({
       setLoadingHand(true);
       setLoadError(null);
       try {
+        if (spectator) {
+          if (!tableId) throw new Error("Chưa chọn bàn cho replay.");
+          const [{ data: publicData, error: publicError }, { data: settlementData, error: settlementError }] = await Promise.all([
+            supabase.rpc("get_public_tournament_table_hand_v2" as never, {
+              p_tournament_id: tournamentId, p_tournament_table_id: tableId, p_hand_id: row.id,
+            } as never),
+            supabase.rpc("get_public_tournament_settlement" as never, { p_hand_id: row.id } as never),
+          ]);
+          if (!isCurrentLoad()) return;
+          const safe = (publicData ?? {}) as PublicReplayPayload;
+          if (publicError || !safe.id) throw new Error(publicError?.message || "Hand không thuộc bàn hoặc không còn được công khai.");
+          onSelectHand(row.id, {
+            hand_id: safe.id,
+            hand_number: safe.handNumber ?? row.hand_number,
+            button_seat: safe.buttonSeat ?? row.button_seat ?? 1,
+            community_cards: Array.isArray(safe.board) ? safe.board : [],
+            stored_pot_size: safe.pot ?? row.pot_size,
+            big_blind: row.tracker_big_blind,
+            small_blind: row.tracker_small_blind,
+            ante: row.tracker_bba,
+            level_number: row.tracker_level_number,
+            players: Array.isArray(safe.players) ? safe.players.map((player) => ({
+              player_id: player.playerId, seat_number: player.seatNumber,
+              display_name: player.name || player.playerId?.slice(0, 6) || "Người chơi",
+              starting_stack: player.startingStack ?? 0, ending_stack: player.endingStack ?? null,
+              avatar_url: player.avatarUrl ?? null,
+              hole_cards: Array.isArray(player.holeCards) && player.holeCards.length ? player.holeCards : undefined,
+            })) : [],
+            actions: Array.isArray(safe.actions) ? safe.actions.map((action) => ({
+              action_id: action.id, player_id: action.playerId, street: action.street || "preflop",
+              action_type: action.actionType, action_amount: action.amount ?? 0, action_order: action.order,
+            })) : [],
+            publicSettlement: settlementError ? null : parseReplayPublicSettlement(settlementData),
+          });
+          return;
+        }
         // E1: prefer the per-hand snapshot (hand_players.player_name/avatar_url) when the
         // migration is applied; the columns are selected only if present (feature-detect).
         const snap = await handPlayersHasSnapshot();
@@ -181,7 +257,7 @@ export function HandSelector({
         if (isCurrentLoad()) setLoadingHand(false);
       }
     },
-    [onLoadStart, onSelectHand, tournamentId]
+    [onLoadStart, onSelectHand, spectator, tableId, tournamentId]
   );
 
   useEffect(() => () => {
@@ -201,6 +277,19 @@ export function HandSelector({
       }
 
       void (async () => {
+        if (spectator && tableId) {
+          const { data, error } = await supabase.rpc("get_public_tournament_table_hand_v2" as never, {
+            p_tournament_id: tournamentId, p_tournament_table_id: tableId, p_hand_id: replayTargetState.handId,
+          } as never);
+          if (cancelled) return;
+          const hand = data as PublicReplayPayload;
+          if (error || !hand?.id) {
+            setLoadError(error?.message || "Không tìm thấy hand được yêu cầu.");
+            return;
+          }
+          void loadHand({ id: hand.id, table_id: tableId, hand_number: hand.handNumber ?? 0, created_at: "", community_cards: hand.board ?? [], button_seat: hand.buttonSeat ?? null, pot_size: hand.pot ?? null });
+          return;
+        }
         const { data, error } = await supabase
           .from("tournament_hands")
           .select("id, table_id, hand_number, created_at, community_cards, button_seat, pot_size, tracker_big_blind, tracker_small_blind, tracker_bba, tracker_level_number, status, is_voided")
@@ -220,7 +309,7 @@ export function HandSelector({
 
     if (hands.length > 0 && !selectedHandId) void loadHand(hands[0]);
     return () => { cancelled = true; };
-  }, [hands, loadHand, replayTarget, replayTargetState, selectedHandId, tournamentId]);
+  }, [hands, loadHand, replayTarget, replayTargetState, selectedHandId, spectator, tableId, tournamentId]);
 
   const targetMessage: Record<Exclude<ReplayTargetState["kind"], "idle" | "resolved">, string> = {
     loading: "Đang tìm hand từ đường dẫn...",

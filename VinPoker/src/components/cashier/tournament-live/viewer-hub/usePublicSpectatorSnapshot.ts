@@ -42,6 +42,13 @@ export function usePublicSpectatorSnapshot(
     if (trustedTableScope.current !== tableKey) {
       delete trustedRevisions.current.tables;
       trustedTableScope.current = tableKey;
+      // A hand belongs to a table/session context. Preserve ranking and payout
+      // while the requested tables reload, but never flash a prior table's hand.
+      setSnapshot((previous) => previous ? {
+        ...previous,
+        sections: { ...previous.sections, tables: undefined },
+      } : previous);
+      setLoading(true);
     }
     let active = true;
     let interval: ReturnType<typeof setInterval> | null = null;

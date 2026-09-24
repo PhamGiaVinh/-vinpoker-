@@ -38,8 +38,8 @@ import type { TournamentPostViewModel, ViewerTab } from "./viewerTypes";
 import type { ReplayTarget } from "./replayTarget";
 
 type Orientation = "landscape" | "portrait";
-type Watch = { kind: "live"; tableId: string } | { kind: "replay"; target: ReplayTarget } | null;
-type ViewerProps = { orientationOverride?: Orientation; spectator?: boolean; selectedTableIdOverride?: string | null; initialReplayTarget?: ReplayTarget | null; initialReplayHandNumber?: number | null; onReplayTargetChange?: (target: ReplayTarget) => void };
+type Watch = { kind: "live" | "history"; tableId: string } | { kind: "replay"; target: ReplayTarget } | null;
+type ViewerProps = { orientationOverride?: Orientation; spectator?: boolean; selectedTableIdOverride?: string | null; initialReplayTarget?: ReplayTarget | null; initialReplayHandNumber?: number | null; initialTablePanel?: "felt" | "history"; onReplayTargetChange?: (target: ReplayTarget) => void };
 
 export interface LiveHubProps {
   tournamentId: string;
@@ -94,6 +94,7 @@ function LiveHubContent({
   // Isolated hub data (count / all-tables / feed / chip leader). Does NOT touch
   // TournamentLiveView — the featured felt still renders the real viewer when watched.
   const realtimeEnabled = FEATURES.publicSpectatorRealtimeV2;
+  const lastHandHistoryEnabled = realtimeEnabled && FEATURES.publicSpectatorLastHandHistory;
   const [visibleTableIds, setVisibleTableIds] = useState<string[]>([]);
   const [historyTableId, setHistoryTableId] = useState<string | null>(null);
   const appearance = useTournamentTableAppearance(tournamentId);
@@ -171,7 +172,7 @@ function LiveHubContent({
   // plus the table/hand to show). Guard: only inject into component children.
   const cloneViewer = (extra: ViewerProps): ReactNode =>
     isValidElement(children) && typeof children.type !== "string"
-      ? cloneElement(children as ReactElement<ViewerProps>, { key: `${tournamentId}:${extra.selectedTableIdOverride ?? "default"}`, orientationOverride: viewerOrientation, spectator: true, ...extra })
+      ? cloneElement(children as ReactElement<ViewerProps>, { key: `${tournamentId}:${extra.selectedTableIdOverride ?? "default"}:${extra.initialTablePanel ?? "felt"}`, orientationOverride: viewerOrientation, spectator: true, ...extra })
       : children;
 
   // ── Legacy stacked layout (flag OFF) — byte-identical to before ────────────────
@@ -220,7 +221,7 @@ function LiveHubContent({
               selectedTableIdOverride: null,
               onReplayTargetChange,
             }
-          : { initialReplayTarget: null, initialReplayHandNumber: null, selectedTableIdOverride: watch.tableId },
+          : { initialReplayTarget: null, initialReplayHandNumber: null, selectedTableIdOverride: watch.tableId, initialTablePanel: watch.kind === "history" ? "history" : "felt" },
       )
     : null;
 
@@ -341,7 +342,7 @@ function LiveHubContent({
 
             <div className="min-w-0 flex-1 px-1">
               <p className="truncate text-[10px] font-bold uppercase tracking-[0.16em] text-[hsl(var(--viewer-neon))]">
-                {watch.kind === "replay" ? t("liveHub.tabs.handHistory", "Lịch sử ván") : t("liveHub.watch.title", "Bàn đang chơi")}
+                {watch.kind === "replay" ? t("liveHub.tabs.handHistory", "Lịch sử ván") : watch.kind === "history" ? "Lịch sử bàn chơi" : t("liveHub.watch.title", "Bàn đang chơi")}
               </p>
               <p className="truncate text-sm font-semibold text-foreground">
                 {watch.kind === "replay"
@@ -374,7 +375,7 @@ function LiveHubContent({
           </div>
 
           <FeaturedTableCard
-            badge={watch.kind === "replay" ? t("liveHub.watch.replay", "PHÁT LẠI VÁN") : t("liveHub.featured.badge", "TRỰC TIẾP • BÀN ĐANG DIỄN RA")}
+            badge={watch.kind === "replay" ? t("liveHub.watch.replay", "PHÁT LẠI VÁN") : watch.kind === "history" ? "LỊCH SỬ BÀN CHƠI" : t("liveHub.featured.badge", "TRỰC TIẾP • BÀN ĐANG DIỄN RA")}
             rpt
           >
             {watchViewer}
@@ -447,7 +448,9 @@ function LiveHubContent({
               freshness={publicSnapshot?.sections.tables?.freshness}
               onVisibleTableIds={setVisibleTableIds}
               onView={(id) => setWatch({ kind: "live", tableId: id })}
-              onHistory={(id) => { setHistoryTableId(id); onTabChange?.("updates"); }}
+              onHistory={(id) => lastHandHistoryEnabled
+                ? setWatch({ kind: "history", tableId: id })
+                : (setHistoryTableId(id), onTabChange?.("updates"))}
             /> : <div className="space-y-3">
               <LiveHandFeed
                 tournamentId={tournamentId}

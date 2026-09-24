@@ -45,7 +45,37 @@ export interface PublicTableSnapshot {
     amount: number | null;
   } | null;
   players: PublicTablePlayer[];
-  trackerState: "live" | "idle" | "unavailable";
+  /**
+   * A data state returned by the public projection. Connection/loading errors
+   * are deliberately kept outside this field so a last-good hand is never
+   * rendered as an empty table after a failed refresh.
+   */
+  trackerState: "live" | "last_completed" | "waiting" | "inactive" | "closed" | "idle" | "unavailable";
+}
+
+export interface PublicTableHistoryItem {
+  handId: string;
+  tableId: string;
+  tableSessionId: string | null;
+  handNumber: number | null;
+  createdAt: string;
+  status: string;
+  street: string | null;
+  board: string[];
+  pot: number | null;
+  levelNumber: number | null;
+  smallBlind: number | null;
+  bigBlind: number | null;
+  ante: number | null;
+}
+
+export interface PublicTableHistoryPage {
+  ok: boolean;
+  access: "public" | "revoked";
+  tournamentId: string;
+  tableId: string;
+  items: PublicTableHistoryItem[];
+  nextCursor: { createdAt: string; handId: string } | null;
 }
 
 export interface PublicTableCatalogItem {
