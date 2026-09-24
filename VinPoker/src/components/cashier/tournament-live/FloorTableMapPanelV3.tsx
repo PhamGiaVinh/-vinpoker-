@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,7 +43,7 @@ function v3ErrorMessage(error: string): string {
     case "player_in_active_hand": return "Bàn đang có ván chạy nên thao tác này đã bị chặn.";
     case "seat_occupied": return "Ghế này vừa được sử dụng. Hãy tải lại.";
     case "seat_locked": return "Ghế này đang khóa. Hãy mở khóa trước khi xếp người.";
-    case "insufficient_capacity": return "Không đủ ghế trống để đóng và chuyển người.";
+    case "insufficient_capacity": return "Chưa đủ ghế trống ở các bàn có thể nhận người lúc này. Bàn đang có ván sẽ được bỏ qua; hãy thử lại sau ván hoặc mở thêm bàn.";
     case "redraw_required_for_capacity_or_locks": return "Giải đang dùng bàn 8-max hoặc có ghế khóa. Hãy dùng Redraw để server giữ đúng sức chứa và ghế khóa.";
     case "player_has_chips": return "Bàn Live Tracker chỉ cho phép loại khi chip bằng 0.";
     case "tracker_chip_state_mismatch": return "Chip trên Floor và Live Tracker chưa khớp. Hãy tải lại trước khi loại người chơi.";
@@ -56,6 +56,7 @@ function v3ErrorMessage(error: string): string {
     case "entry_already_seated": return "Người chơi này đã có ghế ở một bàn khác.";
     case "entry_not_seated":
     case "no_active_v3_seat": return "Người chơi không còn ở ghế này. Hãy tải lại roster.";
+    case "entry_state_changed": return "Trạng thái người chơi vừa thay đổi. Hãy tải lại bàn rồi thử lại.";
     case "table_not_found": return "Không tìm thấy bàn trong giải này.";
     case "table_not_empty": return "Bàn vẫn còn người chơi. Hãy dùng “Đóng & chuyển người”.";
     case "table_session_not_active":
@@ -102,6 +103,7 @@ export function FloorTableMapPanelV3({
   const [entrySelection, setEntrySelection] = useState<FloorEntrySelection | null>(null);
   const [moveDestinationId, setMoveDestinationId] = useState("");
   const [moveSeatNumber, setMoveSeatNumber] = useState<number | null>(null);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [modeOpen, setModeOpen] = useState(false);
   const [nextMode, setNextMode] = useState<"manual" | "tracker">("manual");
   const [pendingBustSeat, setPendingBustSeat] = useState<FloorTableRosterSeat | null>(null);
@@ -198,6 +200,7 @@ export function FloorTableMapPanelV3({
     setEntrySelection(null);
     setMoveDestinationId("");
     setMoveSeatNumber(null);
+    setMoveOpen(false);
     setPendingBustSeat(null);
     setPendingFreeSitSeat(null);
     setPendingTableAction(null);
@@ -266,49 +269,56 @@ export function FloorTableMapPanelV3({
     if (!seat || !selectedTable) return null;
     const trackerChipBlocked = selectedTable.controlMode === "tracker" && seat.chipCount !== 0;
     return (
-      <section className="space-y-3 rounded-2xl border border-border bg-card/55 p-3" aria-label="Thao tác người chơi">
-        <div>
-          <p className="text-sm font-semibold text-foreground">{seat.displayName}</p>
+      <section className="min-w-0 space-y-3 rounded-xl border border-border bg-card/55 p-3" aria-label="Thao tác người chơi">
+        <div className="min-w-0">
+          <p className="break-all text-sm font-semibold text-foreground">{seat.displayName}</p>
           <p className="text-xs text-muted-foreground">Ghế {seat.seatNumber} · Entry {seat.entryNo} · {formatStack(seat.chipCount)} chip</p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            Chuyển tới bàn
-            <select className="h-12 rounded-md border border-input bg-background px-2 text-base text-foreground" value={moveDestinationId} onChange={(event) => setMoveDestinationId(event.target.value)}>
-              <option value="">Chọn bàn đích</option>
-              {tables.filter((table) => table.tournamentTableId !== selectedTable.tournamentTableId).map((table) => (
-                <option key={table.tournamentTableId} value={table.tournamentTableId}>Bàn {table.tableNumber} · {table.seats.length}/{table.maxSeats}</option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            Ghế đích
-            <select className="h-12 rounded-md border border-input bg-background px-2 text-base text-foreground" value={moveSeatNumber ?? ""} onChange={(event) => setMoveSeatNumber(Number(event.target.value))} disabled={!moveDestination}>
-              <option value="">Chọn ghế</option>
-              {destinationSeatNumbers.map((seatNumber) => <option key={seatNumber} value={seatNumber}>Ghế {seatNumber}</option>)}
-            </select>
-          </label>
-        </div>
         <div className="grid gap-2 sm:grid-cols-3">
-          <Button data-ops-action="floor.player.move" className="min-h-12" disabled={busy || !moveDestination || moveSeatNumber == null} onClick={() => void run("Đã chuyển người chơi.", () => v3.movePlayerSeat({
-            entryId: seat.entryId,
-            toTournamentTableId: moveDestination!.tournamentTableId,
-            toSeatNumber: moveSeatNumber!,
-            expectedSourceRevision: selectedTable.sessionRevision,
-            expectedDestinationRevision: moveDestination!.sessionRevision,
-            requestId: crypto.randomUUID(),
-          }))}>
-            <ArrowRightLeft className="mr-2 h-4 w-4" /> Chuyển ghế
+          <Button data-ops-action="floor.player.open_move" className="min-h-12" disabled={busy} aria-expanded={moveOpen} onClick={() => setMoveOpen((open) => !open)}>
+            <ArrowRightLeft className="mr-2 h-4 w-4" /> Chuyển người
           </Button>
           {FEATURES.floorFreeSitV1 && (
             <Button data-ops-action="floor.player.open_free_sit" variant="outline" className="min-h-12" disabled={busy} onClick={() => setPendingFreeSitSeat(seat)}>
-              <UserRoundMinus className="mr-2 h-4 w-4" /> Free Sit
+              <UserRoundMinus className="mr-2 h-4 w-4" /> Rời ghế
             </Button>
           )}
           <Button data-ops-action="floor.player.open_bust" variant="destructive" className="min-h-12" disabled={busy || trackerChipBlocked} onClick={() => setPendingBustSeat(seat)}>
             <UserRoundX className="mr-2 h-4 w-4" /> Loại khỏi giải
           </Button>
         </div>
+        {moveOpen && (
+          <div className="grid min-w-0 gap-3 rounded-lg border border-border bg-background/50 p-3" aria-label="Chọn vị trí chuyển đến">
+            <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+              <label className="grid min-w-0 gap-1 text-xs text-muted-foreground">
+                Bàn đích
+                <select className="h-12 min-w-0 w-full rounded-md border border-input bg-background px-2 text-base text-foreground" value={moveDestinationId} onChange={(event) => setMoveDestinationId(event.target.value)}>
+                  <option value="">Chọn bàn</option>
+                  {tables.filter((table) => table.tournamentTableId !== selectedTable.tournamentTableId && table.seats.length + table.seatLocks.length < table.maxSeats).map((table) => (
+                    <option key={table.tournamentTableId} value={table.tournamentTableId}>Bàn {table.tableNumber} · {table.seats.length}/{table.maxSeats}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid min-w-0 gap-1 text-xs text-muted-foreground">
+                Ghế đích
+                <select className="h-12 min-w-0 w-full rounded-md border border-input bg-background px-2 text-base text-foreground" value={moveSeatNumber ?? ""} onChange={(event) => setMoveSeatNumber(event.target.value ? Number(event.target.value) : null)} disabled={!moveDestination}>
+                  <option value="">Chọn ghế</option>
+                  {destinationSeatNumbers.map((seatNumber) => <option key={seatNumber} value={seatNumber}>Ghế {seatNumber}</option>)}
+                </select>
+              </label>
+            </div>
+            <Button data-ops-action="floor.player.move" className="min-h-12" disabled={busy || !moveDestination || moveSeatNumber == null} onClick={() => void run("Đã chuyển người chơi.", () => v3.movePlayerSeat({
+              entryId: seat.entryId,
+              toTournamentTableId: moveDestination!.tournamentTableId,
+              toSeatNumber: moveSeatNumber!,
+              expectedSourceRevision: selectedTable.sessionRevision,
+              expectedDestinationRevision: moveDestination!.sessionRevision,
+              requestId: crypto.randomUUID(),
+            })).then((ok) => { if (ok) setMoveOpen(false); })}>
+              Chuyển đến Bàn {moveDestination?.tableNumber ?? "—"} · Ghế {moveSeatNumber ?? "—"}
+            </Button>
+          </div>
+        )}
         {trackerChipBlocked && (
           <p className="rounded-xl border border-amber-400/25 bg-amber-400/5 px-3 py-2 text-xs leading-5 text-amber-100/90">
             Live Tracker chỉ cho loại khi chip đã về 0. Hãy hoàn tất chip ở Tracker rồi tải lại.
@@ -381,6 +391,7 @@ export function FloorTableMapPanelV3({
             <>
               <SheetHeader className="pr-14 text-left">
                 <SheetTitle>Bàn {selectedTable.tableNumber} · {selectedTable.seats.length}/{selectedTable.maxSeats}</SheetTitle>
+                <SheetDescription className="sr-only">Danh sách ghế và thao tác của Bàn {selectedTable.tableNumber}</SheetDescription>
                 <button
                   type="button"
                   data-ops-action="floor.tables.open_v3_control_mode"
@@ -548,25 +559,23 @@ export function FloorTableMapPanelV3({
       </Sheet>
 
       <AlertDialog open={pendingFreeSitSeat !== null} onOpenChange={(open) => { if (!open) setPendingFreeSitSeat(null); }}>
-        <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md rounded-2xl">
+        <AlertDialogContent className="operations-typography box-border max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-md overflow-y-auto rounded-xl p-4 sm:p-6">
           <AlertDialogHeader>
-            <AlertDialogTitle>Move player to Waiting?</AlertDialogTitle>
+            <AlertDialogTitle>Cho người chơi rời ghế?</AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="space-y-3 text-left">
-                <p>The player stays in the tournament. Their current stack is preserved, this seat becomes available, and the player returns to Waiting for a later seat assignment.</p>
+              <div className="min-w-0 space-y-3 text-left text-sm">
+                <p>Người chơi vẫn trong giải, giữ nguyên chip và trở về danh sách chờ xếp ghế.</p>
                 {selectedTable && pendingFreeSitSeat && (
-                  <dl className="rounded-xl border border-border bg-card/55 p-3 text-sm text-foreground">
-                    <div className="flex justify-between gap-3"><dt>Player</dt><dd className="min-w-0 truncate font-semibold">{pendingFreeSitSeat.displayName}</dd></div>
-                    <div className="mt-1 flex justify-between gap-3"><dt>Current seat</dt><dd>Table {selectedTable.tableNumber} · Seat {pendingFreeSitSeat.seatNumber}</dd></div>
-                    <div className="mt-1 flex justify-between gap-3"><dt>Entry</dt><dd>{pendingFreeSitSeat.entryNo}</dd></div>
-                    <div className="mt-1 flex justify-between gap-3"><dt>Stack preserved</dt><dd>{formatStack(pendingFreeSitSeat.chipCount)}</dd></div>
+                  <dl className="min-w-0 space-y-2 rounded-lg border border-border bg-card/55 p-3 text-sm text-foreground">
+                    <div><dt className="text-xs text-muted-foreground">Người chơi</dt><dd className="break-all font-semibold">{pendingFreeSitSeat.displayName}</dd></div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1"><div><dt className="text-xs text-muted-foreground">Vị trí</dt><dd>Bàn {selectedTable.tableNumber} · Ghế {pendingFreeSitSeat.seatNumber}</dd></div><div><dt className="text-xs text-muted-foreground">Entry</dt><dd>{pendingFreeSitSeat.entryNo}</dd></div><div><dt className="text-xs text-muted-foreground">Chip giữ lại</dt><dd>{formatStack(pendingFreeSitSeat.chipCount)}</dd></div></div>
                   </dl>
                 )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-ops-action="floor.player.cancel_free_sit" className="min-h-12">Keep Seat</AlertDialogCancel>
+            <AlertDialogCancel data-ops-action="floor.player.cancel_free_sit" className="min-h-12">Giữ ghế</AlertDialogCancel>
             <AlertDialogAction
               data-ops-action="floor.player.free_sit"
               className="min-h-12"
@@ -575,7 +584,7 @@ export function FloorTableMapPanelV3({
                 event.preventDefault();
                 if (!selectedTable || !pendingFreeSitSeat) return;
                 const seat = pendingFreeSitSeat;
-                const ok = await run("Player moved to Waiting with stack preserved.", () => v3.freeSitPlayer({
+                const ok = await run("Đã cho người chơi rời ghế; chip được giữ nguyên.", () => v3.freeSitPlayer({
                   entryId: seat.entryId,
                   expectedRevision: selectedTable.sessionRevision,
                   expectedControlEpoch: selectedTable.controlEpoch,
@@ -586,30 +595,27 @@ export function FloorTableMapPanelV3({
                 if (ok) setPendingFreeSitSeat(null);
               }}
             >
-              Confirm Free Sit
+              Xác nhận rời ghế
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       <AlertDialog open={pendingBustSeat !== null} onOpenChange={(open) => { if (!open) setPendingBustSeat(null); }}>
-        <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md rounded-2xl">
+        <AlertDialogContent className="operations-typography box-border max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-md overflow-y-auto rounded-xl p-4 sm:p-6">
           <AlertDialogHeader>
             <AlertDialogTitle>Loại người chơi khỏi giải?</AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="space-y-3 text-left">
-                <p>Thao tác này gỡ người chơi khỏi ghế và ghi nhận họ đã bị loại. Không thực hiện payout.</p>
+              <div className="min-w-0 space-y-3 text-left text-sm">
+                <p>Người chơi sẽ rời bàn và được ghi nhận đã bị loại. Không trả thưởng ở bước này.</p>
                 {selectedTable && pendingBustSeat && (
-                  <dl className="rounded-xl border border-border bg-card/55 p-3 text-sm text-foreground">
-                    <div className="flex justify-between gap-3"><dt>Người chơi</dt><dd className="min-w-0 truncate font-semibold">{pendingBustSeat.displayName}</dd></div>
-                    <div className="mt-1 flex justify-between gap-3"><dt>Vị trí</dt><dd>Bàn {selectedTable.tableNumber} · Ghế {pendingBustSeat.seatNumber}</dd></div>
-                    <div className="mt-1 flex justify-between gap-3"><dt>Entry</dt><dd>{pendingBustSeat.entryNo}</dd></div>
-                    <div className="mt-1 flex justify-between gap-3"><dt>Chip hiện tại</dt><dd>{formatStack(pendingBustSeat.chipCount)}</dd></div>
-                    <div className="mt-1 flex justify-between gap-3"><dt>Chế độ</dt><dd>{selectedTable.controlMode === "tracker" ? "Live Tracker" : "Manual Floor"}</dd></div>
+                  <dl className="min-w-0 space-y-2 rounded-lg border border-border bg-card/55 p-3 text-sm text-foreground">
+                    <div><dt className="text-xs text-muted-foreground">Người chơi</dt><dd className="break-all font-semibold">{pendingBustSeat.displayName}</dd></div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1"><div><dt className="text-xs text-muted-foreground">Vị trí</dt><dd>Bàn {selectedTable.tableNumber} · Ghế {pendingBustSeat.seatNumber}</dd></div><div><dt className="text-xs text-muted-foreground">Entry</dt><dd>{pendingBustSeat.entryNo}</dd></div><div><dt className="text-xs text-muted-foreground">Chip</dt><dd>{formatStack(pendingBustSeat.chipCount)}</dd></div></div>
                   </dl>
                 )}
                 {selectedTable?.controlMode === "manual" && (pendingBustSeat?.chipCount ?? 0) > 0 && (
-                  <p className="rounded-xl border border-amber-400/25 bg-amber-400/5 p-3 text-amber-100/90">Manual Floor cho phép loại khi còn chip, nhưng hệ thống sẽ ghi audit cảnh báo.</p>
+                  <p className="rounded-lg border border-amber-400/25 bg-amber-400/5 p-3 text-amber-100/90">Người chơi còn chip. Vui lòng kiểm tra trước khi loại.</p>
                 )}
               </div>
             </AlertDialogDescription>
@@ -642,13 +648,13 @@ export function FloorTableMapPanelV3({
       </AlertDialog>
 
       <AlertDialog open={pendingTableAction !== null} onOpenChange={(open) => { if (!open) setPendingTableAction(null); }}>
-        <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md rounded-2xl">
+        <AlertDialogContent className="operations-typography box-border max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-md overflow-y-auto rounded-xl p-4 sm:p-6">
           <AlertDialogHeader>
             <AlertDialogTitle>{pendingTableAction === "break" ? "Đóng và chuyển toàn bộ người chơi?" : "Đóng bàn trống?"}</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingTableAction === "break"
-                ? "Server sẽ kiểm tra sức chứa, chuyển người, kết thúc phân công dealer và đóng phiên bàn trong một giao dịch. Nếu không đủ ghế, không có thay đổi nào được ghi."
-                : "Server sẽ kiểm tra lại bàn không còn người và không có ván đang chạy trước khi đóng phiên bàn."}
+                ? `Chuyển ${selectedTable?.seats.length ?? 0} người sang bàn còn chỗ, rồi đóng Bàn ${selectedTable?.tableNumber ?? ""}?`
+                : `Đóng Bàn ${selectedTable?.tableNumber ?? ""} để giải khác có thể sử dụng?`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
