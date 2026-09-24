@@ -41,6 +41,13 @@ if grep -q 'orlesggcjamwuknxwcpk' supabase/config.toml; then
   exit 1
 fi
 
+# Warm only the public package dependencies needed by the two real handlers.
+# No application handler, schema, fixture or credential is present yet.
+mkdir -p supabase/functions/edge-dependency-cache
+cp "$repo_root/supabase/pending-tests/edge-dependency-cache/index.ts" \
+  supabase/functions/edge-dependency-cache/index.ts
+printf '\n[functions.edge-dependency-cache]\nverify_jwt = false\n' >>supabase/config.toml
+
 # The temporary project has no application migrations or function source.
 # This first start only downloads/prepares the pinned CLI service images.
 exclude_services="imgproxy,logflare,mailpit,postgres-meta,realtime,storage-api,studio,supavisor,vector"
@@ -57,6 +64,15 @@ if (( prepare_rc != 0 )) || ! supabase status --output json >"$test_root/prepare
   docker system df >&2
   exit 1
 fi
+dependency_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+  --max-time 120 --request POST \
+  http://127.0.0.1:54321/functions/v1/edge-dependency-cache)"
+if [[ "$dependency_status" != 204 ]]; then
+  echo "Edge dependency warm-up failed (HTTP $dependency_status)" >&2
+  docker logs "$(docker ps -q --filter 'name=supabase_edge_runtime_')" --tail 40 >&2
+  exit 1
+fi
+rm -rf -- supabase/functions/edge-dependency-cache
 prepare_edge="$(docker ps -q --filter 'name=supabase_edge_runtime_')"
 if [[ -z "$prepare_edge" ]]; then
   echo "Preparation stack has no Edge runtime to cache" >&2
