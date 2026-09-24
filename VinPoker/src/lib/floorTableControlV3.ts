@@ -36,7 +36,10 @@ export type FloorTableControlV3RpcName =
   | "floor_restore_busted_player_to_seat_v4"
   | "floor_plan_tournament_redraw_v1"
   | "floor_apply_tournament_redraw_v1"
-  | "get_public_tournament_redraw_v1";
+  | "get_public_tournament_redraw_v1"
+  | "get_floor_pending_tracker_moves_v1"
+  | "floor_queue_tracker_move_v1"
+  | "floor_cancel_pending_tracker_move_v1";
 
 export type FloorTableControlV3Rpc = (
   name: FloorTableControlV3RpcName,
@@ -159,6 +162,17 @@ export type FloorRestorableEntry = {
   entryNo: number;
   displayName: string;
   currentStack: number;
+};
+
+export type FloorPendingTrackerMove = {
+  pendingMoveId: string;
+  entryId: string;
+  sourceTournamentTableId: string;
+  destinationTournamentTableId: string;
+  destinationSeatNumber: number;
+  status: "pending" | "stale";
+  resolutionReason: string | null;
+  requestedAt: string;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -543,6 +557,33 @@ function parseRestorableEntry(value: unknown): FloorTableControlV3Result<FloorRe
   return { ok: true, data: { entryId, playerId, entryNo, displayName, currentStack } };
 }
 
+function parsePendingTrackerMove(value: unknown): FloorTableControlV3Result<FloorPendingTrackerMove> {
+  if (!isRecord(value)) return { ok: false, error: "V3_PENDING_MOVE_MALFORMED" };
+  const pendingMoveId = value.pending_move_id;
+  const entryId = value.entry_id;
+  const sourceTournamentTableId = value.source_tournament_table_id;
+  const destinationTournamentTableId = value.destination_tournament_table_id;
+  const destinationSeatNumber = value.destination_seat_number;
+  const status = value.status;
+  const resolutionReason = nullableString(value.resolution_reason);
+  const requestedAt = value.requested_at;
+  if (typeof pendingMoveId !== "string" || !pendingMoveId
+    || typeof entryId !== "string" || !entryId
+    || typeof sourceTournamentTableId !== "string" || !sourceTournamentTableId
+    || typeof destinationTournamentTableId !== "string" || !destinationTournamentTableId
+    || typeof destinationSeatNumber !== "number" || !Number.isSafeInteger(destinationSeatNumber)
+    || destinationSeatNumber < 1 || destinationSeatNumber > 9
+    || (status !== "pending" && status !== "stale")
+    || resolutionReason === undefined
+    || typeof requestedAt !== "string" || !requestedAt) {
+    return { ok: false, error: "V3_PENDING_MOVE_MALFORMED" };
+  }
+  return { ok: true, data: {
+    pendingMoveId, entryId, sourceTournamentTableId, destinationTournamentTableId,
+    destinationSeatNumber, status, resolutionReason, requestedAt,
+  } };
+}
+
 function parseMutation(value: unknown): FloorTableControlV3Result<MutationResult> {
   if (!isRecord(value) || typeof value.ok !== "boolean") {
     return { ok: false, error: "V3_MUTATION_RESPONSE_MALFORMED" };
@@ -561,10 +602,11 @@ function mutationFromResponse(response: FloorTableControlV3Result<unknown>): Flo
 
 export function createFloorTableControlV3Client(
   rpc: FloorTableControlV3Rpc,
-  options: { enabled?: boolean; redrawSeatLockEnabled?: boolean } = {},
+  options: { enabled?: boolean; redrawSeatLockEnabled?: boolean; deferredTrackerMoveEnabled?: boolean } = {},
 ) {
   const enabled = options.enabled ?? FEATURES.floorTableControlV3;
   const redrawSeatLockEnabled = options.redrawSeatLockEnabled ?? FEATURES.floorRedrawSeatLockV1;
+  const deferredTrackerMoveEnabled = options.deferredTrackerMoveEnabled ?? FEATURES.floorDeferredTrackerMoveV1;
 
   const call = async (
     name: FloorTableControlV3RpcName,
@@ -587,6 +629,7 @@ export function createFloorTableControlV3Client(
   return {
     enabled,
     redrawSeatLockEnabled,
+    deferredTrackerMoveEnabled,
 
     async getClubTableInventory(clubId: string): Promise<FloorTableControlV3Result<FloorTableInventoryItem[]>> {
       const response = await call("get_club_table_inventory", { p_club_id: clubId });
@@ -737,6 +780,40 @@ export function createFloorTableControlV3Client(
         p_expected_destination_revision: args.expectedDestinationRevision,
         p_request_id: args.requestId,
       }).then(mutationFromResponse),
+
+    async getPendingTrackerMoves(tournamentId: string): Promise<FloorTableControlV3Result<FloorPendingTrackerMove[]>> {
+      if (!deferredTrackerMoveEnabled) return { ok: true, data: [] };
+      const response = await call("get_floor_pending_tracker_moves_v1", { p_tournament_id: tournamentId });
+      if (response.ok === false) return response;
+      if (!Array.isArray(response.data)) return { ok: false, error: "V3_PENDING_MOVES_RESPONSE_MALFORMED" };
+      const moves: FloorPendingTrackerMove[] = [];
+      const ids = new Set<string>();
+      for (const row of response.data) {
+        const parsed = parsePendingTrackerMove(row);
+        if (parsed.ok === false) return parsed;
+        if (ids.has(parsed.data.pendingMoveId)) return { ok: false, error: "V3_PENDING_MOVE_DUPLICATE" };
+        ids.add(parsed.data.pendingMoveId);
+        moves.push(parsed.data);
+      }
+      return { ok: true, data: moves };
+    },
+
+    queueTrackerMove: (args: { entryId: string; toTournamentTableId: string; toSeatNumber: number; expectedSourceRevision: number; expectedDestinationRevision: number; requestId: string }) =>
+      deferredTrackerMoveEnabled
+        ? call("floor_queue_tracker_move_v1", {
+            p_entry_id: args.entryId,
+            p_destination_tournament_table_id: args.toTournamentTableId,
+            p_destination_seat_number: args.toSeatNumber,
+            p_expected_source_revision: args.expectedSourceRevision,
+            p_expected_destination_revision: args.expectedDestinationRevision,
+            p_request_id: args.requestId,
+          }).then(mutationFromResponse)
+        : Promise.resolve({ ok: false as const, error: "FLOOR_DEFERRED_TRACKER_MOVE_V1_DISABLED" }),
+
+    cancelPendingTrackerMove: (pendingMoveId: string) =>
+      deferredTrackerMoveEnabled
+        ? call("floor_cancel_pending_tracker_move_v1", { p_pending_move_id: pendingMoveId }).then(mutationFromResponse)
+        : Promise.resolve({ ok: false as const, error: "FLOOR_DEFERRED_TRACKER_MOVE_V1_DISABLED" }),
 
     closeTournamentTable: (args: { tournamentTableId: string; expectedRevision: number; requestId: string }) =>
       (redrawSeatLockEnabled ? callRedrawSeatLock : call)(redrawSeatLockEnabled ? "close_tournament_table_v4" : "close_tournament_table_v3", {

@@ -45,6 +45,17 @@ describe("handInputEdge — write-path parity", () => {
     }).hand_number).toBe(12);
   });
 
+  it("start_hand carries the V3 lease and fencing epoch only for a V3 table", () => {
+    expect(buildStartHandBody({
+      tournamentId: "T1", tableId: "GT5", handNumber: 2, handTime: "x", buttonSeat: 3,
+      tournamentTableId: "TT5", tableSessionId: "S5", controlEpoch: 4,
+    })).toEqual({
+      tournament_id: "T1", action: "start_hand", table_id: "GT5",
+      hand_number: 2, hand_time: "x", button_seat: 3,
+      tournament_table_id: "TT5", table_session_id: "S5", control_epoch: 4,
+    });
+  });
+
   it("record_action carries action_amount as chips ADDED (not bet-to)", () => {
     expect(
       buildRecordActionBody({

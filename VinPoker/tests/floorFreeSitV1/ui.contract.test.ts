@@ -9,17 +9,22 @@ const panel = readFileSync(
 const flags = readFileSync(resolve(process.cwd(), "src/lib/featureFlags.ts"), "utf8");
 
 describe("Floor Free Sit V1 UI contract", () => {
-  it("puts Free Sit beside Move and Bust in the selected-player actions", () => {
+  it("shows concise player actions before destination controls", () => {
+    expect(panel).toContain('data-ops-action="floor.player.open_move"');
     expect(panel).toContain('data-ops-action="floor.player.move"');
     expect(panel).toContain('data-ops-action="floor.player.open_free_sit"');
     expect(panel).toContain('data-ops-action="floor.player.open_bust"');
-    expect(panel).toContain("Free Sit");
+    expect(panel).toContain("{moveOpen && (");
+    expect(panel).toContain("Rời ghế");
   });
 
   it("explains the preserved stack and Waiting transition before confirmation", () => {
-    expect(panel).toContain("The player stays in the tournament");
-    expect(panel).toContain("Stack preserved");
-    expect(panel).toContain("Confirm Free Sit");
+    expect(panel).toContain("giữ nguyên chip và trở về danh sách chờ");
+    expect(panel).toContain("Chip giữ lại");
+    expect(panel).toContain("Xác nhận rời ghế");
+    expect(panel).toContain("break-all font-semibold");
+    expect(panel).toContain("Chuyển ${selectedTable?.seats.length ?? 0} người sang bàn còn chỗ");
+    expect(panel).not.toContain("Server sẽ kiểm tra sức chứa");
   });
 
   it("keeps the write path behind the explicit Free Sit flag", () => {

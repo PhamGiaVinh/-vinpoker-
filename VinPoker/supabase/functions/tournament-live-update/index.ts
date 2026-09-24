@@ -359,19 +359,36 @@ Deno.serve(async (req) => {
         break;
       }
       case "start_hand": {
-        const { table_id, hand_number, hand_time, button_seat } = body;
+        const { table_id, hand_number, hand_time, button_seat,
+          table_session_id, tournament_table_id, control_epoch } = body;
+        if ((table_session_id !== undefined || tournament_table_id !== undefined || control_epoch !== undefined)
+          && (typeof table_session_id !== "string" || typeof tournament_table_id !== "string"
+            || !Number.isInteger(control_epoch) || control_epoch < 1)) {
+          return validationError("INVALID_TRACKER_CONTEXT", "Phiên bàn Tracker không hợp lệ. Hãy tải lại bàn.");
+        }
         const normalizedButtonSeat =
           Number.isInteger(button_seat) && button_seat >= 1 && button_seat <= 10
             ? button_seat
             : 1;
-        result = await supabase.rpc("start_hand", {
-          p_tournament_id: tournament_id,
-          p_table_id: table_id,
-          p_hand_number: hand_number,
-          p_hand_time: hand_time || new Date().toISOString(),
-          p_created_by: user.id,
-          p_button_seat: normalizedButtonSeat,
-        });
+        result = table_session_id
+          ? await supabase.rpc("start_tracker_hand_v3", {
+            p_tournament_id: tournament_id,
+            p_tournament_table_id: tournament_table_id,
+            p_table_session_id: table_session_id,
+            p_control_epoch: control_epoch,
+            p_hand_number: hand_number,
+            p_hand_time: hand_time || new Date().toISOString(),
+            p_created_by: user.id,
+            p_button_seat: normalizedButtonSeat,
+          })
+          : await supabase.rpc("start_hand", {
+            p_tournament_id: tournament_id,
+            p_table_id: table_id,
+            p_hand_number: hand_number,
+            p_hand_time: hand_time || new Date().toISOString(),
+            p_created_by: user.id,
+            p_button_seat: normalizedButtonSeat,
+          });
         break;
       }
       case "update_community_cards": {

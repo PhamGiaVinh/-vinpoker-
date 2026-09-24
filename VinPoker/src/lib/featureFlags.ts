@@ -935,6 +935,9 @@ export const FEATURES = {
    * verified migration application and authenticated UAT.
    */
   floorFreeSitV1: true,
+  // Server-reserved Tracker destination seats apply only after the active hand
+  // ends. Keep OFF until the exact pending-move migration is live and UATed.
+  floorDeferredTrackerMoveV1: false,
   /**
    * Persisted 8/9-max redraw + empty-seat locks. Dark by default and separate
    * from Floor V3 because its additive tables/RPCs require their own DB gate.
