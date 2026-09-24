@@ -167,12 +167,12 @@ BEGIN
   v_source := public.floor_open_tournament_table_v3(
     '00000000-0000-0000-0000-000000000131',
     '00000000-0000-0000-0000-000000000534', 'manual',
-    '00000000-0000-0000-0000-000000001141');
+    '00000000-0000-0000-0000-000000001181');
   PERFORM public.floor_table_v3_assert((v_source->>'ok')::boolean, '8-max test source opens');
   v_source_id := (v_source->>'tournament_table_id')::uuid;
   v_result := public.floor_assign_entry_to_seat(
     '00000000-0000-0000-0000-000000000834', v_source_id, 1,
-    (v_source->>'revision')::bigint, '00000000-0000-0000-0000-000000001142');
+    (v_source->>'revision')::bigint, '00000000-0000-0000-0000-000000001182');
   PERFORM public.floor_table_v3_assert((v_result->>'ok')::boolean, '8-max test source seats');
   v_revision := (v_result->>'revision')::bigint;
   FOR v_n IN 2..8 LOOP
@@ -195,7 +195,7 @@ BEGIN
       '00000000-0000-0000-0000-000000000131', v_source_id)),
     'full 8-max has zero capacity and never offers seat 9');
   v_result := public.floor_break_table_v3(v_source_id, v_revision,
-    '00000000-0000-0000-0000-000000001143');
+    '00000000-0000-0000-0000-000000001183');
   PERFORM public.floor_table_v3_assert(
     v_result->>'error' = 'insufficient_capacity'
     AND EXISTS (SELECT 1 FROM public.tournament_seats WHERE entry_id =
@@ -216,7 +216,7 @@ BEGIN
     unlocked_by = '00000000-0000-0000-0000-000000000001'
   WHERE table_session_id = v_target.table_session_id AND seat_number = 8;
   v_result := public.floor_break_table_v3(v_source_id, v_revision,
-    '00000000-0000-0000-0000-000000001144');
+    '00000000-0000-0000-0000-000000001184');
   PERFORM public.floor_table_v3_assert((v_result->>'ok')::boolean
     AND (v_result->>'moved_count')::integer = 1
     AND EXISTS (SELECT 1 FROM public.tournament_seats
