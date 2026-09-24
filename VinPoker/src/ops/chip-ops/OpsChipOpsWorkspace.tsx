@@ -74,7 +74,7 @@ export default function OpsChipOpsWorkspace() {
   }, [capabilities.loading, capabilities.scopeError, clubId, load, revision]);
 
   const clubName = useMemo(
-    () => capabilities.clubs.find((club) => club.id === clubId)?.name ?? "CLB đã chọn",
+    () => capabilities.clubs.find((club) => club.id === clubId)?.name ?? "Selected club",
     [capabilities.clubs, clubId],
   );
 
