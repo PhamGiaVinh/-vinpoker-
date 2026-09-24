@@ -6705,6 +6705,12 @@
       "filename": "20270115000003_cashier_tour_money_v1.sql",
       "sha256": "083ac776a361c1c00684b0eccd01465967e9777926ae073bc9fdcf97a4356df3",
       "domain": "cashier"
+    },
+    {
+      "version": "20270115000005",
+      "filename": "20270115000005_tracker_dealer_floor_operational_alerts.sql",
+      "sha256": "722d46029542a4d36e2b801a2cde35b6b28d5a237b7bde8ee7bc74595a5b6046",
+      "domain": "tracker"
     }
   ],
   "floorActiveAllowlist": [
@@ -6762,11 +6768,6 @@
       "version": "20270115000001",
       "filename": "20270115000001_tracker_blind_position_lineage.sql",
       "sha256": "8ad8fcd6056a663ff024863adeb2697091be5384d217f32b1df7521a5f943ba2"
-    },
-    {
-      "version": "20270115000005",
-      "filename": "20270115000005_tracker_dealer_floor_operational_alerts.sql",
-      "sha256": "b1c989ef44e0ca411042e2070908ca2698134fbbf889ac95523950bc3b9e0464"
     }
   ],
   "counts": {
