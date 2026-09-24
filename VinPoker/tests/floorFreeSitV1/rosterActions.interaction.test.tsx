@@ -11,6 +11,10 @@ const fixture = vi.hoisted(() => ({
     getSeatableEntries: vi.fn(),
     getRestorableEntries: vi.fn(),
     getPendingTrackerMoves: vi.fn(),
+    movePlayerSeat: vi.fn(),
+    queueTrackerMove: vi.fn(),
+    cancelPendingTrackerMove: vi.fn(),
+    deferredTrackerMoveEnabled: true,
   },
 }));
 
@@ -28,6 +32,7 @@ vi.mock("@/components/cashier/tournament-live/OpenTableDialog", () => ({ OpenTab
 vi.mock("@/components/cashier/tournament-live/FloorRedrawDialogV1", () => ({ FloorRedrawDialogV1: () => null }));
 
 function setup() {
+  vi.clearAllMocks();
   fixture.client.getTournamentTableRoster.mockResolvedValue({ ok: true, data: [{
     tournamentId: "tour-1", tournamentTableId: "table-1", gameTableId: "physical-1",
     tableNumber: 4, tableName: "Bàn 4", tableSessionId: "session-1",
@@ -74,5 +79,27 @@ describe("Floor roster mobile actions", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "Rời ghế" }));
     expect(within(screen.getByRole("alertdialog")).getByText(/giữ nguyên chip và trở về danh sách chờ/)).toBeTruthy();
+  });
+
+  it("queues a move into a running Tracker table and shows the reserved seat", async () => {
+    setup();
+    fixture.client.movePlayerSeat.mockResolvedValue({ ok: false, error: "destination_table_has_active_hand" });
+    fixture.client.queueTrackerMove.mockResolvedValue({ ok: true, data: { queued: true, pending_move_id: "pending-1" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Ghế 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chuyển người" }));
+    fireEvent.change(screen.getByLabelText("Bàn đích"), { target: { value: "table-2" } });
+    fireEvent.change(screen.getByLabelText("Ghế đích"), { target: { value: "2" } });
+    fixture.client.getPendingTrackerMoves.mockResolvedValue({ ok: true, data: [{
+      pendingMoveId: "pending-1", entryId: "entry-1", sourceTournamentTableId: "table-1",
+      destinationTournamentTableId: "table-2", destinationSeatNumber: 2,
+      status: "pending", resolutionReason: null, requestedAt: "2026-09-24T00:00:00Z",
+    }] });
+    fireEvent.click(screen.getByRole("button", { name: "Chuyển đến Bàn 5 · Ghế 2" }));
+    await waitFor(() => expect(fixture.client.queueTrackerMove).toHaveBeenCalledWith(expect.objectContaining({
+      entryId: "entry-1", toTournamentTableId: "table-2", toSeatNumber: 2,
+    })));
+    expect(fixture.client.movePlayerSeat).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Chờ hết ván · Bàn 5 · Ghế 2")).toBeTruthy();
   });
 });
