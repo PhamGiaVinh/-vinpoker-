@@ -35,23 +35,23 @@ describe("ChipOpsWorkspaceView", () => {
   it("shows issued chip counts and face value without implying physical stock", () => {
     renderView(baseInventory);
 
-    expect(screen.getByText("Issued chips by denomination")).toBeInTheDocument();
-    expect(screen.getByText("Issued chip face value")).toBeInTheDocument();
-    expect(screen.getByText("Standard · 50,000 face value per set")).toBeInTheDocument();
+    expect(screen.queryByText("Issued chips by denomination")).not.toBeNull();
+    expect(screen.queryByText("Issued chip face value")).not.toBeNull();
+    expect(screen.queryByText("Standard · 50,000 face value per set")).not.toBeNull();
     expect(screen.getAllByText("Issued mix reconciliation")).toHaveLength(2);
     const faceValueMetric = screen.getByText("Issued chip face value").parentElement;
-    expect(faceValueMetric).toHaveTextContent("2,400");
+    expect(faceValueMetric?.textContent).toContain("2,400");
     expect(screen.getAllByText("24").length).toBeGreaterThan(0);
-    expect(screen.getByText(/Physical stock not recorded/)).toBeInTheDocument();
-    expect(screen.getByText("Not recorded")).toBeInTheDocument();
-    expect(screen.queryByText("Available", { exact: true })).not.toBeInTheDocument();
-    expect(screen.getByText("Chip value only · not cash or a prize pool")).toBeInTheDocument();
+    expect(screen.queryByText(/Physical stock not recorded/)).not.toBeNull();
+    expect(screen.queryByText("Not recorded")).not.toBeNull();
+    expect(screen.queryByText("Available", { exact: true })).toBeNull();
+    expect(screen.queryByText("Chip value only · not cash or a prize pool")).not.toBeNull();
   });
 
   it("shows a clear empty state when the snapshot has no issued denominations", () => {
     renderView({ ...baseInventory, denominations: [], totalIssuedChips: 0, totalValue: 0 });
 
-    expect(screen.getByRole("status")).toHaveTextContent("No issued denomination rows in this snapshot.");
-    expect(screen.getByRole("status")).toHaveTextContent("Physical stock not recorded.");
+    expect(screen.getByRole("status").textContent).toContain("No issued denomination rows in this snapshot.");
+    expect(screen.getByRole("status").textContent).toContain("Physical stock not recorded.");
   });
 });
