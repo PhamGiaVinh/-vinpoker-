@@ -69,8 +69,8 @@ END;
 $$;
 
 \ir ../../supabase/migration-archive/remote-history/recovered-source/20270115000004_floor_free_sit_v1.sql
-\ir ../../supabase/migrations/20270115000005_floor_roster_actions_repair.sql
-\ir ../../supabase/migrations/20270115000006_floor_break_eligible_destinations.sql
+\ir ../../supabase/migrations/20270115000006_floor_roster_actions_repair.sql
+\ir ../../supabase/migrations/20270115000007_floor_break_eligible_destinations.sql
 
 SELECT public.floor_table_v3_assert(
   has_function_privilege('authenticated', 'public.floor_break_table_v3(uuid,bigint,uuid,text)', 'EXECUTE')

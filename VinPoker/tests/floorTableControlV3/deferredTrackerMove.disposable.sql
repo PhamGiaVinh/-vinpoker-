@@ -1,9 +1,9 @@
 \set ON_ERROR_STOP on
 -- Runs after disposableDb.serverContract.sql and rosterActionsRepair.disposable.sql.
 -- Exact TEST IDs only; the CI PostgreSQL service is discarded after this job.
-\ir ../../supabase/migrations/20270115000007_floor_deferred_tracker_move_v1.sql
-\ir ../../supabase/migrations/20270115000008_tracker_record_hand_v3_identity.sql
-\ir ../../supabase/migrations/20270115000009_tracker_v3_hand_start_context.sql
+\ir ../../supabase/migrations/20270115000008_floor_deferred_tracker_move_v1.sql
+\ir ../../supabase/migrations/20270115000009_tracker_record_hand_v3_identity.sql
+\ir ../../supabase/migrations/20270115000010_tracker_v3_hand_start_context.sql
 
 INSERT INTO public.club_trackers (club_id, user_id) VALUES
   ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001');

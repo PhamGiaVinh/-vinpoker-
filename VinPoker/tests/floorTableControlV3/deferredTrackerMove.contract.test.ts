@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const sql = readFileSync(resolve(process.cwd(), "supabase/migrations/20270115000007_floor_deferred_tracker_move_v1.sql"), "utf8");
-const handWriterSql = readFileSync(resolve(process.cwd(), "supabase/migrations/20270115000008_tracker_record_hand_v3_identity.sql"), "utf8");
-const handStartSql = readFileSync(resolve(process.cwd(), "supabase/migrations/20270115000009_tracker_v3_hand_start_context.sql"), "utf8");
+const sql = readFileSync(resolve(process.cwd(), "supabase/migrations/20270115000008_floor_deferred_tracker_move_v1.sql"), "utf8").replace(/\r\n/g, "\n");
+const handWriterSql = readFileSync(resolve(process.cwd(), "supabase/migrations/20270115000009_tracker_record_hand_v3_identity.sql"), "utf8");
+const handStartSql = readFileSync(resolve(process.cwd(), "supabase/migrations/20270115000010_tracker_v3_hand_start_context.sql"), "utf8");
 const trackerHook = readFileSync(resolve(process.cwd(), "src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts"), "utf8");
 const trackerEdge = readFileSync(resolve(process.cwd(), "supabase/functions/tournament-live-update/index.ts"), "utf8");
 const ui = readFileSync(resolve(process.cwd(), "src/components/cashier/tournament-live/FloorTableMapPanelV3.tsx"), "utf8");
