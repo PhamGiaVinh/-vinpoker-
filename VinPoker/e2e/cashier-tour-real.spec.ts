@@ -63,7 +63,7 @@ test("real Auth and Cashier backend render the completed seated buy-in", async (
     }, null, 2));
     throw error;
   }
-  await page.getByRole("button", { name: /Cashier Edge TEST Tour/ }).first().click();
+  await page.getByRole("button", { name: /^Cashier Edge TEST Tour ·/ }).first().click();
   await page.getByRole("button", { name: /Đã tự hoàn tất/ }).click();
   try {
     await expect(page.getByRole("button", { name: /Người chơi Edge TEST/ })).toBeVisible();
@@ -89,7 +89,7 @@ test("real Cashier UI refunds a waiting Tour B registration while serving Tour A
   await page.setViewportSize({ width: 375, height: 844 });
   await page.goto("/ops/cashier/tour?club=a2000000-0000-4000-8000-000000000001");
   await expect(page.getByText("ACTIVE", { exact: true })).toBeVisible({ timeout: 30_000 });
-  await page.getByRole("button", { name: /Cashier Edge TEST Tour/ }).first().click();
+  await page.getByRole("button", { name: /^Cashier Edge TEST Tour ·/ }).first().click();
   await expect(page.getByRole("heading", { level: 1, name: "Cashier Edge TEST Tour" })).toBeVisible();
   await page.getByPlaceholder("Quét QR, thẻ hội viên, mã CK; hoặc tìm tên, số điện thoại").fill(referenceCode);
   try {
