@@ -31,6 +31,7 @@ export type FloorTableControlV3RpcName =
   | "floor_break_table_v3"
   | "floor_break_table_v4"
   | "floor_bust_player_v3"
+  | "floor_free_sit_player_v1"
   | "floor_restore_busted_player_to_seat_v3"
   | "floor_restore_busted_player_to_seat_v4"
   | "floor_plan_tournament_redraw_v1"
@@ -760,6 +761,16 @@ export function createFloorTableControlV3Client(
         p_expected_chip_count: args.expectedChipCount,
         p_request_id: args.requestId,
         p_reason: args.reason ?? "floor_bust",
+      }).then(mutationFromResponse),
+
+    freeSitPlayer: (args: { entryId: string; expectedRevision: number; expectedControlEpoch: number; expectedChipCount: number; requestId: string; reason?: string }) =>
+      call("floor_free_sit_player_v1", {
+        p_entry_id: args.entryId,
+        p_expected_revision: args.expectedRevision,
+        p_expected_control_epoch: args.expectedControlEpoch,
+        p_expected_chip_count: args.expectedChipCount,
+        p_request_id: args.requestId,
+        p_reason: args.reason ?? "floor_free_sit",
       }).then(mutationFromResponse),
 
     restoreBustedPlayer: (args: { entryId: string; toTournamentTableId: string; toSeatNumber: number; expectedRevision: number; expectedControlEpoch: number; requestId: string }) =>

@@ -6681,20 +6681,30 @@
       "pendingPath": "supabase/pending-migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql",
       "sha256": "d28908052e16431cf321a4d3e39f4bc69799427ba9c6b551f15ea3981fb63acc",
       "reason": "post-production-head Tracker Voice Board Assist migration; source-only pending owner-gated rollout"
-    }
-  ],
-  "ownerGatedActiveAllowlist": [
-    {
-      "version": "20270115000003",
-      "filename": "20270115000003_cashier_tour_money_v1.sql",
-      "sha256": "083ac776a361c1c00684b0eccd01465967e9777926ae073bc9fdcf97a4356df3",
-      "domain": "cashier"
     },
     {
       "version": "20260924070939",
       "filename": "20260924070939_public_spectator_last_hand_history.sql",
+      "originalPath": "supabase/migrations/20260924070939_public_spectator_last_hand_history.sql",
+      "pendingPath": "supabase/pending-migrations/20260924070939_public_spectator_last_hand_history.sql",
       "sha256": "822f78e3befd15e156afd619b40266e021abf21968770c2316498ef0fa35e1c9",
-      "domain": "public-spectator"
+      "reason": "merged source remains a pending owner-gated Public Spectator rollout; do not co-apply it with Floor Free Sit"
+    },
+    {
+      "version": "20270115000003",
+      "filename": "20270115000003_cashier_tour_money_v1.sql",
+      "originalPath": "supabase/migrations/20270115000003_cashier_tour_money_v1.sql",
+      "pendingPath": "supabase/pending-migrations/20270115000003_cashier_tour_money_v1.sql",
+      "sha256": "083ac776a361c1c00684b0eccd01465967e9777926ae073bc9fdcf97a4356df3",
+      "reason": "Cashier V2 remains a separate owner-gated money rollout; do not co-apply it with Floor Free Sit"
+    }
+  ],
+  "ownerGatedActiveAllowlist": [
+    {
+      "version": "20270115000004",
+      "filename": "20270115000004_floor_free_sit_v1.sql",
+      "sha256": "1793827efb0814cb3da4a23ce14181ff216eff5726f23d76581e70eb8ca17a2c",
+      "domain": "floor"
     }
   ],
   "floorActiveAllowlist": [
@@ -6761,7 +6771,7 @@
     "neverReplay": 221,
     "legacyUnappliedNotForReplay": 4,
     "remoteHistoryReceipts": 26,
-    "pendingSources": 3,
+    "pendingSources": 5,
     "unresolved": 1,
     "nonVersionedSources": 1
   },

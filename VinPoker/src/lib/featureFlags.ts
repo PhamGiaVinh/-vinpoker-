@@ -928,6 +928,12 @@ export const FEATURES = {
   floorTableControlV3:
     isFloorTableControlV3PreviewEnabled() || isFloorTableControlV3ProductionEnabled(),
   /**
+   * Floor Free Sit: release the selected V3 seat while preserving the entry and
+   * exact stack in the existing waiting state. Source/UI stays dark until the
+   * owner-gated migration is applied and authenticated UAT passes.
+   */
+  floorFreeSitV1: false,
+  /**
    * Persisted 8/9-max redraw + empty-seat locks. Dark by default and separate
    * from Floor V3 because its additive tables/RPCs require their own DB gate.
    */
