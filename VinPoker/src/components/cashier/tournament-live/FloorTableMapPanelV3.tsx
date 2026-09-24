@@ -23,6 +23,7 @@ import { formatStack } from "@/lib/format";
 import {
   createFloorTableControlV3Client,
   type FloorRestorableEntry,
+  type FloorPendingTrackerMove,
   type FloorTableControlV3Rpc,
   type FloorTableRosterSeat,
   type FloorSeatableEntry,
@@ -62,6 +63,10 @@ function v3ErrorMessage(error: string): string {
     case "table_session_not_active":
     case "table_session_mismatch": return "Phiên bàn đã đóng hoặc được mở lại. Hãy tải lại trước khi thao tác.";
     case "destination_table_has_active_hand": return "Bàn đích đang có ván chạy nên chưa thể chuyển người.";
+    case "destination_hand_not_active": return "Ván Tracker vừa kết thúc. Hãy tải lại và chuyển người ngay.";
+    case "pending_move_conflict": return "Người chơi hoặc ghế này đã có yêu cầu chuyển chờ xử lý. Hãy tải lại.";
+    case "source_table_busy": return "Bàn nguồn đang có ván hoặc không ở chế độ Manual. Hãy kết thúc ván nguồn trước.";
+    case "seat_reserved_pending_move": return "Ghế đích đang được giữ cho một người chờ hết ván.";
     case "no_active_v3_tables": return "Giải chưa có bàn đích đang hoạt động.";
     case "tournament_not_open": return "Giải chưa mở hoặc đã kết thúc nên thao tác bị chặn.";
     case "actor_not_allowed": return "Tài khoản này không có quyền thao tác giải hoặc CLB này.";
@@ -93,6 +98,7 @@ export function FloorTableMapPanelV3({
   const [tables, setTables] = useState<FloorTournamentTableRoster[]>([]);
   const [seatableEntries, setSeatableEntries] = useState<FloorSeatableEntry[]>([]);
   const [restorableEntries, setRestorableEntries] = useState<FloorRestorableEntry[]>([]);
+  const [pendingMoves, setPendingMoves] = useState<FloorPendingTrackerMove[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -139,55 +145,72 @@ export function FloorTableMapPanelV3({
     if (!moveDestination) return [] as number[];
     const occupied = new Set(moveDestination.seats.map((seat) => seat.seatNumber));
     const locked = new Set(moveDestination.seatLocks.map((seatLock) => seatLock.seatNumber));
+    const reserved = new Set(pendingMoves.filter((move) => move.status === "pending" && move.destinationTournamentTableId === moveDestination.tournamentTableId).map((move) => move.destinationSeatNumber));
     return Array.from({ length: moveDestination.maxSeats }, (_, index) => index + 1)
-      .filter((seat) => !occupied.has(seat) && !locked.has(seat));
-  }, [moveDestination]);
+      .filter((seat) => !occupied.has(seat) && !locked.has(seat) && !reserved.has(seat));
+  }, [moveDestination, pendingMoves]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!v3.enabled) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
-      const [roster, entries, restorable] = await Promise.all([
+      const [roster, entries, restorable, pending] = await Promise.all([
         v3.getTournamentTableRoster(tournament.id),
         v3.getSeatableEntries(tournament.id),
         v3.getRestorableEntries(tournament.id),
+        v3.getPendingTrackerMoves(tournament.id),
       ]);
-      if (roster.ok === false || entries.ok === false || restorable.ok === false) {
-        setTables([]);
-        setSeatableEntries([]);
-        setRestorableEntries([]);
+      if (roster.ok === false || entries.ok === false || restorable.ok === false || pending.ok === false) {
+        if (!silent) {
+          setTables([]);
+          setSeatableEntries([]);
+          setRestorableEntries([]);
+          setPendingMoves([]);
+        }
         const failure = roster.ok === false
           ? roster.error
           : entries.ok === false
             ? entries.error
             : restorable.ok === false
               ? restorable.error
-              : "V3_STATE_LOAD_FAILED";
+              : pending.ok === false ? pending.error : "V3_STATE_LOAD_FAILED";
         const message = `Không tải được dữ liệu bàn: ${v3ErrorMessage(failure)}`;
         setLoadError(message);
-        toast.error(message);
+        if (!silent) toast.error(message);
       } else {
         setTables(roster.data);
         setSeatableEntries(entries.data);
         setRestorableEntries(restorable.data);
+        setPendingMoves(pending.data);
         setLoadError(null);
       }
     } catch {
-      setTables([]);
-      setSeatableEntries([]);
-      setRestorableEntries([]);
+      if (!silent) {
+        setTables([]);
+        setSeatableEntries([]);
+        setRestorableEntries([]);
+        setPendingMoves([]);
+      }
       const message = "Không thể kết nối để tải dữ liệu bàn. Hãy kiểm tra mạng và thử lại.";
       setLoadError(message);
-      toast.error(message);
+      if (!silent) toast.error(message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [tournament.id, v3]);
 
   useEffect(() => { void load(); }, [load, refreshTrigger]);
+
+  useEffect(() => {
+    if (!pendingMoves.some((move) => move.status === "pending")) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(true);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [load, pendingMoves]);
 
   useEffect(() => {
     if (!selectedTable) return;
@@ -221,7 +244,7 @@ export function FloorTableMapPanelV3({
     setMoveSeatNumber(destinationSeatNumbers[0] ?? null);
   }, [destinationSeatNumbers, moveDestination]);
 
-  const run = async (successMessage: string, mutation: Mutation): Promise<boolean> => {
+  const run = async (successMessage: string | ((data: Record<string, unknown>) => string), mutation: Mutation): Promise<boolean> => {
     if (busy) return false;
     setBusy(true);
     try {
@@ -234,7 +257,7 @@ export function FloorTableMapPanelV3({
         return false;
       }
       setOperationError(null);
-      toast.success(successMessage);
+      toast.success(typeof successMessage === "function" ? successMessage(result.data) : successMessage);
       await load();
       return true;
     } catch {
@@ -268,6 +291,9 @@ export function FloorTableMapPanelV3({
   const seatAction = (seat: FloorTableRosterSeat | undefined) => {
     if (!seat || !selectedTable) return null;
     const trackerChipBlocked = selectedTable.controlMode === "tracker" && seat.chipCount !== 0;
+    const pendingForEntry = pendingMoves.find((move) => move.entryId === seat.entryId && move.status === "pending");
+    const staleForEntry = pendingMoves.find((move) => move.entryId === seat.entryId && move.status === "stale");
+    const pendingDestination = tables.find((table) => table.tournamentTableId === pendingForEntry?.destinationTournamentTableId);
     return (
       <section className="min-w-0 space-y-3 rounded-xl border border-border bg-card/55 p-3" aria-label="Thao tác người chơi">
         <div className="min-w-0">
@@ -275,7 +301,7 @@ export function FloorTableMapPanelV3({
           <p className="text-xs text-muted-foreground">Ghế {seat.seatNumber} · Entry {seat.entryNo} · {formatStack(seat.chipCount)} chip</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
-          <Button data-ops-action="floor.player.open_move" className="min-h-12" disabled={busy} aria-expanded={moveOpen} onClick={() => setMoveOpen((open) => !open)}>
+          <Button data-ops-action="floor.player.open_move" className="min-h-12" disabled={busy || Boolean(pendingForEntry)} aria-expanded={moveOpen} onClick={() => setMoveOpen((open) => !open)}>
             <ArrowRightLeft className="mr-2 h-4 w-4" /> Chuyển người
           </Button>
           {FEATURES.floorFreeSitV1 && (
@@ -287,6 +313,16 @@ export function FloorTableMapPanelV3({
             <UserRoundX className="mr-2 h-4 w-4" /> Loại khỏi giải
           </Button>
         </div>
+        {pendingForEntry && (
+          <div className="min-w-0 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-sm">
+            <p className="font-medium">Chờ hết ván · Bàn {pendingDestination?.tableNumber ?? "—"} · Ghế {pendingForEntry.destinationSeatNumber}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Người chơi vẫn ở ghế hiện tại. Hệ thống sẽ chuyển sau ván Tracker.</p>
+            <Button data-ops-action="floor.player.cancel_pending_move" variant="outline" className="mt-3 min-h-12 w-full" disabled={busy} onClick={() => void run("Đã hủy chuyển sau ván.", () => v3.cancelPendingTrackerMove(pendingForEntry.pendingMoveId))}>Hủy chuyển</Button>
+          </div>
+        )}
+        {staleForEntry && !pendingForEntry && (
+          <p role="status" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs">Yêu cầu chuyển trước không còn hợp lệ. Hãy tải lại và chọn ghế mới.</p>
+        )}
         {moveOpen && (
           <div className="grid min-w-0 gap-3 rounded-lg border border-border bg-background/50 p-3" aria-label="Chọn vị trí chuyển đến">
             <div className="grid min-w-0 gap-2 sm:grid-cols-2">
@@ -307,14 +343,27 @@ export function FloorTableMapPanelV3({
                 </select>
               </label>
             </div>
-            <Button data-ops-action="floor.player.move" className="min-h-12" disabled={busy || !moveDestination || moveSeatNumber == null} onClick={() => void run("Đã chuyển người chơi.", () => v3.movePlayerSeat({
-              entryId: seat.entryId,
-              toTournamentTableId: moveDestination!.tournamentTableId,
-              toSeatNumber: moveSeatNumber!,
-              expectedSourceRevision: selectedTable.sessionRevision,
-              expectedDestinationRevision: moveDestination!.sessionRevision,
-              requestId: crypto.randomUUID(),
-            })).then((ok) => { if (ok) setMoveOpen(false); })}>
+            {v3.deferredTrackerMoveEnabled && moveDestination?.controlMode === "tracker" && (
+              <p className="text-xs text-muted-foreground">Nếu bàn Tracker đang có ván, ghế này sẽ được giữ và người chơi chỉ chuyển sau khi ván kết thúc.</p>
+            )}
+            <Button data-ops-action="floor.player.move" className="min-h-12" disabled={busy || !moveDestination || moveSeatNumber == null} onClick={() => {
+              if (!moveDestination || moveSeatNumber == null) return;
+              const args = {
+                entryId: seat.entryId,
+                toTournamentTableId: moveDestination.tournamentTableId,
+                toSeatNumber: moveSeatNumber,
+                expectedSourceRevision: selectedTable.sessionRevision,
+                expectedDestinationRevision: moveDestination.sessionRevision,
+                requestId: crypto.randomUUID(),
+              };
+              void run((data) => data.queued ? "Đã giữ ghế; sẽ chuyển khi ván Tracker kết thúc." : "Đã chuyển người chơi.", async () => {
+                const direct = await v3.movePlayerSeat(args);
+                if (direct.ok !== false) return direct;
+                if (direct.error !== "table_has_active_hand" && direct.error !== "destination_table_has_active_hand") return direct;
+                if (moveDestination.controlMode !== "tracker" || !v3.deferredTrackerMoveEnabled) return direct;
+                return v3.queueTrackerMove(args);
+              }).then((ok) => { if (ok) setMoveOpen(false); });
+            }}>
               Chuyển đến Bàn {moveDestination?.tableNumber ?? "—"} · Ghế {moveSeatNumber ?? "—"}
             </Button>
           </div>

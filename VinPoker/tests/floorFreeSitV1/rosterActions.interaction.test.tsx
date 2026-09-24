@@ -10,6 +10,7 @@ const fixture = vi.hoisted(() => ({
     getTournamentTableRoster: vi.fn(),
     getSeatableEntries: vi.fn(),
     getRestorableEntries: vi.fn(),
+    getPendingTrackerMoves: vi.fn(),
   },
 }));
 
@@ -45,6 +46,7 @@ function setup() {
   }] });
   fixture.client.getSeatableEntries.mockResolvedValue({ ok: true, data: [] });
   fixture.client.getRestorableEntries.mockResolvedValue({ ok: true, data: [] });
+  fixture.client.getPendingTrackerMoves.mockResolvedValue({ ok: true, data: [] });
   render(<FloorTableMapPanelV3 tournament={{ id: "tour-1" } as Tournament} refreshTrigger={0} />);
 }
 
