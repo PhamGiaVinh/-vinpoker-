@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ProofUploader } from "@/components/ProofUploader";
 import { FEATURES } from "@/lib/featureFlags";
 import {
@@ -144,6 +144,7 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
       <DialogContent className="max-h-[94vh] max-w-6xl overflow-y-auto p-0">
         <DialogHeader className="border-b px-5 py-4">
           <DialogTitle className="flex items-center gap-2"><Palette className="h-4 w-4 text-emerald-400" /> Tournament TV layout</DialogTitle>
+          <DialogDescription>Preview your changes, then publish them to the tournament TV screens.</DialogDescription>
         </DialogHeader>
 
         {loading ? (
@@ -157,7 +158,7 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
           <div className="grid lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,.65fr)]">
             <section className="border-b bg-black/95 p-4 lg:border-b-0 lg:border-r">
               <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[.18em] text-white/60">
-                <span>Live 16:9 preview</span><span>Safe area: 8–92%</span>
+                <span>Draft 16:9 preview · not on TV</span><span>Safe area: 8–92%</span>
               </div>
               <div className="relative aspect-video overflow-hidden rounded-xl border border-emerald-400/30 shadow-2xl" style={previewStyle}>
                 <div className="absolute inset-3 rounded-lg border border-emerald-400/30" />
@@ -179,7 +180,7 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
                   {layout.customText ? <div className="max-w-44 text-[9px] font-bold text-emerald-300">{layout.customText}</div> : null}
                 </div>
               </div>
-              <p className="mt-3 text-xs leading-relaxed text-white/55">The preview changes presentation only. Tournament numbers remain server-controlled.</p>
+              <p className="mt-3 text-xs leading-relaxed text-white/55">Changes appear on TV only after Publish. Tournament numbers remain server-controlled.</p>
             </section>
 
             <section className="space-y-5 p-5">
@@ -211,7 +212,7 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
         )}
 
         <DialogFooter className="border-t px-5 py-4 sm:justify-between">
-          <Button type="button" variant="ghost" className="gap-2" disabled={loading || !!loadError || saving} onClick={() => { setLayout({ ...DEFAULT_TV_BRANDING_LAYOUT }); setLogoUrl(null); setBgUrl(null); setBrandName(""); }}><RotateCcw className="h-4 w-4" /> Restore defaults</Button>
+          <Button type="button" variant="ghost" className="gap-2" disabled={loading || !!loadError || saving} onClick={() => { setLayout({ ...DEFAULT_TV_BRANDING_LAYOUT }); setLogoUrl(null); setBgUrl(null); setBrandName(""); }}><RotateCcw className="h-4 w-4" /> Reset draft to defaults</Button>
           <Button type="button" className="gap-2" onClick={save} disabled={loading || !!loadError || saving}><Save className="h-4 w-4" /> {saving ? "Publishing…" : "Publish TV layout"}</Button>
         </DialogFooter>
       </DialogContent>
