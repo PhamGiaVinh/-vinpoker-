@@ -6705,12 +6705,6 @@
       "filename": "20270115000003_cashier_tour_money_v1.sql",
       "sha256": "083ac776a361c1c00684b0eccd01465967e9777926ae073bc9fdcf97a4356df3",
       "domain": "cashier"
-    },
-    {
-      "version": "20260924065041",
-      "filename": "20260924065041_tv_layout_editor_v1.sql",
-      "sha256": "20af277e4e63eaceafccf98359cc65fd21d055b65a74c2f2d65e400ce47d4d15",
-      "domain": "tv"
     }
   ],
   "floorActiveAllowlist": [
