@@ -7,6 +7,7 @@ interface ImportMetaEnv {
   readonly VITE_SENTRY_DSN?: string;
   readonly VITE_FLOOR_TABLE_CONTROL_V3?: string;
   readonly VITE_FLOOR_UAT_ENV?: string;
+  readonly VITE_OPS_TOUR_CASHIER?: string;
 }
 
 interface ImportMeta {

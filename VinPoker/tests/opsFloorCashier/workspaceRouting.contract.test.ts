@@ -45,13 +45,23 @@ describe("Ops Floor and Cashier workspace routing", () => {
     expect(cashier).not.toContain("allowedClubIds[0]");
   });
 
-  it("mounts the tour counter only behind both preview flags and cashier capability", () => {
+  it("mounts Tour Cashier behind its own build gate and cashier capability", () => {
     const app = source("src/OpsApp.tsx");
     const mutations = source("src/ops/opsMutations.ts");
+    const flags = source("src/lib/featureFlags.ts");
+    const shell = source("src/components/ops/OpsShell.tsx");
+    const workbench = source("src/pages/ops/TourCashierWorkbench.tsx");
+    const cashier = source("src/pages/ops/OpsCashier.tsx");
     expect(app).toContain('path="/ops/cashier/tour"');
-    expect(app).toContain('element={OPS_CASHIER_MUTATIONS_ENABLED');
+    expect(app).toContain('element={OPS_TOUR_CASHIER_ENABLED');
     expect(app).toContain('<OpsModuleGate capability="cashier"><TourCashierWorkbench /></OpsModuleGate>');
     expect(app).toContain('<Navigate to="/ops/cashier" replace />');
+    expect(shell).toContain('&& OPS_TOUR_CASHIER_ENABLED');
+    expect(cashier).toContain('OPS_TOUR_CASHIER_ENABLED &&');
+    expect(cashier).toContain('Mở quầy Buy-in theo tour');
+    expect(workbench).toContain('!OPS_TOUR_CASHIER_ENABLED');
+    expect(workbench).toContain('|| !OPS_TOUR_CASHIER_ENABLED');
+    expect(flags).toContain('OPS_TOUR_CASHIER_ENABLED = isTourCashierBuildEnabled(import.meta.env.VITE_OPS_TOUR_CASHIER)');
     expect(mutations).toContain('import.meta.env.VITE_OPS_CASHIER_MUTATIONS === "preview" &&');
     expect(mutations).toContain('import.meta.env.VITE_FLOOR_UAT_ENV === "preview"');
   });

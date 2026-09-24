@@ -27,6 +27,11 @@ INSERT INTO auth.users(id,aud,role,email,created_at,updated_at) VALUES
   ('91000000-0000-4000-8000-000000000002','authenticated','authenticated','cashier-owner-b@test.invalid',now(),now()),
   ('91000000-0000-4000-8000-000000000003','authenticated','authenticated','cashier-player-free@test.invalid',now(),now()),
   ('91000000-0000-4000-8000-000000000004','authenticated','authenticated','cashier-player-paid@test.invalid',now(),now());
+-- The synthetic baseline pre-seeds this profile; the captured live schema is
+-- schema-only. Keep the same named TEST player in both disposable test paths.
+INSERT INTO public.profiles(user_id,display_name) VALUES
+  ('91000000-0000-4000-8000-000000000004','Người chơi TEST')
+ON CONFLICT (user_id) DO NOTHING;
 
 INSERT INTO public.clubs(id,owner_id,name,region,status) VALUES
   ('92000000-0000-4000-8000-000000000001','91000000-0000-4000-8000-000000000001','Cashier TEST A','HCM','approved'),

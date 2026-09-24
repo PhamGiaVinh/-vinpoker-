@@ -61,6 +61,7 @@ const navigationActions = [
   "floor.player.open_chip",
   "floor.player.open_receipt",
   "floor.player.open_bust",
+  "floor.player.open_free_sit",
   "floor.player.select_move_table",
   "floor.player.select_move_seat",
   "floor.player.select_move_reason",
@@ -68,6 +69,7 @@ const navigationActions = [
   "floor.player.close_move",
   "floor.player.chip_key",
   "floor.player.cancel_bust",
+  "floor.player.cancel_free_sit",
   "floor.players.filter",
   "floor.players.open_player",
   "floor.players.open_restore",
@@ -126,6 +128,7 @@ const destructiveActions = [
   "floor.player.move",
   "floor.player.save_chip",
   "floor.player.bust",
+  "floor.player.free_sit",
   "floor.players.restore",
   "floor.redraw.apply",
 ] as const;
@@ -172,7 +175,11 @@ function routeForAction(actionId: string): string {
 function fixtureForAction(actionId: string): string {
   if (actionId === "floor.tables.confirm_redraw") return "CODEX_FLOOR_UAT_<run>_REDRAW";
   if (actionId === "floor.player.save_chip") return "CODEX_FLOOR_UAT_<run>_CHIP_CAS";
-  if (actionId === "floor.player.bust" || actionId === "floor.players.restore") {
+  if (
+    actionId === "floor.player.bust" ||
+    actionId === "floor.player.free_sit" ||
+    actionId === "floor.players.restore"
+  ) {
     return "CODEX_FLOOR_UAT_<run>_BUST_RESTORE";
   }
   return "CODEX_FLOOR_UAT_<run>_TABLE_LIFECYCLE";
