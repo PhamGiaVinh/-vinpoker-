@@ -137,7 +137,8 @@ BEGIN
     '10000000-0000-4000-8000-000000000001',
     '30000000-0000-4000-8000-000000000001'
   );
-  IF v_new_session->>'state' <> 'waiting' OR v_new_session->'hand' IS NOT NULL THEN
+  IF v_new_session->>'state' <> 'waiting'
+    OR COALESCE(v_new_session->'hand', 'null'::jsonb) <> 'null'::jsonb THEN
     RAISE EXCEPTION 'new session inherited old hand: %', v_new_session;
   END IF;
 END;
