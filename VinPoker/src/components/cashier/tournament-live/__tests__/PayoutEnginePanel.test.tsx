@@ -124,6 +124,31 @@ describe("PayoutEnginePanel — load failures", () => {
 });
 
 describe("PayoutEnginePanel — failed reads do not become empty payout data", () => {
+  it.each([
+    ["negative amount", [{ position: 1, amount: -1, percentage: 100 }]],
+    ["NaN amount", [{ position: 1, amount: "NaN", percentage: 100 }]],
+    ["duplicate rank", [{ position: 1, amount: 5, percentage: 50 }, { position: 1, amount: 5, percentage: 50 }]],
+    ["missing rank", [{ position: 2, amount: 10, percentage: 100 }]],
+    ["bad percentage", [{ position: 1, amount: 10, percentage: 101 }]],
+    ["null percentage", [{ position: 1, amount: 10, percentage: null }]],
+  ])("blocks malformed official prize rows: %s", async (_case, prizes) => {
+    h.prizes = prizes;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    expect(await screen.findByText(/Dữ liệu payout chính thức không hợp lệ/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Xem trước/ })).not.toBeInTheDocument();
+  });
+  it.each([
+    { source: "close", entries_snapshot: 10, itm_places: 1, prize_pool_snapshot: "NaN" },
+    { source: "close", entries_snapshot: 10, itm_places: 2, prize_pool_snapshot: 10 },
+    { source: "unknown", entries_snapshot: 10, itm_places: 1, prize_pool_snapshot: 10 },
+    { source: "close", entries_snapshot: -1, itm_places: 1, prize_pool_snapshot: 10 },
+  ])("blocks malformed applied run: %j", async (run) => {
+    h.prizes = [{ position: 1, amount: 10, percentage: 100 }];
+    h.appliedRun = run;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    expect(await screen.findByText(/Dữ liệu payout chính thức không hợp lệ/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Xem trước/ })).not.toBeInTheDocument();
+  });
   it.each(["prizesError", "runError", "entriesError"] as const)("shows %s and blocks payout actions", async (key) => {
     h[key] = { message: `Không tải được ${key}` };
     render(<PayoutEnginePanel tournamentId="t1" />);

@@ -59,6 +59,37 @@ function friendly(msg?: string): string {
 }
 const vnd = (n: number) => Math.round(n).toLocaleString("vi-VN");
 
+function payoutNumber(value: unknown): number {
+  if (typeof value !== "number" && (typeof value !== "string" || value.trim() === "")) return NaN;
+  return Number(value);
+}
+
+function readOfficialPayout(prizes: unknown, run: unknown): { rows: PayoutRow[]; appliedRun: Record<string, unknown> | null } {
+  const invalid = () => new Error("Dữ liệu payout chính thức không hợp lệ. Không thể tiếp tục; vui lòng kiểm tra và tải lại.");
+  if (!Array.isArray(prizes)) throw invalid();
+  const rows = prizes.map((raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw invalid();
+    const position = payoutNumber(raw.position);
+    const amount = payoutNumber(raw.amount);
+    const percentage = payoutNumber(raw.percentage);
+    if (!Number.isSafeInteger(position) || position < 1 || !Number.isSafeInteger(amount) || amount < 0
+      || !Number.isFinite(percentage) || percentage < 0 || percentage > 100) throw invalid();
+    return { position, amount, percentage };
+  }).sort((a, b) => a.position - b.position);
+  if (rows.some((row, index) => row.position !== index + 1)) throw invalid();
+  if (run === null) return { rows, appliedRun: null };
+  if (!run || typeof run !== "object" || Array.isArray(run)) throw invalid();
+  const appliedRun = run as Record<string, unknown>;
+  const pool = payoutNumber(appliedRun.prize_pool_snapshot);
+  const entries = payoutNumber(appliedRun.entries_snapshot);
+  const places = payoutNumber(appliedRun.itm_places);
+  if (!Number.isSafeInteger(pool) || pool < 0 || !Number.isSafeInteger(entries) || entries < 0
+    || !Number.isSafeInteger(places) || places < 1 || places !== rows.length
+    || !["close", "regenerate", "manual_edit"].includes(String(appliedRun.source))
+    || rows.reduce((sum, row) => sum + row.amount, 0) !== pool) throw invalid();
+  return { rows, appliedRun };
+}
+
 const SUGGEST_WARN_VI: Record<string, string> = {
   PLACES_REDUCED_BY_ENGINE: "Quỹ giải/min-cash chỉ đủ trả ít suất hơn — đã giảm số suất.",
   TARGET_BELOW_FLAT_MIN: "% hạng nhất thấp hơn mức chia đều — đã nâng lên mức tối thiểu.",
@@ -187,13 +218,13 @@ function TournamentPayoutPanel({ tournamentId }: { tournamentId: string }) {
       if (runRes?.error) throw runRes.error;
       if (cntRes?.error) throw cntRes.error;
       if (!t || t.id !== tournamentId || !Array.isArray(prizesRes?.data)
-        || !Number.isSafeInteger(cntRes?.count) || cntRes.count < 0) {
+        || runRes?.data === undefined || !Number.isSafeInteger(cntRes?.count) || cntRes.count < 0) {
         throw new Error("Không tải được dữ liệu payout đầy đủ. Vui lòng thử lại.");
       }
+      const { rows: prizes, appliedRun: validatedRun } = readOfficialPayout(prizesRes.data, runRes.data);
       setTour(t as TournamentRow);
-      const prizes = ((prizesRes?.data ?? []) as any[]).map((p) => ({ position: Number(p.position), amount: Number(p.amount), percentage: Number(p.percentage) }));
       setOfficialRows(prizes);
-      setAppliedRun(runRes?.data ?? null);
+      setAppliedRun(validatedRun);
       const cnt = Number(cntRes?.count ?? 0);
       setLiveEntries(cnt);
       setEntries((prev) => (prev > 0 ? prev : cnt));
