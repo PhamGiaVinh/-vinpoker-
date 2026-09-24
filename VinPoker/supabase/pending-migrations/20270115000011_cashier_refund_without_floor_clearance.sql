@@ -36,6 +36,13 @@ BEGIN
     WHERE registration_id=v_reg.id AND purpose='buyin' AND direction='in';
   IF v_paid<>v_ref.amount OR v_ref.amount<>v_reg.total_pay THEN
     RETURN jsonb_build_object('ok',false,'error','verified_payment_history_required'); END IF;
+  -- A new request bypasses Floor only for this registration's unseated,
+  -- unplayed waiting state. Historical/busted turns retain the v1 Floor path.
+  IF v_ref.status='requested' AND (v_reg.status<>'pending'
+    OR v_reg.cashier_seating_error IS NOT NULL
+    OR EXISTS(SELECT 1 FROM public.tournament_entries e WHERE e.registration_id=v_reg.id)
+    OR EXISTS(SELECT 1 FROM public.seat_draw_receipts d WHERE d.registration_id=v_reg.id)) THEN
+    RETURN jsonb_build_object('ok',false,'error','floor_clearance_required'); END IF;
   -- Cashier auto-seating locks this same registration. If it wins the race,
   -- this check refuses payout; active play is never cleared here.
   IF EXISTS(SELECT 1 FROM public.tournament_entries e WHERE e.registration_id=v_reg.id

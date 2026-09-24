@@ -342,6 +342,8 @@ export default function TourCashierWorkbench() {
         ? "Chưa đối chiếu đủ khoản thu trong sổ giao dịch; không thể hoàn tự động. Cần đối soát riêng."
         : code === "active_seat_or_chips"
           ? "Lượt này đã có ghế hoặc chip hoạt động; chưa thể hoàn tại quầy."
+          : code === "floor_clearance_required"
+            ? "Lượt này từng được xếp ghế hoặc đã chơi; cần Floor xử lý theo quy trình cũ trước khi chi hoàn."
           : code || "Máy chủ chưa xác nhận thao tác.");
     } finally {
       mutationLock.current = false; setBusy(false);
