@@ -1,4 +1,4 @@
--- PENDING, owner-gated: Dealer Floor requests are operational alerts, not poker-state mutations.
+-- Dealer Floor requests are operational alerts, not poker-state mutations.
 -- Rollback: revoke the new RPC; retain alert columns and rows for audit.
 BEGIN;
 
