@@ -64,7 +64,7 @@ function payoutNumber(value: unknown): number {
   return Number(value);
 }
 
-function readOfficialPayout(prizes: unknown, run: unknown): { rows: PayoutRow[]; appliedRun: Record<string, unknown> | null } {
+function readOfficialPayout(prizes: unknown, run: unknown, tournamentId: string): { rows: PayoutRow[]; appliedRun: Record<string, unknown> | null } {
   const invalid = () => new Error("Dữ liệu payout chính thức không hợp lệ. Không thể tiếp tục; vui lòng kiểm tra và tải lại.");
   if (!Array.isArray(prizes)) throw invalid();
   const rows = prizes.map((raw) => {
@@ -83,8 +83,10 @@ function readOfficialPayout(prizes: unknown, run: unknown): { rows: PayoutRow[];
   const pool = payoutNumber(appliedRun.prize_pool_snapshot);
   const entries = payoutNumber(appliedRun.entries_snapshot);
   const places = payoutNumber(appliedRun.itm_places);
-  if (!Number.isSafeInteger(pool) || pool < 0 || !Number.isSafeInteger(entries) || entries < 0
-    || !Number.isSafeInteger(places) || places < 1 || places !== rows.length
+  if (typeof appliedRun.id !== "string" || !appliedRun.id.trim()
+    || appliedRun.tournament_id !== tournamentId || appliedRun.status !== "applied"
+    || !Number.isSafeInteger(pool) || pool < 0 || !Number.isSafeInteger(entries) || entries < 1
+    || !Number.isSafeInteger(places) || places < 1 || places > entries || places !== rows.length
     || !["close", "regenerate", "manual_edit"].includes(String(appliedRun.source))
     || rows.reduce((sum, row) => sum + row.amount, 0) !== pool) throw invalid();
   return { rows, appliedRun };
@@ -221,7 +223,7 @@ function TournamentPayoutPanel({ tournamentId }: { tournamentId: string }) {
         || runRes?.data === undefined || !Number.isSafeInteger(cntRes?.count) || cntRes.count < 0) {
         throw new Error("Không tải được dữ liệu payout đầy đủ. Vui lòng thử lại.");
       }
-      const { rows: prizes, appliedRun: validatedRun } = readOfficialPayout(prizesRes.data, runRes.data);
+      const { rows: prizes, appliedRun: validatedRun } = readOfficialPayout(prizesRes.data, runRes.data, tournamentId);
       setTour(t as TournamentRow);
       setOfficialRows(prizes);
       setAppliedRun(validatedRun);

@@ -98,7 +98,7 @@ beforeEach(() => {
 const officialState = () => {
   h.tour.registration_closed_at = "2026-06-29T00:00:00Z";
   h.prizes = [{ position: 1, percentage: 76, amount: 7_600_000 }, { position: 2, percentage: 24, amount: 2_400_000 }];
-  h.appliedRun = { source: "close", entries_snapshot: 10, itm_places: 2, prize_pool_snapshot: 10_000_000 };
+  h.appliedRun = { id: "run-1", tournament_id: "t1", status: "applied", source: "close", entries_snapshot: 10, itm_places: 2, prize_pool_snapshot: 10_000_000 };
 };
 
 describe("PayoutEnginePanel — Satellite routing", () => {
@@ -125,10 +125,18 @@ describe("PayoutEnginePanel — load failures", () => {
 
 describe("PayoutEnginePanel — failed reads do not become empty payout data", () => {
   it.each([
+    ["null row", [null]],
+    ["array row", [[1, 10, 100]]],
+    ["negative position", [{ position: -1, amount: 10, percentage: 100 }]],
+    ["non-finite position", [{ position: Infinity, amount: 10, percentage: 100 }]],
+    ["fractional position", [{ position: 1.5, amount: 10, percentage: 100 }]],
     ["negative amount", [{ position: 1, amount: -1, percentage: 100 }]],
+    ["non-finite amount", [{ position: 1, amount: Infinity, percentage: 100 }]],
     ["NaN amount", [{ position: 1, amount: "NaN", percentage: 100 }]],
     ["duplicate rank", [{ position: 1, amount: 5, percentage: 50 }, { position: 1, amount: 5, percentage: 50 }]],
     ["missing rank", [{ position: 2, amount: 10, percentage: 100 }]],
+    ["negative percentage", [{ position: 1, amount: 10, percentage: -1 }]],
+    ["non-finite percentage", [{ position: 1, amount: 10, percentage: Infinity }]],
     ["bad percentage", [{ position: 1, amount: 10, percentage: 101 }]],
     ["null percentage", [{ position: 1, amount: 10, percentage: null }]],
   ])("blocks malformed official prize rows: %s", async (_case, prizes) => {
@@ -137,11 +145,17 @@ describe("PayoutEnginePanel — failed reads do not become empty payout data", (
     expect(await screen.findByText(/Dữ liệu payout chính thức không hợp lệ/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Xem trước/ })).not.toBeInTheDocument();
   });
+  const validRun = { id: "run-1", tournament_id: "t1", status: "applied", source: "close", entries_snapshot: 10, itm_places: 1, prize_pool_snapshot: 10 };
   it.each([
-    { source: "close", entries_snapshot: 10, itm_places: 1, prize_pool_snapshot: "NaN" },
-    { source: "close", entries_snapshot: 10, itm_places: 2, prize_pool_snapshot: 10 },
-    { source: "unknown", entries_snapshot: 10, itm_places: 1, prize_pool_snapshot: 10 },
-    { source: "close", entries_snapshot: -1, itm_places: 1, prize_pool_snapshot: 10 },
+    { ...validRun, prize_pool_snapshot: "NaN" },
+    { ...validRun, itm_places: 2 },
+    { ...validRun, source: "unknown" },
+    { ...validRun, entries_snapshot: -1 },
+    { ...validRun, status: "draft_snapshot" },
+    { ...validRun, tournament_id: "other-tournament" },
+    { ...validRun, id: " " },
+    { ...validRun, entries_snapshot: 0 },
+    { ...validRun, entries_snapshot: 1, itm_places: 2 },
   ])("blocks malformed applied run: %j", async (run) => {
     h.prizes = [{ position: 1, amount: 10, percentage: 100 }];
     h.appliedRun = run;
