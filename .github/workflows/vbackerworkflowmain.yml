@@ -565,11 +565,10 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
 
       - name: Link exact Vercel project
-        run: vercel link --yes --scope "$VERCEL_ORG_ID" --project "$VERCEL_PROJECT_ID" --token "$VERCEL_TOKEN"
+        run: vercel link --yes --project "$VERCEL_PROJECT_ID" --token "$VERCEL_TOKEN"
         working-directory: target-source
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.USERIDVERRCEL }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
 
       - name: Pull Vercel project settings
@@ -577,8 +576,6 @@ jobs:
         working-directory: target-source
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.USERIDVERRCEL }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
 
       - name: Build exact frontend source
         run: vercel env run --environment=production -- npm --prefix VinPoker run build
@@ -587,16 +584,12 @@ jobs:
           VITE_SUPABASE_URL: "https://orlesggcjamwuknxwcpk.supabase.co"
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.USERIDVERRCEL }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
 
       - name: Deploy prebuilt bundle to Vercel
         shell: bash
         working-directory: target-source
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.USERIDVERRCEL }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
         run: |
           set -euo pipefail
           mkdir -p .vercel/output/static
