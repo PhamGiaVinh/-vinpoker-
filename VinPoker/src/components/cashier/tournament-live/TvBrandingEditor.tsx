@@ -127,6 +127,8 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
       }
       toast.success("TV layout published. Screens update on their next refresh.");
       setOpen(false);
+    } catch {
+      toast.error("The TV layout could not be published. Your draft is still open; please retry.");
     } finally {
       setSaving(false);
     }
