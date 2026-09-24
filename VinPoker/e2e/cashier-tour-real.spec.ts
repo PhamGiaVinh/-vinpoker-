@@ -36,6 +36,12 @@ async function loginOwner(page: Page) {
 
 test("real Auth and Cashier backend render the completed seated buy-in", async ({ page }) => {
   await loginOwner(page);
+  const cashierReads: string[] = [];
+  page.on("response", async (response) => {
+    if (response.url().includes("/rpc/cashier_tour_worklist_v1")) {
+      cashierReads.push(`${response.status()} ${(await response.text()).slice(0, 700)}`);
+    }
+  });
 
   const pageErrors: string[] = [];
   const requestFailures: string[] = [];
@@ -59,7 +65,12 @@ test("real Auth and Cashier backend render the completed seated buy-in", async (
   }
   await page.getByRole("button", { name: /Cashier Edge TEST Tour/ }).first().click();
   await page.getByRole("button", { name: /Đã tự hoàn tất/ }).click();
-  await expect(page.getByRole("button", { name: /Người chơi Edge TEST/ })).toBeVisible();
+  try {
+    await expect(page.getByRole("button", { name: /Người chơi Edge TEST/ })).toBeVisible();
+  } catch (error) {
+    console.error(JSON.stringify({ body: (await page.locator("body").innerText()).slice(0, 2_000), cashierReads }));
+    throw error;
+  }
   await expect(page.getByText(/Bàn 1, ghế \d+/u)).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(pageErrors).toEqual([]);
@@ -67,6 +78,12 @@ test("real Auth and Cashier backend render the completed seated buy-in", async (
 
 test("real Cashier UI refunds a waiting Tour B registration while serving Tour A", async ({ page }) => {
   const token = await loginOwner(page);
+  const lookupReads: string[] = [];
+  page.on("response", async (response) => {
+    if (response.url().includes("/rpc/cashier_lookup_tour_v1")) {
+      lookupReads.push(`${response.status()} ${(await response.text()).slice(0, 700)}`);
+    }
+  });
   const registrationId = process.env.LOCAL_REFUND_REGISTRATION_ID!;
   const referenceCode = process.env.LOCAL_REFUND_REFERENCE_CODE!;
   await page.setViewportSize({ width: 375, height: 844 });
@@ -75,6 +92,12 @@ test("real Cashier UI refunds a waiting Tour B registration while serving Tour A
   await page.getByRole("button", { name: /Cashier Edge TEST Tour/ }).first().click();
   await expect(page.getByRole("heading", { level: 1, name: "Cashier Edge TEST Tour" })).toBeVisible();
   await page.getByPlaceholder("Quét QR, thẻ hội viên, mã CK; hoặc tìm tên, số điện thoại").fill(referenceCode);
+  try {
+    await page.getByRole("button", { name: "Xem đăng ký tour này" }).waitFor({ state: "visible", timeout: 10_000 });
+  } catch (error) {
+    console.error(JSON.stringify({ body: (await page.locator("body").innerText()).slice(0, 2_000), lookupReads }));
+    throw error;
+  }
   await page.getByRole("button", { name: "Xem đăng ký tour này" }).click();
   await expect(page.getByRole("dialog", { name: /Chi tiết buy-in/ })
     .getByText("Tour của lượt này: Cashier Edge TEST Tour B")).toBeVisible();
