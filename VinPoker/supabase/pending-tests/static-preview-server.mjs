@@ -18,7 +18,8 @@ http.createServer((request, response) => {
   const pathname = decodeURIComponent(new URL(request.url, "http://cashier-app").pathname);
   const candidate = normalize(join(root, pathname));
   const safe = candidate.startsWith(root) && existsSync(candidate) && statSync(candidate).isFile();
-  const file = safe ? candidate : join(root, "index.html");
+  const fallback = pathname === "/ops" || pathname.startsWith("/ops/") ? "ops.html" : "index.html";
+  const file = safe ? candidate : join(root, fallback);
   response.writeHead(200, {
     "Content-Type": mime[extname(file)] ?? "application/octet-stream",
     "Cache-Control": "no-store",
