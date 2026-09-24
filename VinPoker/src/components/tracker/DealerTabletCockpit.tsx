@@ -62,12 +62,12 @@ export function DealerTabletLayout({ hook, header, orphan, progress, felt, board
       {tracker && <div className="dealer-segment ml-auto" aria-label="Cách nhập Tracker"><button aria-pressed={input === "manual"} onClick={() => setInput("manual")}>Thủ công</button><button aria-pressed={input === "voice"} onClick={() => setInput("voice")}><Mic size={15} />Voice Assist</button></div>}
     </nav>
     {tracker && orphan}
+    {tracker && floorAlertsEnabled && hook.tournamentTableId && <DealerFloorAlertControls key={`${hook.tournamentId}:${hook.tournamentTableId}`} tournamentId={hook.tournamentId} tournamentTableId={hook.tournamentTableId} handId={hook.handId ?? null} enabled />}
     <div className="dealer-cockpit-grid">
       <div className="dealer-table-region"><div>{progress}</div><div {...(!tracker ? { inert: "" } : {})}>{felt}</div>{board}<details className="dealer-log"><summary>Nhật ký thao tác</summary>{log}</details></div>
       <aside className="dealer-control-region">
         <DealerShotClock key={`${hook.tournamentTableId}:${tracker}`} turnKey={turnKey} active={clockActive} blocked={tracker && clockBlocked} playerLabel={clockActive ? `Ghế ${hook.engineActor!.seat_number} · ${hook.playerName(hook.engineActor!.player_id)}` : "Dealer điều khiển đồng hồ"} />
         {tracker ? <>
-          {hook.tournamentTableId && <DealerFloorAlertControls key={`${hook.tournamentId}:${hook.tournamentTableId}`} tournamentId={hook.tournamentId} tournamentTableId={hook.tournamentTableId} handId={hook.handId ?? null} enabled={floorAlertsEnabled} />}
           {input === "voice" && <div className="dealer-voice-region">{voice}</div>}
           {input === "manual" || !hook.showActionStep ? guided : <details className="dealer-manual-fallback"><summary>Thao tác tay / sửa hand</summary>{guided}</details>}
           {hook.handStarted && hook.actions.length > 0 && !hook.canUndo && <p className="dealer-undo-notice">Action trước khi tải lại không nằm trong Hoàn tác cục bộ. Dùng Báo Floor để yêu cầu sửa hand; không xóa action mù trên server.</p>}

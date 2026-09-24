@@ -42,12 +42,19 @@ describe("Dealer tablet modes", () => {
       actions: [{ action_order: 1 }],
       canUndo: false,
     } as StandaloneHandInput;
-    render(<DealerTabletLayout {...props} hook={activeHook} trackerAllowed />);
+    render(<DealerTabletLayout {...props} hook={activeHook} trackerAllowed floorAlertsEnabled />);
     expect(screen.getByText("Ghế 1 · Test 1")).toBeTruthy();
     expect(screen.getByText(/Action trước khi tải lại không nằm trong Hoàn tác cục bộ/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Gọi Floor" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Vấn đề hiển thị" })).toBeTruthy();
     expect(screen.queryByText("Voice mounted")).toBeNull();
+    const floorControls = screen.getByRole("region", { name: "Liên hệ Floor" });
+    expect(floorControls.compareDocumentPosition(screen.getByText("Bàn")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+  it("hides Floor alert controls while the capability is off", () => {
+    const activeHook = { ...hook, tournamentId: "tournament", tournamentTableId: "table" } as StandaloneHandInput;
+    render(<DealerTabletLayout {...props} hook={activeHook} trackerAllowed />);
+    expect(screen.queryByRole("region", { name: "Liên hệ Floor" })).toBeNull();
   });
 });
 
