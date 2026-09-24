@@ -375,6 +375,11 @@ registration_json="$(docker run --rm --network "$network" \
   mcr.microsoft.com/playwright:v1.60.0-noble node /tests/register.mjs)"
 registration_id="$(jq -er '.registration_id' <<<"$registration_json")"
 reference_code="$(jq -er '.reference_code' <<<"$registration_json")"
+uuid_pattern='^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+if [[ ! "$registration_id" =~ $uuid_pattern || ! "$player_id" =~ $uuid_pattern ]]; then
+  echo "Auth/Edge returned a malformed UUID" >&2
+  exit 1
+fi
 if [[ "$(jq -er '.player_id' <<<"$registration_json")" != "$player_id" ]]; then
   echo "Authenticated Edge registration returned another player" >&2
   exit 1
@@ -415,18 +420,17 @@ if [[ "$(jq -r '.ok' <<<"$first_reconcile")" != true ||
   exit 1
 fi
 
-edge_state="$(docker exec "$db_container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres \
-  -v registration_id="$registration_id" -v player_id="$player_id" -c \
+edge_state="$(docker exec "$db_container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres -c \
   "SELECT
-    (SELECT count(*) FROM public.tournament_registrations WHERE id=:'registration_id'::uuid),
+    (SELECT count(*) FROM public.tournament_registrations WHERE id='$registration_id'::uuid),
     (SELECT count(*) FROM public.tournament_registrations
-      WHERE tournament_id='a3000000-0000-4000-8000-000000000001' AND player_id=:'player_id'::uuid),
-    (SELECT count(*) FROM public.cashier_buyin_movements WHERE registration_id=:'registration_id'::uuid),
-    (SELECT count(*) FROM public.seat_draw_receipts WHERE registration_id=:'registration_id'::uuid),
-    (SELECT count(*) FROM public.notifications WHERE user_id=:'player_id'::uuid
-      AND data->>'registration_id'=:'registration_id'),
+      WHERE tournament_id='a3000000-0000-4000-8000-000000000001' AND player_id='$player_id'::uuid),
+    (SELECT count(*) FROM public.cashier_buyin_movements WHERE registration_id='$registration_id'::uuid),
+    (SELECT count(*) FROM public.seat_draw_receipts WHERE registration_id='$registration_id'::uuid),
+    (SELECT count(*) FROM public.notifications WHERE user_id='$player_id'::uuid
+      AND data->>'registration_id'='$registration_id'),
     (SELECT status='confirmed' AND cashier_paid_at IS NOT NULL
-      FROM public.tournament_registrations WHERE id=:'registration_id'::uuid),
+      FROM public.tournament_registrations WHERE id='$registration_id'::uuid),
     (SELECT count(*) FROM public.bank_transactions WHERE provider_txn_id='cashier-edge-bank-1');")"
 if [[ "$edge_state" != '1|1|1|1|1|t|1' ]]; then
   echo "Auth/Edge idempotency or seat/receipt postcondition failed ($edge_state)" >&2
