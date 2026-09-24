@@ -500,6 +500,8 @@ export const FEATURES = {
    * is byte-identical to today. Presentational only — no data/handler change.
    */
   trackerTabletLayout: true,
+  // Source-only until the operational Floor alert RPC and its live receipt checks are verified.
+  trackerOperationalFloorAlerts: false,
   /**
    * Felt UI v2 (owner "fix UI UX toàn bộ" wave): bigger seat pods on the RICH operator
    * felt — 44px avatars (was 32px), full player names on up to 2 lines (no more

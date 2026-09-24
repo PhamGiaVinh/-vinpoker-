@@ -43,4 +43,11 @@ describe("FloorHandActionReview", () => {
     expect(screen.queryByRole("button", { name: /Sửa action/ })).not.toBeInTheDocument();
     expect(screen.getByText(/Hand đã void: chỉ đối chiếu/)).toBeVisible();
   });
+
+  it("does not select a different action that reused the reported order", () => {
+    render(<FloorHandActionReview {...base} actions={actions.map((action) => ({ ...action, id: `new-${action.action_order}` }))}
+      initialActionId="old-action-3" onEditAction={vi.fn()} />);
+    expect(screen.getByText(/Action gốc không còn trong hand hiện tại/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Sửa action #3" })).not.toBeInTheDocument();
+  });
 });

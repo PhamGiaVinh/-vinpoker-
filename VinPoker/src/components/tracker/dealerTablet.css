@@ -21,6 +21,20 @@
 .dealer-normal-note { padding:24px; line-height:1.6; font-size:13px; color:#a9bdb2; }
 .dealer-normal-note h2 { color:#f0d396; font-size:18px; margin-bottom:8px; }
 .dealer-voice-region:empty::after { content:'Voice chưa khả dụng. Kiểm tra cấu hình bàn và phân công Dealer.'; display:block; padding:16px; color:#e6c68b; font-size:12px; }
+.dealer-floor-controls { display:grid; gap:8px; padding:12px; border:1px solid #efbf5740; border-radius:12px; background:#151b17; }
+.dealer-floor-heading { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.dealer-floor-heading strong { color:#f2d48c; font-size:14px; }
+.dealer-floor-heading span,.dealer-floor-status { color:#b9c9bd; font-size:11px; line-height:1.45; }
+.dealer-floor-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.dealer-floor-actions button,.dealer-floor-retry { display:flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:8px; border:1px solid #efbf5760; border-radius:9px; color:#ffe0a0; font-size:12px; font-weight:700; }
+.dealer-floor-actions button:last-child { border-color:#ffffff2c; color:#d9e9dc; }
+.dealer-floor-actions button:disabled,.dealer-floor-retry:disabled { opacity:.45; cursor:not-allowed; }
+.dealer-floor-controls button:focus-visible { outline:2px solid #efbf57; outline-offset:2px; }
+.dealer-floor-status { margin:0; }
+.dealer-floor-status-unknown,.dealer-floor-status-rejected { color:#ffd0a2; }
+.dealer-floor-status-sent { color:#91eabb; }
+.dealer-floor-request-id { color:#9aa99f; font-size:10px; overflow-wrap:anywhere; }
+.dealer-undo-notice { padding:10px 12px; border:1px solid #efbf5740; border-radius:10px; color:#dbc99e; font-size:11px; line-height:1.5; }
 .dealer-voice-region [data-compact=true] > .space-y-3 { display:flex; flex-direction:column; gap:8px; padding:12px; }
 .dealer-voice-region [data-compact=true] > .space-y-3 > * { margin-top:0; }
 .dealer-voice-region .dealer-voice-proposal { order:-3; min-height:100px; }
@@ -31,7 +45,7 @@
 .dealer-voice-region [data-compact=true] > div:first-child { padding:8px 12px; }
 .dealer-shot-clock .grid { grid-template-columns:repeat(3,minmax(0,1fr)); max-width:none; }
 .dealer-shot-clock .grid button { flex-direction:column; padding:6px; font-size:10px; }
-.dealer-voice-region [aria-label='Floor alerts'] { order:3; }
+.dealer-voice-region [aria-label='Floor alerts'] { order:-4; }
 .dealer-voice-region .dealer-voice-settings { order:4; }
 .dealer-voice-region [role=timer] { border-top:1px solid #6ee7b740; padding-top:12px; }
 .dealer-voice-region [role=timer] > div:first-child { width:64px; height:64px; }
@@ -41,11 +55,11 @@
 .dealer-voice-region .dealer-voice-proposal [role=timer] > div:last-child { display:none; }
 .dealer-voice-region .dealer-voice-proposal:has([role=timer])::after { content:'3 giây để chốt · Nói Báo sai để hủy'; display:block; margin-top:12px; font-size:10px; color:#afd9be; }
 .dealer-voice-region [data-compact=true] > div:first-child button:nth-child(2) { padding:0 8px; font-size:10px; }
-.dealer-voice-region [aria-label='Floor alerts'] { position:sticky; bottom:0; background:#101b16; border-radius:10px; }
+.dealer-voice-region [aria-label='Floor alerts'] { background:#101b16; border-radius:10px; }
 .dealer-voice-settings > div { margin-top:8px; }
 @media(min-width:1000px) and (orientation:landscape) {
  .dealer-cockpit-grid { grid-template-columns:minmax(0,1.55fr) minmax(350px,1fr); align-items:start; }
- .dealer-table-region { position:sticky; top:12px; }
- .dealer-control-region { max-height:calc(100dvh - 180px); overflow-y:auto; scrollbar-width:thin; scrollbar-color:#446755 transparent; padding-right:3px; }
+ .dealer-control-region { overflow:visible; }
 }
-@media(max-width:600px) { .dealer-modebar { gap:8px; padding:8px; } .dealer-segment button { padding:0 12px; } .dealer-access { width:100%; order:3; } .dealer-shot-clock { padding:14px; } .dealer-table-region { padding:4px; } }
+@media(max-width:600px) { .dealer-modebar { gap:8px; padding:8px; } .dealer-segment button { padding:0 12px; } .dealer-access { width:100%; order:3; } .dealer-shot-clock { padding:14px; } .dealer-table-region { padding:4px; } .dealer-floor-heading { flex-direction:column; } }
+@media(max-width:340px) { .dealer-table-region .tracker-unified[data-tracker-table='portrait'] { aspect-ratio:13 / 25 !important; } }

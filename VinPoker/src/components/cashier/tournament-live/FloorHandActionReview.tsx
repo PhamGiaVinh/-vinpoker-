@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export type ReviewAction = {
+  id?: string;
   action_order: number;
   street: string;
   seat_number: number;
@@ -18,6 +19,7 @@ type Props = {
   buttonSeat?: number;
   seats: { seat_number: number; display_name: string }[];
   actions: ReviewAction[];
+  initialActionId?: string | null;
   canEdit: boolean;
   isVoided: boolean;
   onEditAction: (order: number) => void;
@@ -47,9 +49,13 @@ function actionText(action: ReviewAction): string {
   return action.action_amount > 0 ? `${type} ${action.action_amount.toLocaleString("vi-VN")}` : type;
 }
 
-export function FloorHandActionReview({ handNumber, tableName, potSize, buttonSeat, seats, actions, canEdit, isVoided, onEditAction }: Props) {
+export function FloorHandActionReview({ handNumber, tableName, potSize, buttonSeat, seats, actions, initialActionId, canEdit, isVoided, onEditAction }: Props) {
   const [selectedOrder, setSelectedOrder] = useState<number | null>(null);
   const ordered = [...actions].sort((a, b) => a.action_order - b.action_order);
+  useEffect(() => {
+    if (!initialActionId) return;
+    setSelectedOrder(actions.find((action) => action.id === initialActionId)?.action_order ?? null);
+  }, [initialActionId, actions]);
   const selectedIndex = ordered.findIndex((action) => action.action_order === selectedOrder);
   const selected = selectedIndex >= 0 ? ordered[selectedIndex] : null;
 
@@ -87,7 +93,9 @@ export function FloorHandActionReview({ handNumber, tableName, potSize, buttonSe
 
       <div className="rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs text-amber-100">
         <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5" />
-        Cảnh báo chưa chỉ rõ action sai. Chạm dòng nghi sai để đối chiếu, không tự động kết luận lỗi.
+        {initialActionId
+          ? selectedOrder === null ? "Action gốc không còn trong hand hiện tại. Xem dấu vết trên cảnh báo; không chọn action mới cùng số thứ tự." : "Action gốc đã được chọn theo ID. Kiểm tra trước khi sửa."
+          : "Cảnh báo chưa chỉ rõ action sai. Chạm dòng nghi sai để đối chiếu, không tự động kết luận lỗi."}
       </div>
 
       <div className="space-y-1" aria-label="Nhật ký action theo thứ tự">
