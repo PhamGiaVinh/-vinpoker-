@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import CardReissueTab from "@/components/cashier/CardReissueTab";
 import RevenueReportTab from "@/components/cashier/RevenueReportTab";
 import { TournamentRegistrationsTab } from "@/components/admin/TournamentRegistrationsTab";
 import { OfflineBuyInPanel } from "@/components/cashier/OfflineBuyInPanel";
+import { DocumentRedirect } from "@/components/DocumentRedirect";
 import { ReentryPanel } from "@/components/cashier/ReentryPanel";
 import { SePaySettlementTab } from "@/components/cashier/SePaySettlementTab";
 import { FEATURES, OPS_TOUR_CASHIER_ENABLED } from "@/lib/featureFlags";
@@ -120,7 +121,7 @@ export default function CashierDashboard() {
     const destination = clubs.length === 1
       ? `/ops/cashier/tour?club=${encodeURIComponent(clubs[0].id)}`
       : "/ops";
-    return <Navigate to={destination} replace />;
+    return <DocumentRedirect to={destination} preserveCurrentLocation={false} />;
   }
 
   const navItems: { key: SectionKey; label: string; icon: any }[] = [
