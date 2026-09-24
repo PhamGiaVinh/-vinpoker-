@@ -10,7 +10,7 @@ on:
       - "VinPoker/supabase/migrations/20270114000007_floor_v3_roster_seat_display_name.sql"
       - "VinPoker/supabase/migrations/20270114000011_floor_redraw_seat_lock_v1.sql"
       - "VinPoker/supabase/migrations/20270114000012_floor_v3_numbered_available_table.sql"
-      - "VinPoker/supabase/pending-migrations/20270115000004_floor_free_sit_v1.sql"
+      - "VinPoker/supabase/migration-archive/remote-history/recovered-source/20270115000004_floor_free_sit_v1.sql"
       - "VinPoker/supabase/migrations/20270115000005_floor_roster_actions_repair.sql"
       - "VinPoker/supabase/migrations/20270115000006_floor_break_eligible_destinations.sql"
       - "VinPoker/supabase/migrations/20270115000007_floor_deferred_tracker_move_v1.sql"
