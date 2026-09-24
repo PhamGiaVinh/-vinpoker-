@@ -1,6 +1,6 @@
 -- Floor: reserve a Tracker seat while its current hand finishes, then move the
 -- entry in the same transaction as the hand's terminal update. Source-only RED.
--- Depends on 20270115000005 and 20270115000006.
+-- Depends on 20270115000006 and 20270115000007.
 -- Rollback (owner-gated): revoke the three public RPCs, disable the two new
 -- triggers, and keep queued/applied rows as audit history. Never delete moves.
 BEGIN;
