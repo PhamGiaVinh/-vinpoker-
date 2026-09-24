@@ -1,9 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { LockKeyhole, Mic, ShieldCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { FEATURES } from "@/lib/featureFlags";
 import { createFloorTableControlV3Client, type FloorTableControlV3Rpc } from "@/lib/floorTableControlV3";
 import type { StandaloneHandInput } from "@/components/cashier/tournament-live/handinput/useStandaloneHandInput";
 import { DealerShotClock } from "./DealerShotClock";
+import { DealerFloorAlertControls } from "./DealerFloorAlertControls";
 import "./dealerTablet.css";
 
 type CockpitProps = {
@@ -44,7 +46,7 @@ export function DealerTabletCockpit(props: CockpitProps) {
 }
 
 /** Presentation shared with the offline tablet preview; production authority is loaded above. */
-export function DealerTabletLayout({ hook, header, orphan, progress, felt, board, voice, guided, log, trackerAllowed }: CockpitProps & { trackerAllowed: boolean }) {
+export function DealerTabletLayout({ hook, header, orphan, progress, felt, board, voice, guided, log, trackerAllowed, floorAlertsEnabled = FEATURES.trackerOperationalFloorAlerts }: CockpitProps & { trackerAllowed: boolean; floorAlertsEnabled?: boolean }) {
   const [normal, setNormal] = useState(false);
   const [input, setInput] = useState<"manual" | "voice">("manual");
   const tracker = trackerAllowed && !normal;
@@ -60,13 +62,15 @@ export function DealerTabletLayout({ hook, header, orphan, progress, felt, board
       {tracker && <div className="dealer-segment ml-auto" aria-label="Cách nhập Tracker"><button aria-pressed={input === "manual"} onClick={() => setInput("manual")}>Thủ công</button><button aria-pressed={input === "voice"} onClick={() => setInput("voice")}><Mic size={15} />Voice Assist</button></div>}
     </nav>
     {tracker && orphan}
+    {tracker && floorAlertsEnabled && hook.tournamentTableId && <DealerFloorAlertControls key={`${hook.tournamentId}:${hook.tournamentTableId}`} tournamentId={hook.tournamentId} tournamentTableId={hook.tournamentTableId} handId={hook.handId ?? null} enabled />}
     <div className="dealer-cockpit-grid">
       <div className="dealer-table-region"><div>{progress}</div><div {...(!tracker ? { inert: "" } : {})}>{felt}</div>{board}<details className="dealer-log"><summary>Nhật ký thao tác</summary>{log}</details></div>
       <aside className="dealer-control-region">
-        <DealerShotClock key={`${hook.tournamentTableId}:${tracker}`} turnKey={turnKey} active={clockActive} blocked={tracker && clockBlocked} playerLabel={clockActive ? `Ghế ${hook.engineActor!.seat_number} · ${hook.engineActor!.display_name}` : "Dealer điều khiển đồng hồ"} />
+        <DealerShotClock key={`${hook.tournamentTableId}:${tracker}`} turnKey={turnKey} active={clockActive} blocked={tracker && clockBlocked} playerLabel={clockActive ? `Ghế ${hook.engineActor!.seat_number} · ${hook.playerName(hook.engineActor!.player_id)}` : "Dealer điều khiển đồng hồ"} />
         {tracker ? <>
           {input === "voice" && <div className="dealer-voice-region">{voice}</div>}
           {input === "manual" || !hook.showActionStep ? guided : <details className="dealer-manual-fallback"><summary>Thao tác tay / sửa hand</summary>{guided}</details>}
+          {hook.handStarted && hook.actions.length > 0 && !hook.canUndo && <p className="dealer-undo-notice">Action trước khi tải lại không nằm trong Hoàn tác cục bộ. Dùng Báo Floor để yêu cầu sửa hand; không xóa action mù trên server.</p>}
         </> : <div className="dealer-normal-note"><h2>Chế độ thường</h2><p>Sử dụng đồng hồ cho bàn. Chọn Tracker khi Floor đã cấp quyền để nhập diễn biến hand.</p></div>}
       </aside>
     </div>

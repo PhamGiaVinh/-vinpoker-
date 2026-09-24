@@ -6725,6 +6725,12 @@
       "filename": "20270115000003_cashier_tour_money_v1.sql",
       "sha256": "083ac776a361c1c00684b0eccd01465967e9777926ae073bc9fdcf97a4356df3",
       "domain": "cashier"
+    },
+    {
+      "version": "20270115000005",
+      "filename": "20270115000005_tracker_dealer_floor_operational_alerts.sql",
+      "sha256": "533badf8d985b191f27b62c80fb438882f2b1603c93580fd4386117faeaf6cb2",
+      "domain": "tracker"
     }
   ],
   "floorActiveAllowlist": [

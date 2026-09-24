@@ -40,6 +40,8 @@ vi.mock("@/lib/tracker-floor-alerts/trackerFloorAlertsRead", () => ({
       correction_required: true,
       title: "Sai action",
       message: null,
+      source_action_id: "action-original",
+      source_action_snapshot: { action_order: 4, action_type: "call", action_amount: 200000 },
       created_at: "2026-09-17T00:00:00Z",
     }],
   })),
@@ -50,7 +52,8 @@ vi.mock("@/lib/tracker-floor-alerts/useTrackerFloorAlertLocations", () => ({
 }));
 
 vi.mock("./HandHistoryWorkspace", () => ({
-  HandHistoryWorkspace: ({ initialHandId }: { initialHandId: string }) => <p>{initialHandId} workspace sửa hand</p>,
+  HandHistoryWorkspace: ({ initialHandId, initialActionId }: { initialHandId: string; initialActionId: string }) =>
+    <p>{initialHandId} workspace sửa hand · {initialActionId}</p>,
 }));
 
 import { TrackerFloorAlertLane } from "./TrackerFloorAlertLane";
@@ -65,8 +68,9 @@ describe("TrackerFloorAlertLane", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("hand-1 workspace sửa hand")).toBeVisible();
+    expect(await screen.findByText("hand-1 workspace sửa hand · action-original")).toBeVisible();
     expect(screen.getByText(/Bàn 5 · Hand #12/)).toBeVisible();
+    expect(screen.getByText(/Action gốc #4/)).toBeVisible();
   });
 
   it("only dismisses a voided hand after a fresh server check", async () => {

@@ -26,6 +26,7 @@ on:
       - "VinPoker/supabase/migrations/20270114000004_tracker_voice_floor_mode_global_rollout.sql"
       - "VinPoker/supabase/migrations/20270114000009_tracker_voice_provider_event_idempotency.sql"
       - "VinPoker/supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql"
+      - "VinPoker/supabase/migrations/20270115000005_tracker_dealer_floor_operational_alerts.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
@@ -266,6 +267,15 @@ jobs:
           echo "TRACKER_VOICE_14000010_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
             -f tests/trackerVoice/currentP0VoiceChain.integration.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0 \
+            -f supabase/migrations/20270115000005_tracker_dealer_floor_operational_alerts.sql
+          test "$(psql -X -At -d tracker_voice_v0 -c \
+            "SELECT to_regprocedure('public.report_tracker_floor_operational_alert(uuid,uuid,uuid,uuid,text,text,uuid)') IS NOT NULL
+                    AND to_regprocedure('public.list_tracker_floor_alerts(uuid,text)') IS NOT NULL
+                    AND has_function_privilege('authenticated', 'public.report_tracker_floor_operational_alert(uuid,uuid,uuid,uuid,text,text,uuid)', 'EXECUTE')
+                    AND NOT has_function_privilege('anon', 'public.report_tracker_floor_operational_alert(uuid,uuid,uuid,uuid,text,text,uuid)', 'EXECUTE')
+                    AND (public.report_tracker_floor_operational_alert(NULL,NULL,NULL,NULL,'call_floor',NULL,NULL)->>'error') = 'invalid_request'")" = "t"
+          echo "TRACKER_FLOOR_OPERATIONAL_ALERTS_15000005_APPLY=PASS"
 
           # Voice runtime proof uses the exact strict Series canonicalizer. The
           # existing start-hand suite stays on its prior baseline because the
