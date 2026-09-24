@@ -449,8 +449,23 @@ export function useStandaloneHandInput(tournamentId: string) {
             setTableLoadError("Dữ liệu phiên bàn không hợp lệ. Hãy tải lại.");
             return;
           }
+          const lockByTable = new Map<string, unknown>();
+          if (FEATURES.trackerMultiTable && user?.id) {
+            const { data: lockData, error: lockError } = await supabase.rpc(
+              "get_tracker_table_locks" as any,
+              { p_tournament_id: tournamentId, p_actor_user_id: user.id },
+            );
+            if (!isCurrentRequest()) return;
+            const locks = lockData as { ok?: boolean; locks?: Array<{ table_id: string }> } | null;
+            if (!lockError && locks?.ok && Array.isArray(locks.locks)) {
+              locks.locks.forEach((lock) => lockByTable.set(lock.table_id, lock));
+            }
+          }
           loadedTablesTournamentRef.current = tournamentId;
-          setAvailableTables(parsed as InputTableSummary[]);
+          setAvailableTables((parsed as InputTableSummary[]).map((table) => ({
+            ...table,
+            ...lockFieldsFrom(lockByTable.get(table.id)),
+          })));
           setTableLoadState("ready");
           return;
         }
