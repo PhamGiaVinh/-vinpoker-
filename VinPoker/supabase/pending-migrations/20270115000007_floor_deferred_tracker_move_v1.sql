@@ -56,7 +56,16 @@ RETURNS boolean LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = '' AS $
       AND COALESCE(h.is_voided, false) = false
       AND (h.tournament_table_id = p_tournament_table_id
            OR h.table_session_id = p_table_session_id
-           OR h.table_id = p_tournament_table_id)
+           OR h.table_id IN (
+             SELECT tt.id FROM public.tournament_tables tt
+             WHERE tt.id = p_tournament_table_id
+             UNION
+             SELECT tt.table_id FROM public.tournament_tables tt
+             WHERE tt.id = p_tournament_table_id
+             UNION
+             SELECT tt.game_table_id FROM public.tournament_tables tt
+             WHERE tt.id = p_tournament_table_id
+           ))
   );
 $$;
 REVOKE ALL ON FUNCTION floor_private.floor_table_v3_has_active_hand(uuid,uuid,uuid)
@@ -71,7 +80,8 @@ BEGIN
   IF NEW.status <> 'in_progress' THEN RETURN NEW; END IF;
   SELECT tt.* INTO v_tt FROM public.tournament_tables tt
   JOIN public.table_sessions ts ON ts.id = tt.table_session_id
-  WHERE tt.id = NEW.table_id AND tt.tournament_id = NEW.tournament_id
+  WHERE NEW.table_id IN (tt.id, tt.table_id, tt.game_table_id)
+    AND tt.tournament_id = NEW.tournament_id
     AND tt.status = 'active' AND ts.closed_at IS NULL;
   IF NOT FOUND THEN RETURN NEW; END IF;
   IF (NEW.tournament_table_id IS NOT NULL AND NEW.tournament_table_id <> v_tt.id)
@@ -210,6 +220,15 @@ BEGIN
   IF v_entry.status <> 'seated' OR v_seat.id IS NULL THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'entry_state_changed');
   END IF;
+  IF v_entry.current_stack IS DISTINCT FROM v_seat.chip_count OR EXISTS (
+    SELECT 1 FROM public.tournament_chip_counts chip_row
+    WHERE chip_row.tournament_id = v_tournament_id
+      AND chip_row.player_id = v_entry.player_id
+      AND chip_row.entry_number = v_entry.entry_no
+      AND chip_row.chip_count IS DISTINCT FROM v_seat.chip_count
+  ) THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'chip_state_mismatch');
+  END IF;
   IF v_source_session.revision <> p_expected_source_revision
      OR v_destination_session.revision <> p_expected_destination_revision THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'STALE_STATE');
@@ -344,9 +363,11 @@ BEGIN
   IF OLD.status <> 'in_progress'
      OR NEW.status NOT IN ('completed', 'voided') THEN RETURN NEW; END IF;
   SELECT * INTO v_table FROM public.tournament_tables tt
+  JOIN public.table_sessions ts ON ts.id = tt.table_session_id
   WHERE tt.tournament_id = NEW.tournament_id
-    AND tt.id = COALESCE(NEW.tournament_table_id, NEW.table_id)
-    AND tt.table_session_id IS NOT NULL;
+    AND (tt.id = NEW.tournament_table_id
+      OR (NEW.tournament_table_id IS NULL AND NEW.table_id IN (tt.id, tt.table_id, tt.game_table_id)))
+    AND tt.status = 'active' AND ts.closed_at IS NULL;
   IF NOT FOUND THEN RETURN NEW; END IF;
 
   -- record_hand already holds this tournament row. The lock also serializes
@@ -390,6 +411,15 @@ BEGIN
        OR v_seat.tournament_table_id IS DISTINCT FROM v_source.id
        OR v_seat.table_session_id IS DISTINCT FROM v_source_session.id THEN
       v_reason := 'entry_or_seat_changed';
+    ELSIF v_entry.current_stack IS DISTINCT FROM v_seat.chip_count
+       OR EXISTS (
+         SELECT 1 FROM public.tournament_chip_counts chip_row
+         WHERE chip_row.tournament_id = NEW.tournament_id
+           AND chip_row.player_id = v_entry.player_id
+           AND chip_row.entry_number = v_entry.entry_no
+           AND chip_row.chip_count IS DISTINCT FROM v_seat.chip_count
+       ) THEN
+      v_reason := 'chip_state_mismatch';
     ELSIF EXISTS (
       SELECT 1 FROM public.tournament_seats occupied
       WHERE occupied.tournament_table_id = v_destination.id

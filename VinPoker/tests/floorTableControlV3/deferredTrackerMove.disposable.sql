@@ -116,6 +116,23 @@ BEGIN
     (SELECT status = 'applied' FROM public.floor_pending_tracker_moves
       WHERE id = (v_result->>'pending_move_id')::uuid),
     'pending request records applied state');
+  PERFORM public.floor_table_v3_assert(
+    (SELECT revision > v_source_revision FROM public.table_sessions
+      WHERE id = (v_source->>'table_session_id')::uuid)
+    AND (SELECT revision > v_tracker_revision FROM public.table_sessions
+      WHERE id = (v_tracker->>'table_session_id')::uuid),
+    'terminal move advances both session revisions');
+
+  INSERT INTO public.tournament_hands (tournament_id, table_id, status)
+  VALUES ('00000000-0000-0000-0000-000000000141',
+    '00000000-0000-0000-0000-000000000542', 'in_progress') RETURNING id INTO v_hand;
+  PERFORM public.floor_table_v3_assert(
+    (SELECT h.table_session_id = (v_tracker->>'table_session_id')::uuid
+     FROM public.tournament_hands h WHERE h.id = v_hand)
+    AND floor_private.floor_table_v3_has_active_hand(
+      '00000000-0000-0000-0000-000000000141',
+      (v_tracker->>'tournament_table_id')::uuid, (v_tracker->>'table_session_id')::uuid),
+    'physical-ID Tracker hand resolves to the same active session');
 END;
 $$;
 

@@ -66,6 +66,7 @@ function v3ErrorMessage(error: string): string {
     case "destination_hand_not_active": return "Ván Tracker vừa kết thúc. Hãy tải lại và chuyển người ngay.";
     case "pending_move_conflict": return "Người chơi hoặc ghế này đã có yêu cầu chuyển chờ xử lý. Hãy tải lại.";
     case "source_table_busy": return "Bàn nguồn đang có ván hoặc không ở chế độ Manual. Hãy kết thúc ván nguồn trước.";
+    case "chip_state_mismatch": return "Chip ở ghế và hồ sơ giải chưa khớp. Hãy làm mới rồi kiểm tra trước khi chuyển.";
     case "seat_reserved_pending_move": return "Ghế đích đang được giữ cho một người chờ hết ván.";
     case "no_active_v3_tables": return "Giải chưa có bàn đích đang hoạt động.";
     case "tournament_not_open": return "Giải chưa mở hoặc đã kết thúc nên thao tác bị chặn.";
