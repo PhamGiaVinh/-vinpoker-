@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const sql = readFileSync(resolve(process.cwd(), "supabase/migrations/20270115000007_floor_deferred_tracker_move_v1.sql"), "utf8");
+const handWriterSql = readFileSync(resolve(process.cwd(), "supabase/migrations/20270115000008_tracker_record_hand_v3_identity.sql"), "utf8");
 const ui = readFileSync(resolve(process.cwd(), "src/components/cashier/tournament-live/FloorTableMapPanelV3.tsx"), "utf8");
 
 describe("deferred Floor move into active Tracker table", () => {
@@ -21,6 +22,14 @@ describe("deferred Floor move into active Tracker table", () => {
     expect(sql).toContain("SET table_id = v_destination.game_table_id, seat_id = v_new_seat_id");
     expect(sql).toContain("v_destination.id,\n        v_destination.id, v_destination_session.id");
     expect(sql).toContain("REVOKE ALL ON TABLE public.floor_pending_tracker_moves FROM PUBLIC, anon, authenticated, service_role");
+  });
+
+  it("finishes V3 hands from explicit session and seat identity without legacy writes", () => {
+    expect(handWriterSql).toContain("h.table_session_id = v_tt.table_session_id");
+    expect(handWriterSql).toContain("s.tournament_table_id = v_tt.id");
+    expect(handWriterSql).toContain("s.tournament_table_id IS NULL AND s.table_id = v_tt.id");
+    expect(handWriterSql).toContain("s.tournament_table_id IS NOT NULL");
+    expect(handWriterSql).not.toContain("UPDATE public.tournament_tables");
   });
 
   it("queues only after a direct move reports an active hand", () => {

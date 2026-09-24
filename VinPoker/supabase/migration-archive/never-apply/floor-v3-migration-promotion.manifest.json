@@ -102,6 +102,13 @@
       "sha256": "c31d096ab2db3825a5e2f540bd98aca65a7335a2278871c9f130103eaef124be",
       "dependencies": ["20270115000006"],
       "runtimeEdgeDependency": false
+    },
+    {
+      "version": "20270115000008",
+      "filename": "20270115000008_tracker_record_hand_v3_identity.sql",
+      "sha256": "03adbf0edf53f87b7737d3c525027a8947e2a74c375c83c10b823463beba0126",
+      "dependencies": ["20270115000007"],
+      "runtimeEdgeDependency": false
     }
   ],
   "heldSources": [
