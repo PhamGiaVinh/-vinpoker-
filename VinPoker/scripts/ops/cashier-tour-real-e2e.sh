@@ -169,6 +169,9 @@ if [[ -z "$db_container" || -z "$edge_container" || -z "$gateway_container" ]]; 
   echo "Could not identify local DB, Edge and API gateway services" >&2
   exit 1
 fi
+browser_gateway="cashier-api"
+docker network disconnect "$network" "$gateway_container"
+docker network connect --alias "$browser_gateway" "$network" "$gateway_container"
 
 probe_external_denied() {
   local context="$1" label="$2" status
@@ -197,7 +200,7 @@ browser_probe="$(docker run -d --rm --network "$network" \
 probe_external_denied "$browser_probe" Browser
 docker exec "$browser_probe" node -e \
   'fetch(`http://${process.argv[1]}:8000/auth/v1/health`).then(r => {if (!r.ok) process.exit(1)}).catch(() => process.exit(1))' \
-  "$gateway_container" || {
+  "$browser_gateway" || {
     echo "Isolated browser cannot reach local Auth/API" >&2
     exit 1
   }
@@ -441,7 +444,7 @@ echo "EDGE_PROOF: real local Auth + gateway + tournament-register + fake-SePay r
 # Build the real UI against this local gateway and render it in Chromium. The
 # browser performs real Auth/Data API calls; no request route is intercepted.
 (cd "$repo_root" && \
-  VITE_SUPABASE_URL="http://$gateway_container:8000" \
+  VITE_SUPABASE_URL="http://$browser_gateway:8000" \
   VITE_SUPABASE_PUBLISHABLE_KEY="$anon_key" \
   VITE_OPS_TOUR_CASHIER=production \
   npm run build >/dev/null)
@@ -464,11 +467,11 @@ if [[ "$app_ready" != true ]]; then
   docker logs "$app_container" --tail 40 >&2
   exit 1
 fi
-storage_key="sb-${gateway_container%%.*}-auth-token"
+storage_key="sb-${browser_gateway%%.*}-auth-token"
 docker run --rm --network "$network" \
   --volume "$repo_root:/app:ro" --workdir /app \
   --env PLAYWRIGHT_BASE_URL='http://cashier-app:8080' \
-  --env LOCAL_SUPABASE_URL="http://$gateway_container:8000" \
+  --env LOCAL_SUPABASE_URL="http://$browser_gateway:8000" \
   --env LOCAL_SUPABASE_ANON_KEY="$anon_key" \
   --env LOCAL_OWNER_EMAIL="$owner_email" \
   --env LOCAL_OWNER_PASSWORD="$owner_password" \
