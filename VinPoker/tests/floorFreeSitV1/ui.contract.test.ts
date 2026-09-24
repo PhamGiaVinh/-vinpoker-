@@ -22,8 +22,8 @@ describe("Floor Free Sit V1 UI contract", () => {
     expect(panel).toContain("Confirm Free Sit");
   });
 
-  it("keeps the new write path dark by default", () => {
-    expect(flags).toContain("floorFreeSitV1: false");
+  it("keeps the write path behind the explicit Free Sit flag", () => {
+    expect(flags).toContain("floorFreeSitV1: true");
     expect(panel).toContain("FEATURES.floorFreeSitV1");
   });
 });
