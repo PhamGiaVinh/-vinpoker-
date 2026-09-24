@@ -87,8 +87,9 @@ docker exec "$prepare_edge" sh -c 'du -sh /root/.cache/deno /home/deno/.cache/de
 docker pull mcr.microsoft.com/playwright:v1.60.0-noble >/dev/null
 
 # Keep the prepared containers and their real Deno cache volume. A Docker
-# commit cannot preserve mounted-volume content, so move the stopped stack
-# from its default bridge onto the denied bridge instead of recreating it.
+# commit cannot preserve mounted-volume content. The stack still contains only
+# the public dependency warmer, so deny outbound traffic on its existing
+# private bridge before loading any VinPoker source, schema or fixture.
 project_suffix="_$(basename "$test_root")"
 mapfile -t stack_containers < <(docker ps --format '{{.ID}} {{.Names}}' |
   awk -v suffix="$project_suffix" '$2 ~ suffix"$" {print $1}')
@@ -106,10 +107,7 @@ for container in "${stack_containers[@]}"; do
     exit 1
   fi
 done
-docker stop "${stack_containers[@]}" >/dev/null
-
-docker network create --driver bridge \
-  -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 "$network" >/dev/null
+network="$old_network"
 network_json="$(docker network inspect "$network")"
 if [[ "$(jq -r '.[0].EnableIPv6' <<<"$network_json")" != "false" ]]; then
   echo "Unexpected IPv6 on Cashier E2E bridge" >&2
@@ -129,36 +127,7 @@ sudo iptables -w -A "$firewall_chain" -d "$subnet" -j RETURN
 sudo iptables -w -A "$firewall_chain" -j REJECT
 sudo iptables -w -I DOCKER-USER 1 -i "$bridge" -j "$firewall_chain"
 sudo iptables -w -C DOCKER-USER -i "$bridge" -j "$firewall_chain"
-
-for container in "${stack_containers[@]}"; do
-  docker network connect "$network" "$container"
-  docker network disconnect "$old_network" "$container"
-done
-docker network rm "$old_network" >/dev/null
-db_prepare="$(docker ps -aq --filter "name=supabase_db${project_suffix}")"
-if [[ -z "$db_prepare" ]]; then
-  echo "Could not identify prepared database container" >&2
-  exit 1
-fi
-docker start "$db_prepare" >/dev/null
-for container in "${stack_containers[@]}"; do
-  if [[ "$container" != "$db_prepare" ]]; then docker start "$container" >/dev/null; fi
-done
-stack_healthy=false
-for _ in {1..90}; do
-  if docker inspect "${stack_containers[@]}" |
-    jq -e 'all(.[]; .State.Running and ((.State.Health.Status // "healthy") == "healthy"))' >/dev/null; then
-    stack_healthy=true
-    break
-  fi
-  sleep 2
-done
-if [[ "$stack_healthy" != true ]] ||
-   ! supabase status --output json >"$test_root/isolated-status.json" 2>"$test_root/isolated-status.err"; then
-  echo "Prepared Supabase stack did not become healthy on the isolated bridge" >&2
-  docker ps -a --filter "network=$network" --format 'Startup: {{.Names}} {{.Status}}' >&2
-  exit 1
-fi
+supabase status --output json >"$test_root/isolated-status.json" 2>"$test_root/isolated-status.err"
 
 mapfile -t containers < <(docker ps -q --filter "network=$network")
 if (( ${#containers[@]} < 5 )); then
