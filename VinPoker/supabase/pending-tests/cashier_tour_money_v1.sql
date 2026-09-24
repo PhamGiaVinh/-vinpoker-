@@ -302,16 +302,18 @@ BEGIN
     AND (v_refund->>'amount')::bigint=6600000,
     'refund includes the entire 6.6m actually paid');
   v_refund_id := (v_refund->>'refund_id')::uuid;
-  v_retry := public.cashier_complete_refund_v1(v_refund_id,5300001,1300000,
-    'TEST-RETURN-1','TEST incorrect split');
-  PERFORM pg_temp.cashier_assert(v_retry->>'error'='refund_amount_or_status_invalid',
-    'Cashier cannot change the verified refund total');
-  PERFORM set_config('request.jwt.claim.sub','91000000-0000-4000-8000-000000000002',true);
-  v_retry := public.cashier_complete_refund_v1(v_refund_id,5300000,1300000,
-    'TEST-RETURN-1','TEST wrong club cashier');
-  PERFORM pg_temp.cashier_assert(v_retry->>'error'='actor_not_allowed',
-    'Cashier of another club cannot pay this refund');
-  PERFORM set_config('request.jwt.claim.sub','91000000-0000-4000-8000-000000000001',true);
+  IF current_setting('cashier_test.no_floor',true)='true' THEN
+    v_retry := public.cashier_complete_refund_v1(v_refund_id,5300001,1300000,
+      'TEST-RETURN-1','TEST incorrect split');
+    PERFORM pg_temp.cashier_assert(v_retry->>'error'='refund_amount_or_status_invalid',
+      'Cashier cannot change the verified refund total');
+    PERFORM set_config('request.jwt.claim.sub','91000000-0000-4000-8000-000000000002',true);
+    v_retry := public.cashier_complete_refund_v1(v_refund_id,5300000,1300000,
+      'TEST-RETURN-1','TEST wrong club cashier');
+    PERFORM pg_temp.cashier_assert(v_retry->>'error'='actor_not_allowed',
+      'Cashier of another club cannot pay this refund');
+    PERFORM set_config('request.jwt.claim.sub','91000000-0000-4000-8000-000000000001',true);
+  END IF;
   IF current_setting('cashier_test.no_floor',true) IS DISTINCT FROM 'true' THEN
     PERFORM pg_temp.cashier_assert(
       public.cashier_floor_clear_refund_v1(v_refund_id)->>'status'='floor_cleared',
