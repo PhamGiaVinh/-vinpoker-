@@ -118,7 +118,7 @@ BEGIN
 
   PERFORM pg_catalog.set_config('deferred_test.fail_writer', 'on', true);
   BEGIN
-    PERFORM public.record_hand(
+    v_retry := public.record_hand(
       '00000000-0000-0000-0000-000000000141',
       (v_tracker->>'tournament_table_id')::uuid, 1, pg_catalog.now(),
       pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
@@ -127,7 +127,7 @@ BEGIN
         'ending_stack', 40000, 'is_eliminated', false)),
       '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, 0,
       '00000000-0000-0000-0000-000000000001');
-    RAISE EXCEPTION 'expected TEST post-terminal writer failure';
+    RAISE EXCEPTION 'expected TEST post-terminal writer failure; result=%', v_retry;
   EXCEPTION WHEN raise_exception THEN
     IF SQLERRM <> 'TEST writer failure after terminal hand update' THEN RAISE; END IF;
   END;
