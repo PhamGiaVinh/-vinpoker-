@@ -1,7 +1,8 @@
 \set ON_ERROR_STOP on
 -- Exact TEST IDs, disposable PostgreSQL only. Red/green repro for the live
 -- trigger/check conflicts and for an unrelated active destination hand.
-BEGIN;
+-- Runs only against the disposable CI database: included migrations own their
+-- transaction boundaries, so the database itself is discarded after the job.
 
 ALTER TABLE public.tournament_seats ADD CONSTRAINT tournament_seats_status_check
   CHECK (status IN ('active', 'moved', 'busted', 'cancelled'));
@@ -143,5 +144,4 @@ BEGIN
 END;
 $$;
 
-ROLLBACK;
 SELECT 'FLOOR_ROSTER_ACTIONS_REPAIR_DISPOSABLE_PASS' AS result;
