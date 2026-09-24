@@ -30,10 +30,10 @@ export function requiredCredentialNames(scope) {
   }
   if (scope.frontendDeploy) required.push("VITE_SUPABASE_PUBLISHABLE_KEY");
   if (scope.Vercel === "IN_SCOPE") {
-    // A token alone lets the CLI create a default project from the checkout
-    // directory. Require the explicit binding so a reviewed frontend deploy
-    // cannot silently publish to an unintended Vercel project.
-    required.push("VERCEL_TOKEN", "VERCEL_ORG_ID", "VERCEL_PROJECT_ID");
+    // Bind the reviewed deploy to an explicit project. `vercel link` resolves
+    // its owning team from the project ID; the separately stored org scope is
+    // not needed and can drift from the project's actual Vercel scope.
+    required.push("VERCEL_TOKEN", "VERCEL_PROJECT_ID");
   }
   return required;
 }
