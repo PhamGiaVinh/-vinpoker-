@@ -23,7 +23,11 @@ network="cashier-e2e-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
 bridge=""
 firewall_chain="CASHIER_E2E"
 stack_containers=()
+ephemeral_containers=()
 cleanup() {
+  if (( ${#ephemeral_containers[@]} > 0 )); then
+    docker rm -f "${ephemeral_containers[@]}" >/dev/null 2>&1 || true
+  fi
   supabase stop --workdir "$test_root" --no-backup >/dev/null 2>&1 || true
   if (( ${#stack_containers[@]} > 0 )); then
     docker rm -f "${stack_containers[@]}" >/dev/null 2>&1 || true
@@ -50,7 +54,18 @@ fi
 mkdir -p supabase/functions/edge-dependency-cache
 cp "$repo_root/supabase/pending-tests/edge-dependency-cache/index.ts" \
   supabase/functions/edge-dependency-cache/index.ts
-printf '\n[functions.edge-dependency-cache]\nverify_jwt = false\n' >>supabase/config.toml
+printf '%s\n' \
+  '' \
+  '[functions.edge-dependency-cache]' \
+  'verify_jwt = false' \
+  '[functions.tournament-register]' \
+  'verify_jwt = true' \
+  '[functions.sepay-reconcile]' \
+  'verify_jwt = false' >>supabase/config.toml
+printf '%s\n' \
+  'SEPAY_RECONCILE_SECRET=cashier-edge-reconcile-test' \
+  'SEPAY_AUTO_CONFIRM=true' \
+  'SEPAY_API_BASE=http://fake-sepay:8787' >supabase/functions/.env
 
 # The temporary project has no application migrations or function source.
 # This first start only downloads/prepares the pinned CLI service images.
@@ -316,5 +331,105 @@ if (( money_test_rc != 0 )); then
   exit 1
 fi
 echo "MONEY_PROOF: Cashier money/seat rollback-only SQL assertions passed on captured schema"
-echo "E2E_NOT_READY: synthetic Auth/Edge/browser business assertions are not installed yet" >&2
-exit 1
+
+# Load the real handlers only after outbound denial, then exercise them through
+# the real local Auth, API gateway, Edge runtime and captured production schema.
+rm -rf -- supabase/functions/edge-dependency-cache
+cp -R "$repo_root/supabase/functions/_shared" supabase/functions/_shared
+cp -R "$repo_root/supabase/functions/tournament-register" supabase/functions/tournament-register
+cp -R "$repo_root/supabase/functions/sepay-reconcile" supabase/functions/sepay-reconcile
+
+api_url="$(jq -er '.API_URL' "$test_root/isolated-status.json")"
+anon_key="$(jq -er '.ANON_KEY' "$test_root/isolated-status.json")"
+service_key="$(jq -er '.SERVICE_ROLE_KEY' "$test_root/isolated-status.json")"
+player_email='cashier-edge-player@test.invalid'
+player_password='CashierEdgeTest-2026!'
+owner_email='cashier-edge-owner@test.invalid'
+owner_password='CashierEdgeOwner-2026!'
+
+create_auth_user() {
+  local email="$1" password="$2" response
+  response="$(jq -nc --arg email "$email" --arg password "$password" \
+    '{email:$email,password:$password,email_confirm:true}' |
+    curl --silent --show-error --fail-with-body --request POST \
+      --header "apikey: $service_key" \
+      --header "Authorization: Bearer $service_key" \
+      --header 'Content-Type: application/json' \
+      --data-binary @- "$api_url/auth/v1/admin/users")"
+  jq -er '.id' <<<"$response"
+}
+player_id="$(create_auth_user "$player_email" "$player_password")"
+owner_id="$(create_auth_user "$owner_email" "$owner_password")"
+
+docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  -v player_id="$player_id" -v owner_id="$owner_id" \
+  <"$repo_root/supabase/pending-tests/cashier_tour_edge_fixture.sql" \
+  >"$test_root/edge-fixture.log" 2>&1
+
+registration_json="$(docker run --rm --network "$network" \
+  --volume "$repo_root/supabase/pending-tests/cashier-tour-edge-register.mjs:/tests/register.mjs:ro" \
+  --env API_BASE="http://$gateway_container:8000" \
+  --env ANON_KEY="$anon_key" \
+  --env PLAYER_EMAIL="$player_email" \
+  --env PLAYER_PASSWORD="$player_password" \
+  mcr.microsoft.com/playwright:v1.60.0-noble node /tests/register.mjs)"
+registration_id="$(jq -er '.registration_id' <<<"$registration_json")"
+reference_code="$(jq -er '.reference_code' <<<"$registration_json")"
+if [[ "$(jq -er '.player_id' <<<"$registration_json")" != "$player_id" ]]; then
+  echo "Authenticated Edge registration returned another player" >&2
+  exit 1
+fi
+
+fake_sepay="$(docker run -d --rm --name "cashier-fake-sepay-${GITHUB_RUN_ID:-local}" \
+  --network "$network" --network-alias fake-sepay \
+  --volume "$repo_root/supabase/pending-tests/fake-sepay-server.mjs:/tests/server.mjs:ro" \
+  --env REFERENCE_CODE="$reference_code" \
+  mcr.microsoft.com/playwright:v1.60.0-noble node /tests/server.mjs)"
+ephemeral_containers+=("$fake_sepay")
+for _ in {1..30}; do
+  if docker exec "$fake_sepay" node -e \
+    'fetch("http://127.0.0.1:8787/v2/transactions?account_number=999100001").then(r=>process.exit(r.status===401?0:1)).catch(()=>process.exit(1))'; then
+    break
+  fi
+  sleep 1
+done
+
+wrong_secret_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+  --request POST --header 'X-Reconcile-Secret: wrong-test-secret' \
+  "$api_url/functions/v1/sepay-reconcile")"
+if [[ "$wrong_secret_status" != 401 ]]; then
+  echo "SePay reconcile accepted an invalid shared secret ($wrong_secret_status)" >&2
+  exit 1
+fi
+first_reconcile="$(curl --silent --show-error --fail-with-body --request POST \
+  --header 'X-Reconcile-Secret: cashier-edge-reconcile-test' \
+  "$api_url/functions/v1/sepay-reconcile")"
+second_reconcile="$(curl --silent --show-error --fail-with-body --request POST \
+  --header 'X-Reconcile-Secret: cashier-edge-reconcile-test' \
+  "$api_url/functions/v1/sepay-reconcile")"
+if [[ "$(jq -r '.ok' <<<"$first_reconcile")" != true ||
+      "$(jq -r '.settled' <<<"$first_reconcile")" != 1 ||
+      "$(jq -r '.ok' <<<"$second_reconcile")" != true ||
+      "$(jq -r '.settled' <<<"$second_reconcile")" != 0 ]]; then
+  echo "SePay reconcile did not settle exactly once" >&2
+  exit 1
+fi
+
+edge_state="$(docker exec "$db_container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  -v registration_id="$registration_id" -v player_id="$player_id" -c \
+  "SELECT
+    (SELECT count(*) FROM public.tournament_registrations WHERE id=:'registration_id'::uuid),
+    (SELECT count(*) FROM public.tournament_registrations
+      WHERE tournament_id='a3000000-0000-4000-8000-000000000001' AND player_id=:'player_id'::uuid),
+    (SELECT count(*) FROM public.cashier_buyin_movements WHERE registration_id=:'registration_id'::uuid),
+    (SELECT count(*) FROM public.seat_draw_receipts WHERE registration_id=:'registration_id'::uuid),
+    (SELECT count(*) FROM public.notifications WHERE user_id=:'player_id'::uuid
+      AND data->>'registration_id'=:'registration_id'),
+    (SELECT status='confirmed' AND cashier_paid_at IS NOT NULL
+      FROM public.tournament_registrations WHERE id=:'registration_id'::uuid),
+    (SELECT count(*) FROM public.bank_transactions WHERE provider_txn_id='cashier-edge-bank-1');")"
+if [[ "$edge_state" != '1|1|1|1|1|t|1' ]]; then
+  echo "Auth/Edge idempotency or seat/receipt postcondition failed ($edge_state)" >&2
+  exit 1
+fi
+echo "EDGE_PROOF: real local Auth + gateway + tournament-register + fake-SePay reconcile produced one payment, seat, receipt and notice"
