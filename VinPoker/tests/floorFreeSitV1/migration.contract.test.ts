@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const source = readFileSync(
-  resolve(process.cwd(), "supabase/migrations/20270115000004_floor_free_sit_v1.sql"),
+  resolve(process.cwd(), "supabase/pending-migrations/20270115000004_floor_free_sit_v1.sql"),
   "utf8",
 );
 

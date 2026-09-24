@@ -304,7 +304,7 @@ fi
 cashier_migration='20270115000003_cashier_tour_money_v1.sql'
 set +e
 timeout 10m docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
-  <"$repo_root/supabase/pending-migrations/$cashier_migration" >"$test_root/migration.log" 2>&1
+  <"$repo_root/supabase/migrations/$cashier_migration" >"$test_root/migration.log" 2>&1
 migration_rc=$?
 set -e
 if (( migration_rc != 0 )); then

@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 
 const root = resolve(process.cwd());
 const migration = readFileSync(resolve(root, "supabase/pending-migrations/20270115000000_public_spectator_realtime_v2.sql"), "utf8");
-const lastHandMigration = readFileSync(resolve(root, "supabase/migrations/20260924070939_public_spectator_last_hand_history.sql"), "utf8");
+const lastHandMigration = readFileSync(resolve(root, "supabase/pending-migrations/20260924070939_public_spectator_last_hand_history.sql"), "utf8");
 const flags = readFileSync(resolve(root, "src/lib/featureFlags.ts"), "utf8");
 const viewer = readFileSync(resolve(root, "src/components/cashier/tournament-live/TournamentLiveView.tsx"), "utf8");
 const handFeed = readFileSync(resolve(root, "src/components/cashier/tournament-live/viewer-hub/useCompletedHandsFeed.ts"), "utf8");
