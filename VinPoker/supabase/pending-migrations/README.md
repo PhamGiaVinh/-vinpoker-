@@ -2,6 +2,7 @@
 
 Post-production-head migrations remain outside the Floor V3 promotion catalog and are not active Supabase migrations.
 
+- `20260924165219_centerpoint_tournament_ops_release_v1.sql` — shared default-OFF singleton gate and private server assertion/read helpers only. Source only; no TV or Satellite write path is gated yet. The integration migration must be ordered after the dependent consumer migrations, call the shared assertion at each server-side write boundary, and retain each consumer's actor/club authorization checks. Its disposable tests must cover the closed gate, non-allowlisted club, authorized and unauthorized actors while enabled, and unaffected tournament/Floor/Cashier writers.
 - `20270113000007_tracker_voice_transcribe35_binding.sql` — Tracker Voice provider binding.
 - `20270113000008_dealer_payroll_statement_telegram_delivery_contract_repair.sql` — Payroll Telegram delivery contract repair.
 - `20270113000009_tracker_voice_board_atomic_commit_v0.sql` — Tracker Voice Board Assist atomic commit; source-only pending owner-gated rollout.
