@@ -19,7 +19,7 @@ VALUES
 SELECT set_config('request.jwt.claim.sub','a1000000-0000-4000-8000-000000000001',true);
 DO $test$
 DECLARE
-  v_awards jsonb := '[{"position":1,"ticketCount":2,"cashVnd":"500000"}]'::jsonb;
+  v_awards jsonb := '[{"position":1,"ticketCount":1,"cashVnd":"0"},{"position":2,"ticketCount":1,"cashVnd":"0"},{"position":3,"ticketCount":0,"cashVnd":"500000"}]'::jsonb;
   v_preview jsonb;
   v_locked jsonb;
 BEGIN
@@ -55,6 +55,14 @@ END $test$;
 
 DO $test$
 BEGIN
+  BEGIN
+    PERFORM public.satellite_award_plan_v1(
+      'a3000000-0000-4000-8000-000000000001',
+      'a3000000-0000-4000-8000-000000000002',
+      '[{"position":1,"ticketCount":2,"cashVnd":"0"}]',false);
+    RAISE EXCEPTION 'multiple tickets at one rank accepted';
+  EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+  END;
   BEGIN
     PERFORM public.satellite_award_plan_v1(
       'a3000000-0000-4000-8000-000000000001',

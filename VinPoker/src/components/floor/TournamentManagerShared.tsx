@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, Save, ListOrdered, Play, History, Award, Dices, Loader2 } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
@@ -325,6 +325,11 @@ export const NewTournamentDialog = ({
   const [clubTemplates, setClubTemplates] = useState<BlindTemplate[]>([]);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"single" | "multi" | "satellite">(lockMode ?? "single");
+  const [satelliteTargetId, setSatelliteTargetId] = useState("");
+  const [satelliteGtdTickets, setSatelliteGtdTickets] = useState("");
+  const [satelliteTargets, setSatelliteTargets] = useState<{ id: string; name: string; buy_in: number; rake_amount: number; service_fee_amount: number }[]>([]);
+  const [satelliteTargetsLoading, setSatelliteTargetsLoading] = useState(false);
+  const [satelliteTargetsError, setSatelliteTargetsError] = useState<string | null>(null);
   const [itmPercent, setItmPercent] = useState("");
   const [flightCount, setFlightCount] = useState(3);
   const [finalStart, setFinalStart] = useState("");
@@ -332,6 +337,29 @@ export const NewTournamentDialog = ({
   const showToggle = FEATURES.multiDayTournaments && !lockMode;
   useEffect(() => { setClubId(defaultClubId); }, [defaultClubId]);
   useEffect(() => { if (lockMode) setMode(lockMode); }, [lockMode]);
+  useEffect(() => {
+    if (!FEATURES.satelliteAwardsV1 || !open || !clubId || mode !== "satellite") return;
+    let cancelled = false;
+    setSatelliteTargetId("");
+    setSatelliteTargets([]);
+    setSatelliteTargetsLoading(true);
+    setSatelliteTargetsError(null);
+    void supabase.from("tournaments")
+      .select("id,name,buy_in,rake_amount,service_fee_amount")
+      .eq("club_id", clubId)
+      .eq("operations_mode", "standard")
+      .in("status", ["scheduled", "live"])
+      .is("registration_closed_at", null)
+      .is("deleted_at", null)
+      .order("start_time", { ascending: true })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) setSatelliteTargetsError(error.message);
+        else setSatelliteTargets((data ?? []) as typeof satelliteTargets);
+        setSatelliteTargetsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [open, clubId, mode]);
   useEffect(() => {
     if (!FEATURES.blindTemplates || !open || !clubId) return;
     let cancelled = false;
@@ -390,14 +418,26 @@ export const NewTournamentDialog = ({
     if (FEATURES.multiDayTournaments && mode === "multi") return submitMultiDay();
     if (!f.name || !f.start_time) return toast.error("Please fill all required fields");
     if (!clubId) return toast.error("Chọn câu lạc bộ");
+    if (mode === "satellite" && (!satelliteTargetId || satelliteTargetsError || satelliteTargetsLoading))
+      return toast.error("Select an available target tournament first");
+    if (mode === "satellite" && (!/^\d+$/.test(satelliteGtdTickets)
+      || Number(satelliteGtdTickets) < 1 || Number(satelliteGtdTickets) > 500))
+      return toast.error("Enter a guaranteed ticket count between 1 and 500");
     setBusy(true);
     try {
-      const { data: created, error } = await supabase.from("tournaments").insert(withTournamentCreateLiveStatus({
+      // The pending Satellite setup columns are not yet in generated Database types.
+      // Server constraints/trigger validate the exact target and minimum ticket count.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pending migration 07 is not in generated types
+      const { data: created, error } = await (supabase as any).from("tournaments").insert(withTournamentCreateLiveStatus({
         club_id: clubId, name: f.name, start_time: new Date(f.start_time).toISOString(),
         ...(FEATURES.satelliteAwardsV1 ? { operations_mode: mode === "satellite" ? "satellite" : "standard" } : {}),
         buy_in: Number(f.buy_in), rake_amount: Number(f.rake_amount) || 0,
         ...(FEATURES.tournamentServiceFee ? { service_fee_amount: Number(f.service_fee_amount) || 0 } : {}),
-        guarantee_amount: parseGtd(f.guarantee_amount),
+        guarantee_amount: mode === "satellite" ? null : parseGtd(f.guarantee_amount),
+        ...(mode === "satellite" ? {
+          satellite_target_tournament_id: satelliteTargetId,
+          satellite_gtd_tickets: Number(satelliteGtdTickets),
+        } : {}),
         starting_stack: Number(f.starting_stack),
         location: f.location, description: f.description, game_type: f.game_type,
         minutes_per_level: Number(f.minutes_per_level), late_reg_close_level: Number(f.late_reg_close_level),
@@ -425,7 +465,9 @@ export const NewTournamentDialog = ({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild><Button size="sm" variant="outline" className="border-primary/50 text-primary"><Plus className="w-4 h-4 mr-1" />{triggerLabel}</Button></DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{titleLabel}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{titleLabel}</DialogTitle>
+          <DialogDescription>{mode === "satellite" ? "Set the exact target tournament and guaranteed ticket count before play." : mode === "multi" ? "Thiết lập Main Event và các flight trước khi mở giải." : "Thiết lập thông tin giải đấu."}</DialogDescription>
+        </DialogHeader>
         <div className="space-y-2">
           {multiClub && (
             <>
@@ -444,7 +486,7 @@ export const NewTournamentDialog = ({
               <button type="button" onClick={() => setMode("multi")} className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors ${mode === "multi" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>Multi-day (nhiều flight)</button>
             </div>
           )}
-          {mode === "satellite" && <p className="rounded border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">Satellite mode: create the event here, then lock ticket and cash awards in Payout before results are closed. A ticket covers the exact target buy-in and fees. No in-app transfer or deal tools.</p>}
+          {mode === "satellite" && <p className="rounded border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">Select the exact target and minimum guaranteed tickets before creating this Satellite. The prize pool may earn more tickets; each rank gets one ticket, and the next rank receives any cash remainder. Club overlay is recorded separately. No in-app ticket transfers or deals.</p>}
           <Label>{mode === "multi" ? "Tên Main Event" : "Name"}</Label><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder={mode === "multi" ? "VD: Main Event" : ""} />
           <Label>{mode === "multi" ? "Giờ bắt đầu flight (mặc định — sửa từng flight sau)" : "Start time"}</Label><Input type="datetime-local" value={f.start_time} onChange={e => setF({ ...f, start_time: e.target.value })} />
           {mode === "multi" && (
@@ -472,8 +514,21 @@ export const NewTournamentDialog = ({
             <div><Label>Phí dịch vụ (VND)</Label><Input type="number" value={f.service_fee_amount} onChange={e => setF({ ...f, service_fee_amount: +e.target.value })} /></div>
           )}
           <p className="text-xs text-muted-foreground -mt-1">Người chơi trả: <span className="text-primary font-medium">{formatVND((Number(f.buy_in) || 0) + (Number(f.rake_amount) || 0) + (FEATURES.tournamentServiceFee ? (Number(f.service_fee_amount) || 0) : 0))}</span> <span className="opacity-70">(buy-in + rake{FEATURES.tournamentServiceFee ? " + phí dịch vụ" : ""})</span></p>
-          <div><Label>GTD cam kết (VND)</Label><Input type="number" min={0} value={f.guarantee_amount} onChange={e => setF({ ...f, guarantee_amount: e.target.value })} placeholder="Để trống nếu chưa có GTD" /></div>
-          <p className="text-[11px] text-muted-foreground -mt-1">Cam kết của floor. Để trống = chưa có GTD (sẽ hiện “thiếu GTD”), không suy ra từ prize pool.</p>
+          {mode === "satellite" ? <div className="space-y-2 rounded-md border border-border p-3">
+            <div className="space-y-1"><Label htmlFor="satellite-setup-target">Target tournament</Label>
+              <Select value={satelliteTargetId} onValueChange={setSatelliteTargetId} disabled={satelliteTargetsLoading || !!satelliteTargetsError}>
+                <SelectTrigger id="satellite-setup-target"><SelectValue placeholder={satelliteTargetsLoading ? "Loading targets…" : "Choose the exact target"} /></SelectTrigger>
+                <SelectContent>{satelliteTargets.map(t => <SelectItem key={t.id} value={t.id}>{t.name} · {formatVND(Number(t.buy_in) + Number(t.rake_amount) + Number(t.service_fee_amount))}</SelectItem>)}</SelectContent>
+              </Select>
+              {satelliteTargetsError && <p role="alert" className="text-xs text-destructive">Could not load target tournaments: {satelliteTargetsError}</p>}
+              {!satelliteTargetsLoading && !satelliteTargetsError && satelliteTargets.length === 0 && <p className="text-xs text-muted-foreground">No open target tournament in this club.</p>}
+            </div>
+            <div className="space-y-1"><Label htmlFor="satellite-setup-gtd">Guaranteed tickets (minimum)</Label>
+              <Input id="satellite-setup-gtd" type="number" min={1} max={500} step={1} value={satelliteGtdTickets} onChange={e => setSatelliteGtdTickets(e.target.value)} placeholder="e.g. 4" />
+              <p className="text-xs text-muted-foreground">A ticket covers the target buy-in and all fees. This is a ticket count, not a cash GTD.</p>
+            </div>
+          </div> : <><div><Label>GTD cam kết (VND)</Label><Input type="number" min={0} value={f.guarantee_amount} onChange={e => setF({ ...f, guarantee_amount: e.target.value })} placeholder="Để trống nếu chưa có GTD" /></div>
+          <p className="text-[11px] text-muted-foreground -mt-1">Cam kết của floor. Để trống = chưa có GTD (sẽ hiện “thiếu GTD”), không suy ra từ prize pool.</p></>}
           <div className="grid grid-cols-2 gap-2">
             <div><Label>Starting stack</Label><Input type="number" value={f.starting_stack} onChange={e => setF({ ...f, starting_stack: +e.target.value })} /></div>
             <div><Label>Minutes / level</Label><Input type="number" value={f.minutes_per_level} onChange={e => setF({ ...f, minutes_per_level: +e.target.value })} /></div>

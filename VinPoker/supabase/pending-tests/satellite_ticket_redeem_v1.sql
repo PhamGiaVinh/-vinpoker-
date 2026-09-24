@@ -33,22 +33,28 @@ INSERT INTO public.tournament_registrations
 VALUES ('d3000000-0000-4000-8000-000000000001',
   'd6000000-0000-4000-8000-000000000001',
   'd2000000-0000-4000-8000-000000000001',1000000,100000,1100000,
-  'VOUCHER-TEST-WINNER','confirmed',now());
+  'VOUCHER-TEST-WINNER-1','confirmed',now()),
+  ('d3000000-0000-4000-8000-000000000001',
+  'd6000000-0000-4000-8000-000000000002',
+  'd2000000-0000-4000-8000-000000000001',1000000,100000,1100000,
+  'VOUCHER-TEST-WINNER-2','confirmed',now());
 INSERT INTO public.tournament_entries(tournament_id,player_id,entry_no,status)
 VALUES ('d3000000-0000-4000-8000-000000000001',
-  'd6000000-0000-4000-8000-000000000001',1,'busted');
+  'd6000000-0000-4000-8000-000000000001',1,'busted'),
+  ('d3000000-0000-4000-8000-000000000001',
+  'd6000000-0000-4000-8000-000000000002',1,'busted');
 INSERT INTO public.tournament_close_report
   (tournament_id,club_id,closed_by,entry_count,buy_in_total,cash_in_total,club_revenue,prize_total)
 VALUES ('d3000000-0000-4000-8000-000000000001',
   'd2000000-0000-4000-8000-000000000001',
-  'd1000000-0000-4000-8000-000000000001',1,1000000,1100000,100000,0);
+  'd1000000-0000-4000-8000-000000000001',2,2000000,2200000,200000,0);
 INSERT INTO public.satellite_award_plans
   (source_tournament_id,target_tournament_id,club_id,target_entry_price_vnd,
    award_lines,ticket_total,cash_total_vnd,total_liability_vnd,locked_by)
 VALUES ('d3000000-0000-4000-8000-000000000001',
   'd3000000-0000-4000-8000-000000000002',
   'd2000000-0000-4000-8000-000000000001',6600000,
-  '[{"position":1,"ticketCount":2,"cashVnd":"0"}]',2,0,13200000,
+  '[{"position":1,"ticketCount":1,"cashVnd":"0"},{"position":2,"ticketCount":1,"cashVnd":"0"}]',2,0,13200000,
   'd1000000-0000-4000-8000-000000000001');
 INSERT INTO public.cashier_tour_settings(club_id,enabled) VALUES
   ('d2000000-0000-4000-8000-000000000001',true);
@@ -66,7 +72,7 @@ DECLARE
   v_summary jsonb;
 BEGIN
   PERFORM public.satellite_approve_funding_v1(
-    'd3000000-0000-4000-8000-000000000001',12200000,true);
+    'd3000000-0000-4000-8000-000000000001',11200000,true);
   v_summary := public.satellite_get_transfer_summary_v1(
     'd3000000-0000-4000-8000-000000000001');
   IF v_summary->>'unissuedValueVnd'<>'13200000' OR
@@ -74,7 +80,8 @@ BEGIN
     RAISE EXCEPTION 'unissued ticket liability misreported'; END IF;
   v_issue := public.satellite_issue_tickets_v1(
     'd3000000-0000-4000-8000-000000000001',
-    '[{"position":1,"playerId":"d6000000-0000-4000-8000-000000000001"}]');
+    '[{"position":1,"playerId":"d6000000-0000-4000-8000-000000000001"},
+      {"position":2,"playerId":"d6000000-0000-4000-8000-000000000002"}]');
   IF v_issue->>'ticketTotal' <> '2' THEN RAISE EXCEPTION 'ticket issue count wrong'; END IF;
   SELECT redemption_code INTO v_first FROM public.satellite_tickets
     WHERE serial_no=1 AND source_tournament_id='d3000000-0000-4000-8000-000000000001';

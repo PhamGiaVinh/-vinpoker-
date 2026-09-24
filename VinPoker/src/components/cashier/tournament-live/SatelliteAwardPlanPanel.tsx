@@ -139,11 +139,11 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
     }));
     if (rows.length < 1 || rows.length > 100 || awards.reduce((sum, row) => sum + row.ticketCount, 0) < 1 || awards.some((row) =>
       !Number.isInteger(row.position) || row.position < 1 || row.position > 99999
-      || !Number.isInteger(row.ticketCount) || row.ticketCount < 0 || row.ticketCount > 10
+      || !Number.isInteger(row.ticketCount) || row.ticketCount < 0 || row.ticketCount > 1
       || !/^\d{1,15}$/.test(row.cashVnd)
       || (row.ticketCount === 0 && Number(row.cashVnd) === 0)
     ) || new Set(awards.map(row => row.position)).size !== awards.length) {
-      toast.error("Use unique ranks, 0–10 tickets per rank, and a non-negative cash amount.");
+      toast.error("Use unique ranks, at most one ticket per rank, and a non-negative cash amount.");
       return;
     }
     setBusy(true);
