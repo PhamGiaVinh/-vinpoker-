@@ -924,7 +924,8 @@ export function useStandaloneHandInput(tournamentId: string) {
           .eq("tournament_id", tournamentId)
           .eq("is_active", true);
         seatQuery = loadedSessionId && tbl?.tournamentTableId
-          ? seatQuery.eq("tournament_table_id", tbl.tournamentTableId).eq("table_session_id", loadedSessionId)
+          ? seatQuery.filter("tournament_table_id", "eq", tbl.tournamentTableId)
+            .filter("table_session_id", "eq", loadedSessionId)
           : seatQuery.eq("table_id", newTableId);
         const r = await seatQuery.order("seat_number");
         if (!isCurrentLoad()) return;
@@ -942,7 +943,8 @@ export function useStandaloneHandInput(tournamentId: string) {
           .eq("tournament_id", tournamentId)
           .eq("is_active", true);
         seatQuery = loadedSessionId && tbl?.tournamentTableId
-          ? seatQuery.eq("tournament_table_id", tbl.tournamentTableId).eq("table_session_id", loadedSessionId)
+          ? seatQuery.filter("tournament_table_id", "eq", tbl.tournamentTableId)
+            .filter("table_session_id", "eq", loadedSessionId)
           : seatQuery.eq("table_id", newTableId);
         const r = await seatQuery.order("seat_number");
         if (!isCurrentLoad()) return;

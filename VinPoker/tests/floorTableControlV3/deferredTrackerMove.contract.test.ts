@@ -42,7 +42,8 @@ describe("deferred Floor move into active Tracker table", () => {
     expect(handStartSql).toContain("s.table_session_id = v_session.id");
     expect(handStartSql).toContain("REVOKE ALL ON FUNCTION public.start_tracker_hand_v3");
     expect(trackerHook).toContain("get_tracker_hand_input_tables_v3");
-    expect(trackerHook).toContain('.eq("tournament_table_id", tbl.tournamentTableId).eq("table_session_id", loadedSessionId)');
+    expect(trackerHook).toContain('.filter("tournament_table_id", "eq", tbl.tournamentTableId)');
+    expect(trackerHook).toContain('.filter("table_session_id", "eq", loadedSessionId)');
     expect(trackerHook).toContain("await handleTableChange(tableId);");
     expect(trackerEdge).toContain('supabase.rpc("start_tracker_hand_v3"');
   });
