@@ -34,7 +34,7 @@ test("frontend deployment fails closed when the Vercel target binding is absent"
     SUPABASE_PROJECT_REF: "set",
     VITE_SUPABASE_PUBLISHABLE_KEY: "set",
     VERCEL_TOKEN: "set",
-  }), ["VERCEL_ORG_ID", "VERCEL_PROJECT_ID"]);
+  }), ["VERCEL_PROJECT_ID"]);
 
   assert.deepEqual(missingScopedCredentials(scope, {
     GITHUB_TOKEN: "set",
