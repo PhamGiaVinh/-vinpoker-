@@ -6689,6 +6689,12 @@
       "filename": "20270115000003_cashier_tour_money_v1.sql",
       "sha256": "083ac776a361c1c00684b0eccd01465967e9777926ae073bc9fdcf97a4356df3",
       "domain": "cashier"
+    },
+    {
+      "version": "20260924070939",
+      "filename": "20260924070939_public_spectator_last_hand_history.sql",
+      "sha256": "822f78e3befd15e156afd619b40266e021abf21968770c2316498ef0fa35e1c9",
+      "domain": "public-spectator"
     }
   ],
   "floorActiveAllowlist": [

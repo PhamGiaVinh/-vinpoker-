@@ -43,6 +43,19 @@ export function isFloorRedrawSeatLockV1Enabled(
     || (flagValue === "production" && environmentValue === "production");
 }
 
+/**
+ * The last-hand/history panel is dark unless the build is marked for the
+ * reviewed environment. Exact pairs keep previews isolated while allowing an
+ * owner-approved production build without a source edit to bypass the gate.
+ */
+export function isPublicSpectatorLastHandHistoryEnabled(
+  flagValue: unknown = import.meta.env.VITE_PUBLIC_SPECTATOR_LAST_HAND_HISTORY,
+  environmentValue: unknown = import.meta.env.VITE_FLOOR_UAT_ENV,
+): boolean {
+  return (flagValue === "preview" && environmentValue === "preview")
+    || (flagValue === "production" && environmentValue === "production");
+}
+
 export const FEATURES = {
   /**
    * Owner Daily Digest web report — owner-only, read-only surface in VinPoker Ops.
@@ -405,6 +418,12 @@ export const FEATURES = {
    * are published through the public hand RPC.
    */
   publicSpectatorRealtimeV2: true,
+  /**
+   * Current-session `last_completed` and the one-table history panel.  It ships
+   * dark so migration/worker/frontend can be reviewed in that order; the public
+   * projection itself remains read-only and does not change poker authority.
+   */
+  publicSpectatorLastHandHistory: isPublicSpectatorLastHandHistoryEnabled(),
   /**
    * ── Tracker Ops + Viewer UX upgrade program (RPT parity, plan 2026-07-02) ──
    * PR-F0 flag bootstrap: ALL program flags land here FIRST (default OFF) so the

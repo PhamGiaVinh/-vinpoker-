@@ -358,6 +358,8 @@ export interface LiveFeltProps {
   motionHandKey?: string | null;
   motionSpeed?: number;
   motionEnabled?: boolean;
+  /** Static historical hand: never invent card backs for cards not public in the payload. */
+  hideUnrecordedHoleCards?: boolean;
 }
 
 export function LiveFelt({
@@ -398,6 +400,7 @@ export function LiveFelt({
   motionHandKey = null,
   motionSpeed = 1,
   motionEnabled = false,
+  hideUnrecordedHoleCards = false,
 }: LiveFeltProps) {
   const { t } = useTranslation();
   const unified = !!useTrackerCardStyle();
@@ -1147,7 +1150,7 @@ export function LiveFelt({
                 {/* Compact: face-DOWN backs are dropped entirely (RPT pods carry no cards
                     until a reveal) — the short felt can't afford the extra pod height.
                     Revealed cards (showdown/all-in) still render. Non-compact unchanged. */}
-                {!seat.is_folded && (unified || !compactActive || (seat.hole_cards && seat.hole_cards.length === 2)) && (
+                {!seat.is_folded && (!hideUnrecordedHoleCards || (seat.hole_cards && seat.hole_cards.length === 2)) && (unified || !compactActive || (seat.hole_cards && seat.hole_cards.length === 2)) && (
                 <div
                   data-testid="seat-holecards"
                   className={`mt-0.5 flex justify-center gap-0.5${unified ? ' tracker-seat-cards' : ''}`}

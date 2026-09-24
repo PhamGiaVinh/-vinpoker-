@@ -241,13 +241,20 @@ test("payroll statement HSOP runtime gate stays manual, exact-source, and narrow
   assert.doesNotMatch(payrollStatementHsopGateWorkflow, /vercel\s+(?:deploy|--prod)/i);
 });
 
-test("schema capture is manual, protected, schema-only, and retains no raw output in summaries", () => {
+test("schema capture requires owner dispatch on exact main and retains no raw output in summaries", () => {
   assert.match(schemaCaptureWorkflow, /workflow_dispatch:/);
   assert.doesNotMatch(schemaCaptureWorkflow, /pull_request:/);
   assert.match(schemaCaptureWorkflow, /github\.ref == 'refs\/heads\/main'/);
   assert.match(schemaCaptureWorkflow, /dealer-swing-production-critical/);
-  assert.match(schemaCaptureWorkflow, /required_reviewers/);
-  assert.match(schemaCaptureWorkflow, /supabase db dump --linked --schema public/);
+  assert.match(schemaCaptureWorkflow, /github\.actor == github\.repository_owner/);
+  assert.match(schemaCaptureWorkflow, /github\.triggering_actor == github\.repository_owner/);
+  assert.match(schemaCaptureWorkflow, /test "\$INITIAL_ACTOR" = "\$REPOSITORY_OWNER"/);
+  assert.match(schemaCaptureWorkflow, /test "\$TRIGGERING_ACTOR" = "\$REPOSITORY_OWNER"/);
+  assert.match(schemaCaptureWorkflow, /CAPTURE_SCHEMA_ONLY/);
+  assert.match(schemaCaptureWorkflow, /test "\$TARGET_SHA" = "\$GITHUB_SHA"/);
+  assert.match(schemaCaptureWorkflow, /git rev-parse origin\/main/);
+  assert.doesNotMatch(schemaCaptureWorkflow, /required_reviewers/);
+  assert.match(schemaCaptureWorkflow, /supabase db dump --linked --schema public,storage,floor_private,private,spectator_projection_v2/);
   assert.match(schemaCaptureWorkflow, /sanitize-live-public-schema-artifact\.mjs/);
   assert.match(schemaCaptureWorkflow, /validate-live-public-schema-artifact\.mjs/);
   assert.match(schemaCaptureWorkflow, /raw_schema_path="\$\{RUNNER_TEMP\}\/live-public-schema\.raw\.sql"/);

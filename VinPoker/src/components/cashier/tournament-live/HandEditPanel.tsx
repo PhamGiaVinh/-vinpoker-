@@ -31,6 +31,7 @@ export interface HandEditPanelProps {
   board: string[];
   players: HandEditPanelPlayer[];
   actions: EditAction[];
+  initialActionOrder?: number | null;
   buttonSeat: number;
   saving?: boolean;
   onCancel: () => void;
@@ -61,7 +62,7 @@ export function HandEditPanel(props: HandEditPanelProps) {
   return <TrackerInputCardProvider><HandEditPanelContent {...props} /></TrackerInputCardProvider>;
 }
 
-function HandEditPanelContent({ board, players, actions, buttonSeat, saving, onCancel, onSave, resettleEnabled, onResettle, onEditChange }: HandEditPanelProps) {
+function HandEditPanelContent({ board, players, actions, initialActionOrder, buttonSeat, saving, onCancel, onSave, resettleEnabled, onResettle, onEditChange }: HandEditPanelProps) {
   const [boardSlots, setBoardSlots] = useState<(Card | null)[]>(toSlots(board, 5));
   const [holes, setHoles] = useState<Record<string, (Card | null)[]>>(() => {
     const m: Record<string, (Card | null)[]> = {};
@@ -73,6 +74,11 @@ function HandEditPanelContent({ board, players, actions, buttonSeat, saving, onC
     Object.fromEntries(players.map((player) => [`${player.player_id}:${player.entry_number}`, player.ending_stack])),
   );
   const [reason, setReason] = useState("");
+  const selectedActionRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    selectedActionRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [initialActionOrder]);
 
   // Đợt G3: whenever the edited cards/actions change, tell the parent so it drops any stale
   // resettle preview (a preview computed before this edit must not be confirmed). Reason text
@@ -215,17 +221,31 @@ function HandEditPanelContent({ board, players, actions, buttonSeat, saving, onC
         <p className="mb-2 text-[11px] text-muted-foreground">
           Call, bet và raise dùng số chip thêm vào ở action đó, không phải tổng mức raise-to. Engine hiển thị mức cần theo và mức raise tối thiểu cho từng dòng.
         </p>
-        <div className="space-y-1 max-h-[240px] overflow-y-auto pr-1">
+        <div className="max-h-[360px] space-y-1 overflow-y-auto pr-1">
           {rows.map((a, i) => {
             const check = validationByOrder.get(a.action_order);
             return (
-              <div key={a.action_order} className={`rounded-lg border p-2 ${check?.legal ? "border-emerald-500/20 bg-emerald-950/10" : "border-rose-500/35 bg-rose-950/10"}`}>
-                <div className="grid grid-cols-[28px_minmax(0,1fr)_88px_82px_28px] gap-2 items-center text-xs">
+              <div
+                key={a.action_order}
+                ref={a.action_order === initialActionOrder ? selectedActionRef : undefined}
+                className={`rounded-lg border p-2 ${a.action_order === initialActionOrder ? "border-amber-400 bg-amber-400/10" : check?.legal ? "border-emerald-500/20 bg-emerald-950/10" : "border-rose-500/35 bg-rose-950/10"}`}
+              >
+                <div className="flex items-center gap-2 text-xs">
                   <span className="text-muted-foreground tabular-nums">#{a.action_order}</span>
-                  <span className="truncate">{nameOf(a)} · {a.street}</span>
+                  <span className="min-w-0 flex-1 truncate">{nameOf(a)} · {a.street}</span>
+                  <button
+                    type="button"
+                    aria-label={`Xoá action ${a.action_order}`}
+                    className="min-h-8 min-w-8 text-red-400 hover:text-red-300"
+                    onClick={() => setRows((prev) => prev.filter((_, ri) => ri !== i))}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2">
                   <select
                     aria-label={`Loại action ${a.action_order}`}
-                    className="h-8 rounded border border-border bg-background px-1 text-xs"
+                    className="h-9 min-w-0 rounded border border-border bg-background px-1 text-xs"
                     value={a.action_type}
                     onChange={(e) => setRows((prev) => prev.map((r, ri) => (ri === i ? { ...r, action_type: e.target.value } : r)))}
                   >
@@ -235,18 +255,10 @@ function HandEditPanelContent({ board, players, actions, buttonSeat, saving, onC
                     type="number"
                     min={0}
                     aria-label={`Số chip action ${a.action_order}`}
-                    className="h-8 rounded border border-border bg-background px-1 text-xs"
+                    className="h-9 min-w-0 rounded border border-border bg-background px-1 text-xs"
                     value={a.action_amount}
                     onChange={(e) => setRows((prev) => prev.map((r, ri) => (ri === i ? { ...r, action_amount: Math.max(0, parseInt(e.target.value) || 0) } : r)))}
                   />
-                  <button
-                    type="button"
-                    aria-label={`Xoá action ${a.action_order}`}
-                    className="text-red-400 hover:text-red-300"
-                    onClick={() => setRows((prev) => prev.filter((_, ri) => ri !== i))}
-                  >
-                    ✕
-                  </button>
                 </div>
                 <p className={`mt-1 text-[10px] leading-snug ${check?.legal ? "text-emerald-200" : "text-rose-200"}`}>
                   {check?.message ?? "Đang kiểm tra action..."}
