@@ -565,12 +565,27 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
 
       - name: Link exact Vercel project
-        run: vercel link --yes --scope "$VERCEL_ORG_ID" --project "$VERCEL_PROJECT_ID" --token "$VERCEL_TOKEN"
+        shell: bash
         working-directory: target-source
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.USERIDVERRCEL }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCELPROJECTID }}
+        run: |
+          set -euo pipefail
+          test -n "$VERCEL_ORG_ID"
+          test -n "$VERCEL_PROJECT_ID"
+          node -e '
+            const { mkdirSync, writeFileSync } = require("node:fs");
+            mkdirSync(".vercel", { recursive: true });
+            writeFileSync(
+              ".vercel/project.json",
+              JSON.stringify({
+                orgId: process.env.VERCEL_ORG_ID,
+                projectId: process.env.VERCEL_PROJECT_ID,
+              }),
+              { mode: 0o600 },
+            );
+          '
 
       - name: Pull Vercel project settings
         run: vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
