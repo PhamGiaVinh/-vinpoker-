@@ -36,12 +36,17 @@ export function isFloorRedrawSeatLockV1Enabled(
     || (flagValue === "production" && environmentValue === "production");
 }
 
-/** The last-hand/history panel may run only on an explicitly marked Preview. */
-export function isPublicSpectatorLastHandHistoryPreviewEnabled(
+/**
+ * The last-hand/history panel is dark unless the build is marked for the
+ * reviewed environment. Exact pairs keep previews isolated while allowing an
+ * owner-approved production build without a source edit to bypass the gate.
+ */
+export function isPublicSpectatorLastHandHistoryEnabled(
   flagValue: unknown = import.meta.env.VITE_PUBLIC_SPECTATOR_LAST_HAND_HISTORY,
   environmentValue: unknown = import.meta.env.VITE_FLOOR_UAT_ENV,
 ): boolean {
-  return flagValue === "preview" && environmentValue === "preview";
+  return (flagValue === "preview" && environmentValue === "preview")
+    || (flagValue === "production" && environmentValue === "production");
 }
 
 export const FEATURES = {
@@ -411,7 +416,7 @@ export const FEATURES = {
    * dark so migration/worker/frontend can be reviewed in that order; the public
    * projection itself remains read-only and does not change poker authority.
    */
-  publicSpectatorLastHandHistory: isPublicSpectatorLastHandHistoryPreviewEnabled(),
+  publicSpectatorLastHandHistory: isPublicSpectatorLastHandHistoryEnabled(),
   /**
    * ── Tracker Ops + Viewer UX upgrade program (RPT parity, plan 2026-07-02) ──
    * PR-F0 flag bootstrap: ALL program flags land here FIRST (default OFF) so the

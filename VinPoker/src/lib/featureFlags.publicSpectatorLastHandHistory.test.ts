@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { isPublicSpectatorLastHandHistoryPreviewEnabled } from "./featureFlags";
+import { isPublicSpectatorLastHandHistoryEnabled } from "./featureFlags";
 
 describe("public spectator last-hand history rollout gate", () => {
-  it("fails closed unless both preview values are exact", () => {
-    expect(isPublicSpectatorLastHandHistoryPreviewEnabled()).toBe(false);
-    expect(isPublicSpectatorLastHandHistoryPreviewEnabled("true", "preview")).toBe(false);
-    expect(isPublicSpectatorLastHandHistoryPreviewEnabled("preview", "production")).toBe(false);
-    expect(isPublicSpectatorLastHandHistoryPreviewEnabled("preview", "preview")).toBe(true);
+  it("fails closed unless an exact reviewed environment pair is supplied", () => {
+    expect(isPublicSpectatorLastHandHistoryEnabled()).toBe(false);
+    expect(isPublicSpectatorLastHandHistoryEnabled("true", "preview")).toBe(false);
+    expect(isPublicSpectatorLastHandHistoryEnabled("preview", "production")).toBe(false);
+    expect(isPublicSpectatorLastHandHistoryEnabled("preview", "preview")).toBe(true);
+    expect(isPublicSpectatorLastHandHistoryEnabled("production", "production")).toBe(true);
   });
 });
