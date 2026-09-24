@@ -18,9 +18,15 @@ export type IssuedChipDenomination = {
 export type IssuedChipInventory = {
   tournamentId: string;
   denominations: IssuedChipDenomination[];
+  totalIssuedChips: number;
   totalValue: number;
   reconciliationValue: number;
   reconciled: boolean;
+};
+
+export type IssuedStackSummary = {
+  templates: { id: string; name: string; stackValue: number; issuedCount: number }[];
+  totalIssuedStacks: number;
 };
 
 type OpsClient = SupabaseClient<Database>;
@@ -56,6 +62,49 @@ export async function loadIssuedChipInventory(
   return parseIssuedChipInventory(result.data, tournamentId);
 }
 
+export async function loadIssuedStackSummary(
+  client: OpsClient,
+  tournamentId: string,
+): Promise<IssuedStackSummary> {
+  const templatesResult = await client.from("stack_template")
+    .select("id, name, stack_value")
+    .eq("tournament_id", tournamentId)
+    .order("stack_value", { ascending: true });
+  if (templatesResult.error) throw new Error("CHIP_OPS_TEMPLATE_READ_FAILED");
+  const templates = templatesResult.data ?? [];
+  if (!templates.length) return { templates: [], totalIssuedStacks: 0 };
+
+  const issuanceResult = await client.from("stack_template_issuance")
+    .select("stack_template_id, issued_count")
+    .in("stack_template_id", templates.map((row) => row.id));
+  if (issuanceResult.error) throw new Error("CHIP_OPS_ISSUANCE_READ_FAILED");
+  return parseIssuedStackSummary(templates, issuanceResult.data ?? []);
+}
+
+export function parseIssuedStackSummary(
+  templates: { id: string; name: string; stack_value: number }[],
+  issuances: { stack_template_id: string; issued_count: number }[],
+): IssuedStackSummary {
+  const templateIds = new Set(templates.map((row) => row.id));
+  if (templateIds.size !== templates.length) throw new Error("CHIP_OPS_TEMPLATE_MALFORMED");
+  const issuedByTemplate = new Map<string, number>();
+  for (const row of issuances) {
+    if (!templateIds.has(row.stack_template_id) || !isSafeAmount(row.issued_count) || issuedByTemplate.has(row.stack_template_id)) {
+      throw new Error("CHIP_OPS_ISSUANCE_MALFORMED");
+    }
+    issuedByTemplate.set(row.stack_template_id, row.issued_count);
+  }
+  const rows = templates.map((row) => {
+    if (!row.id || !row.name.trim() || !isSafeAmount(row.stack_value) || row.stack_value === 0) {
+      throw new Error("CHIP_OPS_TEMPLATE_MALFORMED");
+    }
+    return { id: row.id, name: row.name, stackValue: row.stack_value, issuedCount: issuedByTemplate.get(row.id) ?? 0 };
+  });
+  const totalIssuedStacks = rows.reduce((sum, row) => sum + row.issuedCount, 0);
+  if (!Number.isSafeInteger(totalIssuedStacks)) throw new Error("CHIP_OPS_ISSUANCE_MALFORMED");
+  return { templates: rows, totalIssuedStacks };
+}
+
 export function parseIssuedChipInventory(value: Json, expectedTournamentId: string): IssuedChipInventory {
   if (!isRecord(value)) throw new Error("CHIP_OPS_INVENTORY_MALFORMED");
   if (typeof value.error === "string") throw new Error(safeServerCode(value.error));
@@ -82,9 +131,13 @@ export function parseIssuedChipInventory(value: Json, expectedTournamentId: stri
     };
   });
 
+  const totalIssuedChips = denominations.reduce((sum, row) => sum + row.issuedCount, 0);
+  if (!Number.isSafeInteger(totalIssuedChips)) throw new Error("CHIP_OPS_INVENTORY_MALFORMED");
+
   return {
     tournamentId: expectedTournamentId,
     denominations,
+    totalIssuedChips,
     totalValue: value.total_value,
     reconciliationValue: value.reconciliation_value,
     reconciled: value.reconciled,
