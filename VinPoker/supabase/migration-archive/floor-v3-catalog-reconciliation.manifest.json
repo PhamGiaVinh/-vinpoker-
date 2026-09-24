@@ -1328,6 +1328,14 @@
     {
       "version": "20260917000215",
       "name": "public_spectator_live_display"
+    },
+    {
+      "version": "20260924070939",
+      "name": "public_spectator_last_hand_history"
+    },
+    {
+      "version": "20270115000004",
+      "name": "floor_free_sit_v1"
     }
   ],
   "remoteHistoryReceipts": [
@@ -1693,6 +1701,34 @@
         "filename": "20270115000001_public_spectator_live_display.sql",
         "path": "supabase/pending-migrations/20270115000001_public_spectator_live_display.sql",
         "sha256": "6fd63ce2f66915fdf28531c1219df29728aa58eeaa55cd92f428d67883272f52"
+      }
+    },
+    {
+      "remoteVersion": "20260924070939",
+      "remoteName": "public_spectator_last_hand_history",
+      "receiptFilename": "20260924070939_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20260924070939_remote_history_receipt.sql",
+      "receiptSha256": "77c89f7083c998df0a0511f53364c19d6e9e423df3e11a4dc7ea406b29b88853",
+      "remoteLedgerEvidence": "linked read-only ledger name and 16 statements observed 2026-09-24; source equivalence unverified",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20260924070939_public_spectator_last_hand_history.sql",
+        "path": "supabase/migration-archive/remote-history/recovered-source/20260924070939_public_spectator_last_hand_history.sql",
+        "sha256": "822f78e3befd15e156afd619b40266e021abf21968770c2316498ef0fa35e1c9"
+      }
+    },
+    {
+      "remoteVersion": "20270115000004",
+      "remoteName": "floor_free_sit_v1",
+      "receiptFilename": "20270115000004_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270115000004_remote_history_receipt.sql",
+      "receiptSha256": "0ca369f853858857ab5c0ab5438ee2a2137e2deb68c2da58165e69382935fe6d",
+      "remoteLedgerEvidence": "linked read-only ledger name and 6 statements observed 2026-09-24; source equivalence unverified",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270115000004_floor_free_sit_v1.sql",
+        "path": "supabase/migration-archive/remote-history/recovered-source/20270115000004_floor_free_sit_v1.sql",
+        "sha256": "1793827efb0814cb3da4a23ce14181ff216eff5726f23d76581e70eb8ca17a2c"
       }
     }
   ],
@@ -6681,22 +6717,6 @@
       "pendingPath": "supabase/pending-migrations/20270113000009_tracker_voice_board_atomic_commit_v0.sql",
       "sha256": "d28908052e16431cf321a4d3e39f4bc69799427ba9c6b551f15ea3981fb63acc",
       "reason": "post-production-head Tracker Voice Board Assist migration; source-only pending owner-gated rollout"
-    },
-    {
-      "version": "20270115000004",
-      "filename": "20270115000004_floor_free_sit_v1.sql",
-      "originalPath": "supabase/migrations/20270115000004_floor_free_sit_v1.sql",
-      "pendingPath": "supabase/pending-migrations/20270115000004_floor_free_sit_v1.sql",
-      "sha256": "1793827efb0814cb3da4a23ce14181ff216eff5726f23d76581e70eb8ca17a2c",
-      "reason": "Floor Free Sit remains a separate owner-gated rollout; do not co-apply it with Cashier V2"
-    },
-    {
-      "version": "20260924070939",
-      "filename": "20260924070939_public_spectator_last_hand_history.sql",
-      "originalPath": "supabase/migrations/20260924070939_public_spectator_last_hand_history.sql",
-      "pendingPath": "supabase/pending-migrations/20260924070939_public_spectator_last_hand_history.sql",
-      "sha256": "822f78e3befd15e156afd619b40266e021abf21968770c2316498ef0fa35e1c9",
-      "reason": "Public Spectator remains a separate owner-gated rollout; do not co-apply it with Cashier V2"
     }
   ],
   "ownerGatedActiveAllowlist": [
@@ -6770,8 +6790,8 @@
     "superseded": 31,
     "neverReplay": 221,
     "legacyUnappliedNotForReplay": 4,
-    "remoteHistoryReceipts": 26,
-    "pendingSources": 5,
+    "remoteHistoryReceipts": 28,
+    "pendingSources": 3,
     "unresolved": 1,
     "nonVersionedSources": 1
   },

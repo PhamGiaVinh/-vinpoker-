@@ -1,0 +1,6 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270115000004
+-- Remote ledger name: floor_free_sit_v1
+-- Linked production ledger contains this version (6 statements; read-only check 2026-09-24).
+-- Original source is archived under remote-history/recovered-source; equivalence is not asserted.
+-- This comment-only receipt must never replay the original SQL or mutate the database.
