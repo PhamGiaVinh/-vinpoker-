@@ -64,6 +64,9 @@ BEGIN
   -- Exact record_hand still requires the legacy Tracker projection for a
   -- player who was already in the hand. Model that pre-existing runtime
   -- contract here; the queued newcomer must acquire it from migration 00007.
+  UPDATE public.tournament_tables
+  SET table_id = '00000000-0000-0000-0000-000000000542'::uuid
+  WHERE id = (v_tracker->>'tournament_table_id')::uuid;
   UPDATE public.tournament_seats
   SET table_id = (v_tracker->>'tournament_table_id')::uuid
   WHERE entry_id = '00000000-0000-0000-0000-000000000842' AND is_active;
