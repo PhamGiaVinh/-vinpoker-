@@ -81,4 +81,5 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/repairTrackerTestRoster.fixture.sql
           bash tests/floorTableControlV3/runPartialTableLinkRepair.sh
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/rosterActionsRepair.disposable.sql
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/deferredTrackerMove.writerDependencies.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/deferredTrackerMove.disposable.sql

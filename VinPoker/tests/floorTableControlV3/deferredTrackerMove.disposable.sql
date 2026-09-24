@@ -3,6 +3,23 @@
 -- Exact TEST IDs only; the CI PostgreSQL service is discarded after this job.
 \ir ../../supabase/migrations/20270115000007_floor_deferred_tracker_move_v1.sql
 
+INSERT INTO public.club_trackers (club_id, user_id) VALUES
+  ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001');
+
+CREATE OR REPLACE FUNCTION public.deferred_test_fail_after_terminal()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF pg_catalog.current_setting('deferred_test.fail_writer', true) = 'on'
+     AND NEW.entry_id = '00000000-0000-0000-0000-000000000842'::uuid THEN
+    RAISE EXCEPTION 'TEST writer failure after terminal hand update';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_deferred_test_fail_after_terminal
+BEFORE UPDATE OF chip_count ON public.tournament_seats
+FOR EACH ROW EXECUTE FUNCTION public.deferred_test_fail_after_terminal();
+
 SELECT public.floor_table_v3_assert(
   has_function_privilege('authenticated', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE')
   AND NOT has_function_privilege('anon', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE')
@@ -45,9 +62,15 @@ BEGIN
     1, 1, '00000000-0000-0000-0000-000000001144');
   PERFORM public.floor_table_v3_assert((v_result->>'ok')::boolean, 'Tracker existing entry seats');
 
-  INSERT INTO public.tournament_hands (tournament_id, table_id, status)
+  INSERT INTO public.tournament_hands (tournament_id, table_id, hand_number, status)
   VALUES ('00000000-0000-0000-0000-000000000141',
-    (v_tracker->>'tournament_table_id')::uuid, 'in_progress') RETURNING id INTO v_hand;
+    (v_tracker->>'tournament_table_id')::uuid, 1, 'in_progress') RETURNING id INTO v_hand;
+  INSERT INTO public.hand_players (
+    hand_id, tournament_id, player_id, entry_number, seat_number, starting_stack
+  ) VALUES (
+    v_hand, '00000000-0000-0000-0000-000000000141',
+    '00000000-0000-0000-0000-000000000942', 1, 1, 40000
+  );
   PERFORM public.floor_table_v3_assert(
     (SELECT h.table_session_id = (v_tracker->>'table_session_id')::uuid
      FROM public.tournament_hands h WHERE h.id = v_hand),
@@ -93,7 +116,41 @@ BEGIN
   EXCEPTION WHEN unique_violation THEN NULL;
   END;
 
-  UPDATE public.tournament_hands SET status = 'completed' WHERE id = v_hand;
+  PERFORM pg_catalog.set_config('deferred_test.fail_writer', 'on', true);
+  BEGIN
+    PERFORM public.record_hand(
+      '00000000-0000-0000-0000-000000000141',
+      (v_tracker->>'tournament_table_id')::uuid, 1, pg_catalog.now(),
+      pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+        'player_id', '00000000-0000-0000-0000-000000000942',
+        'entry_number', 1, 'seat_number', 1, 'starting_stack', 40000,
+        'ending_stack', 40000, 'is_eliminated', false)),
+      '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, 0,
+      '00000000-0000-0000-0000-000000000001');
+    RAISE EXCEPTION 'expected TEST post-terminal writer failure';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'TEST writer failure after terminal hand update' THEN RAISE; END IF;
+  END;
+  PERFORM public.floor_table_v3_assert(
+    (SELECT status = 'in_progress' FROM public.tournament_hands WHERE id = v_hand)
+    AND (SELECT status = 'pending' FROM public.floor_pending_tracker_moves
+      WHERE id = (v_result->>'pending_move_id')::uuid)
+    AND EXISTS (SELECT 1 FROM public.tournament_seats
+      WHERE entry_id = '00000000-0000-0000-0000-000000000841'
+        AND table_session_id = (v_source->>'table_session_id')::uuid AND is_active),
+    'failed record_hand rolls back terminal hand and queued move together');
+  PERFORM pg_catalog.set_config('deferred_test.fail_writer', 'off', true);
+  v_retry := public.record_hand(
+    '00000000-0000-0000-0000-000000000141',
+    (v_tracker->>'tournament_table_id')::uuid, 1, pg_catalog.now(),
+    pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+      'player_id', '00000000-0000-0000-0000-000000000942',
+      'entry_number', 1, 'seat_number', 1, 'starting_stack', 40000,
+      'ending_stack', 40000, 'is_eliminated', false)),
+    '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, 0,
+    '00000000-0000-0000-0000-000000000001');
+  PERFORM public.floor_table_v3_assert((v_retry->>'ok')::boolean,
+    'production record_hand completes and applies queued move: ' || v_retry::text);
   PERFORM public.floor_table_v3_assert(
     EXISTS (SELECT 1 FROM public.tournament_seats
       WHERE entry_id = '00000000-0000-0000-0000-000000000841'
@@ -123,9 +180,9 @@ BEGIN
       WHERE id = (v_tracker->>'table_session_id')::uuid),
     'terminal move advances both session revisions');
 
-  INSERT INTO public.tournament_hands (tournament_id, table_id, status)
+  INSERT INTO public.tournament_hands (tournament_id, table_id, hand_number, status)
   VALUES ('00000000-0000-0000-0000-000000000141',
-    '00000000-0000-0000-0000-000000000542', 'in_progress') RETURNING id INTO v_hand;
+    '00000000-0000-0000-0000-000000000542', 2, 'in_progress') RETURNING id INTO v_hand;
   PERFORM public.floor_table_v3_assert(
     (SELECT h.table_session_id = (v_tracker->>'table_session_id')::uuid
      FROM public.tournament_hands h WHERE h.id = v_hand)
@@ -133,6 +190,29 @@ BEGIN
       '00000000-0000-0000-0000-000000000141',
       (v_tracker->>'tournament_table_id')::uuid, (v_tracker->>'table_session_id')::uuid),
     'physical-ID Tracker hand resolves to the same active session');
+  INSERT INTO public.hand_players (
+    hand_id, tournament_id, player_id, entry_number, seat_number, starting_stack
+  ) VALUES
+    (v_hand, '00000000-0000-0000-0000-000000000141',
+      '00000000-0000-0000-0000-000000000942', 1, 1, 40000),
+    (v_hand, '00000000-0000-0000-0000-000000000141',
+      '00000000-0000-0000-0000-000000000941', 1, 2, 30000);
+  v_retry := public.record_hand(
+    '00000000-0000-0000-0000-000000000141',
+    '00000000-0000-0000-0000-000000000542', 2, pg_catalog.now(),
+    pg_catalog.jsonb_build_array(
+      pg_catalog.jsonb_build_object(
+        'player_id', '00000000-0000-0000-0000-000000000942',
+        'entry_number', 1, 'seat_number', 1, 'starting_stack', 40000,
+        'ending_stack', 40000, 'is_eliminated', false),
+      pg_catalog.jsonb_build_object(
+        'player_id', '00000000-0000-0000-0000-000000000941',
+        'entry_number', 1, 'seat_number', 2, 'starting_stack', 30000,
+        'ending_stack', 30000, 'is_eliminated', false)),
+    '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, 0,
+    '00000000-0000-0000-0000-000000000001');
+  PERFORM public.floor_table_v3_assert((v_retry->>'ok')::boolean,
+    'next Tracker hand accepts moved player with physical table identity: ' || v_retry::text);
 END;
 $$;
 
