@@ -6,6 +6,7 @@ on:
       - ".github/workflows/public-spectator-v2-disposable-db.yml"
       - "VinPoker/supabase/pending-migrations/2027011500000*_public_spectator_*.sql"
       - "VinPoker/supabase/pending-migrations/20270115000002_tournament_table_appearance.sql"
+      - "VinPoker/supabase/migrations/20260924070939_public_spectator_last_hand_history.sql"
       - "VinPoker/tests/publicSpectatorV2/**"
 
 permissions:
@@ -53,3 +54,9 @@ jobs:
       - name: Verify appearance tenant policy and hand blind identity
         working-directory: VinPoker
         run: psql -v ON_ERROR_STOP=1 -f tests/publicSpectatorV2/tableAppearance.integration.sql
+      - name: Apply current-session last hand and table history contract
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20260924070939_public_spectator_last_hand_history.sql
+      - name: Verify current-session last hand and exact table history
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f tests/publicSpectatorV2/lastHandHistory.integration.sql

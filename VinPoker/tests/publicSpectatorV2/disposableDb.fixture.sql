@@ -25,7 +25,7 @@ CREATE TABLE public.tournament_levels (
   id uuid PRIMARY KEY, tournament_id uuid, level_number integer,
   small_blind numeric, big_blind numeric, ante numeric
 );
-CREATE TABLE public.table_sessions (id uuid PRIMARY KEY, tournament_id uuid);
+CREATE TABLE public.table_sessions (id uuid PRIMARY KEY, tournament_id uuid, closed_at timestamptz);
 CREATE TABLE public.tournament_tables (
   id uuid PRIMARY KEY, tournament_id uuid, table_session_id uuid, table_name text
 );
