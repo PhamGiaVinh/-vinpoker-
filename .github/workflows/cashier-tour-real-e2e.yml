@@ -10,6 +10,7 @@ on:
       - "VinPoker/supabase/pending-tests/cashier-tour-edge-*.mjs"
       - "VinPoker/supabase/pending-tests/cashier_tour_edge_fixture.sql"
       - "VinPoker/supabase/pending-tests/fake-sepay-server.mjs"
+      - "VinPoker/supabase/pending-tests/static-preview-server.mjs"
       - "VinPoker/supabase/functions/tournament-register/**"
       - "VinPoker/supabase/functions/sepay-reconcile/**"
       - "VinPoker/supabase/migrations/20270115000003_cashier_tour_money_v1.sql"

@@ -448,7 +448,7 @@ echo "EDGE_PROOF: real local Auth + gateway + tournament-register + fake-SePay r
 app_container="$(docker run -d --rm --network "$network" --network-alias cashier-app \
   --volume "$repo_root:/app:ro" --workdir /app \
   mcr.microsoft.com/playwright:v1.60.0-noble \
-  npm run preview -- --host 0.0.0.0 --port 8080)"
+  node /app/supabase/pending-tests/static-preview-server.mjs)"
 ephemeral_containers+=("$app_container")
 app_ready=false
 for _ in {1..60}; do
