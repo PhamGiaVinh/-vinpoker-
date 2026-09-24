@@ -9,7 +9,7 @@ describe("deferred Floor move into active Tracker table", () => {
   it("reserves one destination seat and waits for terminal hand state", () => {
     expect(sql).toContain("CREATE UNIQUE INDEX IF NOT EXISTS uq_floor_pending_tracker_moves_destination");
     expect(sql).toContain("WHERE status = 'pending'");
-    expect(sql).toContain("BEFORE INSERT OR UPDATE OF is_active, seat_number, tournament_table_id, table_session_id");
+    expect(sql).toContain("BEFORE INSERT OR UPDATE OF is_active, seat_number, table_id, tournament_table_id, table_session_id");
     expect(sql).toContain("WHEN (OLD.status = 'in_progress' AND NEW.status IN ('completed', 'voided'))");
     expect(sql).toContain("v_destination_session.control_mode <> 'tracker'");
     expect(sql).toContain("v_source_session.control_mode <> 'manual'");

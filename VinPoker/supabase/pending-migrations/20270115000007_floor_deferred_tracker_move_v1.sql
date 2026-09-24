@@ -95,9 +95,14 @@ REVOKE ALL ON FUNCTION floor_private.floor_tracker_hand_session_v1()
 CREATE OR REPLACE FUNCTION floor_private.floor_guard_pending_tracker_seat_v1()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 BEGIN
-  IF NEW.is_active AND NEW.table_session_id IS NOT NULL AND EXISTS (
+  IF NEW.is_active AND EXISTS (
     SELECT 1 FROM public.floor_pending_tracker_moves q
-    WHERE q.destination_table_session_id = NEW.table_session_id
+    JOIN public.tournament_tables tt ON tt.id = q.destination_tournament_table_id
+    WHERE q.tournament_id = NEW.tournament_id
+      AND (q.destination_table_session_id = NEW.table_session_id
+           OR q.destination_tournament_table_id = NEW.tournament_table_id
+           OR q.destination_tournament_table_id = NEW.table_id
+           OR tt.game_table_id = NEW.table_id)
       AND q.destination_seat_number = NEW.seat_number AND q.status = 'pending'
   ) THEN
     RAISE EXCEPTION USING ERRCODE = '23505', MESSAGE = 'seat_reserved_pending_move';
@@ -107,7 +112,7 @@ END;
 $$;
 DROP TRIGGER IF EXISTS trg_floor_guard_pending_tracker_seat_v1 ON public.tournament_seats;
 CREATE TRIGGER trg_floor_guard_pending_tracker_seat_v1
-BEFORE INSERT OR UPDATE OF is_active, seat_number, tournament_table_id, table_session_id
+BEFORE INSERT OR UPDATE OF is_active, seat_number, table_id, tournament_table_id, table_session_id
 ON public.tournament_seats FOR EACH ROW
 EXECUTE FUNCTION floor_private.floor_guard_pending_tracker_seat_v1();
 REVOKE ALL ON FUNCTION floor_private.floor_guard_pending_tracker_seat_v1()
@@ -310,6 +315,8 @@ BEGIN
   UPDATE public.floor_pending_tracker_moves
   SET status = 'cancelled', resolution_reason = 'floor_cancelled', resolved_at = pg_catalog.now()
   WHERE id = v_move.id AND status = 'pending';
+  UPDATE public.table_sessions SET revision = revision + 1
+  WHERE id = v_move.destination_table_session_id AND closed_at IS NULL;
   RETURN pg_catalog.jsonb_build_object('ok', true, 'status', 'cancelled', 'pending_move_id', v_move.id);
 END;
 $$;
@@ -401,6 +408,8 @@ BEGIN
       UPDATE public.floor_pending_tracker_moves
       SET status = 'stale', resolution_reason = v_reason, resolved_at = pg_catalog.now()
       WHERE id = v_move.id;
+      UPDATE public.table_sessions SET revision = revision + 1
+      WHERE id = v_move.destination_table_session_id AND closed_at IS NULL;
       CONTINUE;
     END IF;
     IF floor_private.floor_table_v3_has_active_hand(
@@ -447,11 +456,15 @@ BEGIN
         NEW.tournament_id, v_entry.player_id, v_entry.entry_no, v_seat.chip_count
       ) ON CONFLICT (tournament_id, player_id, entry_number)
       DO UPDATE SET chip_count = EXCLUDED.chip_count, updated_at = pg_catalog.now();
+      UPDATE public.table_sessions SET revision = revision + 1
+      WHERE id IN (v_move.source_table_session_id, v_move.destination_table_session_id);
     EXCEPTION WHEN OTHERS THEN
       UPDATE public.floor_pending_tracker_moves
       SET status = 'stale', resolution_reason = 'apply_sqlstate_' || SQLSTATE,
           resolved_at = pg_catalog.now()
       WHERE id = v_move.id;
+      UPDATE public.table_sessions SET revision = revision + 1
+      WHERE id = v_move.destination_table_session_id AND closed_at IS NULL;
     END;
   END LOOP;
   RETURN NEW;

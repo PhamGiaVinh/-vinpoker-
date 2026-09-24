@@ -15,11 +15,11 @@ INSERT INTO public.game_tables (id, club_id, table_name, table_number, operation
   ('00000000-0000-0000-0000-000000000541', '00000000-0000-0000-0000-000000000010', 'TEST Source', 41, 'available'),
   ('00000000-0000-0000-0000-000000000542', '00000000-0000-0000-0000-000000000010', 'TEST Tracker', 42, 'available');
 INSERT INTO public.tournament_entries
-  (id, tournament_id, player_id, entry_no, current_stack, status)
+  (id, tournament_id, registration_id, player_id, entry_no, current_stack, status)
 VALUES
-  ('00000000-0000-0000-0000-000000000841', '00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000941', 1, 30000, 'registered'),
-  ('00000000-0000-0000-0000-000000000842', '00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000942', 1, 40000, 'registered'),
-  ('00000000-0000-0000-0000-000000000843', '00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000943', 1, 50000, 'registered');
+  ('00000000-0000-0000-0000-000000000841', '00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000a41', '00000000-0000-0000-0000-000000000941', 1, 30000, 'registered'),
+  ('00000000-0000-0000-0000-000000000842', '00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000a42', '00000000-0000-0000-0000-000000000942', 1, 40000, 'registered'),
+  ('00000000-0000-0000-0000-000000000843', '00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000a43', '00000000-0000-0000-0000-000000000943', 1, 50000, 'registered');
 
 DO $$
 DECLARE
@@ -38,11 +38,11 @@ BEGIN
     'TEST manual and Tracker tables open');
   v_result := public.floor_assign_entry_to_seat(
     '00000000-0000-0000-0000-000000000841', (v_source->>'tournament_table_id')::uuid,
-    1, 0, '00000000-0000-0000-0000-000000001143');
+    1, 1, '00000000-0000-0000-0000-000000001143');
   PERFORM public.floor_table_v3_assert((v_result->>'ok')::boolean, 'source entry seats');
   v_result := public.floor_assign_entry_to_seat(
     '00000000-0000-0000-0000-000000000842', (v_tracker->>'tournament_table_id')::uuid,
-    1, 0, '00000000-0000-0000-0000-000000001144');
+    1, 1, '00000000-0000-0000-0000-000000001144');
   PERFORM public.floor_table_v3_assert((v_result->>'ok')::boolean, 'Tracker existing entry seats');
 
   INSERT INTO public.tournament_hands (tournament_id, table_id, status)
