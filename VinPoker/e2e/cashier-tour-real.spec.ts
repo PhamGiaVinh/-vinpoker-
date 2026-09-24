@@ -31,11 +31,25 @@ test("real Auth and Cashier backend render the completed seated buy-in", async (
   }, { key: process.env.LOCAL_SUPABASE_STORAGE_KEY!, value: session });
 
   const pageErrors: string[] = [];
+  const requestFailures: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("requestfailed", (request) => {
+    requestFailures.push(`${request.method()} ${request.url()} ${request.failure()?.errorText ?? "failed"}`);
+  });
   await page.setViewportSize({ width: 375, height: 844 });
   await page.goto("/ops/cashier/tour?club=a2000000-0000-4000-8000-000000000001");
 
-  await expect(page.getByText("ACTIVE", { exact: true })).toBeVisible();
+  try {
+    await expect(page.getByText("ACTIVE", { exact: true })).toBeVisible({ timeout: 30_000 });
+  } catch (error) {
+    console.error(JSON.stringify({
+      browser_url: page.url(),
+      body: (await page.locator("body").innerText()).slice(0, 2_000),
+      page_errors: pageErrors,
+      request_failures: requestFailures,
+    }, null, 2));
+    throw error;
+  }
   await page.getByRole("button", { name: /Cashier Edge TEST Tour/ }).first().click();
   await page.getByRole("button", { name: /Đã tự hoàn tất/ }).click();
   await expect(page.getByRole("button", { name: /Người chơi Edge TEST/ })).toBeVisible();
