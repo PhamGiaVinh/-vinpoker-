@@ -22,8 +22,12 @@ test_root="$(mktemp -d -t cashier-e2e-XXXXXXXX)"
 network="cashier-e2e-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
 bridge=""
 firewall_chain="CASHIER_E2E"
+stack_containers=()
 cleanup() {
   supabase stop --workdir "$test_root" --no-backup >/dev/null 2>&1 || true
+  if (( ${#stack_containers[@]} > 0 )); then
+    docker rm -f "${stack_containers[@]}" >/dev/null 2>&1 || true
+  fi
   if [[ -n "$bridge" ]]; then
     sudo iptables -w -D DOCKER-USER -i "$bridge" -j "$firewall_chain" >/dev/null 2>&1 || true
     sudo iptables -w -F "$firewall_chain" >/dev/null 2>&1 || true
@@ -72,7 +76,6 @@ if [[ "$dependency_status" != 204 ]]; then
   docker logs "$(docker ps -q --filter 'name=supabase_edge_runtime_')" --tail 40 >&2
   exit 1
 fi
-rm -rf -- supabase/functions/edge-dependency-cache
 prepare_edge="$(docker ps -q --filter 'name=supabase_edge_runtime_')"
 if [[ -z "$prepare_edge" ]]; then
   echo "Preparation stack has no Edge runtime to cache" >&2
@@ -81,12 +84,29 @@ fi
 docker inspect "$prepare_edge" --format '{{json .Mounts}}' |
   jq -c 'map({Type,Destination})'
 docker exec "$prepare_edge" sh -c 'du -sh /root/.cache/deno /home/deno/.cache/deno 2>/dev/null || true'
-edge_source_image="$(docker inspect "$prepare_edge" --format '{{.Config.Image}}')"
-edge_cache_image="cashier-edge-prepared:${GITHUB_RUN_ID:-local}"
-docker commit "$prepare_edge" "$edge_cache_image" >/dev/null
-docker image tag "$edge_cache_image" "$edge_source_image"
-supabase stop --no-backup >/dev/null 2>&1
 docker pull mcr.microsoft.com/playwright:v1.60.0-noble >/dev/null
+
+# Keep the prepared containers and their real Deno cache volume. A Docker
+# commit cannot preserve mounted-volume content, so move the stopped stack
+# from its default bridge onto the denied bridge instead of recreating it.
+project_suffix="_$(basename "$test_root")"
+mapfile -t stack_containers < <(docker ps --format '{{.ID}} {{.Names}}' |
+  awk -v suffix="$project_suffix" '$2 ~ suffix"$" {print $1}')
+if (( ${#stack_containers[@]} < 5 )); then
+  echo "Could not inventory the prepared local Supabase stack" >&2
+  exit 1
+fi
+old_network="$(docker inspect "${stack_containers[0]}" --format '{{json .NetworkSettings.Networks}}' |
+  jq -er 'keys | if length == 1 then .[0] else error("expected one preparation network") end')"
+for container in "${stack_containers[@]}"; do
+  container_network="$(docker inspect "$container" --format '{{json .NetworkSettings.Networks}}' |
+    jq -er 'keys | if length == 1 then .[0] else error("expected one preparation network") end')"
+  if [[ "$container_network" != "$old_network" ]]; then
+    echo "Prepared service is not on the expected network" >&2
+    exit 1
+  fi
+done
+docker stop "${stack_containers[@]}" >/dev/null
 
 docker network create --driver bridge \
   -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 "$network" >/dev/null
@@ -110,16 +130,33 @@ sudo iptables -w -A "$firewall_chain" -j REJECT
 sudo iptables -w -I DOCKER-USER 1 -i "$bridge" -j "$firewall_chain"
 sudo iptables -w -C DOCKER-USER -i "$bridge" -j "$firewall_chain"
 
-set +e
-supabase start --network-id "$network" \
-  --exclude "$exclude_services" \
-  >"$test_root/isolated-start.log" 2>&1
-isolated_rc=$?
-set -e
-if (( isolated_rc != 0 )) || ! supabase status --output json >"$test_root/isolated-status.json" 2>"$test_root/isolated-status.err"; then
-  echo "Isolated Supabase start/status failed (start exit $isolated_rc)" >&2
-  tail -n 25 "$test_root/isolated-start.log" >&2
-  docker ps -a --filter 'name=supabase_db_' --format 'DB startup: {{.Status}}' >&2
+for container in "${stack_containers[@]}"; do
+  docker network connect "$network" "$container"
+  docker network disconnect "$old_network" "$container"
+done
+docker network rm "$old_network" >/dev/null
+db_prepare="$(docker ps -aq --filter "name=supabase_db${project_suffix}")"
+if [[ -z "$db_prepare" ]]; then
+  echo "Could not identify prepared database container" >&2
+  exit 1
+fi
+docker start "$db_prepare" >/dev/null
+for container in "${stack_containers[@]}"; do
+  if [[ "$container" != "$db_prepare" ]]; then docker start "$container" >/dev/null; fi
+done
+stack_healthy=false
+for _ in {1..90}; do
+  if docker inspect "${stack_containers[@]}" |
+    jq -e 'all(.[]; .State.Running and ((.State.Health.Status // "healthy") == "healthy"))' >/dev/null; then
+    stack_healthy=true
+    break
+  fi
+  sleep 2
+done
+if [[ "$stack_healthy" != true ]] ||
+   ! supabase status --output json >"$test_root/isolated-status.json" 2>"$test_root/isolated-status.err"; then
+  echo "Prepared Supabase stack did not become healthy on the isolated bridge" >&2
+  docker ps -a --filter "network=$network" --format 'Startup: {{.Names}} {{.Status}}' >&2
   exit 1
 fi
 
