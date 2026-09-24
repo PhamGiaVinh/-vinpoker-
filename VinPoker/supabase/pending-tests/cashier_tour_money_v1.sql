@@ -3,6 +3,10 @@
 -- Do not run on the linked production project. All fixtures roll back.
 \set ON_ERROR_STOP on
 
+\if :{?cashier_no_floor}
+SELECT set_config('cashier_test.no_floor', 'true', false);
+\endif
+
 BEGIN;
 
 CREATE OR REPLACE FUNCTION pg_temp.cashier_assert(p_ok boolean, p_label text)
@@ -298,13 +302,15 @@ BEGIN
     AND (v_refund->>'amount')::bigint=6600000,
     'refund includes the entire 6.6m actually paid');
   v_refund_id := (v_refund->>'refund_id')::uuid;
-  PERFORM pg_temp.cashier_assert(
-    public.cashier_floor_clear_refund_v1(v_refund_id)->>'status'='floor_cleared',
-    'Floor clearance before payout');
+  IF current_setting('cashier_test.no_floor',true) IS DISTINCT FROM 'true' THEN
+    PERFORM pg_temp.cashier_assert(
+      public.cashier_floor_clear_refund_v1(v_refund_id)->>'status'='floor_cleared',
+      'Floor clearance before payout on original migration');
+  END IF;
   v_refund := public.cashier_complete_refund_v1(v_refund_id,5300000,1300000,
     'TEST-RETURN-1','TEST transfer and cash payout evidence');
   PERFORM pg_temp.cashier_assert(v_refund->>'ok'='true',
-    'cashier records the full payout');
+    'cashier records the full payout, without Floor when enabled');
   SELECT count(*) INTO v_count FROM public.cashier_buyin_movements
     WHERE refund_id=v_refund_id AND direction='out';
   PERFORM pg_temp.cashier_assert(v_count=2,'one cash and one bank refund movement');

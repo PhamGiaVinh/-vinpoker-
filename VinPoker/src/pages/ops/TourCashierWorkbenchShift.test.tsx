@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mock = vi.hoisted(() => ({
   rpc: vi.fn(),
   tours: [] as Array<{ id: string; name: string; start_time: string; status: string }>,
+  refund: null as null | { id: string; amount: number; status: "requested"; reason: string },
 }));
 
 vi.mock("@/integrations/supabase/SupabaseClientContext", () => {
@@ -21,7 +22,7 @@ vi.mock("@/integrations/supabase/SupabaseClientContext", () => {
           { id: "shift-a", opened_at: "2026-09-15T08:00:00Z", closed_at: "2026-09-15T16:00:00Z", counted_cash: 100, variance_cash: 0 },
           { id: "shift-b", opened_at: "2026-09-14T08:00:00Z", closed_at: "2026-09-14T16:00:00Z", counted_cash: 200, variance_cash: 0 },
         ], error: null }),
-        maybeSingle: () => Promise.resolve({ data: closed ? null : null, error: null }),
+        maybeSingle: () => Promise.resolve({ data: table === "cashier_refund_requests" ? mock.refund : null, error: null }),
       };
       return query;
     },
@@ -51,6 +52,7 @@ import TourCashierWorkbench from "./TourCashierWorkbench";
 describe("closed Cashier shift correction", () => {
   beforeEach(() => {
     mock.tours = [];
+    mock.refund = null;
     sessionStorage.removeItem("cashier-tour:club-a");
     mock.rpc.mockReset();
     mock.rpc.mockImplementation((name: string, args: { p_shift_id?: string }) => {
@@ -87,7 +89,7 @@ describe("closed Cashier shift correction", () => {
         ok: true, enabled: true, updated_at: "2026-09-15T09:00:00Z",
         counts: { counter: 0, completed: 0, waiting_seat: 0, needs_review: 1, total: 1 },
         rows: args.p_bucket === "needs_review" ? [{
-          id: "registration-a", status: "confirmed", player_name: "Người chơi cũ",
+          id: "registration-a", tournament_id: "tour-a", status: "confirmed", player_name: "Người chơi cũ",
           phone: null, member_card_id: null, reference_code: "TEST-REF", total_pay: 2300000,
           received: 0, bucket: "needs_review", receipt_code: null, table_number: null,
           seat_number: null, legacy_detail_missing: true, cashier_seating_error: null,
@@ -101,9 +103,40 @@ describe("closed Cashier shift correction", () => {
     render(<TourCashierWorkbench />);
     fireEvent.click(await screen.findByRole("button", { name: "Cần xử lý · 1" }));
     fireEvent.click(await screen.findByRole("button", { name: /Người chơi cũ/ }));
-    await screen.findByText("Chỉ hoàn đúng khoản đã ghi trong sổ giao dịch. Floor phải xử lý chip và kết thúc lượt trước khi chi hoàn.");
+    await screen.findByText("Chỉ hoàn đúng khoản đã ghi trong sổ giao dịch. Khách ở hàng chờ, chưa có ghế/chip hoạt động, không cần Floor xác nhận.");
     expect(screen.getByText("Đăng ký đã xác nhận nhưng không tìm thấy phiếu hiện hành. Không thu thêm tiền; báo Floor và đối soát kiểm tra.")).toBeInTheDocument();
     expect(screen.getByText("Không thu thêm")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Ghi nhận tiền mặt" })).not.toBeInTheDocument();
+    const detail = within(screen.getByRole("dialog", { name: /Người chơi cũ/ }));
+    fireEvent.change(detail.getByRole("textbox", { name: "Lý do" }), { target: { value: "Hoàn tiền khách chờ" } });
+    expect(detail.getByRole("button", { name: "Yêu cầu hoàn tiền" })).toBeEnabled();
+  });
+
+  it("lets Cashier record a verified waiting-seat refund without a Floor click", async () => {
+    mock.tours = [{ id: "tour-a", name: "Tour A", start_time: "2026-09-15T10:00:00Z", status: "registering" }];
+    mock.refund = { id: "refund-a", amount: 6600000, status: "requested", reason: "Khách chờ hoàn tiền" };
+    sessionStorage.setItem("cashier-tour:club-a", "tour-a");
+    mock.rpc.mockImplementation((name: string) => Promise.resolve({ data: name === "cashier_tour_worklist_v1"
+      ? { ok: true, enabled: true, updated_at: "2026-09-15T09:00:00Z",
+          counts: { counter: 0, completed: 0, waiting_seat: 1, needs_review: 0, total: 1 },
+          rows: [{ id: "registration-a", tournament_id: "tour-a", status: "pending", player_name: "Khách chờ",
+            phone: null, member_card_id: null, reference_code: "TEST-WAIT", total_pay: 6600000,
+            received: 6600000, bucket: "waiting_seat", receipt_code: null, table_number: null,
+            seat_number: null, legacy_detail_missing: false, cashier_seating_error: null }] }
+      : name === "cashier_tour_issues_v1" ? { ok: true, sepay_unavailable: false, shown: 0, rows: [] }
+        : { ok: true, totals: { cash_adjustments: 0 } }, error: null }));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<TourCashierWorkbench />);
+    fireEvent.click(await screen.findByRole("button", { name: "Chờ ghế · 1" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Khách chờ/ }));
+    const detail = within(screen.getByRole("dialog", { name: /Khách chờ/ }));
+    fireEvent.change(await detail.findByRole("textbox", { name: "Chuyển khoản" }), { target: { value: "6600000" } });
+    fireEvent.change(detail.getByRole("textbox", { name: "Mã giao dịch hoàn qua ngân hàng (nếu có)" }), { target: { value: "TEST-RETURN" } });
+    fireEvent.change(detail.getByRole("textbox", { name: "Bằng chứng chi hoàn" }), { target: { value: "Đã chuyển khoản cho khách TEST" } });
+    fireEvent.click(detail.getByRole("button", { name: "Ghi nhận đã chi hoàn" }));
+    await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith("cashier_complete_refund_v1", expect.objectContaining({
+      p_refund_id: "refund-a", p_cash_amount: 0, p_bank_amount: 6600000,
+    })));
+    vi.restoreAllMocks();
   });
 });
