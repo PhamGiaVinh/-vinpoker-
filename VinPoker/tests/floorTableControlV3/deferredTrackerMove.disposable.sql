@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 -- Runs after disposableDb.serverContract.sql and rosterActionsRepair.disposable.sql.
 -- Exact TEST IDs only; the CI PostgreSQL service is discarded after this job.
-\ir ../../supabase/pending-migrations/20270115000007_floor_deferred_tracker_move_v1.sql
+\ir ../../supabase/migrations/20270115000007_floor_deferred_tracker_move_v1.sql
 
 SELECT public.floor_table_v3_assert(
   has_function_privilege('authenticated', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE')
