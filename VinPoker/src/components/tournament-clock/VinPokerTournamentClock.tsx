@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { ClockRing } from "./ClockRing";
 import type { TournamentClockData } from "./types";
-import { TV_BRANDING_FONT_STACKS } from "@/lib/tv/brandingLayout";
+import { TvBrandingOverlay } from "./TvBrandingOverlay";
 import "./vinPokerClock.css";
 
 /**
@@ -16,6 +16,7 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
   // The club photo is injected as a CSS variable on the root; the .vpc-bg layer
   // reads it (with a dark fallback). TS needs the cast for the custom property.
   const rootStyle = {
+    containerType: "inline-size",
     "--club-bg-image": data.clubBackgroundUrl ? `url("${data.clubBackgroundUrl}")` : "none",
     "--club-bg-position": data.brandingLayout
       ? `${data.brandingLayout.backgroundX}% ${data.brandingLayout.backgroundY}%`
@@ -34,36 +35,12 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
   const midValue: CSSProperties = { fontSize: "clamp(18px, 2.4vmin, 44px)" };
 
   return (
-    <div className={`vpc-root${layout ? " vpc-has-custom-brand" : ""}`} style={rootStyle} aria-label="VinPoker tournament clock">
+    <div className={`vpc-root${layout ? " vpc-has-custom-brand" : ""}`} style={rootStyle} aria-label="VinPoker tournament clock" data-tv-branding-canvas>
       <div className="vpc-bg" aria-hidden="true" />
       <div className="vpc-overlay" aria-hidden="true" />
       <div className="vpc-frame" aria-hidden="true" />
 
-      {layout ? (
-        <div
-          className="vpc-brand-layer"
-          style={{
-            left: `${layout.brandX}%`,
-            top: `${layout.brandY}%`,
-            transform: `translate(-50%, -50%) scale(${layout.brandScale / 100})`,
-            fontFamily: TV_BRANDING_FONT_STACKS[layout.font],
-          }}
-        >
-          <div
-            className="vpc-chip grid place-items-center overflow-hidden"
-            style={{ width: `${10 * layout.logoScale / 100}vmin`, height: `${10 * layout.logoScale / 100}vmin` }}
-            aria-label="Club emblem"
-          >
-            {data.clubLogoUrl ? (
-              <img src={data.clubLogoUrl} alt="" className="h-full w-full rounded-full object-cover" />
-            ) : (
-              <span className="leading-none text-[5vmin] text-[#d8ffe0]">♠</span>
-            )}
-          </div>
-          <div className="vpc-brand-name">{data.brandName || "VINPOKER"}</div>
-          {layout.customText ? <div className="vpc-brand-note">{layout.customText}</div> : null}
-        </div>
-      ) : null}
+      {layout ? <TvBrandingOverlay layout={layout} logoUrl={data.clubLogoUrl} brandName={data.brandName} /> : null}
 
       <div className="vpc-grid">
         {/* Title */}

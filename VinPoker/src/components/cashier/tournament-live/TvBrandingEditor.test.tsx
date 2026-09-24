@@ -11,13 +11,15 @@ beforeAll(() => {
   };
 });
 
-const { rpc, saveFailure } = vi.hoisted(() => ({
+const { rpc, saveFailure, brandingLayout, brandingAssets } = vi.hoisted(() => ({
   saveFailure: { value: false },
+  brandingLayout: { value: {} as unknown },
+  brandingAssets: { value: { logo_url: null as string | null, background_url: null as string | null } },
   rpc: vi.fn(async (name: string) => {
     if (name === "save_tv_tournament_layout_v1" && saveFailure.value) throw new Error("offline");
     if (name === "can_edit_tv_tournament_layout_v1") return { data: true, error: null };
     if (name === "get_tv_tournament_branding_v1") return {
-      data: { logo_url: null, background_url: null, brand_name: "VinPoker", layout: {}, revision: 7 },
+      data: { ...brandingAssets.value, brand_name: "VinPoker", layout: brandingLayout.value, revision: 7 },
       error: null,
     };
     return { data: { revision: 8 }, error: null };
@@ -32,7 +34,7 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 import { TvBrandingEditor } from "./TvBrandingEditor";
 import { toast } from "sonner";
 
-afterEach(() => { cleanup(); rpc.mockClear(); saveFailure.value = false; });
+afterEach(() => { cleanup(); rpc.mockClear(); saveFailure.value = false; brandingLayout.value = {}; brandingAssets.value = { logo_url: null, background_url: null }; });
 
 describe("TvBrandingEditor publish boundary", () => {
   it("keeps edits and reset in a local draft until Publish, then sends the loaded revision", async () => {
@@ -62,5 +64,37 @@ describe("TvBrandingEditor publish boundary", () => {
     fireEvent.click(screen.getByRole("button", { name: /Publish TV layout/i }));
     await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("could not be published")));
     expect(screen.getByRole("button", { name: /Publish TV layout/i })).toBeEnabled();
+  });
+
+  it("renders the legacy single custom_text as a visible text block", async () => {
+    brandingLayout.value = {
+      brand_x: 18, brand_y: 45, brand_scale: 100, logo_scale: 80,
+      background_x: 50, background_y: 50, font: "serif", custom_text: "Legacy TV label",
+    };
+    render(<TvBrandingEditor tournamentId="flight-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: /Edit TV layout/i }));
+    const legacyText = await screen.findByText("Legacy TV label");
+    expect(legacyText).toBeVisible();
+    expect(document.querySelector<HTMLElement>("[data-tv-branding-canvas]")?.style.containerType).toBe("inline-size");
+    expect((legacyText as HTMLDivElement).style.overflow).toBe("hidden");
+    expect((legacyText as HTMLDivElement).style.whiteSpace).toBe("nowrap");
+    expect((legacyText as HTMLDivElement).style.textOverflow).toBe("ellipsis");
+  });
+
+  it("resubmits club fallback images unchanged on the first publish", async () => {
+    brandingAssets.value = {
+      logo_url: "https://orlesggcjamwuknxwcpk.supabase.co/storage/v1/object/public/backing-proofs/clubs/legacy-logo.png",
+      background_url: "https://orlesggcjamwuknxwcpk.supabase.co/storage/v1/object/public/backing-proofs/clubs/legacy-background.jpg",
+    };
+    render(<TvBrandingEditor tournamentId="flight-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: /Edit TV layout/i }));
+    const publish = screen.getByRole("button", { name: /Publish TV layout/i });
+    await vi.waitFor(() => expect(publish).toBeEnabled());
+    fireEvent.click(publish);
+    await vi.waitFor(() => expect(rpc).toHaveBeenCalledWith("save_tv_tournament_layout_v1", expect.objectContaining({
+      p_tournament_id: "flight-1",
+      p_logo_url: brandingAssets.value.logo_url,
+      p_bg_url: brandingAssets.value.background_url,
+    })));
   });
 });

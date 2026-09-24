@@ -14,11 +14,13 @@ interface Props {
   label?: string;
   className?: string;
   required?: boolean;
+  /** Writes a unique path intended for long lived, published media. */
+  versioned?: boolean;
 }
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
-export const ProofUploader = ({ folder, value, onChange, label, className, required }: Props) => {
+export const ProofUploader = ({ folder, value, onChange, label, className, required, versioned = false }: Props) => {
   const { t } = useTranslation();
   const { user } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -39,9 +41,11 @@ export const ProofUploader = ({ folder, value, onChange, label, className, requi
     setUploading(true);
     const file = await compressImage(raw, { maxEdge: 1600, quality: 0.8 });
     const ext = file.type === "image/png" ? "png" : "jpg";
-    const path = `${user.id}/${folder}/${Date.now()}.${ext}`;
+    const path = versioned
+      ? `${user.id}/${folder}/v1/${crypto.randomUUID()}.${ext}`
+      : `${user.id}/${folder}/${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from("backing-proofs").upload(path, file, {
-      cacheControl: "3600",
+      cacheControl: versioned ? "31536000" : "3600",
       upsert: false,
       contentType: file.type,
     });

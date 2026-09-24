@@ -25,7 +25,20 @@ const BASE: TournamentClockData = {
   ],
   footerNote: "Reg end — Level 8",
   brandName: "VINPOKER CLUB",
-  brandingLayout: { ...DEFAULT_TV_BRANDING_LAYOUT, customText: "FINAL TABLE · LIVE" },
+  brandingLayout: {
+    ...DEFAULT_TV_BRANDING_LAYOUT,
+    textBlocks: [{
+      id: "d9725700-88e1-4c0e-91d7-bf48270fd501",
+      text: "FINAL TABLE · LIVE",
+      x: 50,
+      y: 90,
+      width: 24,
+      height: 6,
+      font: "display",
+      size: 18,
+      style: "plain",
+    }],
+  },
 };
 
 // Sample backgrounds to test readability over different club photos (owner P0-5/6).

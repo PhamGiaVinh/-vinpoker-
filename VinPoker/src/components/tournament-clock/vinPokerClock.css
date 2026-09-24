@@ -153,6 +153,10 @@
 .vpc-has-custom-brand .vpc-brand-default {
   display: none;
 }
+.vpc-root .tv-branding-item-editable:focus-visible {
+  outline: 2px solid #f2ece6;
+  outline-offset: 3px;
+}
 
 /* ── Central countdown ring (decorative conic tick ring; not a progress arc) ── */
 .vpc-ring {
@@ -268,6 +272,7 @@
  * The clamp() minimums on every font keep text readable even though vmin is small. */
 @media (max-width: 760px), (max-width: 1023px) and (orientation: portrait) {
   .vpc-brand-layer { display: none; }
+  .vpc-root .tv-branding-item { display: none !important; }
   .vpc-has-custom-brand .vpc-brand-default { display: contents; }
   .vpc-root {
     aspect-ratio: auto;

@@ -9,15 +9,18 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ProofUploader } from "@/components/ProofUploader";
+import { TvBrandingOverlay } from "@/components/tournament-clock/TvBrandingOverlay";
 import { FEATURES } from "@/lib/featureFlags";
 import {
   DEFAULT_TV_BRANDING_LAYOUT,
-  TV_BRANDING_FONT_STACKS,
   TV_BRANDING_FONTS,
+  TV_TEXT_STYLES,
   parseTvBrandingLayout,
   serializeTvBrandingLayout,
+  validateTvBrandingLayout,
   type TvBrandingFont,
   type TvBrandingLayout,
+  type TvTextStyle,
 } from "@/lib/tv/brandingLayout";
 
 type UntypedRpc = (fn: string, args?: Record<string, unknown>) => PromiseLike<{
@@ -108,6 +111,15 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
     setLayout((current) => ({ ...current, [key]: value }));
   };
 
+  const patchText = (id: string, patch: Partial<TvBrandingLayout["textBlocks"][number]>) => {
+    setLayout((current) => ({
+      ...current,
+      textBlocks: current.textBlocks.map((block) => block.id === id ? { ...block, ...patch } : block),
+    }));
+  };
+
+  const layoutError = validateTvBrandingLayout(layout);
+
   const save = async () => {
     setSaving(true);
     try {
@@ -160,39 +172,60 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
           <div className="grid lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,.65fr)]">
             <section className="border-b bg-black/95 p-4 lg:border-b-0 lg:border-r">
               <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[.18em] text-white/60">
-                <span>Draft 16:9 preview · not on TV</span><span>Safe area: 8–92%</span>
+                <span>Draft 16:9 preview · not on TV</span><span>Safe area: 4–96%</span>
               </div>
-              <div className="relative aspect-video overflow-hidden rounded-xl border border-emerald-400/30 shadow-2xl" style={previewStyle}>
+              <div className="relative aspect-video overflow-hidden rounded-xl border border-emerald-400/30 shadow-2xl" style={{ ...previewStyle, containerType: "inline-size" }} data-tv-branding-canvas>
                 <div className="absolute inset-3 rounded-lg border border-emerald-400/30" />
                 <div className="absolute left-1/2 top-[6%] w-[55%] -translate-x-1/2 truncate text-center text-[clamp(12px,2vw,28px)] font-black uppercase tracking-wider text-emerald-100">MAIN EVENT · DAY 1</div>
+                <div className="absolute left-[3%] top-[18%] grid h-[66%] w-[31%] content-start gap-3 rounded-lg border border-emerald-400/25 bg-black/45 p-2 text-center text-[clamp(6px,.7vw,11px)] uppercase tracking-wider text-emerald-100/80">PLAYERS · STATS · PRIZES</div>
                 <div className="absolute left-[34%] top-[33%] grid h-[38%] w-[32%] place-items-center rounded-full border-4 border-emerald-300/70 bg-black/70 text-[clamp(24px,5vw,64px)] font-black text-white shadow-[0_0_32px_rgba(98,255,143,.35)]">35:31</div>
+                <div className="absolute right-[3%] top-[18%] grid h-[66%] w-[31%] content-start gap-3 rounded-lg border border-emerald-400/25 bg-black/45 p-2 text-center text-[clamp(6px,.7vw,11px)] uppercase tracking-wider text-emerald-100/80">BLINDS · LEVEL · PAYOUTS</div>
                 <div className="absolute bottom-[8%] left-[29%] right-[29%] h-[10%] rounded-lg border border-emerald-400/35 bg-black/65" />
-                <div
-                  className="absolute grid justify-items-center gap-1 text-center"
-                  style={{
-                    left: `${layout.brandX}%`, top: `${layout.brandY}%`,
-                    transform: `translate(-50%, -50%) scale(${layout.brandScale / 100})`,
-                    fontFamily: TV_BRANDING_FONT_STACKS[layout.font],
-                  }}
-                >
-                  <div className="grid place-items-center overflow-hidden rounded-full border-2 border-emerald-200/70 bg-emerald-950 shadow-[0_0_20px_rgba(98,255,143,.6)]" style={{ width: `${44 * layout.logoScale / 100}px`, height: `${44 * layout.logoScale / 100}px` }}>
-                    {logoUrl ? <img src={logoUrl} alt="" className="h-full w-full object-cover" /> : <span className="text-2xl text-emerald-100">♠</span>}
-                  </div>
-                  <div className="max-w-40 truncate text-sm font-black uppercase tracking-wider text-emerald-50">{brandName.trim() || "VINPOKER"}</div>
-                  {layout.customText ? <div className="max-w-44 text-[9px] font-bold text-emerald-300">{layout.customText}</div> : null}
-                </div>
+                <TvBrandingOverlay
+                  layout={layout}
+                  logoUrl={logoUrl}
+                  brandName={brandName.trim() || "VINPOKER"}
+                  editing
+                  onLayoutChange={setLayout}
+                />
               </div>
               <p className="mt-3 text-xs leading-relaxed text-white/55">Changes appear on TV only after Publish. Tournament numbers remain server-controlled.</p>
+              {layoutError && <p role="alert" className="mt-2 text-xs text-amber-300">{layoutError}</p>}
             </section>
 
             <section className="space-y-5 p-5">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                <div className="space-y-1.5"><Label className="text-xs">Tournament logo</Label><ProofUploader folder="tv/branding-logo" value={logoUrl} onChange={setLogoUrl} /></div>
-                <div className="space-y-1.5"><Label className="text-xs">TV background</Label><ProofUploader folder="tv/branding-background" value={bgUrl} onChange={setBgUrl} /></div>
+                <div className="space-y-1.5"><Label className="text-xs">Tournament logo</Label><ProofUploader folder="tv/branding-logo" versioned value={logoUrl} onChange={setLogoUrl} /></div>
+                <div className="space-y-1.5"><Label className="text-xs">TV background</Label><ProofUploader folder="tv/branding-background" versioned value={bgUrl} onChange={setBgUrl} /></div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                <div className="space-y-1.5"><Label htmlFor="tv-brand-name" className="text-xs">Brand name</Label><Input id="tv-brand-name" value={brandName} onChange={(event) => setBrandName(event.target.value)} maxLength={40} placeholder="VINPOKER" /></div>
-                <div className="space-y-1.5"><Label htmlFor="tv-custom-text" className="text-xs">Custom line</Label><Input id="tv-custom-text" value={layout.customText} onChange={(event) => patchLayout("customText", event.target.value.slice(0, 80))} maxLength={80} placeholder="Final Table · Live" /></div>
+              <div className="space-y-1.5"><Label htmlFor="tv-brand-name" className="text-xs">Brand name</Label><Input id="tv-brand-name" value={brandName} onChange={(event) => setBrandName(event.target.value)} maxLength={40} placeholder="VINPOKER" /></div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div><h3 className="text-sm font-semibold">Text blocks</h3><p className="text-xs text-muted-foreground">Move each block on the preview or focus it and use arrow keys.</p></div>
+                  <Button type="button" variant="outline" size="sm" disabled={layout.textBlocks.length >= 6} onClick={() => {
+                    const id = crypto.randomUUID();
+                    const candidates = [{ x: 42, y: 19 }, { x: 58, y: 19 }, { x: 86, y: 10 }, { x: 12, y: 90 }, { x: 88, y: 90 }, { x: 50, y: 10 }];
+                    setLayout((current) => {
+                      const block = candidates.map(({ x, y }) => ({
+                        id, text: "New text", x, y, width: 14, height: 6,
+                        font: current.font, size: 18, style: "plain" as const,
+                      })).find((candidate) => validateTvBrandingLayout({ ...current, textBlocks: [...current.textBlocks, candidate] }) === null);
+                      return block ? { ...current, textBlocks: [...current.textBlocks, block] } : current;
+                    });
+                  }}>Add text ({layout.textBlocks.length}/6)</Button>
+                </div>
+                {layout.textBlocks.map((block, index) => (
+                  <fieldset key={block.id} className="grid gap-3 rounded-lg border border-border/70 p-3 sm:grid-cols-2">
+                    <legend className="px-1 text-xs font-medium">Text {index + 1}</legend>
+                    <div className="space-y-1.5 sm:col-span-2"><Label htmlFor={`tv-text-${block.id}`} className="text-xs">Text</Label><Input id={`tv-text-${block.id}`} value={block.text} onChange={(event) => patchText(block.id, { text: event.target.value.slice(0, 100) })} maxLength={100} /></div>
+                    <RangeControl label="Horizontal position" value={block.x} min={4} max={96} onChange={(value) => patchText(block.id, { x: value })} />
+                    <RangeControl label="Vertical position" value={block.y} min={4} max={96} onChange={(value) => patchText(block.id, { y: value })} />
+                    <div className="space-y-1.5"><Label className="text-xs">Font</Label><Select value={block.font} onValueChange={(value) => patchText(block.id, { font: value as TvBrandingFont })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{TV_BRANDING_FONTS.map((font) => <SelectItem key={font} value={font}>{font[0].toUpperCase() + font.slice(1)}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-1.5"><Label className="text-xs">Style</Label><Select value={block.style} onValueChange={(value) => patchText(block.id, { style: value as TvTextStyle })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{TV_TEXT_STYLES.map((style) => <SelectItem key={style} value={style}>{style[0].toUpperCase() + style.slice(1)}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-1.5"><Label htmlFor={`tv-size-${block.id}`} className="text-xs">Size (12–42)</Label><Input id={`tv-size-${block.id}`} type="number" min={12} max={42} value={block.size} onChange={(event) => patchText(block.id, { size: Number(event.target.value) })} /></div>
+                    <div className="flex items-end justify-end"><Button type="button" variant="ghost" size="sm" onClick={() => patchLayout("textBlocks", layout.textBlocks.filter((item) => item.id !== block.id))}>Remove text</Button></div>
+                  </fieldset>
+                ))}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Brand font</Label>
@@ -202,8 +235,8 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
                 </Select>
               </div>
               <div className="grid gap-x-5 gap-y-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                <RangeControl label="Brand horizontal" value={layout.brandX} min={8} max={92} onChange={(value) => patchLayout("brandX", value)} />
-                <RangeControl label="Brand vertical" value={layout.brandY} min={15} max={85} onChange={(value) => patchLayout("brandY", value)} />
+                <RangeControl label="Logo horizontal" value={layout.brandX} min={8} max={92} onChange={(value) => patchLayout("brandX", value)} />
+                <RangeControl label="Logo vertical" value={layout.brandY} min={4} max={96} onChange={(value) => patchLayout("brandY", value)} />
                 <RangeControl label="Brand size" value={layout.brandScale} min={70} max={140} onChange={(value) => patchLayout("brandScale", value)} />
                 <RangeControl label="Logo size" value={layout.logoScale} min={60} max={150} onChange={(value) => patchLayout("logoScale", value)} />
                 <RangeControl label="Background horizontal" value={layout.backgroundX} min={0} max={100} onChange={(value) => patchLayout("backgroundX", value)} />
@@ -215,7 +248,7 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
 
         <DialogFooter className="border-t px-5 py-4 sm:justify-between">
           <Button type="button" variant="ghost" className="gap-2" disabled={loading || !!loadError || saving} onClick={() => { setLayout({ ...DEFAULT_TV_BRANDING_LAYOUT }); setLogoUrl(null); setBgUrl(null); setBrandName(""); }}><RotateCcw className="h-4 w-4" /> Reset draft to defaults</Button>
-          <Button type="button" className="gap-2" onClick={save} disabled={loading || !!loadError || saving}><Save className="h-4 w-4" /> {saving ? "Publishing…" : "Publish TV layout"}</Button>
+          <Button type="button" className="gap-2" onClick={save} disabled={loading || !!loadError || !!layoutError || saving}><Save className="h-4 w-4" /> {saving ? "Publishing…" : "Publish TV layout"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
