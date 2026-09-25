@@ -108,7 +108,7 @@ tar -xzf "$plain_archive" -C "$restore_root"
 rm -f -- "$plain_archive"
 
 backup_root="$restore_root/cashier-1304-backup"
-for required in roles.sql schema.sql migration-history.sql data.sql metadata.txt; do
+for required in roles.sql schema.sql migration-schema.sql migration-history.sql data.sql metadata.txt; do
   test -s "$backup_root/$required" || {
     echo "Decrypted backup member is missing or empty: $required" >&2
     exit 1
@@ -123,7 +123,7 @@ for table in cashier_refund_requests cashier_buyin_movements cashier_till_shifts
   }
 done
 
-for sql_file in roles.sql schema.sql migration-history.sql data.sql; do
+for sql_file in roles.sql schema.sql migration-schema.sql migration-history.sql data.sql; do
   if ! docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
     <"$backup_root/$sql_file" >"$test_root/${sql_file}.log" 2>&1; then
     echo "Restore failed for $sql_file" >&2

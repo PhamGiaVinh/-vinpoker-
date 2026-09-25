@@ -96,11 +96,13 @@ jobs:
           supabase link --project-ref "$PROJECT_REF"
           supabase db dump --linked --role-only --file "$backup_root/roles.sql"
           supabase db dump --linked --file "$backup_root/schema.sql"
+          supabase db dump --linked --schema supabase_migrations \
+            --file "$backup_root/migration-schema.sql"
           supabase db dump --linked --schema supabase_migrations --data-only --use-copy \
             --file "$backup_root/migration-history.sql"
           supabase db dump --linked --data-only --use-copy --file "$backup_root/data.sql"
           snapshot_finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          for required in roles.sql schema.sql migration-history.sql data.sql; do
+          for required in roles.sql schema.sql migration-schema.sql migration-history.sql data.sql; do
             test -s "$backup_root/$required"
           done
           for table in cashier_refund_requests cashier_buyin_movements cashier_till_shifts \
@@ -113,7 +115,7 @@ jobs:
             echo "project_fingerprint=$project_fingerprint"
             echo "snapshot_started_at=$snapshot_started_at"
             echo "snapshot_finished_at=$snapshot_finished_at"
-            echo "backup_scope=roles,schema,migration_history,data"
+            echo "backup_scope=roles,schema,migration_schema,migration_history,data"
             echo "format=supabase_cli_sql_copy"
           } >"$backup_root/metadata.txt"
           cp "$backup_root/metadata.txt" "$artifact_root/metadata.txt"
