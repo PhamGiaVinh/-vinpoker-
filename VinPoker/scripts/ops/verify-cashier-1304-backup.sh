@@ -82,8 +82,8 @@ if docker run --rm --network "$network" curlimages/curl:8.12.1 \
   exit 1
 fi
 
-docker exec "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
-  -c "ALTER SYSTEM SET cron.launch_active_jobs = off" >/dev/null
+docker exec --user root "$db_container" sh -ceu \
+  'printf "\ncron.launch_active_jobs = off\n" >>"$PGDATA/postgresql.auto.conf"'
 docker restart "$db_container" >/dev/null
 until docker exec "$db_container" pg_isready -U postgres -d postgres >/dev/null 2>&1; do sleep 1; done
 test "$(docker exec "$db_container" psql -X -Atq -U postgres -d postgres -c 'SHOW cron.launch_active_jobs')" = off
