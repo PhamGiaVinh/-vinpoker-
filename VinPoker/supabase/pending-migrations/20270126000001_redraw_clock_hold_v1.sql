@@ -230,11 +230,13 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT table_row.table_id, table_row.table_session_id
+  SELECT COALESCE(table_row.game_table_id, table_row.table_id), table_row.table_session_id
     INTO v_game_table_id, v_table_session_id
   FROM public.tournament_tables table_row
   WHERE table_row.tournament_id = NEW.tournament_id
-    AND (table_row.id = NEW.table_id OR table_row.table_id = NEW.table_id)
+    AND (table_row.id = NEW.table_id
+         OR table_row.table_id = NEW.table_id
+         OR table_row.game_table_id = NEW.table_id)
     AND table_row.status = 'active'
   ORDER BY CASE WHEN table_row.id = NEW.table_id THEN 0 ELSE 1 END
   LIMIT 1;

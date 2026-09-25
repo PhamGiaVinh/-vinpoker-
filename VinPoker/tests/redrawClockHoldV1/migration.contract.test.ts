@@ -49,6 +49,7 @@ describe("redraw clock hold V1 migration contract", () => {
     );
     expect(fence).toContain("BEFORE INSERT ON public.tournament_hands");
     expect(fence).toContain("FOR KEY SHARE");
+    expect(fence).toContain("COALESCE(table_row.game_table_id, table_row.table_id)");
     expect(fence).toContain("FROM public.game_tables game_table");
     expect(fence).toContain("FOR UPDATE");
     expect(fence).toContain("FROM public.table_sessions session_row");
