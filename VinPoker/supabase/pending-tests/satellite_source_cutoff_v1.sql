@@ -16,7 +16,7 @@ VALUES
  ('d3000000-0000-4000-8000-000000000001','d2000000-0000-4000-8000-000000000001',
   'Satellite source','registering','registering',now()+interval '1 day',1000000,10000,200000,0,'satellite'),
  ('d3000000-0000-4000-8000-000000000002','d2000000-0000-4000-8000-000000000001',
-  'Target','scheduled','registering',now()+interval '3 day',6000000,10000,500000,100000,'standard'),
+  'Target','live','registering',now()+interval '3 day',6000000,10000,500000,100000,'standard'),
  ('d3000000-0000-4000-8000-000000000003','d2000000-0000-4000-8000-000000000001',
   'Standard regression','registering','registering',now()+interval '2 day',1000000,10000,0,0,'standard');
 INSERT INTO public.cashier_till_shifts(id,club_id,opening_cash,opened_by)
