@@ -6,7 +6,7 @@ import "./realtimeTablesGrid.css";
 import type { PublicFreshness, PublicTableCatalogItem, PublicTableSnapshot } from "./publicSnapshotTypes";
 
 const PAGE_SIZE = 6;
-export function RealtimeTablesGrid({ catalog, tables, freshness, appearance, onVisibleTableIds, onView, onHistory }: { appearance?: TableAppearance; catalog: PublicTableCatalogItem[]; tables: PublicTableSnapshot[]; freshness?: PublicFreshness; onVisibleTableIds: (ids: string[]) => void; onView: (id: string) => void; onHistory: (id: string) => void }) {
+export function RealtimeTablesGrid({ catalog, tables, freshness, loading, appearance, onVisibleTableIds, onView, onHistory }: { appearance?: TableAppearance; catalog: PublicTableCatalogItem[]; tables: PublicTableSnapshot[]; freshness?: PublicFreshness; loading?: boolean; onVisibleTableIds: (ids: string[]) => void; onView: (id: string) => void; onHistory: (id: string) => void }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const filtered = useMemo(() => {
@@ -30,8 +30,8 @@ export function RealtimeTablesGrid({ catalog, tables, freshness, appearance, onV
       <div><p className="text-[10px] font-bold uppercase tracking-[.16em] text-[hsl(var(--viewer-neon))]">Tables live</p><h2 className="text-xl font-black">Bàn trực tiếp</h2></div>
       <label className="flex min-h-11 min-w-[15rem] flex-1 items-center gap-2 rounded-xl border border-border/60 bg-card/55 px-3 sm:max-w-sm"><Search className="h-4 w-4 text-muted-foreground" /><span className="sr-only">Tìm bàn hoặc người chơi</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm bàn hoặc người chơi" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" /></label>
     </div>
-    {freshness?.state !== "current" && <p className="text-xs text-amber-400">Dữ liệu bàn đang cập nhật{freshness?.oldestPendingAt ? ` từ ${new Date(freshness.oldestPendingAt).toLocaleTimeString("vi-VN")}` : ""}.</p>}
-    {filtered.length === 0 ? <div className="rounded-2xl border border-dashed border-border/55 py-14 text-center text-sm text-muted-foreground">Không tìm thấy bàn phù hợp</div> : <div className="grid gap-4 min-[1200px]:grid-cols-2">
+    {freshness && freshness.state !== "current" && <p className="text-xs text-amber-400">Dữ liệu bàn đang cập nhật{freshness.oldestPendingAt ? ` từ ${new Date(freshness.oldestPendingAt).toLocaleTimeString("vi-VN")}` : ""}.</p>}
+    {filtered.length === 0 ? <div className="rounded-2xl border border-dashed border-border/55 py-14 text-center text-sm text-muted-foreground">{loading && catalog.length === 0 ? "Đang tải danh sách bàn…" : query.trim() ? "Không tìm thấy bàn phù hợp" : "Chưa có bàn để theo dõi"}</div> : <div className="grid gap-4 min-[1200px]:grid-cols-2">
       {visibleCatalog.map((summary) => {
         const table = tableById.get(summary.tableId);
         return <article key={summary.tableId} className="min-w-0 rounded-2xl border border-border/55 bg-card/55 p-3 sm:p-4 [container-type:inline-size]" aria-label={summary.name}>

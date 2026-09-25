@@ -43,10 +43,14 @@ export function usePublicSpectatorSnapshot(
       delete trustedRevisions.current.tables;
       trustedTableScope.current = tableKey;
       // A hand belongs to a table/session context. Preserve ranking and payout
-      // while the requested tables reload, but never flash a prior table's hand.
+      // and the table catalog while visible details reload. Clearing the catalog
+      // makes the grid request no tables, which can loop between both scopes.
+      // Never flash a prior table's hand while its details are reloading.
       setSnapshot((previous) => previous ? {
         ...previous,
-        sections: { ...previous.sections, tables: undefined },
+        sections: { ...previous.sections, tables: previous.sections.tables
+          ? { ...previous.sections.tables, items: [], removed: [] }
+          : undefined },
       } : previous);
       setLoading(true);
     }
