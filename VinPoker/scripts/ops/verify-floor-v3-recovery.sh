@@ -23,7 +23,7 @@ readonly firewall_chain="FLOORV3_${GITHUB_RUN_ID}"
 readonly plain_archive="$test_root/floor-v3-recovery.tar.gz"
 readonly identity_path="$test_root/age-identity.txt"
 readonly archive_root="$test_root/restore"
-readonly restored_db="floorv3restore${GITHUB_RUN_ID}"
+readonly restored_db="postgres"
 db_container=""
 network=""
 bridge=""
@@ -150,17 +150,14 @@ if [[ -n "$unexpected_role_errors" ]]; then
   exit 1
 fi
 
-docker exec "$db_container" createdb -U postgres --template=template0 "$restored_db" >/dev/null 2>&1 || {
-  echo "Could not create the isolated restore database" >&2
+if ! docker exec "$db_container" sh -ceu '
+  export PGPASSWORD="$POSTGRES_PASSWORD"
+  dropdb -h 127.0.0.1 -U supabase_admin --force postgres
+  createdb -h 127.0.0.1 -U supabase_admin --template=template0 --owner=supabase_admin postgres
+' >"$test_root/prepare.log" 2>&1; then
+  echo "Could not recreate the isolated postgres restore target" >&2
   exit 1
-}
-docker exec -i "$db_container" psql -X -q -U postgres -d "$restored_db" -v ON_ERROR_STOP=1 \
-  >"$test_root/prepare.log" 2>&1 <<'SQL' || {
-DROP SCHEMA IF EXISTS public CASCADE;
-SQL
-  echo "Could not prepare the isolated restore target" >&2
-  exit 1
-}
+fi
 
 if ! docker exec -i "$db_container" sh -ceu \
   'exec env PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -h 127.0.0.1 -U supabase_admin -d "$1" --exit-on-error' \

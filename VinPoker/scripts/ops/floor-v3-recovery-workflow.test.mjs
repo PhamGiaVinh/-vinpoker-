@@ -76,6 +76,9 @@ test("only encrypted ciphertext is uploaded and restore is isolated with egress 
   assert.match(restore, /restore network still has outbound access/);
   assert.match(restore, /pg_restore[\s\S]*?--exit-on-error/);
   assert.match(restore, /PGPASSWORD="\$POSTGRES_PASSWORD" pg_restore -h 127\.0\.0\.1 -U supabase_admin/);
+  assert.match(restore, /readonly restored_db="postgres"/);
+  assert.match(restore, /dropdb -h 127\.0\.0\.1 -U supabase_admin --force postgres/);
+  assert.match(restore, /createdb -h 127\.0\.0\.1 -U supabase_admin --template=template0 --owner=supabase_admin postgres/);
   assert.match(restore, /Actual database restore failed; sanitized diagnostic follows/);
   assert.match(restore, /\[JWT REDACTED\]/);
   assert.doesNotMatch(restore, /cat "\$test_root\/restore\.log"|tail[^\n]*restore\.log/);
