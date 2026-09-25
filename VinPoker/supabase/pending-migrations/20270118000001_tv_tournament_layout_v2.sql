@@ -1,5 +1,7 @@
 -- Source-only follow-up to 20260924065041. The earlier per-club writer is
 -- disabled; tournament/event presentation is now the sole published layout.
+-- RELEASE ORDER: #1307 gate -> V1 gated writer -> this V2 migration -> V3.
+-- V1 remains fail-closed until its club is explicitly allowlisted.
 -- ROLLBACK: owner-gated new migration revokes the V2 RPCs and leaves rows as
 -- audit history. Do not restore the per-club writer or delete Storage objects.
 BEGIN;
@@ -95,6 +97,7 @@ BEGIN
     OR public.is_club_floor(v_actor, v_tour.club_id)) THEN
     RAISE EXCEPTION 'tv_layout_forbidden' USING ERRCODE = '42501';
   END IF;
+  PERFORM centerpoint_private.assert_tournament_ops_release_v1(v_tour.club_id);
   -- Every flight/final belonging to the same Main Event locks the same anchor.
   IF v_tour.event_id IS NOT NULL THEN
     PERFORM 1 FROM public.tournament_events WHERE id = v_tour.event_id AND club_id = v_tour.club_id FOR UPDATE;

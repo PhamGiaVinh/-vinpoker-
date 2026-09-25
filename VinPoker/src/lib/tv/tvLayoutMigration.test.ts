@@ -41,6 +41,30 @@ describe("TV layout tournament scope follow-up", () => {
     expect(scopedMigration).toContain("ALTER TABLE public.tv_tournament_layouts ENABLE ROW LEVEL SECURITY");
   });
 
+  it("gates the V1 per-club save RPC after actor and club authorization", () => {
+    const writerStart = migration.indexOf("CREATE OR REPLACE FUNCTION public.save_tv_branding_layout_v1(");
+    const writerEnd = migration.indexOf("\n$$;", writerStart);
+    const writerBody = migration.slice(writerStart, writerEnd);
+    const permissionCheck = writerBody.indexOf("public.is_club_dealer_control(v_actor, p_club_id)");
+    const releaseGate = writerBody.indexOf("PERFORM centerpoint_private.assert_tournament_ops_release_v1(p_club_id)");
+
+    expect(writerStart).toBeGreaterThanOrEqual(0);
+    expect(permissionCheck).toBeGreaterThanOrEqual(0);
+    expect(releaseGate).toBeGreaterThan(permissionCheck);
+  });
+
+  it("gates the V2 save RPC after actor and club authorization", () => {
+    const writerStart = scopedMigration.indexOf("CREATE OR REPLACE FUNCTION public.save_tv_tournament_layout_v1(");
+    const writerEnd = scopedMigration.indexOf("\n$$;", writerStart);
+    const writerBody = scopedMigration.slice(writerStart, writerEnd);
+    const permissionCheck = writerBody.indexOf("RAISE EXCEPTION 'tv_layout_forbidden'");
+    const releaseGate = writerBody.indexOf("PERFORM centerpoint_private.assert_tournament_ops_release_v1(v_tour.club_id)");
+
+    expect(writerStart).toBeGreaterThanOrEqual(0);
+    expect(permissionCheck).toBeGreaterThanOrEqual(0);
+    expect(releaseGate).toBeGreaterThan(permissionCheck);
+  });
+
   it("keeps paired TV reads tied to its assigned tournament and emits branding only", () => {
     expect(scopedMigration).toContain("WHERE display_token = p_display_token AND status = 'paired'");
     expect(scopedMigration).toContain("public.get_tv_tournament_branding_v1(v_tournament_id)");
@@ -49,6 +73,18 @@ describe("TV layout tournament scope follow-up", () => {
 });
 
 describe("TV layout v3 server and asset contract", () => {
+  it("gates the V3 publish RPC after actor and club authorization", () => {
+    const writerStart = multiblockMigration.indexOf("CREATE OR REPLACE FUNCTION public.save_tv_tournament_layout_v1(");
+    const writerEnd = multiblockMigration.indexOf("\n$$;", writerStart);
+    const writerBody = multiblockMigration.slice(writerStart, writerEnd);
+    const permissionCheck = writerBody.indexOf("RAISE EXCEPTION 'tv_layout_forbidden'");
+    const releaseGate = writerBody.indexOf("PERFORM centerpoint_private.assert_tournament_ops_release_v1(v_tour.club_id)");
+
+    expect(writerStart).toBeGreaterThanOrEqual(0);
+    expect(permissionCheck).toBeGreaterThanOrEqual(0);
+    expect(releaseGate).toBeGreaterThan(permissionCheck);
+  });
+
   it("validates full text and logo boxes against the same safe bounds and fixed regions as the client", () => {
     expect(multiblockMigration).toContain("(p_value->>'brand_x')::numeric NOT BETWEEN 8 AND 92");
     expect(multiblockMigration).toContain("(p_value->>'brand_y')::numeric NOT BETWEEN 4 AND 96");

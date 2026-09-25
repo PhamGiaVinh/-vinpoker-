@@ -109,6 +109,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'tv_branding_forbidden' USING ERRCODE = '42501';
   END IF;
+  PERFORM centerpoint_private.assert_tournament_ops_release_v1(p_club_id);
 
   IF length(coalesce(p_brand_name, '')) > 40
      OR length(coalesce(p_logo_url, '')) > 2048
