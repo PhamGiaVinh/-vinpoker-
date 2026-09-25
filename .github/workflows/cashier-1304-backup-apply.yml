@@ -126,9 +126,11 @@ jobs:
           rm -rf -- "$backup_root"
           rm -f -- "$archive_path"
           test "$(find "$artifact_root" -maxdepth 1 -type f | wc -l | tr -d ' ')" = 4
-          printf 'snapshot_started_at=%s\n' "$snapshot_started_at" >>"$GITHUB_OUTPUT"
-          printf 'snapshot_finished_at=%s\n' "$snapshot_finished_at" >>"$GITHUB_OUTPUT"
-          printf 'ciphertext_sha256=%s\n' "$ciphertext_sha256" >>"$GITHUB_OUTPUT"
+          {
+            printf 'snapshot_started_at=%s\n' "$snapshot_started_at"
+            printf 'snapshot_finished_at=%s\n' "$snapshot_finished_at"
+            printf 'ciphertext_sha256=%s\n' "$ciphertext_sha256"
+          } >>"$GITHUB_OUTPUT"
 
       - name: Upload ciphertext only
         id: upload

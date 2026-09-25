@@ -19,7 +19,6 @@ test -n "${CASHIER_BACKUP_AGE_IDENTITY:-}" || {
   exit 1
 }
 
-repo_root="$(pwd)"
 test_root="$(mktemp -d -t cashier-backup-restore-XXXXXXXX)"
 identity_path="$test_root/identity.txt"
 plain_archive="$test_root/cashier-1304-backup.tar.gz"
