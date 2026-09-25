@@ -9,6 +9,9 @@ DO $$ BEGIN CREATE ROLE anon; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE ROLE authenticated; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE ROLE service_role; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- Supabase authenticated callers can resolve auth.uid() from SECURITY INVOKER RPCs.
+GRANT USAGE ON SCHEMA auth TO authenticated;
+
 CREATE TYPE public.app_role AS ENUM ('super_admin');
 
 CREATE OR REPLACE FUNCTION auth.uid()
