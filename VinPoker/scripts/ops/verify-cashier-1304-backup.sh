@@ -170,7 +170,9 @@ for sql_file in roles.sql schema.sql migration-schema.sql migration-history.sql;
   fi
 done
 
-if ! docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -v ON_ERROR_STOP=1 \
+    -U supabase_admin -d postgres' \
   <"$backup_root/data.sql" >"$test_root/data.sql.log" 2>&1; then
   echo "Restore failed for data.sql" >&2
   tail -n 35 "$test_root/data.sql.log" >&2
