@@ -70,6 +70,27 @@ CREATE TABLE public.tournament_entries (
   status text NOT NULL DEFAULT 'registered',
   UNIQUE (tournament_id, player_id, entry_no)
 );
+-- Minimal real baseline for the redraw/apply history write. Keep the actual
+-- discriminator constraint so the RPC must satisfy the production contract.
+CREATE TABLE public.seat_assignment_history (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  tournament_id uuid NOT NULL REFERENCES public.tournaments(id) ON DELETE CASCADE,
+  entry_id uuid NOT NULL REFERENCES public.tournament_entries(id) ON DELETE CASCADE,
+  player_id uuid NOT NULL,
+  from_table_id uuid,
+  from_table_number integer,
+  from_seat_number integer,
+  to_table_id uuid REFERENCES public.game_tables(id),
+  to_table_number integer,
+  to_seat_number integer NOT NULL,
+  reason text NOT NULL DEFAULT 'initial_draw',
+  draw_type text NOT NULL CHECK (
+    draw_type IN ('initial', 'manual_move', 'final_table_redraw', 'reprint')
+  ),
+  actor_user_id uuid NOT NULL,
+  metadata jsonb NOT NULL DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE TABLE public.tournament_registrations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id uuid NOT NULL,
@@ -135,6 +156,22 @@ CREATE TABLE public.club_cashiers (club_id uuid NOT NULL, user_id uuid NOT NULL)
 CREATE TABLE public.club_dealer_controls (club_id uuid NOT NULL, user_id uuid NOT NULL);
 CREATE TABLE public.club_trackers (club_id uuid NOT NULL, user_id uuid NOT NULL);
 CREATE TABLE public.profiles (user_id uuid PRIMARY KEY, display_name text);
+ALTER TABLE public.seat_assignment_history ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.seat_assignment_history TO authenticated;
+CREATE POLICY seat_assignment_history_select_authenticated
+  ON public.seat_assignment_history FOR SELECT TO authenticated USING (true);
+CREATE POLICY seat_assignment_history_write_club_admin
+  ON public.seat_assignment_history FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.tournaments t
+      LEFT JOIN public.clubs c ON c.id = t.club_id
+      LEFT JOIN public.club_cashiers cc ON cc.club_id = t.club_id AND cc.user_id = auth.uid()
+      WHERE t.id = seat_assignment_history.tournament_id
+        AND (c.owner_id = auth.uid() OR cc.user_id IS NOT NULL)
+    )
+  );
 CREATE TABLE public.tournament_chip_counts (
   tournament_id uuid NOT NULL,
   player_id uuid NOT NULL,
