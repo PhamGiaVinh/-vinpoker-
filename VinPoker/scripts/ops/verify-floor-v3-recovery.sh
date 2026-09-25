@@ -175,7 +175,7 @@ if ! docker exec -i "$db_container" sh -ceu \
   'exec env PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -h 127.0.0.1 -U supabase_admin -d "$1" --exit-on-error' \
   sh "$restored_db" \
   <"$payload_root/database.dump" >"$test_root/restore.log" 2>&1; then
-  restore_diagnostic="$(grep -Ei '^(pg_restore: error:|ERROR:)' "$test_root/restore.log" |
+  restore_diagnostic="$(grep -Ei '^(pg_restore: (error:|from TOC entry)|ERROR:)' "$test_root/restore.log" |
     sed -E \
       -e 's/eyJ[A-Za-z0-9_-]{8,}[.]eyJ[A-Za-z0-9_-]{8,}[.][A-Za-z0-9_-]{8,}/[JWT REDACTED]/g' \
       -e 's#(postgres(ql)?://)[^@[:space:]]+@#\1[REDACTED]@#Ig' \
