@@ -1,0 +1,45 @@
+name: Multi-day End Flight disposable PostgreSQL 17
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/multiday-end-flight-disposable-db.yml"
+      - "VinPoker/supabase/pending-migrations/20270120000000_multiday_end_flight_snapshot_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_end_flight_baseline_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_end_flight_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_end_flight_race_setup_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_end_flight_race_v1.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  multiday-end-flight-disposable-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply exact-baseline fixture and forward migration
+        working-directory: VinPoker
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/pending-tests/multiday_end_flight_baseline_v1.sql \
+            -f supabase/pending-migrations/20270120000000_multiday_end_flight_snapshot_v1.sql \
+            -f supabase/pending-tests/multiday_end_flight_v1.sql \
+            -f supabase/pending-tests/multiday_end_flight_race_setup_v1.sql
+      - name: Assert serial cutoff versus direct hand writer
+        working-directory: VinPoker
+        run: bash supabase/pending-tests/multiday_end_flight_race_v1.sh
