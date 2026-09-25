@@ -11,6 +11,7 @@ DO $$ BEGIN CREATE ROLE service_role; EXCEPTION WHEN duplicate_object THEN NULL;
 
 -- Supabase authenticated callers can resolve auth.uid() from SECURITY INVOKER RPCs.
 GRANT USAGE ON SCHEMA auth TO authenticated;
+GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;
 
 CREATE TYPE public.app_role AS ENUM ('super_admin');
 
