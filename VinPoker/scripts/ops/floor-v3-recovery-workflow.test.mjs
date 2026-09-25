@@ -34,6 +34,8 @@ test("Floor recovery workflow is manual, owner-bound, protected, and backup-only
 });
 
 test("database archive and row-count receipt share one exported MVCC snapshot", () => {
+  assert.match(backup, /Floor recovery script failed at line %s \(exit %s\); command and values withheld/);
+  assert.doesNotMatch(backup, /BASH_COMMAND/);
   assert.match(backup, /BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY/);
   assert.match(backup, /pg_export_snapshot\(\)/);
   assert.match(backup, /pg_dump --format=custom[\s\S]*?--snapshot=\"\$snapshot_id\"/);

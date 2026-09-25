@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+on_unexpected_error() {
+  local status=$?
+  local failed_line="$1"
+  trap - ERR
+  printf 'Floor recovery script failed at line %s (exit %s); command and values withheld\n' "$failed_line" "$status" >&2
+  exit "$status"
+}
+trap 'on_unexpected_error "$LINENO"' ERR
+
 artifact_dir="${1:-}"
 if [[ -z "$artifact_dir" ]]; then
   echo "Encrypted output directory is required" >&2
