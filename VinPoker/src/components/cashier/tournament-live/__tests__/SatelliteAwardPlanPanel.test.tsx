@@ -92,7 +92,7 @@ describe("SatelliteAwardPlanPanel", () => {
     expect(screen.getByRole("button", { name: "Lock award plan" })).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("button", { name: "Preview obligations" }));
     await screen.findByText("Total obligation: 6,600,000 VND");
-    expect(h.rpc).toHaveBeenCalledWith("satellite_award_plan_v1", expect.objectContaining({
+    expect(h.rpc).toHaveBeenCalledWith("satellite_award_plan_v2", expect.objectContaining({
       p_source_tournament_id: "source", p_target_tournament_id: "target-1c",
       p_awards: [{ position: 1, ticketCount: 1, cashVnd: "0" }], p_lock: false,
     }));
@@ -100,7 +100,17 @@ describe("SatelliteAwardPlanPanel", () => {
     h.planResult = { data: { ...h.planResult.data, locked: true }, error: null };
     fireEvent.click(screen.getByRole("button", { name: "Lock award plan" }));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Satellite award plan locked"));
-    expect(h.rpc).toHaveBeenCalledWith("satellite_award_plan_v1", expect.objectContaining({ p_lock: true }));
+    expect(h.rpc).toHaveBeenCalledWith("satellite_award_plan_v2", expect.objectContaining({ p_lock: true }));
+  });
+
+  it("never previews two tickets for one finishing place", async () => {
+    render(<SatelliteAwardPlanPanel tournamentId="source" clubId="club" />);
+    fireEvent.keyDown(await screen.findByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "Main Event · Flight 1C" }));
+    fireEvent.change(screen.getByLabelText("Tickets"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview obligations" }));
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("at most one ticket per rank"));
+    expect(h.rpc).not.toHaveBeenCalledWith("satellite_award_plan_v2", expect.anything());
   });
 
   it("rejects malformed server totals without offering the lock action", async () => {
@@ -111,6 +121,17 @@ describe("SatelliteAwardPlanPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Preview obligations" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: "Lock award plan" })).toHaveProperty("disabled", true);
+  });
+
+  it("fails closed if the server returns more than one ticket for a rank", async () => {
+    h.getResult = { data: {
+      ...h.planResult.data, locked: true, ticketTotal: 2,
+      totalLiabilityVnd: "13200000",
+      awardLines: [{ position: 1, ticketCount: 2, cashVnd: "0" }],
+    }, error: null };
+    render(<SatelliteAwardPlanPanel tournamentId="source" clubId="club" />);
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Invalid award-plan obligations");
+    expect(screen.queryByRole("button", { name: "Issue tickets" })).toBeNull();
   });
 
   it("fails closed when the private ticket ledger cannot load", async () => {

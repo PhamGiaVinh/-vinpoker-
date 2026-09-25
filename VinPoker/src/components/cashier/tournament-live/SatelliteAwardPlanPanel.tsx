@@ -42,6 +42,19 @@ function parsePlan(raw: unknown): AwardPlan {
       || !Number.isInteger(plan.ticketTotal) || !Array.isArray(plan.awardLines)) {
       throw new Error("Incomplete award-plan response");
     }
+    const lines = plan.awardLines;
+    if (plan.ticketTotal! < 1 || lines.length < 1 || lines.length > 100
+      || lines.some(line => !line || !Number.isInteger(line.position) || line.position < 1
+        || !Number.isInteger(line.ticketCount) || line.ticketCount < 0 || line.ticketCount > 1
+        || !/^\d{1,15}$/.test(line.cashVnd)
+        || (line.ticketCount === 0 && /^0+$/.test(line.cashVnd)))
+      || new Set(lines.map(line => line.position)).size !== lines.length
+      || lines.reduce((sum, line) => sum + line.ticketCount, 0) !== plan.ticketTotal
+      || lines.reduce((sum, line) => sum + BigInt(line.cashVnd), 0n) !== BigInt(plan.cashTotalVnd!)
+      || BigInt(plan.ticketTotal!) * BigInt(plan.targetEntryPriceVnd!) + BigInt(plan.cashTotalVnd!)
+        !== BigInt(plan.totalLiabilityVnd!)) {
+      throw new Error("Invalid award-plan obligations");
+    }
   }
   return plan;
 }
@@ -134,16 +147,16 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
     }));
     if (rows.length < 1 || rows.length > 100 || awards.reduce((sum, row) => sum + row.ticketCount, 0) < 1 || awards.some((row) =>
       !Number.isInteger(row.position) || row.position < 1 || row.position > 99999
-      || !Number.isInteger(row.ticketCount) || row.ticketCount < 0 || row.ticketCount > 10
+      || !Number.isInteger(row.ticketCount) || row.ticketCount < 0 || row.ticketCount > 1
       || !/^\d{1,15}$/.test(row.cashVnd)
       || (row.ticketCount === 0 && Number(row.cashVnd) === 0)
     ) || new Set(awards.map(row => row.position)).size !== awards.length) {
-      toast.error("Use unique ranks, 0–10 tickets per rank, and a non-negative cash amount.");
+      toast.error("Use unique ranks, at most one ticket per rank, and a non-negative cash amount.");
       return;
     }
     setBusy(true);
     try {
-      const { data, error } = await planRpc("satellite_award_plan_v1", {
+      const { data, error } = await planRpc("satellite_award_plan_v2", {
         p_source_tournament_id: tournamentId,
         p_target_tournament_id: targetId,
         p_awards: awards,
