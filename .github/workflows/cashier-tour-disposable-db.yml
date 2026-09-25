@@ -7,9 +7,17 @@ on:
       - "VinPoker/supabase/migrations/20270115000003_cashier_tour_money_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270115000011_cashier_refund_without_floor_clearance.sql"
       - "VinPoker/supabase/pending-migrations/20270119000002_satellite_registration_pool_row_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000003_satellite_source_funding_preview_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20260925092509_satellite_funding_preview_math_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270117000001_satellite_award_plan_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270117000002_satellite_ticket_issue_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270118000002_satellite_single_ticket_rank_v2.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_disposable_baseline.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_money_v1.sql"
       - "VinPoker/supabase/pending-tests/satellite_registration_pool_row_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_source_funding_disposable_setup.sql"
+      - "VinPoker/supabase/pending-tests/satellite_source_funding_preview_v1.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_concurrency_*.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_load_*.sql"
       - "VinPoker/tests/opsFloorCashier/disposableDb.fixture.sql"
@@ -105,3 +113,19 @@ jobs:
             -v ON_ERROR_STOP=1 -v customer={} -f supabase/pending-tests/cashier_tour_load_cash.sql >/dev/null
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/pending-tests/cashier_tour_load_assert.sql
+      - name: Extend synthetic Cashier schema for Satellite pending chain
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_source_funding_disposable_setup.sql
+      - name: Apply Satellite dependent pending migrations to disposable PostgreSQL only
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270117000001_satellite_award_plan_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270118000002_satellite_single_ticket_rank_v2.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270117000002_satellite_ticket_issue_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20260925092509_satellite_funding_preview_math_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000003_satellite_source_funding_preview_v1.sql
+      - name: Run Satellite ledger-derived funding preview and closed-write assertions
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_source_funding_preview_v1.sql

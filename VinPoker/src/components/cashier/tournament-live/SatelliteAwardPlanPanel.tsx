@@ -24,6 +24,23 @@ type AwardPlan = {
   awardLines?: { position: number; ticketCount: number; cashVnd: string }[];
   lockedAt?: string;
 };
+type FundingPreview = {
+  state: "READY" | "NOT_READY" | "OWNER_EXCEPTION_REQUIRED";
+  sourcePoolVnd: string | null;
+  feeVnd: string | null;
+  targetEntryPriceVnd?: string;
+  computedTicketCount?: number;
+  cashRemainderVnd?: string;
+  ticketShortfallVnd?: string;
+  obligationShortfallVnd?: string;
+  eligibleWinnerCount?: number;
+  confirmedCount: number;
+  unpaidCount: number;
+  reversedCount: number;
+  previewRevision: string;
+  issues?: { registrationId: string; reason: string }[];
+  awardPlan: AwardPlan;
+};
 
 const emptyRow = (): AwardInput => ({ position: "", ticketCount: "0", cashVnd: "0" });
 const planRpc = supabase.rpc as unknown as (name: string, args: Record<string, unknown>) =>
@@ -70,6 +87,27 @@ function parseIssuance(raw: unknown): Issuance {
   return value;
 }
 
+function parseFunding(raw: unknown): FundingPreview {
+  if (!raw || typeof raw !== "object") throw new Error("Invalid funding-preview response");
+  const value = raw as FundingPreview;
+  if (!["READY", "NOT_READY", "OWNER_EXCEPTION_REQUIRED"].includes(value.state)
+    || !/^v1:[0-9a-f]{32}$/.test(value.previewRevision ?? "")
+    || !Number.isInteger(value.confirmedCount) || !Number.isInteger(value.unpaidCount)
+    || !Number.isInteger(value.reversedCount)) throw new Error("Incomplete funding-preview response");
+  value.awardPlan = parsePlan(value.awardPlan);
+  if (value.state !== "NOT_READY" && (!/^\d{1,16}$/.test(value.sourcePoolVnd ?? "")
+    || !/^\d{1,16}$/.test(value.feeVnd ?? "")
+    || value.targetEntryPriceVnd !== value.awardPlan.targetEntryPriceVnd
+    || !/^\d{1,16}$/.test(value.cashRemainderVnd ?? "")
+    || !/^\d{1,16}$/.test(value.ticketShortfallVnd ?? "")
+    || !/^\d{1,16}$/.test(value.obligationShortfallVnd ?? "")
+    || !Number.isInteger(value.computedTicketCount) || value.computedTicketCount! < 0))
+    throw new Error("Incomplete funding-preview totals");
+  if (value.state === "NOT_READY" && (value.sourcePoolVnd !== null || value.feeVnd !== null))
+    throw new Error("Inconsistent source cannot have a pool total");
+  return value;
+}
+
 /** Satellite-only TD surface. Redemption is a separate Cashier server workflow. */
 export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId: string; clubId: string }) {
   const [loading, setLoading] = useState(true);
@@ -78,14 +116,11 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
   const [locked, setLocked] = useState<AwardPlan | null>(null);
   const [targetId, setTargetId] = useState("");
   const [rows, setRows] = useState<AwardInput[]>([{ position: "1", ticketCount: "1", cashVnd: "0" }]);
-  const [preview, setPreview] = useState<{ plan: AwardPlan; input: string } | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
+  const [preview, setPreview] = useState<{ funding: FundingPreview; input: string } | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [issuance, setIssuance] = useState<Issuance | null>(null);
-  const [recipients, setRecipients] = useState<Record<number, string>>({});
-  const [issueConfirmed, setIssueConfirmed] = useState(false);
-  const [issueError, setIssueError] = useState<string | null>(null);
   const seq = useRef(0);
 
   const load = useCallback(async () => {
@@ -118,7 +153,6 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
       const candidateData = candidatesResult.data as { ok?: boolean; players?: Candidate[] } | null;
       if (candidateData?.ok !== true || !Array.isArray(candidateData.players)) throw new Error("Incomplete winner list");
       setCandidates(candidateData.players);
-      if (currentIssuance.issued) setIssueError(null);
     } catch (error) {
       if (request === seq.current) setLoadError(error instanceof Error ? error.message : "Could not load Satellite setup");
     } finally {
@@ -135,13 +169,13 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
   const updateRow = (index: number, patch: Partial<AwardInput>) => {
     setRows(current => current.map((row, i) => i === index ? { ...row, ...patch } : row));
     setPreview(null);
-    setConfirmed(false);
+    setPreviewError(null);
   };
   const input = JSON.stringify({ targetId, rows });
-  const previewCurrent = preview?.input === input ? preview.plan : null;
+  const previewCurrent = preview?.input === input ? preview.funding : null;
 
-  const submit = async (lock: boolean) => {
-    if (busy || !targetId || (lock && (!confirmed || !previewCurrent))) return;
+  const submit = async () => {
+    if (busy || !targetId) return;
     const awards = rows.map(row => ({
       position: Number(row.position), ticketCount: Number(row.ticketCount), cashVnd: row.cashVnd,
     }));
@@ -155,53 +189,21 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
       return;
     }
     setBusy(true);
+    setPreviewError(null);
     try {
-      const { data, error } = await planRpc("satellite_award_plan_v2", {
+      const { data, error } = await planRpc("satellite_source_funding_preview_v1", {
         p_source_tournament_id: tournamentId,
         p_target_tournament_id: targetId,
         p_awards: awards,
-        p_lock: lock,
       });
       if (error) throw error;
-      const plan = parsePlan(data);
-      if (plan.targetTournamentId !== targetId || plan.locked !== lock) {
-        throw new Error("Server award plan did not match the requested action");
-      }
-      if (lock) {
-        setLocked(plan);
-        setPreview(null);
-        toast.success("Satellite award plan locked");
-      } else {
-        setPreview({ plan, input });
-        setConfirmed(false);
-      }
+      const funding = parseFunding(data);
+      if (funding.awardPlan.targetTournamentId !== targetId || funding.awardPlan.locked)
+        throw new Error("Server preview did not match the requested target");
+      setPreview({ funding, input });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save Satellite award plan");
-      if (lock) void load(); // A lost response may still have committed; read before offering another action.
-    } finally { setBusy(false); }
-  };
-
-  const issue = async () => {
-    if (!locked?.awardLines || issuance?.issued || busy || !issueConfirmed) return;
-    const results = locked.awardLines.map(line => ({ position: line.position, playerId: recipients[line.position] }));
-    if (results.some(row => !row.playerId) || new Set(results.map(row => row.playerId)).size !== results.length) {
-      setIssueError("Assign one distinct confirmed player to every ranked award.");
-      return;
-    }
-    setBusy(true);
-    setIssueError(null);
-    try {
-      const { data, error } = await planRpc("satellite_issue_tickets_v1", {
-        p_source_tournament_id: tournamentId, p_results: results,
-      });
-      if (error) throw error;
-      const issued = parseIssuance(data);
-      if (!issued.issued || issued.ticketTotal !== locked.ticketTotal) throw new Error("Ticket count did not match the locked plan");
-      setIssuance(issued);
-      toast.success(`${issued.ticketTotal} tickets issued`);
-    } catch (error) {
-      setIssueError(error instanceof Error ? error.message : "Could not issue tickets");
-      void load(); // A lost response may still have committed. Re-read the immutable ledger.
+      setPreview(null);
+      setPreviewError(error instanceof Error ? error.message : "Could not load Satellite funding preview");
     } finally { setBusy(false); }
   };
 
@@ -220,18 +222,15 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
           <p className="text-xs text-muted-foreground">Serials are for reconciliation; redemption codes are private. Never display this list on the tournament TV.</p>
           <div className="max-h-64 space-y-2 overflow-auto">{issuance.tickets?.map(ticket => <div key={ticket.serial} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-border p-2 text-xs"><strong>#{ticket.serial}</strong><span>Rank {ticket.position}</span><span>{candidates.find(c => c.playerId === ticket.winnerPlayerId)?.displayName ?? ticket.winnerPlayerId}</span><span>{ticket.status}</span><code className="break-all select-all">{ticket.code}</code></div>)}</div>
         </div> : <>
-          <p className="text-xs text-muted-foreground">After the source tour is closed, assign each prize rank to its confirmed winner. Ticket value includes the target buy-in and all fees. Issuing is permanent.</p>
-          {locked.awardLines?.map(line => <div key={line.position} className="grid gap-1 sm:grid-cols-[8rem_1fr] sm:items-center"><Label htmlFor={`winner-${line.position}`}>Rank {line.position} · {line.ticketCount} ticket{line.ticketCount === 1 ? "" : "s"}</Label><Select value={recipients[line.position] ?? ""} onValueChange={value => { setRecipients(current => ({ ...current, [line.position]: value })); setIssueConfirmed(false); setIssueError(null); }}><SelectTrigger id={`winner-${line.position}`}><SelectValue placeholder="Select confirmed player" /></SelectTrigger><SelectContent>{candidates.map(candidate => <SelectItem key={candidate.playerId} value={candidate.playerId}>{candidate.displayName}</SelectItem>)}</SelectContent></Select></div>)}
-          <label className="flex items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5" checked={issueConfirmed} onChange={e => setIssueConfirmed(e.target.checked)} />I confirm the final ranks, winners, target tour and {locked.ticketTotal} ticket obligations. Cash prizes and pool reconciliation remain separate.</label>
-          {issueError && <p role="alert" className="text-sm text-destructive">{issueError}</p>}
-          <Button type="button" disabled={busy || !issueConfirmed || candidates.length === 0} onClick={() => void issue()}>Issue tickets</Button>
+          <p className="text-xs text-muted-foreground">Ticket value includes the target buy-in and all fees. Existing plans remain visible for audit.</p>
+          <p className="text-xs text-amber-400">Issuance is paused until the server can bind a verified funding snapshot to the locked plan.</p>
         </>}
       </div>
     </div> : <>
-      <div className="space-y-1"><Label htmlFor="satellite-target">Target tournament</Label><Select value={targetId} onValueChange={value => { setTargetId(value); setPreview(null); setConfirmed(false); }}><SelectTrigger id="satellite-target"><SelectValue placeholder="Select the exact tournament" /></SelectTrigger><SelectContent>{targets.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent></Select>{targets.length === 0 && <p className="text-xs text-amber-400">No open target tournament in this club.</p>}</div>
+      <div className="space-y-1"><Label htmlFor="satellite-target">Target tournament</Label><Select value={targetId} onValueChange={value => { setTargetId(value); setPreview(null); setPreviewError(null); }}><SelectTrigger id="satellite-target"><SelectValue placeholder="Select the exact tournament" /></SelectTrigger><SelectContent>{targets.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent></Select>{targets.length === 0 && <p className="text-xs text-amber-400">No open target tournament in this club.</p>}</div>
       <div className="space-y-2"><p className="text-sm font-medium">Awards by finishing place</p>{rows.map((row, index) => <div key={index} className="grid grid-cols-2 gap-2 rounded border border-border p-2 sm:grid-cols-[1fr_1fr_1.5fr_auto] sm:border-0 sm:p-0"><div><Label htmlFor={`sat-rank-${index}`} className="text-xs">Rank</Label><Input id={`sat-rank-${index}`} inputMode="numeric" value={row.position} onChange={e => updateRow(index, { position: e.target.value })} /></div><div><Label htmlFor={`sat-ticket-${index}`} className="text-xs">Tickets</Label><Input id={`sat-ticket-${index}`} inputMode="numeric" value={row.ticketCount} onChange={e => updateRow(index, { ticketCount: e.target.value })} /></div><div><Label htmlFor={`sat-cash-${index}`} className="text-xs">Cash · VND</Label><Input id={`sat-cash-${index}`} inputMode="numeric" value={row.cashVnd} onChange={e => updateRow(index, { cashVnd: e.target.value })} /></div><Button type="button" size="icon" variant="ghost" className="self-end justify-self-end" aria-label={`Remove rank ${index + 1}`} onClick={() => { setRows(current => current.filter((_, i) => i !== index)); setPreview(null); }}><Trash2 className="h-4 w-4" /></Button></div>)}</div>
       <Button type="button" variant="outline" onClick={() => { setRows(current => [...current, emptyRow()]); setPreview(null); }} disabled={rows.length >= 100}><Plus className="mr-1 h-4 w-4" />Add rank</Button>
-      <div className="border-t border-border pt-3 space-y-3"><Button type="button" variant="outline" disabled={busy || !targetId} onClick={() => void submit(false)}>Preview obligations</Button>{previewCurrent && <div role="status" className="rounded bg-muted/40 p-3 text-sm"><p>Target entry: {money(previewCurrent.targetEntryPriceVnd)}</p><p>Tickets: {previewCurrent.ticketTotal} · Cash: {money(previewCurrent.cashTotalVnd)}</p><p className="font-semibold">Total obligation: {money(previewCurrent.totalLiabilityVnd)}</p><p className="mt-1 text-xs text-amber-400">Pool and overlay are not reconciled yet. Locking the plan will not issue a ticket.</p></div>}{previewCurrent && <label className="flex items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />I confirm the ticket target, ranks, and cash amounts. This plan cannot be edited after locking.</label>}<div><Button type="button" disabled={busy || !previewCurrent || !confirmed} onClick={() => void submit(true)}>Lock award plan</Button></div></div>
+      <div className="border-t border-border pt-3 space-y-3"><Button type="button" variant="outline" disabled={busy || !targetId} onClick={() => void submit()}>{busy ? "Loading funding preview…" : "Preview funding"}</Button>{previewError && <p role="alert" className="text-sm text-destructive">{previewError}</p>}{previewCurrent && <div role="status" className="rounded bg-muted/40 p-3 text-sm"><p>Source status: {previewCurrent.state === "NOT_READY" ? "Inconsistent — review registrations" : previewCurrent.state === "OWNER_EXCEPTION_REQUIRED" ? "Owner exception required — too few eligible winners" : "Source ledger reconciled"}</p><p>Confirmed: {previewCurrent.confirmedCount} · Unpaid: {previewCurrent.unpaidCount} · Reversed: {previewCurrent.reversedCount}</p>{previewCurrent.state === "NOT_READY" ? <p className="text-destructive">Pool and fees are unavailable. {previewCurrent.issues?.length ?? 0} inconsistent registration(s).</p> : <><p>Source pool: {money(previewCurrent.sourcePoolVnd ?? undefined)} · Fees: {money(previewCurrent.feeVnd ?? undefined)}</p><p>Target entry: {money(previewCurrent.targetEntryPriceVnd)}</p><p>Computed capacity: {previewCurrent.computedTicketCount} tickets · Remainder: {money(previewCurrent.cashRemainderVnd)}</p><p>TD awards: {previewCurrent.awardPlan.ticketTotal} tickets · Cash: {money(previewCurrent.awardPlan.cashTotalVnd)}</p><p className="font-semibold">TD obligation: {money(previewCurrent.awardPlan.totalLiabilityVnd)} · Unfunded: {money(previewCurrent.obligationShortfallVnd)}</p><p>TD versus computed: {previewCurrent.awardPlan.ticketTotal === previewCurrent.computedTicketCount && previewCurrent.awardPlan.cashTotalVnd === previewCurrent.cashRemainderVnd ? "matches capacity and remainder" : "differs in ticket count or cash remainder — review the rank choices"}. This comparison does not approve awards.</p><p>Ticket guarantee shortfall: {money(previewCurrent.ticketShortfallVnd)} — not funded by an overlay.</p></>}<p className="mt-1 text-xs text-muted-foreground">Evidence revision: {previewCurrent.previewRevision}. Read-only snapshot; it does not authorize locking or issuing.</p></div>}<p className="text-xs text-amber-400">Lock and Issue remain paused until server-side atomic funding verification is implemented.</p></div>
     </>}
   </Card>;
 }
