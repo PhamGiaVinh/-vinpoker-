@@ -47,6 +47,18 @@ BEGIN
 END;
 $$;
 SELECT set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-000000000001', false);
+SELECT set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-000000000003', false);
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO storage.objects(bucket_id, name) VALUES
+      ('backing-proofs', '20000000-0000-4000-8000-000000000003/tv/branding-logo/v1/30000000-0000-0000-0000-000000000006.png');
+    RAISE EXCEPTION 'unrelated authenticated actor unexpectedly uploaded a TV asset';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END;
+$$;
+SELECT set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-000000000001', false);
 
 -- Authorized controller may create their own versioned asset.
 INSERT INTO storage.objects(bucket_id, name) VALUES
@@ -72,6 +84,20 @@ BEGIN
     AND name = '20000000-0000-4000-8000-000000000001/tv/branding-logo/v1/30000000-0000-0000-0000-000000000004.png') THEN
     RAISE EXCEPTION 'versioned TV asset was not preserved';
   END IF;
+END;
+$$;
+RESET ROLE;
+
+SET ROLE anon;
+SELECT set_config('request.jwt.claim.sub', '', false);
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO storage.objects(bucket_id, name) VALUES
+      ('backing-proofs', '20000000-0000-4000-8000-000000000001/tv/branding-background/v1/30000000-0000-0000-0000-000000000007.jpg');
+    RAISE EXCEPTION 'anon unexpectedly uploaded a versioned TV asset';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
 END;
 $$;
 RESET ROLE;
