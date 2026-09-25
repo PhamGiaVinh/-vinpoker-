@@ -26,7 +26,8 @@ CREATE TABLE public.tournament_events(id uuid PRIMARY KEY,club_id uuid NOT NULL,
 CREATE TABLE public.tournaments(id uuid PRIMARY KEY,club_id uuid NOT NULL,
   event_id uuid,phase text,deleted_at timestamptz);
 CREATE TABLE public.tournament_entries(id uuid PRIMARY KEY,tournament_id uuid NOT NULL REFERENCES public.tournaments(id),
-  player_id uuid NOT NULL,entry_no integer NOT NULL);
+  player_id uuid NOT NULL,entry_no integer NOT NULL,
+  status text NOT NULL DEFAULT 'seated' CHECK(status IN('seated','cancelled','busted')));
 CREATE TABLE public.tournament_tables(id uuid PRIMARY KEY,tournament_id uuid NOT NULL,
   table_session_id uuid);
 CREATE TABLE public.table_sessions(id uuid PRIMARY KEY,tournament_id uuid NOT NULL,

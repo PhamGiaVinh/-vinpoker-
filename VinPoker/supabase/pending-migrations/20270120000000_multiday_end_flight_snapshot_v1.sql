@@ -232,7 +232,7 @@ BEGIN
     SELECT 1 FROM public.tournament_seats s
     LEFT JOIN public.tournament_entries e ON e.id=s.entry_id
       AND e.tournament_id=s.tournament_id AND e.player_id=s.player_id
-      AND e.entry_no=s.entry_number
+      AND e.entry_no=s.entry_number AND e.status='seated'
     LEFT JOIN public.tournament_tables tt ON tt.id=s.tournament_table_id
       AND tt.tournament_id=s.tournament_id AND tt.table_session_id=s.table_session_id
     LEFT JOIN public.table_sessions sess ON sess.id=s.table_session_id

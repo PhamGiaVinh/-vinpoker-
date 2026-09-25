@@ -50,6 +50,19 @@ END $$;
 -- Test-only gate transition in disposable DB, never in release migration.
 UPDATE public.multi_day_package_release_v1 SET enabled=true,
  allowed_club_ids=ARRAY['20000000-0000-0000-0000-000000000001'::uuid];
+UPDATE public.tournament_entries SET status='cancelled'
+ WHERE tournament_id='40000000-0000-0000-0000-000000000001';
+DO $$ BEGIN
+  BEGIN
+    PERFORM public.multi_day_end_flight_v1('40000000-0000-0000-0000-000000000001',1,
+      'c0000000-0000-0000-0000-000000000001');
+    RAISE EXCEPTION 'cancelled_entry_accepted';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM<>'multi_day_end_flight_roster_inconsistent' THEN RAISE; END IF;
+  END;
+END $$;
+UPDATE public.tournament_entries SET status='seated'
+ WHERE tournament_id='40000000-0000-0000-0000-000000000001';
 DO $$ DECLARE v_receipt jsonb; BEGIN
   v_receipt:=public.multi_day_end_flight_v1('40000000-0000-0000-0000-000000000001',1,
     'c0000000-0000-0000-0000-000000000001');
