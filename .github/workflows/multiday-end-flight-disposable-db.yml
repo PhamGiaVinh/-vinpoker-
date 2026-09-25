@@ -9,6 +9,9 @@ on:
       - "VinPoker/supabase/pending-migrations/20270120000002_multiday_qualification_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270120000003_multiday_final_seating_adjustment_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270120000004_multiday_payout_legacy_hold_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270120000005_multiday_overlay_funding_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270120000006_multiday_payout_snapshot_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000001_multiday_equal_tie_entitlement_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_qualification_baseline_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_qualification_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_qualification_race_v1.sh"
@@ -17,6 +20,11 @@ on:
       - "VinPoker/supabase/pending-tests/multiday_final_seating_race_v1.sh"
       - "VinPoker/supabase/pending-tests/multiday_payout_hold_baseline_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_payout_hold_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_overlay_funding_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_payout_source_baseline_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_payout_snapshot_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_payout_transfer_tie_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_payout_finalize_race_v1.sh"
       - "VinPoker/supabase/pending-tests/multiday_end_flight_baseline_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_end_flight_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_bag_revision_v1.sql"
@@ -85,3 +93,17 @@ jobs:
             -f supabase/pending-tests/multiday_payout_hold_baseline_v1.sql \
             -f supabase/pending-migrations/20270120000004_multiday_payout_legacy_hold_v1.sql \
             -f supabase/pending-tests/multiday_payout_hold_v1.sql
+      - name: Assert evidence-linked overlay and payout snapshot
+        working-directory: VinPoker
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/pending-migrations/20270120000005_multiday_overlay_funding_v1.sql \
+            -f supabase/pending-tests/multiday_overlay_funding_v1.sql \
+            -f supabase/pending-migrations/20270119000001_multiday_equal_tie_entitlement_v1.sql \
+            -f supabase/pending-tests/multiday_payout_source_baseline_v1.sql \
+            -f supabase/pending-migrations/20270120000006_multiday_payout_snapshot_v1.sql \
+            -f supabase/pending-tests/multiday_payout_snapshot_v1.sql \
+            -f supabase/pending-tests/multiday_payout_transfer_tie_v1.sql
+      - name: Assert atomic payout finalize and source writer race
+        working-directory: VinPoker
+        run: bash supabase/pending-tests/multiday_payout_finalize_race_v1.sh
