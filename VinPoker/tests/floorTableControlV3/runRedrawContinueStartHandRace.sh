@@ -7,6 +7,11 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
 echo 'REDRAW_CLOCK_HOLD Continue-vs-start_hand fence race'
+start_hand_signature="$(psql_quiet -c "SELECT to_regprocedure('public.start_hand(uuid,uuid,integer,timestamptz,uuid,integer)') IS NOT NULL")"
+if [[ "$start_hand_signature" != 't' ]]; then
+  echo 'REDRAW_CLOCK_HOLD_ASSERTION_FAILED production start_hand(uuid,uuid,integer,timestamptz,uuid,integer) signature is missing' >&2
+  exit 1
+fi
 batch_id="$(psql_quiet -c "SELECT id FROM public.tournament_redraw_batches WHERE tournament_id = '00000000-0000-0000-0000-000000000112' AND status = 'applied' AND hold_completed_at IS NULL")"
 if [[ -z "$batch_id" ]]; then
   echo 'REDRAW_CLOCK_HOLD_ASSERTION_FAILED missing applied race batch' >&2
@@ -34,9 +39,12 @@ SET LOCAL lock_timeout = '5s';
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000004', true);
 SELECT public.start_hand(
-  '00000000-0000-0000-0000-000000000112',
-  '00000000-0000-0000-0000-000000000743',
-  101, now(), '00000000-0000-0000-0000-000000000004', 1
+  '00000000-0000-0000-0000-000000000112'::uuid,
+  '00000000-0000-0000-0000-000000000743'::uuid,
+  101::integer,
+  pg_catalog.now()::timestamptz,
+  '00000000-0000-0000-0000-000000000004'::uuid,
+  1::integer
 );
 COMMIT;
 SQL

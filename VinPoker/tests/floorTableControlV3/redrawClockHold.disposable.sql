@@ -98,7 +98,15 @@ DECLARE
   v_tv_third jsonb;
   v_batch uuid;
   v_request uuid := '00000000-0000-0000-0000-000000003109';
+  v_apply_definition text;
 BEGIN
+  v_apply_definition := pg_catalog.pg_get_functiondef(
+    'public.floor_apply_tournament_redraw_v1(uuid,uuid)'::regprocedure
+  );
+  IF v_apply_definition !~ $pattern$'manual_move'[[:space:]]*,[[:space:]]*'floor_redraw_v1'$pattern$ THEN
+    RAISE EXCEPTION 'loaded floor_apply_tournament_redraw_v1 definition is not the pending forward-corrected RPC';
+  END IF;
+
   v_plan := public.floor_plan_tournament_redraw_v1(
     '00000000-0000-0000-0000-000000000109', 9,
     ARRAY['00000000-0000-0000-0000-000000000530'::uuid],

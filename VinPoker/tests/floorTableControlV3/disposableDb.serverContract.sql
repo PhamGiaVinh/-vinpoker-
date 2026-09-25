@@ -128,6 +128,16 @@ CREATE TABLE public.tournament_hands (
   is_voided boolean NOT NULL DEFAULT false,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE public.tournament_hands
+  ADD COLUMN hand_number integer,
+  ADD COLUMN hand_time timestamptz,
+  ADD COLUMN community_cards jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN pot_size bigint NOT NULL DEFAULT 0,
+  ADD COLUMN side_pots jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN created_by uuid,
+  ADD COLUMN locked_by_user_id uuid,
+  ADD COLUMN locked_at timestamptz,
+  ADD COLUMN button_seat integer;
 CREATE TABLE public.hand_players (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   hand_id uuid NOT NULL REFERENCES public.tournament_hands(id),
@@ -139,6 +149,11 @@ CREATE TABLE public.hand_players (
   ending_stack integer,
   is_eliminated boolean NOT NULL DEFAULT false
 );
+ALTER TABLE public.hand_players
+  ADD COLUMN side_pots jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN hole_cards jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN player_name text,
+  ADD COLUMN avatar_url text;
 CREATE TABLE public.hand_actions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   hand_id uuid NOT NULL
@@ -198,6 +213,10 @@ RETURNS boolean LANGUAGE sql STABLE AS $$
 $$;
 CREATE OR REPLACE FUNCTION public.has_role(p_user_id uuid, p_role public.app_role)
 RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
+
+-- Load the exact active tracker RPC source/signature used by production, not a
+-- test stub, so the race below exercises the real SECURITY INVOKER writer.
+\ir ../../supabase/migrations/20270112000005_tracker_start_hand_authority_binding.sql
 
 CREATE OR REPLACE FUNCTION public.floor_table_v3_assert(p_condition boolean, p_message text)
 RETURNS void LANGUAGE plpgsql AS $$
