@@ -27,6 +27,7 @@ on:
       - "VinPoker/supabase/pending-tests/satellite_frozen_ticket_components_v1.sql"
       - "VinPoker/supabase/pending-tests/satellite_source_cutoff_v1.sql"
       - "VinPoker/supabase/pending-tests/satellite_verified_award_lock_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_verified_lock_golden_v1.sql"
       - "VinPoker/supabase/pending-tests/satellite_cutoff_race_*.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_concurrency_*.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_load_*.sql"
@@ -159,6 +160,9 @@ jobs:
       - name: Assert atomic Satellite Lock request and funding receipt
         working-directory: VinPoker
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_verified_award_lock_v1.sql
+      - name: Assert 33 34 and GTD6 ledger-backed Lock golden cases
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_verified_lock_golden_v1.sql
       - name: Seed actual canonical and Cashier cutoff races
         working-directory: VinPoker
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_cutoff_race_seed.sql
