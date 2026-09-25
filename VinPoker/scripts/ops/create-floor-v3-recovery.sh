@@ -169,7 +169,7 @@ if grep -Eiq '(^|[[:space:]])PASSWORD([[:space:]]|=)' "$payload_root/roles-no-pa
   exit 1
 fi
 
-docker run --rm --network host \
+docker run --rm -i --network host \
   --env PGHOST --env PGPORT --env PGUSER --env PGDATABASE --env PGPASSWORD --env PGSSLMODE --env PGAPPNAME \
   "$postgres_image" psql -X -qAt -v ON_ERROR_STOP=1 -v snapshot="$snapshot_id" \
   >"$payload_root/table-counts.tsv" 2>"$work_root/counts.log" <<'SQL' || {
