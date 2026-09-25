@@ -9,10 +9,6 @@ on:
       - "VinPoker/supabase/pending-migrations/20270118000001_tv_tournament_layout_v2.sql"
       - "VinPoker/supabase/pending-migrations/20270119000000_tv_layout_editor_multiblock_v3.sql"
       - "VinPoker/tests/tvBrandingStorage/**"
-  push:
-    branches:
-      - "codex/tv-release-gate-all-versions"
-
 permissions:
   contents: read
 
@@ -58,4 +54,3 @@ jobs:
       - name: Verify Storage gate, unaffected paths, and published asset immutability
         working-directory: VinPoker
         run: psql -v ON_ERROR_STOP=1 -f tests/tvBrandingStorage/disposableDb.integration.sql
-
