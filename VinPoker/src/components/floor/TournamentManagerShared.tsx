@@ -429,8 +429,8 @@ export const NewTournamentDialog = ({
     } finally { setBusy(false); }
   };
 
-  const triggerLabel = lockMode === "satellite" ? "Create Satellite" : lockMode === "multi" ? "Tạo Multi-day" : lockMode === "single" ? "Tạo giải thường" : "Tạo giải";
-  const titleLabel = lockMode === "satellite" ? "Create Satellite tournament" : lockMode === "multi" ? "Tạo Multi-day Event" : lockMode === "single" ? "Tạo giải thường" : "Tạo giải đấu";
+  const triggerLabel = lockMode === "satellite" ? "Create Satellite" : lockMode === "multi" ? "Create Multi-day" : lockMode === "single" ? "Tạo giải thường" : "Tạo giải";
+  const titleLabel = lockMode === "satellite" ? "Create Satellite tournament" : lockMode === "multi" ? "Create Multi-day Event" : lockMode === "single" ? "Tạo giải thường" : "Tạo giải đấu";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -456,16 +456,16 @@ export const NewTournamentDialog = ({
             </div>
           )}
           {mode === "satellite" && <p className="rounded border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">Satellite mode: create the event here, then lock ticket and cash awards in Payout before results are closed. A ticket covers the exact target buy-in and fees. No in-app transfer or deal tools.</p>}
-          <Label>{mode === "multi" ? "Tên Main Event" : "Name"}</Label><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder={mode === "multi" ? "VD: Main Event" : ""} />
-          <Label>{mode === "multi" ? "Giờ bắt đầu flight (mặc định — sửa từng flight sau)" : "Start time"}</Label><Input type="datetime-local" value={f.start_time} onChange={e => setF({ ...f, start_time: e.target.value })} />
+          <Label>{mode === "multi" ? "Main Event name" : "Name"}</Label><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder={mode === "multi" ? "Main Event" : ""} />
+          <Label>{mode === "multi" ? "Flight start time (default; edit each flight later)" : "Start time"}</Label><Input type="datetime-local" value={f.start_time} onChange={e => setF({ ...f, start_time: e.target.value })} />
           {mode === "multi" && (
             <>
               <div className="grid grid-cols-2 gap-2">
-                <div><Label>ITM % (mỗi flight)</Label><Input type="number" step="0.1" min={0} value={itmPercent} onChange={e => setItmPercent(e.target.value)} placeholder="VD: 12.5" /></div>
-                <div><Label>Số flight (A–K)</Label><Input type="number" min={1} max={11} value={flightCount} onChange={e => setFlightCount(Math.min(11, Math.max(1, Math.floor(+e.target.value) || 1)))} /></div>
+                <div><Label>ITM % per flight</Label><Input type="number" step="0.1" min={0} value={itmPercent} onChange={e => setItmPercent(e.target.value)} placeholder="12.5" /></div>
+                <div><Label>Flight count (A–K)</Label><Input type="number" min={1} max={11} value={flightCount} onChange={e => setFlightCount(Math.min(11, Math.max(1, Math.floor(+e.target.value) || 1)))} /></div>
               </div>
-              <p className="text-[11px] text-muted-foreground -mt-1">Tạo {flightCount} flight ({flightLabels}) + 1 Final Day. Qualified mỗi flight = làm tròn lên(số entrant × ITM%/100); floor tự chọn ai vào final (bước sau).</p>
-              <Label>Giờ Final Day</Label><Input type="datetime-local" value={finalStart} onChange={e => setFinalStart(e.target.value)} />
+              <p className="text-[11px] text-muted-foreground -mt-1">Create {flightCount} flights ({flightLabels}) and one Final Day. The verified Day2 quota uses the same percentage as ITM: ceil(valid entries × ITM% / 100) per flight. Lock bag policy and minimum cash before the first entry.</p>
+              <Label>Final Day start time</Label><Input type="datetime-local" value={finalStart} onChange={e => setFinalStart(e.target.value)} />
             </>
           )}
           <Label>Game type</Label>
@@ -692,7 +692,7 @@ export const EditTournamentDialog = ({ tournament, onSaved }: { tournament: any;
 
 // ── TournamentCard — the per-tournament card, shared by every Floor board ────────────
 export function TournamentCard({
-  tour, flightMeta, finalMeta, multiClub, clubName, reload, onDelete, onSetStatus, onStart, onSelect,
+  tour, flightMeta, finalMeta, multiClub, clubName, reload, onDelete, onSetStatus, onStart, onSelect, legacyMultiDayActions = true,
 }: {
   tour: any;
   flightMeta?: FlightMeta;
@@ -705,6 +705,7 @@ export function TournamentCard({
   onStart: (id: string) => void;
   /** When provided, the card title becomes a button that enters the tournament's operational tabs. */
   onSelect?: (id: string) => void;
+  legacyMultiDayActions?: boolean;
 }) {
   const { t } = useTranslation();
   const t2 = tour;
@@ -735,7 +736,7 @@ export function TournamentCard({
         <div className="flex gap-1">
           <EditTournamentDialog tournament={t2} onSaved={reload} />
           <AuditHistoryDialog tournament={t2} />
-          {FEATURES.multiDayTournaments && t2.phase === "flight" && <FlightQualifiersDialog flight={t2} meta={flightMeta} onDone={reload} />}
+          {FEATURES.multiDayTournaments && legacyMultiDayActions && t2.phase === "flight" && <FlightQualifiersDialog flight={t2} meta={flightMeta} onDone={reload} />}
           {FEATURES.blindTemplates && <BlindStructureDialog tournament={t2} />}
           <Button variant="ghost" size="icon" onClick={() => onDelete(t2.id)}>
             <Trash2 className="w-4 h-4 text-destructive" />
@@ -762,7 +763,7 @@ export function TournamentCard({
           <Play className="w-3.5 h-3.5 mr-1" /> Bắt đầu giải (chạy đồng hồ + lên live)
         </Button>
       )}
-      {FEATURES.multiDayTournaments && t2.phase === "final" && (
+      {FEATURES.multiDayTournaments && legacyMultiDayActions && t2.phase === "final" && (
         <Day2DrawDialog final={t2} meta={finalMeta} onDone={reload} />
       )}
     </Card>
