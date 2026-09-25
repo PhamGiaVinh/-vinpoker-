@@ -139,7 +139,7 @@ for sql_file in roles.sql schema.sql migration-schema.sql migration-history.sql;
   fi
 done
 
-if ! docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+if ! docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U supabase_auth_admin -d postgres \
   <"$auth_compat_sql" >"$test_root/auth-forward-compat.log" 2>&1; then
   echo "Failed to align disposable Auth schema with pinned Supabase Auth migrations" >&2
   tail -n 35 "$test_root/auth-forward-compat.log" >&2
