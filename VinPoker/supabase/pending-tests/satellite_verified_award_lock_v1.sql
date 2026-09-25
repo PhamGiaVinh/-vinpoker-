@@ -56,6 +56,38 @@ VALUES ('f8000000-0000-4000-8000-000000000001',
         'f1000000-0000-4000-8000-000000000101',1,
         'f9000000-0000-4000-8000-000000000001',1,10000,true,
         'f7000000-0000-4000-8000-000000000001');
+CREATE TEMP TABLE sat_lock_before_refund(revision text);
+INSERT INTO sat_lock_before_refund
+SELECT public.satellite_source_funding_preview_v2(
+  'f3000000-0000-4000-8000-000000000001',
+  'f3000000-0000-4000-8000-000000000002',
+  '[{"position":1,"ticketCount":1,"cashVnd":"0"}]')->>'previewRevision';
+SAVEPOINT before_real_refund;
+UPDATE public.tournament_entries SET status='busted',current_stack=0
+WHERE id='f7000000-0000-4000-8000-000000000001';
+UPDATE public.tournament_seats SET is_active=false,chip_count=0
+WHERE id='f8000000-0000-4000-8000-000000000001';
+DO $$ DECLARE v jsonb; v_id uuid; p jsonb; BEGIN
+  v:=public.cashier_request_refund_v1(
+    'f4000000-0000-4000-8000-000000000001','Verified refund before Lock');
+  PERFORM pg_temp.sat_lock_assert(v->>'status'='requested','real refund request');
+  v_id:=(v->>'refund_id')::uuid;
+  v:=public.cashier_floor_clear_refund_v1(v_id);
+  PERFORM pg_temp.sat_lock_assert(v->>'status'='floor_cleared','real Floor clearance');
+  v:=public.cashier_complete_refund_v1(v_id,1200000,0,NULL,'Verified payout evidence');
+  PERFORM pg_temp.sat_lock_assert(v->>'ok'='true','real refund payout');
+  p:=public.satellite_source_funding_preview_v2(
+    'f3000000-0000-4000-8000-000000000001',
+    'f3000000-0000-4000-8000-000000000002',
+    '[{"position":1,"ticketCount":1,"cashVnd":"0"}]');
+  PERFORM pg_temp.sat_lock_assert(p->>'previewRevision'<>(SELECT revision FROM sat_lock_before_refund)
+    AND p->>'sourcePoolVnd'='0' AND p->>'reversedCount'='1',
+    'paid refund invalidates preview and reverses pool');
+  PERFORM pg_temp.sat_lock_assert((SELECT coalesce(sum(applied_amount),0)
+    FROM public.cashier_buyin_movements WHERE registration_id='f4000000-0000-4000-8000-000000000001'
+      AND direction='out')=1200000,'refund outflow equals receipt');
+END $$;
+ROLLBACK TO SAVEPOINT before_real_refund;
 UPDATE public.tournaments SET registration_closed_at=now()
 WHERE id='f3000000-0000-4000-8000-000000000001';
 DO $$ DECLARE v jsonb; BEGIN
@@ -129,5 +161,12 @@ DO $$ DECLARE v jsonb; locked jsonb; retry jsonb; stale jsonb; BEGIN
     WHERE tgrelid='public.satellite_award_issues'::pg_catalog.regclass
       AND tgname='satellite_preview_write_hold_v1' AND NOT tgisinternal),
     'Issue hold remains installed');
+  BEGIN
+    PERFORM public.cashier_request_refund_v1(
+      'f4000000-0000-4000-8000-000000000001','Refund after locked plan');
+    RAISE EXCEPTION 'Cashier refund request crossed Lock';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM NOT LIKE '%satellite_refund_after_lock_requires_adjustment%' THEN RAISE; END IF;
+  END;
 END $$;
 ROLLBACK;
