@@ -6,6 +6,10 @@ on:
       - ".github/workflows/multiday-end-flight-disposable-db.yml"
       - "VinPoker/supabase/pending-migrations/20270120000000_multiday_end_flight_snapshot_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270120000001_multiday_bag_revision_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270120000002_multiday_qualification_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_qualification_baseline_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_qualification_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_qualification_race_v1.sh"
       - "VinPoker/supabase/pending-tests/multiday_end_flight_baseline_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_end_flight_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_bag_revision_v1.sql"
@@ -47,3 +51,13 @@ jobs:
       - name: Assert serial cutoff versus direct hand writer
         working-directory: VinPoker
         run: bash supabase/pending-tests/multiday_end_flight_race_v1.sh
+      - name: Apply qualification baseline, migration and golden tests
+        working-directory: VinPoker
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/pending-tests/multiday_qualification_baseline_v1.sql \
+            -f supabase/pending-migrations/20270120000002_multiday_qualification_v1.sql \
+            -f supabase/pending-tests/multiday_qualification_v1.sql
+      - name: Assert qualification serial fence
+        working-directory: VinPoker
+        run: bash supabase/pending-tests/multiday_qualification_race_v1.sh
