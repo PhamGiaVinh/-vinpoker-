@@ -53,19 +53,23 @@ CREATE TABLE public.chip_bag(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id uuid NOT NULL,club_id uuid NOT NULL,day_number int NOT NULL,
   player_id uuid NOT NULL,player_name text,table_id uuid,seat_number int,
   bag_code text,stack_value bigint NOT NULL DEFAULT 0,total_value bigint NOT NULL DEFAULT 0,
-  sealed boolean NOT NULL DEFAULT false,created_by uuid,created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now(),
+  sealed boolean NOT NULL DEFAULT false,created_by uuid DEFAULT auth.uid(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(tournament_id,day_number,player_id),CHECK(stack_value>=0),CHECK(total_value>=0));
 CREATE UNIQUE INDEX chip_bag_code_unique_fixture ON public.chip_bag(tournament_id,bag_code)
   WHERE bag_code IS NOT NULL;
 ALTER TABLE public.chip_bag ENABLE ROW LEVEL SECURITY;
 CREATE TABLE public.day_close(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id uuid NOT NULL,day_number int NOT NULL,club_id uuid NOT NULL,
-  expected_total_value bigint,counted_total_value bigint,variance_by_player jsonb,
-  all_zero boolean,status text NOT NULL DEFAULT 'open' CHECK(status IN('open','locked')),
-  locked_by uuid,locked_at timestamptz,signed_off boolean,signoff_by uuid,
-  signoff_reason text,signoff_at timestamptz,version int NOT NULL DEFAULT 0,
-  created_at timestamptz DEFAULT now(),UNIQUE(tournament_id,day_number));
+  expected_total_value bigint NOT NULL DEFAULT 0,counted_total_value bigint NOT NULL DEFAULT 0,
+  variance_by_player jsonb NOT NULL DEFAULT '[]'::jsonb,
+  all_zero boolean NOT NULL DEFAULT false,status text NOT NULL DEFAULT 'open'
+    CHECK(status IN('open','locked')),
+  locked_by uuid,locked_at timestamptz,signed_off boolean NOT NULL DEFAULT false,
+  signoff_by uuid,signoff_reason text,signoff_at timestamptz,
+  version int NOT NULL DEFAULT 0,created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(tournament_id,day_number));
 ALTER TABLE public.day_close ENABLE ROW LEVEL SECURITY;
 CREATE TABLE public.chip_ops_signoff_audit(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   club_id uuid NOT NULL,tournament_id uuid,day_close_id uuid,

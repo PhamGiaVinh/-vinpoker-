@@ -125,6 +125,25 @@ DO $$ DECLARE v_receipt jsonb; BEGIN
     IF SQLERRM<>'multi_day_day_close_locked_immutable' THEN RAISE; END IF;
   END;
 END $$;
+DO $$ DECLARE v_state jsonb; BEGIN
+  v_state:=public.multi_day_bagging_state_v1(
+    '40000000-0000-0000-0000-000000000001');
+  IF v_state->>'manager'<>'true' OR v_state->>'status'<>'locked'
+     OR pg_catalog.jsonb_array_length(v_state->'rows')<>1
+     OR v_state->'rows'->0->>'sealedVersion'<>'3' THEN
+    RAISE EXCEPTION 'chip_master_state_wrong: %',v_state;
+  END IF;
+END $$;
+SET request.jwt.claim.sub='10000000-0000-0000-0000-000000000004';
+DO $$ BEGIN
+  BEGIN
+    PERFORM public.multi_day_bagging_state_v1(
+      '40000000-0000-0000-0000-000000000001');
+    RAISE EXCEPTION 'stranger_read_allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    IF SQLERRM<>'multi_day_bagging_read_unauthorized' THEN RAISE; END IF;
+  END;
+END $$;
 INSERT INTO public.chip_bag(tournament_id,club_id,day_number,player_id,
   bag_code,stack_value,total_value)
 VALUES('40000000-0000-0000-0000-000000000003',

@@ -452,3 +452,46 @@ REVOKE ALL ON FUNCTION public.multi_day_close_bagging_v1(uuid,integer,uuid)
  FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.multi_day_close_bagging_v1(uuid,integer,uuid)
  TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.multi_day_bagging_state_v1(p_flight_tournament_id uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+DECLARE v_actor uuid:=auth.uid(); v_flight public.multi_day_flight_ends_v1%ROWTYPE;
+        v_manager boolean; v_day public.day_close%ROWTYPE; v_rows jsonb;
+BEGIN
+ IF v_actor IS NULL OR p_flight_tournament_id IS NULL THEN
+   RAISE EXCEPTION 'multi_day_bagging_read_unauthorized' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_flight FROM public.multi_day_flight_ends_v1
+   WHERE flight_tournament_id=p_flight_tournament_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'multi_day_bagging_not_open' USING ERRCODE='23514'; END IF;
+ v_manager:=EXISTS(SELECT 1 FROM public.clubs c
+     WHERE c.id=v_flight.club_id AND c.owner_id=v_actor)
+     OR public.is_club_chip_master(v_actor,v_flight.club_id);
+ IF NOT v_manager AND NOT EXISTS(SELECT 1 FROM public.multi_day_flight_roster_v1 r
+      WHERE r.flight_tournament_id=p_flight_tournament_id
+        AND r.dealer_user_id=v_actor) THEN
+   RAISE EXCEPTION 'multi_day_bagging_read_unauthorized' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_day FROM public.day_close
+   WHERE tournament_id=p_flight_tournament_id AND day_number=v_flight.day_number;
+ SELECT coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+     'playerId',r.player_id,'entryId',r.entry_id,'seatNumber',r.seat_number,
+     'tableSessionId',r.table_session_id,'trackedStack',r.tracked_stack,
+     'bagId',b.id,'bagCode',b.bag_code,'bagTotal',b.total_value,
+     'bagRevision',coalesce(b.multi_day_revision,0),'sealed',coalesce(b.sealed,false),
+     'sealedVersion',b.multi_day_sealed_version)
+     ORDER BY r.table_session_id,r.seat_number),'[]'::jsonb)
+ INTO v_rows FROM public.multi_day_flight_roster_v1 r
+ LEFT JOIN public.chip_bag b ON b.tournament_id=r.flight_tournament_id
+   AND b.day_number=v_flight.day_number AND b.player_id=r.player_id
+ WHERE r.flight_tournament_id=p_flight_tournament_id
+   AND (v_manager OR r.dealer_user_id=v_actor);
+ RETURN pg_catalog.jsonb_build_object('flightId',p_flight_tournament_id,
+   'status',v_flight.status,'dayNumber',v_flight.day_number,
+   'dayVersion',v_day.version,'rosterHash',v_flight.roster_hash,
+   'manager',v_manager,'rows',v_rows);
+END $$;
+REVOKE ALL ON FUNCTION public.multi_day_bagging_state_v1(uuid)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.multi_day_bagging_state_v1(uuid)
+ TO authenticated;
