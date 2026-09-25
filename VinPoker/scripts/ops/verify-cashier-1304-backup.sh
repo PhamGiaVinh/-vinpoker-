@@ -130,7 +130,17 @@ for table in cashier_refund_requests cashier_buyin_movements cashier_till_shifts
   }
 done
 
-if ! docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+local_superuser_state="$(docker exec "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
+    -c "SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user"')"
+if [[ "$local_superuser_state" != 'supabase_admin|t' ]]; then
+  echo "Disposable Supabase admin role is unavailable or not a superuser" >&2
+  exit 1
+fi
+
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -v ON_ERROR_STOP=1 \
+    -U supabase_admin -d postgres' \
   <"$auth_compat_sql" >"$test_root/auth-forward-compat.log" 2>&1; then
   echo "Failed to align disposable Auth schema with pinned Supabase Auth migrations" >&2
   tail -n 35 "$test_root/auth-forward-compat.log" >&2
