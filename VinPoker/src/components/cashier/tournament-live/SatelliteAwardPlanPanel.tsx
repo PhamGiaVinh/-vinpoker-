@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 type AwardInput = { position: string; ticketCount: string; cashVnd: string };
 type Target = { id: string; name: string; start_time: string };
 type Candidate = { playerId: string; displayName: string };
-type IssuedTicket = { serial: number; code: string; position: number; winnerPlayerId: string; status: string };
+type IssuedTicket = { id: string; serial: number; code: string | null; position: number; winnerPlayerId: string; status: string };
 type Issuance = { ok: true; issued: boolean; ticketTotal?: number; tickets?: IssuedTicket[]; results?: { position: number; playerId: string }[] };
 type AwardPlan = {
   ok: true;
@@ -121,8 +121,13 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
   const [busy, setBusy] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [issuance, setIssuance] = useState<Issuance | null>(null);
+  const [winners, setWinners] = useState<Record<number, string>>({});
+  const [secretReason, setSecretReason] = useState("");
+  const [ticketActionError, setTicketActionError] = useState<string | null>(null);
   const seq = useRef(0);
   const lockRequest = useRef<{ input: string; id: string } | null>(null);
+  const issueRequest = useRef<{ input: string; id: string } | null>(null);
+  const secretRequest = useRef<{ input: string; id: string } | null>(null);
 
   const load = useCallback(async () => {
     const request = ++seq.current;
@@ -241,6 +246,54 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
     } finally { setBusy(false); }
   };
 
+  const issueTickets = async () => {
+    if (busy || !locked || issuance?.issued) return;
+    const ranks = locked.awardLines?.filter(line => line.ticketCount === 1) ?? [];
+    if (ranks.length !== locked.ticketTotal || ranks.some(line => !winners[line.position])
+      || new Set(ranks.map(line => winners[line.position])).size !== ranks.length) {
+      setTicketActionError("Choose one distinct eligible winner for every ticket rank.");
+      return;
+    }
+    const results = ranks.map(line => ({ position: line.position, playerId: winners[line.position] }));
+    const fingerprint = JSON.stringify(results);
+    const requestId = issueRequest.current?.input === fingerprint
+      ? issueRequest.current.id : globalThis.crypto.randomUUID();
+    issueRequest.current = { input: fingerprint, id: requestId };
+    setBusy(true); setTicketActionError(null);
+    try {
+      const { error } = await planRpc("satellite_issue_tickets_v2", {
+        p_source_tournament_id: tournamentId,
+        p_results: results, p_request_id: requestId,
+      });
+      if (error) throw error;
+      await load();
+    } catch (error) {
+      setTicketActionError(error instanceof Error ? error.message : "Ticket issuance failed");
+    } finally { setBusy(false); }
+  };
+
+  const changeTicket = async (ticket: IssuedTicket, action: "rotate" | "void") => {
+    if (busy || ticket.status !== "issued" || !ticket.code || secretReason.trim().length < 3) {
+      setTicketActionError("Enter a reason of at least 3 characters."); return;
+    }
+    const fingerprint = JSON.stringify({ id: ticket.id, code: ticket.code, action, reason: secretReason.trim() });
+    const requestId = secretRequest.current?.input === fingerprint
+      ? secretRequest.current.id : globalThis.crypto.randomUUID();
+    secretRequest.current = { input: fingerprint, id: requestId };
+    setBusy(true); setTicketActionError(null);
+    try {
+      const { error } = await planRpc("satellite_change_ticket_secret_v1", {
+        p_ticket_id: ticket.id, p_current_code: ticket.code, p_action: action,
+        p_reason: secretReason.trim(), p_request_id: requestId,
+      });
+      if (error) throw error;
+      setSecretReason("");
+      await load();
+    } catch (error) {
+      setTicketActionError(error instanceof Error ? error.message : "Ticket change failed");
+    } finally { setBusy(false); }
+  };
+
   if (loading) return <Card className="p-4" role="status">Loading Satellite awards…</Card>;
   if (loadError) return <Card className="space-y-3 p-4"><p role="alert" className="text-destructive">{loadError}</p><Button variant="outline" onClick={() => void load()}>Retry</Button></Card>;
 
@@ -254,11 +307,14 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
         <h3 className="text-sm font-semibold">Ticket issuance</h3>
         {issuance?.issued ? <div role="status" className="space-y-2"><p className="text-sm text-emerald-400">Issued {issuance.ticketTotal} / {locked.ticketTotal} tickets</p>
           <p className="text-xs text-muted-foreground">Serials are for reconciliation; redemption codes are private. Never display this list on the tournament TV.</p>
-          <div className="max-h-64 space-y-2 overflow-auto">{issuance.tickets?.map(ticket => <div key={ticket.serial} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-border p-2 text-xs"><strong>#{ticket.serial}</strong><span>Rank {ticket.position}</span><span>{candidates.find(c => c.playerId === ticket.winnerPlayerId)?.displayName ?? ticket.winnerPlayerId}</span><span>{ticket.status}</span><code className="break-all select-all">{ticket.code}</code></div>)}</div>
+          <div className="space-y-2"><Label htmlFor="sat-secret-reason">Reason for rotate or void</Label><Input id="sat-secret-reason" value={secretReason} onChange={e => setSecretReason(e.target.value)} /></div>
+          <div className="max-h-64 space-y-2 overflow-auto">{issuance.tickets?.map(ticket => <div key={ticket.serial} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-border p-2 text-xs"><strong>#{ticket.serial}</strong><span>Rank {ticket.position}</span><span>{candidates.find(c => c.playerId === ticket.winnerPlayerId)?.displayName ?? ticket.winnerPlayerId}</span><span>{ticket.status}</span>{ticket.status === "issued" && ticket.code && <><code className="break-all select-all" aria-label={`Private code for ticket ${ticket.serial}`}>{ticket.code}</code><Button size="sm" variant="outline" disabled={busy} onClick={() => void changeTicket(ticket,"rotate")}>Rotate</Button><Button size="sm" variant="destructive" disabled={busy} onClick={() => void changeTicket(ticket,"void")}>Void</Button></>}</div>)}</div>
         </div> : <>
-          <p className="text-xs text-muted-foreground">Ticket value includes the target buy-in and all fees. Existing plans remain visible for audit.</p>
-          <p className="text-xs text-amber-400">Issuance is paused until the server can bind a verified funding snapshot to the locked plan.</p>
+          <p className="text-xs text-muted-foreground">Choose a verified winner for each locked ticket rank. The server checks results and funding again at Issue.</p>
+          {locked.awardLines?.filter(line => line.ticketCount === 1).map(line => <div key={line.position} className="space-y-1"><Label>Rank {line.position} winner</Label><Select value={winners[line.position] ?? ""} onValueChange={value => setWinners(current => ({ ...current, [line.position]: value }))}><SelectTrigger aria-label={`Rank ${line.position} winner`}><SelectValue placeholder="Select eligible winner" /></SelectTrigger><SelectContent>{candidates.map(candidate => <SelectItem key={candidate.playerId} value={candidate.playerId}>{candidate.displayName}</SelectItem>)}</SelectContent></Select></div>)}
+          <Button disabled={busy} onClick={() => void issueTickets()}>{busy ? "Issuing…" : "Issue tickets"}</Button>
         </>}
+        {ticketActionError && <p role="alert" className="text-sm text-destructive">{ticketActionError}</p>}
       </div>
     </div> : <>
       <div className="space-y-1"><Label htmlFor="satellite-target">Target tournament</Label><Select value={targetId} onValueChange={value => { setTargetId(value); setPreview(null); setPreviewError(null); lockRequest.current = null; }}><SelectTrigger id="satellite-target"><SelectValue placeholder="Select the exact tournament" /></SelectTrigger><SelectContent>{targets.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent></Select>{targets.length === 0 && <p className="text-xs text-amber-400">No open target tournament in this club.</p>}</div>
