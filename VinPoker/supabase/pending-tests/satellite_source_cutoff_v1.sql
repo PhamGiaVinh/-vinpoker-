@@ -19,6 +19,32 @@ VALUES
   'Target','live','registering',now()+interval '3 day',6000000,10000,500000,100000,'standard'),
  ('d3000000-0000-4000-8000-000000000003','d2000000-0000-4000-8000-000000000001',
   'Standard regression','registering','registering',now()+interval '2 day',1000000,10000,0,0,'standard');
+INSERT INTO public.game_tables(id,club_id,table_name,status)
+VALUES ('da000000-0000-4000-8000-000000000001',
+        'd2000000-0000-4000-8000-000000000001','Offline test table','active');
+INSERT INTO public.tournament_tables(id,tournament_id,table_id,table_number,max_seats,status)
+VALUES
+ ('db000000-0000-4000-8000-000000000001','d3000000-0000-4000-8000-000000000001',
+  'da000000-0000-4000-8000-000000000001',1,9,'active'),
+ ('db000000-0000-4000-8000-000000000002','d3000000-0000-4000-8000-000000000003',
+  'da000000-0000-4000-8000-000000000001',2,9,'active');
+DO $$ DECLARE v jsonb; BEGIN
+  BEGIN
+    PERFORM public.ops_create_offline_buyin_and_seat(
+      'd3000000-0000-4000-8000-000000000001','Satellite Offline','sat-cutoff-offline');
+    RAISE EXCEPTION 'Canonical offline buy-in created unfunded Satellite source';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM NOT LIKE '%satellite_offline_buyin_requires_cashier_ledger%' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.sat_cutoff_assert(NOT EXISTS (
+    SELECT 1 FROM public.tournament_registrations
+    WHERE tournament_id='d3000000-0000-4000-8000-000000000001'),
+    'rejected canonical Satellite buy-in leaves no source');
+  v := public.ops_create_offline_buyin_and_seat(
+    'd3000000-0000-4000-8000-000000000003','Standard Offline','std-cutoff-offline');
+  PERFORM pg_temp.sat_cutoff_assert(v->>'ok'='true',
+    'real canonical standard offline buy-in remains available');
+END $$;
 INSERT INTO public.cashier_till_shifts(id,club_id,opening_cash,opened_by)
 VALUES ('d5000000-0000-4000-8000-000000000001','d2000000-0000-4000-8000-000000000001',0,
         'd1000000-0000-4000-8000-000000000001');
