@@ -21,7 +21,7 @@ $$;
 INSERT INTO auth.users(id) VALUES ('e1000000-0000-4000-8000-000000000001');
 INSERT INTO public.clubs(id,owner_id)
 VALUES ('e2000000-0000-4000-8000-000000000001','e1000000-0000-4000-8000-000000000001');
-SELECT set_config('test.actor','e1000000-0000-4000-8000-000000000001',true);
+SELECT set_config('request.jwt.claim.sub','e1000000-0000-4000-8000-000000000001',true);
 INSERT INTO public.tournaments
   (id,club_id,name,status,live_status,start_time,buy_in,starting_stack,rake_amount,service_fee_amount,operations_mode)
 VALUES
