@@ -69,8 +69,20 @@ DO $$ DECLARE p jsonb; a jsonb; r jsonb; BEGIN
    WHERE source_tournament_id='c3000000-0000-4000-8000-000000000001'),
   'Lock froze exact fee split');
 END $$;
-UPDATE public.tournaments SET buy_in=950000,rake_amount=40000,service_fee_amount=10000
-WHERE id='c3000000-0000-4000-8000-000000000002';
+DO $$ BEGIN
+ BEGIN
+  UPDATE public.tournaments
+  SET buy_in=950000,rake_amount=40000,service_fee_amount=10000
+  WHERE id='c3000000-0000-4000-8000-000000000002';
+  RAISE EXCEPTION 'target economics changed after Lock';
+ EXCEPTION WHEN check_violation THEN
+  IF SQLERRM NOT LIKE '%satellite_locked_economics_immutable%' THEN RAISE; END IF;
+ END;
+ PERFORM pg_temp.sat_issue_assert((SELECT buy_in=900000 AND rake_amount=70000
+   AND service_fee_amount=30000 FROM public.tournaments
+   WHERE id='c3000000-0000-4000-8000-000000000002'),
+   'target price change rejected after Lock');
+END $$;
 UPDATE public.tournaments SET status='completed'
 WHERE id='c3000000-0000-4000-8000-000000000001';
 INSERT INTO public.tournament_close_report(tournament_id) VALUES
@@ -89,7 +101,7 @@ DO $$ DECLARE r jsonb; code uuid; ticket uuid; BEGIN
  PERFORM pg_temp.sat_issue_assert((SELECT target_buy_in_vnd=900000
    AND target_fee_vnd=100000 AND target_rake_vnd=70000
    AND target_service_fee_vnd=30000 FROM public.satellite_tickets WHERE id=ticket),
-   'Issue retained Lock components despite target price change');
+   'Issue retained exact frozen Lock components');
  r:=public.satellite_issue_tickets_v2(
   'c3000000-0000-4000-8000-000000000001',
   '[{"position":1,"playerId":"c1000000-0000-4000-8000-000000000002"}]',
