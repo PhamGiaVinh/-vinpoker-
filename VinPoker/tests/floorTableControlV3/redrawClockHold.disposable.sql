@@ -108,6 +108,16 @@ BEGIN
   v_batch := (v_plan->>'batch_id')::uuid;
   v_apply := public.floor_apply_tournament_redraw_v1(v_batch, '00000000-0000-0000-0000-000000003109');
   IF v_apply->>'ok' IS DISTINCT FROM 'true' THEN RAISE EXCEPTION 'redraw apply failed: %', v_apply; END IF;
+  IF (SELECT count(*) FROM public.seat_assignment_history
+      WHERE metadata->>'redraw_batch_id' = v_batch::text) <> 1
+     OR EXISTS (
+       SELECT 1 FROM public.seat_assignment_history
+       WHERE metadata->>'redraw_batch_id' = v_batch::text
+         AND (draw_type IS DISTINCT FROM 'manual_move'
+           OR reason IS DISTINCT FROM 'floor_redraw_v1')
+     ) THEN
+    RAISE EXCEPTION 'redraw audit row must use the live draw_type contract and keep the implementation marker in reason';
+  END IF;
   INSERT INTO pg_temp.redraw_clock_test_cases(scenario, batch_id, request_id)
   VALUES ('running', v_batch, v_request);
 
