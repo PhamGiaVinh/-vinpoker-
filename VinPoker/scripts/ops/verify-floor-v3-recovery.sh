@@ -131,15 +131,15 @@ fi
 
 local_superuser_state="$(docker exec "$db_container" sh -ceu \
   'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
-    -c "SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user"')"
-if [[ "$local_superuser_state" != 'supabase_admin|t' ]]; then
-  echo "Disposable Supabase admin role is unavailable or not a superuser" >&2
+    -c "SELECT string_agg(rolname || '"'"'|'"'"' || rolsuper, '"'"','"'"' ORDER BY rolname) FROM pg_roles WHERE rolname IN ('"'"'postgres'"'"', '"'"'supabase_admin'"'"')"')"
+if [[ "$local_superuser_state" != 'postgres|true,supabase_admin|true' ]]; then
+  echo "Disposable Supabase bootstrap roles are unavailable or not superusers" >&2
   exit 1
 fi
 
 roles_for_restore="$test_root/roles-for-restore.sql"
 sed -E \
-  -e '/^(CREATE ROLE|ALTER ROLE) "?supabase_admin"?([ ;]|$)/d' \
+  -e '/^(CREATE ROLE|ALTER ROLE) "?(postgres|supabase_admin)"?([ ;]|$)/d' \
   "$payload_root/roles-no-passwords.sql" >"$roles_for_restore"
 test -s "$roles_for_restore"
 
@@ -151,8 +151,8 @@ if ! docker exec -i "$db_container" sh -ceu \
 fi
 if [[ "$(docker exec "$db_container" sh -ceu \
   'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
-    -c "SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user"')" != 'supabase_admin|t' ]]; then
-  echo "Disposable Supabase admin lost superuser status during role restore" >&2
+    -c "SELECT string_agg(rolname || '"'"'|'"'"' || rolsuper, '"'"','"'"' ORDER BY rolname) FROM pg_roles WHERE rolname IN ('"'"'postgres'"'"', '"'"'supabase_admin'"'"')"')" != 'postgres|true,supabase_admin|true' ]]; then
+  echo "Disposable Supabase bootstrap roles lost superuser status during role restore" >&2
   exit 1
 fi
 unexpected_role_errors="$(grep -E 'ERROR:' "$test_root/roles-restore.log" |
