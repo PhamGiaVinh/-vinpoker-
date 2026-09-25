@@ -175,24 +175,14 @@ docker run --rm --network host \
   >"$payload_root/table-counts.tsv" 2>"$work_root/counts.log" <<'SQL' || {
 BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET TRANSACTION SNAPSHOT :'snapshot';
-SELECT format(
-  'SELECT %L, %L, count(*)::bigint FROM %I.%I;',
-  required.schema_name, required.table_name, required.schema_name, required.table_name
-)
-FROM (VALUES
-  ('public','tournaments'),
-  ('public','tournament_tables'),
-  ('public','tournament_seats'),
-  ('public','tournament_entries'),
-  ('public','tournament_hands'),
-  ('public','game_tables'),
-  ('supabase_migrations','schema_migrations')
-) AS required(schema_name, table_name)
-JOIN pg_catalog.pg_namespace n ON n.nspname = required.schema_name
-JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid AND c.relname = required.table_name
-  AND c.relkind IN ('r', 'p') AND NOT c.relispartition
-ORDER BY required.schema_name, required.table_name;
-\gexec
+SELECT 'public', 'tournaments', count(*)::bigint FROM public.tournaments
+UNION ALL SELECT 'public', 'tournament_tables', count(*)::bigint FROM public.tournament_tables
+UNION ALL SELECT 'public', 'tournament_seats', count(*)::bigint FROM public.tournament_seats
+UNION ALL SELECT 'public', 'tournament_entries', count(*)::bigint FROM public.tournament_entries
+UNION ALL SELECT 'public', 'tournament_hands', count(*)::bigint FROM public.tournament_hands
+UNION ALL SELECT 'public', 'game_tables', count(*)::bigint FROM public.game_tables
+UNION ALL SELECT 'supabase_migrations', 'schema_migrations', count(*)::bigint FROM supabase_migrations.schema_migrations
+ORDER BY 1, 2;
 COMMIT;
 SQL
   echo "Snapshot table-count receipt failed; raw tool output withheld" >&2
