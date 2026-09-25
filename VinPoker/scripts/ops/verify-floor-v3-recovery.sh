@@ -94,7 +94,7 @@ supabase init --workdir "$project_root" >"$test_root/init.log" 2>&1 || {
 sed -i "s/^project_id = .*/project_id = \"$restored_db\"/" "$project_root/supabase/config.toml"
 test "$(grep -c "^project_id = \"$restored_db\"$" "$project_root/supabase/config.toml")" = 1
 
-exclude_services="analytics,edge-runtime,functions,imgproxy,inbucket,kong,meta,realtime,rest,storage,studio,vector"
+exclude_services="imgproxy,logflare,mailpit,postgres-meta,realtime,storage-api,studio,supavisor,vector"
 supabase start --workdir "$project_root" --exclude "$exclude_services" >"$test_root/start.log" 2>&1 || {
   echo "Isolated Supabase database start failed; raw logs withheld" >&2
   exit 1

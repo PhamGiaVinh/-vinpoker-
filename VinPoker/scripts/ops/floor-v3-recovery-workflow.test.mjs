@@ -71,6 +71,7 @@ test("only encrypted ciphertext is uploaded and restore is isolated with egress 
   assert.match(restore, /sha256sum --check --status ciphertext\.sha256/);
   assert.match(restore, /age --decrypt --identity/);
   assert.match(restore, /supabase start[\s\S]*?--exclude/);
+  assert.match(restore, /exclude_services="imgproxy,logflare,mailpit,postgres-meta,realtime,storage-api,studio,supavisor,vector"/);
   assert.match(restore, /DOCKER-USER/);
   assert.match(restore, /restore network still has outbound access/);
   assert.match(restore, /pg_restore[\s\S]*?--exit-on-error/);
