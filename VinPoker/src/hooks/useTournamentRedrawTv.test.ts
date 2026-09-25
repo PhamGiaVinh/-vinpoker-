@@ -62,7 +62,7 @@ describe("parseTournamentRedrawTvBatch", () => {
       moves: [
         { ...validBatch.moves[0], ordinal: 3, to_table_number: 17 },
         { ...validBatch.moves[0], ordinal: 2, player_name: "Player B", to_table_number: 3 },
-        { ...validBatch.moves[0], ordinal: 1, player_name: "Player C", to_table_number: 17 },
+        { ...validBatch.moves[0], ordinal: 1, player_name: "Player C", to_table_number: 17, to_seat_number: 2 },
       ],
     });
     expect(parsed).not.toBe("empty");
