@@ -8,6 +8,7 @@ on:
       - "VinPoker/supabase/pending-migrations/20270115000011_cashier_refund_without_floor_clearance.sql"
       - "VinPoker/supabase/pending-migrations/20270119000002_satellite_registration_pool_row_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270119000003_satellite_source_funding_preview_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000004_satellite_frozen_ticket_components_v1.sql"
       - "VinPoker/supabase/pending-migrations/20260925092509_satellite_funding_preview_math_v1.sql"
       - "VinPoker/supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270117000001_satellite_award_plan_v1.sql"
@@ -18,6 +19,7 @@ on:
       - "VinPoker/supabase/pending-tests/satellite_registration_pool_row_v1.sql"
       - "VinPoker/supabase/pending-tests/satellite_source_funding_disposable_setup.sql"
       - "VinPoker/supabase/pending-tests/satellite_source_funding_preview_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_frozen_ticket_components_v1.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_concurrency_*.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_load_*.sql"
       - "VinPoker/tests/opsFloorCashier/disposableDb.fixture.sql"
@@ -126,6 +128,10 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270117000002_satellite_ticket_issue_v1.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20260925092509_satellite_funding_preview_math_v1.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000003_satellite_source_funding_preview_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000004_satellite_frozen_ticket_components_v1.sql
       - name: Run Satellite ledger-derived funding preview and closed-write assertions
         working-directory: VinPoker
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_source_funding_preview_v1.sql
+      - name: Assert frozen target components in held Lock and Issue paths
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_frozen_ticket_components_v1.sql
