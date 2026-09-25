@@ -59,6 +59,7 @@ test("database archive and row-count receipt share one exported MVCC snapshot", 
   assert.match(backup, /pg_dumpall --roles-only --no-role-passwords/);
   assert.match(backup, /cli_login_postgres/);
   assert.match(backup, /database\.dump[\s\S]*?pg_restore/);
+  assert.match(backup, /--mount "type=bind,src=\$payload_root,dst=\/backup,readonly"[\s\S]*?pg_restore --list \/backup\/database\.dump/);
   assert.match(backup, /Storage API object bytes/);
 });
 

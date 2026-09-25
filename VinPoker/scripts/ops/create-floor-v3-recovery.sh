@@ -194,7 +194,10 @@ if ! awk -F '\t' 'NF == 3 { seen[$1 "." $2]=1 } END { exit !(seen["public.tourna
   exit 1
 fi
 
-docker run --rm "$postgres_image" pg_restore --list <"$payload_root/database.dump" >"$payload_root/archive-list.txt" 2>"$work_root/archive_list.log" || {
+docker run --rm \
+  --mount "type=bind,src=$payload_root,dst=/backup,readonly" \
+  "$postgres_image" pg_restore --list /backup/database.dump \
+  >"$payload_root/archive-list.txt" 2>"$work_root/archive_list.log" || {
   echo "Database archive catalog validation failed; raw tool output withheld" >&2
   exit 1
 }
