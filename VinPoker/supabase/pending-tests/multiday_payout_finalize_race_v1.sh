@@ -32,6 +32,12 @@ SQL
 then echo 'concurrent second payout finalize committed' >&2; exit 1; fi
 wait "$winner_pid"
 grep -q 'multi_day_payout_already_finalized' "$loser_log"
+psql "${psql_args[@]}" >/dev/null <<'SQL'
+INSERT INTO public.bank_transactions(id,provider,api_verified_at,transfer_type,
+ amount,status,account_number,club_id)
+VALUES('ba000000-0000-0000-0000-000000000041','sepay',now(),'in',1,
+ 'unmatched','proof-account-1','20000000-0000-0000-0000-000000000001');
+SQL
 if psql "${psql_args[@]}" >"$overlay_log" 2>&1 <<'SQL'
 SET lock_timeout='5s';
 SET deadlock_timeout='500ms';
@@ -39,7 +45,8 @@ SET request.jwt.claim.sub='10000000-0000-0000-0000-000000000001';
 SELECT public.multi_day_record_overlay_v1(
  '30000000-0000-0000-0000-00000000000b','RECORDED',1,
  'bank-evidence-post-final','Post finalize source mutation',NULL,NULL,
- '92000000-0000-0000-0000-000000000041');
+ '92000000-0000-0000-0000-000000000041',
+ 'ba000000-0000-0000-0000-000000000041');
 SQL
 then echo 'post-finalize overlay committed' >&2; exit 1; fi
 grep -q 'multi_day_payout_linked_adjustment_required' "$overlay_log"

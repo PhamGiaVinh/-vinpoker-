@@ -111,9 +111,14 @@ BEGIN
  EXCEPTION WHEN check_violation THEN
    IF SQLERRM<>'multi_day_payout_shortfall_unfunded' THEN RAISE; END IF;
  END;
+ INSERT INTO public.bank_transactions(id,provider,api_verified_at,transfer_type,
+   amount,status,account_number,club_id) VALUES
+ ('ba000000-0000-0000-0000-000000000021','sepay',now(),'in',650000,
+   'unmatched','proof-account-1','20000000-0000-0000-0000-000000000001');
  PERFORM public.multi_day_record_overlay_v1(v_event,'RECORDED',650000,
    'bank-evidence-payout-21','Owner received GTD overlay',NULL,NULL,
-   '92000000-0000-0000-0000-000000000021');
+   '92000000-0000-0000-0000-000000000021',
+   'ba000000-0000-0000-0000-000000000021');
  BEGIN
    PERFORM public.multi_day_finalize_payout_v1(v_event,
      v_preview->>'rulesVersion',v_preview->>'fundingRevision',
@@ -148,10 +153,15 @@ BEGIN
    '93000000-0000-0000-0000-000000000003'))->>'idempotent'<>'true' THEN
    RAISE EXCEPTION 'payout_retry_failed';
  END IF;
+ INSERT INTO public.bank_transactions(id,provider,api_verified_at,transfer_type,
+   amount,status,account_number,club_id) VALUES
+ ('ba000000-0000-0000-0000-000000000022','sepay',now(),'in',1,
+   'unmatched','proof-account-1','20000000-0000-0000-0000-000000000001');
  BEGIN
    PERFORM public.multi_day_record_overlay_v1(v_event,'RECORDED',1,
      'bank-evidence-after-final','Late overlay must adjust',NULL,NULL,
-     '92000000-0000-0000-0000-000000000022');
+     '92000000-0000-0000-0000-000000000022',
+     'ba000000-0000-0000-0000-000000000022');
    RAISE EXCEPTION 'post_finalize_overlay_bypassed';
  EXCEPTION WHEN insufficient_privilege THEN
    IF SQLERRM<>'multi_day_payout_linked_adjustment_required' THEN RAISE; END IF;

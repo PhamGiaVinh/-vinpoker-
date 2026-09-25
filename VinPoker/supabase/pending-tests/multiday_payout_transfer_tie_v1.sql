@@ -8,6 +8,13 @@ DO $$ DECLARE v_event uuid:='30000000-0000-0000-0000-00000000000b';
  v_bags uuid[]; v_preview jsonb; v_split jsonb;
 BEGIN
  PERFORM set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000001',false);
+ BEGIN
+   PERFORM public.multi_day_payout_preview_v1(
+     '30000000-0000-0000-0000-00000000000c');
+   RAISE EXCEPTION 'historical_cross_flight_movement_counted';
+ EXCEPTION WHEN check_violation THEN
+   IF SQLERRM<>'multi_day_payout_source_unmatched' THEN RAISE; END IF;
+ END;
  INSERT INTO public.tournament_events(id,club_id,final_tournament_id,itm_percent,buy_in,rake_amount)
  VALUES(v_event,'20000000-0000-0000-0000-000000000001',v_final,100,1000000,100000);
  INSERT INTO public.tournaments(id,club_id,event_id,phase) VALUES
@@ -20,10 +27,15 @@ BEGIN
  INSERT INTO public.tournament_registrations(id,tournament_id,player_id,club_id,
    buy_in,platform_fixed_fee,total_pay,status,confirmed_at,price_snapshot) VALUES
  ('b0000000-0000-0000-0000-000000000031',v_flight,v_p1,
-  '20000000-0000-0000-0000-000000000001',1000000,100000,1100000,'confirmed',now(),NULL),
+  '20000000-0000-0000-0000-000000000001',1000000,100000,1100000,'confirmed',now(),
+  '{"tender":"cash"}'::jsonb),
  ('b0000000-0000-0000-0000-000000000032',v_flight,v_p2,
   '20000000-0000-0000-0000-000000000001',1000000,100000,1100000,'confirmed',now(),
   '{"tender":"satellite_ticket"}'::jsonb);
+ INSERT INTO public.cashier_buyin_movements(club_id,tournament_id,
+   registration_id,purpose,direction,amount,applied_amount)
+ VALUES('20000000-0000-0000-0000-000000000001',v_flight,
+   'b0000000-0000-0000-0000-000000000031','buyin','in',1100000,1100000);
  INSERT INTO public.satellite_tickets(id,status)
  VALUES('c1000000-0000-0000-0000-000000000032','redeemed');
  INSERT INTO public.satellite_ticket_value_transfers(id,ticket_id,
@@ -117,6 +129,29 @@ BEGIN
  IF v_split->>'occupiedRankTotalVnd'<>'2000000' OR
     v_split->>'perPlayerVnd'<>'1000000' THEN
    RAISE EXCEPTION '47_to_45_equal_value_rank_rows_collapsed'; END IF;
+ -- A confirmed legacy row with no canonical receipt is not pool funding.
+ UPDATE public.tournament_registrations SET price_snapshot=NULL
+   WHERE id='b0000000-0000-0000-0000-000000000031';
+ BEGIN
+   PERFORM public.multi_day_payout_preview_v1(v_event);
+   RAISE EXCEPTION 'legacy_confirmed_unfunded_counted';
+ EXCEPTION WHEN check_violation THEN
+   IF SQLERRM<>'multi_day_payout_legacy_funding_unverified' THEN RAISE; END IF;
+ END;
+ UPDATE public.tournament_registrations
+   SET price_snapshot='{"tender":"cash"}'::jsonb
+   WHERE id='b0000000-0000-0000-0000-000000000031';
+ -- A wrong flight on a pre-existing movement must not be hidden by COALESCE.
+ BEGIN
+   INSERT INTO public.cashier_buyin_movements(club_id,tournament_id,
+     registration_id,purpose,direction,amount,applied_amount)
+   VALUES('20000000-0000-0000-0000-000000000001',
+     '40000000-0000-0000-0000-000000000001',
+     'b0000000-0000-0000-0000-000000000031','buyin','in',1,1);
+   RAISE EXCEPTION 'cross_flight_movement_inserted';
+ EXCEPTION WHEN check_violation THEN
+   IF SQLERRM<>'multi_day_movement_source_mismatch' THEN RAISE; END IF;
+ END;
  -- Orphan Cashier source rows are NOT zero-valued source contributions.
  BEGIN
    INSERT INTO public.cashier_buyin_movements(club_id,tournament_id,purpose,direction,
