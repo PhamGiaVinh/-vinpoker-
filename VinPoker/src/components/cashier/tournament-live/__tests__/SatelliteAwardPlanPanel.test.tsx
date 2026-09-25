@@ -20,13 +20,15 @@ const awardPlan = { ok: true, locked: false, targetTournamentId: "target-1c",
 const funding = { state: "READY", sourcePoolVnd: "33000000", feeVnd: "6600000",
   targetEntryPriceVnd: "6600000", computedTicketCount: 5, cashRemainderVnd: "0",
   ticketShortfallVnd: "0", obligationShortfallVnd: "0", confirmedCount: 33,
-  unpaidCount: 1, reversedCount: 1, previewRevision: "v1:12345678901234567890123456789012",
+  unpaidCount: 1, reversedCount: 1, previewRevision: "v2:12345678901234567890123456789012",
   awardPlan };
 beforeAll(() => {
   globalThis.ResizeObserver ||= class { observe() {} unobserve() {} disconnect() {} };
   Element.prototype.scrollIntoView ||= () => {};
   Element.prototype.hasPointerCapture ||= () => false;
   Element.prototype.releasePointerCapture ||= () => {};
+  Object.defineProperty(globalThis.crypto, "randomUUID", { configurable: true,
+    value: () => "fa000000-0000-4000-8000-000000000001" });
 });
 beforeEach(() => {
   h.preview = { ...funding };
@@ -36,7 +38,11 @@ beforeEach(() => {
     if (name === "satellite_get_award_plan_v1") return { data: h.get, error: null };
     if (name === "satellite_get_issuance_v1") return { data: { ok: true, issued: false }, error: null };
     if (name === "satellite_get_award_candidates_v1") return { data: { ok: true, players: [] }, error: null };
-    if (name === "satellite_source_funding_preview_v1") return { data: h.preview, error: null };
+    if (name === "satellite_source_funding_preview_v2") return { data: h.preview, error: null };
+    if (name === "satellite_lock_award_plan_v1") {
+      h.get = { ...awardPlan, locked: true };
+      return { data: { ok: true, locked: true, idempotent: false }, error: null };
+    }
     throw new Error(`Unexpected RPC: ${name}`);
   });
   vi.mocked(toast.error).mockClear();
@@ -46,18 +52,18 @@ async function selectTarget() {
   fireEvent.click(await screen.findByRole("option", { name: "Main Event" }));
 }
 describe("SatelliteAwardPlanPanel source preview", () => {
-  it("shows server pool and fees separately without exposing Lock or Issue", async () => {
+  it("shows server pool and fees separately and only offers Lock after a verified preview", async () => {
     render(<SatelliteAwardPlanPanel tournamentId="source" clubId="club" />);
     await selectTarget();
     fireEvent.click(screen.getByRole("button", { name: "Preview funding" }));
     expect(await screen.findByText(/Source pool: 33,000,000 VND/)).toBeTruthy();
     expect(screen.getByText(/Fees: 6,600,000 VND/)).toBeTruthy();
     expect(screen.getByText(/Confirmed: 33 · Unpaid: 1 · Reversed: 1/)).toBeTruthy();
-    expect(h.rpc).toHaveBeenCalledWith("satellite_source_funding_preview_v1", {
+    expect(h.rpc).toHaveBeenCalledWith("satellite_source_funding_preview_v2", {
       p_source_tournament_id: "source", p_target_tournament_id: "target-1c",
       p_awards: [{ position: 1, ticketCount: 1, cashVnd: "0" }],
     });
-    expect(screen.queryByRole("button", { name: "Lock award plan" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Lock award plan" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Issue tickets" })).toBeNull();
   });
   it("does not turn inconsistent source evidence into a zero pool", async () => {
@@ -90,6 +96,37 @@ describe("SatelliteAwardPlanPanel source preview", () => {
     fireEvent.change(screen.getByLabelText("Tickets"), { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: "Preview funding" }));
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("at most one ticket per rank"));
-    expect(h.rpc).not.toHaveBeenCalledWith("satellite_source_funding_preview_v1", expect.anything());
+    expect(h.rpc).not.toHaveBeenCalledWith("satellite_source_funding_preview_v2", expect.anything());
+  });
+  it("sends the exact preview revision and one request ID to server Lock", async () => {
+    render(<SatelliteAwardPlanPanel tournamentId="source" clubId="club" />);
+    await selectTarget();
+    fireEvent.click(screen.getByRole("button", { name: "Preview funding" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Lock award plan" }));
+    await waitFor(() => expect(screen.getByText(/Locked/)).toBeTruthy());
+    expect(h.rpc).toHaveBeenCalledWith("satellite_lock_award_plan_v1", {
+      p_source_tournament_id: "source", p_target_tournament_id: "target-1c",
+      p_awards: [{ position: 1, ticketCount: 1, cashVnd: "0" }],
+      p_expected_preview_revision: funding.previewRevision,
+      p_request_id: "fa000000-0000-4000-8000-000000000001",
+    });
+    expect(screen.queryByRole("button", { name: "Issue tickets" })).toBeNull();
+  });
+  it("clears a stale preview and requires a fresh server read", async () => {
+    h.rpc.mockImplementation(async (name: string) => {
+      if (name === "satellite_get_award_plan_v1") return { data: h.get, error: null };
+      if (name === "satellite_get_issuance_v1") return { data: { ok: true, issued: false }, error: null };
+      if (name === "satellite_get_award_candidates_v1") return { data: { ok: true, players: [] }, error: null };
+      if (name === "satellite_source_funding_preview_v2") return { data: h.preview, error: null };
+      if (name === "satellite_lock_award_plan_v1") return { data: { ok: false, locked: false,
+        error: "stale_preview" }, error: null };
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+    render(<SatelliteAwardPlanPanel tournamentId="source" clubId="club" />);
+    await selectTarget();
+    fireEvent.click(screen.getByRole("button", { name: "Preview funding" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Lock award plan" }));
+    expect(await screen.findByText(/Source funding changed/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Lock award plan" })).toBeNull();
   });
 });

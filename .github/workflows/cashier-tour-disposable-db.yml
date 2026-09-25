@@ -13,6 +13,7 @@ on:
       - "VinPoker/supabase/pending-migrations/20270119000006_satellite_entry_cutoff_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270119000007_satellite_offline_source_guard_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270119000008_satellite_verified_award_lock_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000009_satellite_source_rules_fixed_v1.sql"
       - "VinPoker/supabase/pending-migrations/20260925092509_satellite_funding_preview_math_v1.sql"
       - "VinPoker/supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270117000001_satellite_award_plan_v1.sql"
@@ -142,6 +143,7 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000005_satellite_source_cutoff_v1.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000006_satellite_entry_cutoff_v1.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000007_satellite_offline_source_guard_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000009_satellite_source_rules_fixed_v1.sql
       - name: Run Satellite ledger-derived funding preview and closed-write assertions
         working-directory: VinPoker
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_source_funding_preview_v1.sql

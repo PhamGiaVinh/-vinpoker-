@@ -93,6 +93,13 @@ VALUES ('d8000000-0000-4000-8000-000000000001','d3000000-0000-4000-8000-00000000
         'd7000000-0000-4000-8000-000000000001');
 DO $$ BEGIN
   BEGIN
+    UPDATE public.tournaments SET buy_in=buy_in+1
+    WHERE id='d3000000-0000-4000-8000-000000000001';
+    RAISE EXCEPTION 'Satellite source price changed after first registration';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM NOT LIKE '%satellite_source_rules_fixed_after_source%' THEN RAISE; END IF;
+  END;
+  BEGIN
     UPDATE public.tournaments SET operations_mode='standard'
     WHERE id='d3000000-0000-4000-8000-000000000001';
     RAISE EXCEPTION 'Satellite mode changed after source';
@@ -184,6 +191,8 @@ DO $$ DECLARE before_hash text; after_hash text; p jsonb; BEGIN
 END $$;
 UPDATE public.tournament_registrations SET status='confirmed',confirmed_at=now()
 WHERE id='d4000000-0000-4000-8000-000000000003';
+UPDATE public.tournaments SET starting_stack=starting_stack+1
+WHERE id='d3000000-0000-4000-8000-000000000003';
 SELECT pg_temp.sat_cutoff_assert((SELECT status='confirmed'
   FROM public.tournament_registrations WHERE id='d4000000-0000-4000-8000-000000000003'),
   'non-Satellite registration remains mutable');
