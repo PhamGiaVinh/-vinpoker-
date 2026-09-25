@@ -45,7 +45,7 @@ test("database archive and row-count receipt share one exported MVCC snapshot", 
   assert.match(backup, /--file=\/backup\/database\.dump/);
   assert.doesNotMatch(backup, /--file=\/dev\/stdout/);
   assert.match(backup, /SET TRANSACTION SNAPSHOT :'snapshot'/);
-  assert.match(backup, /docker run --rm -i --network host[\s\S]*?psql -X -qAt -v ON_ERROR_STOP=1 -v snapshot=/);
+  assert.match(backup, /docker run --rm -i --network host[\s\S]*?psql -X -qAt -F \$'\\t' -v ON_ERROR_STOP=1 -v snapshot=/);
   assert.match(backup, /SELECT 'public', 'tournaments', count\(\*\)::bigint FROM public\.tournaments[\s\S]*?UNION ALL SELECT 'supabase_migrations', 'schema_migrations', count\(\*\)::bigint FROM supabase_migrations\.schema_migrations/);
   assert.doesNotMatch(backup, /\\gexec/);
   assert.match(backup, /table-counts\.tsv/);

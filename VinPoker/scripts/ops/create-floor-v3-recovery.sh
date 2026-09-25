@@ -171,7 +171,7 @@ fi
 
 docker run --rm -i --network host \
   --env PGHOST --env PGPORT --env PGUSER --env PGDATABASE --env PGPASSWORD --env PGSSLMODE --env PGAPPNAME \
-  "$postgres_image" psql -X -qAt -v ON_ERROR_STOP=1 -v snapshot="$snapshot_id" \
+  "$postgres_image" psql -X -qAt -F $'\t' -v ON_ERROR_STOP=1 -v snapshot="$snapshot_id" \
   >"$payload_root/table-counts.tsv" 2>"$work_root/counts.log" <<'SQL' || {
 BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET TRANSACTION SNAPSHOT :'snapshot';
