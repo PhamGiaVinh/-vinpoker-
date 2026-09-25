@@ -92,7 +92,12 @@ export function SatelliteTicketRedeemPanel() {
     const result = await rpc("satellite_get_redemption_receipt_v1", { p_request_id: id });
     setBusy(false);
     if (result.error) setError(result.error.message);
-    else setReceipt(result.data as Receipt);
+    else {
+      setReceipt(result.data as Receipt);
+      setReceiptRequestId(id);
+      setRequestId(globalThis.crypto.randomUUID());
+      setCode(""); setVerified(null); setBearer(""); setSourceEntry(""); setBusted([]);
+    }
   };
 
   return <Card className="space-y-3 p-4">

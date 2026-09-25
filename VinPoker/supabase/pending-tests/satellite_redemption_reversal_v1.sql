@@ -18,6 +18,17 @@ SAVEPOINT satellite_reversal_role_authorization;
 UPDATE public.centerpoint_tournament_ops_release
    SET enabled=true,allowed_club_ids=ARRAY[current_setting('test.satellite_club_id')::uuid]
  WHERE id;
+-- Use the repository's actual cashier assignment relation for a second club.
+-- The actor is authorized in Club B, but not in the ticket's Club A.
+INSERT INTO public.clubs(id,owner_id) VALUES
+ ('d2000000-0000-4000-8000-000000000012',
+  'd1000000-0000-4000-8000-000000000013');
+INSERT INTO public.club_cashiers(club_id,user_id,granted_by) VALUES
+ ('d2000000-0000-4000-8000-000000000012',
+  'd1000000-0000-4000-8000-000000000012',
+  'd1000000-0000-4000-8000-000000000013');
+SELECT set_config('test.satellite_other_club_id',
+  'd2000000-0000-4000-8000-000000000012',true);
 SET LOCAL ROLE authenticated;
 DO $$ DECLARE v_result jsonb;
 BEGIN
@@ -69,6 +80,11 @@ END $$;
 SELECT set_config('request.jwt.claim.sub','d1000000-0000-4000-8000-000000000012',true);
 DO $$ DECLARE v_error text;
 BEGIN
+  IF auth.uid()<>'d1000000-0000-4000-8000-000000000012'::uuid
+     OR NOT public.is_club_cashier(auth.uid(),current_setting('test.satellite_other_club_id')::uuid)
+     OR public.is_club_cashier(auth.uid(),current_setting('test.satellite_club_id')::uuid) THEN
+    RAISE EXCEPTION 'wrong-club fixture does not prove Club B cashier and Club A denial';
+  END IF;
   BEGIN
     PERFORM public.satellite_approve_redemption_reversal_v1(
       current_setting('test.satellite_ticket_id')::uuid,
@@ -82,8 +98,8 @@ BEGIN
   BEGIN
     PERFORM public.satellite_request_redemption_correction_v1(
       current_setting('test.satellite_ticket_id')::uuid,
-      'Wrong club cashier role probe','d9000000-0000-4000-8000-000000000008');
-    RAISE EXCEPTION 'unassigned authenticated actor requested correction';
+      'Club B cashier attempted Club A ticket','d9000000-0000-4000-8000-000000000008');
+    RAISE EXCEPTION 'Club B cashier accessed Club A ticket';
   EXCEPTION WHEN insufficient_privilege THEN
     GET STACKED DIAGNOSTICS v_error=MESSAGE_TEXT;
     IF v_error<>'satellite_correction_actor_not_allowed' THEN RAISE; END IF;
