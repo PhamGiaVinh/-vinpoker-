@@ -267,6 +267,7 @@ jobs:
           stage_root="$(mktemp -d -t cashier-1304-apply-XXXXXXXX)"
           trap 'rm -rf -- "$stage_root"' EXIT
           supabase init --workdir "$stage_root" >/dev/null
+          mkdir -p "$stage_root/supabase/migrations"
           migration_source="$(pwd)/supabase/pending-migrations/$MIGRATION_FILE"
           test "$(sha256sum "$migration_source" | awk '{print toupper($1)}')" = "$MIGRATION_SHA256"
           test -z "$(find "$stage_root/supabase/migrations" -mindepth 1 -maxdepth 1 -type f -print -quit)"
