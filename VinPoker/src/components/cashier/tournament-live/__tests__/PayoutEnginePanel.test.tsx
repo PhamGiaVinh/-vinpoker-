@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within, cleanup } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor, within, cleanup } from "@testing-library/react";
 
 afterEach(cleanup);
 
@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   prizes: [] as any[],
   appliedRun: null as any,
   entriesCount: 10,
+  tourRead: null as null | ((id: string) => Promise<any>),
   prizesError: null as { message: string } | null,
   runError: null as { message: string } | null,
   entriesError: null as { message: string } | null,
@@ -44,10 +45,11 @@ vi.mock("@/integrations/supabase/client", () => {
   const makeChain = (table: string) => {
     const chain: any = {};
     let isUpdate = false;
+    let id = "";
     chain.select = vi.fn(() => chain);
-    chain.eq = vi.fn(() => chain);
+    chain.eq = vi.fn((key: string, value: string) => { if (key === "id") id = value; return chain; });
     chain.neq = vi.fn(() => chain);
-    chain.single = vi.fn(async () => (table === "tournaments" ? { data: h.tour, error: null } : { data: null, error: null }));
+    chain.single = vi.fn(async () => (table === "tournaments" ? h.tourRead ? h.tourRead(id) : { data: h.tour, error: null } : { data: null, error: null }));
     chain.maybeSingle = vi.fn(async () => (table === "tournament_payout_runs" ? { data: h.appliedRun, error: h.runError } : { data: null, error: null }));
     chain.order = vi.fn(() => chain);
     chain.insert = vi.fn(async () => ({ data: null, error: null }));
@@ -79,6 +81,7 @@ beforeEach(() => {
   h.tour.planned_min_cash_x = null; h.tour.planned_rounding_unit = null;
   h.prizes = []; h.appliedRun = null; h.entriesCount = 10; h.tournamentsUpdateError = null;
   h.prizesError = null; h.runError = null; h.entriesError = null;
+  h.tourRead = null;
   h.tournamentsUpdateRows = [{ id: "t1" }];
   flags.payoutCustomMode = false; flags.payoutCustomTemplates = false; flags.payoutPlannedSettings = false; flags.satelliteAwardsV1 = false;
   h.invoke.mockClear(); h.rpc.mockClear();
@@ -95,7 +98,7 @@ beforeEach(() => {
 const officialState = () => {
   h.tour.registration_closed_at = "2026-06-29T00:00:00Z";
   h.prizes = [{ position: 1, percentage: 76, amount: 7_600_000 }, { position: 2, percentage: 24, amount: 2_400_000 }];
-  h.appliedRun = { source: "close", entries_snapshot: 10, itm_places: 2, prize_pool_snapshot: 10_000_000 };
+  h.appliedRun = { id: "run-1", tournament_id: "t1", status: "applied", source: "close", entries_snapshot: 10, itm_places: 2, prize_pool_snapshot: 10_000_000 };
 };
 
 describe("PayoutEnginePanel — Satellite routing", () => {
@@ -117,6 +120,79 @@ describe("PayoutEnginePanel — load failures", () => {
     expect(await screen.findByText(`${source} failed`)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Thử lại/ })).toBeTruthy();
     expect(screen.queryByText(/Xem trước/)).toBeNull();
+  });
+});
+
+describe("PayoutEnginePanel — failed reads do not become empty payout data", () => {
+  it.each([
+    ["null row", [null]],
+    ["array row", [[1, 10, 100]]],
+    ["negative position", [{ position: -1, amount: 10, percentage: 100 }]],
+    ["non-finite position", [{ position: Infinity, amount: 10, percentage: 100 }]],
+    ["fractional position", [{ position: 1.5, amount: 10, percentage: 100 }]],
+    ["negative amount", [{ position: 1, amount: -1, percentage: 100 }]],
+    ["non-finite amount", [{ position: 1, amount: Infinity, percentage: 100 }]],
+    ["NaN amount", [{ position: 1, amount: "NaN", percentage: 100 }]],
+    ["duplicate rank", [{ position: 1, amount: 5, percentage: 50 }, { position: 1, amount: 5, percentage: 50 }]],
+    ["missing rank", [{ position: 2, amount: 10, percentage: 100 }]],
+    ["negative percentage", [{ position: 1, amount: 10, percentage: -1 }]],
+    ["non-finite percentage", [{ position: 1, amount: 10, percentage: Infinity }]],
+    ["bad percentage", [{ position: 1, amount: 10, percentage: 101 }]],
+    ["null percentage", [{ position: 1, amount: 10, percentage: null }]],
+  ])("blocks malformed official prize rows: %s", async (_case, prizes) => {
+    h.prizes = prizes;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    expect(await screen.findByText(/Dữ liệu payout chính thức không hợp lệ/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Xem trước/ })).not.toBeInTheDocument();
+  });
+  const validRun = { id: "run-1", tournament_id: "t1", status: "applied", source: "close", entries_snapshot: 10, itm_places: 1, prize_pool_snapshot: 10 };
+  it.each([
+    { ...validRun, prize_pool_snapshot: "NaN" },
+    { ...validRun, itm_places: 2 },
+    { ...validRun, source: "unknown" },
+    { ...validRun, entries_snapshot: -1 },
+    { ...validRun, status: "draft_snapshot" },
+    { ...validRun, tournament_id: "other-tournament" },
+    { ...validRun, id: " " },
+    { ...validRun, entries_snapshot: 0 },
+    { ...validRun, entries_snapshot: 1, itm_places: 2 },
+  ])("blocks malformed applied run: %j", async (run) => {
+    h.prizes = [{ position: 1, amount: 10, percentage: 100 }];
+    h.appliedRun = run;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    expect(await screen.findByText(/Dữ liệu payout chính thức không hợp lệ/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Xem trước/ })).not.toBeInTheDocument();
+  });
+  it.each(["prizesError", "runError", "entriesError"] as const)("shows %s and blocks payout actions", async (key) => {
+    h[key] = { message: `Không tải được ${key}` };
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    expect(await screen.findByText(`Không tải được ${key}`)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Thử lại/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Xem trước/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Đóng đăng ký & tạo payout/ })).not.toBeInTheDocument();
+    expect(h.invoke).not.toHaveBeenCalled();
+    h[key] = null;
+    fireEvent.click(screen.getByRole("button", { name: /Thử lại/ }));
+    expect(await screen.findByRole("button", { name: /Xem trước/ })).toBeEnabled();
+  });
+  it.each([NaN, -1, 1.5])("rejects invalid entry count %s rather than treating it as zero", async count => {
+    h.entriesCount = count;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    expect(await screen.findByText(/Không tải được dữ liệu payout đầy đủ/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Xem trước/ })).not.toBeInTheDocument();
+  });
+  it("discards a late response from a previously selected tournament", async () => {
+    let finish!: (result: any) => void;
+    h.tourRead = id => id === "t1" ? new Promise(resolve => { finish = resolve; })
+      : Promise.resolve({ data: { ...h.tour, id: "t2", buy_in: 6000000 }, error: null });
+    const view = render(<PayoutEnginePanel tournamentId="t1" />);
+    await waitFor(() => expect(finish).toBeDefined());
+    view.rerender(<PayoutEnginePanel tournamentId="t2" />);
+    await screen.findByRole("button", { name: /Xem trước/ });
+    await act(async () => { finish({ data: { ...h.tour, event_id: "old-event" }, error: null }); });
+    fireEvent.click(screen.getByRole("button", { name: /Xem trước/ }));
+    await waitFor(() => expect(h.invoke).toHaveBeenCalled());
+    expect(h.invoke.mock.calls[0][1].body.tournament_id).toBe("t2");
   });
 });
 
@@ -159,7 +235,7 @@ describe("PayoutEnginePanel — manual edit requires a reason", () => {
     fireEvent.click(screen.getByRole("button", { name: /Chỉnh tay/ }));
     const save = await screen.findByRole("button", { name: /Lưu chỉnh tay/ });
     expect(save).toBeDisabled(); // no reason yet (sum already matches the locked pool)
-    fireEvent.change(screen.getByPlaceholderText(/Lý do chỉnh tay/), { target: { value: "sửa theo thoả thuận bàn cuối" } });
+    fireEvent.change(screen.getByPlaceholderText(/Lý do chỉnh tay/), { target: { value: "sửa lỗi nhập cơ cấu giải đã duyệt" } });
     expect(save).not.toBeDisabled();
     fireEvent.click(save);
     await waitFor(() => expect(h.rpc.mock.calls.some((c) => c[0] === "save_tournament_prizes_v2")).toBe(true));
