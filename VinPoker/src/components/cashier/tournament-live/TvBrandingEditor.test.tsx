@@ -37,6 +37,17 @@ import { toast } from "sonner";
 afterEach(() => { cleanup(); rpc.mockClear(); saveFailure.value = false; brandingLayout.value = {}; brandingAssets.value = { logo_url: null, background_url: null }; });
 
 describe("TvBrandingEditor publish boundary", () => {
+  it("previews the draft through the broadcast clock renderer", async () => {
+    render(<TvBrandingEditor tournamentId="flight-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: /Edit TV layout/i }));
+
+    const clock = await screen.findByLabelText("VinPoker tournament clock");
+    expect(clock).toHaveClass("vpc-root", "vpc-editor-preview");
+    expect(screen.getByText("MAIN EVENT · DAY 1")).toBeVisible();
+    expect(screen.getByText("Current Level")).toBeVisible();
+    expect(screen.queryByText("BLINDS · LEVEL · PAYOUTS")).toBeNull();
+  });
+
   it("keeps edits and reset in a local draft until Publish, then sends the loaded revision", async () => {
     render(<TvBrandingEditor tournamentId="flight-1" />);
     fireEvent.click(await screen.findByRole("button", { name: /Edit TV layout/i }));
