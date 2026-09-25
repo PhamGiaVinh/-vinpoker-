@@ -17,6 +17,11 @@ on:
       - "VinPoker/supabase/pending-migrations/20270119000010_satellite_locked_registration_evidence_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270119000011_satellite_issue_and_secret_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270119000012_satellite_unmatched_funding_guard_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000013_satellite_atomic_redeem_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_atomic_redeem_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_real_initial_historical_fixture.sql"
+      - "VinPoker/supabase/pending-tests/satellite_real_reentry_historical_fixture.sql"
+      - "VinPoker/supabase/pending-tests/satellite_redeem_race_*.sql"
       - "VinPoker/supabase/pending-tests/satellite_issue_secret_v1.sql"
       - "VinPoker/supabase/pending-tests/satellite_unmatched_funding_guard_v1.sql"
       - "VinPoker/supabase/pending-migrations/20260925092509_satellite_funding_preview_math_v1.sql"
@@ -183,6 +188,12 @@ jobs:
       - name: Assert orphan buy-in refund and late-receipt reconciliation
         working-directory: VinPoker
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_unmatched_funding_guard_v1.sql
+      - name: Apply source-only atomic Satellite Redeem
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000013_satellite_atomic_redeem_v1.sql
+      - name: Assert Redeem gates and immutable transfer contract
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_atomic_redeem_v1.sql
       - name: Seed actual canonical and Cashier cutoff races
         working-directory: VinPoker
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_cutoff_race_seed.sql
@@ -257,3 +268,65 @@ jobs:
           wait "$second" || { cat /tmp/sat-refund.log; exit 1; }
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/pending-tests/satellite_lock_race_assert.sql
+      - name: Seed real-seat Satellite Redeem races
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_redeem_race_seed.sql
+      - name: Race two tickets and Cashier cash registration against Redeem
+        working-directory: VinPoker
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v serial=1 -v worker=ticket-a -v player=d1000000-0000-4000-8000-000000000013 \
+            -v request=d8000000-0000-4000-8000-000000000021 -v hold_seconds=2 \
+            -f supabase/pending-tests/satellite_redeem_race_ticket.sql >/tmp/sat-redeem-a.log 2>&1 &
+          first=$!
+          sleep 0.25
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v serial=2 -v worker=ticket-b -v player=d1000000-0000-4000-8000-000000000013 \
+            -v request=d8000000-0000-4000-8000-000000000022 -v hold_seconds=0 \
+            -f supabase/pending-tests/satellite_redeem_race_ticket.sql >/tmp/sat-redeem-b.log 2>&1 &
+          second=$!
+          wait "$first" || { cat /tmp/sat-redeem-a.log; exit 1; }
+          wait "$second" || { cat /tmp/sat-redeem-b.log; exit 1; }
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/pending-tests/satellite_redeem_race_cash.sql >/tmp/sat-redeem-cash.log 2>&1 &
+          first=$!
+          sleep 0.25
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v serial=2 -v worker=ticket-after-cash -v player=d1000000-0000-4000-8000-000000000014 \
+            -v request=d8000000-0000-4000-8000-000000000023 -v hold_seconds=0 \
+            -f supabase/pending-tests/satellite_redeem_race_ticket.sql >/tmp/sat-redeem-after-cash.log 2>&1 &
+          second=$!
+          wait "$first" || { cat /tmp/sat-redeem-cash.log; exit 1; }
+          wait "$second" || { cat /tmp/sat-redeem-after-cash.log; exit 1; }
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v worker=direct-first -v player=d1000000-0000-4000-8000-000000000015 \
+            -v hold_seconds=2 -f supabase/pending-tests/satellite_redeem_race_direct.sql \
+            >/tmp/sat-direct-first.log 2>&1 &
+          first=$!
+          sleep 0.25
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v serial=2 -v worker=ticket-after-direct -v player=d1000000-0000-4000-8000-000000000015 \
+            -v request=d8000000-0000-4000-8000-000000000024 -v hold_seconds=0 \
+            -f supabase/pending-tests/satellite_redeem_race_ticket.sql \
+            >/tmp/sat-ticket-after-direct.log 2>&1 &
+          second=$!
+          wait "$first" || { cat /tmp/sat-direct-first.log; exit 1; }
+          wait "$second" || { cat /tmp/sat-ticket-after-direct.log; exit 1; }
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v serial=2 -v worker=ticket-first -v player=d1000000-0000-4000-8000-000000000016 \
+            -v request=d8000000-0000-4000-8000-000000000025 -v hold_seconds=2 \
+            -f supabase/pending-tests/satellite_redeem_race_ticket.sql \
+            >/tmp/sat-ticket-first.log 2>&1 &
+          first=$!
+          sleep 0.25
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v worker=direct-after-ticket -v player=d1000000-0000-4000-8000-000000000016 \
+            -v hold_seconds=0 -f supabase/pending-tests/satellite_redeem_race_direct.sql \
+            >/tmp/sat-direct-after-ticket.log 2>&1 &
+          second=$!
+          wait "$first" || { cat /tmp/sat-ticket-first.log; exit 1; }
+          wait "$second" || { cat /tmp/sat-direct-after-ticket.log; exit 1; }
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/pending-tests/satellite_redeem_race_assert.sql
