@@ -3,6 +3,7 @@ import { LockKeyhole, Mic, ShieldCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { createFloorTableControlV3Client, type FloorTableControlV3Rpc } from "@/lib/floorTableControlV3";
 import type { StandaloneHandInput } from "@/components/cashier/tournament-live/handinput/useStandaloneHandInput";
+import { MultiDayBaggingPanel } from "@/ops/chip-ops/MultiDayBaggingPanel";
 import { DealerShotClock } from "./DealerShotClock";
 import "./dealerTablet.css";
 
@@ -13,6 +14,20 @@ type CockpitProps = {
 export function DealerTabletCockpit(props: CockpitProps) {
   const { hook } = props;
   const [trackerAllowed, setTrackerAllowed] = useState(false);
+  const [flight, setFlight] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setFlight(false);
+    const check = async () => {
+      try {
+        const result = await supabase.from("tournaments").select("phase")
+          .eq("id", hook.tournamentId).maybeSingle();
+        if (active) setFlight(!result.error && result.data?.phase === "flight");
+      } catch { if (active) setFlight(false); }
+    };
+    if (hook.tournamentId) void check();
+    return () => { active = false; };
+  }, [hook.tournamentId]);
   useEffect(() => {
     let alive = true;
     setTrackerAllowed(false);
@@ -40,7 +55,12 @@ export function DealerTabletCockpit(props: CockpitProps) {
     window.addEventListener("focus", refresh);
     return () => { alive = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); };
   }, [hook.tournamentId, hook.tournamentTableId]);
-  return <DealerTabletLayout {...props} trackerAllowed={trackerAllowed} />;
+  return <>
+    <DealerTabletLayout {...props} trackerAllowed={trackerAllowed} />
+    {flight && <div className="mx-auto max-w-5xl px-4 pb-5">
+      <MultiDayBaggingPanel tournamentId={hook.tournamentId} />
+    </div>}
+  </>;
 }
 
 /** Presentation shared with the offline tablet preview; production authority is loaded above. */

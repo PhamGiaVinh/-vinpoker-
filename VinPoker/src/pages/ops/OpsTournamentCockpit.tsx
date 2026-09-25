@@ -24,6 +24,7 @@ import type { MockTable } from "@/components/ops/mock/opsData";
 import type { TournamentLeaderboardPlayer } from "@/types/tournament";
 import type { FloorTournamentSection } from "@/ops/floor/floorTournamentSections";
 import { useTournamentOps } from "@/ops/workspace/TournamentOpsProvider";
+import { MultiDayFloorEventPanel } from "@/components/floor/MultiDayFloorEventPanel";
 
 type UnappliedFloorRpcResult = { data: unknown; error: { message?: string; code?: string } | null };
 /**
@@ -76,6 +77,32 @@ export default function OpsTournamentCockpit({ section }: { section: FloorTourna
     authLoading,
   });
   const d = tv.data;
+  const [multiDayPayoutRoute, setMultiDayPayoutRoute] = useState<{
+    status: "loading" | "verified" | "other" | "error"; eventId?: string; error?: string;
+  }>({ status: "loading" });
+  useEffect(() => {
+    if (tab !== "payout" || !id) return;
+    let alive = true;
+    setMultiDayPayoutRoute({ status: "loading" });
+    (async () => {
+      const { data, error } = await supabase.from("tournaments")
+        .select("event_id, phase").eq("id", id).single();
+      if (!alive) return;
+      if (error) setMultiDayPayoutRoute({ status: "error", error: error.message });
+      else if (data?.phase === "final" && data.event_id) {
+        const call = supabase.rpc as unknown as (name: string, args: Record<string, unknown>) =>
+          Promise<{ data: { releaseEnabled?: boolean } | null; error: { message: string; code?: string } | null }>;
+        const release = await call("multi_day_floor_read_v1", { p_event_id: data.event_id });
+        if (!alive) return;
+        if (release.error && (release.error.code === "42883" ||
+          release.error.code === "PGRST202")) setMultiDayPayoutRoute({ status: "other" });
+        else if (release.error) setMultiDayPayoutRoute({ status: "error", error: release.error.message });
+        else if (release.data?.releaseEnabled) setMultiDayPayoutRoute({ status: "verified", eventId: data.event_id });
+        else setMultiDayPayoutRoute({ status: "other" });
+      } else setMultiDayPayoutRoute({ status: "other" });
+    })();
+    return () => { alive = false; };
+  }, [id, supabase, tab]);
 
   // S3 leaderboard cũ (read-only) — CHỈ khi cờ cockpitFloorActions OFF (ON dùng nguồn seats + busted mới).
   const [players, setPlayers] = useState<{ loading: boolean; error: string | null; rows: TournamentLeaderboardPlayer[] }>({ loading: false, error: null, rows: [] });
@@ -526,7 +553,11 @@ export default function OpsTournamentCockpit({ section }: { section: FloorTourna
       )}
 
       {/* S5 — Trả thưởng (thật) */}
-      {tab === "payout" && (
+      {tab === "payout" && multiDayPayoutRoute.status === "loading" && <div role="status">Checking payout route…</div>}
+      {tab === "payout" && multiDayPayoutRoute.status === "error" && <div role="alert">Cannot verify payout route: {multiDayPayoutRoute.error}</div>}
+      {tab === "payout" && multiDayPayoutRoute.status === "verified" && multiDayPayoutRoute.eventId &&
+        <MultiDayFloorEventPanel eventId={multiDayPayoutRoute.eventId} surface="payout" />}
+      {tab === "payout" && multiDayPayoutRoute.status === "other" && (
         <div className="space-y-3">
           {/* Satellite (nhập tay): giải vé trả ghế + tiền bubble (bubble nằm NGAY TRONG rows,
               vd hạng 13 → "4.500.000") — KHÔNG qua payout engine. Khi có satellite: THAY bảng

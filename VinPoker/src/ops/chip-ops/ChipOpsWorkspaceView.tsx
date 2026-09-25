@@ -31,7 +31,7 @@ export function ChipOpsWorkspaceView({
             <Coins className="h-4 w-4" /> Chip vault read surface
           </div>
           <h1 className="mt-2 text-3xl font-bold tracking-[-0.02em] text-white">Chip Ops</h1>
-          <p className="mt-1 text-sm text-[#91a49b]">{clubName} · chỉ xem chip đã phát hành</p>
+          <p className="mt-1 text-sm text-[#91a49b]">{clubName} · issued chip inventory and flight bagging</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="rounded-full border border-sky-300/20 bg-sky-300/8 px-3 py-1 text-xs font-semibold text-sky-200">READ_ONLY</span>
@@ -50,7 +50,7 @@ export function ChipOpsWorkspaceView({
 
       <div className="rounded-2xl border border-sky-300/15 bg-sky-300/8 px-4 py-3 text-sm leading-6 text-sky-100">
         <ShieldCheck className="mr-2 inline h-4 w-4" />
-        Chỉ gọi RPC cố định <code>get_issued_chip_inventory</code>. Setup stack, Color-Up, Bag &amp; Tag và Két/Audit không được mount.
+        Issued inventory below is read-only. Flight bagging uses separate server-verified roster, revision and seal RPCs when a flight is selected; it does not issue denomination chips.
       </div>
 
       <label className="block max-w-xl text-sm text-[#b9c8c0]">
