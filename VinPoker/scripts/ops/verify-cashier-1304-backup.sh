@@ -18,6 +18,11 @@ test -s "$storage_compat_sql" || {
   echo "Pinned Supabase Storage compatibility migrations are unavailable" >&2
   exit 1
 }
+cashier_acl_sql="$script_dir/cashier-1304-restore-acl.sql"
+test -s "$cashier_acl_sql" || {
+  echo "Cashier restore ACL contract is unavailable" >&2
+  exit 1
+}
 
 for required in cashier-1304-backup.tar.gz.age ciphertext.sha256 archive.sha256 metadata.txt; do
   test -f "$archive_dir/$required" || {
@@ -176,6 +181,15 @@ if ! docker exec -i "$db_container" sh -ceu \
   <"$backup_root/data.sql" >"$test_root/data.sql.log" 2>&1; then
   echo "Restore failed for data.sql" >&2
   tail -n 35 "$test_root/data.sql.log" >&2
+  exit 1
+fi
+
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -v ON_ERROR_STOP=1 \
+    -U supabase_admin -d postgres' \
+  <"$cashier_acl_sql" >"$test_root/cashier-acl.log" 2>&1; then
+  echo "Failed to restore the Cashier function ACL contract" >&2
+  tail -n 35 "$test_root/cashier-acl.log" >&2
   exit 1
 fi
 
