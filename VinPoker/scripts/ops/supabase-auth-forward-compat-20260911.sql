@@ -3,6 +3,8 @@
 -- Upstream migrations: 20260821000000, 20260821010000, 20260824000000,
 -- 20260824000001, 20260831180000, 20260911120000.
 
+SET ROLE supabase_auth_admin;
+
 CREATE TABLE IF NOT EXISTS auth.scim_users (
     id uuid NOT NULL,
     sso_provider_id uuid NOT NULL REFERENCES auth.sso_providers (id) ON DELETE CASCADE,
@@ -88,3 +90,5 @@ DO $$ BEGIN
             ON auth.one_time_tokens USING btree (link_token_hash);
     END;
 END $$;
+
+RESET ROLE;
