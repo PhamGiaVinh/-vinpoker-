@@ -31,6 +31,7 @@ on:
       - "VinPoker/supabase/pending-tests/multiday_payout_postfinal_race_v1.sh"
       - "VinPoker/supabase/pending-tests/multiday_floor_read_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_distinct_itm_day2_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_distinct_itm_day2_golden_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_payout_transfer_tie_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_payout_finalize_race_v1.sh"
       - "VinPoker/supabase/pending-tests/multiday_overlay_bank_race_v1.sh"
@@ -129,7 +130,8 @@ jobs:
             -f supabase/pending-tests/multiday_floor_read_v1.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/pending-migrations/20270120000010_multiday_distinct_itm_day2_v1.sql \
-            -f supabase/pending-tests/multiday_distinct_itm_day2_v1.sql
+            -f supabase/pending-tests/multiday_distinct_itm_day2_v1.sql \
+            -f supabase/pending-tests/multiday_distinct_itm_day2_golden_v1.sql
       - name: Assert atomic payout finalize and source writer race
         working-directory: VinPoker
         run: bash supabase/pending-tests/multiday_payout_finalize_race_v1.sh
