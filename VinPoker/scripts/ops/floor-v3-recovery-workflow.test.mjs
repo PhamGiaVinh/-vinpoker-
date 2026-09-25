@@ -31,6 +31,8 @@ test("Floor recovery workflow is manual, owner-bound, protected, and backup-only
   assert.match(workflow, /retention-days: 30/);
   assert.match(workflow, /Upload encrypted ciphertext only/);
   assert.match(workflow, /Download persisted ciphertext from the completed backup job/);
+  assert.match(workflow, /\.event == "workflow_dispatch" and \.head_branch == "main"/);
+  assert.match(workflow, /\(\.id \| tostring\) != env\.GITHUB_RUN_ID/);
 });
 
 test("database archive and row-count receipt share one exported MVCC snapshot", () => {
