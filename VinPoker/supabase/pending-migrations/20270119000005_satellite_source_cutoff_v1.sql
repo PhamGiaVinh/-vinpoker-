@@ -101,7 +101,7 @@ BEGIN
        OR (NEW.status IS DISTINCT FROM OLD.status
            AND NOT (OLD.status IN ('pending','confirmed') AND NEW.status='cancelled'
                     AND NOT EXISTS (SELECT 1 FROM public.satellite_award_plans p
-                                    WHERE p.source_tournament_id=OLD.tournament_id))))) THEN
+                                    WHERE p.source_tournament_id=OLD.tournament_id)))) THEN
     RAISE EXCEPTION 'satellite_registration_cutoff_frozen' USING ERRCODE='23514';
   END IF;
   RETURN NEW;
