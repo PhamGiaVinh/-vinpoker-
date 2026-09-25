@@ -23,10 +23,73 @@ BEFORE UPDATE OF chip_count ON public.tournament_seats
 FOR EACH ROW EXECUTE FUNCTION public.deferred_test_fail_after_terminal();
 
 SELECT public.floor_table_v3_assert(
-  has_function_privilege('authenticated', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE')
+  NOT has_function_privilege('authenticated', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE')
   AND NOT has_function_privilege('anon', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE')
   AND NOT has_table_privilege('authenticated', 'public.floor_pending_tracker_moves', 'INSERT'),
-  'deferred move queue is caller-bound and has no direct table write');
+  'deferred move queue is closed before the release gate');
+SET ROLE authenticated;
+DO $$ BEGIN
+  BEGIN
+    PERFORM public.floor_queue_tracker_move_v1(NULL,NULL,NULL,NULL,NULL,NULL);
+    RAISE EXCEPTION 'queue writer unexpectedly callable before release';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END $$;
+RESET ROLE;
+GRANT EXECUTE ON FUNCTION public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)
+  TO authenticated;
+SELECT public.floor_table_v3_assert(
+  has_function_privilege('authenticated', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE'),
+  'release grant makes queue writer caller-bound');
+
+-- A pending reservation on an otherwise hand-free 9-max destination must
+-- reduce the same capacity set used by break-table destination selection.
+DO $$
+DECLARE
+  v_source public.tournament_tables%ROWTYPE;
+  v_destination public.tournament_tables%ROWTYPE;
+  v_source_seat public.tournament_seats%ROWTYPE;
+BEGIN
+  SELECT * INTO v_source FROM public.tournament_tables
+  WHERE game_table_id = '00000000-0000-0000-0000-000000000533' AND status = 'active';
+  SELECT * INTO v_destination FROM public.tournament_tables
+  WHERE game_table_id = '00000000-0000-0000-0000-000000000535' AND status = 'active';
+  SELECT * INTO v_source_seat FROM public.tournament_seats
+  WHERE tournament_table_id = v_source.id AND seat_number = 8 AND is_active;
+  INSERT INTO public.floor_pending_tracker_moves (
+    tournament_id, entry_id, source_seat_id, source_tournament_table_id,
+    source_table_session_id, destination_tournament_table_id,
+    destination_table_session_id, destination_seat_number,
+    source_control_epoch, destination_control_epoch, requested_by, request_id
+  ) SELECT '00000000-0000-0000-0000-000000000131', v_source_seat.entry_id,
+           v_source_seat.id, v_source.id, v_source.table_session_id,
+           v_destination.id, v_destination.table_session_id, 1,
+           source_session.control_epoch, destination_session.control_epoch,
+           '00000000-0000-0000-0000-000000000001',
+           '00000000-0000-0000-0000-000000001186'
+    FROM public.table_sessions source_session,
+         public.table_sessions destination_session
+    WHERE source_session.id = v_source.table_session_id
+      AND destination_session.id = v_destination.table_session_id;
+  PERFORM public.floor_table_v3_assert(
+    (SELECT pg_catalog.count(*) = 8
+     FROM floor_private.floor_break_eligible_seats_v1(
+       '00000000-0000-0000-0000-000000000131', v_source.id))
+    AND NOT EXISTS (
+      SELECT 1 FROM floor_private.floor_break_eligible_seats_v1(
+        '00000000-0000-0000-0000-000000000131', v_source.id) eligible
+      WHERE eligible.tournament_table_id = v_destination.id AND eligible.seat_number = 1),
+    'reserved destination seat is absent from break capacity and selection');
+  UPDATE public.floor_pending_tracker_moves
+  SET status = 'cancelled', resolved_at = pg_catalog.now()
+  WHERE request_id = '00000000-0000-0000-0000-000000001186';
+  PERFORM public.floor_table_v3_assert(
+    (SELECT pg_catalog.count(*) = 9
+     FROM floor_private.floor_break_eligible_seats_v1(
+       '00000000-0000-0000-0000-000000000131', v_source.id)),
+    'cancelled reservation releases exactly one destination seat');
+END;
+$$;
 SELECT public.floor_table_v3_assert(
   has_function_privilege('authenticated', 'public.get_tracker_hand_input_tables_v3(uuid)', 'EXECUTE')
   AND has_function_privilege('authenticated',

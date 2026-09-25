@@ -3,60 +3,6 @@
 -- The source hand remains protected; destination hands are not interrupted.
 -- Only eligible hand-free destination tables contribute to capacity and seats.
 
--- The queue is introduced by 00008. Before it exists there cannot be a
--- pending reservation; 00008 replaces this private view with the real queue.
-CREATE OR REPLACE VIEW floor_private.floor_break_pending_reservations_v1 AS
-SELECT NULL::uuid AS table_session_id, NULL::integer AS seat_number
-WHERE false;
-REVOKE ALL ON floor_private.floor_break_pending_reservations_v1 FROM PUBLIC, anon, authenticated;
-
-CREATE OR REPLACE FUNCTION floor_private.floor_break_eligible_seats_v1(
-  p_tournament_id uuid, p_source_table_id uuid
-)
-RETURNS TABLE (
-  tournament_table_id uuid, table_session_id uuid,
-  seat_number integer, table_number integer, occupied_count bigint
-)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
-  SELECT target.id, target_session.id, candidate.seat_number,
-         target.table_number,
-         (SELECT pg_catalog.count(*)
-          FROM public.tournament_seats occupied_count
-          WHERE occupied_count.tournament_table_id = target.id
-            AND occupied_count.table_session_id = target_session.id
-            AND occupied_count.is_active)
-  FROM public.tournament_tables target
-  JOIN public.table_sessions target_session ON target_session.id = target.table_session_id
-  CROSS JOIN LATERAL pg_catalog.generate_series(1, target.max_seats) candidate(seat_number)
-  WHERE target.tournament_id = p_tournament_id
-    AND target.status = 'active'
-    AND target.id <> p_source_table_id
-    AND target.max_seats IN (8, 9)
-    AND target_session.closed_at IS NULL
-    AND NOT floor_private.floor_table_v3_has_active_hand(
-      p_tournament_id, target.id, target_session.id)
-    AND NOT EXISTS (
-      SELECT 1 FROM public.tournament_seats occupied_seat
-      WHERE occupied_seat.tournament_table_id = target.id
-        AND occupied_seat.table_session_id = target_session.id
-        AND occupied_seat.seat_number = candidate.seat_number
-        AND occupied_seat.is_active
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM public.table_session_seat_locks locked_seat
-      WHERE locked_seat.table_session_id = target_session.id
-        AND locked_seat.seat_number = candidate.seat_number
-        AND locked_seat.unlocked_at IS NULL
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM floor_private.floor_break_pending_reservations_v1 pending
-      WHERE pending.table_session_id = target_session.id
-        AND pending.seat_number = candidate.seat_number
-    );
-$$;
-REVOKE ALL ON FUNCTION floor_private.floor_break_eligible_seats_v1(uuid,uuid)
-  FROM PUBLIC, anon, authenticated, service_role;
-
 CREATE OR REPLACE FUNCTION public.floor_break_table_v3(
   p_tournament_table_id uuid,
   p_expected_revision bigint,
@@ -186,8 +132,25 @@ BEGIN
     AND seat_row.tournament_table_id = v_source_table.id
     AND seat_row.table_session_id = v_source_session.id
     AND seat_row.is_active;
-  SELECT pg_catalog.count(*)::integer INTO v_capacity
-  FROM floor_private.floor_break_eligible_seats_v1(v_tournament.id, v_source_table.id);
+  SELECT COALESCE(pg_catalog.sum(9 - occupied.count_active), 0)::integer
+  INTO v_capacity
+  FROM (
+    SELECT
+      target.id,
+      pg_catalog.count(active_seat.id)::integer AS count_active
+    FROM public.tournament_tables target
+    JOIN public.table_sessions target_session ON target_session.id = target.table_session_id
+    LEFT JOIN public.tournament_seats active_seat
+      ON active_seat.tournament_table_id = target.id
+      AND active_seat.table_session_id = target_session.id
+      AND active_seat.is_active
+    WHERE target.tournament_id = v_tournament.id
+      AND target.status = 'active'
+      AND target.id <> v_source_table.id
+      AND target_session.closed_at IS NULL
+      AND NOT floor_private.floor_table_v3_has_active_hand(v_tournament.id, target.id, target_session.id)
+    GROUP BY target.id
+  ) occupied;
   IF v_capacity < v_need THEN
     RETURN pg_catalog.jsonb_build_object(
       'ok', false, 'error', 'insufficient_capacity', 'need', v_need, 'have', v_capacity
@@ -203,15 +166,36 @@ BEGIN
     ORDER BY seat_row.seat_number, seat_row.id
     FOR UPDATE
   LOOP
-    SELECT eligible.tournament_table_id, eligible.table_session_id, eligible.seat_number
+    SELECT target.id, target.table_session_id, candidate.seat_number
     INTO v_destination_table_id, v_destination_session_id, v_destination_seat_number
-    FROM floor_private.floor_break_eligible_seats_v1(v_tournament.id, v_source_table.id) eligible
+    FROM public.tournament_tables target
+    JOIN public.table_sessions target_session ON target_session.id = target.table_session_id
+    CROSS JOIN LATERAL pg_catalog.generate_series(1, 9) candidate(seat_number)
+    WHERE target.tournament_id = v_tournament.id
+      AND target.status = 'active'
+      AND target.id <> v_source_table.id
+      AND target_session.closed_at IS NULL
+      AND NOT floor_private.floor_table_v3_has_active_hand(v_tournament.id, target.id, target_session.id)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.tournament_seats occupied_seat
+        WHERE occupied_seat.tournament_table_id = target.id
+          AND occupied_seat.table_session_id = target_session.id
+          AND occupied_seat.seat_number = candidate.seat_number
+          AND occupied_seat.is_active
+      )
     ORDER BY
-      CASE WHEN p_draw_mode = 'fill_lowest_table' THEN eligible.table_number END ASC NULLS LAST,
-      eligible.occupied_count ASC,
+      CASE WHEN p_draw_mode = 'fill_lowest_table' THEN target.table_number END ASC NULLS LAST,
+      (
+        SELECT pg_catalog.count(*)
+        FROM public.tournament_seats occupied_count
+        WHERE occupied_count.tournament_table_id = target.id
+          AND occupied_count.table_session_id = target_session.id
+          AND occupied_count.is_active
+      ) ASC,
       CASE WHEN p_draw_mode = 'redraw_balanced' THEN pg_catalog.random() END,
-      eligible.tournament_table_id,
-      eligible.seat_number
+      target.id,
+      candidate.seat_number
     LIMIT 1;
     IF NOT FOUND THEN
       RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'break_capacity_changed';

@@ -1,6 +1,6 @@
 -- Floor: reserve a Tracker seat while its current hand finishes, then move the
 -- entry in the same transaction as the hand's terminal update. Source-only RED.
--- Depends on 20270115000006 and 20270115000007.
+-- Depends on 20270115000005 and 20270115000006.
 -- Rollback (owner-gated): revoke the three public RPCs, disable the two new
 -- triggers, and keep queued/applied rows as audit history. Never delete moves.
 BEGIN;
@@ -38,13 +38,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_floor_pending_tracker_moves_entry
 CREATE UNIQUE INDEX IF NOT EXISTS uq_floor_pending_tracker_moves_destination
   ON public.floor_pending_tracker_moves (destination_table_session_id, destination_seat_number)
   WHERE status = 'pending';
-
-CREATE OR REPLACE VIEW floor_private.floor_break_pending_reservations_v1 AS
-SELECT destination_table_session_id AS table_session_id,
-       destination_seat_number AS seat_number
-FROM public.floor_pending_tracker_moves
-WHERE status = 'pending';
-REVOKE ALL ON floor_private.floor_break_pending_reservations_v1 FROM PUBLIC, anon, authenticated;
 CREATE INDEX IF NOT EXISTS idx_floor_pending_tracker_moves_tournament
   ON public.floor_pending_tracker_moves (tournament_id, requested_at DESC)
   WHERE status = 'pending';
@@ -290,8 +283,8 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)
   FROM PUBLIC, anon, authenticated, service_role;
--- Release gate: the queue writer remains uncallable after DB apply. The
--- operations bundle must explicitly grant EXECUTE in a reviewed later step.
+GRANT EXECUTE ON FUNCTION public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)
+  TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.get_floor_pending_tracker_moves_v1(p_tournament_id uuid)
 RETURNS TABLE(

@@ -92,21 +92,21 @@
     {
       "version": "20270115000007",
       "filename": "20270115000007_floor_break_eligible_destinations.sql",
-      "sha256": "37df6b13ea22be8a89eb3aa7325d89de99aa995979d06bbe1e7eb191dff6fd20",
+      "sha256": "68938dc71f5b947849bba59e253a41ccb9c04a3548934090037b5153fd2eab87",
       "dependencies": ["20270115000006"],
       "runtimeEdgeDependency": false
     },
     {
       "version": "20270115000008",
       "filename": "20270115000008_floor_deferred_tracker_move_v1.sql",
-      "sha256": "fccc96282f672546346028efd1fbd2b9947f9f851a7411f700e0d98b860fbcb3",
+      "sha256": "44f8267583dc1e28c66f76b2df81576edba148737b134ac246e180e421280472",
       "dependencies": ["20270115000007"],
       "runtimeEdgeDependency": false
     },
     {
       "version": "20270115000009",
       "filename": "20270115000009_tracker_record_hand_v3_identity.sql",
-      "sha256": "03adbf0edf53f87b7737d3c525027a8947e2a74c375c83c10b823463beba0126",
+      "sha256": "d6843f4c79bfa5f16d1228e044ca35b756999ff9f2ca02c132e5a9d4417e132c",
       "dependencies": ["20270115000008"],
       "runtimeEdgeDependency": false
     },
@@ -119,6 +119,96 @@
     }
   ],
   "heldSources": [
+    {
+      "originalVersion": "20270115000005",
+      "filename": "20270115000005_floor_roster_actions_repair.sql",
+      "originalPath": "supabase/migrations/20270115000005_floor_roster_actions_repair.sql",
+      "archivePath": "supabase/migration-archive/never-apply/20270115000005_floor_roster_actions_repair.sql",
+      "sha256": "19b59e7aeab6b6ae6202fffc572f2bb729c29ec1407fe96d7a1669baef940c6c",
+      "domain": "floor-v3",
+      "lineageEvidence": {
+        "exactLedgerVersion": null,
+        "aliasLedgerVersion": null,
+        "schemaEffects": "NOT_APPLIED",
+        "provenance": "NEVER_APPLIED"
+      },
+      "reason": "version collision with applied operational alerts migration; preserved original source, reissued in ordered Floor series",
+      "classification": "VERSION_COLLISION_REISSUED",
+      "replacementStatus": "REISSUED_AS_20270115000006",
+      "restoreCondition": "never replay this filename; apply only the reissued migration after owner gate"
+    },
+    {
+      "originalVersion": "20270115000006",
+      "filename": "20270115000006_floor_break_eligible_destinations.sql",
+      "originalPath": "supabase/migrations/20270115000006_floor_break_eligible_destinations.sql",
+      "archivePath": "supabase/migration-archive/never-apply/20270115000006_floor_break_eligible_destinations.sql",
+      "sha256": "37df6b13ea22be8a89eb3aa7325d89de99aa995979d06bbe1e7eb191dff6fd20",
+      "domain": "floor-v3",
+      "lineageEvidence": {
+        "exactLedgerVersion": null,
+        "aliasLedgerVersion": null,
+        "schemaEffects": "NOT_APPLIED",
+        "provenance": "NEVER_APPLIED"
+      },
+      "reason": "version collision with applied operational alerts migration; preserved original source, reissued in ordered Floor series",
+      "classification": "VERSION_COLLISION_REISSUED",
+      "replacementStatus": "REISSUED_AS_20270115000007",
+      "restoreCondition": "never replay this filename; apply only the reissued migration after owner gate"
+    },
+    {
+      "originalVersion": "20270115000007",
+      "filename": "20270115000007_floor_deferred_tracker_move_v1.sql",
+      "originalPath": "supabase/migrations/20270115000007_floor_deferred_tracker_move_v1.sql",
+      "archivePath": "supabase/migration-archive/never-apply/20270115000007_floor_deferred_tracker_move_v1.sql",
+      "sha256": "c31d096ab2db3825a5e2f540bd98aca65a7335a2278871c9f130103eaef124be",
+      "domain": "floor-v3",
+      "lineageEvidence": {
+        "exactLedgerVersion": null,
+        "aliasLedgerVersion": null,
+        "schemaEffects": "NOT_APPLIED",
+        "provenance": "NEVER_APPLIED"
+      },
+      "reason": "version collision with applied operational alerts migration; preserved original source, reissued in ordered Floor series",
+      "classification": "VERSION_COLLISION_REISSUED",
+      "replacementStatus": "REISSUED_AS_20270115000008",
+      "restoreCondition": "never replay this filename; apply only the reissued migration after owner gate"
+    },
+    {
+      "originalVersion": "20270115000008",
+      "filename": "20270115000008_tracker_record_hand_v3_identity.sql",
+      "originalPath": "supabase/migrations/20270115000008_tracker_record_hand_v3_identity.sql",
+      "archivePath": "supabase/migration-archive/never-apply/20270115000008_tracker_record_hand_v3_identity.sql",
+      "sha256": "03adbf0edf53f87b7737d3c525027a8947e2a74c375c83c10b823463beba0126",
+      "domain": "floor-v3",
+      "lineageEvidence": {
+        "exactLedgerVersion": null,
+        "aliasLedgerVersion": null,
+        "schemaEffects": "NOT_APPLIED",
+        "provenance": "NEVER_APPLIED"
+      },
+      "reason": "version collision with applied operational alerts migration; preserved original source, reissued in ordered Floor series",
+      "classification": "VERSION_COLLISION_REISSUED",
+      "replacementStatus": "REISSUED_AS_20270115000009",
+      "restoreCondition": "never replay this filename; apply only the reissued migration after owner gate"
+    },
+    {
+      "originalVersion": "20270115000009",
+      "filename": "20270115000009_tracker_v3_hand_start_context.sql",
+      "originalPath": "supabase/migrations/20270115000009_tracker_v3_hand_start_context.sql",
+      "archivePath": "supabase/migration-archive/never-apply/20270115000009_tracker_v3_hand_start_context.sql",
+      "sha256": "8e2bc0fa9b1363a6f19897fdc607e1264687a63077869cd5b7e99a9184848e09",
+      "domain": "floor-v3",
+      "lineageEvidence": {
+        "exactLedgerVersion": null,
+        "aliasLedgerVersion": null,
+        "schemaEffects": "NOT_APPLIED",
+        "provenance": "NEVER_APPLIED"
+      },
+      "reason": "version collision with applied operational alerts migration; preserved original source, reissued in ordered Floor series",
+      "classification": "VERSION_COLLISION_REISSUED",
+      "replacementStatus": "REISSUED_AS_20270115000010",
+      "restoreCondition": "never replay this filename; apply only the reissued migration after owner gate"
+    },
     {
       "originalVersion": "20270113000000",
       "filename": "20270113000000_dealer_payroll_statement_pdf_storage.sql",

@@ -583,3 +583,4 @@ GRANT EXECUTE ON FUNCTION public.record_hand(
 ) TO authenticated, postgres;
 
 COMMIT;
+

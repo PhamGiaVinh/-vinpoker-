@@ -1734,6 +1734,101 @@
   ],
   "historicalSources": [
     {
+      "version": "20270115000005",
+      "filename": "20270115000005_floor_roster_actions_repair.sql",
+      "classification": "VERSION_COLLISION_REISSUED",
+      "sourceOnly": true,
+      "superseded": true,
+      "unapplied": true,
+      "hasData": false,
+      "aliasVersions": [],
+      "reason": "original Floor source never applied; version collision with operational alerts; reissued as 20270115000006",
+      "sourceOnlyEvidence": true,
+      "supersededEvidence": true,
+      "bucket": "never-apply",
+      "archivePath": "supabase/migration-archive/never-apply/20270115000005_floor_roster_actions_repair.sql",
+      "sha256": "19b59e7aeab6b6ae6202fffc572f2bb729c29ec1407fe96d7a1669baef940c6c",
+      "ledgerVersionPresent": true,
+      "originalPath": "supabase/migrations/20270115000005_floor_roster_actions_repair.sql",
+      "lineageEvidence": "Floor source was never applied; live 20270115000005 ledger row belongs to tracker_dealer_floor_operational_alerts"
+    },
+    {
+      "version": "20270115000006",
+      "filename": "20270115000006_floor_break_eligible_destinations.sql",
+      "classification": "VERSION_COLLISION_REISSUED",
+      "sourceOnly": true,
+      "superseded": true,
+      "unapplied": true,
+      "hasData": false,
+      "aliasVersions": [],
+      "reason": "original Floor source never applied; version collision with operational alerts; reissued as 20270115000007",
+      "sourceOnlyEvidence": true,
+      "supersededEvidence": true,
+      "bucket": "never-apply",
+      "archivePath": "supabase/migration-archive/never-apply/20270115000006_floor_break_eligible_destinations.sql",
+      "sha256": "37df6b13ea22be8a89eb3aa7325d89de99aa995979d06bbe1e7eb191dff6fd20",
+      "ledgerVersionPresent": false,
+      "originalPath": "supabase/migrations/20270115000006_floor_break_eligible_destinations.sql",
+      "lineageEvidence": "Floor source was never applied; live 20270115000005 ledger row belongs to tracker_dealer_floor_operational_alerts"
+    },
+    {
+      "version": "20270115000007",
+      "filename": "20270115000007_floor_deferred_tracker_move_v1.sql",
+      "classification": "VERSION_COLLISION_REISSUED",
+      "sourceOnly": true,
+      "superseded": true,
+      "unapplied": true,
+      "hasData": false,
+      "aliasVersions": [],
+      "reason": "original Floor source never applied; version collision with operational alerts; reissued as 20270115000008",
+      "sourceOnlyEvidence": true,
+      "supersededEvidence": true,
+      "bucket": "never-apply",
+      "archivePath": "supabase/migration-archive/never-apply/20270115000007_floor_deferred_tracker_move_v1.sql",
+      "sha256": "c31d096ab2db3825a5e2f540bd98aca65a7335a2278871c9f130103eaef124be",
+      "ledgerVersionPresent": false,
+      "originalPath": "supabase/migrations/20270115000007_floor_deferred_tracker_move_v1.sql",
+      "lineageEvidence": "Floor source was never applied; live 20270115000005 ledger row belongs to tracker_dealer_floor_operational_alerts"
+    },
+    {
+      "version": "20270115000008",
+      "filename": "20270115000008_tracker_record_hand_v3_identity.sql",
+      "classification": "VERSION_COLLISION_REISSUED",
+      "sourceOnly": true,
+      "superseded": true,
+      "unapplied": true,
+      "hasData": false,
+      "aliasVersions": [],
+      "reason": "original Floor source never applied; version collision with operational alerts; reissued as 20270115000009",
+      "sourceOnlyEvidence": true,
+      "supersededEvidence": true,
+      "bucket": "never-apply",
+      "archivePath": "supabase/migration-archive/never-apply/20270115000008_tracker_record_hand_v3_identity.sql",
+      "sha256": "03adbf0edf53f87b7737d3c525027a8947e2a74c375c83c10b823463beba0126",
+      "ledgerVersionPresent": false,
+      "originalPath": "supabase/migrations/20270115000008_tracker_record_hand_v3_identity.sql",
+      "lineageEvidence": "Floor source was never applied; live 20270115000005 ledger row belongs to tracker_dealer_floor_operational_alerts"
+    },
+    {
+      "version": "20270115000009",
+      "filename": "20270115000009_tracker_v3_hand_start_context.sql",
+      "classification": "VERSION_COLLISION_REISSUED",
+      "sourceOnly": true,
+      "superseded": true,
+      "unapplied": true,
+      "hasData": false,
+      "aliasVersions": [],
+      "reason": "original Floor source never applied; version collision with operational alerts; reissued as 20270115000010",
+      "sourceOnlyEvidence": true,
+      "supersededEvidence": true,
+      "bucket": "never-apply",
+      "archivePath": "supabase/migration-archive/never-apply/20270115000009_tracker_v3_hand_start_context.sql",
+      "sha256": "8e2bc0fa9b1363a6f19897fdc607e1264687a63077869cd5b7e99a9184848e09",
+      "ledgerVersionPresent": false,
+      "originalPath": "supabase/migrations/20270115000009_tracker_v3_hand_start_context.sql",
+      "lineageEvidence": "Floor source was never applied; live 20270115000005 ledger row belongs to tracker_dealer_floor_operational_alerts"
+    },
+    {
       "version": "20260605000001",
       "filename": "20260605000001_idx_assignments_due_swing.sql",
       "classification": "E",
@@ -6797,17 +6892,17 @@
     {
       "version": "20270115000007",
       "filename": "20270115000007_floor_break_eligible_destinations.sql",
-      "sha256": "37df6b13ea22be8a89eb3aa7325d89de99aa995979d06bbe1e7eb191dff6fd20"
+      "sha256": "68938dc71f5b947849bba59e253a41ccb9c04a3548934090037b5153fd2eab87"
     },
     {
       "version": "20270115000008",
       "filename": "20270115000008_floor_deferred_tracker_move_v1.sql",
-      "sha256": "fccc96282f672546346028efd1fbd2b9947f9f851a7411f700e0d98b860fbcb3"
+      "sha256": "44f8267583dc1e28c66f76b2df81576edba148737b134ac246e180e421280472"
     },
     {
       "version": "20270115000009",
       "filename": "20270115000009_tracker_record_hand_v3_identity.sql",
-      "sha256": "03adbf0edf53f87b7737d3c525027a8947e2a74c375c83c10b823463beba0126"
+      "sha256": "d6843f4c79bfa5f16d1228e044ca35b756999ff9f2ca02c132e5a9d4417e132c"
     },
     {
       "version": "20270115000010",
@@ -6816,7 +6911,7 @@
     }
   ],
   "counts": {
-    "historicalSources": 260,
+    "historicalSources": 265,
     "remoteEquivalent": 9,
     "superseded": 31,
     "neverReplay": 221,

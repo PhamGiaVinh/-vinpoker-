@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const sql = readFileSync(resolve(process.cwd(), "supabase/migrations/20270115000008_floor_deferred_tracker_move_v1.sql"), "utf8");
+const sql = readFileSync(resolve(process.cwd(), "supabase/migrations/20270115000008_floor_deferred_tracker_move_v1.sql"), "utf8").replace(/\r\n/g, "\n");
 const handWriterSql = readFileSync(resolve(process.cwd(), "supabase/migrations/20270115000009_tracker_record_hand_v3_identity.sql"), "utf8");
 const handStartSql = readFileSync(resolve(process.cwd(), "supabase/migrations/20270115000010_tracker_v3_hand_start_context.sql"), "utf8");
 const trackerHook = readFileSync(resolve(process.cwd(), "src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts"), "utf8");
@@ -25,6 +25,8 @@ describe("deferred Floor move into active Tracker table", () => {
     expect(sql).toContain("SET table_id = v_destination.game_table_id, seat_id = v_new_seat_id");
     expect(sql).toContain("v_destination.id,\n        v_destination.id, v_destination_session.id");
     expect(sql).toContain("REVOKE ALL ON TABLE public.floor_pending_tracker_moves FROM PUBLIC, anon, authenticated, service_role");
+    expect(sql).toContain("CREATE OR REPLACE VIEW floor_private.floor_break_pending_reservations_v1");
+    expect(sql).not.toContain("GRANT EXECUTE ON FUNCTION public.floor_queue_tracker_move_v1");
   });
 
   it("finishes V3 hands from explicit session and seat identity without legacy writes", () => {
