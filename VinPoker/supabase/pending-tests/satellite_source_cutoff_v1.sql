@@ -106,6 +106,16 @@ DO $$ BEGIN
   EXCEPTION WHEN check_violation THEN
     IF SQLERRM NOT LIKE '%satellite_registration_cutoff_frozen%' THEN RAISE; END IF;
   END;
+  BEGIN
+    INSERT INTO public.tournament_entries
+      (tournament_id,registration_id,player_id,entry_no,source,status)
+    VALUES ('d3000000-0000-4000-8000-000000000001',
+            'd4000000-0000-4000-8000-000000000004',
+            'd1000000-0000-4000-8000-000000000105',1,'online','registered');
+    RAISE EXCEPTION 'Paid waiting attempt gained entry after cutoff';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM NOT LIKE '%satellite_entry_cutoff_frozen%' THEN RAISE; END IF;
+  END;
 END $$;
 DO $$ DECLARE before_hash text; after_hash text; p jsonb; BEGIN
   p := public.satellite_source_funding_preview_v2(
