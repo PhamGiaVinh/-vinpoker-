@@ -10,6 +10,8 @@ on:
       - "VinPoker/supabase/migrations/20270114000007_floor_v3_roster_seat_display_name.sql"
       - "VinPoker/supabase/migrations/20270114000011_floor_redraw_seat_lock_v1.sql"
       - "VinPoker/supabase/migrations/20270114000012_floor_v3_numbered_available_table.sql"
+      - "VinPoker/supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270126000001_redraw_clock_hold_v1.sql"
       - "VinPoker/supabase/migration-archive/remote-history/recovered-source/20270115000004_floor_free_sit_v1.sql"
       - "VinPoker/supabase/migrations/20270115000006_floor_roster_actions_repair.sql"
       - "VinPoker/supabase/migrations/20270115000007_floor_break_eligible_destinations.sql"
@@ -31,6 +33,9 @@ on:
       - "VinPoker/src/hooks/useTournamentRedrawTv.ts"
       - "VinPoker/tests/floorTableControlV3/**"
       - "VinPoker/tests/floorRedrawSeatLockV1/**"
+      - "VinPoker/tests/redrawClockHoldV1/**"
+      - "VinPoker/tests/floorTableControlV3/disposableDb.serverContract.sql"
+      - "VinPoker/tests/floorTableControlV3/vitest.serverContract.config.ts"
       - ".github/workflows/floor-table-control-v3-contract-disposable-db.yml"
   push:
     branches:

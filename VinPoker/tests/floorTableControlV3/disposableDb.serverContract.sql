@@ -288,7 +288,47 @@ SELECT public.floor_table_v3_assert(
 \ir ../../supabase/migrations/20270114000006_tracker_roster_canonical_entry_link.sql
 \ir ../../supabase/migrations/20270114000007_floor_v3_roster_seat_display_name.sql
 \ir ../../supabase/migrations/20270114000011_floor_redraw_seat_lock_v1.sql
+\ir ../../supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql
+-- The compact disposable schema predates the production blind-clock migration.
+ALTER TABLE public.tournaments
+  ADD COLUMN clock_started_at timestamptz,
+  ADD COLUMN clock_paused_at timestamptz,
+  ADD COLUMN pause_accumulated integer DEFAULT 0,
+  ADD COLUMN current_level integer,
+  ADD COLUMN current_blinds text,
+  ADD COLUMN current_level_id uuid;
+\ir ../../supabase/pending-migrations/20270126000001_redraw_clock_hold_v1.sql
 \ir ../../supabase/migrations/20270114000012_floor_v3_numbered_available_table.sql
+
+DO $$
+DECLARE
+  v_message text;
+BEGIN
+  IF (SELECT enabled FROM public.centerpoint_tournament_ops_release WHERE id)
+       IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'redraw package gate must default OFF';
+  END IF;
+
+  BEGIN
+    INSERT INTO public.tournament_redraw_batches (tournament_id)
+    VALUES ('00000000-0000-0000-0000-000000000100');
+    RAISE EXCEPTION 'redraw mutation unexpectedly passed while package gate was closed';
+  EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    GET STACKED DIAGNOSTICS v_message = MESSAGE_TEXT;
+    IF v_message <> 'CENTERPOINT_TOURNAMENT_OPS_RELEASE_CLOSED' THEN
+      RAISE;
+    END IF;
+  END;
+
+  IF EXISTS (
+    SELECT 1 FROM public.table_sessions
+    WHERE tournament_id = '00000000-0000-0000-0000-000000000100'
+      AND redraw_hold_batch_id IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'closed gate created a redraw hold';
+  END IF;
+END;
+$$;
 
 DO $$
 DECLARE
