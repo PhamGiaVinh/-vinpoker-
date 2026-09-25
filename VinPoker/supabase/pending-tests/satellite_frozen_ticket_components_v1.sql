@@ -71,7 +71,7 @@ DO $$ BEGIN
     UPDATE public.tournaments SET buy_in=6100000,rake_amount=400000
       WHERE id='f3000000-0000-4000-8000-000000000002';
     RAISE EXCEPTION 'Target price components changed after lock';
-  EXCEPTION WHEN raise_exception THEN
+  EXCEPTION WHEN OTHERS THEN
     IF SQLERRM NOT LIKE '%satellite_locked_economics_immutable%' THEN RAISE; END IF;
   END;
   PERFORM pg_temp.sat_component_assert(
@@ -89,14 +89,14 @@ DO $$ BEGIN
     UPDATE public.satellite_award_plans SET target_fee_vnd=700000
       WHERE source_tournament_id='f3000000-0000-4000-8000-000000000001';
     RAISE EXCEPTION 'Plan components changed';
-  EXCEPTION WHEN raise_exception THEN
+  EXCEPTION WHEN OTHERS THEN
     IF SQLERRM NOT LIKE '%satellite_frozen_target_components_immutable%' THEN RAISE; END IF;
   END;
   BEGIN
     UPDATE public.satellite_tickets SET target_buy_in_vnd=5900000
       WHERE source_tournament_id='f3000000-0000-4000-8000-000000000001';
     RAISE EXCEPTION 'Ticket components changed';
-  EXCEPTION WHEN raise_exception THEN
+  EXCEPTION WHEN OTHERS THEN
     IF SQLERRM NOT LIKE '%satellite_frozen_target_components_immutable%' THEN RAISE; END IF;
   END;
 END $$;
@@ -136,7 +136,7 @@ DO $$ BEGIN
             'f2000000-0000-4000-8000-000000000001',1,1,
             'f1000000-0000-4000-8000-000000000001',6600000);
     RAISE EXCEPTION 'Unknown historical split issued a ticket';
-  EXCEPTION WHEN raise_exception THEN
+  EXCEPTION WHEN OTHERS THEN
     IF SQLERRM NOT LIKE '%satellite_ticket_frozen_components_required%' THEN RAISE; END IF;
   END;
 END $$;
@@ -164,7 +164,7 @@ DO $$ BEGIN
             '[{"position":1,"ticketCount":1,"cashVnd":"0"}]',1,0,6600000,
             'f1000000-0000-4000-8000-000000000001');
     RAISE EXCEPTION 'Fractional components were rounded into a plan';
-  EXCEPTION WHEN raise_exception THEN
+  EXCEPTION WHEN OTHERS THEN
     IF SQLERRM NOT LIKE '%satellite_target_component_price_mismatch%' THEN RAISE; END IF;
   END;
   PERFORM pg_temp.sat_component_assert(NOT EXISTS (
@@ -189,7 +189,7 @@ DO $$ BEGIN
             '[{"position":1,"ticketCount":1,"cashVnd":"0"}]',1,0,6600000,
             'f1000000-0000-4000-8000-000000000001');
     RAISE EXCEPTION 'Normal Lock write unexpectedly opened';
-  EXCEPTION WHEN raise_exception THEN
+  EXCEPTION WHEN OTHERS THEN
     IF SQLERRM NOT LIKE '%CENTERPOINT_TOURNAMENT_OPS_RELEASE_CLOSED%' THEN RAISE; END IF;
   END;
 END $$;
