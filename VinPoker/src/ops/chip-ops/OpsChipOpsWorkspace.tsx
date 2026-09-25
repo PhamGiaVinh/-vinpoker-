@@ -5,8 +5,10 @@ import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
 import {
   loadChipOpsTournamentOptions,
   loadIssuedChipInventory,
+  loadIssuedStackSummary,
   type ChipOpsTournamentOption,
   type IssuedChipInventory,
+  type IssuedStackSummary,
 } from "@/ops/chip-ops/chipOpsReadAdapter";
 import { ChipOpsWorkspaceView } from "@/ops/chip-ops/ChipOpsWorkspaceView";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
@@ -15,6 +17,7 @@ type WorkspaceState = {
   loading: boolean;
   tournaments: ChipOpsTournamentOption[];
   inventory: IssuedChipInventory | null;
+  stacks: IssuedStackSummary | null;
   errorCode: string | null;
 };
 
@@ -34,6 +37,7 @@ export default function OpsChipOpsWorkspace() {
     loading: true,
     tournaments: [],
     inventory: null,
+    stacks: null,
     errorCode: null,
   });
 
@@ -43,18 +47,22 @@ export default function OpsChipOpsWorkspace() {
     try {
       const tournaments = await loadChipOpsTournamentOptions(client, clubId);
       if (selectedTournamentId && !tournaments.some((row) => row.id === selectedTournamentId)) {
-        setState({ loading: false, tournaments, inventory: null, errorCode: "CHIP_TOURNAMENT_SCOPE_INVALID" });
+        setState({ loading: false, tournaments, inventory: null, stacks: null, errorCode: "CHIP_TOURNAMENT_SCOPE_INVALID" });
         return;
       }
-      const inventory = selectedTournamentId
-        ? await loadIssuedChipInventory(client, selectedTournamentId)
-        : null;
-      setState({ loading: false, tournaments, inventory, errorCode: null });
+      const [inventory, stacks] = selectedTournamentId
+        ? await Promise.all([
+          loadIssuedChipInventory(client, selectedTournamentId),
+          loadIssuedStackSummary(client, selectedTournamentId),
+        ])
+        : [null, null];
+      setState({ loading: false, tournaments, inventory, stacks, errorCode: null });
     } catch (error) {
       setState((current) => ({
         ...current,
         loading: false,
         inventory: null,
+        stacks: null,
         errorCode: safeErrorCode(error),
       }));
     }
@@ -83,6 +91,7 @@ export default function OpsChipOpsWorkspace() {
       tournaments={state.tournaments}
       selectedTournamentId={selectedTournamentId}
       inventory={clubId ? state.inventory : null}
+      stacks={clubId ? state.stacks : null}
       loading={capabilities.loading || state.loading}
       errorCode={capabilities.scopeError ?? (!clubId ? "CHIP_OPS_CLUB_SCOPE_REQUIRED" : state.errorCode)}
       onSelectTournament={onSelectTournament}

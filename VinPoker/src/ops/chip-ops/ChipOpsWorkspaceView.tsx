@@ -2,6 +2,7 @@ import { CircleAlert, Coins, RefreshCw, ShieldCheck } from "lucide-react";
 import type {
   ChipOpsTournamentOption,
   IssuedChipInventory,
+  IssuedStackSummary,
 } from "@/ops/chip-ops/chipOpsReadAdapter";
 
 export function ChipOpsWorkspaceView({
@@ -9,6 +10,7 @@ export function ChipOpsWorkspaceView({
   tournaments,
   selectedTournamentId,
   inventory,
+  stacks,
   loading,
   errorCode,
   onSelectTournament,
@@ -18,6 +20,7 @@ export function ChipOpsWorkspaceView({
   tournaments: ChipOpsTournamentOption[];
   selectedTournamentId: string;
   inventory: IssuedChipInventory | null;
+  stacks: IssuedStackSummary | null;
   loading: boolean;
   errorCode: string | null;
   onSelectTournament: (tournamentId: string) => void;
@@ -77,16 +80,29 @@ export function ChipOpsWorkspaceView({
         <StateCard title="Chưa có snapshot tồn chip." />
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <Metric label="Bộ stack đã phát" value={formatNumber(stacks?.totalIssuedStacks ?? 0)} />
+            <Metric label="Chip vật lý đã phát" value={formatNumber(inventory.totalIssuedChips)} />
             <Metric label="Giá trị đã phát hành" value={formatNumber(inventory.totalValue)} />
             <Metric label="Giá trị đối soát" value={formatNumber(inventory.reconciliationValue)} />
-            <div className={`rounded-2xl border px-4 py-3 ${inventory.reconciled ? "border-emerald-300/20 bg-emerald-300/8" : "border-amber-300/20 bg-amber-300/8"}`}>
+          </div>
+          <div className={`rounded-2xl border px-4 py-3 ${inventory.reconciled ? "border-emerald-300/20 bg-emerald-300/8" : "border-amber-300/20 bg-amber-300/8"}`}>
               <span className="text-[11px] text-[#91a49b]">Đối soát</span>
               <span className={`mt-1 block font-semibold ${inventory.reconciled ? "text-emerald-200" : "text-amber-200"}`}>
                 {inventory.reconciled ? "KHỚP" : "CHÊNH LỆCH"}
               </span>
-            </div>
           </div>
+          {stacks && stacks.templates.length > 0 && (
+            <div className="overflow-hidden rounded-3xl border border-white/8 bg-[#07100c]">
+              <h2 className="px-5 py-3 text-sm font-semibold text-white">Mẫu stack · số bộ đã phát</h2>
+              {stacks.templates.map((stack) => (
+                <div key={stack.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-t border-white/7 px-5 py-3 text-sm">
+                  <span className="truncate text-[#b9c8c0]">{stack.name} · {formatNumber(stack.stackValue)} chip/bộ</span>
+                  <span className="font-mono text-[#d8bc85]">{formatNumber(stack.issuedCount)} bộ</span>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="overflow-hidden rounded-3xl border border-white/8 bg-[#07100c]">
             {inventory.denominations.length === 0 ? (
               <p className="px-5 py-10 text-center text-sm text-[#91a49b]">Chưa có mệnh giá đã phát hành.</p>
