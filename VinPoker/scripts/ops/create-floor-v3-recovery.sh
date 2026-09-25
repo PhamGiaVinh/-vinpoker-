@@ -169,9 +169,9 @@ if grep -Eiq '(^|[[:space:]])PASSWORD([[:space:]]|=)' "$payload_root/roles-no-pa
   exit 1
 fi
 
-docker run --rm --network host \
+docker run --rm -i --network host \
   --env PGHOST --env PGPORT --env PGUSER --env PGDATABASE --env PGPASSWORD --env PGSSLMODE --env PGAPPNAME \
-  "$postgres_image" psql -X -qAt -v ON_ERROR_STOP=1 -v snapshot="$snapshot_id" \
+  "$postgres_image" psql -X -qAt -F $'\t' -v ON_ERROR_STOP=1 -v snapshot="$snapshot_id" \
   >"$payload_root/table-counts.tsv" 2>"$work_root/counts.log" <<'SQL' || {
 BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET TRANSACTION SNAPSHOT :'snapshot';
@@ -194,7 +194,10 @@ if ! awk -F '\t' 'NF == 3 { seen[$1 "." $2]=1 } END { exit !(seen["public.tourna
   exit 1
 fi
 
-docker run --rm "$postgres_image" pg_restore --list <"$payload_root/database.dump" >"$payload_root/archive-list.txt" 2>"$work_root/archive_list.log" || {
+docker run --rm \
+  --mount "type=bind,src=$payload_root,dst=/backup,readonly" \
+  "$postgres_image" pg_restore --list /backup/database.dump \
+  >"$payload_root/archive-list.txt" 2>"$work_root/archive_list.log" || {
   echo "Database archive catalog validation failed; raw tool output withheld" >&2
   exit 1
 }
@@ -209,10 +212,18 @@ grep -Eq 'TABLE DATA supabase_migrations schema_migrations[[:space:]]' "$payload
   exit 1
 }
 
-schema_list="$(docker run --rm --network host \
+schema_list="$(docker run --rm -i --network host \
   --env PGHOST --env PGPORT --env PGUSER --env PGDATABASE --env PGPASSWORD --env PGSSLMODE --env PGAPPNAME \
-  "$postgres_image" psql -X -qAt -v ON_ERROR_STOP=1 -v snapshot="$snapshot_id" -c \
-  "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT :'snapshot'; SELECT string_agg(nspname, ',' ORDER BY nspname) FROM pg_catalog.pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'; COMMIT;" 2>"$work_root/schema_list.log")"
+  "$postgres_image" psql -X -qAt -v ON_ERROR_STOP=1 -v snapshot="$snapshot_id" \
+  2>"$work_root/schema_list.log" <<'SQL'
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET TRANSACTION SNAPSHOT :'snapshot';
+SELECT string_agg(nspname, ',' ORDER BY nspname)
+FROM pg_catalog.pg_namespace
+WHERE nspname !~ '^pg_' AND nspname <> 'information_schema';
+COMMIT;
+SQL
+)"
 schema_list="${schema_list//$'\n'/}"
 
 project_fingerprint="$(printf '%s' "$project_ref" | sha256sum | awk '{print $1}')"

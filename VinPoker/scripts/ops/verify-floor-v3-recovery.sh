@@ -94,7 +94,7 @@ supabase init --workdir "$project_root" >"$test_root/init.log" 2>&1 || {
 sed -i "s/^project_id = .*/project_id = \"$restored_db\"/" "$project_root/supabase/config.toml"
 test "$(grep -c "^project_id = \"$restored_db\"$" "$project_root/supabase/config.toml")" = 1
 
-exclude_services="analytics,edge-runtime,functions,imgproxy,inbucket,kong,meta,realtime,rest,storage,studio,vector"
+exclude_services="imgproxy,logflare,mailpit,postgres-meta,realtime,storage-api,studio,supavisor,vector"
 supabase start --workdir "$project_root" --exclude "$exclude_services" >"$test_root/start.log" 2>&1 || {
   echo "Isolated Supabase database start failed; raw logs withheld" >&2
   exit 1
@@ -129,7 +129,16 @@ if [[ "$cron_setting" != "off" ]]; then
   exit 1
 fi
 
-if ! docker exec -i "$db_container" psql -X -q -U postgres -d postgres \
+local_superuser_state="$(docker exec "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
+    -c "SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user"')"
+if [[ "$local_superuser_state" != 'supabase_admin|t' ]]; then
+  echo "Disposable Supabase admin role is unavailable or not a superuser" >&2
+  exit 1
+fi
+
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -U supabase_admin -d postgres' \
   <"$payload_root/roles-no-passwords.sql" >"$test_root/roles-restore.log" 2>&1; then
   echo "Role metadata restore failed; raw output withheld" >&2
   exit 1
@@ -153,9 +162,21 @@ SQL
   exit 1
 }
 
-if ! docker exec -i "$db_container" pg_restore -U postgres -d "$restored_db" --exit-on-error \
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -h 127.0.0.1 -U supabase_admin -d "$1" --exit-on-error' \
+  sh "$restored_db" \
   <"$payload_root/database.dump" >"$test_root/restore.log" 2>&1; then
-  echo "Actual database restore failed; raw PostgreSQL output withheld" >&2
+  restore_diagnostic="$(grep -Ei '^(pg_restore: error:|ERROR:)' "$test_root/restore.log" |
+    sed -E \
+      -e 's/eyJ[A-Za-z0-9_-]{8,}[.]eyJ[A-Za-z0-9_-]{8,}[.][A-Za-z0-9_-]{8,}/[JWT REDACTED]/g' \
+      -e 's#(postgres(ql)?://)[^@[:space:]]+@#\1[REDACTED]@#Ig' \
+      -e 's/(password|token|secret)[=:][[:space:]]*[^[:space:]]+/\1=[REDACTED]/Ig' |
+    tail -n 8 || true)"
+  if [[ -n "$restore_diagnostic" ]]; then
+    printf 'Actual database restore failed; sanitized diagnostic follows:\n%s\n' "$restore_diagnostic" >&2
+  else
+    echo "Actual database restore failed; no safe diagnostic line was available" >&2
+  fi
   exit 1
 fi
 

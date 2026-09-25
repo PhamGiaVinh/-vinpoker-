@@ -115,7 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           active_runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
-            --jq '.workflow_runs[] | select(.status == "in_progress" or .status == "queued" or .status == "waiting" or .status == "requested") | select(.name | test("cashier|floor.*(apply|release)|migration.*apply|deploy reviewed production source"; "i")) | [.id,.name,.status] | @tsv')"
+            --jq '.workflow_runs[] | select(.event == "workflow_dispatch" and .head_branch == "main") | select(.status == "in_progress" or .status == "queued" or .status == "waiting" or .status == "requested") | select((.id | tostring) != env.GITHUB_RUN_ID) | select(.name | test("cashier|floor.*(apply|release)|migration.*apply|deploy reviewed production source"; "i")) | [.id,.name,.status] | @tsv')"
           if [[ -n "$active_runs" ]]; then
             echo "Another production release workflow is active; recovery snapshot must wait for a quiet release window" >&2
             exit 1
