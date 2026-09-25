@@ -22,6 +22,9 @@ on:
       - "VinPoker/supabase/pending-tests/satellite_real_initial_historical_fixture.sql"
       - "VinPoker/supabase/pending-tests/satellite_real_reentry_historical_fixture.sql"
       - "VinPoker/supabase/pending-tests/satellite_redeem_race_*.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000014_satellite_redemption_reversal_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_reversal_hand_disposable_setup.sql"
+      - "VinPoker/supabase/pending-tests/satellite_redemption_reversal_v1.sql"
       - "VinPoker/supabase/pending-tests/satellite_issue_secret_v1.sql"
       - "VinPoker/supabase/pending-tests/satellite_unmatched_funding_guard_v1.sql"
       - "VinPoker/supabase/pending-migrations/20260925092509_satellite_funding_preview_math_v1.sql"
@@ -330,3 +333,12 @@ jobs:
           wait "$second" || { cat /tmp/sat-direct-after-ticket.log; exit 1; }
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/pending-tests/satellite_redeem_race_assert.sql
+      - name: Apply reversal hand dependencies and forward migration (disposable only)
+        working-directory: VinPoker
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/pending-tests/satellite_reversal_hand_disposable_setup.sql \
+            -f supabase/pending-migrations/20270119000014_satellite_redemption_reversal_v1.sql
+      - name: Assert audited Satellite correction and reversal
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_redemption_reversal_v1.sql

@@ -147,11 +147,11 @@ UPDATE public.tournaments SET status='completed'
 WHERE id='d3000000-0000-4000-8000-000000000011';
 INSERT INTO public.tournament_close_report(tournament_id) VALUES
  ('d3000000-0000-4000-8000-000000000011');
-SELECT public.satellite_issue_tickets_v2(
+DO $$ BEGIN PERFORM public.satellite_issue_tickets_v2(
  'd3000000-0000-4000-8000-000000000011',
  '[{"position":1,"playerId":"d1000000-0000-4000-8000-000000000012"},
    {"position":2,"playerId":"d1000000-0000-4000-8000-000000000014"}]',
- 'd7000000-0000-4000-8000-000000000011');
+ 'd7000000-0000-4000-8000-000000000011'); END $$;
 INSERT INTO public.cashier_tour_settings(club_id,enabled)
 VALUES('d2000000-0000-4000-8000-000000000011',true)
 ON CONFLICT (club_id) DO UPDATE SET enabled=true;

@@ -2,7 +2,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 afterEach(cleanup);
-const h = vi.hoisted(() => ({ rpc: vi.fn(), preview: null as unknown, get: null as unknown }));
+const h = vi.hoisted(() => ({ rpc: vi.fn(), preview: null as unknown, get: null as unknown,
+  issuance: null as unknown, candidates: [] as { playerId: string; displayName: string }[] }));
 vi.mock("@/integrations/supabase/client", () => {
   const chain: Record<string, unknown> = {};
   for (const method of ["select", "eq", "in", "is", "neq", "order"]) chain[method] = vi.fn(() => chain);
@@ -33,15 +34,30 @@ beforeAll(() => {
 beforeEach(() => {
   h.preview = { ...funding };
   h.get = { ok: true, locked: false };
+  h.issuance = { ok: true, issued: false };
+  h.candidates = [];
   h.rpc.mockReset();
-  h.rpc.mockImplementation(async (name: string) => {
+  h.rpc.mockImplementation(async (name: string, args: Record<string, unknown>) => {
     if (name === "satellite_get_award_plan_v1") return { data: h.get, error: null };
-    if (name === "satellite_get_issuance_v1") return { data: { ok: true, issued: false }, error: null };
-    if (name === "satellite_get_award_candidates_v1") return { data: { ok: true, players: [] }, error: null };
+    if (name === "satellite_get_issuance_v1") return { data: h.issuance, error: null };
+    if (name === "satellite_get_award_candidates_v1") return { data: { ok: true, players: h.candidates }, error: null };
     if (name === "satellite_source_funding_preview_v2") return { data: h.preview, error: null };
     if (name === "satellite_lock_award_plan_v1") {
       h.get = { ...awardPlan, locked: true };
       return { data: { ok: true, locked: true, idempotent: false }, error: null };
+    }
+    if (name === "satellite_issue_tickets_v2") {
+      h.issuance = { ok: true, issued: true, ticketTotal: 1,
+        tickets: [{ id: "ticket-1", serial: 1, code: "secret-1", position: 1,
+          winnerPlayerId: "winner-1", status: "issued" }] };
+      return { data: { ok: true }, error: null };
+    }
+    if (name === "satellite_change_ticket_secret_v1") {
+      h.issuance = { ok: true, issued: true, ticketTotal: 1,
+        tickets: [{ id: "ticket-1", serial: 1,
+          code: args.p_action === "void" ? null : "secret-2", position: 1,
+          winnerPlayerId: "winner-1", status: args.p_action === "void" ? "voided" : "issued" }] };
+      return { data: { ok: true, status: args.p_action === "void" ? "voided" : "issued" }, error: null };
     }
     throw new Error(`Unexpected RPC: ${name}`);
   });
@@ -110,7 +126,7 @@ describe("SatelliteAwardPlanPanel source preview", () => {
       p_expected_preview_revision: funding.previewRevision,
       p_request_id: "fa000000-0000-4000-8000-000000000001",
     });
-    expect(screen.queryByRole("button", { name: "Issue tickets" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Issue tickets" })).toBeTruthy();
   });
   it("clears a stale preview and requires a fresh server read", async () => {
     h.rpc.mockImplementation(async (name: string) => {
@@ -128,5 +144,40 @@ describe("SatelliteAwardPlanPanel source preview", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Lock award plan" }));
     expect(await screen.findByText(/Source funding changed/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Lock award plan" })).toBeNull();
+  });
+  it("issues chosen winner and rotates only through private TD RPCs", async () => {
+    h.get = { ...awardPlan, locked: true };
+    h.candidates = [{ playerId: "winner-1", displayName: "Winner One" }];
+    render(<SatelliteAwardPlanPanel tournamentId="source" clubId="club" />);
+    fireEvent.keyDown(await screen.findByRole("combobox", { name: /Rank 1 winner/ }), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "Winner One" }));
+    fireEvent.click(screen.getByRole("button", { name: "Issue tickets" }));
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("satellite_issue_tickets_v2", {
+      p_source_tournament_id: "source", p_results: [{ position: 1, playerId: "winner-1" }],
+      p_request_id: "fa000000-0000-4000-8000-000000000001",
+    }));
+    expect(await screen.findByLabelText("Private code for ticket 1")).toHaveProperty("textContent", "secret-1");
+    fireEvent.change(screen.getByLabelText("Reason for rotate or void"), { target: { value: "Code compromised" } });
+    fireEvent.click(screen.getByRole("button", { name: "Rotate" }));
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("satellite_change_ticket_secret_v1", {
+      p_ticket_id: "ticket-1", p_current_code: "secret-1", p_action: "rotate",
+      p_reason: "Code compromised", p_request_id: "fa000000-0000-4000-8000-000000000001",
+    }));
+    expect(await screen.findByLabelText("Private code for ticket 1")).toHaveProperty("textContent", "secret-2");
+  });
+  it("voids an issued code and hides it from the TD ledger after reload", async () => {
+    h.get = { ...awardPlan, locked: true };
+    h.issuance = { ok: true, issued: true, ticketTotal: 1,
+      tickets: [{ id: "ticket-1", serial: 1, code: "secret-1", position: 1,
+        winnerPlayerId: "winner-1", status: "issued" }] };
+    render(<SatelliteAwardPlanPanel tournamentId="source" clubId="club" />);
+    fireEvent.change(await screen.findByLabelText("Reason for rotate or void"), { target: { value: "Bearer lost code" } });
+    fireEvent.click(screen.getByRole("button", { name: "Void" }));
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("satellite_change_ticket_secret_v1", {
+      p_ticket_id: "ticket-1", p_current_code: "secret-1", p_action: "void",
+      p_reason: "Bearer lost code", p_request_id: "fa000000-0000-4000-8000-000000000001",
+    }));
+    await waitFor(() => expect(screen.queryByLabelText("Private code for ticket 1")).toBeNull());
+    expect(screen.getByText("voided")).toBeTruthy();
   });
 });
