@@ -152,6 +152,15 @@ BEGIN
  EXCEPTION WHEN check_violation THEN
    IF SQLERRM<>'multi_day_movement_source_mismatch' THEN RAISE; END IF;
  END;
+ BEGIN
+   INSERT INTO public.cashier_buyin_movements(club_id,tournament_id,
+     registration_id,purpose,direction,amount,applied_amount)
+   VALUES('20000000-0000-0000-0000-000000000002',v_flight,
+     'b0000000-0000-0000-0000-000000000031','buyin','in',1,1);
+   RAISE EXCEPTION 'cross_club_movement_inserted';
+ EXCEPTION WHEN check_violation THEN
+   IF SQLERRM<>'multi_day_movement_source_mismatch' THEN RAISE; END IF;
+ END;
  -- Orphan Cashier source rows are NOT zero-valued source contributions.
  BEGIN
    INSERT INTO public.cashier_buyin_movements(club_id,tournament_id,purpose,direction,

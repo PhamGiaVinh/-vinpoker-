@@ -26,6 +26,27 @@ BEGIN
  END;
  UPDATE public.multi_day_package_release_v1 SET enabled=true;
  BEGIN
+   PERFORM public.multi_day_record_overlay_v1(v_event,'RECORDED',4000000,
+     'text-only-proof-1','Text alone cannot fund payout',NULL,NULL,
+     gen_random_uuid());
+   RAISE EXCEPTION 'legacy_text_only_overlay_accepted';
+ EXCEPTION WHEN check_violation THEN
+   IF SQLERRM<>'multi_day_overlay_bank_proof_required' THEN RAISE; END IF;
+ END;
+ UPDATE public.bank_transactions SET club_id='20000000-0000-0000-0000-000000000002'
+   WHERE id='ba000000-0000-0000-0000-000000000001';
+ BEGIN
+   PERFORM public.multi_day_record_overlay_v1(v_event,'RECORDED',4000000,
+     'bank-evidence-001','Wrong club bank row denied',NULL,NULL,
+     gen_random_uuid(),'ba000000-0000-0000-0000-000000000001');
+   RAISE EXCEPTION 'cross_club_overlay_accepted';
+ EXCEPTION WHEN check_violation THEN
+   IF SQLERRM<>'multi_day_overlay_bank_unverified_or_allocated' THEN RAISE; END IF;
+ END;
+ UPDATE public.bank_transactions
+   SET club_id='20000000-0000-0000-0000-000000000001'
+   WHERE id='ba000000-0000-0000-0000-000000000001';
+ BEGIN
    PERFORM public.multi_day_record_overlay_v1(v_event,'RECORDED',4000001,
      'bank-evidence-001','Amount exceeds verified bank row',NULL,NULL,
      gen_random_uuid(),'ba000000-0000-0000-0000-000000000001');
