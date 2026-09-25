@@ -20,6 +20,16 @@ DO $$ DECLARE v_rule record; v_read jsonb; BEGIN
    IF SQLERRM<>'multi_day_day2_percent_required' THEN RAISE; END IF;
  END;
 END $$;
+DO $$ DECLARE v_expected text; v_actual text; BEGIN
+ PERFORM set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000001',false);
+ SELECT f.rules_version INTO v_expected FROM public.multi_day_payout_race_fixture_v1 f
+ WHERE f.event_id='30000000-0000-0000-0000-00000000000b';
+ v_actual:=public.multi_day_payout_preview_v1(
+   '30000000-0000-0000-0000-00000000000b')->>'rulesVersion';
+ IF v_actual IS DISTINCT FROM v_expected THEN
+   RAISE EXCEPTION 'historical_rules_revision_changed: %, %',v_expected,v_actual;
+ END IF;
+END $$;
 INSERT INTO public.tournament_events(id,club_id,final_tournament_id,itm_percent,buy_in,rake_amount)
 VALUES('30000000-0000-0000-0000-00000000000f',
  '20000000-0000-0000-0000-000000000001',
@@ -78,16 +88,19 @@ END $$;
 INSERT INTO public.tournament_events(id,club_id,final_tournament_id,itm_percent,buy_in,rake_amount)
 VALUES('30000000-0000-0000-0000-000000000010',
  '20000000-0000-0000-0000-000000000001',
- '40000000-0000-0000-0000-0000000001ff',20,1000000,100000);
+ '40000000-0000-0000-0000-0000000001ff',20,1000000,100000)
+ON CONFLICT(id) DO NOTHING;
 INSERT INTO public.tournaments(id,club_id,event_id,phase) VALUES
  ('40000000-0000-0000-0000-0000000001fe','20000000-0000-0000-0000-000000000001',
   '30000000-0000-0000-0000-000000000010','flight'),
  ('40000000-0000-0000-0000-0000000001ff','20000000-0000-0000-0000-000000000001',
-  '30000000-0000-0000-0000-000000000010','final');
+  '30000000-0000-0000-0000-000000000010','final')
+ON CONFLICT(id) DO NOTHING;
 INSERT INTO public.tournament_entries(id,tournament_id,player_id,entry_no,status)
 VALUES('50000000-0000-0000-0000-0000000003ff',
  '40000000-0000-0000-0000-0000000001fe',
- '60000000-0000-0000-0000-0000000003ff',1,'seated');
+ '60000000-0000-0000-0000-0000000003ff',1,'seated')
+ON CONFLICT(id) DO NOTHING;
 DO $$ BEGIN
  BEGIN
    PERFORM public.multi_day_set_qualification_rules_v2(

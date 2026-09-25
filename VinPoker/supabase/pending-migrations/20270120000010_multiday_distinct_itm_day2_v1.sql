@@ -457,10 +457,15 @@ BEGIN
  IF v_next_rank=1 THEN
    RAISE EXCEPTION 'multi_day_payout_no_results' USING ERRCODE='23514';
  END IF;
- v_rules_version:=pg_catalog.md5(pg_catalog.jsonb_build_object(
+ -- A seeded historical row has identical economics and must retain its
+ -- pre-migration rules revision; independently configured rows bind Day2.
+ v_rules_version:=pg_catalog.md5((pg_catalog.jsonb_build_object(
    'policy',v_rules.policy,'itm',v_rules.itm_percent,
-   'day2',v_rules.day2_percent,'minCashX',v_rules.min_cash_x,
-   'buyIn',v_rules.buy_in_vnd,'rake',v_rules.rake_vnd)::text);
+   'minCashX',v_rules.min_cash_x,'buyIn',v_rules.buy_in_vnd,
+   'rake',v_rules.rake_vnd) || CASE
+     WHEN v_rules.day2_percent=v_rules.itm_percent THEN '{}'::jsonb
+     ELSE pg_catalog.jsonb_build_object('day2',v_rules.day2_percent)
+   END)::text);
  v_funding_revision:=pg_catalog.md5(pg_catalog.jsonb_build_object(
    'sources',v_source,'overlay',v_overlay_rows)::text);
  v_qualification_revision:=pg_catalog.md5(pg_catalog.jsonb_build_object(
