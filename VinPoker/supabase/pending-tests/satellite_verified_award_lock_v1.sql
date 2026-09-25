@@ -163,6 +163,17 @@ DO $$ DECLARE v jsonb; locked jsonb; retry jsonb; stale jsonb; BEGIN
       AND tgname='satellite_preview_write_hold_v1' AND NOT tgisinternal),
     'Issue hold remains installed');
   BEGIN
+    UPDATE public.tournament_registrations
+    SET cancellation_reason='forged after Lock'
+    WHERE id='f4000000-0000-4000-8000-000000000001';
+    RAISE EXCEPTION 'locked funding evidence changed';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM NOT LIKE '%satellite_locked_registration_evidence_immutable%' THEN RAISE; END IF;
+  END;
+  UPDATE public.tournament_registrations
+  SET cashier_seating_error='Floor follow-up'
+  WHERE id='f4000000-0000-4000-8000-000000000001';
+  BEGIN
     PERFORM public.cashier_request_refund_v1(
       'f4000000-0000-4000-8000-000000000001','Refund after locked plan');
     RAISE EXCEPTION 'Cashier refund request crossed Lock';
