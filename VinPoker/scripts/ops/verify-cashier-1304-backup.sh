@@ -117,7 +117,7 @@ done
 
 for table in cashier_refund_requests cashier_buyin_movements cashier_till_shifts \
   tournament_registrations tournament_entries tournament_seats seat_draw_receipts; do
-  grep -Eq "^COPY public\\.${table}[[:space:](]" "$backup_root/data.sql" || {
+  grep -Eq "^COPY (public\\.${table}|\"public\"\\.\"${table}\")[[:space:](]" "$backup_root/data.sql" || {
     echo "Data dump does not cover required table: $table" >&2
     exit 1
   }
