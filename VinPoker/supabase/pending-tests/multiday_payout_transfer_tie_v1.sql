@@ -27,11 +27,11 @@ BEGIN
  INSERT INTO public.tournament_registrations(id,tournament_id,player_id,club_id,
    buy_in,platform_fixed_fee,total_pay,status,confirmed_at,price_snapshot) VALUES
  ('b0000000-0000-0000-0000-000000000031',v_flight,v_p1,
-  '20000000-0000-0000-0000-000000000001',1000000,100000,1100000,'confirmed',now(),
-  '{"tender":"cash"}'::jsonb),
+  '20000000-0000-0000-0000-000000000001',1000000,0,1100000,'confirmed',now(),
+  '{"buy_in":1000000,"rake":100000,"service_fee":0,"platform_fee":0,"total_pay":1100000,"tender":"cash"}'::jsonb),
  ('b0000000-0000-0000-0000-000000000032',v_flight,v_p2,
-  '20000000-0000-0000-0000-000000000001',1000000,100000,1100000,'confirmed',now(),
-  '{"tender":"satellite_ticket"}'::jsonb);
+  '20000000-0000-0000-0000-000000000001',1000000,0,1100000,'confirmed',now(),
+  '{"buy_in":1000000,"rake":100000,"service_fee":0,"platform_fee":0,"total_pay":1100000,"tender":"satellite_ticket"}'::jsonb);
  INSERT INTO public.cashier_buyin_movements(club_id,tournament_id,
    registration_id,purpose,direction,amount,applied_amount)
  VALUES('20000000-0000-0000-0000-000000000001',v_flight,
@@ -139,7 +139,7 @@ BEGIN
    IF SQLERRM<>'multi_day_payout_legacy_funding_unverified' THEN RAISE; END IF;
  END;
  UPDATE public.tournament_registrations
-   SET price_snapshot='{"tender":"cash"}'::jsonb
+   SET price_snapshot='{"buy_in":1000000,"rake":100000,"service_fee":0,"platform_fee":0,"total_pay":1100000,"tender":"cash"}'::jsonb
    WHERE id='b0000000-0000-0000-0000-000000000031';
  -- A wrong flight on a pre-existing movement must not be hidden by COALESCE.
  BEGIN

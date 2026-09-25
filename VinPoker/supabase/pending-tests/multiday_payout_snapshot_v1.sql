@@ -35,8 +35,8 @@ BEGIN
  INSERT INTO public.tournament_registrations(id,tournament_id,player_id,club_id,
    buy_in,platform_fixed_fee,total_pay,status,confirmed_at,price_snapshot)
  VALUES('b0000000-0000-0000-0000-000000000021',v_flight,v_player,
-   '20000000-0000-0000-0000-000000000001',1000000,100000,1100000,
-   'confirmed',now(),'{"tender":"cash"}'::jsonb);
+   '20000000-0000-0000-0000-000000000001',1000000,0,1100000,
+   'confirmed',now(),'{"buy_in":1000000,"rake":100000,"service_fee":0,"platform_fee":0,"total_pay":1100000,"tender":"cash"}'::jsonb);
  INSERT INTO public.cashier_buyin_movements(club_id,tournament_id,
    registration_id,purpose,direction,amount,applied_amount)
  VALUES('20000000-0000-0000-0000-000000000001',v_flight,

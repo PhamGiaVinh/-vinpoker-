@@ -287,7 +287,25 @@ BEGIN
       v_reg.entry_player IS DISTINCT FROM v_reg.player_id OR
       v_reg.buy_in IS NULL OR v_reg.buy_in<=0 OR
       v_reg.platform_fixed_fee IS NULL OR v_reg.platform_fixed_fee<0 OR
-      v_reg.total_pay IS DISTINCT FROM v_reg.buy_in+v_reg.platform_fixed_fee OR
+      v_reg.total_pay IS NULL OR v_reg.total_pay<v_reg.buy_in OR
+      (v_reg.price_snapshot IS NOT NULL AND
+        (v_reg.price_snapshot->>'buy_in')::numeric IS DISTINCT FROM v_reg.buy_in OR
+        (v_reg.price_snapshot->>'total_pay')::numeric IS DISTINCT FROM v_reg.total_pay OR
+        (v_reg.price_snapshot->>'platform_fee')::numeric
+          IS DISTINCT FROM v_reg.platform_fixed_fee OR
+        (v_reg.price_snapshot->>'rake')::numeric IS NULL OR
+        (v_reg.price_snapshot->>'service_fee')::numeric IS NULL OR
+        (v_reg.price_snapshot->>'rake')::numeric<0 OR
+        (v_reg.price_snapshot->>'service_fee')::numeric<0 OR
+        (v_reg.price_snapshot->>'rake')::numeric IS DISTINCT FROM
+          trunc((v_reg.price_snapshot->>'rake')::numeric) OR
+        (v_reg.price_snapshot->>'service_fee')::numeric IS DISTINCT FROM
+          trunc((v_reg.price_snapshot->>'service_fee')::numeric) OR
+        v_reg.total_pay::numeric IS DISTINCT FROM
+          (v_reg.price_snapshot->>'buy_in')::numeric+
+          (v_reg.price_snapshot->>'rake')::numeric+
+          (v_reg.price_snapshot->>'service_fee')::numeric+
+          (v_reg.price_snapshot->>'platform_fee')::numeric) OR
       (SELECT count(*) FROM public.tournament_entries e
          WHERE e.registration_id=v_reg.id AND e.status<>'cancelled')<>1 THEN
      RAISE EXCEPTION 'multi_day_payout_source_inconsistent' USING ERRCODE='23514';
@@ -313,8 +331,11 @@ BEGIN
         v_transfer.club_id IS DISTINCT FROM v_rules.club_id OR
         v_transfer.target_buy_in_vnd IS DISTINCT FROM v_reg.buy_in OR
         v_transfer.target_credit_vnd IS DISTINCT FROM v_reg.total_pay OR
-        v_transfer.target_rake_vnd+v_transfer.target_service_fee_vnd
-          IS DISTINCT FROM v_reg.platform_fixed_fee OR
+        v_transfer.target_rake_vnd IS DISTINCT FROM
+          (v_reg.price_snapshot->>'rake')::bigint OR
+        v_transfer.target_service_fee_vnd IS DISTINCT FROM
+          (v_reg.price_snapshot->>'service_fee')::bigint OR
+        v_reg.platform_fixed_fee<>0 OR
         v_transfer.source_debit_vnd IS DISTINCT FROM v_transfer.target_credit_vnd OR
         v_reg.price_snapshot->>'tender' IS DISTINCT FROM 'satellite_ticket' OR v_ledger<>0 OR
         EXISTS(SELECT 1 FROM public.satellite_redemption_reversals z
@@ -338,13 +359,13 @@ BEGIN
    ELSE
      RAISE EXCEPTION 'multi_day_payout_duplicate_transfer' USING ERRCODE='23514';
    END IF;
-   v_fee:=v_fee+v_reg.platform_fixed_fee;
+   v_fee:=v_fee+v_reg.total_pay-v_reg.buy_in;
    v_source:=v_source||pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
      'registrationId',v_reg.id,'entryId',v_reg.entry_id,'flightId',v_reg.tournament_id,
      'playerId',v_reg.player_id,'tender',v_tender,'transferId',v_transfer_id,
      'ticketStatus',v_ticket_status,'targetRakeVnd',v_target_rake,
      'targetServiceFeeVnd',v_target_service_fee,
-     'poolVnd',v_reg.buy_in,'feeVnd',v_reg.platform_fixed_fee,
+     'poolVnd',v_reg.buy_in,'feeVnd',v_reg.total_pay-v_reg.buy_in,
      'totalVnd',v_reg.total_pay,'ledgerNetVnd',v_ledger,
      'registrationStatus',v_reg.status,'confirmedAt',v_reg.confirmed_at,
      'priceSnapshot',v_reg.price_snapshot,

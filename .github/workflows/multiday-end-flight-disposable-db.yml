@@ -27,6 +27,9 @@ on:
       - "VinPoker/supabase/pending-tests/multiday_payout_transfer_tie_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_payout_finalize_race_v1.sh"
       - "VinPoker/supabase/pending-tests/multiday_overlay_bank_race_v1.sh"
+      - "VinPoker/supabase/pending-tests/multiday_real_satellite_bridge_v1.sh"
+      - "VinPoker/supabase/pending-tests/multiday_real_satellite_bridge_fixture_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_real_satellite_bridge_assert_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_end_flight_baseline_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_end_flight_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_bag_revision_v1.sql"
@@ -113,3 +116,28 @@ jobs:
       - name: Assert bank proof cannot race Cashier allocation
         working-directory: VinPoker
         run: bash supabase/pending-tests/multiday_overlay_bank_race_v1.sh
+
+  satellite-multiday-real-transfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out exact #1344 migration dependency
+        uses: actions/checkout@v4
+        with:
+          path: satellite-dependency
+          ref: 133fae8b8b48ffcbc57b2b2d54b2416580e1b8f8
+      - name: Assert real Redeem and reversal through Multi-day payout
+        run: bash VinPoker/supabase/pending-tests/multiday_real_satellite_bridge_v1.sh "$PWD/VinPoker" "$PWD/satellite-dependency/VinPoker"
