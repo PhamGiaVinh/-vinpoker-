@@ -12,7 +12,7 @@ import { normalizeCashierScan } from "./cashierScan";
 type Tour = { id: string; name: string; start_time: string | null; status: string; registration_closed_at?: string | null };
 type Bucket = "counter" | "completed" | "waiting_seat" | "needs_review" | "all";
 type Row = {
-  id: string; status: "pending" | "confirmed"; player_name: string; phone: string | null; member_card_id: string | null;
+  id: string; tournament_id: string; tournament_name?: string; status: "pending" | "confirmed"; player_name: string; phone: string | null; member_card_id: string | null;
   reference_code: string; total_pay: number; received: number; bucket: Bucket;
   receipt_code: string | null; table_number: number | null; seat_number: number | null;
   legacy_detail_missing: boolean; cashier_seating_error: string | null;
@@ -81,6 +81,7 @@ export default function TourCashierWorkbench() {
   const [notice, setNotice] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const requestVersion = useRef(0);
+  const lookupSelectionVersion = useRef(0);
   const mutationLock = useRef(false);
   const cashAttempt = useRef<string | null>(null);
   const scanPending = useRef(false);
@@ -88,6 +89,8 @@ export default function TourCashierWorkbench() {
   const cashInput = useRef<HTMLInputElement>(null);
   const closeDetail = useRef<HTMLButtonElement>(null);
   const activeTour = tours.find((tour) => tour.id === tourId) ?? null;
+  const selectedTour = tours.find((tour) => tour.id === selected?.tournament_id) ?? null;
+  const selectedTourName = selected?.tournament_name ?? selectedTour?.name ?? "Không xác định";
   const shiftId = shift?.id ?? null;
   const closedShift = closedShifts.find((item) => item.id === closedShiftId) ?? null;
   const selectedId = selected?.id ?? null;
@@ -158,7 +161,8 @@ export default function TourCashierWorkbench() {
       if (!result?.ok) { scanPending.current = false; setError(result?.error ?? "Không tải được danh sách tour."); return; }
       setError(null);
       setWorklist(result);
-      setSelected((current) => current ? result.rows.find((row) => row.id === current.id) ?? null : null);
+      setSelected((current) => current ? current.tournament_id !== tourId ? current
+        : result.rows.find((row) => row.id === current.id) ?? null : null);
       if (scanPending.current) {
         scanPending.current = false;
         if (result.rows.length === 1) {
@@ -280,6 +284,7 @@ export default function TourCashierWorkbench() {
   const changeTour = (next: string | null) => {
     if (mutationLock.current) return;
     requestVersion.current++;
+    lookupSelectionVersion.current++;
     setTourId(next);
     if (clubId) {
       if (next) sessionStorage.setItem(`cashier-tour:${clubId}`, next);
@@ -297,11 +302,30 @@ export default function TourCashierWorkbench() {
 
   const selectRow = (row: Row) => {
     if (mutationLock.current) return;
+    lookupSelectionVersion.current++;
     cashAttempt.current = null;
     setSelected(row);
     setCashAmount(row.bucket === "counter" ? String(Math.max(0, row.total_pay-row.received)) : "");
     setRefundRead(null); setRefundReason(""); setRefundCash(""); setRefundBank("");
     setRefundBankRef(""); setRefundEvidence("");
+  };
+
+  const selectOtherTourRegistration = async (match: Lookup) => {
+    if (!clubId || mutationLock.current) return;
+    const version = ++lookupSelectionVersion.current;
+    setLookupError(null);
+    const { data, error: rpcError } = await client.rpc("cashier_tour_worklist_v1" as never, {
+      p_club_id: clubId, p_tournament_id: match.tournament_id,
+      p_query: match.registration_id, p_bucket: "all", p_page: 0, p_limit: 1,
+    } as never);
+    if (version !== lookupSelectionVersion.current) return;
+    const result = data as unknown as Worklist | null;
+    const row = result?.rows?.find((item) => item.id === match.registration_id && item.tournament_id === match.tournament_id);
+    if (rpcError || !result?.ok || !result.enabled || !row) {
+      setLookupError(rpcError?.message ?? result?.error ?? "Không đọc được đăng ký thuộc tour này.");
+      return;
+    }
+    selectRow({ ...row, tournament_name: match.tournament_name });
   };
 
   const mutate = async (name: string, args: Record<string, unknown>, onSuccess: (result: Record<string, unknown>) => void) => {
@@ -313,7 +337,14 @@ export default function TourCashierWorkbench() {
       onSuccess(result);
       refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Máy chủ chưa xác nhận thao tác.");
+      const code = cause instanceof Error ? cause.message : "";
+      setError(code === "verified_payment_history_required"
+        ? "Chưa đối chiếu đủ khoản thu trong sổ giao dịch; không thể hoàn tự động. Cần đối soát riêng."
+        : code === "active_seat_or_chips"
+          ? "Lượt này đã có ghế hoặc chip hoạt động; chưa thể hoàn tại quầy."
+          : code === "floor_clearance_required"
+            ? "Lượt này từng được xếp ghế hoặc đã chơi; cần Floor xử lý theo quy trình cũ trước khi chi hoàn."
+          : code || "Máy chủ chưa xác nhận thao tác.");
     } finally {
       mutationLock.current = false; setBusy(false);
     }
@@ -448,12 +479,12 @@ export default function TourCashierWorkbench() {
     </section> : <>
       <label className="relative block"><Search className="absolute left-4 top-3.5 h-5 w-5 text-[#9caf9f]" />
         <input ref={scanner} autoFocus disabled={busy} value={query} onChange={(event) => {
-          requestVersion.current++;
+          requestVersion.current++; lookupSelectionVersion.current++;
           setQuery(event.target.value); setPage(0); setWorklist(null); setSelected(null);
           setCashAmount(""); cashAttempt.current = null; scanPending.current = false;
         }}
           onKeyDown={(event) => { if (event.key === "Enter" && !mutationLock.current) {
-            requestVersion.current++;
+            requestVersion.current++; lookupSelectionVersion.current++;
             event.preventDefault(); scanPending.current = true; setBucket("all"); setPage(0); setWorklist(null); setSelected(null);
             setQuery(normalizeCashierScan(query)); refresh();
           } }}
@@ -462,11 +493,11 @@ export default function TourCashierWorkbench() {
       </label>
       {lookup.length > 0 && <div role="status" className="rounded-xl border border-amber-300/30 bg-amber-950/20 p-3 text-sm text-amber-100">
         {lookup.map((match) => <div key={match.registration_id} className="flex flex-wrap items-center justify-between gap-2 py-1">
-          <span>{match.player_name} thuộc {match.tournament_name}. Đổi tour trước khi thu tiền.</span>
-          <button type="button" disabled={busy} onClick={() => changeTour(match.tournament_id)} className="min-h-11 rounded-lg border border-amber-300/50 px-3">Đổi sang tour này</button>
+          <span>{match.player_name} · {match.tournament_name}</span>
+          <button type="button" disabled={busy} onClick={() => void selectOtherTourRegistration(match)} className="min-h-11 rounded-lg border border-amber-300/50 px-3">Xem đăng ký tour này</button>
         </div>)}
       </div>}
-      {lookupError && <p role="alert" className="rounded-xl border border-rose-300/30 bg-rose-950/30 p-3 text-sm text-rose-100">{lookupError} Kiểm tra tour trước khi thu tiền.</p>}
+      {lookupError && <p role="alert" className="rounded-xl border border-rose-300/30 bg-rose-950/30 p-3 text-sm text-rose-100">{lookupError} Chưa thể thu tiền cho đăng ký này.</p>}
       <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Nhóm khách">
         {([ ["counter","Chờ tại quầy"], ["completed","Đã tự hoàn tất"], ["waiting_seat","Chờ ghế"], ["needs_review","Cần xử lý"], ["all","Tất cả"] ] as const)
           .map(([key,label]) => <button type="button" key={key} disabled={busy} onClick={() => { requestVersion.current++; setBucket(key); setIssuesView(false); setPage(0); setSelected(null); setWorklist(null); }}
@@ -504,6 +535,7 @@ export default function TourCashierWorkbench() {
         {selected && <aside role="dialog" aria-label={`Chi tiết buy-in ${selected.player_name}`} className="fixed inset-0 z-50 min-w-0 overflow-y-auto bg-[#09120e] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] lg:static lg:z-auto lg:rounded-2xl lg:border lg:border-white/10 lg:bg-[#101c17] lg:p-5">
           <button ref={closeDetail} type="button" disabled={busy} onClick={() => { cashAttempt.current = null; setSelected(null); scanner.current?.focus(); }} className="mb-4 flex min-h-11 items-center gap-2 text-sm text-[#b7c9bc]"><ArrowLeft className="h-4 w-4" /> Đóng · khách tiếp theo</button>
           <h2 className="break-words text-xl font-bold">{selected.player_name}</h2>
+          <p className="mt-1 text-sm text-amber-200">Tour của lượt này: {selectedTourName}</p>
           <p className="mt-1 break-all font-mono text-xs text-[#a9baae]">{selected.reference_code}</p>
           <div className="mt-5 space-y-2 rounded-xl border border-white/10 p-4 text-sm">
             <p className="flex justify-between gap-3"><span>Buy-in đã chốt</span><strong>{formatMoney(selected.total_pay)}</strong></p>
@@ -513,7 +545,7 @@ export default function TourCashierWorkbench() {
           {selected.receipt_code ? <div className="mt-5 space-y-2 text-sm text-emerald-200">
               <p>Đã cấp phiếu · bàn {selected.table_number}, ghế {selected.seat_number}. Người chơi xem phiếu trên app.</p>
               <button type="button" onClick={() => setReceiptPreview({
-                tournamentName: activeTour?.name ?? "", playerName: selected.player_name,
+                tournamentName: selectedTourName, playerName: selected.player_name,
                 tableNumber: selected.table_number, seatNumber: selected.seat_number,
                 receiptCode: selected.receipt_code!, qrValue: selected.receipt_code!,
                 clubName, totalPay: selected.total_pay, confirmationCode: selected.reference_code,
@@ -537,16 +569,15 @@ export default function TourCashierWorkbench() {
               <h3 className="font-semibold">Hoàn tiền lượt buy-in</h3>
               {!currentRefundRead || currentRefundRead.loading ? <p role="status" className="text-sm text-[#a9baae]">Đang kiểm tra trạng thái hoàn tiền…</p>
                 : currentRefundRead.error ? <p role="alert" className="text-sm text-rose-200">Không đọc được trạng thái hoàn tiền: {currentRefundRead.error}. Chưa thể thao tác; hãy tải lại.</p>
-                : !refund ? <><p className="text-xs text-[#a9baae]">Chỉ hoàn đúng khoản đã ghi trong sổ giao dịch. Floor phải xử lý chip và kết thúc lượt trước khi chi hoàn.</p>
+                : !refund ? <><p className="text-xs text-[#a9baae]">Chỉ hoàn đúng khoản đã ghi trong sổ giao dịch. Khách ở hàng chờ, chưa có ghế/chip hoạt động, không cần Floor xác nhận.</p>
                 <label className="block text-sm">Lý do
                   <input value={refundReason} onChange={(event) => setRefundReason(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-white/15 bg-[#08120d] p-2" /></label>
-                <button type="button" disabled={busy || refundReason.trim().length < 8 || selected.legacy_detail_missing}
-                  onClick={() => void mutate("cashier_request_refund_v1", { p_registration_id: selected.id, p_reason: refundReason }, () => setNotice("Đã gửi yêu cầu hoàn; chờ Floor xử lý chip/lượt."))}
+                <button type="button" disabled={busy || refundReason.trim().length < 8}
+                  onClick={() => void mutate("cashier_request_refund_v1", { p_registration_id: selected.id, p_reason: refundReason }, () => setNotice("Đã ghi nhận yêu cầu hoàn; thu ngân kiểm tra và ghi chi thực tế."))}
                   className="min-h-11 rounded-lg border border-amber-300/40 px-4 text-sm text-amber-200 disabled:opacity-40">Yêu cầu hoàn tiền</button>
-                {selected.legacy_detail_missing && <p className="text-xs text-amber-200">Lịch sử chưa có sổ khoản thu; cần đối soát riêng, không tự tính lại.</p>}</>
-                : refund.status === "requested" ? <p className="text-sm text-amber-200">Đã yêu cầu hoàn {formatMoney(refund.amount)} · chờ Floor xác nhận chip/lượt.</p>
-                  : refund.status === "paid" ? <p className="text-sm text-emerald-200">Đã ghi nhận hoàn {formatMoney(refund.amount)}.</p>
-                    : <><p className="text-sm text-emerald-200">Floor đã xác nhận · cần ghi nhận chi hoàn {formatMoney(refund.amount)}.</p>
+                {selected.legacy_detail_missing && <p className="text-xs text-amber-200">Lượt cũ có thể thiếu sổ khoản thu. Máy chủ chỉ chấp nhận nếu đối chiếu đủ tiền; nếu bị từ chối, cần đối soát riêng, không tự tính lại.</p>}</>
+                : refund.status === "paid" ? <p className="text-sm text-emerald-200">Đã ghi nhận hoàn {formatMoney(refund.amount)}.</p>
+                  : <><p className="text-sm text-emerald-200">Cần ghi nhận chi hoàn {formatMoney(refund.amount)}.</p>
                       <div className="grid grid-cols-2 gap-2"><label className="text-xs">Tiền mặt
                         <input inputMode="numeric" value={refundCash} onChange={(event) => setRefundCash(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-white/15 bg-[#08120d] p-2 text-sm" /></label>
                         <label className="text-xs">Chuyển khoản

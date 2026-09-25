@@ -126,6 +126,7 @@ const destructiveActions = [
   "floor.tables.break_v3",
   "floor.tables.confirm_redraw",
   "floor.player.move",
+  "floor.player.cancel_pending_move",
   "floor.player.save_chip",
   "floor.player.bust",
   "floor.player.free_sit",

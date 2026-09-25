@@ -3,6 +3,10 @@
 -- Do not run on the linked production project. All fixtures roll back.
 \set ON_ERROR_STOP on
 
+\if :{?cashier_no_floor}
+SELECT set_config('cashier_test.no_floor', 'true', false);
+\endif
+
 BEGIN;
 
 CREATE OR REPLACE FUNCTION pg_temp.cashier_assert(p_ok boolean, p_label text)
@@ -298,13 +302,27 @@ BEGIN
     AND (v_refund->>'amount')::bigint=6600000,
     'refund includes the entire 6.6m actually paid');
   v_refund_id := (v_refund->>'refund_id')::uuid;
-  PERFORM pg_temp.cashier_assert(
-    public.cashier_floor_clear_refund_v1(v_refund_id)->>'status'='floor_cleared',
-    'Floor clearance before payout');
+  IF current_setting('cashier_test.no_floor',true)='true' THEN
+    v_retry := public.cashier_complete_refund_v1(v_refund_id,5300001,1300000,
+      'TEST-RETURN-1','TEST incorrect split');
+    PERFORM pg_temp.cashier_assert(v_retry->>'error'='refund_amount_or_status_invalid',
+      'Cashier cannot change the verified refund total');
+    PERFORM set_config('request.jwt.claim.sub','91000000-0000-4000-8000-000000000002',true);
+    v_retry := public.cashier_complete_refund_v1(v_refund_id,5300000,1300000,
+      'TEST-RETURN-1','TEST wrong club cashier');
+    PERFORM pg_temp.cashier_assert(v_retry->>'error'='actor_not_allowed',
+      'Cashier of another club cannot pay this refund');
+    PERFORM set_config('request.jwt.claim.sub','91000000-0000-4000-8000-000000000001',true);
+  END IF;
+  IF current_setting('cashier_test.no_floor',true) IS DISTINCT FROM 'true' THEN
+    PERFORM pg_temp.cashier_assert(
+      public.cashier_floor_clear_refund_v1(v_refund_id)->>'status'='floor_cleared',
+      'Floor clearance before payout on original migration');
+  END IF;
   v_refund := public.cashier_complete_refund_v1(v_refund_id,5300000,1300000,
     'TEST-RETURN-1','TEST transfer and cash payout evidence');
   PERFORM pg_temp.cashier_assert(v_refund->>'ok'='true',
-    'cashier records the full payout');
+    'cashier records the full payout, without Floor when enabled');
   SELECT count(*) INTO v_count FROM public.cashier_buyin_movements
     WHERE refund_id=v_refund_id AND direction='out';
   PERFORM pg_temp.cashier_assert(v_count=2,'one cash and one bank refund movement');
@@ -352,6 +370,12 @@ BEGIN
   PERFORM pg_temp.cashier_assert((v_refund->>'amount')::bigint=6000000,
     'free-rake refund is exactly 6m');
   v_refund_id := (v_refund->>'refund_id')::uuid;
+  IF current_setting('cashier_test.no_floor',true)='true' THEN
+    v_retry := public.cashier_complete_refund_v1(v_refund_id,6000000,0,
+      '', 'TEST blocked historical payout without Floor');
+    PERFORM pg_temp.cashier_assert(v_retry->>'error'='floor_clearance_required',
+      'a busted historical entry still requires Floor clearance');
+  END IF;
   PERFORM pg_temp.cashier_assert(
     public.cashier_floor_clear_refund_v1(v_refund_id)->>'ok'='true',
     'Floor clears free-rake entry');

@@ -14,8 +14,8 @@ const user = {
   app_metadata: {}, user_metadata: {}, identities: [], created_at: "2026-08-09T00:00:00.000Z",
 };
 const playerA = "Nguyễn Thị Thu ngân kiểm tra tên khách rất dài Tour A";
-const row = (id: string, name: string, reference: string) => ({
-  id, status: "pending", player_name: name, phone: "0900000071", member_card_id: null,
+const row = (id: string, tournamentId: string, name: string, reference: string) => ({
+  id, tournament_id: tournamentId, status: "pending", player_name: name, phone: "0900000071", member_card_id: null,
   reference_code: reference, total_pay: 6_600_000, received: 0, bucket: "counter",
   receipt_code: null, table_number: null, seat_number: null,
   legacy_detail_missing: false, cashier_seating_error: null,
@@ -63,9 +63,9 @@ async function installMockSession(page: Page, requests: string[], cashGate?: Pro
     if (path.endsWith("/rpc/cashier_tour_issues_v1")) return json({ ok: true, sepay_unavailable: false, shown: 0, rows: [] });
     if (path.endsWith("/rpc/cashier_tour_worklist_v1")) {
       const input = request.postDataJSON() as { p_tournament_id: string; p_query: string };
-      const rows = input.p_query?.toUpperCase().includes("BETA") ? []
-        : input.p_tournament_id === tourA ? [row(registrationA, playerA, "VINREGA071")]
-          : [row(registrationB, "Khách Tour B", "VINREGB072")];
+      const rows = input.p_tournament_id === tourA
+        ? input.p_query?.toUpperCase().includes("BETA") ? [] : [row(registrationA, tourA, playerA, "VINREGA071")]
+        : [row(registrationB, tourB, "Khách Tour B", "VINREGB072")];
       return json({ ok: true, enabled: true, updated_at: "2026-09-17T03:05:00Z",
         counts: { counter: rows.length, completed: 0, waiting_seat: 0, needs_review: 0, total: rows.length }, rows });
     }
@@ -110,9 +110,13 @@ for (const width of [375, 430, 1280]) {
   });
 }
 
-test("Tour B scan warns before switching and clears Tour A cash detail", async ({ page }) => {
+test("Tour B scan opens its registration without changing serving Tour A", async ({ page }) => {
   const requests: string[] = [];
+  const cashBodies: Array<{ p_registration_id: string }> = [];
   await installMockSession(page, requests);
+  page.on("request", (request) => {
+    if (request.url().endsWith("/rpc/cashier_record_cash_buyin_v1")) cashBodies.push(request.postDataJSON());
+  });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/ops/cashier/tour?club=${clubId}`);
   await page.getByRole("button", { name: /Tour A · 10:00/ }).first().click();
@@ -124,11 +128,14 @@ test("Tour B scan warns before switching and clears Tour A cash detail", async (
   await expect(scanner).toHaveValue("");
   await page.getByRole("button", { name: /Tour A · 10:00/ }).first().click();
   await scanner.fill("BETACODE");
-  await expect(page.getByText("Khách Tour B thuộc Tour B · 11:00. Đổi tour trước khi thu tiền.")).toBeVisible();
-  await page.getByRole("button", { name: "Đổi sang tour này" }).click();
-  await expect(scanner).toHaveValue("");
-  await expect(page.getByRole("button", { name: /Khách Tour B/ })).toBeVisible();
-  expect(requests.some((request) => /cashier_record_cash_buyin_v1/u.test(request))).toBe(false);
+  await expect(page.getByText("Khách Tour B · Tour B · 11:00")).toBeVisible();
+  await page.getByRole("button", { name: "Xem đăng ký tour này" }).click();
+  const detail = page.getByRole("dialog", { name: /Khách Tour B/ });
+  await expect(detail.getByText("Tour của lượt này: Tour B · 11:00")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tour A · 10:00" })).toBeVisible();
+  await detail.getByRole("button", { name: "Ghi nhận tiền mặt" }).click();
+  await expect.poll(() => cashBodies.length).toBe(1);
+  expect(cashBodies[0].p_registration_id).toBe(registrationB);
 });
 
 test("cash double-click sends one server intent and cannot switch tours in flight", async ({ page }) => {
