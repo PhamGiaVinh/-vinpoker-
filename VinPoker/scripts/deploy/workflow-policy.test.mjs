@@ -90,6 +90,13 @@ test("Floor clock deploy remains an explicit protected critical selection", () =
   );
 });
 
+test("Floor Tracker Edge deploy is exact-source and protected", () => {
+  assert.match(workflow, /deploy_tournament_live_update:/);
+  assert.match(workflow, /DEPLOY_TOURNAMENT_LIVE_UPDATE: \$\{\{ inputs\.deploy_tournament_live_update \|\| false \}\}/);
+  assert.match(workflow, /selected\+=\("tournament-live-update"\)/);
+  assert.match(workflow, /name: dealer-swing-production-critical/);
+});
+
 test("Ops club-account deploy remains an explicit protected critical selection", () => {
   const criticalJob = workflow.slice(
     workflow.indexOf("deploy-critical-edge:"),

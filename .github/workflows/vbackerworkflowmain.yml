@@ -20,6 +20,11 @@ on:
         required: true
         default: false
         type: boolean
+      deploy_tournament_live_update:
+        description: "Deploy only critical Edge function tournament-live-update"
+        required: true
+        default: false
+        type: boolean
       deploy_ops_club_accounts:
         description: "Deploy critical Edge function ops-club-accounts"
         required: true
@@ -125,6 +130,7 @@ jobs:
         env:
           DEPLOY_DEALER_FUNCTIONS: ${{ inputs.deploy_dealer_functions || '' }}
           DEPLOY_TOURNAMENT_LIVE_CLOCK: ${{ inputs.deploy_tournament_live_clock || false }}
+          DEPLOY_TOURNAMENT_LIVE_UPDATE: ${{ inputs.deploy_tournament_live_update || false }}
           DEPLOY_OPS_CLUB_ACCOUNTS: ${{ inputs.deploy_ops_club_accounts || false }}
           DEPLOY_RENDER_PAYROLL_STATEMENT: ${{ inputs.deploy_render_payroll_statement || false }}
           DEPLOY_SEND_PAYROLL_STATEMENT: ${{ inputs.deploy_send_payroll_statement || false }}
@@ -149,6 +155,7 @@ jobs:
             selected+=("$function_name")
           done
           [[ "$DEPLOY_TOURNAMENT_LIVE_CLOCK" == "true" ]] && selected+=("tournament-live-clock")
+          [[ "$DEPLOY_TOURNAMENT_LIVE_UPDATE" == "true" ]] && selected+=("tournament-live-update")
           [[ "$DEPLOY_OPS_CLUB_ACCOUNTS" == "true" ]] && selected+=("ops-club-accounts")
           [[ "$DEPLOY_RENDER_PAYROLL_STATEMENT" == "true" ]] && selected+=("render-payroll-statement")
           [[ "$DEPLOY_SEND_PAYROLL_STATEMENT" == "true" ]] && selected+=("send-payroll-statement")

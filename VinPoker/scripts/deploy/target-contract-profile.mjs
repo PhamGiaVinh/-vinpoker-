@@ -24,6 +24,9 @@ const FLOOR_CLOCK_FRONTEND_FILES = [
   "VinPoker/src/components/cashier/tournament-live/ClockPanel.tsx",
   "VinPoker/src/pages/ops/OpsTournamentCockpit.tsx",
 ];
+const FLOOR_TRACKER_FEATURE_FILE = "VinPoker/src/lib/featureFlags.ts";
+const FLOOR_TRACKER_UI_FILE = "VinPoker/src/components/cashier/tournament-live/FloorTableMapPanelV3.tsx";
+const FLOOR_TRACKER_EDGE_FILE = "VinPoker/supabase/functions/tournament-live-update/index.ts";
 
 function marker(files, sources, predicate) {
   return files.filter((file) => predicate(file, sources.get(file) ?? ""));
@@ -50,6 +53,9 @@ export function selectTargetContractProfile({ targetRoot }) {
     )) files.add(imported);
   }
   for (const relativePath of FLOOR_CLOCK_FRONTEND_FILES) {
+    if (existsSync(resolve(targetRoot, relativePath))) files.add(relativePath);
+  }
+  for (const relativePath of [FLOOR_TRACKER_FEATURE_FILE, FLOOR_TRACKER_UI_FILE, FLOOR_TRACKER_EDGE_FILE]) {
     if (existsSync(resolve(targetRoot, relativePath))) files.add(relativePath);
   }
 
@@ -96,6 +102,12 @@ export function selectTargetContractProfile({ targetRoot }) {
         file.endsWith("/tournament-live-clock/controlPolicy.ts") &&
         source.includes("readExpectedControlRevision"),
     ),
+    floorTrackerFlag: marker(orderedFiles, sources, (file, source) =>
+      file === FLOOR_TRACKER_FEATURE_FILE && /floorDeferredTrackerMoveV1:\s*true\b/.test(source)),
+    floorTrackerUi: marker(orderedFiles, sources, (file, source) =>
+      file === FLOOR_TRACKER_UI_FILE && source.includes("queueTrackerMove")),
+    floorTrackerEdge: marker(orderedFiles, sources, (file, source) =>
+      file === FLOOR_TRACKER_EDGE_FILE && source.includes('supabase.rpc("start_tracker_hand_v3"')),
   };
 
   const has = (key) => evidence[key].length > 0;
@@ -146,6 +158,12 @@ export function selectTargetContractProfile({ targetRoot }) {
     error.evidence = evidence;
     throw error;
   }
+  if (has("floorTrackerFlag") && (!has("floorTrackerUi") || !has("floorTrackerEdge"))) {
+    const error = new Error("UNKNOWN_TARGET_CONTRACT_PROFILE: enabled deferred Floor move lacks UI or V3 Edge context");
+    error.code = "UNKNOWN_TARGET_CONTRACT_PROFILE";
+    error.evidence = evidence;
+    throw error;
+  }
 
   const hash = createHash("sha256");
   for (const file of orderedFiles) hash.update(`${file}\0${sources.get(file)}\0`);
@@ -155,6 +173,7 @@ export function selectTargetContractProfile({ targetRoot }) {
     evidence,
     requirements: {
       floorClockRevisionV1: floorClockRevisionComplete,
+      floorDeferredTrackerMoveV1: has("floorTrackerFlag"),
       dealerShortageAlertV1: shortageAlertComplete,
     },
     evidenceFiles: orderedFiles,

@@ -1,12 +1,12 @@
 # Floor/Tracker V3 — common release handoff (source only)
 
-Status: `FLOOR_RELEASE_SLICE_READY_FOR_COMMON_RELEASE`. This document does not authorize or perform a production mutation. Do not release Floor separately from the common bundle.
+Status: `FLOOR_RELEASE_IN_PROGRESS`. This document records the bounded Floor/Tracker release; production steps still require their own receipts and preflight.
 
 ## Frozen inputs
 
-- Floor PR [#1306](https://github.com/PhamGiaVinh/-vinpoker-/pull/1306), Draft HEAD `45a793c0b6422734a0af4a081e349af7581ceec1`. Its merge tree against `origin/main` `638ca03b1c0da684df3f3870dcf135701039dc0a` was conflict-free on 2026-09-25. Recheck both SHAs before release.
+- Floor PR [#1306](https://github.com/PhamGiaVinh/-vinpoker-/pull/1306), reviewed HEAD `45a793c0b6422734a0af4a081e349af7581ceec1`, merged as `25e4ab5f87bf9522e33c8d1e312be3c5d9b4ff18` on 2026-09-25. Pin the final release SHA after integrating the controlled deploy path and activation.
 - Focused source review: no new P0/P1 in migration lineage, 8/9-max capacity, locked/reserved seats, active-hand guard, idempotency, caller/club checks, legacy hand compatibility or pending-move lifecycle. Four targeted Vitest files: 20/20 PASS. Disposable PostgreSQL and catalog/promotion CI on the frozen PR head: PASS. Preview browser evidence is pending Vercel build capacity, not an engineering failure.
-- GitHub main has no branch-protection required-status-check rule or active repository ruleset for `Vercel – target-source` (checked 2026-09-25). That status is not a required merge check. #1306 remains Draft for the owner/release decision.
+- GitHub main has no branch-protection required-status-check rule or active repository ruleset for `Vercel – target-source` (checked 2026-09-25). That rate-limited Preview was not a required merge check; #1306 has merged.
 - A merge to `main` starts `.github/workflows/vbackerworkflowmain.yml` on `push`, but its Edge and frontend deployment jobs require `workflow_dispatch`; source merge alone does not apply DB, deploy Edge or deploy frontend. Recheck the workflow before merging. Do not use merge as a production launch.
 - Existing Edge candidate source: `VinPoker/supabase/functions/tournament-live-update/index.ts`, last changed by commit `b69085f1cf596b27a1413359b7d58d37fc432cb6`; Git blob `1a4475f7435cda889b74092544cc90486da1cbf7`, file SHA-256 `4A6EFCF751A5CF088D3D19393871DDBCFB257EC8A3761C262853A35D0ACE3280`. This blob is identical in #1306 and current `main`. It routes V3 `start_hand` to `start_tracker_hand_v3` with tournament-table/session/epoch and retains legacy `start_hand`; `record_hand` retains the existing call signature, with its V3/legacy identity handling supplied by migration 00009. Production `tournament-live-update` is ACTIVE v58, not this candidate. Do not deploy it until the common DB gate has passed.
 - Frontend gate: `floorDeferredTrackerMoveV1=false` in `src/lib/featureFlags.ts`. It is visibility only, not RPC authorization. The exact common-release integration/frontend SHA must be pinned after source integration; neither the PR head nor an unreviewed moving `main` is a frontend deployment target.
@@ -71,9 +71,9 @@ Verify queue table RLS, pending unique indexes, seat-reservation trigger and exa
 
 ## Edge and server activation
 
-1. After DB postcheck, deploy only the pinned `tournament-live-update` candidate through an owner-approved controlled Edge step. The current `vbackerworkflowmain.yml` does **not** expose `tournament-live-update` as a selectable critical function; do not silently substitute another Edge target or deploy unreviewed `main`. Pin the source blob above, verify `deno check` and the existing targeted tests, then record deployment version/receipt.
+1. After DB postcheck, deploy only the pinned `tournament-live-update` candidate using the explicit `deploy_tournament_live_update` workflow input under the existing protected critical environment. This selection is being added in #1309; it is not live until that PR merges. Pin the source blob above, verify `deno check` and targeted tests, then record deployment version/receipt.
 2. Read-only/TEST smoke: legacy hand path still succeeds; V3 start binds the exact tournament, assignment, session and epoch; stale epoch or wrong assignment/session fails closed; a queued entrant is absent from the running hand, moves once at terminal state and appears in the next hand; retries do not duplicate hand, move or seat. Do not run write smoke against real business data.
-3. Prepare the following **activation patch only**. Do not put it in the active migration catalog or execute it before the common release gate. The release owner must package it as a separately reviewed, versioned migration after the five-file apply:
+3. The activation SQL is staged at `supabase/pending-migrations/20270115000012_floor_tracker_move_activation_v1.sql`, outside the active catalog. Version 00011 is already allocated to a separate Cashier pending migration and must not be reused. Promote only after the five-file apply and Edge verification; review the exact diff before applying:
 
 ```sql
 BEGIN;
@@ -88,7 +88,7 @@ The function itself uses `auth.uid()`, derives tournament/club on the server, an
 
 ## Common release sequence and kill switch
 
-Recovery point → exact DB 00006–00010 apply → DB/ACL postcheck (queue closed) → pinned Edge candidate deploy/receipt → Edge smoke → exact integrated frontend deploy/receipt → separately reviewed queue grant → `floorDeferredTrackerMoveV1` flag ON → Centerpoint authenticated UAT. Do not deploy Floor alone. Source merge is not activation.
+Recovery point → exact DB 00006–00010 apply → DB/ACL postcheck (queue closed) → pinned Edge candidate deploy/receipt → Edge smoke → separately reviewed queue grant → exact frontend artifact with `floorDeferredTrackerMoveV1=true` deploy/receipt → Centerpoint authenticated UAT. Grant before the flag-enabled artifact prevents the UI from advertising an unavailable action. Source merge is not activation.
 
 If any live signal fails: **(1)** revoke queue EXECUTE from `authenticated` (retain anon/service-role denial), **(2)** disable `floorDeferredTrackerMoveV1`, **(3)** keep audit/read paths available and assess a forward fix. Do not use routine whole-DB restore after new business writes.
 

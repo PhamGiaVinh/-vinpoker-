@@ -17,11 +17,12 @@ const REQUIRED_CRITICAL_POSTURE = new Map([
   ["checkout-dealer", true],
   ["assign-dealer", false],
   ["tournament-live-clock", true],
+  ["tournament-live-update", true],
   ["ops-club-accounts", true],
   ["render-payroll-statement", true],
   ["send-payroll-statement", true],
 ]);
-const TARGET_REQUIREMENTS = new Set(["floorClockRevisionV1"]);
+const TARGET_REQUIREMENTS = new Set(["floorClockRevisionV1", "floorDeferredTrackerMoveV1"]);
 
 export function loadDeploymentManifest(path = DEFAULT_MANIFEST_PATH) {
   const manifest = JSON.parse(readFileSync(path, "utf8"));
@@ -74,6 +75,9 @@ export function validateDeploymentManifest(manifest, repositoryRoot) {
   }
   if (manifest.functions["tournament-live-clock"].frontendRequirement !== "floorClockRevisionV1") {
     throw new Error("tournament-live-clock must remain tied to the Floor revision frontend requirement");
+  }
+  if (manifest.functions["tournament-live-update"].frontendRequirement !== "floorDeferredTrackerMoveV1") {
+    throw new Error("tournament-live-update must remain tied to the deferred Floor move frontend requirement");
   }
   if (!manifest.frontend.contracts.some((contract) =>
     contract.type === "function" &&

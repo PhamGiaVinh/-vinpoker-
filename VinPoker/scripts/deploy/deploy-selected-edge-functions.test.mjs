@@ -27,6 +27,10 @@ test("critical JWT posture is preserved by deployment arguments", () => {
     ["functions", "deploy", "tournament-live-clock"],
   );
   assert.deepEqual(
+    deploymentArguments("tournament-live-update", manifest.functions["tournament-live-update"]),
+    ["functions", "deploy", "tournament-live-update"],
+  );
+  assert.deepEqual(
     deploymentArguments("ops-club-accounts", manifest.functions["ops-club-accounts"]),
     ["functions", "deploy", "ops-club-accounts"],
   );
