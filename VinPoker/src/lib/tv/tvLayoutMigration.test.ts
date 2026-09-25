@@ -2,22 +2,15 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const migration = readFileSync(
-  resolve(process.cwd(), "supabase/pending-migrations/20260924065041_tv_layout_editor_v1.sql"),
+const readMigration = (name: string) => readFileSync(
+  resolve(process.cwd(), `supabase/pending-migrations/${name}`),
   "utf8",
-);
-const releaseGateMigration = readFileSync(
-  resolve(process.cwd(), "supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql"),
-  "utf8",
-);
-const scopedMigration = readFileSync(
-  resolve(process.cwd(), "supabase/pending-migrations/20270118000001_tv_tournament_layout_v2.sql"),
-  "utf8",
-);
-const multiblockMigration = readFileSync(
-  resolve(process.cwd(), "supabase/pending-migrations/20270119000000_tv_layout_editor_multiblock_v3.sql"),
-  "utf8",
-);
+).replace(/\r\n/g, "\n");
+
+const migration = readMigration("20260924065041_tv_layout_editor_v1.sql");
+const releaseGateMigration = readMigration("20260924165219_centerpoint_tournament_ops_release_v1.sql");
+const scopedMigration = readMigration("20270118000001_tv_tournament_layout_v2.sql");
+const multiblockMigration = readMigration("20270119000000_tv_layout_editor_multiblock_v3.sql");
 const storageGateStart = migration.indexOf(
   "CREATE OR REPLACE FUNCTION centerpoint_private.tv_branding_storage_insert_allowed_v1(",
 );
@@ -38,6 +31,7 @@ describe("TV layout migration architecture", () => {
   });
 
   it("denies TV uploads while release is OFF and allows only authorized actors for listed clubs when ON", () => {
+    expect(releaseGateMigration).toContain("enabled boolean NOT NULL DEFAULT false");
     expect(releaseGateMigration).toContain("SELECT r.enabled");
     expect(releaseGateMigration).toContain("p_club_id = ANY(r.allowed_club_ids)");
     expect(storageGate).toContain("centerpoint_private.tournament_ops_release_allowed_v1(allowlisted.club_id)");
