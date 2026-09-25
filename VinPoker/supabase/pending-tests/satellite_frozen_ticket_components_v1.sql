@@ -146,17 +146,16 @@ DO $$ BEGIN
 END $$;
 ALTER TABLE public.satellite_tickets ENABLE TRIGGER satellite_preview_write_hold_v1;
 
--- Disposable-only schema variant: future numeric price columns must not let
--- fractional rake/service components round into an integral 6.6m total.
-ALTER TABLE public.tournaments ALTER COLUMN rake_amount TYPE numeric USING rake_amount::numeric;
-ALTER TABLE public.tournaments ALTER COLUMN service_fee_amount TYPE numeric USING service_fee_amount::numeric;
+-- Exercise invalid component values through the actual bigint price columns.
 INSERT INTO public.tournaments
   (id,club_id,name,status,live_status,start_time,buy_in,starting_stack,rake_amount,service_fee_amount,operations_mode)
 VALUES
  ('f3000000-0000-4000-8000-000000000004','f2000000-0000-4000-8000-000000000001',
-  'Fractional target','scheduled','registering',now()+interval '4 day',6000000,10000,500000.5,99999.5,'standard'),
+  'Negative fee component target','scheduled','registering',now()+interval '4 day',6000000,10000,-1,600001,'standard'),
  ('f3000000-0000-4000-8000-000000000005','f2000000-0000-4000-8000-000000000001',
-  'Fractional test source','registering','registering',now()+interval '1 day',1000000,10000,200000,0,'satellite');
+  'Invalid component test source','registering','registering',now()+interval '1 day',1000000,10000,200000,0,'satellite'),
+ ('f3000000-0000-4000-8000-000000000006','f2000000-0000-4000-8000-000000000001',
+  'Mismatched total target','scheduled','registering',now()+interval '5 day',6000000,10000,500000,100000,'standard');
 ALTER TABLE public.satellite_award_plans DISABLE TRIGGER satellite_preview_write_hold_v1;
 DO $$ BEGIN
   BEGIN
@@ -167,14 +166,30 @@ DO $$ BEGIN
             'f2000000-0000-4000-8000-000000000001',6600000,
             '[{"position":1,"ticketCount":1,"cashVnd":"0"}]',1,0,6600000,
             'f1000000-0000-4000-8000-000000000001');
-    RAISE EXCEPTION 'Fractional components were rounded into a plan';
+    RAISE EXCEPTION 'Negative fee component entered a plan';
   EXCEPTION WHEN invalid_parameter_value THEN
     IF SQLERRM NOT LIKE '%satellite_target_component_price_mismatch%' THEN RAISE; END IF;
   END;
   PERFORM pg_temp.sat_component_assert(NOT EXISTS (
     SELECT 1 FROM public.satellite_award_plans
     WHERE source_tournament_id='f3000000-0000-4000-8000-000000000005'),
-    'fractional components fail closed');
+    'negative fee component fails closed');
+  BEGIN
+    INSERT INTO public.satellite_award_plans
+      (source_tournament_id,target_tournament_id,club_id,target_entry_price_vnd,
+       award_lines,ticket_total,cash_total_vnd,total_liability_vnd,locked_by)
+    VALUES ('f3000000-0000-4000-8000-000000000005','f3000000-0000-4000-8000-000000000006',
+            'f2000000-0000-4000-8000-000000000001',6600001,
+            '[{"position":1,"ticketCount":1,"cashVnd":"0"}]',1,0,6600001,
+            'f1000000-0000-4000-8000-000000000001');
+    RAISE EXCEPTION 'Mismatched target total entered a plan';
+  EXCEPTION WHEN invalid_parameter_value THEN
+    IF SQLERRM NOT LIKE '%satellite_target_component_price_mismatch%' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.sat_component_assert(NOT EXISTS (
+    SELECT 1 FROM public.satellite_award_plans
+    WHERE source_tournament_id='f3000000-0000-4000-8000-000000000005'),
+    'mismatched total fails closed');
 END $$;
 ALTER TABLE public.satellite_award_plans ENABLE TRIGGER satellite_preview_write_hold_v1;
 
