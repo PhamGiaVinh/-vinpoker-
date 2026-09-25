@@ -10,14 +10,14 @@ const playerId = "60000000-0000-0000-0000-000000000021";
 const participationId = "f334cb4d-fc1c-4f55-8da7-e98780e74f60";
 const read = {
   releaseEnabled: true, eventItmPercent: 10,
-  rules: { policy: "SUM_STACKS", itmPercent: 10, day2Percent: 10, minCashX: 1.5 },
+  rules: { policy: "SUM_STACKS", itmPercent: 10, day2Percent: 20, minCashX: 1.5 },
   qualification: { sourceHash: "a".repeat(32), participationCount: 1, lockedAt: "now" },
   finalization: null,
   correctionRequests: [],
 };
 const qualification = { state: "LOCKED", sourceHash: "a".repeat(32), policy: "SUM_STACKS",
   flights: [{ flightId: "flight-one", status: "locked", dayStatus: "locked", validEntries: 33,
-    day2Target: 4, eligibleBags: [] }] };
+    itmTarget: 4, day2Target: 7, eligibleBags: [] }] };
 const payout = { state: "READY", rulesVersion: "a".repeat(32), fundingRevision: "b".repeat(32),
   qualificationRevision: "c".repeat(32), payoutInputHash: "d".repeat(32),
   directPoolVnd: 1_000_000, transferPoolVnd: 6_000_000, feesVnd: 600_000,
@@ -41,15 +41,16 @@ describe("verified Multi-day Floor panel", () => {
     let configured = false;
     h.rpc.mockImplementation(async (name: string) => {
       if (name === "multi_day_floor_read_v1") return { data: configured ? read : { ...read, rules: null, qualification: null }, error: null };
-      if (name === "multi_day_set_qualification_rules_v1") { configured = true; return { data: { ok: true }, error: null }; }
+      if (name === "multi_day_set_qualification_rules_v2") { configured = true; return { data: { ok: true }, error: null }; }
       return { data: qualification, error: null };
     });
     render(<MultiDayFloorEventPanel eventId={eventId} />);
     fireEvent.change(await screen.findByLabelText("Bag selection policy"), { target: { value: "SUM_STACKS" } });
     fireEvent.change(screen.getByLabelText("Minimum cash multiplier"), { target: { value: "1.5" } });
+    fireEvent.change(screen.getByLabelText("Day2 % per flight"), { target: { value: "20" } });
     fireEvent.click(screen.getByRole("button", { name: "Lock rules" }));
-    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("multi_day_set_qualification_rules_v1", {
-      p_event_id: eventId, p_policy: "SUM_STACKS", p_min_cash_x: 1.5,
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("multi_day_set_qualification_rules_v2", {
+      p_event_id: eventId, p_policy: "SUM_STACKS", p_min_cash_x: 1.5, p_day2_percent: 20,
     }));
     await screen.findByText(/Rules locked before the first registration/);
   });
@@ -57,8 +58,8 @@ describe("verified Multi-day Floor panel", () => {
   it("shows server flight target, source categories, fees and revisions without treating shortfall as overlay", async () => {
     const { rerender } = render(<MultiDayFloorEventPanel eventId={eventId} />);
     await screen.findByText(/Flight flight-o/);
-    expect(screen.getByText(/33 valid entries → Day2 target 4/)).toBeTruthy();
-    expect(screen.getByText(/Day2 currently follows the same server percentage/)).toBeTruthy();
+    expect(screen.getByText(/33 valid entries → ITM 4 · Day2 target 7/)).toBeTruthy();
+    expect(screen.getByText(/ITM: 10% · Day2: 20% per flight/)).toBeTruthy();
     rerender(<MultiDayFloorEventPanel eventId={eventId} surface="payout" />);
     expect(screen.getByText(/Redeemed ticket transfers: 6,000,000 VND/)).toBeTruthy();
     expect(screen.getByText(/Fees \(outside pool\): 600,000 VND/)).toBeTruthy();

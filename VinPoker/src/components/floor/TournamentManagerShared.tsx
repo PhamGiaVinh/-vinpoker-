@@ -464,7 +464,7 @@ export const NewTournamentDialog = ({
                 <div><Label>ITM % per flight</Label><Input type="number" step="0.1" min={0} value={itmPercent} onChange={e => setItmPercent(e.target.value)} placeholder="12.5" /></div>
                 <div><Label>Flight count (A–K)</Label><Input type="number" min={1} max={11} value={flightCount} onChange={e => setFlightCount(Math.min(11, Math.max(1, Math.floor(+e.target.value) || 1)))} /></div>
               </div>
-              <p className="text-[11px] text-muted-foreground -mt-1">Create {flightCount} flights ({flightLabels}) and one Final Day. The verified Day2 quota uses the same percentage as ITM: ceil(valid entries × ITM% / 100) per flight. Lock bag policy and minimum cash before the first entry.</p>
+              <p className="text-[11px] text-muted-foreground -mt-1">Create {flightCount} flights ({flightLabels}) and one Final Day. ITM% is set here; set a separate Day2% with bag policy and minimum cash in Floor tournament design before the first entry. Each flight rounds both targets up from valid entries.</p>
               <Label>Final Day start time</Label><Input type="datetime-local" value={finalStart} onChange={e => setFinalStart(e.target.value)} />
             </>
           )}

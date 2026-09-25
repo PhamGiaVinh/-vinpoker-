@@ -13,7 +13,7 @@ type FloorRead = {
   correctionRequests: Array<{ requestId: string; kind: string; deltaVnd: number; reason: string; state: string }>;
 };
 type Bag = { bagId: string; playerId: string; stack: number; version: number };
-type Flight = { flightId: string; status: string | null; dayStatus: string | null; validEntries: number; day2Target: number; eligibleBags: Bag[] };
+type Flight = { flightId: string; status: string | null; dayStatus: string | null; validEntries: number; itmTarget: number; day2Target: number; eligibleBags: Bag[] };
 type Qualification = { state: string; sourceHash: string; policy: string; flights: Flight[] };
 type Payout = {
   state: string; rulesVersion: string; fundingRevision: string;
@@ -54,6 +54,7 @@ export function MultiDayFloorEventPanel({ eventId, onReleaseRead, surface = "des
   const [postfinal, setPostfinal] = useState<Postfinal | null>(null);
   const [policy, setPolicy] = useState("SELECT_LARGEST");
   const [minCashX, setMinCashX] = useState("1");
+  const [day2Percent, setDay2Percent] = useState("");
   const [selectedBags, setSelectedBags] = useState<string[]>([]);
   const [kind, setKind] = useState("OBLIGATION_DELTA");
   const [participationId, setParticipationId] = useState("");
@@ -81,6 +82,7 @@ export function MultiDayFloorEventPanel({ eventId, onReleaseRead, surface = "des
       if (current.rules) {
         setPolicy(current.rules.policy);
         setMinCashX(String(current.rules.minCashX));
+        setDay2Percent(String(current.rules.day2Percent));
         const q = await rpc<Qualification>("multi_day_qualification_preview_v1", { p_event_id: eventId });
         setQualification(q);
         if (current.finalization) {
@@ -96,7 +98,7 @@ export function MultiDayFloorEventPanel({ eventId, onReleaseRead, surface = "des
           }
           setPostfinal(null);
         } else { setPayout(null); setPostfinal(null); }
-      } else { setQualification(null); setPayout(null); setPostfinal(null); }
+      } else { setDay2Percent((value) => value || String(current.eventItmPercent)); setQualification(null); setPayout(null); setPostfinal(null); }
     } catch (cause) {
       // A missing pending RPC means the release migration is not installed;
       // preserve the existing production Floor controls in that case only.
@@ -132,7 +134,7 @@ export function MultiDayFloorEventPanel({ eventId, onReleaseRead, surface = "des
       <p>Package: {read.releaseEnabled ? "Enabled for this club" : "Off for this club"}. Server authorization applies to every action.</p>
       {surface === "design" && <div className="space-y-2 border-t pt-3">
         <h4 className="font-medium">Main Event rules</h4>
-        <p>ITM: {read.rules?.itmPercent ?? read.eventItmPercent}% · Day2: {read.rules?.day2Percent ?? read.eventItmPercent}% per flight, rounded up from valid entries. Day2 currently follows the same server percentage as ITM.</p>
+        <p>ITM: {read.rules?.itmPercent ?? read.eventItmPercent}% · Day2: {read.rules?.day2Percent ?? "not locked"}% per flight, each rounded up from valid entries. ITM sets paid places; Day2 sets qualification seats.</p>
         {read.rules ? <p>Policy: {read.rules.policy} · Minimum cash: {read.rules.minCashX}× frozen entry price. Rules locked before the first registration or entry.</p> : <>
           <p>Configure before the first registration or entry. The server freezes these rules.</p>
           <Label htmlFor={`policy-${eventId}`}>Bag selection policy</Label>
@@ -142,7 +144,9 @@ export function MultiDayFloorEventPanel({ eventId, onReleaseRead, surface = "des
           </select>
           <Label htmlFor={`cash-${eventId}`}>Minimum cash multiplier</Label>
           <Input id={`cash-${eventId}`} type="number" min="0" max="100" step="0.01" value={minCashX} onChange={(e) => setMinCashX(e.target.value)} />
-          <Button type="button" disabled={busy || !read.releaseEnabled || !Number.isFinite(Number(minCashX))} onClick={() => void act(() => rpc("multi_day_set_qualification_rules_v1", { p_event_id: eventId, p_policy: policy, p_min_cash_x: Number(minCashX) }), "Rules saved and frozen.")}>Lock rules</Button>
+          <Label htmlFor={`day2-${eventId}`}>Day2 % per flight</Label>
+          <Input id={`day2-${eventId}`} type="number" min={read.eventItmPercent} max="100" step="0.01" value={day2Percent} onChange={(e) => setDay2Percent(e.target.value)} />
+          <Button type="button" disabled={busy || !read.releaseEnabled || !Number.isFinite(Number(minCashX)) || day2Percent.trim() === "" || !Number.isFinite(Number(day2Percent)) || Number(day2Percent) < read.eventItmPercent || Number(day2Percent) > 100} onClick={() => void act(() => rpc("multi_day_set_qualification_rules_v2", { p_event_id: eventId, p_policy: policy, p_min_cash_x: Number(minCashX), p_day2_percent: Number(day2Percent) }), "Rules saved and frozen.")}>Lock rules</Button>
         </>}
       </div>}
       {surface === "design" && qualification && <div className="space-y-2 border-t pt-3">
@@ -150,7 +154,7 @@ export function MultiDayFloorEventPanel({ eventId, onReleaseRead, surface = "des
         <p className="break-all text-xs">Source revision: {read.qualification?.sourceHash ?? qualification.sourceHash}</p>
         {qualification.flights.map((flight) => <div key={flight.flightId} className="rounded border p-2">
           <p className="font-medium">Flight {flight.flightId.slice(0, 8)} · play {flight.status ?? "not ended"} · bagging {flight.dayStatus ?? "not locked"}</p>
-          <p>{flight.validEntries} valid entries → Day2 target {flight.day2Target} (ceil) · {flight.eligibleBags.length} eligible sealed bags</p>
+          <p>{flight.validEntries} valid entries → ITM {flight.itmTarget} · Day2 target {flight.day2Target} (each ceil) · {flight.eligibleBags.length} eligible sealed bags</p>
           {!read.qualification && qualification.state === "READY" && flight.eligibleBags.map((bag) => <label key={bag.bagId} className="flex items-center gap-2 py-1">
             <input type="checkbox" checked={selectedBags.includes(bag.bagId)} onChange={() => toggleBag(bag.bagId)} />
             Player {bag.playerId.slice(0, 8)} · {Number(bag.stack).toLocaleString("en-US")} chips · sealed version {bag.version}
