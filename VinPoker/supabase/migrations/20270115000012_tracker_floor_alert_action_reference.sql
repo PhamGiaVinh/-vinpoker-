@@ -100,22 +100,27 @@ BEGIN
     END IF;
   END IF;
 
-  v_receipt := public.report_tracker_floor_operational_alert(
-    p_tournament_id, p_tournament_table_id, p_hand_id, p_action_id,
-    p_kind, p_message, p_request_id
-  );
-  IF v_receipt->>'ok' IS DISTINCT FROM 'true' THEN RETURN v_receipt; END IF;
-  IF p_action_id IS NOT NULL THEN
-    UPDATE public.tracker_floor_alerts
-    SET source_revision = p_source_revision
-    WHERE id = (v_receipt->>'alert_id')::uuid
-      AND reported_by = v_actor
-      AND (source_revision IS NULL OR source_revision = p_source_revision)
-      AND source_action_snapshot @> p_expected_action;
-    IF NOT FOUND THEN
-      RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'request_key_conflict');
+  BEGIN
+    v_receipt := public.report_tracker_floor_operational_alert(
+      p_tournament_id, p_tournament_table_id, p_hand_id, p_action_id,
+      p_kind, p_message, p_request_id
+    );
+    IF v_receipt->>'ok' IS DISTINCT FROM 'true' THEN RETURN v_receipt; END IF;
+    IF p_action_id IS NOT NULL THEN
+      UPDATE public.tracker_floor_alerts
+      SET source_revision = p_source_revision
+      WHERE id = (v_receipt->>'alert_id')::uuid
+        AND reported_by = v_actor
+        AND (source_revision IS NULL OR source_revision = p_source_revision)
+        AND source_action_snapshot @> p_expected_action;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION USING ERRCODE = 'ZX001', MESSAGE = 'request_key_conflict';
+      END IF;
     END IF;
-  END IF;
+  EXCEPTION WHEN SQLSTATE 'ZX001' THEN
+    -- Roll back the legacy alert insert if revision binding lost a race.
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'request_key_conflict');
+  END;
   RETURN v_receipt || pg_catalog.jsonb_build_object('source_revision', p_source_revision);
 END;
 $$;
