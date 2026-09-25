@@ -18,6 +18,38 @@ function cards(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((card): card is string => typeof card === "string") : [];
 }
 
+function result(value: unknown): PublicTableHistoryItem["result"] {
+  const raw = record(value);
+  if (raw?.status !== "verified" || !Array.isArray(raw.recipients) || raw.recipients.length === 0) return { status: "pending" };
+  const recipients: Extract<PublicTableHistoryItem["result"], { status: "verified" }>["recipients"] = [];
+  const identities = new Set<string>();
+  for (const value of raw.recipients) {
+    const person = record(value);
+    const playerId = person && string(person.playerId);
+    const potAward = person && numberOrNull(person.potAward);
+    const netDelta = person && numberOrNull(person.netDelta);
+    if (!person || !playerId || potAward === null || !Number.isSafeInteger(potAward) || potAward <= 0 || netDelta === null || !Number.isSafeInteger(netDelta)) return { status: "pending" };
+    const entryNumber = numberOrNull(person.entryNumber);
+    const identity = `${playerId}:${entryNumber ?? "legacy"}`;
+    if (identities.has(identity)) return { status: "pending" };
+    identities.add(identity);
+    const potKinds = Array.isArray(person.potKinds) ? person.potKinds : [];
+    if (potKinds.length === 0 || potKinds.some((kind) => kind !== "main" && kind !== "side")) return { status: "pending" };
+    recipients.push({
+      playerId,
+      entryNumber,
+      seatNumber: numberOrNull(person.seatNumber),
+      name: string(person.name) ?? "Người chơi",
+      avatarUrl: string(person.avatarUrl),
+      holeCards: cards(person.holeCards),
+      potAward,
+      netDelta,
+      potKinds: [...new Set(potKinds)] as Array<"main" | "side">,
+    });
+  }
+  return { status: "verified", recipients };
+}
+
 export type PublicTableCurrentResponse = {
   access: "public" | "revoked";
   tableId: string | null;
@@ -69,6 +101,7 @@ export function parsePublicTableHistoryPage(value: unknown, tournamentId: string
       smallBlind: numberOrNull(row.smallBlind),
       bigBlind: numberOrNull(row.bigBlind),
       ante: numberOrNull(row.ante),
+      result: result(row.result),
     });
   }
   const rawCursor = data.nextCursor === null ? null : record(data.nextCursor);

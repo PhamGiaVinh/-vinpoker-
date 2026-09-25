@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { PokerCard, CardBack } from '../PokerVisuals';
-import { formatViewerBBOrUnavailable } from '@/lib/tracker-poker/viewerAmounts';
+import { formatViewerBBOrUnavailable, formatViewerChipAndBB } from '@/lib/tracker-poker/viewerAmounts';
 import { formatStack } from '@/lib/format';
 import { TRACKER_TABLE_GEOMETRY } from '@/components/tracker/trackerTableLayout';
 import { TableLogo, TableBlinds } from '@/components/tracker/TableIdentity';
@@ -17,18 +17,16 @@ export function SpectatorMiniTable({ table, appearance }: { table: PublicTableSn
     const bb = formatViewerBBOrUnavailable(value, table.bigBlind ?? 0);
     return bb === '— BB' ? `${formatStack(value)} · — BB` : bb;
   };
-  const stateLabel = table.trackerState === 'last_completed' ? 'Ván gần nhất'
-    : table.trackerState === 'waiting' ? 'Đang chờ ván đầu'
+  const stateLabel = table.trackerState === 'waiting' ? 'Đang chờ ván đầu'
     : table.trackerState === 'inactive' ? 'Bàn chưa hoạt động'
     : table.trackerState === 'closed' ? 'Phiên bàn đã đóng'
     : null;
-  const potLabel = table.trackerState === 'last_completed' ? 'POT CỦA VÁN' : 'POT';
   return <div className="spectator-mini-table" style={tableAppearanceStyle(appearance)} data-hand-id={table.handId ?? undefined} data-tracker-state={table.trackerState}>
     <div className="spectator-mini-surface" aria-hidden="true" />
     <div className="spectator-mini-center">
       <TableLogo url={appearance?.logoUrl} />
       {stateLabel && <span className="spectator-mini-state">{stateLabel}</span>}
-      <span className="spectator-mini-pot tracker-num">{table.pot == null ? (stateLabel ?? t('tableAppearance.noHandData')) : `${potLabel} ${amount(table.pot)}`}</span>
+      <span className="spectator-mini-pot tracker-num">{table.pot == null ? (stateLabel ?? 'POT —') : `POT ${formatViewerChipAndBB(table.pot, table.bigBlind)}`}</span>
       {!!table.board?.length && <span className="spectator-mini-board">{table.board.map((card, index) => <PokerCard key={`${index}:${card}`} card={card} size="sm" className="spectator-mini-card" />)}</span>}
       <TableBlinds level={table.levelNumber} sb={table.smallBlind} bb={table.bigBlind} ante={table.ante} />
       {table.latestAction && table.trackerState === 'live' && <span className="spectator-mini-action">{latestActor?.name ?? t('tableAppearance.player')} · {table.latestAction.actionType.replaceAll('_', ' ')}{table.latestAction.amount != null && table.latestAction.amount > 0 ? ` ${amount(table.latestAction.amount)}` : ''}</span>}

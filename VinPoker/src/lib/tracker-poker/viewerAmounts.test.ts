@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   formatViewerBB,
   formatViewerBBOrUnavailable,
+  formatViewerChipAndBB,
+  formatViewerSignedChipAndBB,
   resolveViewerHandBigBlind,
 } from "./viewerAmounts";
 
@@ -32,5 +34,14 @@ describe("viewer BB amounts", () => {
       actions: [{ player_id: "bb", action_type: "post_bb", action_amount: 200_000 }],
       startingStacks: new Map([["bb", 2_000_000]]),
     })).toBe(200_000);
+  });
+
+  it("keeps chip, pot and signed net labels on the same hand BB", () => {
+    expect(formatViewerChipAndBB(300_000, 200_000)).toBe("300k (1,5 BB)");
+    expect(formatViewerSignedChipAndBB(40_000, 200_000)).toBe("+40k (0,2 BB)");
+    expect(formatViewerSignedChipAndBB(-60_000, 200_000)).toBe("−60k (0,3 BB)");
+    expect(formatViewerSignedChipAndBB(0, 200_000)).toBe("0 (0 BB)");
+    expect(formatViewerChipAndBB(300_000, null)).toBe("300k (— BB)");
+    expect(formatViewerChipAndBB(null, 200_000)).toBe("—");
   });
 });

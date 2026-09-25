@@ -63,7 +63,7 @@ import {
   type TableMotionEvent,
 } from "@/lib/tracker-poker/tableMotion";
 import { shouldCollectCommittedChips } from "@/lib/tracker-poker/livePotCollection";
-import { formatViewerBB, resolveViewerHandBigBlind } from "@/lib/tracker-poker/viewerAmounts";
+import { formatViewerBB, formatViewerChipAndBB, formatViewerChipCompact, resolveViewerHandBigBlind } from "@/lib/tracker-poker/viewerAmounts";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
 import { loadLatestLiveHand } from "./loadLatestLiveHand";
 import { resolveViewerIdentity } from "./viewer-hub/viewerIdentity";
@@ -212,6 +212,7 @@ function TournamentLiveViewContent({
   } | null>(null);
   const appearance = useTournamentTableAppearance(tournamentId);
   const [liveHandBlinds, setLiveHandBlinds] = useState<{ sb: number; bb: number; ante: number; level?: number | null } | null>(null);
+  const [handPotMissing, setHandPotMissing] = useState(false);
   const [liveHandBigBlind, setLiveHandBigBlind] = useState(0);
   const [playersRemaining, setPlayersRemaining] = useState(0);
   const [averageStack, setAverageStack] = useState(0);
@@ -408,6 +409,7 @@ function TournamentLiveViewContent({
     let nextButtonSeat = 1;
     let sourceHandBigBlind = 0;
     let nextHandBlinds: typeof liveHandBlinds = null;
+    let nextHandPotMissing = false;
     let nextCommunity: string[] = [];
     let nextPot = 0;
     let nextActions: ActionLog[] = [];
@@ -429,6 +431,7 @@ function TournamentLiveViewContent({
       nextButtonSeat = hand.buttonSeat ?? hand.button_seat ?? 1;
       nextCommunity = (hand.board ?? hand.community_cards as string[]) || [];
       nextPot = hand.pot ?? hand.pot_size ?? 0;
+      nextHandPotMissing = hand.pot == null && hand.pot_size == null;
       nextInProgress = usePublicCurrentHand ? currentState === "live" : hand.status === "in_progress";
 
       let actionData: LiveHandActionRow[] | null = null;
@@ -760,6 +763,7 @@ function TournamentLiveViewContent({
     setButtonSeat(nextButtonSeat);
     setCommunityCards(nextCommunity);
     setPotSize(nextPot);
+    setHandPotMissing(nextHandPotMissing);
     setActions(nextActions);
     setPotBreakdown(nextBreakdown);
     setHandInProgress(nextInProgress);
@@ -852,6 +856,7 @@ function TournamentLiveViewContent({
     setButtonSeat(1);
     setCommunityCards([]);
     setPotSize(0);
+    setHandPotMissing(false);
     setActions([]);
     setTableNames({});
     setFatalError(null);
@@ -1750,8 +1755,8 @@ function TournamentLiveViewContent({
         }
     : {
         seats: spectator && livePayoutKey && liveCompletedFrame ? liveCompletedFrame.seats : activeSeatsToRender,
-        lastActorId,
-        toActId: spectator && FEATURES.liveActionEngine ? toActId : null,
+        lastActorId: tableDisplayState === "last_completed" ? null : lastActorId,
+        toActId: spectator && FEATURES.liveActionEngine && tableDisplayState === "live" ? toActId : null,
         displayCards,
         potSize,
         potBreakdown,
@@ -1760,7 +1765,7 @@ function TournamentLiveViewContent({
         latestAction,
         formatBB,
         buttonSeat,
-        motionHandKey: handId,
+        motionHandKey: tableDisplayState === "last_completed" ? null : handId,
       };
   const guardViewerIdentity = spectator && FEATURES.liveViewerRPTShell;
   const safeViewerName = (name: string | null | undefined, playerId: string): string => {
@@ -1797,7 +1802,7 @@ function TournamentLiveViewContent({
     return <div className="space-y-3">
       <TrackerVisualStyles />
       <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs font-bold">
-        <button type="button" onClick={() => { setTablePanel("felt"); goLive(); }} className="flex min-h-11 items-center gap-1.5 px-3 py-1.5 text-muted-foreground hover:text-emerald-300"><Radio className="h-3.5 w-3.5" /> LIVE</button>
+        <button type="button" onClick={() => { setTablePanel("felt"); goLive(); }} className="flex min-h-11 items-center gap-1.5 px-3 py-1.5 text-muted-foreground hover:text-emerald-300"><Radio className="h-3.5 w-3.5" /> {tableDisplayState === "last_completed" ? "Bàn" : "LIVE"}</button>
         <button type="button" onClick={() => { setTablePanel("felt"); enterReplay(); }} className="flex min-h-11 items-center gap-1.5 border-l border-border px-3 py-1.5 text-muted-foreground hover:text-amber-300"><History className="h-3.5 w-3.5" /> Phát lại</button>
         <button type="button" aria-current="page" className="flex min-h-11 items-center gap-1.5 border-l border-border bg-[hsl(var(--viewer-neon)_/_0.14)] px-3 py-1.5 text-[hsl(var(--viewer-neon))]"><History className="h-3.5 w-3.5" /> Lịch sử bàn chơi</button>
       </div>
@@ -1856,7 +1861,7 @@ function TournamentLiveViewContent({
         <div className="flex items-center gap-3 flex-wrap">
           <div className="text-lg font-bold text-emerald-400 tracking-wide">
             {headerHandNumber
-              ? tableDisplayState === "last_completed" && !isReplay ? `Ván gần nhất · Hand #${headerHandNumber}` : `Hand #${headerHandNumber}`
+              ? `Hand #${headerHandNumber}`
               : isReplay
                 ? replayTargetState.kind === "idle" || replayTargetState.kind === "loading"
                   ? "Loading replay..."
@@ -1874,13 +1879,13 @@ function TournamentLiveViewContent({
               {headerStreet}
             </span>
           )}
-          {!isReplay && clockData && (
+          {!isReplay && tableDisplayState === "live" && clockData && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/20 text-amber-400 rounded-md text-sm font-mono font-bold border border-amber-500/20">
               <Clock className="w-4 h-4" />
               {formatTime(Math.max(0, localRemaining))}
             </span>
           )}
-          {!isReplay && clockData?.current_level && (
+          {!isReplay && tableDisplayState === "live" && clockData?.current_level && (
             <span className="text-xs text-muted-foreground font-mono">
               Lv.{clockData.current_level} &middot; {formatStack(clockData.small_blind)}/
               {formatStack(clockData.big_blind)}
@@ -1890,6 +1895,11 @@ function TournamentLiveViewContent({
                   &middot; A {formatStack(clockData.ante)}
                 </span>
               )}
+            </span>
+          )}
+          {!isReplay && tableDisplayState === "last_completed" && liveHandBlinds && (
+            <span className="text-xs text-muted-foreground font-mono">
+              {formatViewerChipCompact(liveHandBlinds.sb)}/{formatViewerChipCompact(liveHandBlinds.bb)} · Ante {formatViewerChipCompact(liveHandBlinds.ante)}
             </span>
           )}
         </div>
@@ -1916,8 +1926,8 @@ function TournamentLiveViewContent({
           )}
           {headerPotSize != null && (
             <span className="flex items-center gap-1">
-              <Coins className="w-3.5 h-3.5 text-emerald-400" /> {tableDisplayState === "last_completed" && !isReplay ? "Pot của ván:" : "Pot:"}{" "}
-              <strong className="text-emerald-400 text-sm">{spectator ? (headerFormatBB(headerPotSize) ?? "— BB") : formatStack(headerPotSize)}</strong>
+              <Coins className="w-3.5 h-3.5 text-emerald-400" /> Pot:{" "}
+              <strong className="text-emerald-400 text-sm">{spectator ? formatViewerChipAndBB(tableDisplayState === "last_completed" && handPotMissing ? null : headerPotSize, isReplay ? replayBigBlind : bigBlind) : formatStack(headerPotSize)}</strong>
               {!spectator && headerPotSize > 0 && headerFormatBB(headerPotSize) && (
                 <span className="text-[10px] text-muted-foreground">({headerFormatBB(headerPotSize)})</span>
               )}
@@ -1980,10 +1990,10 @@ function TournamentLiveViewContent({
           <button
             onClick={goLive}
             className={`flex min-h-11 items-center gap-1.5 px-3 py-1.5 transition-colors ${
-              !isReplay ? "bg-emerald-500/20 text-emerald-300" : "text-muted-foreground hover:text-emerald-300"
+              !isReplay && tableDisplayState === "live" ? "bg-emerald-500/20 text-emerald-300" : "text-muted-foreground hover:text-emerald-300"
             }`}
           >
-            <Radio className="w-3.5 h-3.5" /> LIVE
+            <Radio className="w-3.5 h-3.5" /> {tableDisplayState === "last_completed" && !isReplay ? "Bàn" : "LIVE"}
           </button>
           <button
             onClick={enterReplay}
@@ -2060,16 +2070,18 @@ function TournamentLiveViewContent({
               viewerNeon={spectator && FEATURES.liveHandFeed}
               viewerLayout={spectator && FEATURES.liveViewerFeltV2}
               viewerAmountsInBB={spectator}
-              tableFx={spectator && FEATURES.liveTableFx}
-              chipPush={spectator && FEATURES.liveTableFx ? chipPush : null}
+              viewerBigBlind={isReplay ? replayBigBlind : bigBlind}
+              tableFx={spectator && FEATURES.liveTableFx && (isReplay || tableDisplayState !== "last_completed")}
+              chipPush={spectator && FEATURES.liveTableFx && tableDisplayState !== "last_completed" ? chipPush : null}
+              potUnavailable={!isReplay && tableDisplayState === "last_completed" && handPotMissing}
               compact={compactFelt}
               blinds={feltBlinds}
               appearance={appearance.data}
-              runout={!isReplay && liveRunout}
-              collectCommittedChips={collectCommittedChips}
+              runout={!isReplay && tableDisplayState === "live" && liveRunout}
+              collectCommittedChips={tableDisplayState !== "last_completed" && collectCommittedChips}
               revealOrder={revealOrder}
-              motionEnabled={spectator && FEATURES.liveTableMotionV2}
-              motionEvents={tableMotionEvents}
+              motionEnabled={spectator && FEATURES.liveTableMotionV2 && (isReplay || tableDisplayState !== "last_completed")}
+              motionEvents={tableDisplayState === "last_completed" && !isReplay ? [] : tableMotionEvents}
               motionSpeed={isReplay ? (spectator && FEATURES.liveReplayHud ? replayMotionSpeed : 2) : 1}
               bestFiveFocus={spectator
                 ? isReplay && FEATURES.liveReplayHud && replayFocusPhase !== "hidden"
