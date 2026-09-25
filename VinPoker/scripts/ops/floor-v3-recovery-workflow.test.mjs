@@ -75,6 +75,7 @@ test("only encrypted ciphertext is uploaded and restore is isolated with egress 
   assert.match(restore, /DOCKER-USER/);
   assert.match(restore, /restore network still has outbound access/);
   assert.match(restore, /pg_restore[\s\S]*?--exit-on-error/);
+  assert.match(restore, /PGPASSWORD="\$POSTGRES_PASSWORD" pg_restore -h 127\.0\.0\.1 -U supabase_admin/);
   assert.doesNotMatch(restore, /pg_restore[^\n]*--no-owner/);
   assert.match(restore, /cmp -s \"\$payload_root\/table-counts\.tsv\"/);
   assert.match(restore, /cron\.launch_active_jobs = off/);
