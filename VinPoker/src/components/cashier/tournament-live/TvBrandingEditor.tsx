@@ -1,105 +1,255 @@
-import { useEffect, useState } from "react";
-import { Palette, Save } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Palette, RotateCcw, Save } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Slider } from "@/components/ui/slider";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ProofUploader } from "@/components/ProofUploader";
+import { TvBrandingOverlay } from "@/components/tournament-clock/TvBrandingOverlay";
+import { FEATURES } from "@/lib/featureFlags";
+import {
+  DEFAULT_TV_BRANDING_LAYOUT,
+  TV_BRANDING_FONTS,
+  TV_TEXT_STYLES,
+  parseTvBrandingLayout,
+  serializeTvBrandingLayout,
+  validateTvBrandingLayout,
+  type TvBrandingFont,
+  type TvBrandingLayout,
+  type TvTextStyle,
+} from "@/lib/tv/brandingLayout";
 
-/**
- * Per-club TV-clock branding — a button that opens a dialog to set the club's logo
- * emblem, brand name, and TV background (each club adjusts its own). Reads/writes the
- * clubs row directly (owners/admins already have UPDATE under existing RLS). The clock
- * reads tv_logo_url / tv_brand_name / tv_bg_url (bg falls back to cover_url). Casts to
- * any: the tv_* columns (mig 20261028000000) are not in the generated types yet.
- */
-export function TvBrandingEditor({ clubId }: { clubId: string }) {
+type UntypedRpc = (fn: string, args?: Record<string, unknown>) => PromiseLike<{
+  data: unknown;
+  error: { message: string } | null;
+}>;
+const rpc = supabase.rpc.bind(supabase) as UntypedRpc;
+
+function RangeControl({ label, value, min, max, onChange }: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-xs">{label}</Label>
+        <span className="min-w-12 text-right font-mono text-xs text-muted-foreground">{value}%</span>
+      </div>
+      <Slider aria-label={label} min={min} max={max} step={1} value={[value]} onValueChange={([next]) => onChange(next)} />
+    </div>
+  );
+}
+
+export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
   const [open, setOpen] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [brandName, setBrandName] = useState("");
+  const [layout, setLayout] = useState<TvBrandingLayout>({ ...DEFAULT_TV_BRANDING_LAYOUT });
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
-    if (!open) return;
+    if (!FEATURES.tvLayoutEditorV1) return;
+    let active = true;
+    setCanEdit(false);
+    void rpc("can_edit_tv_tournament_layout_v1", { p_tournament_id: tournamentId }).then(({ data, error }) => {
+      if (active) setCanEdit(!error && data === true);
+    });
+    return () => { active = false; };
+  }, [tournamentId]);
+
+  useEffect(() => {
+    if (!open || !FEATURES.tvLayoutEditorV1) return;
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     (async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tv_* columns not in generated types yet
-      const { data } = await (supabase as any)
-        .from("clubs")
-        .select("tv_logo_url, tv_brand_name, tv_bg_url")
-        .eq("id", clubId)
-        .maybeSingle();
+      const { data, error } = await rpc("get_tv_tournament_branding_v1", { p_tournament_id: tournamentId });
       if (cancelled) return;
-      setLogoUrl(data?.tv_logo_url ?? null);
-      setBgUrl(data?.tv_bg_url ?? null);
-      setBrandName(data?.tv_brand_name ?? "");
+      if (error || !data) {
+        setLoadError(error?.message ?? "Tournament TV settings were not found.");
+        setLoading(false);
+        return;
+      }
+      const row = data as unknown as {
+        logo_url: string | null;
+        brand_name: string | null;
+        background_url: string | null;
+        layout: unknown;
+        revision: number;
+      };
+      setLogoUrl(row.logo_url);
+      setBgUrl(row.background_url);
+      setBrandName(row.brand_name ?? "");
+      setLayout(parseTvBrandingLayout(row.layout));
+      setRevision(row.revision);
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [open, clubId]);
+  }, [open, tournamentId]);
+
+  const previewStyle = useMemo(() => ({
+    backgroundImage: bgUrl
+      ? `linear-gradient(rgba(0,0,0,.56), rgba(0,0,0,.72)), url("${bgUrl}")`
+      : "radial-gradient(circle at 50% 45%, #143522, #03100a 62%)",
+    backgroundPosition: `${layout.backgroundX}% ${layout.backgroundY}%`,
+    backgroundSize: "cover",
+  }), [bgUrl, layout.backgroundX, layout.backgroundY]);
+
+  const patchLayout = <K extends keyof TvBrandingLayout>(key: K, value: TvBrandingLayout[K]) => {
+    setLayout((current) => ({ ...current, [key]: value }));
+  };
+
+  const patchText = (id: string, patch: Partial<TvBrandingLayout["textBlocks"][number]>) => {
+    setLayout((current) => ({
+      ...current,
+      textBlocks: current.textBlocks.map((block) => block.id === id ? { ...block, ...patch } : block),
+    }));
+  };
+
+  const layoutError = validateTvBrandingLayout(layout);
 
   const save = async () => {
     setSaving(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
-      const { error } = await (supabase as any)
-        .from("clubs")
-        .update({ tv_logo_url: logoUrl, tv_brand_name: brandName.trim() || null, tv_bg_url: bgUrl })
-        .eq("id", clubId);
-      if (error) { toast.error(error.message); return; }
-      toast.success("Đã lưu thương hiệu TV — màn hình TV sẽ tự cập nhật.");
+      const { data, error } = await rpc("save_tv_tournament_layout_v1", {
+        p_tournament_id: tournamentId,
+        p_expected_revision: revision,
+        p_brand_name: brandName.trim(),
+        p_logo_url: logoUrl?.trim() ?? "",
+        p_bg_url: bgUrl?.trim() ?? "",
+        p_layout: serializeTvBrandingLayout(layout),
+      });
+      if (error || !data) {
+        toast.error(error?.message?.includes("tv_layout_stale_revision")
+          ? "Another operator published a new layout. Reopen the editor before saving."
+          : error?.message ?? "The TV layout was not saved.");
+        return;
+      }
+      toast.success("TV layout published. Screens update on their next refresh.");
       setOpen(false);
+    } catch {
+      toast.error("The TV layout could not be published. Your draft is still open; please retry.");
     } finally {
       setSaving(false);
     }
   };
 
+  if (!FEATURES.tvLayoutEditorV1 || !canEdit) return null;
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="gap-1.5 border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10">
-          <Palette className="w-4 h-4" /> Chỉnh thương hiệu TV (logo · nền · tên)
+          <Palette className="h-4 w-4" /> Edit TV layout
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Palette className="w-4 h-4 text-emerald-400" /> Thương hiệu TV (theo câu lạc bộ)
-          </DialogTitle>
+      <DialogContent className="max-h-[94vh] max-w-6xl overflow-y-auto p-0">
+        <DialogHeader className="border-b px-5 py-4">
+          <DialogTitle className="flex items-center gap-2"><Palette className="h-4 w-4 text-emerald-400" /> Tournament TV layout</DialogTitle>
+          <DialogDescription>Preview your changes, then publish them to the tournament TV screens.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Logo, ảnh nền và tên hiển thị trên đồng hồ TV — mỗi CLB chỉnh riêng. Bỏ trống = mặc định (♠ + tên CLB + “VINPOKER”).
-          </p>
-          {loading ? (
-            <p className="text-xs text-muted-foreground">Đang tải…</p>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-[11px]">Logo CLB (giữa đồng hồ)</Label>
-                  <ProofUploader folder="club/tv-logo" value={logoUrl} onChange={setLogoUrl} />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px]">Ảnh nền TV (sau đồng hồ)</Label>
-                  <ProofUploader folder="club/tv-bg" value={bgUrl} onChange={setBgUrl} />
-                </div>
+
+        {loading ? (
+          <p className="px-5 py-10 text-center text-sm text-muted-foreground">Loading TV settings…</p>
+        ) : loadError ? (
+          <div className="space-y-3 px-5 py-8 text-center">
+            <p className="text-sm text-destructive">{loadError}</p>
+            <p className="text-xs text-muted-foreground">Editing is blocked until the current server settings can be loaded.</p>
+          </div>
+        ) : (
+          <div className="grid lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,.65fr)]">
+            <section className="border-b bg-black/95 p-4 lg:border-b-0 lg:border-r">
+              <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[.18em] text-white/60">
+                <span>Draft 16:9 preview · not on TV</span><span>Safe area: 4–96%</span>
               </div>
-              <div className="space-y-1">
-                <Label className="text-[11px]">Tên thương hiệu (dưới logo)</Label>
-                <Input value={brandName} onChange={(e) => setBrandName(e.target.value)} placeholder="VD: VINPOKER / tên CLB" maxLength={28} />
+              <div className="relative aspect-video overflow-hidden rounded-xl border border-emerald-400/30 shadow-2xl" style={{ ...previewStyle, containerType: "inline-size" }} data-tv-branding-canvas>
+                <div className="absolute inset-3 rounded-lg border border-emerald-400/30" />
+                <div className="absolute left-1/2 top-[6%] w-[55%] -translate-x-1/2 truncate text-center text-[clamp(12px,2vw,28px)] font-black uppercase tracking-wider text-emerald-100">MAIN EVENT · DAY 1</div>
+                <div className="absolute left-[3%] top-[18%] grid h-[66%] w-[31%] content-start gap-3 rounded-lg border border-emerald-400/25 bg-black/45 p-2 text-center text-[clamp(6px,.7vw,11px)] uppercase tracking-wider text-emerald-100/80">PLAYERS · STATS · PRIZES</div>
+                <div className="absolute left-[34%] top-[33%] grid h-[38%] w-[32%] place-items-center rounded-full border-4 border-emerald-300/70 bg-black/70 text-[clamp(24px,5vw,64px)] font-black text-white shadow-[0_0_32px_rgba(98,255,143,.35)]">35:31</div>
+                <div className="absolute right-[3%] top-[18%] grid h-[66%] w-[31%] content-start gap-3 rounded-lg border border-emerald-400/25 bg-black/45 p-2 text-center text-[clamp(6px,.7vw,11px)] uppercase tracking-wider text-emerald-100/80">BLINDS · LEVEL · PAYOUTS</div>
+                <div className="absolute bottom-[8%] left-[29%] right-[29%] h-[10%] rounded-lg border border-emerald-400/35 bg-black/65" />
+                <TvBrandingOverlay
+                  layout={layout}
+                  logoUrl={logoUrl}
+                  brandName={brandName.trim() || "VINPOKER"}
+                  editing
+                  onLayoutChange={setLayout}
+                />
               </div>
-              <Button size="sm" onClick={save} disabled={saving} className="gap-1">
-                <Save className="w-4 h-4" /> {saving ? "Đang lưu…" : "Lưu thương hiệu TV"}
-              </Button>
-            </>
-          )}
-        </div>
+              <p className="mt-3 text-xs leading-relaxed text-white/55">Changes appear on TV only after Publish. Tournament numbers remain server-controlled.</p>
+              {layoutError && <p role="alert" className="mt-2 text-xs text-amber-300">{layoutError}</p>}
+            </section>
+
+            <section className="space-y-5 p-5">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                <div className="space-y-1.5"><Label className="text-xs">Tournament logo</Label><ProofUploader folder="tv/branding-logo" versioned value={logoUrl} onChange={setLogoUrl} /></div>
+                <div className="space-y-1.5"><Label className="text-xs">TV background</Label><ProofUploader folder="tv/branding-background" versioned value={bgUrl} onChange={setBgUrl} /></div>
+              </div>
+              <div className="space-y-1.5"><Label htmlFor="tv-brand-name" className="text-xs">Brand name</Label><Input id="tv-brand-name" value={brandName} onChange={(event) => setBrandName(event.target.value)} maxLength={40} placeholder="VINPOKER" /></div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div><h3 className="text-sm font-semibold">Text blocks</h3><p className="text-xs text-muted-foreground">Move each block on the preview or focus it and use arrow keys.</p></div>
+                  <Button type="button" variant="outline" size="sm" disabled={layout.textBlocks.length >= 6} onClick={() => {
+                    const id = crypto.randomUUID();
+                    const candidates = [{ x: 42, y: 19 }, { x: 58, y: 19 }, { x: 86, y: 10 }, { x: 12, y: 90 }, { x: 88, y: 90 }, { x: 50, y: 10 }];
+                    setLayout((current) => {
+                      const block = candidates.map(({ x, y }) => ({
+                        id, text: "New text", x, y, width: 14, height: 6,
+                        font: current.font, size: 18, style: "plain" as const,
+                      })).find((candidate) => validateTvBrandingLayout({ ...current, textBlocks: [...current.textBlocks, candidate] }) === null);
+                      return block ? { ...current, textBlocks: [...current.textBlocks, block] } : current;
+                    });
+                  }}>Add text ({layout.textBlocks.length}/6)</Button>
+                </div>
+                {layout.textBlocks.map((block, index) => (
+                  <fieldset key={block.id} className="grid gap-3 rounded-lg border border-border/70 p-3 sm:grid-cols-2">
+                    <legend className="px-1 text-xs font-medium">Text {index + 1}</legend>
+                    <div className="space-y-1.5 sm:col-span-2"><Label htmlFor={`tv-text-${block.id}`} className="text-xs">Text</Label><Input id={`tv-text-${block.id}`} value={block.text} onChange={(event) => patchText(block.id, { text: event.target.value.slice(0, 100) })} maxLength={100} /></div>
+                    <RangeControl label="Horizontal position" value={block.x} min={4} max={96} onChange={(value) => patchText(block.id, { x: value })} />
+                    <RangeControl label="Vertical position" value={block.y} min={4} max={96} onChange={(value) => patchText(block.id, { y: value })} />
+                    <div className="space-y-1.5"><Label className="text-xs">Font</Label><Select value={block.font} onValueChange={(value) => patchText(block.id, { font: value as TvBrandingFont })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{TV_BRANDING_FONTS.map((font) => <SelectItem key={font} value={font}>{font[0].toUpperCase() + font.slice(1)}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-1.5"><Label className="text-xs">Style</Label><Select value={block.style} onValueChange={(value) => patchText(block.id, { style: value as TvTextStyle })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{TV_TEXT_STYLES.map((style) => <SelectItem key={style} value={style}>{style[0].toUpperCase() + style.slice(1)}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-1.5"><Label htmlFor={`tv-size-${block.id}`} className="text-xs">Size (12–42)</Label><Input id={`tv-size-${block.id}`} type="number" min={12} max={42} value={block.size} onChange={(event) => patchText(block.id, { size: Number(event.target.value) })} /></div>
+                    <div className="flex items-end justify-end"><Button type="button" variant="ghost" size="sm" onClick={() => patchLayout("textBlocks", layout.textBlocks.filter((item) => item.id !== block.id))}>Remove text</Button></div>
+                  </fieldset>
+                ))}
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Brand font</Label>
+                <Select value={layout.font} onValueChange={(value) => patchLayout("font", value as TvBrandingFont)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{TV_BRANDING_FONTS.map((font) => <SelectItem key={font} value={font}>{font[0].toUpperCase() + font.slice(1)}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-x-5 gap-y-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                <RangeControl label="Logo horizontal" value={layout.brandX} min={8} max={92} onChange={(value) => patchLayout("brandX", value)} />
+                <RangeControl label="Logo vertical" value={layout.brandY} min={4} max={96} onChange={(value) => patchLayout("brandY", value)} />
+                <RangeControl label="Brand size" value={layout.brandScale} min={70} max={140} onChange={(value) => patchLayout("brandScale", value)} />
+                <RangeControl label="Logo size" value={layout.logoScale} min={60} max={150} onChange={(value) => patchLayout("logoScale", value)} />
+                <RangeControl label="Background horizontal" value={layout.backgroundX} min={0} max={100} onChange={(value) => patchLayout("backgroundX", value)} />
+                <RangeControl label="Background vertical" value={layout.backgroundY} min={0} max={100} onChange={(value) => patchLayout("backgroundY", value)} />
+              </div>
+            </section>
+          </div>
+        )}
+
+        <DialogFooter className="border-t px-5 py-4 sm:justify-between">
+          <Button type="button" variant="ghost" className="gap-2" disabled={loading || !!loadError || saving} onClick={() => { setLayout({ ...DEFAULT_TV_BRANDING_LAYOUT }); setLogoUrl(null); setBgUrl(null); setBrandName(""); }}><RotateCcw className="h-4 w-4" /> Reset draft to defaults</Button>
+          <Button type="button" className="gap-2" onClick={save} disabled={loading || !!loadError || !!layoutError || saving}><Save className="h-4 w-4" /> {saving ? "Publishing…" : "Publish TV layout"}</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

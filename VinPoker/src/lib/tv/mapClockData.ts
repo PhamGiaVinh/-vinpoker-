@@ -77,5 +77,6 @@ export function mapTvDataToClock(d: TvData): TournamentClockData {
     brandName: d.brandName ?? undefined,
     clubBackgroundUrl: d.clubCoverUrl ?? null,
     clubLogoUrl: d.clubLogoUrl ?? null,
+    brandingLayout: d.brandingLayout,
   };
 }

@@ -18,6 +18,13 @@ const PAIRED: TvDisplayStatePayload = {
     theme: "dark",
     announcement: null,
     club_name: "VinPoker Club",
+    club_logo_url: "https://cdn.example/logo.png",
+    club_brand_name: "VIN CLUB",
+    club_background_url: "https://cdn.example/background.jpg",
+    club_layout: {
+      brand_x: 75, brand_y: 40, brand_scale: 110, logo_scale: 90,
+      background_x: 20, background_y: 65, font: "sans", custom_text: "Final Table",
+    },
   },
   tournament: {
     id: "t-1",
@@ -72,6 +79,9 @@ describe("mapDisplayStateToTvData", () => {
     expect(data).not.toBeNull();
     expect(data!.tournamentName).toBe("VinPoker Weekly Deepstack");
     expect(data!.clubName).toBe("VinPoker Club");
+    expect(data!.clubLogoUrl).toBe("https://cdn.example/logo.png");
+    expect(data!.brandName).toBe("VIN CLUB");
+    expect(data!.clubCoverUrl).toBe("https://cdn.example/background.jpg");
     expect(data!.status).toBe("live");
     expect(data!.isRunning).toBe(true);
     expect(data!.remainingSeconds).toBe(1015); // drift-corrected, not the snapshot

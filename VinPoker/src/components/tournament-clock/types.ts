@@ -31,4 +31,5 @@ export type TournamentClockData = {
    *  gradient when absent or on load error. */
   clubBackgroundUrl?: string | null;
   clubLogoUrl?: string | null;
+  brandingLayout?: import("@/lib/tv/brandingLayout").TvBrandingLayout;
 };

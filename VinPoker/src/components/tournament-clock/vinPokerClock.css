@@ -34,7 +34,7 @@
   inset: 0;
   z-index: -5;
   background-image: var(--club-bg-image, none);
-  background-position: center;
+  background-position: var(--club-bg-position, center);
   background-size: cover;
   background-color: var(--clock-bg-fallback);
   filter: blur(2px) saturate(0.85) brightness(0.35);
@@ -114,6 +114,48 @@
     radial-gradient(circle at center, rgba(98, 255, 143, 0.34) 0 28%, #0c1510 30% 52%, rgba(98, 255, 143, 0.8) 54% 57%, #111 59% 100%),
     conic-gradient(from 0deg, #1e3, #111 15%, #1e3 22%, #111 39%, #1e3 48%, #111 64%, #1e3 74%, #111 88%, #1e3);
   box-shadow: 0 0 18px var(--clock-green), inset 0 0 22px rgba(98, 255, 143, 0.42);
+}
+
+.vpc-brand-layer {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  justify-items: center;
+  gap: 0.7vmin;
+  width: min(29vmin, 360px);
+  pointer-events: none;
+  text-align: center;
+  transform-origin: center;
+}
+.vpc-brand-name {
+  width: 100%;
+  overflow: hidden;
+  color: #ecfff0;
+  font-size: clamp(18px, 2.8vmin, 48px);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 16px rgba(98, 255, 143, 0.78), 0 3px 0 rgba(0, 0, 0, 0.7);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.vpc-brand-note {
+  max-width: 100%;
+  color: var(--clock-green);
+  font-size: clamp(11px, 1.15vmin, 18px);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  text-shadow: 0 0 10px rgba(98, 255, 143, 0.65);
+}
+.vpc-has-custom-brand .vpc-brand-default {
+  display: none;
+}
+.vpc-root .tv-branding-item-editable:focus-visible {
+  outline: 2px solid #f2ece6;
+  outline-offset: 3px;
 }
 
 /* ── Central countdown ring (decorative conic tick ring; not a progress arc) ── */
@@ -229,6 +271,9 @@
  * screen, and bump the ring up. Order: title → ring → stats → blinds/prizes → footer.
  * The clamp() minimums on every font keep text readable even though vmin is small. */
 @media (max-width: 760px), (max-width: 1023px) and (orientation: portrait) {
+  .vpc-brand-layer { display: none; }
+  .vpc-root .tv-branding-item { display: none !important; }
+  .vpc-has-custom-brand .vpc-brand-default { display: contents; }
   .vpc-root {
     aspect-ratio: auto;
     min-height: 100svh;

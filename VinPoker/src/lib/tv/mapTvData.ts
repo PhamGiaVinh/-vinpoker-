@@ -1,6 +1,8 @@
 import type { TvData, TvLevel, TvPrize, TvTournamentStatus } from "@/types/tv";
 import { computeNextBreak } from "@/lib/tv/computeNextBreak";
 import { parseSatellitePayout } from "@/lib/satellitePayout";
+import { parseTvBrandingLayout } from "@/lib/tv/brandingLayout";
+import { FEATURES } from "@/lib/featureFlags";
 
 // Raw shapes coming back from existing reads — no schema change in PR B.
 
@@ -40,7 +42,14 @@ export interface TvTournamentRow {
   buy_in: number | null;
   rake_amount: number | null;
   satellite_payout: unknown;
-  club: { name: string; cover_url: string | null; tv_logo_url: string | null; tv_brand_name: string | null; tv_bg_url: string | null } | null;
+  club: {
+    name: string;
+    cover_url: string | null;
+    tv_logo_url: string | null;
+    tv_brand_name: string | null;
+    tv_bg_url: string | null;
+    tv_layout_config?: unknown;
+  } | null;
 }
 
 export interface TvLevelRow {
@@ -136,6 +145,9 @@ export function mapTvData(sources: TvDataSources): TvData {
     tournamentName: tournament.name,
     clubName: tournament.club?.name ?? "",
     clubLogoUrl: tournament.club?.tv_logo_url ?? null,
+    brandingLayout: FEATURES.tvLayoutEditorV1
+      ? parseTvBrandingLayout(tournament.club?.tv_layout_config)
+      : undefined,
     brandName: tournament.club?.tv_brand_name ?? tournament.club?.name ?? null,
     eventNote: null, // no schema column yet — hidden by contract
     status: mapTournamentStatus(tournament.status),

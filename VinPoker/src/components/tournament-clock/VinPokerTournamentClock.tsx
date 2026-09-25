@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { ClockRing } from "./ClockRing";
 import type { TournamentClockData } from "./types";
+import { TvBrandingOverlay } from "./TvBrandingOverlay";
 import "./vinPokerClock.css";
 
 /**
@@ -15,8 +16,13 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
   // The club photo is injected as a CSS variable on the root; the .vpc-bg layer
   // reads it (with a dark fallback). TS needs the cast for the custom property.
   const rootStyle = {
+    containerType: "inline-size",
     "--club-bg-image": data.clubBackgroundUrl ? `url("${data.clubBackgroundUrl}")` : "none",
+    "--club-bg-position": data.brandingLayout
+      ? `${data.brandingLayout.backgroundX}% ${data.brandingLayout.backgroundY}%`
+      : "center",
   } as CSSProperties;
+  const layout = data.brandingLayout;
 
   const rule: CSSProperties = {
     display: "inline-block",
@@ -29,10 +35,12 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
   const midValue: CSSProperties = { fontSize: "clamp(18px, 2.4vmin, 44px)" };
 
   return (
-    <div className="vpc-root" style={rootStyle} aria-label="VinPoker tournament clock">
+    <div className={`vpc-root${layout ? " vpc-has-custom-brand" : ""}`} style={rootStyle} aria-label="VinPoker tournament clock" data-tv-branding-canvas>
       <div className="vpc-bg" aria-hidden="true" />
       <div className="vpc-overlay" aria-hidden="true" />
       <div className="vpc-frame" aria-hidden="true" />
+
+      {layout ? <TvBrandingOverlay layout={layout} logoUrl={data.clubLogoUrl} brandName={data.brandName} /> : null}
 
       <div className="vpc-grid">
         {/* Title */}
@@ -61,20 +69,22 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
               <div className="vpc-label" style={labelUpper}>Prize Pool</div>
               <div className="vpc-value" style={{ fontSize: "clamp(24px, 3.6vmin, 60px)" }}>{data.prizePool}</div>
             </div>
-            <div
-              className="vpc-chip justify-self-center self-center grid place-items-center"
-              style={{ width: "16vmin", height: "16vmin", overflow: "hidden" }}
-              aria-label="VinPoker emblem"
-            >
-              {data.clubLogoUrl ? (
-                <img src={data.clubLogoUrl} alt="" className="h-full w-full rounded-full object-cover" />
-              ) : (
-                <span style={{ fontSize: "7vmin", color: "#d8ffe0", textShadow: "0 0 20px var(--clock-green)", lineHeight: 1 }}>♠</span>
-              )}
-            </div>
-            <div className="justify-self-center text-center">
-              <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: "clamp(22px, 3.4vmin, 56px)", letterSpacing: ".08em", color: "#ecfff0", textShadow: "0 0 16px rgba(98,255,143,.78), 0 3px 0 rgba(0,0,0,.7)", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{data.brandName || "VINPOKER"}</div>
-              <div style={{ color: "var(--clock-green)", letterSpacing: ".34em", textIndent: ".34em", marginTop: ".5vmin", fontSize: "clamp(12px, 1.4vmin, 20px)", textShadow: "0 0 10px var(--clock-green)" }}>♠♥♦♣</div>
+            <div className="vpc-brand-default contents">
+                <div
+                  className="vpc-chip justify-self-center self-center grid place-items-center"
+                  style={{ width: "16vmin", height: "16vmin", overflow: "hidden" }}
+                  aria-label="VinPoker emblem"
+                >
+                  {data.clubLogoUrl ? (
+                    <img src={data.clubLogoUrl} alt="" className="h-full w-full rounded-full object-cover" />
+                  ) : (
+                    <span style={{ fontSize: "7vmin", color: "#d8ffe0", textShadow: "0 0 20px var(--clock-green)", lineHeight: 1 }}>♠</span>
+                  )}
+                </div>
+                <div className="justify-self-center text-center">
+                  <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: "clamp(22px, 3.4vmin, 56px)", letterSpacing: ".08em", color: "#ecfff0", textShadow: "0 0 16px rgba(98,255,143,.78), 0 3px 0 rgba(0,0,0,.7)", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{data.brandName || "VINPOKER"}</div>
+                  <div style={{ color: "var(--clock-green)", letterSpacing: ".34em", textIndent: ".34em", marginTop: ".5vmin", fontSize: "clamp(12px, 1.4vmin, 20px)", textShadow: "0 0 10px var(--clock-green)" }}>♠♥♦♣</div>
+                </div>
             </div>
           </div>
 

@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { FEATURES } from "@/lib/featureFlags";
 
 // The tv_* RPCs went live with migration 20260818000001, which postdates the
 // generated src/integrations/supabase/types.ts — call them through one local
@@ -26,6 +27,9 @@ export async function rpcTvPairBegin(): Promise<{ data: TvPairBeginResult | null
 export async function rpcGetTvDisplayState(
   displayToken: string,
 ): Promise<{ data: unknown; error: string | null }> {
-  const { data, error } = await rpc("get_tv_display_state", { p_display_token: displayToken });
+  const functionName = FEATURES.tvLayoutEditorV1
+    ? "get_tv_display_state_v3"
+    : "get_tv_display_state";
+  const { data, error } = await rpc(functionName, { p_display_token: displayToken });
   return { data, error: error?.message ?? null };
 }
