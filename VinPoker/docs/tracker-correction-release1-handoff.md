@@ -1,7 +1,7 @@
 # Tracker correction, Release 1 source preview
 
-This release is source and local verification only. No production database,
-Edge function, frontend, or feature flag has been changed.
+This release is source and local/CI verification only. No production database,
+Edge function, vinpoker frontend, or feature flag has been changed.
 
 ## Capability boundary
 
@@ -73,6 +73,17 @@ Edge function, frontend, or feature flag has been changed.
   NOT_MEASURED. Full-app typecheck: interrupted, NOT_MEASURED.
 
 ## Before any rollout
+
+On 2026-09-25, Draft PR #1326 CI passed the migration catalog, Floor promotion
+static guard, and the disposable PostgreSQL 17 catalog check for migrations
+11/12. The read-only linked migration list showed remote ledger ending at
+`20270115000005`; local migrations `06` through `12` are pending. Do not run
+`supabase db push`: it would include `06`-`10` outside the owner's exact
+approval for `11`/`12`. A fresh restorable backup has not yet been verified;
+the last observed dump is from 2026-09-24. Vercel's automatic PR deployment
+targets the separate `target-source` project, not `vinpoker`, and its latest
+attempt was rate-limited. Neither an authenticated Dealer/Floor UAT URL nor
+production DB/Edge activation is claimed.
 
 Review the exact live function signatures, grants, dependent Edge callers,
 and migration order against a fresh read-only production inventory. The
