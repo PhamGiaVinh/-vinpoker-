@@ -12,11 +12,22 @@ import "./vinPokerClock.css";
  * panels keep text readable over any photo. No data fetching here — the live
  * mapper (PR Clock-B) feeds `data`.
  */
-export function VinPokerTournamentClock({ data }: { data: TournamentClockData }) {
+export function VinPokerTournamentClock({
+  data,
+  brandingEditing = false,
+  editorPreview = false,
+  onBrandingLayoutChange,
+}: {
+  data: TournamentClockData;
+  brandingEditing?: boolean;
+  editorPreview?: boolean;
+  onBrandingLayoutChange?: (layout: NonNullable<TournamentClockData["brandingLayout"]>) => void;
+}) {
   // The club photo is injected as a CSS variable on the root; the .vpc-bg layer
   // reads it (with a dark fallback). TS needs the cast for the custom property.
   const rootStyle = {
     containerType: "inline-size",
+    ...(editorPreview ? { height: "100%", minHeight: 0, maxHeight: "100%", aspectRatio: "16 / 9" } : {}),
     "--club-bg-image": data.clubBackgroundUrl ? `url("${data.clubBackgroundUrl}")` : "none",
     "--club-bg-position": data.brandingLayout
       ? `${data.brandingLayout.backgroundX}% ${data.brandingLayout.backgroundY}%`
@@ -35,12 +46,20 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
   const midValue: CSSProperties = { fontSize: "clamp(18px, 2.4vmin, 44px)" };
 
   return (
-    <div className={`vpc-root${layout ? " vpc-has-custom-brand" : ""}`} style={rootStyle} aria-label="VinPoker tournament clock" data-tv-branding-canvas>
+    <div className={`vpc-root${layout ? " vpc-has-custom-brand" : ""}${editorPreview ? " vpc-editor-preview" : ""}`} style={rootStyle} aria-label="VinPoker tournament clock" data-tv-branding-canvas>
       <div className="vpc-bg" aria-hidden="true" />
       <div className="vpc-overlay" aria-hidden="true" />
       <div className="vpc-frame" aria-hidden="true" />
 
-      {layout ? <TvBrandingOverlay layout={layout} logoUrl={data.clubLogoUrl} brandName={data.brandName} /> : null}
+      {layout ? (
+        <TvBrandingOverlay
+          layout={layout}
+          logoUrl={data.clubLogoUrl}
+          brandName={data.brandName}
+          editing={brandingEditing}
+          onLayoutChange={onBrandingLayoutChange}
+        />
+      ) : null}
 
       <div className="vpc-grid">
         {/* Title */}
