@@ -207,6 +207,7 @@ DECLARE
   v_tournament_id uuid := NEW.tournament_id;
   v_game_table_id uuid;
   v_table_session_id uuid;
+  v_has_v3_assignment boolean;
 BEGIN
   -- start_hand voids an expired hand before inserting the replacement. Fence
   -- that cleanup write too, otherwise the eventual INSERT guard would reject
@@ -240,10 +241,24 @@ BEGIN
     AND table_row.status = 'active'
   ORDER BY CASE WHEN table_row.id = NEW.table_id THEN 0 ELSE 1 END
   LIMIT 1;
-  IF NOT FOUND OR v_game_table_id IS NULL OR v_table_session_id IS NULL THEN
-    IF TG_OP = 'INSERT' THEN
+  IF NOT FOUND THEN
+    -- Preserve the explicitly supported legacy/history-only hand path. A V3
+    -- assignment that redraw has closed is distinguishable by its retained
+    -- session/physical-table identity and must not accept a new hand.
+    SELECT EXISTS (
+      SELECT 1 FROM public.tournament_tables table_row
+      WHERE table_row.tournament_id = NEW.tournament_id
+        AND (table_row.id = NEW.table_id
+             OR table_row.table_id = NEW.table_id
+             OR table_row.game_table_id = NEW.table_id)
+        AND (table_row.game_table_id IS NOT NULL OR table_row.table_session_id IS NOT NULL)
+    ) INTO v_has_v3_assignment;
+    IF TG_OP = 'INSERT' AND v_has_v3_assignment THEN
       RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'redraw_table_not_active';
     END IF;
+    RETURN NEW;
+  END IF;
+  IF v_game_table_id IS NULL OR v_table_session_id IS NULL THEN
     RETURN NEW;
   END IF;
 
