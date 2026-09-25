@@ -131,17 +131,21 @@ fi
 
 local_superuser_state="$(docker exec "$db_container" sh -ceu \
   'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
-    -c "SELECT string_agg(rolname || '"'"'|'"'"' || rolsuper, '"'"','"'"' ORDER BY rolname) FROM pg_roles WHERE rolname IN ('"'"'postgres'"'"', '"'"'supabase_admin'"'"')"')"
-if [[ "$local_superuser_state" != 'postgres|true,supabase_admin|true' ]]; then
-  echo "Disposable Supabase bootstrap roles are unavailable or not superusers" >&2
+    -c "SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user"')"
+if [[ "$local_superuser_state" != 'supabase_admin|t' ]]; then
+  echo "Disposable Supabase admin role is unavailable or not a superuser" >&2
   exit 1
 fi
 
 roles_for_restore="$test_root/roles-for-restore.sql"
+postgres_role_after_restore="$test_root/postgres-role-after-restore.sql"
 sed -E \
   -e '/^(CREATE ROLE|ALTER ROLE) "?(postgres|supabase_admin)"?([ ;]|$)/d' \
   "$payload_root/roles-no-passwords.sql" >"$roles_for_restore"
+grep -E '^ALTER ROLE "?postgres"?([ ;]|$)' \
+  "$payload_root/roles-no-passwords.sql" >"$postgres_role_after_restore"
 test -s "$roles_for_restore"
+test -s "$postgres_role_after_restore"
 
 if ! docker exec -i "$db_container" sh -ceu \
   'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -U supabase_admin -d postgres' \
@@ -151,14 +155,27 @@ if ! docker exec -i "$db_container" sh -ceu \
 fi
 if [[ "$(docker exec "$db_container" sh -ceu \
   'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
-    -c "SELECT string_agg(rolname || '"'"'|'"'"' || rolsuper, '"'"','"'"' ORDER BY rolname) FROM pg_roles WHERE rolname IN ('"'"'postgres'"'"', '"'"'supabase_admin'"'"')"')" != 'postgres|true,supabase_admin|true' ]]; then
-  echo "Disposable Supabase bootstrap roles lost superuser status during role restore" >&2
+    -c "SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user"')" != 'supabase_admin|t' ]]; then
+  echo "Disposable Supabase admin lost superuser status during role restore" >&2
   exit 1
 fi
 unexpected_role_errors="$(grep -E 'ERROR:' "$test_root/roles-restore.log" |
   grep -Ev 'ERROR:[[:space:]]+role \"[^\"]+\" already exists$' || true)"
 if [[ -n "$unexpected_role_errors" ]]; then
   echo "Role metadata restore had an unexpected SQL error; raw output withheld" >&2
+  exit 1
+fi
+
+# PostgreSQL requires a superuser-owned function while recreating a
+# superuser-owned event trigger. The encrypted production role receipt is
+# replayed immediately after the archive restore, so this elevation exists
+# only inside the egress-blocked disposable container.
+docker exec "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -v ON_ERROR_STOP=1 -q -U supabase_admin -d postgres -c "ALTER ROLE postgres SUPERUSER"'
+if [[ "$(docker exec "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
+    -c "SELECT string_agg(rolname || '"'"'|'"'"' || rolsuper, '"'"','"'"' ORDER BY rolname) FROM pg_roles WHERE rolname IN ('"'"'postgres'"'"', '"'"'supabase_admin'"'"')"')" != 'postgres|true,supabase_admin|true' ]]; then
+  echo "Disposable restore roles were not elevated as required" >&2
   exit 1
 fi
 
@@ -206,6 +223,19 @@ SQL
   if [[ -n "$event_function_diagnostic" ]]; then
     printf '%s\n' "$event_function_diagnostic" >&2
   fi
+  exit 1
+fi
+
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -v ON_ERROR_STOP=1 -q -U supabase_admin -d postgres' \
+  <"$postgres_role_after_restore" >"$test_root/postgres-role-restore.log" 2>&1; then
+  echo "Production postgres role metadata could not be restored; raw output withheld" >&2
+  exit 1
+fi
+if [[ "$(docker exec "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
+    -c "SELECT string_agg(rolname || '"'"'|'"'"' || rolsuper, '"'"','"'"' ORDER BY rolname) FROM pg_roles WHERE rolname IN ('"'"'postgres'"'"', '"'"'supabase_admin'"'"')"')" != 'postgres|false,supabase_admin|true' ]]; then
+  echo "Restored bootstrap role properties do not match the encrypted production receipt" >&2
   exit 1
 fi
 
