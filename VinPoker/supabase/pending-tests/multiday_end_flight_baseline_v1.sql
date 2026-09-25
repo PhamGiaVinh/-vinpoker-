@@ -16,6 +16,11 @@ $$;
 CREATE TABLE public.clubs(id uuid PRIMARY KEY,owner_id uuid NOT NULL);
 CREATE FUNCTION public.is_club_floor(p_actor uuid,p_club uuid)
 RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
+CREATE FUNCTION public.is_club_chip_master(p_actor uuid,p_club uuid)
+RETURNS boolean LANGUAGE sql STABLE AS $$
+ SELECT p_actor='10000000-0000-0000-0000-000000000003'::uuid
+   AND p_club='20000000-0000-0000-0000-000000000001'::uuid
+$$;
 CREATE TABLE public.tournament_events(id uuid PRIMARY KEY,club_id uuid NOT NULL,
   final_tournament_id uuid);
 CREATE TABLE public.tournaments(id uuid PRIMARY KEY,club_id uuid NOT NULL,
@@ -26,7 +31,10 @@ CREATE TABLE public.tournament_tables(id uuid PRIMARY KEY,tournament_id uuid NOT
   table_session_id uuid);
 CREATE TABLE public.table_sessions(id uuid PRIMARY KEY,tournament_id uuid NOT NULL,
   revision bigint NOT NULL DEFAULT 0);
+CREATE TABLE public.dealers(id uuid PRIMARY KEY,club_id uuid NOT NULL,user_id uuid);
+CREATE TABLE public.dealer_attendance(id uuid PRIMARY KEY,dealer_id uuid NOT NULL);
 CREATE TABLE public.dealer_assignments(id uuid PRIMARY KEY,table_session_id uuid,
+  attendance_id uuid NOT NULL,
   status text NOT NULL,released_at timestamptz,version integer NOT NULL DEFAULT 0);
 CREATE TABLE public.tournament_seats(id uuid PRIMARY KEY,tournament_id uuid NOT NULL REFERENCES public.tournaments(id),
   player_id uuid NOT NULL,entry_id uuid,entry_number integer NOT NULL,

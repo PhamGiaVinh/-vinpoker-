@@ -54,4 +54,39 @@ then echo 'Direct hand writer passed after End Flight' >&2; exit 1; fi
 wait "$end_pid"
 grep -q 'multi_day_end_play_source_frozen' "$writer_log"
 test "$(psql "${psql_args[@]}" -Atc "SELECT count(*) FROM public.tournament_hands WHERE tournament_id='40000000-0000-0000-0000-000000000005'")" = 0
+
+# Dealer edit holds the day/row lock. Chip Master seal waits, observes the
+# committed revision, and pins version 2. A later dealer edit must fail.
+psql "${psql_args[@]}" >"$writer_log" 2>&1 <<'SQL' &
+SET lock_timeout='5s';
+SET request.jwt.claim.sub='10000000-0000-0000-0000-000000000002';
+BEGIN;
+SELECT public.multi_day_record_bag_v1(
+ '40000000-0000-0000-0000-000000000005',
+ '60000000-0000-0000-0000-000000000005','RACE-5',90000,0,
+ 'c0000000-0000-0000-0000-000000000025');
+SELECT pg_sleep(2);
+COMMIT;
+SQL
+writer_pid=$!
+sleep 0.3
+psql "${psql_args[@]}" >"$end_log" 2>&1 <<'SQL'
+SET lock_timeout='5s';
+SET request.jwt.claim.sub='10000000-0000-0000-0000-000000000003';
+SELECT public.multi_day_seal_bag_v1(
+ '40000000-0000-0000-0000-000000000005',
+ '60000000-0000-0000-0000-000000000005',1,
+ 'c0000000-0000-0000-0000-000000000026');
+SQL
+wait "$writer_pid"
+test "$(psql "${psql_args[@]}" -Atc "SELECT count(*) FROM public.chip_bag WHERE tournament_id='40000000-0000-0000-0000-000000000005' AND sealed AND multi_day_sealed_version=2")" = 1
+if psql "${psql_args[@]}" >"$writer_log" 2>&1 <<'SQL'
+SET request.jwt.claim.sub='10000000-0000-0000-0000-000000000002';
+SELECT public.multi_day_record_bag_v1(
+ '40000000-0000-0000-0000-000000000005',
+ '60000000-0000-0000-0000-000000000005','RACE-5-EDIT',90000,1,
+ 'c0000000-0000-0000-0000-000000000027');
+SQL
+then echo 'Dealer edit passed after seal' >&2; exit 1; fi
+grep -q 'multi_day_bag_stale_or_sealed' "$writer_log"
 echo 'multiday_end_flight_race_v1 PASS'

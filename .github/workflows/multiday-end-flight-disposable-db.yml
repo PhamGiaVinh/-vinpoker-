@@ -5,8 +5,10 @@ on:
     paths:
       - ".github/workflows/multiday-end-flight-disposable-db.yml"
       - "VinPoker/supabase/pending-migrations/20270120000000_multiday_end_flight_snapshot_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270120000001_multiday_bag_revision_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_end_flight_baseline_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_end_flight_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_bag_revision_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_end_flight_race_setup_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_end_flight_race_v1.sh"
   workflow_dispatch:
@@ -39,6 +41,8 @@ jobs:
             -f supabase/pending-tests/multiday_end_flight_baseline_v1.sql \
             -f supabase/pending-migrations/20270120000000_multiday_end_flight_snapshot_v1.sql \
             -f supabase/pending-tests/multiday_end_flight_v1.sql \
+            -f supabase/pending-migrations/20270120000001_multiday_bag_revision_v1.sql \
+            -f supabase/pending-tests/multiday_bag_revision_v1.sql \
             -f supabase/pending-tests/multiday_end_flight_race_setup_v1.sql
       - name: Assert serial cutoff versus direct hand writer
         working-directory: VinPoker

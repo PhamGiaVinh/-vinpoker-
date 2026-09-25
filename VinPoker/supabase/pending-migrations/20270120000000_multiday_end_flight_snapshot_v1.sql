@@ -11,6 +11,8 @@ DO $preflight$ BEGIN
      OR to_regclass('public.table_sessions') IS NULL
      OR to_regclass('public.tournament_chip_counts') IS NULL
      OR to_regclass('public.dealer_assignments') IS NULL
+     OR to_regclass('public.dealer_attendance') IS NULL
+     OR to_regclass('public.dealers') IS NULL
      OR NOT EXISTS (SELECT 1 FROM information_schema.columns
        WHERE table_schema='public' AND table_name='tournament_hands'
          AND column_name='source_revision')
@@ -65,6 +67,7 @@ CREATE TABLE IF NOT EXISTS public.multi_day_flight_roster_v1 (
   table_session_revision bigint NOT NULL CHECK(table_session_revision >= 0),
   dealer_assignment_id uuid NOT NULL REFERENCES public.dealer_assignments(id) ON DELETE RESTRICT,
   dealer_assignment_version integer NOT NULL CHECK(dealer_assignment_version >= 0),
+  dealer_user_id uuid,
   seat_number integer NOT NULL CHECK(seat_number > 0),
   tracked_stack bigint NOT NULL CHECK(tracked_stack > 0),
   tracker_count_updated_at timestamptz NOT NULL,
@@ -264,15 +267,16 @@ BEGIN
   INSERT INTO public.multi_day_flight_roster_v1(
     flight_tournament_id,player_id,entry_id,seat_id,tournament_table_id,
     table_session_id,table_session_revision,dealer_assignment_id,
-    dealer_assignment_version,seat_number,tracked_stack,
+    dealer_assignment_version,dealer_user_id,seat_number,tracked_stack,
     tracker_count_updated_at,latest_hand_id,latest_hand_source_revision,snapshot_hash)
   SELECT v_tour.id,s.player_id,s.entry_id,s.id,s.tournament_table_id,
-    s.table_session_id,sess.revision,da.id,da.version,s.seat_number,
+    s.table_session_id,sess.revision,da.id,da.version,da.user_id,s.seat_number,
     cc.chip_count,cc.updated_at,h.id,h.source_revision,
     pg_catalog.md5(pg_catalog.jsonb_build_object('entry',s.entry_id,'seat',s.id,
       'table',s.tournament_table_id,'session',s.table_session_id,
       'sessionRevision',sess.revision,'dealer',da.id,
-      'dealerVersion',da.version,'seatNumber',s.seat_number,
+      'dealerVersion',da.version,'dealerUser',da.user_id,
+      'seatNumber',s.seat_number,
       'stack',cc.chip_count,'updated',cc.updated_at,
       'hand',h.id,'revision',h.source_revision)::text)
   FROM public.tournament_seats s
@@ -280,7 +284,9 @@ BEGIN
     AND cc.player_id=s.player_id AND cc.entry_number=s.entry_number
   JOIN public.table_sessions sess ON sess.id=s.table_session_id
     AND sess.tournament_id=s.tournament_id
-  JOIN LATERAL (SELECT da.id,da.version FROM public.dealer_assignments da
+  JOIN LATERAL (SELECT da.id,da.version,d.user_id FROM public.dealer_assignments da
+    JOIN public.dealer_attendance att ON att.id=da.attendance_id
+    JOIN public.dealers d ON d.id=att.dealer_id AND d.club_id=v_tour.club_id
     WHERE da.table_session_id=s.table_session_id AND da.released_at IS NULL
       AND da.status='assigned' ORDER BY da.id LIMIT 1) da ON true
   LEFT JOIN LATERAL (SELECT hand.id,hand.source_revision

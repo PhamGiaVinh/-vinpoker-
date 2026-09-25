@@ -20,7 +20,8 @@ SELECT ('80000000-0000-0000-0000-00000000000'||n)::uuid,
 FROM generate_series(4,5) n;
 INSERT INTO public.dealer_assignments
 SELECT ('90000000-0000-0000-0000-00000000000'||n)::uuid,
-       ('70000000-0000-0000-0000-00000000000'||n)::uuid,'assigned',NULL,0
+       ('70000000-0000-0000-0000-00000000000'||n)::uuid,
+       'f0000000-0000-0000-0000-000000000001'::uuid,'assigned',NULL,0
 FROM generate_series(4,5) n;
 INSERT INTO public.tournament_seats
 SELECT ('a0000000-0000-0000-0000-00000000000'||n)::uuid,
