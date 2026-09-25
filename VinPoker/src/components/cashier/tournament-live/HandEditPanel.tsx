@@ -29,11 +29,13 @@ export interface HandEditPanelPlayer {
 }
 export interface HandEditPanelProps {
   board: string[];
+  potSize?: number | null;
   players: HandEditPanelPlayer[];
   actions: EditAction[];
   initialActionOrder?: number | null;
   buttonSeat: number;
   saving?: boolean;
+  writesEnabled?: boolean;
   onCancel: () => void;
   onSave: (patch: HandEditPatch, reason: string, summary: string[]) => void;
   /** Đợt G3: when true, also offer "Sửa & tính lại chip" (runs the resettle engine). */
@@ -62,7 +64,7 @@ export function HandEditPanel(props: HandEditPanelProps) {
   return <TrackerInputCardProvider><HandEditPanelContent {...props} /></TrackerInputCardProvider>;
 }
 
-function HandEditPanelContent({ board, players, actions, initialActionOrder, buttonSeat, saving, onCancel, onSave, resettleEnabled, onResettle, onEditChange }: HandEditPanelProps) {
+function HandEditPanelContent({ board, potSize = null, players, actions, initialActionOrder, buttonSeat, saving, writesEnabled = false, onCancel, onSave, resettleEnabled, onResettle, onEditChange }: HandEditPanelProps) {
   const [boardSlots, setBoardSlots] = useState<(Card | null)[]>(toSlots(board, 5));
   const [holes, setHoles] = useState<Record<string, (Card | null)[]>>(() => {
     const m: Record<string, (Card | null)[]> = {};
@@ -81,9 +83,8 @@ function HandEditPanelContent({ board, players, actions, initialActionOrder, but
   }, [initialActionOrder]);
 
   // Đợt G3: whenever the edited cards/actions change, tell the parent so it drops any stale
-  // resettle preview (a preview computed before this edit must not be confirmed). Reason text
-  // is excluded — it doesn't affect the chip computation. Skips the initial mount.
-  const editSignature = JSON.stringify([boardSlots, holes, rows]);
+  // resettle preview (a preview computed before this edit must not be confirmed).
+  const editSignature = JSON.stringify([boardSlots, holes, rows, expectedEndStacks, reason]);
   const firstEditRun = useRef(true);
   useEffect(() => {
     if (firstEditRun.current) {
@@ -101,13 +102,13 @@ function HandEditPanelContent({ board, players, actions, initialActionOrder, but
 
   const original: EditableHand = {
     community_cards: board,
-    pot_size: 0,
+    pot_size: potSize,
     holes: players.map((p) => ({ player_id: p.player_id, entry_number: p.entry_number, hole_cards: p.hole_cards })),
     actions,
   };
   const edited: EditableHand = {
     community_cards: fromSlots(boardSlots),
-    pot_size: 0,
+    pot_size: potSize,
     holes: players.map<EditHolePlayer>((p) => ({
       player_id: p.player_id,
       entry_number: p.entry_number,
@@ -132,8 +133,9 @@ function HandEditPanelContent({ board, players, actions, initialActionOrder, but
   // Board/holes-only corrections keep the existing correction contract. Any action edit
   // must pass the shared reducer's advisory check before it can be sent to the server.
   const actionsValid = patch.p_actions === null || actionValidation.ok;
-  const canSave = dirty && actionsValid && reason.trim().length >= 3 && !saving;
-  const canResettle = !!resettleEnabled && !!onResettle && dirty && actionsValid && expectedStacksValid && reason.trim().length >= 3 && !saving;
+  const validReason = reason.trim().length >= 8 && reason.trim().length <= 500;
+  const canSave = writesEnabled && dirty && actionsValid && validReason && !saving;
+  const canResettle = !!resettleEnabled && !!onResettle && dirty && actionsValid && expectedStacksValid && validReason && !saving;
 
   const submit = () => {
     if (!canSave) return;
@@ -171,6 +173,11 @@ function HandEditPanelContent({ board, players, actions, initialActionOrder, but
 
   return (
     <div className="space-y-3">
+      {!writesEnabled && (
+        <div role="status" className="rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-sm text-amber-100">
+          Bản nháp để đối chiếu. Chức năng ghi sửa hand đang tạm khóa; hãy liên hệ Floor trước khi tiếp tục.
+        </div>
+      )}
       <div>
         <div className="text-[11px] font-semibold text-muted-foreground mb-1">Bài chung (0/3/4/5 lá)</div>
         <div className="flex gap-2">
@@ -212,16 +219,17 @@ function HandEditPanelContent({ board, players, actions, initialActionOrder, but
         <div className="text-[11px] font-semibold text-muted-foreground mb-1">
           Hành động (sửa loại/số chip thêm vào, hoặc xoá dòng)
         </div>
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/50 bg-background/40 px-2.5 py-2 text-[11px]">
-          <span className="text-muted-foreground">Pot dựng lại từ action: <strong className="font-mono text-foreground">{actionValidation.potSize.toLocaleString("vi-VN")}</strong></span>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/50 bg-background/40 px-2.5 py-2 text-xs">
+          <span className="text-muted-foreground">Pot đã lưu: <strong className="font-mono text-foreground">{potSize === null ? "Chưa có dữ liệu" : potSize.toLocaleString("vi-VN")}</strong></span>
+          <span className="text-muted-foreground">Pot từ action nháp: <strong className="font-mono text-foreground">{actionValidation.potSize.toLocaleString("vi-VN")}</strong></span>
           <span className={actionValidation.ok ? "font-medium text-emerald-300" : "font-medium text-rose-300"}>
-            {actionValidation.ok ? "Chuỗi action hợp lệ theo engine" : "Có action cần sửa trước khi lưu"}
+            {actionValidation.ok ? "Các action đã nhập hợp lệ; chưa xác nhận hand kết thúc" : "Có action cần kiểm tra"}
           </span>
         </div>
         <p className="mb-2 text-[11px] text-muted-foreground">
           Call, bet và raise dùng số chip thêm vào ở action đó, không phải tổng mức raise-to. Engine hiển thị mức cần theo và mức raise tối thiểu cho từng dòng.
         </p>
-        <div className="max-h-[360px] space-y-1 overflow-y-auto pr-1">
+        <div className="space-y-1 pr-1 lg:max-h-[360px] lg:overflow-y-auto">
           {rows.map((a, i) => {
             const check = validationByOrder.get(a.action_order);
             return (
@@ -236,7 +244,7 @@ function HandEditPanelContent({ board, players, actions, initialActionOrder, but
                   <button
                     type="button"
                     aria-label={`Xoá action ${a.action_order}`}
-                    className="min-h-8 min-w-8 text-red-400 hover:text-red-300"
+                    className="min-h-11 min-w-11 text-red-400 hover:text-red-300"
                     onClick={() => setRows((prev) => prev.filter((_, ri) => ri !== i))}
                   >
                     ✕
@@ -245,7 +253,7 @@ function HandEditPanelContent({ board, players, actions, initialActionOrder, but
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <select
                     aria-label={`Loại action ${a.action_order}`}
-                    className="h-9 min-w-0 rounded border border-border bg-background px-1 text-xs"
+                    className="h-11 min-w-0 rounded border border-border bg-background px-1 text-base sm:text-sm"
                     value={a.action_type}
                     onChange={(e) => setRows((prev) => prev.map((r, ri) => (ri === i ? { ...r, action_type: e.target.value } : r)))}
                   >
@@ -255,7 +263,7 @@ function HandEditPanelContent({ board, players, actions, initialActionOrder, but
                     type="number"
                     min={0}
                     aria-label={`Số chip action ${a.action_order}`}
-                    className="h-9 min-w-0 rounded border border-border bg-background px-1 text-xs"
+                    className="h-11 min-w-0 rounded border border-border bg-background px-1 text-base sm:text-sm"
                     value={a.action_amount}
                     onChange={(e) => setRows((prev) => prev.map((r, ri) => (ri === i ? { ...r, action_amount: Math.max(0, parseInt(e.target.value) || 0) } : r)))}
                   />
@@ -299,7 +307,7 @@ function HandEditPanelContent({ board, players, actions, initialActionOrder, but
                     min={0}
                     step={1}
                     aria-label={`Stack cuối Ghế ${player.seat_number}`}
-                    className="h-7 w-28 shrink-0 rounded border border-border bg-background px-1.5 text-right font-mono text-xs"
+                    className="h-11 w-28 shrink-0 rounded border border-border bg-background px-1.5 text-right font-mono text-base sm:text-sm"
                     value={expectedEndStacks[key] ?? ""}
                     onChange={(event) => {
                       const next = Number(event.target.value);
@@ -319,45 +327,45 @@ function HandEditPanelContent({ board, players, actions, initialActionOrder, but
       <div>
         <div className="text-[11px] font-semibold text-muted-foreground mb-1">Lý do sửa — bắt buộc</div>
         <textarea
-          className="w-full min-h-[48px] rounded border border-border bg-background p-2 text-xs"
+          className="w-full min-h-[48px] rounded border border-border bg-background p-2 text-base sm:text-sm"
           placeholder="Ví dụ: nhập nhầm lá K♦ — thực tế là K♣"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />
+        <p className="mt-1 text-xs text-muted-foreground">Lý do cần 8–500 ký tự; đổi lý do hoặc stack sẽ làm xem trước cũ hết hiệu lực.</p>
       </div>
 
       <div className="space-y-1.5">
         <div className="flex gap-2 flex-wrap">
-          <button
+          {writesEnabled && <button
             type="button"
             disabled={!canSave}
             onClick={submit}
             className="text-xs font-medium text-emerald-300 border border-emerald-500/50 rounded-lg px-3 py-1.5 hover:bg-emerald-500/10 disabled:opacity-40"
           >
             {saving ? "Đang lưu…" : resettleEnabled ? "Chỉ lưu hiển thị" : "Xem lại & lưu"}
-          </button>
+          </button>}
           {resettleEnabled && (
             <button
               type="button"
               disabled={!canResettle}
               onClick={resettle}
-              className="text-xs font-semibold text-amber-200 border border-amber-500/60 bg-amber-500/10 rounded-lg px-3 py-1.5 hover:bg-amber-500/20 disabled:opacity-40"
+              className="min-h-11 text-sm font-semibold text-amber-200 border border-amber-500/60 bg-amber-500/10 rounded-lg px-3 py-1.5 hover:bg-amber-500/20 disabled:opacity-40"
             >
-              Sửa &amp; tính lại chip
+              Xem trước tính chip
             </button>
           )}
           <button
             type="button"
             onClick={onCancel}
-            className="text-xs font-medium text-muted-foreground border border-border rounded-lg px-3 py-1.5 hover:text-foreground"
+            className="min-h-11 text-sm font-medium text-muted-foreground border border-border rounded-lg px-3 py-1.5 hover:text-foreground"
           >
             Huỷ
           </button>
         </div>
         {resettleEnabled && (
-          <p className="text-[10px] text-muted-foreground leading-snug">
-            <span className="text-amber-300 font-medium">Tính lại chip</span> sẽ chấm lại người thắng và dời chip cho ván này + các ván sau (có xem trước).{" "}
-            <span className="text-emerald-300 font-medium">Chỉ lưu hiển thị</span> chỉ sửa lá/hành động, không đổi chip.
+          <p className="text-xs text-muted-foreground leading-snug">
+            Xem trước chỉ để đối chiếu. Không thay đổi action, chip hay kết quả đã lưu.
           </p>
         )}
       </div>

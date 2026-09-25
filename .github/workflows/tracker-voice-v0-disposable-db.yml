@@ -27,6 +27,9 @@ on:
       - "VinPoker/supabase/migrations/20270114000009_tracker_voice_provider_event_idempotency.sql"
       - "VinPoker/supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql"
       - "VinPoker/supabase/migrations/20270115000005_tracker_dealer_floor_operational_alerts.sql"
+      - "VinPoker/supabase/migrations/20270115000011_tracker_correction_capability_disabled.sql"
+      - "VinPoker/supabase/migrations/20270115000012_tracker_floor_alert_action_reference.sql"
+      - "VinPoker/tests/trackerCorrectionRelease1/**"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
@@ -276,6 +279,18 @@ jobs:
                     AND NOT has_function_privilege('anon', 'public.report_tracker_floor_operational_alert(uuid,uuid,uuid,uuid,text,text,uuid)', 'EXECUTE')
                     AND (public.report_tracker_floor_operational_alert(NULL,NULL,NULL,NULL,'call_floor',NULL,NULL)->>'error') = 'invalid_request'")" = "t"
           echo "TRACKER_FLOOR_OPERATIONAL_ALERTS_15000005_APPLY=PASS"
+          createdb tracker_correction_release1 -T tracker_voice_v0
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f supabase/migrations/20270115000011_tracker_correction_capability_disabled.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f supabase/migrations/20270115000012_tracker_floor_alert_action_reference.sql
+          test "$(psql -X -At -d tracker_correction_release1 -c \
+            "SELECT to_regprocedure('public.report_tracker_floor_operational_alert_v2(uuid,uuid,uuid,uuid,text,text,uuid,jsonb,bigint)') IS NOT NULL
+                    AND has_function_privilege('authenticated', 'public.report_tracker_floor_operational_alert_v2(uuid,uuid,uuid,uuid,text,text,uuid,jsonb,bigint)', 'EXECUTE')
+                    AND NOT has_function_privilege('anon', 'public.report_tracker_floor_operational_alert_v2(uuid,uuid,uuid,uuid,text,text,uuid,jsonb,bigint)', 'EXECUTE')")" = "t"
+          echo "TRACKER_FLOOR_ACTION_REFERENCE_15000012_APPLY=PASS"
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f tests/trackerCorrectionRelease1/actionReference.pg17.sql
 
           # Voice runtime proof uses the exact strict Series canonicalizer. The
           # existing start-hand suite stays on its prior baseline because the

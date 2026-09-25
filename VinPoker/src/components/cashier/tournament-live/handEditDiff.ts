@@ -21,7 +21,7 @@ export interface EditAction {
 }
 export interface EditableHand {
   community_cards: string[];
-  pot_size: number;
+  pot_size: number | null;
   holes: EditHolePlayer[]; // one per hand player
   actions: EditAction[];
 }
@@ -129,7 +129,7 @@ export function buildHandEditSummary(original: EditableHand, edited: EditableHan
     });
     const pot = recomputeDisplayPot(edited.actions);
     if (pot.pot_size !== original.pot_size) {
-      lines.push(`Pot hiển thị: ${original.pot_size} → ${pot.pot_size} (tính lại từ hành động)`);
+      lines.push(`Pot đã lưu: ${original.pot_size === null ? "chưa có dữ liệu" : original.pot_size} · Pot từ action nháp: ${pot.pot_size}`);
     }
   }
   lines.push("Chỉ thay đổi HIỂN THỊ — chip và kết quả đã lưu KHÔNG đổi.");

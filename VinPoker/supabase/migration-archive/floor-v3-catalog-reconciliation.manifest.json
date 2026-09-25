@@ -6908,6 +6908,16 @@
       "version": "20270115000010",
       "filename": "20270115000010_tracker_v3_hand_start_context.sql",
       "sha256": "8e2bc0fa9b1363a6f19897fdc607e1264687a63077869cd5b7e99a9184848e09"
+    },
+    {
+      "version": "20270115000011",
+      "filename": "20270115000011_tracker_correction_capability_disabled.sql",
+      "sha256": "4d184571feca948096d8503c1999b5256e03358adb2b2c75074f7644a32496b6"
+    },
+    {
+      "version": "20270115000012",
+      "filename": "20270115000012_tracker_floor_alert_action_reference.sql",
+      "sha256": "329fe5596ba8e62723484e2502d903430fe9204159e87870741a123b5f152b87"
     }
   ],
   "counts": {

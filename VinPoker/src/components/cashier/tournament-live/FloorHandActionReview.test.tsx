@@ -33,7 +33,7 @@ describe("FloorHandActionReview", () => {
     fireEvent.click(screen.getByRole("button", { name: /#3.*Ghế 8.*Call 200.000/ }));
     expect(screen.getByText(/Trước: #2.*Big blind 200.000/)).toBeVisible();
     expect(screen.getByText(/Sau: #4.*Check/)).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Sửa action #3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Xem bản nháp action #3" }));
     expect(onEditAction).toHaveBeenCalledWith(3);
   });
 

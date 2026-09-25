@@ -41,8 +41,10 @@ function hand8Input(): AuthoritativeSettlementInput {
       { hand_id: "hand-8", player_id: "kayhan", entry_number: 1, seat_number: 3, starting_stack: 47_400_000, ending_stack: 38_700_000, hole_cards: ["Js", "Ts"] },
     ],
     actions: [
-      action("hand-8", "h8-a1", "limitless", "call", 8_700_000, 1),
-      action("hand-8", "h8-a2", "kayhan", "all_in", 47_400_000, 2),
+      action("hand-8", "h8-a1", "limitless", "post_sb", 50, 1),
+      action("hand-8", "h8-a2", "kayhan", "post_bb", 100, 2),
+      action("hand-8", "h8-a3", "limitless", "all_in", 8_699_950, 3),
+      action("hand-8", "h8-a4", "kayhan", "all_in", 47_399_900, 4),
     ],
     liveStacks: [
       { player_id: "limitless", entry_number: 1, chip_count: 17_400_000 },
@@ -61,7 +63,7 @@ describe("authoritative settlement computation", () => {
     });
     expect(result.privateOutcome.pots[0].winnerIds).toEqual(["limitless", "kayhan"]);
     expect(result.privateOutcome.pots[0].allocations.map((allocation) => allocation.amount)).toEqual([8_700_000, 8_700_000]);
-    expect(result.privateOutcome.refunds).toEqual([{ playerId: "kayhan", amount: 38_700_000, sourceActionId: "h8-a2" }]);
+    expect(result.privateOutcome.refunds).toEqual([{ playerId: "kayhan", amount: 38_700_000, sourceActionId: "h8-a4" }]);
     expect(result.privateOutcome.players.map((player) => player.endingStack)).toEqual([8_700_000, 47_400_000]);
     expect(result.privateOutcome.handRanks.map((rank) => [rank.category, ...rank.kickers])).toEqual([
       ["trips", "A", "Q"],
@@ -75,6 +77,7 @@ describe("authoritative settlement computation", () => {
     const input = hand8Input();
     input.players = input.players.map((player) => ({ ...player, hole_cards: [] }));
     input.edit = {
+      communityCards: [],
       actions: [
         action("hand-8", "fold-a", "limitless", "post_sb", 50, 1),
         action("hand-8", "fold-b", "kayhan", "post_bb", 100, 2),
@@ -112,10 +115,15 @@ describe("authoritative settlement computation", () => {
     ]));
   });
 
-  it("rejects an action stream that commits more than the starting stack", async () => {
+  it("rejects an edited all-in amount that exceeds the player's stack", async () => {
     const input = hand8Input();
-    input.actions = [action("hand-8", "bad", "limitless", "all_in", 17_400_001, 1)];
-    await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("target_action_exceeds_stack");
+    input.actions = [
+      action("hand-8", "bad-a1", "limitless", "post_sb", 4_350_000, 1),
+      action("hand-8", "bad-a2", "kayhan", "post_bb", 8_700_000, 2),
+      action("hand-8", "bad-a3", "limitless", "all_in", 17_400_001, 3),
+    ];
+    input.edit = { actions: input.actions };
+    await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("edited_action_invalid:3:AMOUNT_MISMATCH");
   });
 
   it("replays edited actions with strict call amounts before settlement", async () => {
@@ -137,6 +145,160 @@ describe("authoritative settlement computation", () => {
       ],
     };
     await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("edited_action_invalid:1:OUT_OF_TURN");
+  });
+
+  it("does not settle a valid but incomplete preflop prefix using synthetic showdown cards", async () => {
+    const input = hand8Input();
+    input.hands = [{ ...hand("hand-8", 8), button_seat: 4 }];
+    input.players = [
+      { hand_id: "hand-8", player_id: "SB", entry_number: 1, seat_number: 4, starting_stack: 1_000, ending_stack: 900, hole_cards: ["Kc", "Kd"] },
+      { hand_id: "hand-8", player_id: "BB", entry_number: 1, seat_number: 6, starting_stack: 1_000, ending_stack: 900, hole_cards: ["Qc", "Qd"] },
+    ];
+    input.actions = [];
+    input.edit = {
+      communityCards: ["2c", "3d", "4h", "5s", "9c"],
+      actions: [
+        action("hand-8", "hu-a1", "SB", "post_sb", 50, 1),
+        action("hand-8", "hu-a2", "BB", "post_bb", 100, 2),
+        action("hand-8", "hu-a3", "SB", "call", 50, 3),
+      ],
+    };
+    // The fixture has no antes or dead money: only the explicit 50/100 blinds are committed.
+    input.liveStacks = [
+      { player_id: "SB", entry_number: 1, chip_count: 900 },
+      { player_id: "BB", entry_number: 1, chip_count: 900 },
+    ];
+
+    await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("incomplete_action_stream");
+  });
+
+  it("rejects an edited stream that acts out of turn on the flop", async () => {
+    const input = hand8Input();
+    input.hands = [{ ...hand("hand-8", 8), button_seat: 4 }];
+    input.players = [
+      { hand_id: "hand-8", player_id: "SB", entry_number: 1, seat_number: 4, starting_stack: 1_000, ending_stack: 900, hole_cards: ["Kc", "Kd"] },
+      { hand_id: "hand-8", player_id: "BB", entry_number: 1, seat_number: 6, starting_stack: 1_000, ending_stack: 900, hole_cards: ["Qc", "Qd"] },
+    ];
+    input.edit = {
+      communityCards: ["2c", "3d", "4h", "5s", "9c"],
+      actions: [
+      action("hand-8", "hu-a1", "SB", "post_sb", 50, 1),
+      action("hand-8", "hu-a2", "BB", "post_bb", 100, 2),
+      action("hand-8", "hu-a3", "SB", "call", 50, 3),
+      action("hand-8", "hu-a4", "BB", "check", 0, 4),
+      { ...action("hand-8", "hu-a5", "SB", "check", 0, 5), street: "flop" },
+      ],
+    };
+    input.liveStacks = [
+      { player_id: "SB", entry_number: 1, chip_count: 900 },
+      { player_id: "BB", entry_number: 1, chip_count: 900 },
+    ];
+
+    await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("edited_action_invalid:5:OUT_OF_TURN");
+  });
+
+  it("rejects duplicate cards across the board and hole-card set", async () => {
+    const input = hand8Input();
+    input.hands = [{ ...hand("hand-8", 8), button_seat: 4, community_cards: [] }];
+    input.players = [
+      { hand_id: "hand-8", player_id: "SB", entry_number: 1, seat_number: 4, starting_stack: 1_000, ending_stack: 950, hole_cards: ["As", "Kd"] },
+      { hand_id: "hand-8", player_id: "BB", entry_number: 1, seat_number: 6, starting_stack: 1_000, ending_stack: 1_050, hole_cards: ["Qc", "Qd"] },
+    ];
+    input.actions = [];
+    input.edit = {
+      communityCards: ["As", "Jd", "Qh"],
+      holeCards: [{ player_id: "SB", entry_number: 1, hole_cards: ["As", "Kd"] }],
+      actions: [
+        action("hand-8", "fold-a", "SB", "post_sb", 50, 1),
+        action("hand-8", "fold-b", "BB", "post_bb", 100, 2),
+        action("hand-8", "fold-c", "SB", "fold", 0, 3),
+      ],
+    };
+    input.liveStacks = [
+      { player_id: "SB", entry_number: 1, chip_count: 950 },
+      { player_id: "BB", entry_number: 1, chip_count: 1_050 },
+    ];
+
+    await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("invalid_card_set");
+  });
+
+  it("keeps a complete all-in runout settleable without betting actions on later streets", async () => {
+    const input = hand8Input();
+    input.hands = [{ ...hand("hand-8", 8), button_seat: 4 }];
+    input.players = [
+      { hand_id: "hand-8", player_id: "SB", entry_number: 1, seat_number: 4, starting_stack: 1_000, ending_stack: 2_000, hole_cards: ["Kc", "Kd"] },
+      { hand_id: "hand-8", player_id: "BB", entry_number: 1, seat_number: 6, starting_stack: 1_000, ending_stack: 0, hole_cards: ["Qc", "Qd"] },
+    ];
+    input.actions = [];
+    input.edit = {
+      communityCards: ["2c", "3d", "4h", "5s", "9c"],
+      actions: [
+        action("hand-8", "runout-a1", "SB", "post_sb", 50, 1),
+        action("hand-8", "runout-a2", "BB", "post_bb", 100, 2),
+        action("hand-8", "runout-a3", "SB", "all_in", 950, 3),
+        action("hand-8", "runout-a4", "BB", "call", 900, 4),
+      ],
+    };
+    // Ante and dead money are both zero; the pot is the 1,000-chip matched all-in.
+    input.liveStacks = [
+      { player_id: "SB", entry_number: 1, chip_count: 2_000 },
+      { player_id: "BB", entry_number: 1, chip_count: 0 },
+    ];
+
+    const result = await computeAuthoritativeSettlement(input);
+    expect(result.winnerIds).toEqual(["SB"]);
+    expect(result.privateOutcome.totals.committedTotal).toBe(2_000);
+  });
+
+  it("rejects invalid board cardinality without exposing card data", async () => {
+    const input = hand8Input();
+    input.edit = { communityCards: ["As", "Kd"] };
+
+    await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("invalid_card_set");
+  });
+
+  it("validates the recorded action stream when only cards are edited", async () => {
+    const input = hand8Input();
+    input.actions = [
+      action("hand-8", "bad-a1", "limitless", "post_sb", 4_350_000, 1),
+      action("hand-8", "bad-a2", "kayhan", "post_bb", 8_700_000, 2),
+      action("hand-8", "bad-a3", "limitless", "call", 4_350_000, 3),
+    ];
+    input.edit = { communityCards: ["As", "Jd", "Qh", "Jh", "8h"] };
+
+    await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("incomplete_action_stream");
+  });
+
+  it("requires board cards for the highest betting street but keeps preflop fold-wins cardless", async () => {
+    const missingFlop = hand8Input();
+    missingFlop.actions = [
+      action("hand-8", "flop-a1", "limitless", "post_sb", 50, 1),
+      action("hand-8", "flop-a2", "kayhan", "post_bb", 100, 2),
+      action("hand-8", "flop-a3", "limitless", "call", 50, 3),
+      action("hand-8", "flop-a4", "kayhan", "check", 0, 4),
+      { ...action("hand-8", "flop-a5", "kayhan", "check", 0, 5), street: "flop" },
+    ];
+    missingFlop.edit = { communityCards: [] };
+    await expect(computeAuthoritativeSettlement(missingFlop)).rejects.toThrow("incomplete_board_for_street");
+
+    const foldWin = hand8Input();
+    foldWin.players = foldWin.players.map((player) => ({ ...player, hole_cards: [] }));
+    foldWin.edit = {
+      communityCards: [],
+      actions: [
+        action("hand-8", "cardless-a1", "limitless", "post_sb", 50, 1),
+        action("hand-8", "cardless-a2", "kayhan", "post_bb", 100, 2),
+        action("hand-8", "cardless-a3", "limitless", "fold", 0, 3),
+      ],
+    };
+    foldWin.liveStacks = [
+      { player_id: "limitless", entry_number: 1, chip_count: 17_300_000 },
+      { player_id: "kayhan", entry_number: 1, chip_count: 47_400_000 },
+    ];
+    foldWin.players = foldWin.players.map((player) => player.player_id === "limitless"
+      ? { ...player, ending_stack: 17_300_000 }
+      : { ...player, ending_stack: 47_400_000 });
+    await expect(computeAuthoritativeSettlement(foldWin)).resolves.toMatchObject({ winnerIds: ["kayhan"] });
   });
 
   it("uses the database revision consistently in the outcome and target source anchor", async () => {

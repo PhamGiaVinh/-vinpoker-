@@ -20,6 +20,7 @@ import {
 } from "../pokerEngine/evaluate.ts";
 import type { Card } from "../pokerEngine/types.ts";
 import { computePotBreakdown, contributionsFromActions, toSidePotsJson } from "../trackerEngine/potEngine.ts";
+import { isRunout, nextToAct, reduceHand, STREET_ORDER } from "../trackerEngine/handState.ts";
 import { validateAction } from "../trackerEngine/validateAction.ts";
 import type { ActionRow, PlayerSeed, Street, TrackerActionType } from "../trackerEngine/types.ts";
 
@@ -222,9 +223,14 @@ function targetActions(input: AuthoritativeSettlementInput, target: SettlementDb
 
 function targetPlayers(input: AuthoritativeSettlementInput, target: SettlementDbHand): SettlementDbPlayer[] {
   const players = input.players.filter((player) => player.hand_id === target.id).map((player) => ({ ...player }));
-  const holes = new Map(
-    (input.edit?.holeCards ?? []).map((row) => [`${row.player_id}:${row.entry_number ?? 1}`, row.hole_cards]),
-  );
+  const holes = new Map<string, string[]>();
+  for (const row of input.edit?.holeCards ?? []) {
+    const key = `${row.player_id}:${row.entry_number ?? 1}`;
+    if (holes.has(key) || !players.some((player) => `${player.player_id}:${player.entry_number}` === key)) {
+      throw new Error("invalid_card_set");
+    }
+    holes.set(key, row.hole_cards);
+  }
   for (const player of players) {
     const edited = holes.get(`${player.player_id}:${player.entry_number}`);
     if (edited) player.hole_cards = [...edited];
@@ -234,6 +240,25 @@ function targetPlayers(input: AuthoritativeSettlementInput, target: SettlementDb
 
 function boardFor(input: AuthoritativeSettlementInput, target: SettlementDbHand): string[] {
   return [...(input.edit?.communityCards ?? target.community_cards ?? [])];
+}
+
+function validateCardSet(board: readonly string[], players: readonly SettlementDbPlayer[]): void {
+  if (![0, 3, 4, 5].includes(board.length)) throw new Error("invalid_card_set");
+  const seen = new Set<string>();
+  const addCards = (cards: readonly string[]) => {
+    for (const card of cards) {
+      if (!/^[AKQJT2-9][shdc]$/.test(card) || seen.has(card)) throw new Error("invalid_card_set");
+      seen.add(card);
+    }
+  };
+  addCards(board);
+  for (const player of players) {
+    const holeCards = player.hole_cards ?? [];
+    if (!Array.isArray(holeCards) || (holeCards.length !== 0 && holeCards.length !== 2)) {
+      throw new Error("invalid_card_set");
+    }
+    addCards(holeCards);
+  }
 }
 
 function actionSourceId(action: SettlementDbAction): string {
@@ -247,15 +272,15 @@ const ACTION_TYPES = new Set<TrackerActionType>([
 const POSTING_ACTIONS = new Set<TrackerActionType>(["post_sb", "post_bb", "post_ante"]);
 
 /**
- * Edited action rows are untrusted operator intent. Replay every row through
- * the shared server/browser hand core before the settlement engine sees it.
- * Stored historical rows are already canonical writer output, so this strict
- * pass is intentionally limited to a replacement action stream.
+ * Replay the effective action stream through the shared hand core before the
+ * settlement engine sees it. The recorded status is not proof that this stream
+ * actually reached a settlement-ready terminal state.
  */
 function validateEditedTargetActions(
   target: SettlementDbHand,
   players: readonly SettlementDbPlayer[],
   actions: readonly SettlementDbAction[],
+  board: readonly string[],
 ): void {
   const seeds: PlayerSeed[] = players.map((player) => ({
     player_id: player.player_id,
@@ -310,6 +335,21 @@ function validateEditedTargetActions(
     accepted.push(proposed);
     priorStreet = currentStreet;
   }
+
+  const runtime = reduceHand(seeds, accepted, target.button_seat);
+  const requiredBoardSize = runtime.street === "preflop" ? 0
+    : runtime.street === "flop" ? 3
+    : runtime.street === "turn" ? 4
+    : 5;
+  if (board.length < requiredBoardSize) throw new Error("incomplete_board_for_street");
+  const livePlayers = runtime.players.filter((player) => !player.is_folded);
+  if (livePlayers.length === 1) return;
+
+  if (nextToAct(seeds, accepted, target.button_seat) !== null) {
+    throw new Error("incomplete_action_stream");
+  }
+  const reachedRiver = STREET_ORDER.indexOf(runtime.street) >= STREET_ORDER.indexOf("river");
+  if (!reachedRiver && !isRunout(runtime)) throw new Error("incomplete_action_stream");
 }
 
 function persistedEdit(
@@ -391,7 +431,8 @@ export async function computeAuthoritativeSettlement(
   const actions = targetActions(input, target);
   const board = boardFor(input, target);
   if (players.length === 0) throw new Error("target_players_missing");
-  if (input.edit?.actions !== undefined) validateEditedTargetActions(target, players, actions);
+  validateCardSet(board, players);
+  validateEditedTargetActions(target, players, actions, board);
 
   const contributions = contributionsFromActions(actions);
   const contributionByPlayer = new Map(contributions.map((row) => [row.player_id, row]));

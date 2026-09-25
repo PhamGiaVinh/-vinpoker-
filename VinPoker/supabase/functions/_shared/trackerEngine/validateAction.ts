@@ -14,7 +14,9 @@ import {
   findPlayer,
   hasRaiseRights,
   isBettingRoundComplete,
+  isRunout,
   nextToAct,
+  nextToActAtStreet,
   reduceHand,
 } from "./handState.ts";
 import {
@@ -66,6 +68,19 @@ export function validateAction(
     return fail("PLAYER_ALL_IN", "Người chơi đã all-in, không thể hành động thêm.");
   }
 
+  if (runtime.players.filter((candidate) => !candidate.is_folded).length <= 1) {
+    return fail("HAND_NOT_ACTIVE", "Hand đã kết thúc sau khi chỉ còn một người chơi.");
+  }
+  if (proposed.street === "showdown") {
+    return fail("ILLEGAL_ACTION_TYPE", "Không ghi hành động cược ở street showdown.");
+  }
+
+  const proposedStreet = streetIndex(proposed.street);
+  const currentStreet = streetIndex(runtime.street);
+  if (proposedStreet < currentStreet || proposedStreet > currentStreet + 1) {
+    return fail("INVALID_STREET_PROGRESSION", "Street của hành động không theo đúng thứ tự.");
+  }
+
   // Street-advance guard: an action on a later street while the current street
   // still has players owing action means the street was advanced prematurely.
   if (
@@ -92,9 +107,21 @@ export function validateAction(
     runtime.minRaise = runtime.bigBlind;
   }
 
-  if (opts.enforceTurnOrder) {
-    const turn = nextToAct(seeds, priorActions, buttonSeat);
-    if (turn && turn !== proposed.player_id) {
+  if (
+    !["post_sb", "post_bb", "post_ante"].includes(proposed.action_type) &&
+    isRunout(runtime) && runtime.highestBet <= player.street_bet
+  ) {
+    return fail("HAND_NOT_ACTIVE", "Hand đã sang trạng thái runout; không còn cược cần theo.");
+  }
+
+  if (opts.enforceTurnOrder && !["post_sb", "post_bb", "post_ante"].includes(proposed.action_type)) {
+    const turn = proposedStreet > currentStreet
+      ? nextToActAtStreet(seeds, priorActions, buttonSeat, proposed.street)
+      : nextToAct(seeds, priorActions, buttonSeat);
+    if (!turn) {
+      return fail("HAND_NOT_ACTIVE", "Không còn người chơi cần hành động ở street này.");
+    }
+    if (turn !== proposed.player_id) {
       return fail("OUT_OF_TURN", "Chưa tới lượt người chơi này.");
     }
   }
