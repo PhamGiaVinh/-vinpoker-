@@ -15,6 +15,7 @@ on:
       - "VinPoker/supabase/pending-migrations/20270120000008_multiday_payout_postfinal_adjustment_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270120000009_multiday_floor_read_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270120000010_multiday_distinct_itm_day2_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270120000011_multiday_floor_min_cash_auth_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270119000001_multiday_equal_tie_entitlement_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_qualification_baseline_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_qualification_v1.sql"
@@ -32,6 +33,7 @@ on:
       - "VinPoker/supabase/pending-tests/multiday_floor_read_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_distinct_itm_day2_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_distinct_itm_day2_golden_v1.sql"
+      - "VinPoker/supabase/pending-tests/multiday_floor_td_authority_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_payout_transfer_tie_v1.sql"
       - "VinPoker/supabase/pending-tests/multiday_payout_finalize_race_v1.sh"
       - "VinPoker/supabase/pending-tests/multiday_overlay_bank_race_v1.sh"
@@ -131,7 +133,9 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/pending-migrations/20270120000010_multiday_distinct_itm_day2_v1.sql \
             -f supabase/pending-tests/multiday_distinct_itm_day2_v1.sql \
-            -f supabase/pending-tests/multiday_distinct_itm_day2_golden_v1.sql
+            -f supabase/pending-migrations/20270120000011_multiday_floor_min_cash_auth_v1.sql \
+            -f supabase/pending-tests/multiday_distinct_itm_day2_golden_v1.sql \
+            -f supabase/pending-tests/multiday_floor_td_authority_v1.sql
       - name: Assert atomic payout finalize and source writer race
         working-directory: VinPoker
         run: bash supabase/pending-tests/multiday_payout_finalize_race_v1.sh

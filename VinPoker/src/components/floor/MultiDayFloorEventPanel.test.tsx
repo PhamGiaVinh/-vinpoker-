@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const h = vi.hoisted(() => ({ rpc: vi.fn() }));
-vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: h.rpc } }));
+const h = vi.hoisted(() => {
+  const rpc = vi.fn();
+  return { rpc, client: { rpc } };
+});
+vi.mock("@/integrations/supabase/SupabaseClientContext", () => ({ useSupabaseClient: () => h.client }));
 import { MultiDayFloorEventPanel } from "./MultiDayFloorEventPanel";
 
 const eventId = "30000000-0000-0000-0000-00000000000a";
@@ -111,9 +114,14 @@ describe("verified Multi-day Floor panel", () => {
     await screen.findByText(/Correct entitlement/);
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
     cleanup();
-    h.rpc.mockResolvedValue({ data: null, error: { message: "multi_day_floor_owner_required", code: "42501" } });
+    h.rpc.mockResolvedValue({ data: null, error: { message: "multi_day_floor_actor_denied", code: "42501" } });
     render(<MultiDayFloorEventPanel eventId={eventId} surface="payout" />);
     await screen.findByRole("alert");
-    expect(screen.getByRole("alert").textContent).toMatch(/Owner or club access denied/);
+    expect(screen.getByRole("alert").textContent).toMatch(/TD\/Floor or owner access denied/);
+    cleanup();
+    h.rpc.mockResolvedValue({ data: null, error: { message: "multi_day_package_release_off", code: "42501" } });
+    render(<MultiDayFloorEventPanel eventId={eventId} surface="payout" />);
+    await screen.findByRole("alert");
+    expect(screen.getByRole("alert").textContent).toMatch(/package is off for this club/);
   });
 });

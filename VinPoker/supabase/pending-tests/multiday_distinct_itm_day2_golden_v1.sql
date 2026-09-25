@@ -31,7 +31,7 @@ BEGIN
      table_number,max_seats,status)
    VALUES(v_table,v_final,v_session,
      format('e0000000-0000-0000-0000-%s',lpad(to_hex(v_base),12,'0'))::uuid,1,9,'active');
-   PERFORM public.multi_day_set_qualification_rules_v2(v_event,v_policy,1,100);
+   PERFORM public.multi_day_set_qualification_rules_v2(v_event,v_policy,0.5,100);
    INSERT INTO public.tournament_prizes(tournament_id,position,amount)
    VALUES(v_final,1,1000000),(v_final,2,1000000);
    FOR v_flight_no IN 1..2 LOOP
@@ -126,7 +126,7 @@ BEGIN
     FROM public.multi_day_nonselected_min_cash_v1 m
     JOIN public.multi_day_final_participations_v1 p ON p.id=m.participation_id
     WHERE p.event_id=v_event;
-   IF (v_policy='SELECT_LARGEST' AND (v_min_count<>1 OR v_min_total<>1100000)) OR
+   IF (v_policy='SELECT_LARGEST' AND (v_min_count<>1 OR v_min_total<>550000)) OR
       (v_policy='SUM_STACKS' AND (v_min_count<>0 OR v_min_total<>0)) THEN
      RAISE EXCEPTION 'nonselected_min_cash_wrong: %, %, %',v_policy,v_min_count,v_min_total;
    END IF;
@@ -139,16 +139,16 @@ BEGIN
        WHERE tournament_id=v_final AND player_id=v_player;
    END LOOP;
    v_payout:=public.multi_day_payout_preview_v1(v_event);
-   v_expected_unpaid:=CASE WHEN v_policy='SELECT_LARGEST' THEN 3300000 ELSE 2200000 END;
+   v_expected_unpaid:=CASE WHEN v_policy='SELECT_LARGEST' THEN 3100000 ELSE 2550000 END;
    v_expected_unallocated:=4000000-v_expected_unpaid;
    IF v_payout->>'state'<>'READY' OR v_payout->>'itmPlaces'<>'2' OR
       (v_payout->>'directPoolVnd')::numeric<>4000000 OR
       (v_payout->>'feesVnd')::numeric<>400000 OR
       (v_payout->>'unpaidObligationVnd')::numeric<>v_expected_unpaid OR
       (v_payout->>'unallocatedPoolVnd')::numeric<>v_expected_unallocated OR
-      (v_payout->'obligations'->2->>'totalVnd')::numeric<>0 OR
+      (v_payout->'obligations'->2->>'totalVnd')::numeric<>550000 OR
       (SELECT count(*) FROM jsonb_array_elements(v_payout->'obligations') o
-        WHERE (o->>'participationFloorVnd')::numeric=1100000)<>2 OR
+        WHERE (o->>'participationFloorVnd')::numeric=550000)<>3 OR
       (SELECT coalesce(sum((o->>'nonselectedBagMinCashVnd')::numeric),0)
         FROM jsonb_array_elements(v_payout->'obligations') o)<>v_min_total THEN
      RAISE EXCEPTION 'distinct_payout_obligations_wrong: %, %',v_policy,v_payout;

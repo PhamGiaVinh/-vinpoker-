@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
+import { callMultiDayFloorRpc } from "@/ops/floor/multiDayFloorRpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,26 +29,22 @@ type Payout = {
 type Postfinal = { revision: string; paidPlayerVnd: number; unpaidObligationVnd: number; unallocatedPoolVnd: number };
 
 const money = (value: number | undefined) => value == null ? "—" : `${Number(value).toLocaleString("en-US")} VND`;
-const rpc = async <T,>(name: string, args: Record<string, unknown>): Promise<T> => {
-  const call = supabase.rpc as unknown as (rpcName: string, parameters: Record<string, unknown>) =>
-    Promise<{ data: unknown; error: { message?: string; code?: string } | null }>;
-  const { data, error } = await call(name, args);
-  if (error) throw error;
-  return data as T;
-};
 const message = (error: unknown) => {
   const text = error instanceof Error ? error.message
     : error && typeof error === "object" && "message" in error
       ? String((error as { message: unknown }).message) : String(error);
   if (/multi_day_payout_recalculate|stale_source|40001/i.test(text)) return "Source changed. Refresh the preview before retrying.";
-  if (/owner_required|actor_denied|42501/i.test(text)) return `Owner or club access denied: ${text}`;
   if (/release_off|gate_denied/i.test(text)) return "The Multi-day package is off for this club.";
+  if (/owner_required|actor_denied|42501/i.test(text)) return `TD/Floor or owner access denied for this club: ${text}`;
   return text;
 };
 
 export function MultiDayFloorEventPanel({ eventId, onReleaseRead, surface = "design" }: {
   eventId: string; onReleaseRead?: (enabled: boolean) => void; surface?: "design" | "payout";
 }) {
+  const client = useSupabaseClient();
+  const rpc = useCallback(<T,>(name: string, args: Record<string, unknown>) =>
+    callMultiDayFloorRpc<T>(client, name, args), [client]);
   const [read, setRead] = useState<FloorRead | null>(null);
   const [qualification, setQualification] = useState<Qualification | null>(null);
   const [payout, setPayout] = useState<Payout | null>(null);
@@ -106,7 +103,7 @@ export function MultiDayFloorEventPanel({ eventId, onReleaseRead, surface = "des
       setError(message(cause));
     }
     finally { setLoading(false); }
-  }, [eventId, onReleaseRead]);
+  }, [eventId, onReleaseRead, rpc]);
 
   useEffect(() => { void refresh(); }, [refresh]);
   const act = async (work: () => Promise<unknown>, success: string, key?: string) => {
