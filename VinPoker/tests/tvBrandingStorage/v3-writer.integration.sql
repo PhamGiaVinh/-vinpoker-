@@ -77,6 +77,14 @@ BEGIN
      OR (v_result->>'revision')::bigint <> 2 THEN
     RAISE EXCEPTION 'authorized V3 publish did not persist the expected Main Event revision';
   END IF;
+END;
+$$;
+RESET ROLE;
+
+-- Snapshot tables deliberately deny direct authenticated reads; verify durable
+-- publication as the disposable database owner rather than weakening grants.
+DO $$
+BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.tv_tournament_layout_versions v
     JOIN public.tv_tournament_layouts l ON l.id = v.layout_id
@@ -88,7 +96,6 @@ BEGIN
   END IF;
 END;
 $$;
-RESET ROLE;
 
 SET ROLE anon;
 SELECT set_config('request.jwt.claim.sub', '', false);
