@@ -81,10 +81,6 @@ jobs:
         with:
           deno-version: v2.x
 
-      - uses: supabase/setup-cli@v2
-        with:
-          version: 2.101.0
-
       - name: Install source-test dependencies without install hooks
         working-directory: VinPoker
         run: npm ci --ignore-scripts
@@ -296,9 +292,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
             -f tests/trackerCorrectionRelease1/actionReference.pg17.sql
 
-          # Rehearse exact-file SQL and the separate official history step.
-          # A committed SQL body with a missing ledger row must be verified,
-          # then repaired; the SQL file must not be replayed on resume.
+          # Rehearse exact-file SQL and detect the commit-before-ledger state.
+          # Ledger repair is intentionally outside this no-live-command workflow.
           echo '4d184571feca948096d8503c1999b5256e03358adb2b2c75074f7644a32496b6  supabase/migrations/20270115000011_tracker_correction_capability_disabled.sql' | sha256sum -c -
           echo '6d3dedeee949859ed19e15d06a753828c9ef5cef0a5269c5107a6e362f41981f  supabase/migrations/20270115000012_tracker_floor_alert_action_reference.sql' | sha256sum -c -
           createdb tracker_correction_resume -T tracker_voice_v0
@@ -306,19 +301,13 @@ jobs:
             -f supabase/migrations/20270115000011_tracker_correction_capability_disabled.sql
           test "$(psql -X -At -d tracker_correction_resume -c \
             "SELECT NOT has_function_privilege('authenticated', 'public.delete_last_action(uuid,uuid)', 'EXECUTE')")" = "t"
-          supabase migration repair --yes --db-url 'postgresql://postgres@127.0.0.1:5432/tracker_correction_resume' --status applied 20270115000011
-          test "$(psql -X -At -d tracker_correction_resume -c \
-            "SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version = '20270115000011'")" = "1"
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_resume \
             -f supabase/migrations/20270115000012_tracker_floor_alert_action_reference.sql
           test "$(psql -X -At -d tracker_correction_resume -c \
             "SELECT to_regprocedure('public.report_tracker_floor_operational_alert_v2(uuid,uuid,uuid,uuid,text,text,uuid,jsonb,bigint)') IS NOT NULL")" = "t"
           test "$(psql -X -At -d tracker_correction_resume -c \
-            "SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version = '20270115000012'")" = "0"
-          supabase migration repair --yes --db-url 'postgresql://postgres@127.0.0.1:5432/tracker_correction_resume' --status applied 20270115000012
-          test "$(psql -X -At -d tracker_correction_resume -c \
-            "SELECT count(*) = 2 AND count(*) FILTER (WHERE version BETWEEN '20270115000006' AND '20270115000010') = 0 FROM supabase_migrations.schema_migrations WHERE version BETWEEN '20270115000006' AND '20270115000012'")" = "t"
-          echo 'TRACKER_CORRECTION_RELEASE1_EXACT_APPLY_RESUME_PASS'
+            "SELECT count(*) = 0 FROM supabase_migrations.schema_migrations WHERE version BETWEEN '20270115000006' AND '20270115000012'")" = "t"
+          echo 'TRACKER_CORRECTION_RELEASE1_SQL_COMMITTED_LEDGER_MISSING_PASS'
 
           # Voice runtime proof uses the exact strict Series canonicalizer. The
           # existing start-hand suite stays on its prior baseline because the
