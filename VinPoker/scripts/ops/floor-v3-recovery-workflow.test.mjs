@@ -60,6 +60,7 @@ test("database archive and row-count receipt share one exported MVCC snapshot", 
   assert.match(backup, /cli_login_postgres/);
   assert.match(backup, /database\.dump[\s\S]*?pg_restore/);
   assert.match(backup, /--mount "type=bind,src=\$payload_root,dst=\/backup,readonly"[\s\S]*?pg_restore --list \/backup\/database\.dump/);
+  assert.match(backup, /schema_list="\$\(docker run --rm -i --network host[\s\S]*?SET TRANSACTION SNAPSHOT :'snapshot'[\s\S]*?FROM pg_catalog\.pg_namespace/);
   assert.match(backup, /Storage API object bytes/);
 });
 

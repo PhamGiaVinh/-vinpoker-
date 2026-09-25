@@ -212,10 +212,18 @@ grep -Eq 'TABLE DATA supabase_migrations schema_migrations[[:space:]]' "$payload
   exit 1
 }
 
-schema_list="$(docker run --rm --network host \
+schema_list="$(docker run --rm -i --network host \
   --env PGHOST --env PGPORT --env PGUSER --env PGDATABASE --env PGPASSWORD --env PGSSLMODE --env PGAPPNAME \
-  "$postgres_image" psql -X -qAt -v ON_ERROR_STOP=1 -v snapshot="$snapshot_id" -c \
-  "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT :'snapshot'; SELECT string_agg(nspname, ',' ORDER BY nspname) FROM pg_catalog.pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'; COMMIT;" 2>"$work_root/schema_list.log")"
+  "$postgres_image" psql -X -qAt -v ON_ERROR_STOP=1 -v snapshot="$snapshot_id" \
+  2>"$work_root/schema_list.log" <<'SQL'
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET TRANSACTION SNAPSHOT :'snapshot';
+SELECT string_agg(nspname, ',' ORDER BY nspname)
+FROM pg_catalog.pg_namespace
+WHERE nspname !~ '^pg_' AND nspname <> 'information_schema';
+COMMIT;
+SQL
+)"
 schema_list="${schema_list//$'\n'/}"
 
 project_fingerprint="$(printf '%s' "$project_ref" | sha256sum | awk '{print $1}')"
