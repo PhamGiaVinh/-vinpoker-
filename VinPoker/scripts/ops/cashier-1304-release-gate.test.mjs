@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classify } from "./cashier-1304-release-gate.mjs";
+import { buildAtomicMigrationQuery, classify } from "./cashier-1304-release-gate.mjs";
 
 const baseHistory = [
   { version: "20270115000003", name: "cashier_tour_money_v1" },
@@ -15,6 +15,7 @@ const priorState = {
 const appliedState = {
   ...priorState,
   function_md5: "new",
+  search_path_guard: true,
   verified_payment_guard: true,
   waiting_state_guard: true,
   floor_guard: true,
@@ -43,4 +44,15 @@ test("versions 06 through 10 always fail closed", () => {
     ...baseHistory,
     { version: "20270115000010", name: "unexpected" },
   ], priorState, "preflight"));
+});
+
+test("atomic apply changes the function and ledger in one transaction", () => {
+  const source = "CREATE OR REPLACE FUNCTION public.example() RETURNS void LANGUAGE sql AS $$ SELECT; $$;";
+  const query = buildAtomicMigrationQuery(source);
+  assert.match(query, /^BEGIN;/);
+  assert.match(query, /SET LOCAL lock_timeout = '5s';/);
+  assert.match(query, /CREATE OR REPLACE FUNCTION public\.example/);
+  assert.match(query, /INSERT INTO supabase_migrations\.schema_migrations\(version, name, statements\)/);
+  assert.match(query, /'20270115000011', 'cashier_refund_without_floor_clearance'/);
+  assert.match(query, /COMMIT;$/);
 });
