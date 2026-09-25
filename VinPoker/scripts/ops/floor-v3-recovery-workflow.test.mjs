@@ -82,6 +82,8 @@ test("only encrypted ciphertext is uploaded and restore is isolated with egress 
   assert.match(restore, /Actual database restore failed; sanitized diagnostic follows/);
   assert.match(restore, /--exit-on-error --verbose/);
   assert.match(restore, /pg_restore: \(error:\|from TOC entry\|creating \(EVENT TRIGGER\|FUNCTION\)\)/);
+  assert.match(restore, /WHERE p\.proname = 'rls_auto_enable'/);
+  assert.match(restore, /EVENT_FUNCTION=%I\.%I OWNER=%I OWNER_SUPERUSER=%s/);
   assert.match(restore, /\[JWT REDACTED\]/);
   assert.doesNotMatch(restore, /cat "\$test_root\/restore\.log"|tail[^\n]*restore\.log/);
   assert.doesNotMatch(restore, /pg_restore[^\n]*--no-owner/);

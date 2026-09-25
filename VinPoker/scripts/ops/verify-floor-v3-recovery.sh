@@ -186,6 +186,26 @@ if ! docker exec -i "$db_container" sh -ceu \
   else
     echo "Actual database restore failed; no safe diagnostic line was available" >&2
   fi
+  event_function_diagnostic="$(docker exec -i "$db_container" sh -ceu \
+    'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -U supabase_admin -d "$1" -At' \
+    sh "$restored_db" <<'SQL'
+SELECT format(
+  'EVENT_FUNCTION=%I.%I OWNER=%I OWNER_SUPERUSER=%s',
+  n.nspname,
+  p.proname,
+  r.rolname,
+  r.rolsuper
+)
+FROM pg_proc AS p
+JOIN pg_namespace AS n ON n.oid = p.pronamespace
+JOIN pg_roles AS r ON r.oid = p.proowner
+WHERE p.proname = 'rls_auto_enable'
+ORDER BY n.nspname;
+SQL
+  )"
+  if [[ -n "$event_function_diagnostic" ]]; then
+    printf '%s\n' "$event_function_diagnostic" >&2
+  fi
   exit 1
 fi
 
