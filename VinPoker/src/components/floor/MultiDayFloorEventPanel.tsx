@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 
 type FloorRead = {
   releaseEnabled: boolean;
+  capabilities: { canFinalizePayout: boolean; canRequestAdjustment: boolean; canApproveAdjustment: boolean };
   eventItmPercent: number;
   rules: null | { policy: string; itmPercent: number; day2Percent: number; minCashX: number };
   qualification: null | { sourceHash: string; participationCount: number; lockedAt: string };
@@ -175,12 +176,15 @@ export function MultiDayFloorEventPanel({ eventId, onReleaseRead, surface = "des
             <p>Rules revision: {payout.rulesVersion}</p><p>Funding revision: {payout.fundingRevision}</p>
             <p>Qualification revision: {payout.qualificationRevision}</p><p>Payout input hash: {payout.payoutInputHash}</p>
           </div>
-          {!read.finalization && <Button type="button" disabled={busy || payout.state !== "READY" || payout.requiredShortfallVnd !== 0 || !read.releaseEnabled}
-            onClick={() => void act(() => rpc("multi_day_finalize_payout_v1", { p_event_id: eventId, p_expected_rules_version: payout.rulesVersion, p_expected_funding_revision: payout.fundingRevision, p_expected_qualification_revision: payout.qualificationRevision, p_expected_payout_input_hash: payout.payoutInputHash, p_request_id: requestId(finalizeKey) }), "Payout obligations finalized. No payment was executed.", finalizeKey)}>Finalize obligations</Button>}
+          {!read.finalization && (read.capabilities?.canFinalizePayout ? <Button type="button" disabled={busy || payout.state !== "READY" || payout.requiredShortfallVnd !== 0 || !read.releaseEnabled}
+            onClick={() => void act(() => rpc("multi_day_finalize_payout_v1", { p_event_id: eventId, p_expected_rules_version: payout.rulesVersion, p_expected_funding_revision: payout.fundingRevision, p_expected_qualification_revision: payout.qualificationRevision, p_expected_payout_input_hash: payout.payoutInputHash, p_request_id: requestId(finalizeKey) }), "Payout obligations finalized. No payment was executed.", finalizeKey)}>Finalize obligations</Button>
+            : <p>Owner-only Finalize obligations. TD/Floor can review this preview but cannot finalize it.</p>)}
         </>}
         {read.finalization && postfinal && <div className="space-y-2 border-t pt-3">
           <p>Finalized obligations · accounting revision <span className="break-all font-mono text-xs">{postfinal.revision}</span>. Paid {money(postfinal.paidPlayerVnd)} · unpaid {money(postfinal.unpaidObligationVnd)} · unallocated {money(postfinal.unallocatedPoolVnd)}.</p>
           <p>Corrections append records; they do not edit the original snapshot or execute a payment.</p>
+          {!read.capabilities?.canRequestAdjustment && <p>Owner-only correction request. TD/Floor can review the finalized record.</p>}
+          {read.capabilities?.canRequestAdjustment && <>
           <Label htmlFor={`kind-${eventId}`}>Correction type</Label>
           <select id={`kind-${eventId}`} className="w-full rounded border bg-background p-2" value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="OBLIGATION_DELTA">Obligation delta</option><option value="PAYMENT_REVERSAL">Reverse a historical paid marker</option>
@@ -198,10 +202,12 @@ export function MultiDayFloorEventPanel({ eventId, onReleaseRead, surface = "des
           <Label htmlFor={`evidence-${eventId}`}>Evidence reference</Label><Input id={`evidence-${eventId}`} value={evidence} onChange={(e) => setEvidence(e.target.value)} />
           <Button type="button" disabled={busy || !participationId || !Number.isSafeInteger(Number(delta)) || Number(delta) === 0 || reason.trim().length < 8 || evidence.trim().length < 8 || (kind === "PAYMENT_REVERSAL" && (!paymentId || Number(delta) >= 0))}
             onClick={() => void act(() => rpc("multi_day_request_payout_correction_v1", { p_event_id: eventId, p_kind: kind, p_participation_id: participationId, p_original_payment_id: kind === "PAYMENT_REVERSAL" ? paymentId : null, p_delta_vnd: Number(delta), p_expected_revision: postfinal.revision, p_reason: reason, p_evidence_ref: evidence, p_request_id: requestId(correctionKey) }), "Correction requested. Owner approval is still required.", correctionKey)}>Request correction</Button>
+          </>}
           {read.correctionRequests.map((request) => <div key={request.requestId} className="flex flex-wrap items-center justify-between gap-2 rounded border p-2">
             <span>{request.kind} · {money(request.deltaVnd)} · {request.state} · {request.reason}</span>
-            {request.state === "PENDING_APPROVAL" && <Button type="button" size="sm" variant="outline" disabled={busy || !read.releaseEnabled}
-              onClick={() => void act(() => rpc("multi_day_approve_payout_correction_v1", { p_request_id: request.requestId, p_approval_request_id: requestId(`approve:${request.requestId}`) }), "Correction approved and reconciled; no payment executed.", `approve:${request.requestId}`)}>Approve</Button>}
+            {request.state === "PENDING_APPROVAL" && (read.capabilities?.canApproveAdjustment ? <Button type="button" size="sm" variant="outline" disabled={busy || !read.releaseEnabled}
+              onClick={() => void act(() => rpc("multi_day_approve_payout_correction_v1", { p_request_id: request.requestId, p_approval_request_id: requestId(`approve:${request.requestId}`) }), "Correction approved and reconciled; no payment executed.", `approve:${request.requestId}`)}>Approve</Button>
+              : <span>Owner-only Approve</span>)}
           </div>)}
         </div>}
       </div>}

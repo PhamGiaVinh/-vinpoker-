@@ -13,6 +13,7 @@ const playerId = "60000000-0000-0000-0000-000000000021";
 const participationId = "f334cb4d-fc1c-4f55-8da7-e98780e74f60";
 const read = {
   releaseEnabled: true, eventItmPercent: 10,
+  capabilities: { canFinalizePayout: true, canRequestAdjustment: true, canApproveAdjustment: true },
   rules: { policy: "SUM_STACKS", itmPercent: 10, day2Percent: 20, minCashX: 1.5 },
   qualification: { sourceHash: "a".repeat(32), participationCount: 1, lockedAt: "now" },
   finalization: null,
@@ -79,6 +80,30 @@ describe("verified Multi-day Floor panel", () => {
     render(<MultiDayFloorEventPanel eventId={eventId} surface="payout" />);
     await screen.findByText(/Required shortfall \(not funded\): 20,000 VND/);
     expect(screen.getByRole("button", { name: "Finalize obligations" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("shows TD/Floor owner-only labels without exposing payout mutations", async () => {
+    const floorRead = { ...read, capabilities: {
+      canFinalizePayout: false, canRequestAdjustment: false, canApproveAdjustment: false,
+    } };
+    h.rpc.mockImplementation(async (name: string) => ({ data: name === "multi_day_floor_read_v1" ? floorRead
+      : name === "multi_day_qualification_preview_v1" ? qualification
+        : name === "multi_day_payout_preview_v1" ? payout : null, error: null }));
+    render(<MultiDayFloorEventPanel eventId={eventId} surface="payout" />);
+    await screen.findByText(/Owner-only Finalize obligations/);
+    expect(screen.queryByRole("button", { name: "Finalize obligations" })).toBeNull();
+    expect(h.rpc).not.toHaveBeenCalledWith("multi_day_finalize_payout_v1", expect.anything());
+    cleanup();
+    h.rpc.mockImplementation(async (name: string) => ({ data: name === "multi_day_floor_read_v1"
+      ? { ...floorRead, finalization: { ...payout, requestId: "original", finalizedAt: "now" },
+        correctionRequests: [{ requestId: "pending", kind: "OBLIGATION_DELTA", deltaVnd: 1, reason: "Review", state: "PENDING_APPROVAL" }] }
+      : name === "multi_day_qualification_preview_v1" ? qualification
+        : { revision: "e".repeat(32), paidPlayerVnd: 0, unpaidObligationVnd: 1, unallocatedPoolVnd: 0 }, error: null }));
+    render(<MultiDayFloorEventPanel eventId={eventId} surface="payout" />);
+    await screen.findByText(/Owner-only Approve/);
+    expect(screen.getByText(/Owner-only correction request/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Request correction" })).toBeNull();
   });
 
   it("retries Finalize with the same request id after an uncertain error", async () => {

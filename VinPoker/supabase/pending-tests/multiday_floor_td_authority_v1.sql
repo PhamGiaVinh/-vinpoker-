@@ -31,12 +31,28 @@ INSERT INTO public.tournaments(id,club_id,event_id,phase) VALUES
   '20000000-0000-0000-0000-000000000002',
   '30000000-0000-0000-0000-000000000151','final');
 DO $$ DECLARE v_out jsonb; BEGIN
+ PERFORM set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000001',true);
+ v_out:=public.multi_day_floor_read_v1('30000000-0000-0000-0000-00000000006e');
+ IF v_out->'capabilities' IS DISTINCT FROM
+   '{"canFinalizePayout":true,"canRequestAdjustment":true,"canApproveAdjustment":true}'::jsonb THEN
+   RAISE EXCEPTION 'owner_capabilities_missing: %',v_out->'capabilities';
+ END IF;
  PERFORM set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000004',true);
  v_out:=public.multi_day_set_qualification_rules_v2(
    '30000000-0000-0000-0000-000000000150','SUM_STACKS',0.5,100);
  IF v_out->>'day2Percent'<>'100' THEN RAISE EXCEPTION 'floor_rules_denied'; END IF;
  v_out:=public.multi_day_floor_read_v1('30000000-0000-0000-0000-000000000150');
- IF v_out->'rules'->>'day2Percent'<>'100' THEN RAISE EXCEPTION 'floor_read_denied'; END IF;
+ IF v_out->'rules'->>'day2Percent'<>'100' OR v_out->'capabilities' IS DISTINCT FROM
+   '{"canFinalizePayout":false,"canRequestAdjustment":false,"canApproveAdjustment":false}'::jsonb THEN
+   RAISE EXCEPTION 'floor_read_capabilities_wrong: %',v_out;
+ END IF;
+ v_out:=public.multi_day_floor_read_v1('30000000-0000-0000-0000-00000000006e');
+ IF v_out->'finalization' IS NULL OR v_out->'capabilities'->>'canFinalizePayout'<>'false' OR
+    v_out->'capabilities'->>'canApproveAdjustment'<>'false' THEN
+   RAISE EXCEPTION 'finalized_floor_capabilities_wrong: %',v_out->'capabilities';
+ END IF;
+ v_out:=public.multi_day_payout_postfinal_state_v1('30000000-0000-0000-0000-00000000006e');
+ IF v_out->>'revision' IS NULL THEN RAISE EXCEPTION 'floor_postfinal_read_denied'; END IF;
  v_out:=public.multi_day_qualification_preview_v1('30000000-0000-0000-0000-000000000150');
  IF v_out->>'state'<>'PLANNED' THEN RAISE EXCEPTION 'floor_preview_denied'; END IF;
  -- The event is already qualified; reaching already-locked proves the Floor
