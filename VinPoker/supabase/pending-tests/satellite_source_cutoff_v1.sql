@@ -35,12 +35,19 @@ VALUES
   '{"buy_in":1000000,"rake":200000,"service_fee":0,"platform_fee":0,"waived_rake":0,"total_pay":1200000}'),
  ('d4000000-0000-4000-8000-000000000003','d3000000-0000-4000-8000-000000000003',
   'd1000000-0000-4000-8000-000000000103','d2000000-0000-4000-8000-000000000001',
-  1000000,1000000,'STANDARD-REG','pending',NULL);
+  1000000,1000000,'STANDARD-REG','pending',NULL),
+ ('d4000000-0000-4000-8000-000000000004','d3000000-0000-4000-8000-000000000001',
+  'd1000000-0000-4000-8000-000000000105','d2000000-0000-4000-8000-000000000001',
+  1000000,1200000,'SAT-CUTOFF-PAID-WAITING','pending',
+  '{"buy_in":1000000,"rake":200000,"service_fee":0,"platform_fee":0,"waived_rake":0,"total_pay":1200000}');
 INSERT INTO public.cashier_buyin_movements
  (club_id,tournament_id,registration_id,shift_id,direction,method,purpose,amount,applied_amount,actor_id,idempotency_key)
 VALUES ('d2000000-0000-4000-8000-000000000001','d3000000-0000-4000-8000-000000000001',
  'd4000000-0000-4000-8000-000000000001','d5000000-0000-4000-8000-000000000001',
- 'in','cash','buyin',1200000,1200000,'d1000000-0000-4000-8000-000000000001','sat-cutoff:paid');
+ 'in','cash','buyin',1200000,1200000,'d1000000-0000-4000-8000-000000000001','sat-cutoff:paid'),
+ ('d2000000-0000-4000-8000-000000000001','d3000000-0000-4000-8000-000000000001',
+ 'd4000000-0000-4000-8000-000000000004','d5000000-0000-4000-8000-000000000001',
+ 'in','cash','buyin',1200000,1200000,'d1000000-0000-4000-8000-000000000001','sat-cutoff:waiting');
 SELECT pg_temp.sat_cutoff_assert((SELECT satellite_funding_phase='open'
  FROM public.cashier_buyin_movements WHERE idempotency_key='sat-cutoff:paid'),
  'open receipt tagged by server');
@@ -92,9 +99,10 @@ DO $$ BEGIN
   END;
   BEGIN
     UPDATE public.tournament_registrations
-    SET status='confirmed',confirmed_at=now()
-    WHERE id='d4000000-0000-4000-8000-000000000002';
-    RAISE EXCEPTION 'Unpaid attempt confirmed after cutoff';
+    SET status='confirmed',confirmed_at=now(),cashier_paid_at=now(),
+        confirmed_by='d1000000-0000-4000-8000-000000000001'
+    WHERE id='d4000000-0000-4000-8000-000000000004';
+    RAISE EXCEPTION 'Paid waiting attempt confirmed after cutoff';
   EXCEPTION WHEN check_violation THEN
     IF SQLERRM NOT LIKE '%satellite_registration_cutoff_frozen%' THEN RAISE; END IF;
   END;
