@@ -88,6 +88,9 @@ test("only encrypted ciphertext is uploaded and restore is isolated with egress 
   assert.match(restore, /roles-no-passwords\.sql/);
   assert.match(restore, /SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user/);
   assert.match(restore, /PGPASSWORD="\$POSTGRES_PASSWORD" psql -h 127\.0\.0\.1 -X -q -U supabase_admin -d postgres/);
+  assert.match(restore, /roles_for_restore="\$test_root\/roles-for-restore\.sql"/);
+  assert.match(restore, /\^\(CREATE ROLE\|ALTER ROLE\).*supabase_admin/);
+  assert.match(restore, /Disposable Supabase admin lost superuser status during role restore/);
   assert.match(restore, /ROLE_METADATA_RESTORED=PASS/);
   assert.match(restore, /VERIFIED_ANON_FUNCTIONS_PRESERVED=PASS/);
   assert.match(restore, /check-floor-v3-anon-exception\.mjs/);
