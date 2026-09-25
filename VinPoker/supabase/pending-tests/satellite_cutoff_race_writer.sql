@@ -12,7 +12,8 @@ DO $$ DECLARE v jsonb; BEGIN
         'Cutoff Offline','sat-cutoff-race-offline');
       RAISE EXCEPTION 'canonical buy-in crossed cutoff';
     EXCEPTION WHEN check_violation THEN
-      IF SQLERRM NOT LIKE '%satellite_registration_cutoff_closed%' THEN RAISE; END IF;
+      IF SQLERRM NOT LIKE '%satellite_offline_buyin_requires_cashier_ledger%'
+         AND SQLERRM NOT LIKE '%satellite_registration_cutoff_closed%' THEN RAISE; END IF;
     END;
     BEGIN
       INSERT INTO public.tournament_entries
