@@ -178,5 +178,18 @@ jobs:
             wait "$first" || { cat /tmp/sat-close.log; exit 1; }
             wait "$second" || { cat /tmp/sat-writer.log; exit 1; }
           done
+          for spec in '4 cash' '5 bank'; do
+            read -r suffix kind <<< "$spec"
+            tour="cc000000-0000-4000-8000-00000000000${suffix}"
+            psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              -v kind="$kind" -f supabase/pending-tests/satellite_cutoff_race_writer_first.sql >/tmp/sat-first.log 2>&1 &
+            first=$!
+            sleep 0.25
+            psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              -v tour="$tour" -f supabase/pending-tests/satellite_cutoff_race_close.sql >/tmp/sat-close.log 2>&1 &
+            second=$!
+            wait "$first" || { cat /tmp/sat-first.log; exit 1; }
+            wait "$second" || { cat /tmp/sat-close.log; exit 1; }
+          done
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/pending-tests/satellite_cutoff_race_assert.sql
