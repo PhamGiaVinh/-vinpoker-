@@ -18,10 +18,12 @@ Live read-only probe on 2026-09-25 returned `20270115000005 = tracker_dealer_flo
 | Order | Active migration file | SHA-256 | Runtime dependency / forward-fix note |
 | --- | --- | --- | --- |
 | 1 | `20270115000006_floor_roster_actions_repair.sql` | `0A6CF4C3809935692CD6607C299583ED7CE7E3E4F6E345768BB68467D73AEA81` | Repairs canonical Floor roster actions; if behavior fails, leave flag OFF and use a reviewed forward migration. |
-| 2 | `20270115000007_floor_break_eligible_destinations.sql` | `0D9F8C4E37A8C557F85321F38F854937817565C79E56DA65D0726840A8F69423` | 8/9-max capacity excludes active hands, locked seats and reservations; requires 00006 and Floor V3 tables. Forward-fix rather than rewriting this migration. |
-| 3 | `20270115000008_floor_deferred_tracker_move_v1.sql` | `143646B238E1B531A8D5E5F956121B1FD4B2A9947DBE629D1FDF7AA8B82E9CBC` | Queue, reservation guard and post-terminal apply; requires 00007. Queue mutation EXECUTE remains revoked from `authenticated` after this migration. Existing audit/read paths remain available. |
+| 2 | `20270115000007_floor_break_eligible_destinations.sql` | `168689A46399D7BE1460DA9172F7550BD523612BDF4234080663DDB4FAE83D3E` | 8/9-max capacity excludes active hands, locked seats and reservations; requires 00006 and Floor V3 tables. Forward-fix rather than rewriting this migration. |
+| 3 | `20270115000008_floor_deferred_tracker_move_v1.sql` | `964C8ED94726089CF0E63D6CB59364C65E256D0AA7ED7995E0CFBA335260F38E` | Queue, reservation guard and post-terminal apply; requires 00007. Queue mutation EXECUTE remains revoked from `authenticated` after this migration. Existing audit/read paths remain available. |
 | 4 | `20270115000009_tracker_record_hand_v3_identity.sql` | `BA77B23E3213882830A297A6127ED34AF71DBEC894A7CDF163CCA097FD09AD7A` | `record_hand` resolves explicit V3 hand/session/seat identity and preserves legacy path; requires 00008. Keep old Edge/flag gated until candidate Edge deploy. |
 | 5 | `20270115000010_tracker_v3_hand_start_context.sql` | `ED3B2EF3AFE2951D2F7D05E6B7E4F27C80328319310CCE58AA414EBA195F0094` | Adds caller-bound V3 hand-input table scope/start RPC with session + control epoch; requires 00009 and V3-compatible Edge. |
+
+The 00007 and 00008 hashes above were corrected after recomputing the active files on 2026-09-25. Their Git blobs are identical in reviewed #1306 HEAD `45a793c0...` and merge commit `25e4ab5f...`; the previous handoff hashes were stale, not a source change.
 
 The original versions and byte-preserved source are in `supabase/migration-archive/never-apply/` and mapped by `floor-v3-catalog-reconciliation.manifest.json`; never restore them to the active catalog or edit them in place. No business rows are rewritten by 00009/00010. After live transactions, a whole-database restore is not a normal rollback: close mutation, keep audit/read paths, investigate and use an owner-reviewed forward fix.
 
