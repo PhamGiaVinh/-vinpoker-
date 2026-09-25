@@ -90,12 +90,14 @@ test("only encrypted ciphertext is uploaded and restore is isolated with egress 
   assert.match(restore, /cmp -s \"\$payload_root\/table-counts\.tsv\"/);
   assert.match(restore, /cron\.launch_active_jobs = off/);
   assert.match(restore, /roles-no-passwords\.sql/);
-  assert.match(restore, /rolname IN \('\"'\"'postgres'\"'\"', '\"'\"'supabase_admin'\"'\"'\)/);
-  assert.match(restore, /postgres\|true,supabase_admin\|true/);
+  assert.match(restore, /SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user/);
   assert.match(restore, /PGPASSWORD="\$POSTGRES_PASSWORD" psql -h 127\.0\.0\.1 -X -q -U supabase_admin -d postgres/);
   assert.match(restore, /roles_for_restore="\$test_root\/roles-for-restore\.sql"/);
   assert.match(restore, /\^\(CREATE ROLE\|ALTER ROLE\).*\(postgres\|supabase_admin\)/);
-  assert.match(restore, /Disposable Supabase bootstrap roles lost superuser status during role restore/);
+  assert.match(restore, /Disposable Supabase admin lost superuser status during role restore/);
+  assert.match(restore, /ALTER ROLE postgres SUPERUSER/);
+  assert.match(restore, /postgres-role-after-restore\.sql/);
+  assert.match(restore, /postgres\|false,supabase_admin\|true/);
   assert.match(restore, /ROLE_METADATA_RESTORED=PASS/);
   assert.match(restore, /VERIFIED_ANON_FUNCTIONS_PRESERVED=PASS/);
   assert.match(restore, /check-floor-v3-anon-exception\.mjs/);
