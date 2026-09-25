@@ -130,6 +130,13 @@ for table in cashier_refund_requests cashier_buyin_movements cashier_till_shifts
   }
 done
 
+if ! docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  <"$auth_compat_sql" >"$test_root/auth-forward-compat.log" 2>&1; then
+  echo "Failed to align disposable Auth schema with pinned Supabase Auth migrations" >&2
+  tail -n 35 "$test_root/auth-forward-compat.log" >&2
+  exit 1
+fi
+
 for sql_file in roles.sql schema.sql migration-schema.sql migration-history.sql; do
   if ! docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
     <"$backup_root/$sql_file" >"$test_root/${sql_file}.log" 2>&1; then
@@ -138,13 +145,6 @@ for sql_file in roles.sql schema.sql migration-schema.sql migration-history.sql;
     exit 1
   fi
 done
-
-if ! docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U supabase_auth_admin -d postgres \
-  <"$auth_compat_sql" >"$test_root/auth-forward-compat.log" 2>&1; then
-  echo "Failed to align disposable Auth schema with pinned Supabase Auth migrations" >&2
-  tail -n 35 "$test_root/auth-forward-compat.log" >&2
-  exit 1
-fi
 
 if ! docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
   <"$backup_root/data.sql" >"$test_root/data.sql.log" 2>&1; then
