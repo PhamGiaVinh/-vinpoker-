@@ -13,6 +13,11 @@ test -s "$auth_compat_sql" || {
   echo "Pinned Supabase Auth compatibility migrations are unavailable" >&2
   exit 1
 }
+storage_compat_sql="$script_dir/supabase-storage-forward-compat-20260925.sql"
+test -s "$storage_compat_sql" || {
+  echo "Pinned Supabase Storage compatibility migrations are unavailable" >&2
+  exit 1
+}
 
 for required in cashier-1304-backup.tar.gz.age ciphertext.sha256 archive.sha256 metadata.txt; do
   test -f "$archive_dir/$required" || {
@@ -144,6 +149,15 @@ if ! docker exec -i "$db_container" sh -ceu \
   <"$auth_compat_sql" >"$test_root/auth-forward-compat.log" 2>&1; then
   echo "Failed to align disposable Auth schema with pinned Supabase Auth migrations" >&2
   tail -n 35 "$test_root/auth-forward-compat.log" >&2
+  exit 1
+fi
+
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -v ON_ERROR_STOP=1 \
+    -U supabase_admin -d postgres' \
+  <"$storage_compat_sql" >"$test_root/storage-forward-compat.log" 2>&1; then
+  echo "Failed to align disposable Storage schema with pinned Supabase Storage migrations" >&2
+  tail -n 35 "$test_root/storage-forward-compat.log" >&2
   exit 1
 fi
 
