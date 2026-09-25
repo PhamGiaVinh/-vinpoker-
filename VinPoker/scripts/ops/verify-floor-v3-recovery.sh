@@ -129,7 +129,16 @@ if [[ "$cron_setting" != "off" ]]; then
   exit 1
 fi
 
-if ! docker exec -i "$db_container" psql -X -q -U postgres -d postgres \
+local_superuser_state="$(docker exec "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
+    -c "SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user"')"
+if [[ "$local_superuser_state" != 'supabase_admin|t' ]]; then
+  echo "Disposable Supabase admin role is unavailable or not a superuser" >&2
+  exit 1
+fi
+
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -U supabase_admin -d postgres' \
   <"$payload_root/roles-no-passwords.sql" >"$test_root/roles-restore.log" 2>&1; then
   echo "Role metadata restore failed; raw output withheld" >&2
   exit 1
