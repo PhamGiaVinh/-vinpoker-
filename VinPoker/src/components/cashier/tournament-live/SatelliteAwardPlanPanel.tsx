@@ -91,7 +91,7 @@ function parseFunding(raw: unknown): FundingPreview {
   if (!raw || typeof raw !== "object") throw new Error("Invalid funding-preview response");
   const value = raw as FundingPreview;
   if (!["READY", "NOT_READY", "OWNER_EXCEPTION_REQUIRED"].includes(value.state)
-    || !/^v1:[0-9a-f]{32}$/.test(value.previewRevision ?? "")
+    || !/^v2:[0-9a-f]{32}$/.test(value.previewRevision ?? "")
     || !Number.isInteger(value.confirmedCount) || !Number.isInteger(value.unpaidCount)
     || !Number.isInteger(value.reversedCount)) throw new Error("Incomplete funding-preview response");
   value.awardPlan = parsePlan(value.awardPlan);
@@ -122,6 +122,7 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [issuance, setIssuance] = useState<Issuance | null>(null);
   const seq = useRef(0);
+  const lockRequest = useRef<{ input: string; id: string } | null>(null);
 
   const load = useCallback(async () => {
     const request = ++seq.current;
@@ -170,6 +171,7 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
     setRows(current => current.map((row, i) => i === index ? { ...row, ...patch } : row));
     setPreview(null);
     setPreviewError(null);
+    lockRequest.current = null;
   };
   const input = JSON.stringify({ targetId, rows });
   const previewCurrent = preview?.input === input ? preview.funding : null;
@@ -191,7 +193,7 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
     setBusy(true);
     setPreviewError(null);
     try {
-      const { data, error } = await planRpc("satellite_source_funding_preview_v1", {
+      const { data, error } = await planRpc("satellite_source_funding_preview_v2", {
         p_source_tournament_id: tournamentId,
         p_target_tournament_id: targetId,
         p_awards: awards,
@@ -204,6 +206,38 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
     } catch (error) {
       setPreview(null);
       setPreviewError(error instanceof Error ? error.message : "Could not load Satellite funding preview");
+    } finally { setBusy(false); }
+  };
+
+  const lockPlan = async () => {
+    if (busy || !previewCurrent || previewCurrent.state !== "READY" || !targetId) return;
+    const currentInput = input;
+    const request = lockRequest.current?.input === currentInput
+      ? lockRequest.current.id : globalThis.crypto.randomUUID();
+    lockRequest.current = { input: currentInput, id: request };
+    setBusy(true);
+    setPreviewError(null);
+    try {
+      const { data, error } = await planRpc("satellite_lock_award_plan_v1", {
+        p_source_tournament_id: tournamentId,
+        p_target_tournament_id: targetId,
+        p_awards: rows.map(row => ({
+          position: Number(row.position), ticketCount: Number(row.ticketCount), cashVnd: row.cashVnd,
+        })),
+        p_expected_preview_revision: previewCurrent.previewRevision,
+        p_request_id: request,
+      });
+      if (error) throw error;
+      const result = data as { ok?: boolean; locked?: boolean; error?: string } | null;
+      if (result?.error === "stale_preview") {
+        setPreview(null);
+        lockRequest.current = null;
+        throw new Error("Source funding changed. Refresh the preview before locking.");
+      }
+      if (result?.ok !== true || result.locked !== true) throw new Error("Lock was not confirmed by the server");
+      await load();
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "Could not lock Satellite awards");
     } finally { setBusy(false); }
   };
 
@@ -227,10 +261,10 @@ export function SatelliteAwardPlanPanel({ tournamentId, clubId }: { tournamentId
         </>}
       </div>
     </div> : <>
-      <div className="space-y-1"><Label htmlFor="satellite-target">Target tournament</Label><Select value={targetId} onValueChange={value => { setTargetId(value); setPreview(null); setPreviewError(null); }}><SelectTrigger id="satellite-target"><SelectValue placeholder="Select the exact tournament" /></SelectTrigger><SelectContent>{targets.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent></Select>{targets.length === 0 && <p className="text-xs text-amber-400">No open target tournament in this club.</p>}</div>
+      <div className="space-y-1"><Label htmlFor="satellite-target">Target tournament</Label><Select value={targetId} onValueChange={value => { setTargetId(value); setPreview(null); setPreviewError(null); lockRequest.current = null; }}><SelectTrigger id="satellite-target"><SelectValue placeholder="Select the exact tournament" /></SelectTrigger><SelectContent>{targets.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent></Select>{targets.length === 0 && <p className="text-xs text-amber-400">No open target tournament in this club.</p>}</div>
       <div className="space-y-2"><p className="text-sm font-medium">Awards by finishing place</p>{rows.map((row, index) => <div key={index} className="grid grid-cols-2 gap-2 rounded border border-border p-2 sm:grid-cols-[1fr_1fr_1.5fr_auto] sm:border-0 sm:p-0"><div><Label htmlFor={`sat-rank-${index}`} className="text-xs">Rank</Label><Input id={`sat-rank-${index}`} inputMode="numeric" value={row.position} onChange={e => updateRow(index, { position: e.target.value })} /></div><div><Label htmlFor={`sat-ticket-${index}`} className="text-xs">Tickets</Label><Input id={`sat-ticket-${index}`} inputMode="numeric" value={row.ticketCount} onChange={e => updateRow(index, { ticketCount: e.target.value })} /></div><div><Label htmlFor={`sat-cash-${index}`} className="text-xs">Cash · VND</Label><Input id={`sat-cash-${index}`} inputMode="numeric" value={row.cashVnd} onChange={e => updateRow(index, { cashVnd: e.target.value })} /></div><Button type="button" size="icon" variant="ghost" className="self-end justify-self-end" aria-label={`Remove rank ${index + 1}`} onClick={() => { setRows(current => current.filter((_, i) => i !== index)); setPreview(null); }}><Trash2 className="h-4 w-4" /></Button></div>)}</div>
       <Button type="button" variant="outline" onClick={() => { setRows(current => [...current, emptyRow()]); setPreview(null); }} disabled={rows.length >= 100}><Plus className="mr-1 h-4 w-4" />Add rank</Button>
-      <div className="border-t border-border pt-3 space-y-3"><Button type="button" variant="outline" disabled={busy || !targetId} onClick={() => void submit()}>{busy ? "Loading funding preview…" : "Preview funding"}</Button>{previewError && <p role="alert" className="text-sm text-destructive">{previewError}</p>}{previewCurrent && <div role="status" className="rounded bg-muted/40 p-3 text-sm"><p>Source status: {previewCurrent.state === "NOT_READY" ? "Inconsistent — review registrations" : previewCurrent.state === "OWNER_EXCEPTION_REQUIRED" ? "Owner exception required — too few eligible winners" : "Source ledger reconciled"}</p><p>Confirmed: {previewCurrent.confirmedCount} · Unpaid: {previewCurrent.unpaidCount} · Reversed: {previewCurrent.reversedCount}</p>{previewCurrent.state === "NOT_READY" ? <p className="text-destructive">Pool and fees are unavailable. {previewCurrent.issues?.length ?? 0} inconsistent registration(s).</p> : <><p>Source pool: {money(previewCurrent.sourcePoolVnd ?? undefined)} · Fees: {money(previewCurrent.feeVnd ?? undefined)}</p><p>Target entry: {money(previewCurrent.targetEntryPriceVnd)}</p><p>Computed capacity: {previewCurrent.computedTicketCount} tickets · Remainder: {money(previewCurrent.cashRemainderVnd)}</p><p>TD awards: {previewCurrent.awardPlan.ticketTotal} tickets · Cash: {money(previewCurrent.awardPlan.cashTotalVnd)}</p><p className="font-semibold">TD obligation: {money(previewCurrent.awardPlan.totalLiabilityVnd)} · Unfunded: {money(previewCurrent.obligationShortfallVnd)}</p><p>TD versus computed: {previewCurrent.awardPlan.ticketTotal === previewCurrent.computedTicketCount && previewCurrent.awardPlan.cashTotalVnd === previewCurrent.cashRemainderVnd ? "matches capacity and remainder" : "differs in ticket count or cash remainder — review the rank choices"}. This comparison does not approve awards.</p><p>Ticket guarantee shortfall: {money(previewCurrent.ticketShortfallVnd)} — not funded by an overlay.</p></>}<p className="mt-1 text-xs text-muted-foreground">Evidence revision: {previewCurrent.previewRevision}. Read-only snapshot; it does not authorize locking or issuing.</p></div>}<p className="text-xs text-amber-400">Lock and Issue remain paused until server-side atomic funding verification is implemented.</p></div>
+      <div className="border-t border-border pt-3 space-y-3"><Button type="button" variant="outline" disabled={busy || !targetId} onClick={() => void submit()}>{busy ? "Working…" : "Preview funding"}</Button>{previewError && <p role="alert" className="text-sm text-destructive">{previewError}</p>}{previewCurrent && <div role="status" className="rounded bg-muted/40 p-3 text-sm"><p>Source status: {previewCurrent.state === "NOT_READY" ? "Inconsistent — review registrations" : previewCurrent.state === "OWNER_EXCEPTION_REQUIRED" ? "Owner exception required — too few eligible winners" : "Source ledger reconciled"}</p><p>Confirmed: {previewCurrent.confirmedCount} · Unpaid: {previewCurrent.unpaidCount} · Reversed: {previewCurrent.reversedCount}</p>{previewCurrent.state === "NOT_READY" ? <p className="text-destructive">Pool and fees are unavailable. {previewCurrent.issues?.length ?? 0} inconsistent registration(s).</p> : <><p>Source pool: {money(previewCurrent.sourcePoolVnd ?? undefined)} · Fees: {money(previewCurrent.feeVnd ?? undefined)}</p><p>Target entry: {money(previewCurrent.targetEntryPriceVnd)}</p><p>Computed capacity: {previewCurrent.computedTicketCount} tickets · Remainder: {money(previewCurrent.cashRemainderVnd)}</p><p>TD awards: {previewCurrent.awardPlan.ticketTotal} tickets · Cash: {money(previewCurrent.awardPlan.cashTotalVnd)}</p><p className="font-semibold">TD obligation: {money(previewCurrent.awardPlan.totalLiabilityVnd)} · Unfunded: {money(previewCurrent.obligationShortfallVnd)}</p><p>TD versus computed: {previewCurrent.awardPlan.ticketTotal === previewCurrent.computedTicketCount && previewCurrent.awardPlan.cashTotalVnd === previewCurrent.cashRemainderVnd ? "matches capacity and remainder" : "differs in ticket count or cash remainder — review the rank choices"}. This comparison does not approve awards.</p><p>Ticket guarantee shortfall: {money(previewCurrent.ticketShortfallVnd)} — not funded by an overlay.</p></>}<p className="mt-1 text-xs text-muted-foreground">Evidence revision: {previewCurrent.previewRevision}. The server will recheck this at Lock.</p></div>}{previewCurrent?.state === "READY" && <Button type="button" disabled={busy} onClick={() => void lockPlan()}>{busy ? "Locking…" : "Lock award plan"}</Button>}<p className="text-xs text-amber-400">Registration must be closed before Lock. Issue remains paused; any unfunded shortfall is not a paid overlay.</p></div>
     </>}
   </Card>;
 }

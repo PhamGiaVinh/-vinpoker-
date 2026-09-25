@@ -21,7 +21,7 @@ VALUES
  ('f3000000-0000-4000-8000-000000000001','f2000000-0000-4000-8000-000000000001',
   'Source SAT','registering','registering',now()+interval '1 day',1000000,10000,200000,0,'satellite'),
  ('f3000000-0000-4000-8000-000000000002','f2000000-0000-4000-8000-000000000001',
-  'Target','scheduled','registering',now()+interval '3 day',6000000,10000,500000,100000,'standard'),
+  'Target','live','registering',now()+interval '3 day',6000000,10000,500000,100000,'standard'),
  ('f3000000-0000-4000-8000-000000000003','f2000000-0000-4000-8000-000000000001',
   'Historical source','registering','registering',now()+interval '2 day',1000000,10000,200000,0,'satellite');
 
@@ -151,11 +151,11 @@ INSERT INTO public.tournaments
   (id,club_id,name,status,live_status,start_time,buy_in,starting_stack,rake_amount,service_fee_amount,operations_mode)
 VALUES
  ('f3000000-0000-4000-8000-000000000004','f2000000-0000-4000-8000-000000000001',
-  'Negative fee component target','scheduled','registering',now()+interval '4 day',6000000,10000,-1,600001,'standard'),
+  'Negative fee component target','live','registering',now()+interval '4 day',6000000,10000,-1,600001,'standard'),
  ('f3000000-0000-4000-8000-000000000005','f2000000-0000-4000-8000-000000000001',
   'Invalid component test source','registering','registering',now()+interval '1 day',1000000,10000,200000,0,'satellite'),
  ('f3000000-0000-4000-8000-000000000006','f2000000-0000-4000-8000-000000000001',
-  'Mismatched total target','scheduled','registering',now()+interval '5 day',6000000,10000,500000,100000,'standard');
+  'Mismatched total target','live','registering',now()+interval '5 day',6000000,10000,500000,100000,'standard');
 ALTER TABLE public.satellite_award_plans DISABLE TRIGGER satellite_preview_write_hold_v1;
 DO $$ BEGIN
   BEGIN
