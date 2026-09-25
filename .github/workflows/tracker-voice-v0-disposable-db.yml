@@ -306,8 +306,8 @@ jobs:
           test "$(psql -X -At -d tracker_correction_resume -c \
             "SELECT to_regprocedure('public.report_tracker_floor_operational_alert_v2(uuid,uuid,uuid,uuid,text,text,uuid,jsonb,bigint)') IS NOT NULL")" = "t"
           test "$(psql -X -At -d tracker_correction_resume -c \
-            "SELECT count(*) = 0 FROM supabase_migrations.schema_migrations WHERE version BETWEEN '20270115000006' AND '20270115000012'")" = "t"
-          echo 'TRACKER_CORRECTION_RELEASE1_SQL_COMMITTED_LEDGER_MISSING_PASS'
+            "SELECT to_regclass('supabase_migrations.schema_migrations') IS NULL")" = "t"
+          echo 'TRACKER_CORRECTION_RELEASE1_EXACT_SQL_APPLY_PASS_LEDGER_REPAIR_NOT_MEASURED'
 
           # Voice runtime proof uses the exact strict Series canonicalizer. The
           # existing start-hand suite stays on its prior baseline because the
