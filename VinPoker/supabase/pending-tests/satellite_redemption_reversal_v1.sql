@@ -3,6 +3,124 @@
 \set ON_ERROR_STOP on
 BEGIN;
 SELECT set_config('request.jwt.claim.sub','d1000000-0000-4000-8000-000000000011',true);
+SELECT set_config('test.satellite_ticket_id',id::text,true)
+  FROM public.satellite_tickets
+ WHERE source_tournament_id='d3000000-0000-4000-8000-000000000011'
+   AND serial_no=1;
+SELECT set_config('test.satellite_club_id',club_id::text,true)
+  FROM public.satellite_tickets
+ WHERE source_tournament_id='d3000000-0000-4000-8000-000000000011'
+   AND serial_no=1;
+SAVEPOINT satellite_reversal_role_authorization;
+-- Exercise the RPC boundary as the real PostgREST roles. The correction
+-- succeeds only with the server gate open, while a closed gate blocks both
+-- mutation endpoints before writes. Savepoint rollback removes the probe.
+UPDATE public.centerpoint_tournament_ops_release
+   SET enabled=true,allowed_club_ids=ARRAY[current_setting('test.satellite_club_id')::uuid]
+ WHERE id;
+SET LOCAL ROLE authenticated;
+DO $$ DECLARE v_result jsonb;
+BEGIN
+  IF current_user<>'authenticated'
+     OR has_table_privilege('authenticated','public.satellite_redemption_correction_requests','SELECT')
+     OR has_table_privilege('authenticated','public.satellite_redemption_correction_requests','INSERT')
+     OR has_table_privilege('authenticated','public.satellite_redemption_reversals','SELECT')
+     OR has_table_privilege('authenticated','public.satellite_redemption_reversals','INSERT') THEN
+    RAISE EXCEPTION 'authenticated direct write grants unexpectedly exposed';
+  END IF;
+  IF NOT (SELECT c.relrowsecurity FROM pg_catalog.pg_class c
+      WHERE c.oid='public.satellite_redemption_correction_requests'::regclass)
+     OR NOT (SELECT c.relrowsecurity FROM pg_catalog.pg_class c
+      WHERE c.oid='public.satellite_redemption_reversals'::regclass) THEN
+    RAISE EXCEPTION 'reversal evidence tables are missing RLS';
+  END IF;
+  v_result:=public.satellite_request_redemption_correction_v1(
+    current_setting('test.satellite_ticket_id')::uuid,
+    'Authorization probe held for rollback','d9000000-0000-4000-8000-000000000004');
+  IF v_result->>'status'<>'held' OR v_result->>'idempotent'<>'false' THEN
+    RAISE EXCEPTION 'authenticated correction RPC failed: %',v_result;
+  END IF;
+END $$;
+RESET ROLE;
+UPDATE public.centerpoint_tournament_ops_release SET enabled=false WHERE id;
+SET LOCAL ROLE authenticated;
+DO $$ DECLARE v_error text;
+BEGIN
+  BEGIN
+    PERFORM public.satellite_request_redemption_correction_v1(
+      current_setting('test.satellite_ticket_id')::uuid,
+      'Closed gate correction probe','d9000000-0000-4000-8000-000000000005');
+    RAISE EXCEPTION 'correction passed while package gate was closed';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_error=MESSAGE_TEXT;
+    IF v_error<>'CENTERPOINT_TOURNAMENT_OPS_RELEASE_CLOSED' THEN RAISE; END IF;
+  END;
+  BEGIN
+    PERFORM public.satellite_approve_redemption_reversal_v1(
+      current_setting('test.satellite_ticket_id')::uuid,
+      'd9000000-0000-4000-8000-000000000004',
+      'Closed gate approval probe','d9000000-0000-4000-8000-000000000006');
+    RAISE EXCEPTION 'approval passed while package gate was closed';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_error=MESSAGE_TEXT;
+    IF v_error<>'CENTERPOINT_TOURNAMENT_OPS_RELEASE_CLOSED' THEN RAISE; END IF;
+  END;
+END $$;
+SELECT set_config('request.jwt.claim.sub','d1000000-0000-4000-8000-000000000012',true);
+DO $$ DECLARE v_error text;
+BEGIN
+  BEGIN
+    PERFORM public.satellite_approve_redemption_reversal_v1(
+      current_setting('test.satellite_ticket_id')::uuid,
+      'd9000000-0000-4000-8000-000000000004',
+      'Wrong owner role probe','d9000000-0000-4000-8000-000000000007');
+    RAISE EXCEPTION 'non-owner authenticated actor approved reversal';
+  EXCEPTION WHEN insufficient_privilege THEN
+    GET STACKED DIAGNOSTICS v_error=MESSAGE_TEXT;
+    IF v_error<>'satellite_reversal_owner_required' THEN RAISE; END IF;
+  END;
+  BEGIN
+    PERFORM public.satellite_request_redemption_correction_v1(
+      current_setting('test.satellite_ticket_id')::uuid,
+      'Wrong club cashier role probe','d9000000-0000-4000-8000-000000000008');
+    RAISE EXCEPTION 'unassigned authenticated actor requested correction';
+  EXCEPTION WHEN insufficient_privilege THEN
+    GET STACKED DIAGNOSTICS v_error=MESSAGE_TEXT;
+    IF v_error<>'satellite_correction_actor_not_allowed' THEN RAISE; END IF;
+  END;
+END $$;
+RESET ROLE;
+SET LOCAL ROLE anon;
+DO $$ DECLARE v_error text;
+BEGIN
+  IF has_table_privilege('anon','public.satellite_redemption_correction_requests','SELECT')
+     OR has_table_privilege('anon','public.satellite_redemption_reversals','SELECT') THEN
+    RAISE EXCEPTION 'anon direct table reads unexpectedly granted';
+  END IF;
+  IF has_function_privilege('anon',
+       'public.satellite_request_redemption_correction_v1(uuid,text,uuid)','EXECUTE')
+     OR has_function_privilege('anon',
+       'public.satellite_approve_redemption_reversal_v1(uuid,uuid,text,uuid)','EXECUTE') THEN
+    RAISE EXCEPTION 'anon EXECUTE unexpectedly granted on reversal RPC';
+  END IF;
+  BEGIN
+    PERFORM public.satellite_request_redemption_correction_v1(
+      current_setting('test.satellite_ticket_id')::uuid,
+      'Anonymous correction probe','d9000000-0000-4000-8000-000000000009');
+    RAISE EXCEPTION 'anon correction RPC executed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.satellite_approve_redemption_reversal_v1(
+      current_setting('test.satellite_ticket_id')::uuid,
+      'd9000000-0000-4000-8000-000000000004',
+      'Anonymous approval probe','d9000000-0000-4000-8000-000000000010');
+    RAISE EXCEPTION 'anon approval RPC executed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END $$;
+RESET ROLE;
+ROLLBACK TO SAVEPOINT satellite_reversal_role_authorization;
 DO $$ DECLARE v_ticket uuid; v_reg uuid; v_transfer uuid; v_code uuid;
   v_correction uuid:='d9000000-0000-4000-8000-000000000001';
   v_request uuid:='d9000000-0000-4000-8000-000000000002';

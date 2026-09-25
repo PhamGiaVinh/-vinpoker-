@@ -494,6 +494,16 @@ BEGIN
      OR length(btrim(coalesce(p_reason,''))) NOT BETWEEN 8 AND 500 THEN
     RAISE EXCEPTION 'satellite_correction_request_invalid' USING ERRCODE='22023';
   END IF;
+  SELECT * INTO v_ticket FROM public.satellite_tickets WHERE id=p_ticket_id;
+  IF NOT FOUND OR v_ticket.status IS DISTINCT FROM 'redeemed' THEN
+    RAISE EXCEPTION 'satellite_correction_requires_redemption' USING ERRCODE='23514';
+  END IF;
+  IF NOT (public.is_club_cashier(v_actor,v_ticket.club_id)
+    OR EXISTS (SELECT 1 FROM public.clubs c
+               WHERE c.id=v_ticket.club_id AND c.owner_id=v_actor)) THEN
+    RAISE EXCEPTION 'satellite_correction_actor_not_allowed' USING ERRCODE='42501';
+  END IF;
+  PERFORM centerpoint_private.assert_tournament_ops_release_v1(v_ticket.club_id);
   SELECT * INTO v_prior FROM public.satellite_redemption_correction_requests
     WHERE request_id=p_request_id;
   IF FOUND THEN
@@ -504,15 +514,6 @@ BEGIN
     END IF;
     RETURN pg_catalog.jsonb_build_object('status','held','ticketId',p_ticket_id,
       'requestId',p_request_id,'idempotent',true);
-  END IF;
-  SELECT * INTO v_ticket FROM public.satellite_tickets WHERE id=p_ticket_id;
-  IF NOT FOUND OR v_ticket.status IS DISTINCT FROM 'redeemed' THEN
-    RAISE EXCEPTION 'satellite_correction_requires_redemption' USING ERRCODE='23514';
-  END IF;
-  IF NOT (public.is_club_cashier(v_actor,v_ticket.club_id)
-    OR EXISTS (SELECT 1 FROM public.clubs c
-               WHERE c.id=v_ticket.club_id AND c.owner_id=v_actor)) THEN
-    RAISE EXCEPTION 'satellite_correction_actor_not_allowed' USING ERRCODE='42501';
   END IF;
   SELECT * INTO v_transfer FROM public.satellite_ticket_value_transfers
     WHERE ticket_id=p_ticket_id;

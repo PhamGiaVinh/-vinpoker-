@@ -254,6 +254,15 @@ BEGIN
      OR length(pg_catalog.btrim(coalesce(p_approved_reason,''))) NOT BETWEEN 8 AND 500 THEN
     RAISE EXCEPTION 'satellite_reversal_request_invalid' USING ERRCODE='22023';
   END IF;
+  SELECT * INTO v_ticket FROM public.satellite_tickets WHERE id=p_ticket_id;
+  IF NOT FOUND OR v_ticket.status IS DISTINCT FROM 'redeemed' THEN
+    RAISE EXCEPTION 'satellite_reversal_ticket_not_redeemed' USING ERRCODE='23514';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.clubs c
+    WHERE c.id=v_ticket.club_id AND c.owner_id=v_actor) THEN
+    RAISE EXCEPTION 'satellite_reversal_owner_required' USING ERRCODE='42501';
+  END IF;
+  PERFORM centerpoint_private.assert_tournament_ops_release_v1(v_ticket.club_id);
   SELECT * INTO v_prior FROM public.satellite_redemption_reversals
     WHERE request_id=p_request_id;
   IF FOUND THEN
@@ -265,14 +274,6 @@ BEGIN
     END IF;
     RETURN pg_catalog.jsonb_build_object('ok',true,'status','reversed',
       'ticketId',p_ticket_id,'requestId',p_request_id,'idempotent',true);
-  END IF;
-  SELECT * INTO v_ticket FROM public.satellite_tickets WHERE id=p_ticket_id;
-  IF NOT FOUND OR v_ticket.status IS DISTINCT FROM 'redeemed' THEN
-    RAISE EXCEPTION 'satellite_reversal_ticket_not_redeemed' USING ERRCODE='23514';
-  END IF;
-  IF NOT EXISTS(SELECT 1 FROM public.clubs c
-    WHERE c.id=v_ticket.club_id AND c.owner_id=v_actor) THEN
-    RAISE EXCEPTION 'satellite_reversal_owner_required' USING ERRCODE='42501';
   END IF;
   -- Match Cashier reg-first lock order. The tournament row then fences hand
   -- inserts, direct registration creation and voucher seat/receipt changes.

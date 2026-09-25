@@ -32,6 +32,7 @@ export function SatelliteTicketRedeemPanel() {
   const [sourceEntry, setSourceEntry] = useState("");
   const [busted, setBusted] = useState<{ id: string; entry_no: number }[]>([]);
   const [requestId, setRequestId] = useState("");
+  const [receiptRequestId, setReceiptRequestId] = useState("");
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,14 +80,16 @@ export function SatelliteTicketRedeemPanel() {
       if (result.error) throw new Error(result.error.message);
       const loaded = await rpc("satellite_get_redemption_receipt_v1", { p_request_id: id });
       if (loaded.error) throw new Error(loaded.error.message);
-      setReceipt(loaded.data as Receipt); setCode(""); setVerified(null);
+      setReceipt(loaded.data as Receipt); setReceiptRequestId(id);
+      setRequestId(globalThis.crypto.randomUUID()); setCode(""); setVerified(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Redeem failed; reload the server receipt before retrying"); }
     finally { setBusy(false); }
   };
   const reloadReceipt = async () => {
-    if (!isUuid(requestId) || busy) { setError("Enter a valid request ID."); return; }
+    const id = receiptRequestId || requestId;
+    if (!isUuid(id) || busy) { setError("Enter a valid request ID."); return; }
     setBusy(true); setError(null);
-    const result = await rpc("satellite_get_redemption_receipt_v1", { p_request_id: requestId });
+    const result = await rpc("satellite_get_redemption_receipt_v1", { p_request_id: id });
     setBusy(false);
     if (result.error) setError(result.error.message);
     else setReceipt(result.data as Receipt);
@@ -110,7 +113,7 @@ export function SatelliteTicketRedeemPanel() {
       {busted.length > 0 && <div className="space-y-1"><Label>Re-entry from busted entry (optional)</Label><Select value={sourceEntry || "initial"} onValueChange={value => setSourceEntry(value === "initial" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="initial">Initial registration</SelectItem>{busted.map(entry => <SelectItem key={entry.id} value={entry.id}>Busted entry #{entry.entry_no}</SelectItem>)}</SelectContent></Select></div>}
       <Button disabled={busy || !bearer} onClick={() => void redeem()}>Redeem for selected bearer</Button>
     </div>}
-    <div className="space-y-1 border-t pt-3"><Label htmlFor="sat-redeem-request">Request ID · keep for retry/reload</Label><div className="flex gap-2"><Input id="sat-redeem-request" value={requestId} onChange={e => setRequestId(e.target.value)} /><Button variant="outline" disabled={busy} onClick={() => void reloadReceipt()}>Reload receipt</Button></div></div>
+    <div className="space-y-1 border-t pt-3"><Label htmlFor="sat-redeem-request">Request ID · retained for retry until success</Label><div className="flex gap-2"><Input id="sat-redeem-request" value={requestId} onChange={e => setRequestId(e.target.value)} /><Button variant="outline" disabled={busy} onClick={() => void reloadReceipt()}>Reload receipt</Button></div><p className="text-xs text-muted-foreground">A new ID is generated after each completed redeem. Reload receipt uses the latest completed request.</p></div>
     {receipt && <div role="status" className="rounded border p-3 text-sm"><p>Server receipt · {receipt.status ?? "redeemed"}</p><p>Winner: {receipt.winnerPlayerId} · Bearer: {receipt.redeemedForPlayerId}</p><p>Registration: {receipt.registrationId}</p><p>Entry: {receipt.entryId} · Seat receipt: {receipt.receiptId}</p><p>Receipt code: {receipt.receiptCode}</p><p>{receipt.buyInVnd} VND buy-in + {receipt.feeVnd} VND fees · no new cash collected</p></div>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
   </Card>;
