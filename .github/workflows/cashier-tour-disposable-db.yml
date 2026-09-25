@@ -6,8 +6,10 @@ on:
       - ".github/workflows/cashier-tour-disposable-db.yml"
       - "VinPoker/supabase/migrations/20270115000003_cashier_tour_money_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270115000011_cashier_refund_without_floor_clearance.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000002_satellite_registration_pool_row_v1.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_disposable_baseline.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_money_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_registration_pool_row_v1.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_concurrency_*.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_load_*.sql"
       - "VinPoker/tests/opsFloorCashier/disposableDb.fixture.sql"
@@ -50,6 +52,12 @@ jobs:
       - name: Assert waiting-seat refund without Floor, rollback only
         working-directory: VinPoker
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -v cashier_no_floor=on -f supabase/pending-tests/cashier_tour_money_v1.sql
+      - name: Apply Satellite source-row classifier to disposable PostgreSQL only
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000002_satellite_registration_pool_row_v1.sql
+      - name: Run Satellite source-row runtime contract against Cashier schema
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_registration_pool_row_v1.sql
       - name: Seed isolated same-key race cases
         working-directory: VinPoker
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/cashier_tour_concurrency_seed.sql
