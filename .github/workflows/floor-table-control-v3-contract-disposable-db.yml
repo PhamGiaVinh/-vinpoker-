@@ -42,6 +42,8 @@ on:
       - "VinPoker/tests/floorRedrawSeatLockV1/**"
       - "VinPoker/tests/redrawClockHoldV1/**"
       - "VinPoker/tests/floorTableControlV3/disposableDb.serverContract.sql"
+      - "VinPoker/tests/floorTableControlV3/redrawClockHold.disposable.sql"
+      - "VinPoker/tests/floorTableControlV3/runRedrawContinueStartHandRace.sh"
       - "VinPoker/tests/floorTableControlV3/vitest.serverContract.config.ts"
       - ".github/workflows/floor-table-control-v3-contract-disposable-db.yml"
   push:
@@ -104,6 +106,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.authenticated.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.concurrent.setup.sql
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/redrawClockHold.disposable.sql
+          bash tests/floorTableControlV3/runRedrawContinueStartHandRace.sh
           bash tests/floorTableControlV3/runServerContractConcurrency.sh
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/repairTrackerTestRoster.fixture.sql
           bash tests/floorTableControlV3/runPartialTableLinkRepair.sh
