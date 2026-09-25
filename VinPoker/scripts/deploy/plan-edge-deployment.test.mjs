@@ -30,6 +30,10 @@ const FLOOR_CLOCK_REVISION_SELECTION = {
   ...MASS_OPEN_SELECTION,
   requirements: { floorClockRevisionV1: true },
 };
+const FLOOR_TRACKER_SELECTION = {
+  ...MASS_OPEN_SELECTION,
+  requirements: { floorClockRevisionV1: false, floorDeferredTrackerMoveV1: true },
+};
 
 function diff({
   frontend = false,
@@ -116,6 +120,23 @@ test("clock source and frontend cannot deploy until the critical clock function 
   assert.equal(result.frontend, true);
   assert.deepEqual(result.requiredForFrontend, ["tournament-live-clock"]);
   assert.deepEqual(result.criticalFunctions, ["tournament-live-clock"]);
+});
+
+test("enabled Floor tracker frontend requires only its reviewed critical Edge function", () => {
+  const componentDiffs = diff({ frontend: true, changed: ["tournament-live-update"] });
+  assert.throws(() => plan({
+    componentDiffs,
+    deployFrontend: true,
+    contractSelection: FLOOR_TRACKER_SELECTION,
+  }), /tournament-live-update/);
+  const result = plan({
+    componentDiffs,
+    selected: ["tournament-live-update"],
+    deployFrontend: true,
+    contractSelection: FLOOR_TRACKER_SELECTION,
+  });
+  assert.deepEqual(result.requiredForFrontend, ["tournament-live-update"]);
+  assert.deepEqual(result.criticalFunctions, ["tournament-live-update"]);
 });
 
 test("legacy frontend fails closed without a compatible retained clock receipt", () => {

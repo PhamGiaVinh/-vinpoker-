@@ -480,6 +480,42 @@
         }
       ]
     },
+    "tournament-live-update": {
+      "path": "VinPoker/supabase/functions/tournament-live-update",
+      "critical": true,
+      "autoDeployOnPush": false,
+      "frontendRequirement": "floorDeferredTrackerMoveV1",
+      "verifyJwt": true,
+      "receiptEnvironment": "receipt-vinpoker-edge-tournament-live-update",
+      "quality": {
+        "denoTests": [
+          "VinPoker/supabase/functions/tournament-live-update/v3Routing.contract.test.ts"
+        ]
+      },
+      "contracts": [
+        { "type": "relation", "name": "public.tournaments" },
+        { "type": "relation", "name": "public.tournament_tables" },
+        { "type": "relation", "name": "public.table_sessions" },
+        { "type": "relation", "name": "public.tournament_hands" },
+        { "type": "relation", "name": "public.tournament_seats" },
+        {
+          "type": "function",
+          "name": "public.start_tracker_hand_v3",
+          "arguments": ["p_tournament_id", "p_tournament_table_id", "p_table_session_id", "p_control_epoch", "p_hand_number", "p_hand_time", "p_created_by", "p_button_seat"],
+          "argumentTypes": ["uuid", "uuid", "uuid", "bigint", "integer", "timestamp with time zone", "uuid", "integer"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": true, "anon": false, "service_role": false }
+        },
+        {
+          "type": "function",
+          "name": "public.record_hand",
+          "arguments": ["p_tournament_id", "p_table_id", "p_hand_number", "p_hand_time", "p_players", "p_actions", "p_side_pots", "p_community_cards", "p_pot_size", "p_created_by"],
+          "argumentTypes": ["uuid", "uuid", "integer", "timestamp with time zone", "jsonb", "jsonb", "jsonb", "jsonb", "integer", "uuid"],
+          "allowOtherOverloads": false,
+          "acl": { "authenticated": true, "anon": false, "service_role": false }
+        }
+      ]
+    },
     "ops-club-accounts": {
       "path": "VinPoker/supabase/functions/ops-club-accounts",
       "critical": true,
