@@ -87,6 +87,15 @@ output, restore method, and writes during export outside Git/chat/vault.
 The scheduled physical backup alone is not fresh enough if writes followed it.
 If a safe credential or recovery method is unavailable, do not apply.
 
+For the #1304 release, use the owner-dispatched workflow
+`.github/workflows/cashier-1304-backup-apply.yml` from an exact `main` SHA.
+It persists only age-encrypted ciphertext, downloads that artifact again,
+decrypts it with `CASHIER_BACKUP_AGE_IDENTITY` from the protected environment,
+and restores it into an outbound-isolated disposable PostgreSQL 17 stack.
+Migration 11 is eligible to run only after that restore job passes. The
+artifact retention window is seven days; preserve its run ID, artifact ID,
+snapshot timestamps and checksums in the release evidence.
+
 ## Selective versioned apply (prepared, not executed)
 
 After the recovery gate and fresh read-only precheck pass, use a fresh temporary

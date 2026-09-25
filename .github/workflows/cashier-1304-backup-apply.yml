@@ -1,0 +1,290 @@
+name: Cashier 1304 encrypted backup, restore verify, and migration 11 apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact current main SHA containing this reviewed release workflow"
+        required: true
+        type: string
+      owner_ack:
+        description: "Type BACKUP_VERIFY_APPLY_CASHIER_1304"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: cashier-1304-production-release
+  cancel-in-progress: false
+
+env:
+  PROJECT_REF: orlesggcjamwuknxwcpk
+  MIGRATION_FILE: 20270115000011_cashier_refund_without_floor_clearance.sql
+  MIGRATION_SHA256: B8703796F21706F13C0A2190436172BD167186D6242695F0C4829FE4A857E101
+  AGE_RECIPIENT: age19stq5ucnrewh6jpma9lwnhe8l4428gt8pwdjy8xl25vpghw3wsssr92tjv
+  ARTIFACT_NAME: cashier-1304-encrypted-data-backup-${{ github.run_id }}
+
+jobs:
+  validate-owner-dispatch:
+    name: Require owner dispatch on exact main revision
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail closed unless owner initiated exact release
+        shell: bash
+        env:
+          INITIAL_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          OWNER_ACK: ${{ inputs.owner_ack }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          test "$INITIAL_ACTOR" = "$REPOSITORY_OWNER"
+          test "$TRIGGERING_ACTOR" = "$REPOSITORY_OWNER"
+          test "$OWNER_ACK" = BACKUP_VERIFY_APPLY_CASHIER_1304
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$TARGET_SHA" = "$GITHUB_SHA"
+
+  backup:
+    name: Create and persist encrypted production data backup
+    needs: validate-owner-dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: dealer-swing-production-critical
+    outputs:
+      snapshot_started_at: ${{ steps.backup.outputs.snapshot_started_at }}
+      snapshot_finished_at: ${{ steps.backup.outputs.snapshot_finished_at }}
+      ciphertext_sha256: ${{ steps.backup.outputs.ciphertext_sha256 }}
+    steps:
+      - name: Checkout exact reviewed main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+
+      - name: Verify source and install pinned Supabase CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ inputs.target_sha }}"
+          npm install --global supabase@2.101.0
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age
+
+      - name: Dump, validate, encrypt, and remove plaintext
+        id: backup
+        working-directory: VinPoker
+        shell: bash
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$SUPABASE_PROJECT_REF" = "$PROJECT_REF"
+          backup_root="${RUNNER_TEMP}/cashier-1304-backup"
+          artifact_root="${RUNNER_TEMP}/cashier-1304-artifact"
+          archive_path="${RUNNER_TEMP}/cashier-1304-backup.tar.gz"
+          mkdir -p "$backup_root" "$artifact_root"
+          snapshot_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          supabase link --project-ref "$PROJECT_REF"
+          supabase db dump --linked --role-only --file "$backup_root/roles.sql"
+          supabase db dump --linked --file "$backup_root/schema.sql"
+          supabase db dump --linked --schema supabase_migrations --data-only --use-copy \
+            --file "$backup_root/migration-history.sql"
+          supabase db dump --linked --data-only --use-copy --file "$backup_root/data.sql"
+          snapshot_finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          for required in roles.sql schema.sql migration-history.sql data.sql; do
+            test -s "$backup_root/$required"
+          done
+          for table in cashier_refund_requests cashier_buyin_movements cashier_till_shifts \
+            tournament_registrations tournament_entries tournament_seats seat_draw_receipts; do
+            grep -Eq "^COPY public\\.${table}[[:space:](]" "$backup_root/data.sql"
+          done
+          project_fingerprint="$(printf '%s' "$PROJECT_REF" | sha256sum | awk '{print $1}')"
+          {
+            echo "source_sha=${{ inputs.target_sha }}"
+            echo "project_fingerprint=$project_fingerprint"
+            echo "snapshot_started_at=$snapshot_started_at"
+            echo "snapshot_finished_at=$snapshot_finished_at"
+            echo "backup_scope=roles,schema,migration_history,data"
+            echo "format=supabase_cli_sql_copy"
+          } >"$backup_root/metadata.txt"
+          cp "$backup_root/metadata.txt" "$artifact_root/metadata.txt"
+          tar -czf "$archive_path" -C "$RUNNER_TEMP" cashier-1304-backup
+          sha256sum "$archive_path" | sed 's# .*/# #' >"$artifact_root/archive.sha256"
+          age --recipient "$AGE_RECIPIENT" --output \
+            "$artifact_root/cashier-1304-backup.tar.gz.age" "$archive_path"
+          (cd "$artifact_root" && sha256sum cashier-1304-backup.tar.gz.age >ciphertext.sha256)
+          ciphertext_sha256="$(awk '{print $1}' "$artifact_root/ciphertext.sha256")"
+          rm -rf -- "$backup_root"
+          rm -f -- "$archive_path"
+          test "$(find "$artifact_root" -maxdepth 1 -type f | wc -l | tr -d ' ')" = 4
+          printf 'snapshot_started_at=%s\n' "$snapshot_started_at" >>"$GITHUB_OUTPUT"
+          printf 'snapshot_finished_at=%s\n' "$snapshot_finished_at" >>"$GITHUB_OUTPUT"
+          printf 'ciphertext_sha256=%s\n' "$ciphertext_sha256" >>"$GITHUB_OUTPUT"
+
+      - name: Upload ciphertext only
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/cashier-1304-artifact
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Record non-sensitive backup receipt
+        shell: bash
+        run: |
+          {
+            echo "## Cashier #1304 encrypted backup"
+            echo "- artifact_name=${ARTIFACT_NAME}"
+            echo "- artifact_id=${{ steps.upload.outputs.artifact-id }}"
+            echo "- snapshot_started_at=${{ steps.backup.outputs.snapshot_started_at }}"
+            echo "- snapshot_finished_at=${{ steps.backup.outputs.snapshot_finished_at }}"
+            echo "- ciphertext_sha256=${{ steps.backup.outputs.ciphertext_sha256 }}"
+            echo "- retention_days=7"
+            echo "- plaintext_uploaded=false"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup plaintext on failure or success
+        if: always()
+        shell: bash
+        run: |
+          rm -rf -- "${RUNNER_TEMP}/cashier-1304-backup"
+          rm -f -- "${RUNNER_TEMP}/cashier-1304-backup.tar.gz"
+
+  restore-verification:
+    name: Decrypt from stored key and restore in isolated PostgreSQL 17
+    needs: backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: dealer-swing-production-critical
+    steps:
+      - name: Checkout exact reviewed main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.target_sha }}
+
+      - name: Install restore tools and warm public containers
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global supabase@2.101.0
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age
+          docker pull curlimages/curl:8.12.1 >/dev/null
+
+      - name: Download persisted ciphertext
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/cashier-1304-artifact
+
+      - name: Verify decrypt and restore
+        working-directory: VinPoker
+        shell: bash
+        env:
+          CASHIER_BACKUP_AGE_IDENTITY: ${{ secrets.CASHIER_BACKUP_AGE_IDENTITY }}
+        run: bash scripts/ops/verify-cashier-1304-backup.sh "${RUNNER_TEMP}/cashier-1304-artifact"
+
+  release-ready:
+    name: Backup and restore gate passed
+    needs: [backup, restore-verification]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record verified recovery point
+        shell: bash
+        run: |
+          {
+            echo "## Cashier #1304 recovery gate"
+            echo "- DATA_BACKUP_PERSISTED=YES"
+            echo "- DECRYPT_FROM_STORED_KEY=PASS"
+            echo "- RESTORE_VERIFICATION=PASS"
+            echo "- artifact_name=${ARTIFACT_NAME}"
+            echo "- snapshot_started_at=${{ needs.backup.outputs.snapshot_started_at }}"
+            echo "- snapshot_finished_at=${{ needs.backup.outputs.snapshot_finished_at }}"
+            echo "- ciphertext_sha256=${{ needs.backup.outputs.ciphertext_sha256 }}"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  apply-migration-11:
+    name: Apply only Cashier migration 11 after verified recovery
+    needs: [backup, restore-verification]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: dealer-swing-production-critical
+    steps:
+      - name: Checkout exact reviewed main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+
+      - name: Install pinned Supabase CLI
+        shell: bash
+        run: npm install --global supabase@2.101.0
+
+      - name: Verify recovery freshness and final live preflight
+        id: preflight
+        working-directory: VinPoker
+        shell: bash
+        env:
+          SUPABASE_PROJECT_REF: ${{ env.PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SNAPSHOT_STARTED_AT: ${{ needs.backup.outputs.snapshot_started_at }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ inputs.target_sha }}"
+          snapshot_epoch="$(date -u -d "$SNAPSHOT_STARTED_AT" +%s)"
+          now_epoch="$(date -u +%s)"
+          (( now_epoch - snapshot_epoch <= 3600 ))
+          gate_file="${RUNNER_TEMP}/cashier-1304-preflight.json"
+          node scripts/ops/cashier-1304-release-gate.mjs preflight "$gate_file" | tee "${RUNNER_TEMP}/gate.txt"
+          action="$(sed -n 's/^DB_RELEASE_GATE=//p' "${RUNNER_TEMP}/gate.txt")"
+          [[ "$action" = apply || "$action" = postcheck ]]
+          printf 'action=%s\n' "$action" >>"$GITHUB_OUTPUT"
+
+      - name: Stage exactly one migration and apply it versionedly
+        if: steps.preflight.outputs.action == 'apply'
+        working-directory: VinPoker
+        shell: bash
+        env:
+          SUPABASE_PROJECT_REF: ${{ env.PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          stage_root="$(mktemp -d -t cashier-1304-apply-XXXXXXXX)"
+          trap 'rm -rf -- "$stage_root"' EXIT
+          supabase init --workdir "$stage_root" >/dev/null
+          migration_source="$(pwd)/supabase/pending-migrations/$MIGRATION_FILE"
+          test "$(sha256sum "$migration_source" | awk '{print toupper($1)}')" = "$MIGRATION_SHA256"
+          test -z "$(find "$stage_root/supabase/migrations" -mindepth 1 -maxdepth 1 -type f -print -quit)"
+          cp "$migration_source" "$stage_root/supabase/migrations/$MIGRATION_FILE"
+          test "$(find "$stage_root/supabase/migrations" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" = 1
+          test "$(basename "$(find "$stage_root/supabase/migrations" -mindepth 1 -maxdepth 1 -type f)")" = "$MIGRATION_FILE"
+          supabase link --workdir "$stage_root" --project-ref "$PROJECT_REF"
+          set +e
+          supabase migration up --workdir "$stage_root" --linked
+          apply_rc=$?
+          set -e
+          printf 'MIGRATION_COMMAND_EXIT=%s\n' "$apply_rc"
+
+      - name: Verify ledger, function, ACL, and excluded versions
+        working-directory: VinPoker
+        shell: bash
+        env:
+          SUPABASE_PROJECT_REF: ${{ env.PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/ops/cashier-1304-release-gate.mjs postcheck \
+            "${RUNNER_TEMP}/cashier-1304-postcheck.json"
+          echo "MIGRATION_11_POSTCHECK=PASS" >>"$GITHUB_STEP_SUMMARY"
+          echo "MIGRATIONS_06_10=NOT_APPLIED" >>"$GITHUB_STEP_SUMMARY"
