@@ -81,8 +81,9 @@ DO $$ DECLARE v jsonb; v_id uuid; p jsonb; BEGIN
     'f3000000-0000-4000-8000-000000000002',
     '[{"position":1,"ticketCount":1,"cashVnd":"0"}]');
   PERFORM pg_temp.sat_lock_assert(p->>'previewRevision'<>(SELECT revision FROM sat_lock_before_refund)
-    AND p->>'sourcePoolVnd'='0' AND p->>'reversedCount'='1',
-    'paid refund invalidates preview and reverses pool');
+    AND p->>'state'='NOT_READY' AND p->>'sourcePoolVnd' IS NULL
+    AND p->'issues'->0->>'reason'='refund_entry_evidence_missing',
+    'played-entry refund invalidates preview without inventing zero pool');
   PERFORM pg_temp.sat_lock_assert((SELECT coalesce(sum(applied_amount),0)
     FROM public.cashier_buyin_movements WHERE registration_id='f4000000-0000-4000-8000-000000000001'
       AND direction='out')=1200000,'refund outflow equals receipt');
