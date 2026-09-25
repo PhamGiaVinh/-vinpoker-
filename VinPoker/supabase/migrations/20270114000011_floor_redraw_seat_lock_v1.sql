@@ -1266,7 +1266,7 @@ BEGIN
       v_tournament.id, v_move.entry_id, v_move.player_id,
       v_move.from_game_table_id, v_move.from_table_number, v_move.from_seat_number,
       v_move.to_game_table_id, v_move.to_table_number, v_move.to_seat_number,
-      'manual_move', 'floor_redraw_v1', v_actor,
+      'redraw', 'floor_redraw_v1', v_actor,
       pg_catalog.jsonb_build_object(
         'redraw_batch_id', v_batch.id,
         'from_tournament_table_id', v_move.from_tournament_table_id,
