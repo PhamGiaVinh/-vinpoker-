@@ -15,6 +15,8 @@ on:
       - "VinPoker/supabase/pending-migrations/20270119000008_satellite_verified_award_lock_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270119000009_satellite_source_rules_fixed_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270119000010_satellite_locked_registration_evidence_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000011_satellite_issue_and_secret_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_issue_secret_v1.sql"
       - "VinPoker/supabase/pending-migrations/20260925092509_satellite_funding_preview_math_v1.sql"
       - "VinPoker/supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql"
       - "VinPoker/supabase/pending-migrations/20270117000001_satellite_award_plan_v1.sql"
@@ -167,6 +169,12 @@ jobs:
       - name: Assert 33 34 and GTD6 ledger-backed Lock golden cases
         working-directory: VinPoker
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_verified_lock_golden_v1.sql
+      - name: Apply Satellite verified Issue and current-secret lifecycle
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000011_satellite_issue_and_secret_v1.sql
+      - name: Assert funded Issue, frozen components, rotate and void
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_issue_secret_v1.sql
       - name: Seed actual canonical and Cashier cutoff races
         working-directory: VinPoker
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_cutoff_race_seed.sql
