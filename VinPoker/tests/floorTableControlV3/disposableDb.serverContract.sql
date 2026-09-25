@@ -85,7 +85,7 @@ CREATE TABLE public.seat_assignment_history (
   to_seat_number integer NOT NULL,
   reason text NOT NULL DEFAULT 'initial_draw',
   draw_type text NOT NULL CHECK (
-    draw_type IN ('initial', 'manual_move', 'final_table_redraw', 'reprint')
+    draw_type IN ('initial', 'manual_move', 'final_table_redraw')
   ),
   actor_user_id uuid NOT NULL,
   metadata jsonb NOT NULL DEFAULT '{}',
@@ -157,7 +157,10 @@ CREATE TABLE public.club_dealer_controls (club_id uuid NOT NULL, user_id uuid NO
 CREATE TABLE public.club_trackers (club_id uuid NOT NULL, user_id uuid NOT NULL);
 CREATE TABLE public.profiles (user_id uuid PRIMARY KEY, display_name text);
 ALTER TABLE public.seat_assignment_history ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.seat_assignment_history TO authenticated;
+-- Match the effective table ACL observed on the live public table. The base
+-- migration supplies RLS policies but relies on the project's default grants.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.seat_assignment_history
+  TO anon, authenticated, service_role;
 CREATE POLICY seat_assignment_history_select_authenticated
   ON public.seat_assignment_history FOR SELECT TO authenticated USING (true);
 CREATE POLICY seat_assignment_history_write_club_admin
