@@ -1,0 +1,268 @@
+name: Floor V3 encrypted recovery backup and restore verification
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/floor-v3-recovery-backup.yml
+      - VinPoker/scripts/ops/create-floor-v3-recovery.sh
+      - VinPoker/scripts/ops/check-floor-v3-anon-exception.mjs
+      - VinPoker/scripts/ops/verify-floor-v3-recovery.sh
+      - VinPoker/scripts/ops/floor-v3-recovery-workflow.test.mjs
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact current main SHA containing this reviewed backup workflow
+        required: true
+        type: string
+      owner_ack:
+        description: Type CREATE_VERIFY_FLOOR_V3_RECOVERY
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: floor-v3-recovery-orlesggcjamwuknxwcpk
+  cancel-in-progress: false
+
+env:
+  PROJECT_REF: orlesggcjamwuknxwcpk
+  ARTIFACT_NAME: floor-v3-encrypted-database-recovery-${{ github.run_id }}
+
+jobs:
+  source-check:
+    name: Validate backup-only workflow and recovery scripts
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Validate shell syntax and security contract
+        working-directory: VinPoker
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/ops/create-floor-v3-recovery.sh
+          bash -n scripts/ops/verify-floor-v3-recovery.sh
+          node --test scripts/ops/floor-v3-recovery-workflow.test.mjs
+
+  validate-owner-dispatch:
+    name: Require owner dispatch on exact main revision
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: source-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail closed unless owner initiated exact recovery run
+        shell: bash
+        env:
+          INITIAL_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          OWNER_ACK: ${{ inputs.owner_ack }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          test "$INITIAL_ACTOR" = "$REPOSITORY_OWNER"
+          test "$TRIGGERING_ACTOR" = "$REPOSITORY_OWNER"
+          test "$OWNER_ACK" = CREATE_VERIFY_FLOOR_V3_RECOVERY
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$TARGET_SHA" = "$GITHUB_SHA"
+
+  backup:
+    name: Create one-snapshot encrypted database recovery artifact
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: validate-owner-dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: dealer-swing-production-critical
+    outputs:
+      snapshot_at: ${{ steps.backup.outputs.snapshot_at }}
+      snapshot_finished_at: ${{ steps.backup.outputs.snapshot_finished_at }}
+      server_version: ${{ steps.backup.outputs.server_version }}
+      schema_list: ${{ steps.backup.outputs.schema_list }}
+      ciphertext_sha256: ${{ steps.backup.outputs.ciphertext_sha256 }}
+      ciphertext_bytes: ${{ steps.backup.outputs.ciphertext_bytes }}
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      credential_exception_functions: ${{ steps.backup.outputs.credential_exception_functions }}
+      credential_exception_sha256: ${{ steps.backup.outputs.credential_exception_sha256 }}
+      credential_exception_scope: ${{ steps.backup.outputs.credential_exception_scope }}
+    steps:
+      - name: Checkout exact reviewed main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 1
+
+      - name: Verify workflow SHA and install age client
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age
+
+      - name: Stop if another production release workflow is active
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          active_runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
+            --jq '.workflow_runs[] | select(.status == "in_progress" or .status == "queued" or .status == "waiting" or .status == "requested") | select(.name | test("cashier|floor.*(apply|release)|migration.*apply|deploy reviewed production source"; "i")) | [.id,.name,.status] | @tsv')"
+          if [[ -n "$active_runs" ]]; then
+            echo "Another production release workflow is active; recovery snapshot must wait for a quiet release window" >&2
+            exit 1
+          fi
+
+      - name: Verify protected credentials and key pair without exposing them
+        shell: bash
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          FLOOR_BACKUP_AGE_IDENTITY: ${{ secrets.CASHIER_BACKUP_AGE_IDENTITY }}
+        run: |
+          set -euo pipefail
+          test "$SUPABASE_PROJECT_REF" = "$PROJECT_REF"
+          test -n "$SUPABASE_DB_PASSWORD"
+          test -n "$FLOOR_BACKUP_AGE_IDENTITY"
+
+      - name: Create and encrypt one database snapshot
+        id: backup
+        working-directory: VinPoker
+        shell: bash
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          FLOOR_BACKUP_AGE_IDENTITY: ${{ secrets.CASHIER_BACKUP_AGE_IDENTITY }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: bash scripts/ops/create-floor-v3-recovery.sh "${RUNNER_TEMP}/floor-v3-artifact"
+
+      - name: Upload encrypted ciphertext only
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/floor-v3-artifact
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record metadata-safe recovery receipt
+        shell: bash
+        env:
+          SNAPSHOT_AT: ${{ steps.backup.outputs.snapshot_at }}
+          SNAPSHOT_FINISHED_AT: ${{ steps.backup.outputs.snapshot_finished_at }}
+          SERVER_VERSION: ${{ steps.backup.outputs.server_version }}
+          SCHEMA_LIST: ${{ steps.backup.outputs.schema_list }}
+          CIPHERTEXT_SHA256: ${{ steps.backup.outputs.ciphertext_sha256 }}
+          CIPHERTEXT_BYTES: ${{ steps.backup.outputs.ciphertext_bytes }}
+          EXCEPTION_FUNCTIONS: ${{ steps.backup.outputs.credential_exception_functions }}
+          EXCEPTION_SHA256: ${{ steps.backup.outputs.credential_exception_sha256 }}
+          EXCEPTION_SCOPE: ${{ steps.backup.outputs.credential_exception_scope }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+        run: |
+          {
+            echo "## Floor V3 encrypted recovery point"
+            echo "- source_sha=${{ inputs.target_sha }}"
+            echo "- project_ref_fingerprint=$(printf '%s' "$PROJECT_REF" | sha256sum | awk '{print $1}')"
+            echo "- snapshot_at=$SNAPSHOT_AT"
+            echo "- snapshot_export_finished_at=$SNAPSHOT_FINISHED_AT"
+            echo "- database_server_version=$SERVER_VERSION"
+            echo "- schemas=$SCHEMA_LIST"
+            echo "- artifact_name=$ARTIFACT_NAME"
+            echo "- artifact_id=$ARTIFACT_ID"
+            echo "- ciphertext_sha256=$CIPHERTEXT_SHA256"
+            echo "- ciphertext_bytes=$CIPHERTEXT_BYTES"
+            echo "- credential_exception_functions=$EXCEPTION_FUNCTIONS"
+            echo "- credential_exception_sha256=$EXCEPTION_SHA256"
+            echo "- credential_exception_scope=$EXCEPTION_SCOPE"
+            echo "- artifact_retention_days=30"
+            echo "- artifact_retention_expires_at=$(date -u -d '+30 days' +%Y-%m-%dT%H:%M:%SZ)"
+            echo "- scope=full PostgreSQL database dump plus role definitions without passwords"
+            echo "- excluded=Storage API object bytes, project settings, Auth provider secrets, Edge Functions, external secrets"
+            echo "- plaintext_uploaded=false"
+            echo "- production_mutation=false"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Remove transient plaintext and credentials
+        if: always()
+        shell: bash
+        run: rm -rf -- "${RUNNER_TEMP}/floor-v3-recovery-${GITHUB_RUN_ID}" "${RUNNER_TEMP}/floor-v3-artifact"
+
+  restore-verification:
+    name: Download, decrypt, and restore into isolated PostgreSQL
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: dealer-swing-production-critical
+    steps:
+      - name: Checkout exact reviewed main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.target_sha }}
+
+      - name: Install Supabase CLI and age
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global supabase@2.117.0
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age
+
+      - name: Download persisted ciphertext from the completed backup job
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/floor-v3-artifact
+
+      - name: Verify stored key and actual isolated restore
+        working-directory: VinPoker
+        shell: bash
+        env:
+          FLOOR_BACKUP_AGE_IDENTITY: ${{ secrets.CASHIER_BACKUP_AGE_IDENTITY }}
+        run: bash scripts/ops/verify-floor-v3-recovery.sh "${RUNNER_TEMP}/floor-v3-artifact"
+
+      - name: Record restore gate
+        if: success()
+        shell: bash
+        env:
+          SNAPSHOT_AT: ${{ needs.backup.outputs.snapshot_at }}
+          SNAPSHOT_FINISHED_AT: ${{ needs.backup.outputs.snapshot_finished_at }}
+          SERVER_VERSION: ${{ needs.backup.outputs.server_version }}
+          SCHEMA_LIST: ${{ needs.backup.outputs.schema_list }}
+          CIPHERTEXT_SHA256: ${{ needs.backup.outputs.ciphertext_sha256 }}
+          ARTIFACT_ID: ${{ needs.backup.outputs.artifact_id }}
+          EXCEPTION_FUNCTIONS: ${{ needs.backup.outputs.credential_exception_functions }}
+          EXCEPTION_SHA256: ${{ needs.backup.outputs.credential_exception_sha256 }}
+          EXCEPTION_SCOPE: ${{ needs.backup.outputs.credential_exception_scope }}
+        run: |
+          {
+            echo "## Floor V3 recovery verification"
+            echo "- snapshot_at=$SNAPSHOT_AT"
+            echo "- snapshot_export_finished_at=$SNAPSHOT_FINISHED_AT"
+            echo "- database_server_version=$SERVER_VERSION"
+            echo "- schemas=$SCHEMA_LIST"
+            echo "- artifact_id=$ARTIFACT_ID"
+            echo "- ciphertext_sha256=$CIPHERTEXT_SHA256"
+            echo "- credential_exception_functions=$EXCEPTION_FUNCTIONS"
+            echo "- credential_exception_sha256=$EXCEPTION_SHA256"
+            echo "- credential_exception_scope=$EXCEPTION_SCOPE"
+            echo "- stored_ciphertext_downloaded=true"
+            echo "- decryption_with_protected_key=PASS"
+            echo "- actual_isolated_postgresql_restore=PASS"
+            echo "- snapshot_table_count_match=PASS"
+            echo "- production_mutation=false"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Clean local plaintext and database
+        if: always()
+        shell: bash
+        run: |
+          rm -rf -- "${RUNNER_TEMP}/floor-v3-artifact" "${RUNNER_TEMP}/floor-v3-restore-${GITHUB_RUN_ID}"
