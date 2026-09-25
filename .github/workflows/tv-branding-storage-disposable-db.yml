@@ -1,0 +1,65 @@
+name: TV branding Storage disposable PostgreSQL integration
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/tv-branding-storage-disposable-db.yml"
+      - "VinPoker/supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20260924065041_tv_layout_editor_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270118000001_tv_tournament_layout_v2.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000000_tv_layout_editor_multiblock_v3.sql"
+      - "VinPoker/tests/tvBrandingStorage/**"
+permissions:
+  contents: read
+
+jobs:
+  tv-branding-storage-disposable-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create minimal disposable Supabase/app prerequisites
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f tests/tvBrandingStorage/disposableDb.fixture.sql
+      - name: Apply exact release gate migration
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql
+      - name: Apply exact TV V1 migration after the gate
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20260924065041_tv_layout_editor_v1.sql
+      - name: Verify V1 writer gate and actor authorization
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f tests/tvBrandingStorage/v1-writer.integration.sql
+      - name: Apply exact TV V2 migration
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270118000001_tv_tournament_layout_v2.sql
+      - name: Verify V2 Main Event writer gate and actor authorization
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f tests/tvBrandingStorage/v2-writer.integration.sql
+      - name: Apply exact TV V3 migration
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000000_tv_layout_editor_multiblock_v3.sql
+      - name: Verify V3 Main Event writer gate and actor authorization
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f tests/tvBrandingStorage/v3-writer.integration.sql
+      - name: Verify versioned draft upload gate, unaffected paths, and asset immutability
+        working-directory: VinPoker
+        run: psql -v ON_ERROR_STOP=1 -f tests/tvBrandingStorage/disposableDb.integration.sql
