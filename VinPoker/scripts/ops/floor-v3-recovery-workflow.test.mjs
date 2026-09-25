@@ -37,6 +37,9 @@ test("database archive and row-count receipt share one exported MVCC snapshot", 
   assert.match(backup, /BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY/);
   assert.match(backup, /pg_export_snapshot\(\)/);
   assert.match(backup, /pg_dump --format=custom[\s\S]*?--snapshot=\"\$snapshot_id\"/);
+  assert.match(backup, /--mount \"type=bind,src=\$payload_root,dst=\/backup\"/);
+  assert.match(backup, /--file=\/backup\/database\.dump/);
+  assert.doesNotMatch(backup, /--file=\/dev\/stdout/);
   assert.match(backup, /SET TRANSACTION SNAPSHOT :'snapshot'/);
   assert.match(backup, /table-counts\.tsv/);
   assert.match(backup, /verified_anon_key_sha256="[0-9a-f]{64}"/);

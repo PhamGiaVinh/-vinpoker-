@@ -118,10 +118,23 @@ IFS=$'\t' read -r snapshot_id snapshot_at <&"$snapshot_out"
 }
 
 docker run --rm --network host \
+  --user "$(id -u):$(id -g)" \
+  --mount "type=bind,src=$payload_root,dst=/backup" \
   --env PGHOST --env PGPORT --env PGUSER --env PGDATABASE --env PGPASSWORD --env PGSSLMODE --env PGAPPNAME \
   "$postgres_image" pg_dump --format=custom --blobs --snapshot="$snapshot_id" \
-  --file=/dev/stdout 2>"$work_root/pg_dump.log" >"$payload_root/database.dump" || {
-    echo "PostgreSQL database dump failed; raw tool output withheld" >&2
+  --file=/backup/database.dump 2>"$work_root/pg_dump.log" || {
+    dump_diagnostic="$(grep -Ei 'pg_dump: error:|could not (connect|send|receive|read|write)|connection reset|server closed|SSL connection|terminating connection|ERROR:' "$work_root/pg_dump.log" |
+      sed -E \
+        -e 's/eyJ[A-Za-z0-9_-]{8,}[.]eyJ[A-Za-z0-9_-]{8,}[.][A-Za-z0-9_-]{8,}/[JWT REDACTED]/g' \
+        -e 's#(postgres(ql)?://)[^@[:space:]]+@#\1[REDACTED]@#Ig' \
+        -e 's/(password|token|secret)[=:][[:space:]]*[^[:space:]]+/\1=[REDACTED]/Ig' \
+        -e 's/(authorization:[[:space:]]*bearer[[:space:]]+)[^[:space:]]+/\1[REDACTED]/Ig' |
+      tail -n 5 || true)"
+    if [[ -n "$dump_diagnostic" ]]; then
+      printf 'PostgreSQL database dump failed; sanitized diagnostic follows:\n%s\n' "$dump_diagnostic" >&2
+    else
+      echo "PostgreSQL database dump failed; no safe diagnostic line was available" >&2
+    fi
     exit 1
   }
 test -s "$payload_root/database.dump"
