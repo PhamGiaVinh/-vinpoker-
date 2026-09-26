@@ -1,4 +1,4 @@
-import type { TrackerWorkflowState, WorkflowStreet } from "@/components/cashier/tournament-live/handinput/trackerWorkflow";
+import type { TrackerWorkflowState, WorkflowStreet } from "../../components/cashier/tournament-live/handinput/trackerWorkflow.ts";
 
 /**
  * Wire contract for the explicitly enabled Assist domains. Each payload stays
