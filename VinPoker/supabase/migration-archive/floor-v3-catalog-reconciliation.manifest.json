@@ -6834,6 +6834,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20260925115949",
+      "filename": "20260925115949_public_table_history_verified_results.sql",
+      "sha256": "9429ab4fcaf2b38f9bb425023fdb20e74f94da6465878bff3a676eeb50793bc7",
+      "domain": "public-spectator"
+    },
+    {
       "version": "20270115000003",
       "filename": "20270115000003_cashier_tour_money_v1.sql",
       "sha256": "083ac776a361c1c00684b0eccd01465967e9777926ae073bc9fdcf97a4356df3",
