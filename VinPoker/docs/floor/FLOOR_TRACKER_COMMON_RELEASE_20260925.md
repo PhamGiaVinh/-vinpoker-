@@ -48,6 +48,8 @@ SELECT to_regprocedure('public.floor_queue_tracker_move_v1(uuid,uuid,integer,big
 
 Only after the recovery point and owner gate: run `supabase db push --linked --include-all`, and only if the immediately preceding dry-run with the same scoped flag lists exactly the five files above. Stop on any change. A failed apply must be followed by a read-only ledger/schema check; do not retry or infer rollback. After apply, verify:
 
+Operational receipt (2026-09-26): the owner authorized one new attempt after the exact orphaned `COPY ... TO STDOUT` backend was identity-checked and terminated. The repeated apply still stopped before `00006` with `SQLSTATE 55P03`; a different active `COPY ... TO STDOUT` backend then held `AccessShareLock` on the migration ledger. Ledger and new Floor objects remained unchanged. No third attempt is authorized by this receipt; wait for the active export to finish and open a new explicit gate.
+
 ```sql
 SELECT version, name
 FROM supabase_migrations.schema_migrations
