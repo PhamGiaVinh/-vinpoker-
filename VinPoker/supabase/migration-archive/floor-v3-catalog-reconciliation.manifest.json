@@ -6944,6 +6944,11 @@
       "version": "20270115000010",
       "filename": "20270115000010_tracker_v3_hand_start_context.sql",
       "sha256": "8e2bc0fa9b1363a6f19897fdc607e1264687a63077869cd5b7e99a9184848e09"
+    },
+    {
+      "version": "20270115000012",
+      "filename": "20270115000012_floor_tracker_move_activation_v1.sql",
+      "sha256": "eb6a3b8f588595ad00a8ed3fba58a9add4a58d541eeb139820b0118f74e5ab00"
     }
   ],
   "counts": {
