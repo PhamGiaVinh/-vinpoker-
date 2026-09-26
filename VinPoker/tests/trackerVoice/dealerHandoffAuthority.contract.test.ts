@@ -53,7 +53,7 @@ describe("Tracker Voice Dealer handoff authority", () => {
 
   it("applies and rollback-tests the migration in isolated PostgreSQL", () => {
     expect(workflow).toContain(migrationName);
-    expect(workflow).toContain("20270115000016_dealer_assignment_session_binding.sql");
+    expect(workflow).toContain("20270115000017_dealer_assignment_session_binding.sql");
     expect(workflow).toContain("20260817000003_fix_executor_step9_incoming_credit.sql");
     expect(workflow).toContain("TRACKER_VOICE_15000015_APPLY=PASS");
     expect(workflow).toContain("TRACKER_VOICE_15000015_ROLLBACK=PASS");
