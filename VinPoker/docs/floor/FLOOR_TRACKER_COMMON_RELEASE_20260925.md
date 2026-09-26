@@ -42,11 +42,11 @@ SELECT to_regprocedure('public.floor_queue_tracker_move_v1(uuid,uuid,integer,big
 -- NULL before DB apply.
 ```
 
-4. Run `supabase db push --linked --dry-run` using the reviewed checkout. Require the output to list **exactly** 00006, 00007, 00008, 00009, 00010 and no other migration. Stop on any drift, reused version, different name, checksum or extra file. Do not use `--include-all`, migration repair or manual ledger edits.
+4. Production now contains the separately reviewed Cashier receipt at `00011`, so the owner approved one narrow exception for this Floor release: run `supabase db push --linked --include-all --dry-run` from the reviewed checkout. Require exit 0 and exactly 00006, 00007, 00008, 00009, 00010 in order, with no sixth migration and no Cashier replay. This exception does not apply to any other release. Never use migration repair or manual ledger edits.
 
 ### Common-release DB apply and postcheck (not executed here)
 
-Only after the recovery point and owner gate: run the canonical versioned CLI apply **without** `--include-all`, and only if the immediately preceding dry-run lists exactly the five files above. Stop on any change. After apply, verify:
+Only after the recovery point and owner gate: run `supabase db push --linked --include-all`, and only if the immediately preceding dry-run with the same scoped flag lists exactly the five files above. Stop on any change. A failed apply must be followed by a read-only ledger/schema check; do not retry or infer rollback. After apply, verify:
 
 ```sql
 SELECT version, name
