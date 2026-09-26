@@ -12,7 +12,7 @@ if [[ "$start_hand_signature" != 't' ]]; then
   echo 'REDRAW_CLOCK_HOLD_ASSERTION_FAILED production start_hand(uuid,uuid,integer,timestamptz,uuid,integer) signature is missing' >&2
   exit 1
 fi
-batch_id="$(psql_quiet -c "SELECT id FROM public.tournament_redraw_batches WHERE tournament_id = '00000000-0000-0000-0000-000000000112' AND status = 'applied' AND hold_completed_at IS NULL")"
+batch_id="$(psql_quiet -c "SELECT id FROM public.tournament_redraw_batches WHERE tournament_id = '10000000-0000-0000-0000-000000000112' AND status = 'applied' AND hold_completed_at IS NULL")"
 if [[ -z "$batch_id" ]]; then
   echo 'REDRAW_CLOCK_HOLD_ASSERTION_FAILED missing applied race batch' >&2
   exit 1
@@ -23,7 +23,7 @@ BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL deadlock_timeout = '200ms';
 SELECT 1 FROM public.tournaments
-WHERE id = '00000000-0000-0000-0000-000000000112' FOR UPDATE;
+WHERE id = '10000000-0000-0000-0000-000000000112' FOR UPDATE;
 SELECT pg_catalog.pg_sleep(1.5);
 COMMIT;
 SQL
@@ -39,8 +39,8 @@ SET LOCAL lock_timeout = '5s';
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000004', true);
 SELECT public.start_hand(
-  '00000000-0000-0000-0000-000000000112'::uuid,
-  '00000000-0000-0000-0000-000000000743'::uuid,
+  '10000000-0000-0000-0000-000000000112'::uuid,
+  '10000000-0000-0000-0000-000000000743'::uuid,
   101::integer,
   pg_catalog.now()::timestamptz,
   '00000000-0000-0000-0000-000000000004'::uuid,
@@ -73,7 +73,7 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
 SELECT public.floor_continue_tournament_redraw_v1(
   '$batch_id', 1,
-  '00000000-0000-0000-0000-000000003119'
+  '10000000-0000-0000-0000-000000003119'
 );
 COMMIT;
 SQL
@@ -99,11 +99,11 @@ if ! grep -q '"ok": true' "$tmp_dir/continue"; then
   cat "$tmp_dir/continue" >&2
   exit 1
 fi
-if [[ "$(psql_quiet -c "SELECT count(*) FROM public.tournament_hands WHERE tournament_id = '00000000-0000-0000-0000-000000000112' AND status = 'in_progress'")" != '0' ]]; then
+if [[ "$(psql_quiet -c "SELECT count(*) FROM public.tournament_hands WHERE tournament_id = '10000000-0000-0000-0000-000000000112' AND status = 'in_progress'")" != '0' ]]; then
   echo 'REDRAW_CLOCK_HOLD_ASSERTION_FAILED raced start_hand left a live hand' >&2
   exit 1
 fi
-if [[ "$(psql_quiet -c "SELECT count(*) FROM public.table_sessions WHERE tournament_id = '00000000-0000-0000-0000-000000000112' AND redraw_hold_batch_id IS NOT NULL")" != '0' ]]; then
+if [[ "$(psql_quiet -c "SELECT count(*) FROM public.table_sessions WHERE tournament_id = '10000000-0000-0000-0000-000000000112' AND redraw_hold_batch_id IS NOT NULL")" != '0' ]]; then
   echo 'REDRAW_CLOCK_HOLD_ASSERTION_FAILED Continue left a redraw hold active' >&2
   exit 1
 fi
