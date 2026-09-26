@@ -35,7 +35,6 @@ DO $constraint$ BEGIN
     CHECK(day2_percent>0 AND day2_percent<=100 AND itm_percent<=day2_percent);
  END IF;
 END $constraint$;
-COMMIT;
 
 -- The old writer cannot create another ambiguous single-percentage row.
 CREATE OR REPLACE FUNCTION public.multi_day_set_qualification_rules_v1(
@@ -521,3 +520,4 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.multi_day_floor_read_v1(uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.multi_day_floor_read_v1(uuid) TO authenticated,service_role;
+COMMIT;
