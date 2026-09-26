@@ -27,8 +27,8 @@ on:
       - "VinPoker/supabase/migrations/20270114000009_tracker_voice_provider_event_idempotency.sql"
       - "VinPoker/supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql"
       - "VinPoker/supabase/migrations/20270115000005_tracker_dealer_floor_operational_alerts.sql"
-      - "VinPoker/supabase/migrations/20270115000011_tracker_correction_capability_disabled.sql"
-      - "VinPoker/supabase/migrations/20270115000012_tracker_floor_alert_action_reference.sql"
+      - "VinPoker/supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql"
+      - "VinPoker/supabase/migrations/20270115000014_tracker_floor_alert_action_reference.sql"
       - "VinPoker/tests/trackerCorrectionRelease1/**"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
@@ -281,9 +281,9 @@ jobs:
           echo "TRACKER_FLOOR_OPERATIONAL_ALERTS_15000005_APPLY=PASS"
           createdb tracker_correction_release1 -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
-            -f supabase/migrations/20270115000011_tracker_correction_capability_disabled.sql
+            -f supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
-            -f supabase/migrations/20270115000012_tracker_floor_alert_action_reference.sql
+            -f supabase/migrations/20270115000014_tracker_floor_alert_action_reference.sql
           test "$(psql -X -At -d tracker_correction_release1 -c \
             "SELECT to_regprocedure('public.report_tracker_floor_operational_alert_v2(uuid,uuid,uuid,uuid,text,text,uuid,jsonb,bigint)') IS NOT NULL
                     AND has_function_privilege('authenticated', 'public.report_tracker_floor_operational_alert_v2(uuid,uuid,uuid,uuid,text,text,uuid,jsonb,bigint)', 'EXECUTE')
@@ -294,15 +294,15 @@ jobs:
 
           # Rehearse exact-file SQL and detect the commit-before-ledger state.
           # Ledger repair is intentionally outside this no-live-command workflow.
-          echo '4d184571feca948096d8503c1999b5256e03358adb2b2c75074f7644a32496b6  supabase/migrations/20270115000011_tracker_correction_capability_disabled.sql' | sha256sum -c -
-          echo '6d3dedeee949859ed19e15d06a753828c9ef5cef0a5269c5107a6e362f41981f  supabase/migrations/20270115000012_tracker_floor_alert_action_reference.sql' | sha256sum -c -
+          echo '4d184571feca948096d8503c1999b5256e03358adb2b2c75074f7644a32496b6  supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql' | sha256sum -c -
+          echo '6d3dedeee949859ed19e15d06a753828c9ef5cef0a5269c5107a6e362f41981f  supabase/migrations/20270115000014_tracker_floor_alert_action_reference.sql' | sha256sum -c -
           createdb tracker_correction_resume -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_resume \
-            -f supabase/migrations/20270115000011_tracker_correction_capability_disabled.sql
+            -f supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql
           test "$(psql -X -At -d tracker_correction_resume -c \
             "SELECT NOT has_function_privilege('authenticated', 'public.delete_last_action(uuid,uuid)', 'EXECUTE')")" = "t"
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_resume \
-            -f supabase/migrations/20270115000012_tracker_floor_alert_action_reference.sql
+            -f supabase/migrations/20270115000014_tracker_floor_alert_action_reference.sql
           test "$(psql -X -At -d tracker_correction_resume -c \
             "SELECT to_regprocedure('public.report_tracker_floor_operational_alert_v2(uuid,uuid,uuid,uuid,text,text,uuid,jsonb,bigint)') IS NOT NULL")" = "t"
           test "$(psql -X -At -d tracker_correction_resume -c \
