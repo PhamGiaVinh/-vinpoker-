@@ -14,7 +14,7 @@ on:
       - "VinPoker/supabase/functions/tournament-register/**"
       - "VinPoker/supabase/functions/sepay-reconcile/**"
       - "VinPoker/supabase/migrations/20270115000003_cashier_tour_money_v1.sql"
-      - "VinPoker/supabase/pending-migrations/20270115000011_cashier_refund_without_floor_clearance.sql"
+      - "VinPoker/supabase/migration-archive/remote-history/recovered-source/20270115000011_cashier_refund_without_floor_clearance.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_money_v1.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_real_refund_fixture.sql"
       - "VinPoker/src/pages/ops/TourCashierWorkbench.tsx"
