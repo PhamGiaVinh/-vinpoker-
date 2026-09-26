@@ -99,6 +99,92 @@ describe("validateAction — street reset on the flop", () => {
   });
 });
 
+describe("validateAction — correction stream boundaries", () => {
+  const huButton4: PlayerSeed[] = [
+    { player_id: "SB", seat_number: 4, starting_stack: 1_000 },
+    { player_id: "BB", seat_number: 6, starting_stack: 1_000 },
+  ];
+
+  it("uses the new street's first actor after the big blind option closes", () => {
+    const closedPreflop = build([
+      ["SB", "post_sb", 50], ["BB", "post_bb", 100],
+      ["SB", "call", 50], ["BB", "check", 0],
+    ]);
+
+    expect(validateAction(huButton4, closedPreflop, 4, propose("SB", "check", 0, "flop"), { enforceTurnOrder: true }))
+      .toMatchObject({ valid: false, code: "OUT_OF_TURN" });
+    expect(validateAction(huButton4, closedPreflop, 4, propose("BB", "check", 0, "flop"), { enforceTurnOrder: true }))
+      .toMatchObject({ valid: true, code: "OK" });
+  });
+
+  it("rejects actions after a fold has left only one live player", () => {
+    const prior = build([
+      ["SB", "post_sb", 50], ["BB", "post_bb", 100], ["SB", "fold", 0],
+    ]);
+
+    expect(validateAction(huButton4, prior, 4, propose("BB", "check", 0)))
+      .toMatchObject({ valid: false, code: "HAND_NOT_ACTIVE" });
+  });
+
+  it("does not accept another action after a completed betting round", () => {
+    const closedPreflop = build([
+      ["SB", "post_sb", 50], ["BB", "post_bb", 100],
+      ["SB", "call", 50], ["BB", "check", 0],
+    ]);
+
+    expect(validateAction(huButton4, closedPreflop, 4, propose("BB", "check", 0), { enforceTurnOrder: true }))
+      .toMatchObject({ valid: false, code: "HAND_NOT_ACTIVE" });
+  });
+
+  it("does not allow a no-call all-in player to create a side bet into a runout", () => {
+    const deepHu: PlayerSeed[] = [
+      { player_id: "SB", seat_number: 4, starting_stack: 8_700 },
+      { player_id: "BB", seat_number: 6, starting_stack: 10_000 },
+    ];
+    const matchedBlindAllIn = build([
+      ["SB", "post_sb", 4_350], ["BB", "post_bb", 8_700],
+      ["SB", "all_in", 4_350],
+    ]);
+
+    expect(validateAction(deepHu, matchedBlindAllIn, 4, propose("BB", "all_in", 1_300), { enforceTurnOrder: true }))
+      .toMatchObject({ valid: false, code: "HAND_NOT_ACTIVE" });
+  });
+
+  it("still allows an all-in response when the player owes a call", () => {
+    const facingShove = build([
+      ["SB", "post_sb", 50], ["BB", "post_bb", 100],
+      ["SB", "all_in", 950],
+    ]);
+
+    expect(validateAction(huButton4, facingShove, 4, propose("BB", "all_in", 900), { enforceTurnOrder: true }))
+      .toMatchObject({ valid: true, code: "OK", normalizedAmount: 900 });
+  });
+
+  it("does not block a mandatory blind post after an opponent exhausts their stack on an ante", () => {
+    const players: PlayerSeed[] = [
+      { player_id: "SB", seat_number: 4, starting_stack: 1 },
+      { player_id: "BB", seat_number: 6, starting_stack: 1_000 },
+    ];
+    const ante = build([["SB", "post_ante", 1]]);
+
+    expect(validateAction(players, ante, 4, propose("BB", "post_bb", 100), { enforceTurnOrder: true }))
+      .toMatchObject({ valid: true, code: "OK", normalizedAmount: 100 });
+  });
+
+  it("allows forced blind posts even when strict turn enforcement is enabled", () => {
+    const sb = propose("SB", "post_sb", 50);
+    const bb = propose("BB", "post_bb", 100, "preflop", 2);
+    expect(validateAction(huButton4, [], 4, sb, { enforceTurnOrder: true }).valid).toBe(true);
+    expect(validateAction(huButton4, build([["SB", "post_sb", 50]]), 4, bb, { enforceTurnOrder: true }).valid)
+      .toBe(true);
+  });
+
+  it("does not treat showdown as a betting street", () => {
+    expect(validateAction(huButton4, [], 4, propose("SB", "check", 0, "showdown"), { enforceTurnOrder: true }))
+      .toMatchObject({ valid: false, code: "ILLEGAL_ACTION_TYPE" });
+  });
+});
+
 describe("validateAction — physical invariants still hold", () => {
   it("cannot CHECK facing a bet, and cannot exceed the stack", () => {
     const prior = build([["P2", "post_sb", 50], ["P3", "post_bb", 100]]);

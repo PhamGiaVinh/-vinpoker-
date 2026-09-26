@@ -3174,5 +3174,9 @@
     "noHandData": "ยังไม่มีข้อมูลมือ",
     "player": "ผู้เล่น",
     "playerCards": "ไพ่ของ {{name}}"
+  },
+  "tableHistory": {
+    "blindUnavailable": "บลายด์ —", "ante": "แอนตี", "received": "ได้รับ", "main": "พอตหลัก", "side": "พอตข้าง",
+    "publicCards": "ไพ่ที่เปิดเผยของ {{name}}", "net": "ผลสุทธิ", "pending": "กำลังตรวจสอบผล", "replay": "เล่นแฮนด์ซ้ำ"
   }
 }

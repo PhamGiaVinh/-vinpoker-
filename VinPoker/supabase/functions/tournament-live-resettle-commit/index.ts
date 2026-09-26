@@ -26,6 +26,10 @@ type Body = {
 
 type RecordValue = Record<string, unknown>;
 
+// No runtime flag can reopen the legacy commit path. A reviewed forward release
+// must replace this guard after canonical preview/commit has endpoint proof.
+const CORRECTION_WRITES_ENABLED = false;
+
 const text = (value: unknown): string => typeof value === "string" ? value.trim() : "";
 const isRecord = (value: unknown): value is RecordValue => typeof value === "object" && value !== null && !Array.isArray(value);
 const isChip = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
@@ -168,6 +172,10 @@ Deno.serve(async (req) => {
       p_tournament_id: tournamentId,
     });
     if (authorizationError || authorized !== true) return jsonResp(req, { ok: false, message: "Not authorized" }, 403);
+
+    if (!CORRECTION_WRITES_ENABLED) {
+      return publicFailure(req, "CORRECTION_CAPABILITY_DISABLED", 503);
+    }
 
     const service = createClient(url, serviceKey);
     const { data: hands, error: handError } = await service.from("tournament_hands")

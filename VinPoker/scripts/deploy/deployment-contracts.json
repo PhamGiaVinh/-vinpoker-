@@ -511,7 +511,7 @@
           "name": "public.record_hand",
           "arguments": ["p_tournament_id", "p_table_id", "p_hand_number", "p_hand_time", "p_players", "p_actions", "p_side_pots", "p_community_cards", "p_pot_size", "p_created_by"],
           "argumentTypes": ["uuid", "uuid", "integer", "timestamp with time zone", "jsonb", "jsonb", "jsonb", "jsonb", "integer", "uuid"],
-          "allowOtherOverloads": false,
+          "allowOtherOverloads": true,
           "acl": { "authenticated": true, "anon": false, "service_role": false }
         }
       ]

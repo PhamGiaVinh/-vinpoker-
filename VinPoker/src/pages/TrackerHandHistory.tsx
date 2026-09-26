@@ -59,6 +59,8 @@ export default function TrackerHandHistory() {
   const selectedTournamentId = searchParams.get("t");
   const selectedTableId = searchParams.get("table");
   const selectedHandId = searchParams.get("hand");
+  const selectedActionId = searchParams.get("action");
+  const [showTournamentPicker, setShowTournamentPicker] = useState(!selectedTournamentId);
   const authorized = isTracker || isAdmin || isClubOwner;
 
   useEffect(() => {
@@ -103,6 +105,7 @@ export default function TrackerHandHistory() {
   }, [selectedTournamentId, setSearchParams, tournaments]);
 
   const chooseTournament = useCallback((tournamentId: string) => {
+    setShowTournamentPicker(false);
     startTransition(() => setSearchParams({ t: tournamentId }));
   }, [setSearchParams]);
 
@@ -111,8 +114,9 @@ export default function TrackerHandHistory() {
     const next = new URLSearchParams({ t: selectedTournamentId });
     if (selection.tableId) next.set("table", selection.tableId);
     if (selection.handId) next.set("hand", selection.handId);
+    if (selection.handId === selectedHandId && selectedActionId) next.set("action", selectedActionId);
     setSearchParams(next, { replace: true });
-  }, [selectedTournamentId, setSearchParams]);
+  }, [selectedActionId, selectedHandId, selectedTournamentId, setSearchParams]);
 
   if (authLoading) {
     return <div className="container mx-auto space-y-4 p-3 md:p-6"><Skeleton className="h-24 rounded-2xl" /><Skeleton className="h-[620px] rounded-2xl" /></div>;
@@ -141,9 +145,9 @@ export default function TrackerHandHistory() {
                 <Badge className="border border-emerald-400/35 bg-emerald-400/15 text-emerald-300"><History className="mr-1 h-3.5 w-3.5" /> HAND ARCHIVE</Badge>
                 <Badge variant="outline" className="border-amber-400/30 text-amber-200"><ShieldCheck className="mr-1 h-3.5 w-3.5" /> Server xác minh winner</Badge>
               </div>
-              <h1 className="mt-3 text-2xl font-black tracking-tight text-foreground md:text-4xl">Lịch sử & sửa hand</h1>
+              <h1 className="mt-3 text-2xl font-black tracking-tight text-foreground md:text-4xl">Lịch sử & đối chiếu hand</h1>
               <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                Chọn <strong className="text-foreground">Giải → Bàn → Hand</strong>. Sửa board, bài đã lộ hoặc action bị nhập sai; sau đó để máy chủ xác minh ranking, winner, chop và payout hiển thị.
+                Chọn <strong className="text-foreground">Giải → Bàn → Hand</strong> để xem toàn bộ action và lập bản nháp đối chiếu. Ghi sửa hand đang tạm khóa.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center text-xs lg:w-[360px]">
@@ -156,13 +160,18 @@ export default function TrackerHandHistory() {
 
         {loadError && <Card role="alert" className="border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">Không tải được kho hand: {loadError}</Card>}
 
-        <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
-          <aside className="self-start rounded-2xl border border-border/50 bg-card/80 p-3 xl:sticky xl:top-20" aria-label="Chọn giải đấu">
+        {selectedTournament && (
+          <Button type="button" variant="outline" className="min-h-11 w-full xl:hidden" onClick={() => setShowTournamentPicker((current) => !current)}>
+            {showTournamentPicker ? "Ẩn danh sách giải" : `Giải: ${selectedTournament.name} · Chọn giải khác`}
+          </Button>
+        )}
+        <div className="grid min-w-0 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+          <aside className={`self-start rounded-2xl border border-border/50 bg-card/80 p-3 xl:sticky xl:top-20 ${selectedTournament && !showTournamentPicker ? "hidden xl:block" : ""}`} aria-label="Chọn giải đấu">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên giải..." className="min-h-11 pl-9" aria-label="Tìm giải đấu" />
             </div>
-            <div className="mt-3 max-h-[min(64vh,620px)] space-y-4 overflow-y-auto pr-1">
+            <div className="mt-3 space-y-4 pr-1 xl:max-h-[620px] xl:overflow-y-auto">
               {(["running", "finished", "other"] as TournamentGroup[]).map((group) => {
                 const rows = visibleTournaments.filter((tournament) => groupOf(tournament.status) === group);
                 if (rows.length === 0) return null;
@@ -214,6 +223,7 @@ export default function TrackerHandHistory() {
                     tournamentId={selectedTournament.id}
                     initialTableId={selectedTableId}
                     initialHandId={selectedHandId}
+                    initialActionId={selectedActionId}
                     onSelectionChange={updateHandSelection}
                     workspaceMode
                     enableHistoricalBatchControls

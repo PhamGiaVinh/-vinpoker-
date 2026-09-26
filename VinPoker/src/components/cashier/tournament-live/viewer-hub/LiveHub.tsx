@@ -446,6 +446,7 @@ function LiveHubContent({
               catalog={publicSnapshot?.sections.tables?.catalog ?? []}
               tables={publicSnapshot?.sections.tables?.items ?? []}
               freshness={publicSnapshot?.sections.tables?.freshness}
+              loading={publicSnapshotLoading}
               onVisibleTableIds={setVisibleTableIds}
               onView={(id) => setWatch({ kind: "live", tableId: id })}
               onHistory={(id) => lastHandHistoryEnabled

@@ -31,6 +31,12 @@
 .dealer-floor-actions button:disabled,.dealer-floor-retry:disabled { opacity:.45; cursor:not-allowed; }
 .dealer-floor-controls button:focus-visible { outline:2px solid #efbf57; outline-offset:2px; }
 .dealer-floor-status,.dealer-floor-request-id,.dealer-floor-retry { grid-column:1 / -1; }
+.dealer-floor-action-picker { grid-column:1 / -1; display:grid; gap:6px; color:#d9e9dc; font-size:12px; }
+.dealer-floor-action-picker > button { justify-self:start; min-height:44px; color:#f2d48c; }
+.dealer-floor-action-chooser summary { min-height:44px; display:flex; align-items:center; cursor:pointer; color:#f2d48c; }
+.dealer-floor-action-list { display:flex; flex-wrap:wrap; gap:6px; }
+.dealer-floor-action-list button { min-height:44px; padding:7px 10px; border:1px solid #ffffff30; border-radius:8px; color:#d9e9dc; text-align:left; }
+.dealer-floor-action-list button[aria-pressed="true"] { border-color:#efbf57; background:#efbf5720; color:#ffe0a0; }
 .dealer-floor-status { margin:0; }
 .dealer-floor-status-idle { display:none; }
 .dealer-floor-status-unknown,.dealer-floor-status-rejected { color:#ffd0a2; }

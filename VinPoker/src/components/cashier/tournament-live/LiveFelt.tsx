@@ -33,6 +33,7 @@ import {
 } from "@/lib/tracker-poker/replayBestFiveFocus";
 import { POT_AWARD_TRAVEL_MS, isReplaySettlementPayoutPhase, type ReplayRunoutPhase, type ReplayRunoutPresentation } from "@/lib/tracker-poker/replayRunoutTimeline";
 import { shouldCollectCommittedChips } from "@/lib/tracker-poker/livePotCollection";
+import { formatViewerChipAndBB } from "@/lib/tracker-poker/viewerAmounts";
 
 /** Count-up text (Phase 3, tableFx only): tweens a numeric display toward its target.
  *  First render / enabled-off / reduced-motion emit the target directly, so static
@@ -239,6 +240,7 @@ export interface LiveFeltProps {
   formatBB: (n: number) => string | null;
   /** Spectator projection: every gameplay amount is rendered as BB only. */
   viewerAmountsInBB?: boolean;
+  viewerBigBlind?: number | null;
   /** Narrow-phone vertical layout (tall oval + portrait seat map). */
   portrait?: boolean;
   /** Seat number on the dealer button → renders a "D" puck. Omit/undefined → no puck (felt unchanged). */
@@ -315,6 +317,7 @@ export interface LiveFeltProps {
    * level; replay passes the HAND's own detected blinds.
    */
   blinds?: { sb: number; bb: number; ante: number; level?: number | null } | null;
+  potUnavailable?: boolean;
   appearance?: TableAppearance;
   /**
    * UAT wave 2 (Fix 1 companion): the live hand is an all-in RUNOUT — betting is
@@ -374,6 +377,7 @@ export function LiveFelt({
   latestAction,
   formatBB,
   viewerAmountsInBB = false,
+  viewerBigBlind = null,
   portrait: portraitProp,
   buttonSeat = null,
   onSeatClick,
@@ -385,6 +389,7 @@ export function LiveFelt({
   viewerLayout = false,
   compact = false,
   blinds = null,
+  potUnavailable = false,
   appearance,
   runout = false,
   collectCommittedChips = false,
@@ -896,7 +901,7 @@ export function LiveFelt({
               className={`mt-2.5 flex flex-col items-center${viewerLayout ? " relative" : ""}`}
             >
               {viewerLayout ? (
-                <CenterPotStack label={`${t("liveHub.felt.pot", "POT").toUpperCase()} ${formatGameplayAmount(displayPot)}`} />
+                <CenterPotStack label={`${t("liveHub.felt.pot", "POT").toUpperCase()} ${potUnavailable ? "—" : viewerAmountsInBB ? formatViewerChipAndBB(displayPot, viewerBigBlind ?? blinds?.bb ?? null) : formatGameplayAmount(displayPot)}`} />
               ) : <div
                 className="tracker-pot-pulse inline-flex flex-col items-center rounded-full bg-black/55 px-3.5 py-1"
                 style={{ border: "1px solid hsl(var(--poker-gold) / 0.42)" }}
@@ -912,7 +917,7 @@ export function LiveFelt({
                   {t("liveHub.felt.pot", "Pot")}
                 </div>
                 <div className="tracker-num text-lg font-bold leading-tight sm:text-xl" style={{ color: "hsl(var(--poker-gold))" }}>
-                  {viewerAmountsInBB ? formatViewerAmount(displayPot) : formatStack(displayPot)}
+                  {potUnavailable ? "—" : viewerAmountsInBB ? formatViewerChipAndBB(displayPot, viewerBigBlind ?? blinds?.bb ?? null) : formatStack(displayPot)}
                   {!viewerAmountsInBB && formatBB(potSize) && (
                     <span className="ml-1.5 text-[10px] font-normal" style={{ color: "hsl(var(--poker-gold) / 0.6)" }}>
                       ({formatBB(displayPot)})

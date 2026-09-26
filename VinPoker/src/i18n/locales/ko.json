@@ -3170,5 +3170,9 @@
     "noHandData": "핸드 데이터 없음",
     "player": "플레이어",
     "playerCards": "{{name}}의 카드"
+  },
+  "tableHistory": {
+    "blindUnavailable": "블라인드 —", "ante": "앤티", "received": "획득", "main": "메인 팟", "side": "사이드 팟",
+    "publicCards": "{{name}}의 공개 카드", "net": "순변동", "pending": "결과 확인 중", "replay": "핸드 다시 보기"
   }
 }

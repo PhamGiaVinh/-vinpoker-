@@ -67,6 +67,20 @@ export interface PublicTableHistoryItem {
   smallBlind: number | null;
   bigBlind: number | null;
   ante: number | null;
+  result: { status: "pending" } | {
+    status: "verified";
+    recipients: Array<{
+      playerId: string;
+      entryNumber: number | null;
+      seatNumber: number | null;
+      name: string;
+      avatarUrl: string | null;
+      holeCards: string[];
+      potAward: number;
+      netDelta: number;
+      potKinds: Array<"main" | "side">;
+    }>;
+  };
 }
 
 export interface PublicTableHistoryPage {

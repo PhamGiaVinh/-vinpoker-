@@ -322,14 +322,10 @@ Deno.serve(async (req) => {
         break;
       }
       case "delete_last_action": {
-        // Undo the single most-recent action of an in-progress hand (tablet
-        // mis-tap). The RPC checks the hand lock and returns the deleted action.
-        const { hand_id } = body;
-        result = await supabase.rpc("delete_last_action", {
-          p_hand_id: hand_id,
-          p_user_id: user.id,
+        return new Response(JSON.stringify({ error: "Hoàn tác action đang tạm khóa; gọi Floor để xử lý.", code: "UNDO_CAPABILITY_DISABLED" }), {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
-        break;
       }
       case "update_stack": {
         const { player_id, entry_number, chip_count } = body;
@@ -640,6 +636,9 @@ Deno.serve(async (req) => {
           return validationError("intent_mismatch", "Voice intent không khớp writer hiện tại.");
         }
         const command = route.command;
+        if (command.kind === "report_wrong_action") {
+          return validationError("ERROR_REPORT_CAPABILITY_DISABLED", "Báo sai action đang tạm khóa. Dùng nút Gọi Floor để được hỗ trợ; hand chưa tự dừng.");
+        }
         if (command.amount?.ambiguous) {
           return validationError("VOICE_AMOUNT_AMBIGUOUS", "Số chip chưa rõ đơn vị.");
         }
@@ -656,7 +655,7 @@ Deno.serve(async (req) => {
           requires_confirmation: command.requiresConfirmation,
         };
 
-        if (command.kind !== "report_wrong_action" && command.kind !== "call_floor") {
+        if (command.kind !== "call_floor") {
           if (command.spokenSeatNumber === null) {
             return validationError("VOICE_SEAT_REQUIRED", "Hãy đọc rõ Ghế đang tới lượt trước action.");
           }

@@ -10,7 +10,8 @@ INSERT INTO auth.users(id) VALUES
   ('81300000-0000-4000-8000-000000000001'),
   ('81400000-0000-4000-8000-000000000001'),
   ('81500000-0000-4000-8000-000000000001'),
-  ('81600000-0000-4000-8000-000000000001');
+  ('81600000-0000-4000-8000-000000000001'),
+  ('81700000-0000-4000-8000-000000000001');
 
 INSERT INTO public.clubs(id, owner_id) VALUES
   ('81000000-0000-4000-8000-000000000001', '81100000-0000-4000-8000-000000000001'),
@@ -48,7 +49,8 @@ INSERT INTO public.tournament_tables(
 
 INSERT INTO public.dealers(id, club_id, user_id, full_name, status) VALUES
   ('87000000-0000-4000-8000-000000000001', '81000000-0000-4000-8000-000000000001', '81200000-0000-4000-8000-000000000001', 'Dealer Voice A', 'active'),
-  ('87000000-0000-4000-8000-000000000002', '81000000-0000-4000-8000-000000000002', '81500000-0000-4000-8000-000000000001', 'Dealer Other Club', 'active');
+  ('87000000-0000-4000-8000-000000000002', '81000000-0000-4000-8000-000000000002', '81500000-0000-4000-8000-000000000001', 'Dealer Other Club', 'active'),
+  ('87000000-0000-4000-8000-000000000003', '81000000-0000-4000-8000-000000000001', '81700000-0000-4000-8000-000000000001', 'Dealer Voice B', 'active');
 
 INSERT INTO public.dealer_assignments(
   id, dealer_id, table_id, table_session_id, assigned_at, status
@@ -188,16 +190,88 @@ SELECT public.get_tracker_voice_runtime_context(
   '84000000-0000-4000-8000-000000000002'
 )::TEXT AS payload \gset runtime_wrong_
 SELECT public.tracker_voice_test_assert(
-  :'runtime_wrong_payload'::JSONB->>'error' = 'dealer_assignment_missing'
+  :'runtime_wrong_payload'::JSONB->>'error' = 'voice_config_disabled'
   AND (:'runtime_wrong_payload'::JSONB->>'read_only')::BOOLEAN,
-  'wrong table is read-only and cannot mint a Voice session'
+  'disabled table is read-only and cannot mint a Voice session'
 );
 RESET ROLE;
+
+-- Real Dealer handoff in separate autocommit transactions. Releasing A must
+-- preserve the approved exact capability while runtime denies the zero-Dealer
+-- gap. Assigning B then transfers runtime authority without a reconcile.
+UPDATE public.dealer_assignments
+SET status = 'released', released_at = pg_catalog.now()
+WHERE id = '88000000-0000-4000-8000-000000000001';
+SELECT public.tracker_voice_test_assert(
+  (SELECT enabled FROM public.tracker_voice_configs
+   WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001')
+  AND public._tracker_voice_assignment_context(
+    '85000000-0000-4000-8000-000000000001',
+    '84000000-0000-4000-8000-000000000001',
+    '81200000-0000-4000-8000-000000000001'
+  )->>'error' = 'dealer_assignment_missing',
+  'Dealer A release preserves approved capability while zero assignments fail closed'
+);
 
 INSERT INTO public.dealer_assignments(
   id, dealer_id, table_id, table_session_id, assigned_at, status
 ) VALUES (
   '88000000-0000-4000-8000-000000000003',
+  '87000000-0000-4000-8000-000000000003',
+  '83000000-0000-4000-8000-000000000001',
+  '83500000-0000-4000-8000-000000000001',
+  pg_catalog.now(),
+  'assigned'
+);
+SELECT public.tracker_voice_test_assert(
+  (public._tracker_voice_assignment_context(
+    '85000000-0000-4000-8000-000000000001',
+    '84000000-0000-4000-8000-000000000001',
+    '81700000-0000-4000-8000-000000000001'
+  )->>'ok')::BOOLEAN
+  AND public._tracker_voice_assignment_context(
+    '85000000-0000-4000-8000-000000000001',
+    '84000000-0000-4000-8000-000000000001',
+    '81200000-0000-4000-8000-000000000001'
+  )->>'error' = 'dealer_assignment_missing'
+  AND (SELECT enabled FROM public.tracker_voice_configs
+       WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001')
+  AND NOT (SELECT enabled FROM public.tracker_voice_configs
+           WHERE tournament_table_id = '84000000-0000-4000-8000-000000000002'),
+  'Dealer B receives authority, old Dealer A is denied, and the other table is unchanged'
+);
+
+-- A request prepared by Dealer A before the handoff is re-authorized when it
+-- reaches the server. It cannot become a persisted event after B takes over.
+SELECT public._tracker_voice_hand_state_version(
+  '86000000-0000-4000-8000-000000000001'
+) AS value \gset handoff_state_
+SELECT pg_catalog.count(*) AS value FROM public.tracker_voice_events \gset handoff_event_count_
+SET ROLE service_role;
+SELECT set_config('request.jwt.claims', '{"sub":"81200000-0000-4000-8000-000000000001","role":"service_role"}', false);
+SELECT public._tracker_voice_register_validated_event(
+  '81200000-0000-4000-8000-000000000001',
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001',
+  '86000000-0000-4000-8000-000000000001',
+  'gemini_live', 'gemini-3.5-transcribe-live', 'provider-handoff-old-a', NULL, 'Player A call 100',
+  '{"kind":"call","canonical_action":"call","actor_player_id":"82000000-0000-4000-8000-000000000001","entry_number":1,"street":"preflop","action_order":1,"action_amount":100}'::JSONB,
+  :'handoff_state_value', 'assist', 'voice-handoff-old-a-01', 'trace-handoff-old-a-01',
+  'enforce', true, NULL
+)::TEXT AS payload \gset handoff_old_write_
+RESET ROLE;
+SELECT public.tracker_voice_test_assert(
+  :'handoff_old_write_payload'::JSONB->>'error' = 'dealer_assignment_missing'
+  AND (SELECT pg_catalog.count(*) = :handoff_event_count_value::BIGINT FROM public.tracker_voice_events),
+  'pending write from the old Dealer is rechecked server-side and leaves zero events'
+);
+
+-- Two different Dealers must be counted across the whole session. Filtering by
+-- caller first would incorrectly allow each actor to observe a count of one.
+INSERT INTO public.dealer_assignments(
+  id, dealer_id, table_id, table_session_id, assigned_at, status
+) VALUES (
+  '88000000-0000-4000-8000-000000000004',
   '87000000-0000-4000-8000-000000000001',
   '83000000-0000-4000-8000-000000000001',
   '83500000-0000-4000-8000-000000000001',
@@ -209,17 +283,99 @@ SELECT public.tracker_voice_test_assert(
     '85000000-0000-4000-8000-000000000001',
     '84000000-0000-4000-8000-000000000001',
     '81200000-0000-4000-8000-000000000001'
+  )->>'error' = 'dealer_assignment_ambiguous'
+  AND public._tracker_voice_assignment_context(
+    '85000000-0000-4000-8000-000000000001',
+    '84000000-0000-4000-8000-000000000001',
+    '81700000-0000-4000-8000-000000000001'
   )->>'error' = 'dealer_assignment_ambiguous',
-  'multiple active assignments fail closed'
+  'multiple active assignments fail closed for both actors, including different Dealers'
 );
-DELETE FROM public.dealer_assignments
+UPDATE public.dealer_assignments
+SET status = 'released', released_at = pg_catalog.now()
+WHERE id = '88000000-0000-4000-8000-000000000004';
+
+-- A disabled config is an administrative decision. Even with auto-provision on,
+-- assignment churn cannot revive it; only the explicit service reconcile can.
+UPDATE public.tracker_voice_configs
+SET enabled = FALSE
+WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001';
+UPDATE public.app_settings
+SET value = 'true'::JSONB
+WHERE key = 'tracker_voice_auto_provision_enabled';
+UPDATE public.dealer_assignments
+SET status = 'released', released_at = pg_catalog.now()
 WHERE id = '88000000-0000-4000-8000-000000000003';
+INSERT INTO public.dealer_assignments(
+  id, dealer_id, table_id, table_session_id, assigned_at, status
+) VALUES (
+  '88000000-0000-4000-8000-000000000005',
+  '87000000-0000-4000-8000-000000000003',
+  '83000000-0000-4000-8000-000000000001',
+  '83500000-0000-4000-8000-000000000001',
+  pg_catalog.now(),
+  'assigned'
+);
+SELECT public.tracker_voice_test_assert(
+  NOT (SELECT enabled FROM public.tracker_voice_configs
+       WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001')
+  AND public._tracker_voice_assignment_context(
+    '85000000-0000-4000-8000-000000000001',
+    '84000000-0000-4000-8000-000000000001',
+    '81700000-0000-4000-8000-000000000001'
+  )->>'error' = 'voice_config_disabled',
+  'assignment changes and auto-provision do not revive an administratively disabled config'
+);
 SET ROLE service_role;
 SELECT set_config('request.jwt.claims', '{"sub":"81200000-0000-4000-8000-000000000001","role":"service_role"}', false);
 SELECT public.reconcile_tracker_voice_floor_config(
   '83500000-0000-4000-8000-000000000001'
 );
+SELECT public.reconcile_tracker_voice_floor_config(
+  '83500000-0000-4000-8000-000000000001'
+);
 RESET ROLE;
+SELECT public.tracker_voice_test_assert(
+  (SELECT enabled FROM public.tracker_voice_configs
+   WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001')
+  AND (SELECT pg_catalog.count(*) = 1 FROM public.tracker_voice_configs
+       WHERE tournament_id = '85000000-0000-4000-8000-000000000001'
+         AND tournament_table_id = '84000000-0000-4000-8000-000000000001')
+  AND NOT (SELECT enabled FROM public.tracker_voice_configs
+           WHERE tournament_table_id = '84000000-0000-4000-8000-000000000002'),
+  'exact reconcile is idempotent and does not change another table'
+);
+UPDATE public.app_settings
+SET value = 'false'::JSONB
+WHERE key = 'tracker_voice_auto_provision_enabled';
+
+-- Restore Dealer A for the remaining canonical writer/idempotency suite.
+UPDATE public.dealer_assignments
+SET status = 'released', released_at = pg_catalog.now()
+WHERE id = '88000000-0000-4000-8000-000000000005';
+INSERT INTO public.dealer_assignments(
+  id, dealer_id, table_id, table_session_id, assigned_at, status
+) VALUES (
+  '88000000-0000-4000-8000-000000000006',
+  '87000000-0000-4000-8000-000000000001',
+  '83000000-0000-4000-8000-000000000001',
+  '83500000-0000-4000-8000-000000000001',
+  pg_catalog.now(),
+  'assigned'
+);
+SELECT public.tracker_voice_test_assert(
+  (public._tracker_voice_assignment_context(
+    '85000000-0000-4000-8000-000000000001',
+    '84000000-0000-4000-8000-000000000001',
+    '81200000-0000-4000-8000-000000000001'
+  )->>'ok')::BOOLEAN
+  AND public._tracker_voice_assignment_context(
+    '85000000-0000-4000-8000-000000000001',
+    '84000000-0000-4000-8000-000000000001',
+    '81700000-0000-4000-8000-000000000001'
+  )->>'error' = 'dealer_assignment_missing',
+  'restored sole Dealer A is allowed and stale Dealer B session requests are denied'
+);
 
 -- Service-only session mint limiter: five accepts, sixth deny, no browser seam.
 SELECT set_config('request.jwt.claims', '{"sub":"81200000-0000-4000-8000-000000000001","role":"service_role"}', false);

@@ -1336,6 +1336,10 @@
     {
       "version": "20270115000004",
       "name": "floor_free_sit_v1"
+    },
+    {
+      "version": "20270115000011",
+      "name": "cashier_refund_without_floor_clearance"
     }
   ],
   "remoteHistoryReceipts": [
@@ -1729,6 +1733,20 @@
         "filename": "20270115000004_floor_free_sit_v1.sql",
         "path": "supabase/migration-archive/remote-history/recovered-source/20270115000004_floor_free_sit_v1.sql",
         "sha256": "1793827efb0814cb3da4a23ce14181ff216eff5726f23d76581e70eb8ca17a2c"
+      }
+    },
+    {
+      "remoteVersion": "20270115000011",
+      "remoteName": "cashier_refund_without_floor_clearance",
+      "receiptFilename": "20270115000011_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270115000011_remote_history_receipt.sql",
+      "receiptSha256": "654db8986a46b3bc2ad49b18aa783c78ef8749a523276d372a905ed73a3f3d62",
+      "remoteLedgerEvidence": "linked production ledger entry observed after owner-approved Cashier rollout; source equivalence verified by the Cashier release gate",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270115000011_cashier_refund_without_floor_clearance.sql",
+        "path": "supabase/migration-archive/remote-history/recovered-source/20270115000011_cashier_refund_without_floor_clearance.sql",
+        "sha256": "b8703796f21706f13c0a2190436172bd167186d6242695f0c4829fe4a857e101"
       }
     }
   ],
@@ -6826,6 +6844,18 @@
       "filename": "20270115000005_tracker_dealer_floor_operational_alerts.sql",
       "sha256": "533badf8d985b191f27b62c80fb438882f2b1603c93580fd4386117faeaf6cb2",
       "domain": "tracker"
+    },
+    {
+      "version": "20270115000013",
+      "filename": "20270115000013_tracker_correction_capability_disabled.sql",
+      "sha256": "4d184571feca948096d8503c1999b5256e03358adb2b2c75074f7644a32496b6",
+      "domain": "tracker"
+    },
+    {
+      "version": "20270115000014",
+      "filename": "20270115000014_tracker_floor_alert_action_reference.sql",
+      "sha256": "6d3dedeee949859ed19e15d06a753828c9ef5cef0a5269c5107a6e362f41981f",
+      "domain": "tracker"
     }
   ],
   "floorActiveAllowlist": [
@@ -6916,7 +6946,7 @@
     "superseded": 31,
     "neverReplay": 221,
     "legacyUnappliedNotForReplay": 4,
-    "remoteHistoryReceipts": 28,
+    "remoteHistoryReceipts": 29,
     "pendingSources": 3,
     "unresolved": 1,
     "nonVersionedSources": 1

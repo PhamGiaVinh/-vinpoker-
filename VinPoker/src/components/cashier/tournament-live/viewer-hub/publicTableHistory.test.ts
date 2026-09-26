@@ -36,4 +36,27 @@ describe("public table history parser", () => {
   it("does not accept a page with a cursor that cannot perform strict tuple pagination", () => {
     expect(parsePublicTableHistoryPage({ access: "public", items: [], nextCursor: { createdAt: "same" } }, "tour", "table")).toBeNull();
   });
+
+  it("shows verified side-pot recipients with their signed net, once per entry", () => {
+    const page = parsePublicTableHistoryPage({ access: "public", items: [{
+      handId: "hand", createdAt: "2026-09-17T01:00:00Z", pot: 280_000, bigBlind: 20_000,
+      result: { status: "verified", recipients: [
+        { playerId: "a", entryNumber: 1, seatNumber: 2, name: "A", potAward: 240_000, netDelta: 160_000, potKinds: ["main"] },
+        { playerId: "b", entryNumber: 1, seatNumber: 3, name: "B", potAward: 40_000, netDelta: -60_000, potKinds: ["side"] },
+      ] },
+    }], nextCursor: null }, "tour", "table");
+    expect(page?.items[0].result).toMatchObject({ status: "verified", recipients: [
+      { playerId: "a", netDelta: 160_000 }, { playerId: "b", netDelta: -60_000, potKinds: ["side"] },
+    ] });
+  });
+
+  it("fails closed for absent, malformed, refunded-only or duplicate winner data", () => {
+    const item = (result?: unknown) => ({ handId: "hand", createdAt: "2026-09-17T01:00:00Z", result });
+    const parse = (result?: unknown) => parsePublicTableHistoryPage({ access: "public", items: [item(result)], nextCursor: null }, "tour", "table")?.items[0].result;
+    expect(parse()).toEqual({ status: "pending" });
+    expect(parse({ status: "verified", recipients: [{ playerId: "refund", potAward: 0, netDelta: 40_000, potKinds: ["main"] }] })).toEqual({ status: "pending" });
+    expect(parse({ status: "verified", recipients: [{ playerId: "a", potAward: 40_000, netDelta: null, potKinds: ["main"] }] })).toEqual({ status: "pending" });
+    const recipient = { playerId: "a", entryNumber: 1, potAward: 40_000, netDelta: 0, potKinds: ["main"] };
+    expect(parse({ status: "verified", recipients: [recipient, recipient] })).toEqual({ status: "pending" });
+  });
 });

@@ -27,6 +27,10 @@ on:
       - "VinPoker/supabase/migrations/20270114000009_tracker_voice_provider_event_idempotency.sql"
       - "VinPoker/supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql"
       - "VinPoker/supabase/migrations/20270115000005_tracker_dealer_floor_operational_alerts.sql"
+      - "VinPoker/supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql"
+      - "VinPoker/supabase/migrations/20270115000014_tracker_floor_alert_action_reference.sql"
+      - "VinPoker/tests/trackerCorrectionRelease1/**"
+      - "VinPoker/supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
@@ -276,6 +280,35 @@ jobs:
                     AND NOT has_function_privilege('anon', 'public.report_tracker_floor_operational_alert(uuid,uuid,uuid,uuid,text,text,uuid)', 'EXECUTE')
                     AND (public.report_tracker_floor_operational_alert(NULL,NULL,NULL,NULL,'call_floor',NULL,NULL)->>'error') = 'invalid_request'")" = "t"
           echo "TRACKER_FLOOR_OPERATIONAL_ALERTS_15000005_APPLY=PASS"
+          createdb tracker_correction_release1 -T tracker_voice_v0
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f supabase/migrations/20270115000014_tracker_floor_alert_action_reference.sql
+          test "$(psql -X -At -d tracker_correction_release1 -c \
+            "SELECT to_regprocedure('public.report_tracker_floor_operational_alert_v2(uuid,uuid,uuid,uuid,text,text,uuid,jsonb,bigint)') IS NOT NULL
+                    AND has_function_privilege('authenticated', 'public.report_tracker_floor_operational_alert_v2(uuid,uuid,uuid,uuid,text,text,uuid,jsonb,bigint)', 'EXECUTE')
+                    AND NOT has_function_privilege('anon', 'public.report_tracker_floor_operational_alert_v2(uuid,uuid,uuid,uuid,text,text,uuid,jsonb,bigint)', 'EXECUTE')")" = "t"
+          echo "TRACKER_FLOOR_ACTION_REFERENCE_15000012_APPLY=PASS"
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f tests/trackerCorrectionRelease1/actionReference.pg17.sql
+
+          # Rehearse exact-file SQL and detect the commit-before-ledger state.
+          # Ledger repair is intentionally outside this no-live-command workflow.
+          echo '4d184571feca948096d8503c1999b5256e03358adb2b2c75074f7644a32496b6  supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql' | sha256sum -c -
+          echo '6d3dedeee949859ed19e15d06a753828c9ef5cef0a5269c5107a6e362f41981f  supabase/migrations/20270115000014_tracker_floor_alert_action_reference.sql' | sha256sum -c -
+          createdb tracker_correction_resume -T tracker_voice_v0
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_resume \
+            -f supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql
+          test "$(psql -X -At -d tracker_correction_resume -c \
+            "SELECT NOT has_function_privilege('authenticated', 'public.delete_last_action(uuid,uuid)', 'EXECUTE')")" = "t"
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_resume \
+            -f supabase/migrations/20270115000014_tracker_floor_alert_action_reference.sql
+          test "$(psql -X -At -d tracker_correction_resume -c \
+            "SELECT to_regprocedure('public.report_tracker_floor_operational_alert_v2(uuid,uuid,uuid,uuid,text,text,uuid,jsonb,bigint)') IS NOT NULL")" = "t"
+          test "$(psql -X -At -d tracker_correction_resume -c \
+            "SELECT to_regclass('supabase_migrations.schema_migrations') IS NULL")" = "t"
+          echo 'TRACKER_CORRECTION_RELEASE1_EXACT_SQL_APPLY_PASS_LEDGER_REPAIR_NOT_MEASURED'
 
           # Voice runtime proof uses the exact strict Series canonicalizer. The
           # existing start-hand suite stays on its prior baseline because the
@@ -293,6 +326,17 @@ jobs:
             -f supabase/migrations/20270114000009_tracker_voice_provider_event_idempotency.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql
+          createdb tracker_voice_v0_before_15000015 -T tracker_voice_v0_strict
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql
+          test "$(psql -X -At -d tracker_voice_v0_strict -c \
+            "SELECT position('v_config_exact AND v_config.enabled IS TRUE' IN pg_get_functiondef(
+                      'floor_private.sync_tracker_voice_config(uuid,boolean)'::regprocedure
+                    )) > 0
+                    AND position('v_assignment.user_id IS DISTINCT FROM p_actor' IN pg_get_functiondef(
+                      'public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure
+                    )) > 0")" = "t"
+          echo "TRACKER_VOICE_15000015_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f tests/trackerVoice/voiceHashV2.integration.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
@@ -490,6 +534,22 @@ jobs:
           test "$(psql -X -At -d tracker_voice_v0_before_14000010 -c \
             "SELECT to_regprocedure('public._tracker_voice_runout_reveal_authoritative_v1(uuid)') IS NULL")" = "t"
           echo "TRACKER_VOICE_14000010_ROLLBACK=PASS"
+          before_sync="$(psql -X -At -d tracker_voice_v0_before_15000015 -c \
+            "SELECT md5(pg_get_functiondef('floor_private.sync_tracker_voice_config(uuid,boolean)'::regprocedure))")"
+          before_authority="$(psql -X -At -d tracker_voice_v0_before_15000015 -c \
+            "SELECT md5(pg_get_functiondef('public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure))")"
+          failing="$RUNNER_TEMP/tracker-voice-15000015-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
+            supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql > "$failing"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_15000015 -f "$failing"; then
+            echo "Injected 15000015 migration unexpectedly committed" >&2
+            exit 1
+          fi
+          test "$before_sync" = "$(psql -X -At -d tracker_voice_v0_before_15000015 -c \
+            "SELECT md5(pg_get_functiondef('floor_private.sync_tracker_voice_config(uuid,boolean)'::regprocedure))")"
+          test "$before_authority" = "$(psql -X -At -d tracker_voice_v0_before_15000015 -c \
+            "SELECT md5(pg_get_functiondef('public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure))")"
+          echo "TRACKER_VOICE_15000015_ROLLBACK=PASS"
           echo "TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS"
 
       - name: Run focused Voice, Analytics and contract tests
@@ -504,11 +564,13 @@ jobs:
             tests/trackerVoice/finishSettlement.test.ts \
             src/lib/trackerVoice/canonicalRequest.test.ts \
             src/components/tracker/voice/TrackerVoicePanel.test.tsx \
+            src/components/tracker/voice/TrackerVoicePanelGate.test.tsx \
             src/components/tracker/DealerTabletCockpit.test.tsx \
             src/components/tracker/DealerShotClock.test.tsx \
             tests/trackerVoice/boardAssist.contract.test.ts \
             tests/trackerVoice/holeCardsAssist.contract.test.ts \
             tests/trackerVoice/finishAssist.contract.test.ts \
+            tests/trackerVoice/dealerHandoffAuthority.contract.test.ts \
             tests/trackerVoice/floorModeGlobal.contract.test.ts \
             tests/trackerVoice/trackerVoiceSessionProtocol.test.ts \
             tests/trackerVoice/trackerPlayerAnalytics.test.ts \

@@ -3174,5 +3174,9 @@
     "noHandData": "暂无牌局数据",
     "player": "玩家",
     "playerCards": "{{name}} 的手牌"
+  },
+  "tableHistory": {
+    "blindUnavailable": "盲注 —", "ante": "前注", "received": "获得", "main": "主池", "side": "边池",
+    "publicCards": "{{name}}公开的手牌", "net": "净变化", "pending": "结果核验中", "replay": "回放牌局"
   }
 }
