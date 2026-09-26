@@ -44,22 +44,27 @@ export function resolveWithinRoot(root, candidate) {
   return fullPath;
 }
 
+export function canonicalSqlText(source) {
+  const text = Buffer.isBuffer(source) ? source.toString("utf8") : String(source);
+  return text.replace(/\r\n?/g, "\n");
+}
+
 export function loadAndValidateManifest(sourceRoot, manifestPath = MANIFEST_PATH) {
   const fullManifest = resolveWithinRoot(sourceRoot, manifestPath);
   const manifest = validateManifest(JSON.parse(readFileSync(fullManifest, "utf8")));
   const files = new Map();
   for (const item of manifest.migrations) {
     const fullPath = resolveWithinRoot(sourceRoot, item.path);
-    const bytes = readFileSync(fullPath);
-    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const sql = canonicalSqlText(readFileSync(fullPath, "utf8"));
+    const sha256 = createHash("sha256").update(sql, "utf8").digest("hex");
     if (sha256 !== item.sha256) throw new Error(`Migration checksum mismatch: ${item.version}`);
-    files.set(item.version, bytes);
+    files.set(item.version, sql);
   }
   return { manifest, files };
 }
 
 export function scanMigrationSource(source) {
-  const text = Buffer.isBuffer(source) ? source.toString("utf8") : String(source);
+  const text = canonicalSqlText(source);
   const statements = [];
   let tokens = [];
   let i = 0;
@@ -156,7 +161,7 @@ export function classifyResume(history, manifest) {
 
 export function buildAtomicMigrationQuery(item, source) {
   if (item.action !== "APPLY") throw new Error("Only allowlisted APPLY entries can be executed");
-  const sql = Buffer.isBuffer(source) ? source.toString("utf8") : String(source);
+  const sql = canonicalSqlText(source);
   const scan = scanMigrationSource(sql);
   const tag = "$ops1359_receipt$";
   if (sql.includes(tag)) throw new Error("Migration source conflicts with receipt delimiter");

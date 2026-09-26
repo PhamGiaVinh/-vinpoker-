@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { buildAtomicMigrationQuery, classifyResume, loadAndValidateManifest, resolveWithinRoot, scanMigrationSource, validateManifest } from "./ops-1359-release-gate.mjs";
+import { buildAtomicMigrationQuery, canonicalSqlText, classifyResume, loadAndValidateManifest, resolveWithinRoot, scanMigrationSource, validateManifest } from "./ops-1359-release-gate.mjs";
 
 const root = new URL("../../", import.meta.url);
 const { manifest, files } = loadAndValidateManifest(fileURLToPath(root));
@@ -51,9 +51,25 @@ test("atomic query locks, checks ledger, executes source unchanged, then writes 
   assert.deepEqual(scanMigrationSource("/* BEGIN; /* COMMIT; */ */ SELECT 'BEGIN;', \"COMMIT\";"), { mode: "wrapped" });
 });
 
+test("CRLF and lone-CR SQL canonicalize to the same hash, scan, query, and receipt", () => {
+  const item = manifest.migrations.find((entry) => entry.action === "APPLY");
+  const lf = "-- canonical fixture\nCREATE TABLE public.line_endings(id integer);\n";
+  const crlf = lf.replace(/\n/g, "\r\n");
+  const loneCr = lf.replace(/\n/g, "\r");
+  const hash = (source) => createHash("sha256").update(canonicalSqlText(source), "utf8").digest("hex");
+
+  assert.equal(hash(crlf), hash(lf));
+  assert.equal(hash(loneCr), hash(lf));
+  assert.deepEqual(scanMigrationSource(crlf), scanMigrationSource(lf));
+  assert.deepEqual(scanMigrationSource(loneCr), scanMigrationSource(lf));
+  assert.equal(buildAtomicMigrationQuery(item, crlf), buildAtomicMigrationQuery(item, lf));
+  assert.equal(buildAtomicMigrationQuery(item, loneCr), buildAtomicMigrationQuery(item, lf));
+  assert.ok(buildAtomicMigrationQuery(item, crlf).includes(`$ops1359_receipt$${lf}$ops1359_receipt$`));
+});
+
 test("outer transaction source stays byte-for-byte intact around inserted lock, guard and receipt", () => {
   const item = manifest.migrations.find((entry) => entry.version === "20260924165219");
-  const source = readFileSync(new URL(`../../${item.path}`, import.meta.url), "utf8");
+  const source = canonicalSqlText(readFileSync(new URL(`../../${item.path}`, import.meta.url), "utf8"));
   const query = buildAtomicMigrationQuery(item, source);
   assert.equal(query.startsWith(source.slice(0, source.indexOf("BEGIN;") + "BEGIN;".length)), true);
   assert.ok(query.indexOf("pg_advisory_xact_lock") > query.indexOf("BEGIN;"));
