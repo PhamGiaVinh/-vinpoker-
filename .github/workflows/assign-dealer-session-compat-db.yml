@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "VinPoker/supabase/migrations/20270114000005_assign_dealer_floor_v3_session_compat.sql"
-      - "VinPoker/supabase/migrations/20270115000016_dealer_assignment_session_binding.sql"
+      - "VinPoker/supabase/migrations/20270115000017_dealer_assignment_session_binding.sql"
       - "VinPoker/tests/dealerAssignmentSessionCompat/**"
       - ".github/workflows/assign-dealer-session-compat-db.yml"
   workflow_dispatch:

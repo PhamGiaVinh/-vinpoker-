@@ -47,7 +47,7 @@ CREATE TABLE public.swing_log (
 );
 
 \ir ../../supabase/migrations/20260817000003_fix_executor_step9_incoming_credit.sql
-\ir ../../supabase/migrations/20270115000016_dealer_assignment_session_binding.sql
+\ir ../../supabase/migrations/20270115000017_dealer_assignment_session_binding.sql
 \ir ../../supabase/migration-archive/historical-never-replay/20260801000007_resolve_execute_pre_assigned_rpc_ambiguity.sql
 
 INSERT INTO public.dealers(id, full_name) VALUES

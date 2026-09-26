@@ -20,7 +20,7 @@ const concurrency = readFileSync(
   "utf8",
 );
 const swingMigration = readFileSync(
-  resolve(root, "supabase/migrations/20270115000016_dealer_assignment_session_binding.sql"),
+  resolve(root, "supabase/migrations/20270115000017_dealer_assignment_session_binding.sql"),
   "utf8",
 );
 const swingDisposable = readFileSync(
