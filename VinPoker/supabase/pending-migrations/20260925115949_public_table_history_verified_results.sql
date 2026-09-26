@@ -2,6 +2,9 @@
 -- ROLLBACK: restore the prior definition from
 -- migration-archive/remote-history/recovered-source/20260924070939_public_spectator_last_hand_history.sql.
 -- No business hand, chip, or settlement row is written by this function.
+-- hand_players.hole_cards is the existing stored-only-public contract: Tracker
+-- writes cards only after the player tables them for the dealer to record. The
+-- function does not derive cards from private settlement evidence.
 CREATE OR REPLACE FUNCTION public.get_public_tournament_table_history_v2(
   p_tournament_id uuid,
   p_tournament_table_id uuid,
