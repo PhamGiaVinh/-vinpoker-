@@ -340,10 +340,10 @@ if (( money_test_rc != 0 )); then
 fi
 echo "MONEY_PROOF: Cashier money/seat rollback-only SQL assertions passed on captured schema"
 
-refund_migration='20270115000011_cashier_refund_without_floor_clearance.sql'
+refund_migration='supabase/migration-archive/remote-history/recovered-source/20270115000011_cashier_refund_without_floor_clearance.sql'
 set +e
 timeout 10m docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
-  <"$repo_root/supabase/pending-migrations/$refund_migration" >"$test_root/refund-migration.log" 2>&1
+  <"$repo_root/$refund_migration" >"$test_root/refund-migration.log" 2>&1
 refund_migration_rc=$?
 set -e
 if (( refund_migration_rc != 0 )); then

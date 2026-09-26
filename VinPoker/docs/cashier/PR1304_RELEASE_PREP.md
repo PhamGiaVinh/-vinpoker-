@@ -7,7 +7,7 @@ This is a preparation record, not authority to deploy. Follow the workspace
 
 - PR: `#1304`; reviewed head: `3ca25a197e263c3c95030a07e0fbc136d98eef77`.
 - Sole intended DB change: `20270115000011_cashier_refund_without_floor_clearance.sql`.
-- Source: `supabase/pending-migrations/20270115000011_cashier_refund_without_floor_clearance.sql`.
+- Preserved source: `supabase/migration-archive/remote-history/recovered-source/20270115000011_cashier_refund_without_floor_clearance.sql`.
 - SHA-256 of that file at the reviewed head:
   `B8703796F21706F13C0A2190436172BD167186D6242695F0C4829FE4A857E101`.
 - Required live predecessor: `20270115000003_cashier_tour_money_v1` (tables,
