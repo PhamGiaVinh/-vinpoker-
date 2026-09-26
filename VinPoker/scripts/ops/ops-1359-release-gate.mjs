@@ -8,6 +8,7 @@ export const MANIFEST_PATH = "scripts/ops/ops-1359-manifest.json";
 export const APPLY_CONFIRMATION = "APPLY_OPS_1359_42_ENTRIES";
 const LOCK_KEY_1 = 1359;
 const LOCK_KEY_2 = 1;
+const SKIPPED_MIGRATION_PATH = "supabase/migration-archive/remote-history/recovered-source/20270115000011_cashier_refund_without_floor_clearance.sql";
 const ACTIONS = new Set(["APPLY", "SKIP_ALREADY_APPLIED"]);
 const CANONICAL_VERSIONS = "20260924165219,20270115000006,20270115000007,20270115000008,20270115000009,20270115000010,20270115000011,20260924065041,20270118000001,20270119000000,20270117000001,20270118000002,20270117000002,20260925092509,20270119000002,20270119000003,20270119000004,20270119000005,20270119000006,20270119000007,20270119000009,20270119000008,20270119000010,20270119000011,20270119000012,20270119000013,20270119000014,20270120000000,20270120000001,20270120000002,20270120000003,20270120000004,20270120000005,20270119000001,20270120000006,20270120000007,20270120000008,20270120000009,20270120000010,20270120000011,20270120000012,20270126000001".split(",");
 
@@ -20,8 +21,11 @@ export function validateManifest(manifest) {
   const paths = new Set();
   if (manifest.migrations.map((item) => item.version).join(",") !== CANONICAL_VERSIONS.join(",")) throw new Error("Manifest order differs from canonical release order");
   for (const [index, item] of manifest.migrations.entries()) {
+    const expectedPath = item.version === "20270115000011"
+      ? SKIPPED_MIGRATION_PATH
+      : `supabase/${item.path.startsWith("supabase/migrations/") ? "migrations" : "pending-migrations"}/${item.version}_${item.name}.sql`;
     if (!/^\d{14}$/.test(item.version) || !/^[a-z0-9_]+$/.test(item.name) ||
-        item.path !== `supabase/${item.path.startsWith("supabase/migrations/") ? "migrations" : "pending-migrations"}/${item.version}_${item.name}.sql` ||
+        item.path !== expectedPath ||
         !/^[a-f0-9]{64}$/.test(item.sha256) || !ACTIONS.has(item.action)) throw new Error(`Invalid manifest entry ${index + 1}`);
     if (versions.has(item.version) || paths.has(item.path)) throw new Error("Duplicate migration version or path");
     versions.add(item.version);

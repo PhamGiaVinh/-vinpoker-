@@ -12,8 +12,11 @@ const skipped = manifest.migrations.find((item) => item.action === "SKIP_ALREADY
 test("manifest holds all source checksums and only the exact in-scope paths", () => {
   assert.equal(manifest.migrations.length, 42);
   assert.equal(manifest.migrations.filter((item) => item.action === "APPLY").length, 41);
+  assert.equal(manifest.migrations.find((item) => item.version === "20270115000011").path,
+    "supabase/migration-archive/remote-history/recovered-source/20270115000011_cashier_refund_without_floor_clearance.sql");
   for (const item of manifest.migrations) assert.equal(createHash("sha256").update(files.get(item.version)).digest("hex"), item.sha256);
   assert.throws(() => validateManifest({ ...manifest, migrations: manifest.migrations.map((item, i) => i ? item : { ...item, path: "supabase/pending-migrations/99999999999999_outside.sql" }) }));
+  assert.throws(() => validateManifest({ ...manifest, migrations: manifest.migrations.map((item, i) => i ? item : { ...item, path: "supabase/migration-archive/remote-history/recovered-source/20270115000011_cashier_refund_without_floor_clearance.sql" }) }));
   assert.throws(() => resolveWithinRoot(fileURLToPath(root), "../outside.sql"), /escaped/);
   assert.throws(() => resolveWithinRoot(fileURLToPath(root), fileURLToPath(new URL("../../../../outside.sql", import.meta.url))), /escaped/);
 });

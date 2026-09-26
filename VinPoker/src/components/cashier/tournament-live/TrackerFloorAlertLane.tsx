@@ -179,6 +179,9 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
                   {alert.alert_kind === "wrong_action" && !alert.source_action_id && (
                     <p className="mt-1 text-xs text-zinc-300">Action sai chưa được chỉ rõ; xem toàn bộ nhật ký ván trước khi sửa.</p>
                   )}
+                  {alert.alert_kind === "call_floor" && !alert.source_action_id && (
+                    <p className="mt-1 text-xs text-zinc-300">Chưa chỉ định action · Floor kiểm tra theo bàn{alert.hand_id ? " và hand này" : " (chưa có hand)"}.</p>
+                  )}
                   {alert.alert_kind === "display_issue" && <p className="mt-1 text-xs text-zinc-300">Vấn đề hiển thị; không khóa hand hoặc thay đổi poker state.</p>}
                   {alert.source_action_id && <p className="mt-1 text-xs text-amber-100">
                     Action gốc {alert.source_action_snapshot?.action_order != null ? `#${alert.source_action_snapshot.action_order}` : "đã chọn"}

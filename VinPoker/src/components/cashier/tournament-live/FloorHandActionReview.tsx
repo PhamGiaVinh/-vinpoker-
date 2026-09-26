@@ -15,7 +15,7 @@ export type ReviewAction = {
 type Props = {
   handNumber: number;
   tableName: string;
-  potSize: number;
+  potSize: number | null;
   buttonSeat?: number;
   seats: { seat_number: number; display_name: string }[];
   actions: ReviewAction[];
@@ -58,6 +58,7 @@ export function FloorHandActionReview({ handNumber, tableName, potSize, buttonSe
   }, [initialActionId, actions]);
   const selectedIndex = ordered.findIndex((action) => action.action_order === selectedOrder);
   const selected = selectedIndex >= 0 ? ordered[selectedIndex] : null;
+  const recordedPot = potSize === null ? "Chưa có dữ liệu" : potSize.toLocaleString("vi-VN");
 
   return (
     <section className="space-y-3 rounded-xl border border-emerald-500/30 bg-[#0e1715] p-3 text-zinc-100 sm:p-4" aria-label="Xem toàn bộ action của hand">
@@ -68,14 +69,24 @@ export function FloorHandActionReview({ handNumber, tableName, potSize, buttonSe
         </div>
         <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-right">
           <span className="block text-[10px] uppercase text-amber-200/70">Pot đã ghi</span>
-          <strong className="font-mono text-amber-300">{potSize.toLocaleString("vi-VN")}</strong>
+          <strong className="font-mono text-amber-300">{recordedPot}</strong>
         </div>
       </div>
 
       {seats.length > 0 && (
-        <div className="relative mx-auto h-52 w-full max-w-lg rounded-[50%] border border-amber-400/60 bg-[radial-gradient(ellipse_at_center,#153d31_0%,#0a2720_65%,#091713_100%)] shadow-[inset_0_0_0_5px_#0b1815]" aria-label="Sơ đồ ghế trong hand">
+        <div className="grid grid-cols-3 gap-2 min-[420px]:hidden" aria-label="Ghế trong hand">
+          {[...seats].sort((a, b) => a.seat_number - b.seat_number).map((seat) => (
+            <div key={seat.seat_number} className="min-w-0 rounded-lg border border-white/20 bg-[#101715] p-2 text-center text-xs">
+              <strong className="block text-amber-200">Ghế {seat.seat_number}{buttonSeat === seat.seat_number ? " · BTN" : ""}</strong>
+              <span className="block truncate" title={seat.display_name}>{seat.display_name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {seats.length > 0 && (
+        <div className="relative mx-auto hidden h-52 w-full max-w-lg rounded-[50%] border border-amber-400/60 bg-[radial-gradient(ellipse_at_center,#153d31_0%,#0a2720_65%,#091713_100%)] shadow-[inset_0_0_0_5px_#0b1815] min-[420px]:block" aria-label="Sơ đồ ghế trong hand">
           <span className="absolute left-1/2 top-[50%] -translate-x-1/2 -translate-y-1/2 rounded-lg bg-black/45 px-3 py-1 text-center text-[10px] uppercase tracking-widest text-amber-200">
-            Pot<br /><strong className="font-mono text-sm tracking-normal">{potSize.toLocaleString("vi-VN")}</strong>
+            Pot<br /><strong className="font-mono text-sm tracking-normal">{recordedPot}</strong>
           </span>
           {[...seats].sort((a, b) => a.seat_number - b.seat_number).map((seat) => (
             <span
@@ -134,7 +145,7 @@ export function FloorHandActionReview({ handNumber, tableName, potSize, buttonSe
           </div>
           {canEdit ? (
             <Button type="button" onClick={() => onEditAction(selected.action_order)} className="min-h-11 w-full bg-amber-400 font-semibold text-zinc-950 hover:bg-amber-300">
-              Sửa action #{selected.action_order}
+              Xem bản nháp action #{selected.action_order}
             </Button>
           ) : (
             <p className="text-xs text-amber-100">{isVoided ? "Hand đã void: chỉ đối chiếu, không sửa lịch sử." : "Hand đang chạy hoặc chưa đủ quyền sửa: chỉ đối chiếu tại đây."}</p>

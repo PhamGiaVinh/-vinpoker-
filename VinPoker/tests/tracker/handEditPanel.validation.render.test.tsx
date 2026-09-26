@@ -32,6 +32,13 @@ describe("HandEditPanel action amounts", () => {
     fireEvent.change(screen.getByRole("spinbutton", { name: "Số chip action 3" }), { target: { value: "25" } });
 
     expect(screen.getByText(/Call phải thêm đúng 50/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sửa & tính lại chip" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Xem trước tính chip" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Xem lại & lưu" })).not.toBeInTheDocument();
+  });
+
+  it("labels a missing recorded pot without showing a verified zero", () => {
+    render(<HandEditPanel {...props} potSize={null} />);
+    expect(screen.getByText("Chưa có dữ liệu")).toBeInTheDocument();
+    expect(screen.getByText(/Bản nháp để đối chiếu/)).toBeInTheDocument();
   });
 });

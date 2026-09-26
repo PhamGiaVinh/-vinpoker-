@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const PROJECT_REF = "orlesggcjamwuknxwcpk";
 const VERSION = "20270115000011";
 const NAME = "cashier_refund_without_floor_clearance";
-const MIGRATION_PATH = "supabase/pending-migrations/20270115000011_cashier_refund_without_floor_clearance.sql";
+const MIGRATION_PATH = "supabase/migration-archive/remote-history/recovered-source/20270115000011_cashier_refund_without_floor_clearance.sql";
 const EXPECTED_SHA256 = "b8703796f21706f13c0a2190436172bd167186d6242695f0c4829fe4a857e101";
 const PRIOR_MD5 = "b3c619f7cfb4c28580a4beada0c273e8";
 const SOURCE_TAG = "$cashier_1304_migration_source$";

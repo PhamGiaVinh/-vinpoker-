@@ -1,7 +1,20 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: vi.fn() } }));
+const { actionRows } = vi.hoisted(() => ({ actionRows: { value: [] as Record<string, unknown>[] } }));
+vi.mock("@/integrations/supabase/client", () => ({ supabase: {
+  rpc: vi.fn(),
+  from: vi.fn((table: string) => {
+    const query = {
+      eq: () => query,
+      order: async () => ({ data: actionRows.value, error: null }),
+      maybeSingle: async () => ({ data: { id: "hand", source_revision: 7 }, error: null }),
+      then: (resolve: (value: unknown) => void) => resolve({ data: table === "hand_players"
+        ? [{ player_id: "player-1", entry_number: 1, seat_number: 4 }] : [], error: null }),
+    };
+    return { select: () => query };
+  }),
+} }));
 import { supabase } from "@/integrations/supabase/client";
 import { DealerFloorAlertControls } from "./DealerFloorAlertControls";
 
@@ -10,6 +23,7 @@ const props = { tournamentId: "tournament", tournamentTableId: "table", handId: 
 beforeEach(() => {
   vi.mocked(supabase.rpc).mockReset();
   window.sessionStorage.clear();
+  actionRows.value = [];
 });
 afterEach(cleanup);
 
@@ -28,10 +42,50 @@ describe("Dealer Floor operational alert", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Gọi Floor" }));
     await screen.findByText(/Đã gửi Floor/);
-    expect(supabase.rpc).toHaveBeenCalledWith("report_tracker_floor_operational_alert", expect.objectContaining({
+    expect(supabase.rpc).toHaveBeenCalledWith("report_tracker_floor_operational_alert_v2", expect.objectContaining({
       p_kind: "call_floor", p_hand_id: "hand", p_action_id: null, p_message: "",
     }));
     expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("supports a table-level request before any hand starts", async () => {
+    vi.mocked(supabase.rpc).mockImplementation((async (_name, args: { p_request_id: string }) => ({
+      data: { ok: true, alert_id: "alert-1", request_id: args.p_request_id }, error: null,
+    })) as never);
+    render(<DealerFloorAlertControls {...props} handId={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Gọi Floor" }));
+    await screen.findByText(/Đã gửi Floor/);
+    expect(supabase.rpc).toHaveBeenCalledWith("report_tracker_floor_operational_alert_v2", expect.objectContaining({
+      p_hand_id: null, p_action_id: null,
+    }));
+  });
+
+  it("sends the selected canonical action ID and source revision", async () => {
+    actionRows.value = [{ id: "action-1", hand_id: "hand", action_order: 3, street: "preflop", player_id: "player-1", entry_number: 1, action_type: "call", action_amount: 100000 }];
+    vi.mocked(supabase.rpc).mockImplementation((async (_name, args: { p_request_id: string }) => ({
+      data: { ok: true, alert_id: "alert-1", request_id: args.p_request_id }, error: null,
+    })) as never);
+    render(<DealerFloorAlertControls {...props} />);
+    fireEvent.click(await screen.findByText("Chọn action đã lưu"));
+    fireEvent.click(await screen.findByRole("button", { name: /#3 · preflop · Ghế 4 · call/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Gọi Floor" }));
+    await screen.findByText(/Đã gửi Floor/);
+    expect(supabase.rpc).toHaveBeenCalledWith("report_tracker_floor_operational_alert_v2", expect.objectContaining({
+      p_action_id: "action-1", p_source_revision: 7,
+      p_expected_action: expect.objectContaining({ id: "action-1", action_order: 3, action_type: "call" }),
+    }));
+  });
+
+  it("does not send when the request key cannot be retained", () => {
+    const storage = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    try {
+      render(<DealerFloorAlertControls {...props} />);
+      fireEvent.click(screen.getByRole("button", { name: "Gọi Floor" }));
+      expect(screen.getByText(/Chưa gửi yêu cầu: không lưu được mã/)).toBeTruthy();
+      expect(supabase.rpc).not.toHaveBeenCalled();
+    } finally {
+      storage.mockRestore();
+    }
   });
 
   it("keeps the same request after an uncertain response and reload", async () => {

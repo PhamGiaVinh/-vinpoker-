@@ -116,7 +116,8 @@ export type ValidationCode =
   | "BELOW_MIN_RAISE"
   | "NON_POSITIVE_AMOUNT"
   | "STREET_ACTION_PENDING"
-  | "SIDE_POTS_TAMPERED";
+  | "SIDE_POTS_TAMPERED"
+  | "INVALID_STREET_PROGRESSION";
 
 export interface ValidationResult {
   valid: boolean;

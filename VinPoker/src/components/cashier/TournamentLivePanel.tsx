@@ -89,11 +89,12 @@ const MODE_TABS: Record<string, string[]> = {
   floor: ["table_map", "players", "queue", "prizes", "blinds", "tv_displays", "td_ai"],
 };
 
-export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: { clubIds: string[]; clubs: { id: string; name: string }[]; mode?: "full" | "tracker" | "floor" }) {
+export default function TournamentLivePanel({ clubIds, clubs, mode = "full", onSelectedTournamentChange }: { clubIds: string[]; clubs: { id: string; name: string }[]; mode?: "full" | "tracker" | "floor"; onSelectedTournamentChange?: (id: string | null) => void }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [tournaments, setTournaments] = useState<Tournament[] | null>(null);
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(null);
+  useEffect(() => { onSelectedTournamentChange?.(selectedTournamentId); }, [onSelectedTournamentChange, selectedTournamentId]);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [closeReportOpen, setCloseReportOpen] = useState(false);
   const [loading, setLoading] = useState(false);

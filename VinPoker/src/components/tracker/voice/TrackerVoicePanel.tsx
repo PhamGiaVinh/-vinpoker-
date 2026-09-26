@@ -1705,10 +1705,11 @@ export function TrackerVoicePanel({
         <div className="grid grid-cols-2 gap-2" aria-label="Floor alerts">
           <button
             type="button"
-            onClick={() => submitControlAction("report_wrong_action")}
+            disabled
+            title="Báo sai action đang tạm khóa; dùng Gọi Floor để được hỗ trợ. Hand chưa tự dừng."
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-300/30 bg-rose-300/[0.08] px-3 text-xs font-bold text-rose-100 outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
           >
-            <AlertTriangle className="h-4 w-4" /> Báo sai action
+            <AlertTriangle className="h-4 w-4" /> Báo sai action (chưa khả dụng)
           </button>
           <button
             type="button"

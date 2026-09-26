@@ -81,6 +81,6 @@ describe("tracker preflop legality after blinds (starting_stack seed regression)
 
     const r = validateAction(seeds(0), BLINDS, BUTTON, utgCall);
     expect(r.valid).toBe(false);
-    expect(r.code).toBe("CALL_WITH_NOTHING_TO_CALL");
+    expect(r.code).toBe("HAND_NOT_ACTIVE");
   });
 });

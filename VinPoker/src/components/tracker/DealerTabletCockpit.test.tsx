@@ -1,8 +1,22 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StandaloneHandInput } from "@/components/cashier/tournament-live/handinput/useStandaloneHandInput";
-vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: vi.fn(), from: vi.fn() } }));
+vi.mock("@/integrations/supabase/client", () => {
+  const query = {
+    select: vi.fn(), eq: vi.fn(), order: vi.fn(), maybeSingle: vi.fn(),
+    then: (resolve: (value: { data: unknown[]; error: null }) => unknown) =>
+      Promise.resolve({ data: [], error: null }).then(resolve),
+  };
+  query.select.mockReturnValue(query);
+  query.eq.mockReturnValue(query);
+  query.order.mockReturnValue(query);
+  query.maybeSingle.mockResolvedValue({ data: { source_revision: 1 }, error: null });
+  return { supabase: { rpc: vi.fn(), from: vi.fn(() => query) } };
+});
 vi.mock("@/lib/featureFlags", () => ({ FEATURES: { floorTableControlV3: true, trackerOperationalFloorAlerts: false } }));
+vi.mock("@/ops/chip-ops/MultiDayBaggingPanel", () => ({
+  MultiDayBaggingPanel: ({ tournamentId }: { tournamentId: string }) => <p>Dealer bagging for {tournamentId}</p>,
+}));
 vi.mock("@/ops/chip-ops/MultiDayBaggingPanel", () => ({
   MultiDayBaggingPanel: ({ tournamentId }: { tournamentId: string }) => <p>Dealer bagging for {tournamentId}</p>,
 }));

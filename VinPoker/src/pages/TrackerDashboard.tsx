@@ -16,6 +16,7 @@ export default function TrackerDashboard() {
   const [clubs, setClubs] = useState<ClubRow[] | null>(null);
   const [clubsError, setClubsError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [historyTournamentId, setHistoryTournamentId] = useState<string | null>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -94,11 +95,11 @@ export default function TrackerDashboard() {
             {clubs.length === 1 ? clubs[0].name : `${clubs.length} CLB`}
           </div>
         </div>
-        <Button type="button" variant="outline" className="min-h-11 border-amber-500/35 text-amber-200" onClick={() => nav("/tracker/history")}>
+        <Button type="button" variant="outline" className="min-h-11 border-amber-500/35 text-amber-200" onClick={() => nav(historyTournamentId ? `/tracker/history?t=${encodeURIComponent(historyTournamentId)}` : "/tracker/history")}>
           <History className="mr-2 h-4 w-4" /> Lịch sử & sửa hand
         </Button>
       </div>
-      <TournamentLivePanel mode="tracker" clubIds={clubIds} clubs={clubs} />
+      <TournamentLivePanel mode="tracker" clubIds={clubIds} clubs={clubs} onSelectedTournamentChange={setHistoryTournamentId} />
     </div>
   );
 }

@@ -259,7 +259,7 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
         run: |
           set -euo pipefail
-          migration_source="$(pwd)/supabase/pending-migrations/$MIGRATION_FILE"
+          migration_source="$(pwd)/supabase/migration-archive/remote-history/recovered-source/$MIGRATION_FILE"
           test "$(sha256sum "$migration_source" | awk '{print toupper($1)}')" = "$MIGRATION_SHA256"
           node scripts/ops/cashier-1304-release-gate.mjs apply \
             "${RUNNER_TEMP}/cashier-1304-apply.json"
