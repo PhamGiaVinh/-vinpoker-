@@ -36,6 +36,7 @@ export type FloorTableControlV3RpcName =
   | "floor_restore_busted_player_to_seat_v4"
   | "floor_plan_tournament_redraw_v1"
   | "floor_apply_tournament_redraw_v1"
+  | "floor_continue_tournament_redraw_v1"
   | "get_public_tournament_redraw_v1"
   | "get_floor_pending_tracker_moves_v1"
   | "floor_queue_tracker_move_v1"
@@ -154,6 +155,11 @@ export type FloorRedrawPlan = {
   playerCount: number | null;
   movedCount: number | null;
   moves: FloorRedrawMove[];
+};
+
+export type FloorActiveRedraw = {
+  batchId: string;
+  redrawRevision: number;
 };
 
 export type FloorRestorableEntry = {
@@ -892,6 +898,42 @@ export function createFloorTableControlV3Client(
       const mutation = parseMutation(response.data);
       if (mutation.ok === false) return { ok: false, error: mutation.error };
       return parseRedrawPlan(mutation.data);
+    },
+
+    async getActiveTournamentRedraw(tournamentId: string): Promise<FloorTableControlV3Result<FloorActiveRedraw | null>> {
+      const response = await callRedrawSeatLock("get_public_tournament_redraw_v1", {
+        p_tournament_id: tournamentId,
+      });
+      if (response.ok === false) return response;
+      if (!isRecord(response.data)) return { ok: false, error: "V3_REDRAW_RESPONSE_MALFORMED" };
+      if (response.data.batch_id == null) return { ok: true, data: null };
+      if (typeof response.data.batch_id !== "string" || !response.data.batch_id
+        || typeof response.data.redraw_revision !== "number"
+        || !Number.isSafeInteger(response.data.redraw_revision)
+        || response.data.redraw_revision < 1) {
+        return { ok: false, error: "V3_REDRAW_RESPONSE_MALFORMED" };
+      }
+      return { ok: true, data: {
+        batchId: response.data.batch_id,
+        redrawRevision: response.data.redraw_revision,
+      } };
+    },
+
+    async continueTournamentRedraw(args: { batchId: string; expectedRedrawRevision: number; requestId: string }): Promise<FloorTableControlV3Result<{ clockResumed: boolean }>> {
+      const response = await callRedrawSeatLock("floor_continue_tournament_redraw_v1", {
+        p_batch_id: args.batchId,
+        p_expected_redraw_revision: args.expectedRedrawRevision,
+        p_request_id: args.requestId,
+      });
+      const mutation = mutationFromResponse(response);
+      if (mutation.ok === false) return mutation;
+      if (mutation.data.batch_id !== args.batchId
+        || typeof mutation.data.redraw_revision !== "number"
+        || !Number.isSafeInteger(mutation.data.redraw_revision)
+        || typeof mutation.data.clock_resumed !== "boolean") {
+        return { ok: false, error: "V3_REDRAW_CONTINUE_RESPONSE_MALFORMED" };
+      }
+      return { ok: true, data: { clockResumed: mutation.data.clock_resumed } };
     },
 
     validateTrackerContext: (args: { tournamentId: string; tournamentTableId: string; tableSessionId: string; controlEpoch: number }) =>

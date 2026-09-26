@@ -9,6 +9,9 @@ DO $$ BEGIN CREATE ROLE anon; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE ROLE authenticated; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE ROLE service_role; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- Supabase authenticated callers can resolve auth.uid() from SECURITY INVOKER RPCs.
+GRANT USAGE ON SCHEMA auth TO authenticated;
+
 CREATE TYPE public.app_role AS ENUM ('super_admin');
 
 CREATE OR REPLACE FUNCTION auth.uid()
@@ -16,6 +19,7 @@ RETURNS uuid
 LANGUAGE sql
 STABLE
 AS $$ SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;
 
 CREATE TABLE public.clubs (
   id uuid PRIMARY KEY,
@@ -69,6 +73,27 @@ CREATE TABLE public.tournament_entries (
   updated_at timestamptz NOT NULL DEFAULT now(),
   status text NOT NULL DEFAULT 'registered',
   UNIQUE (tournament_id, player_id, entry_no)
+);
+-- Minimal real baseline for the redraw/apply history write. Keep the actual
+-- discriminator constraint so the RPC must satisfy the production contract.
+CREATE TABLE public.seat_assignment_history (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  tournament_id uuid NOT NULL REFERENCES public.tournaments(id) ON DELETE CASCADE,
+  entry_id uuid NOT NULL REFERENCES public.tournament_entries(id) ON DELETE CASCADE,
+  player_id uuid NOT NULL,
+  from_table_id uuid,
+  from_table_number integer,
+  from_seat_number integer,
+  to_table_id uuid REFERENCES public.game_tables(id),
+  to_table_number integer,
+  to_seat_number integer NOT NULL,
+  reason text NOT NULL DEFAULT 'initial_draw',
+  draw_type text NOT NULL CHECK (
+    draw_type IN ('initial', 'manual_move', 'final_table_redraw')
+  ),
+  actor_user_id uuid NOT NULL,
+  metadata jsonb NOT NULL DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.tournament_registrations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -135,6 +160,25 @@ CREATE TABLE public.club_cashiers (club_id uuid NOT NULL, user_id uuid NOT NULL)
 CREATE TABLE public.club_dealer_controls (club_id uuid NOT NULL, user_id uuid NOT NULL);
 CREATE TABLE public.club_trackers (club_id uuid NOT NULL, user_id uuid NOT NULL);
 CREATE TABLE public.profiles (user_id uuid PRIMARY KEY, display_name text);
+ALTER TABLE public.seat_assignment_history ENABLE ROW LEVEL SECURITY;
+-- Match the effective table ACL observed on the live public table. The base
+-- migration supplies RLS policies but relies on the project's default grants.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.seat_assignment_history
+  TO anon, authenticated, service_role;
+CREATE POLICY seat_assignment_history_select_authenticated
+  ON public.seat_assignment_history FOR SELECT TO authenticated USING (true);
+CREATE POLICY seat_assignment_history_write_club_admin
+  ON public.seat_assignment_history FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.tournaments t
+      LEFT JOIN public.clubs c ON c.id = t.club_id
+      LEFT JOIN public.club_cashiers cc ON cc.club_id = t.club_id AND cc.user_id = auth.uid()
+      WHERE t.id = seat_assignment_history.tournament_id
+        AND (c.owner_id = auth.uid() OR cc.user_id IS NOT NULL)
+    )
+  );
 CREATE TABLE public.tournament_chip_counts (
   tournament_id uuid NOT NULL,
   player_id uuid NOT NULL,
@@ -158,6 +202,10 @@ RETURNS boolean LANGUAGE sql STABLE AS $$
 $$;
 CREATE OR REPLACE FUNCTION public.has_role(p_user_id uuid, p_role public.app_role)
 RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
+
+-- Load the exact active tracker RPC source/signature used by production, not a
+-- test stub, so the race below exercises the real SECURITY INVOKER writer.
+\ir ../../supabase/migrations/20270112000005_tracker_start_hand_authority_binding.sql
 
 CREATE OR REPLACE FUNCTION public.floor_table_v3_assert(p_condition boolean, p_message text)
 RETURNS void LANGUAGE plpgsql AS $$
@@ -288,6 +336,7 @@ SELECT public.floor_table_v3_assert(
 \ir ../../supabase/migrations/20270114000006_tracker_roster_canonical_entry_link.sql
 \ir ../../supabase/migrations/20270114000007_floor_v3_roster_seat_display_name.sql
 \ir ../../supabase/migrations/20270114000011_floor_redraw_seat_lock_v1.sql
+\ir ../../supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql
 \ir ../../supabase/migrations/20270114000012_floor_v3_numbered_available_table.sql
 
 DO $$

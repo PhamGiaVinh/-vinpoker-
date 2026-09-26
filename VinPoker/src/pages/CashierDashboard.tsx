@@ -29,6 +29,7 @@ import { TournamentRegistrationsTab } from "@/components/admin/TournamentRegistr
 import { OfflineBuyInPanel } from "@/components/cashier/OfflineBuyInPanel";
 import { DocumentRedirect } from "@/components/DocumentRedirect";
 import { ReentryPanel } from "@/components/cashier/ReentryPanel";
+import { SatelliteTicketRedeemPanel } from "@/components/cashier/SatelliteTicketRedeemPanel";
 import { SePaySettlementTab } from "@/components/cashier/SePaySettlementTab";
 import { FEATURES, OPS_TOUR_CASHIER_ENABLED } from "@/lib/featureFlags";
 import { PROFILE_REVIEW_ENABLED } from "@/lib/profileReviewGate";
@@ -185,7 +186,7 @@ export default function CashierDashboard() {
           {section === "reports" && <ReportsPanel clubIds={clubIds} clubs={clubs} />}
           {section === "tournament_registrations" && (
             showRegistrations ? (
-              <TournamentRegistrationsTab clubIds={clubIds} />
+              <div className="space-y-4"><SatelliteTicketRedeemPanel /><TournamentRegistrationsTab clubIds={clubIds} /></div>
             ) : (
               // Deep-link guard: tab hidden while the feature flag is off and the
               // viewer is neither admin nor club owner.
