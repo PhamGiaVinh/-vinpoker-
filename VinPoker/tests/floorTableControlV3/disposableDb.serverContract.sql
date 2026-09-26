@@ -352,15 +352,6 @@ SELECT public.floor_table_v3_assert(
 \ir ../../supabase/migrations/20270114000007_floor_v3_roster_seat_display_name.sql
 \ir ../../supabase/migrations/20270114000011_floor_redraw_seat_lock_v1.sql
 \ir ../../supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql
--- The compact disposable schema predates the production blind-clock migration.
-ALTER TABLE public.tournaments
-  ADD COLUMN clock_started_at timestamptz,
-  ADD COLUMN clock_paused_at timestamptz,
-  ADD COLUMN pause_accumulated integer DEFAULT 0,
-  ADD COLUMN current_level integer,
-  ADD COLUMN current_blinds text,
-  ADD COLUMN current_level_id uuid;
-\ir ../../supabase/pending-migrations/20270126000001_redraw_clock_hold_v1.sql
 \ir ../../supabase/migrations/20270114000012_floor_v3_numbered_available_table.sql
 
 DO $$

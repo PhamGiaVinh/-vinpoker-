@@ -5,6 +5,16 @@
 -- only initial tournament/table/entry state is seeded by the fixture owner.
 -- Redraw-owned UUIDs use a separate namespace because this fixture remains
 -- committed for the following Continue/start_hand concurrency script.
+-- Apply the clock migration here, after the legacy writer fixtures have added
+-- their test-only hand columns to the disposable schema.
+ALTER TABLE public.tournaments
+  ADD COLUMN clock_started_at timestamptz,
+  ADD COLUMN clock_paused_at timestamptz,
+  ADD COLUMN pause_accumulated integer DEFAULT 0,
+  ADD COLUMN current_level integer,
+  ADD COLUMN current_blinds text,
+  ADD COLUMN current_level_id uuid;
+\ir ../../supabase/pending-migrations/20270126000001_redraw_clock_hold_v1.sql
 BEGIN;
 
 UPDATE public.centerpoint_tournament_ops_release
