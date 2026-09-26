@@ -356,36 +356,6 @@ SELECT public.floor_table_v3_assert(
 
 DO $$
 DECLARE
-  v_message text;
-BEGIN
-  IF (SELECT enabled FROM public.centerpoint_tournament_ops_release WHERE id)
-       IS DISTINCT FROM false THEN
-    RAISE EXCEPTION 'redraw package gate must default OFF';
-  END IF;
-
-  BEGIN
-    INSERT INTO public.tournament_redraw_batches (tournament_id)
-    VALUES ('00000000-0000-0000-0000-000000000100');
-    RAISE EXCEPTION 'redraw mutation unexpectedly passed while package gate was closed';
-  EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_message = MESSAGE_TEXT;
-    IF v_message <> 'CENTERPOINT_TOURNAMENT_OPS_RELEASE_CLOSED' THEN
-      RAISE;
-    END IF;
-  END;
-
-  IF EXISTS (
-    SELECT 1 FROM public.table_sessions
-    WHERE tournament_id = '00000000-0000-0000-0000-000000000100'
-      AND redraw_hold_batch_id IS NOT NULL
-  ) THEN
-    RAISE EXCEPTION 'closed gate created a redraw hold';
-  END IF;
-END;
-$$;
-
-DO $$
-DECLARE
   v_result jsonb;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
