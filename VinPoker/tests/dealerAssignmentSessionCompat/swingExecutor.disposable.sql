@@ -12,6 +12,7 @@ ALTER TABLE public.dealer_attendance
   ADD COLUMN pool_entered_at timestamptz;
 
 ALTER TABLE public.dealer_assignments
+  ADD COLUMN dealer_id uuid,
   ADD COLUMN pre_assigned_attendance_id uuid,
   ADD COLUMN pre_assigned_at timestamptz,
   ADD COLUMN swing_processed_at timestamptz,
@@ -102,6 +103,13 @@ INSERT INTO public.dealer_assignments(id, attendance_id, table_id, club_id, stat
 UPDATE public.dealer_assignments
 SET table_session_id = '51000000-0000-4000-8000-000000000041'
 WHERE id = '61000000-0000-4000-8000-000000000004';
+UPDATE public.dealer_assignments assignment_row
+SET dealer_id = attendance_row.dealer_id
+FROM public.dealer_attendance attendance_row
+WHERE attendance_row.id = assignment_row.attendance_id;
+UPDATE public.dealer_assignments
+SET table_session_id = '51000000-0000-4000-8000-000000000001'
+WHERE id = '61000000-0000-4000-8000-000000000001';
 
 SELECT public.execute_pre_assigned_swing_rpc(
   '61000000-0000-4000-8000-000000000001', '31000000-0000-4000-8000-000000000002', now() + interval '30 minutes', 30, false, 15
@@ -116,7 +124,7 @@ SELECT public.assert_true(
   (SELECT attendance_id = '31000000-0000-4000-8000-000000000002'::uuid
    FROM public.dealer_assignments
    WHERE table_session_id = '51000000-0000-4000-8000-000000000001' AND status = 'assigned' AND released_at IS NULL),
-  'runtime authority transfers from outgoing A to incoming B'
+  'sole exact-session assignment transfers from outgoing A to incoming B'
 );
 
 -- A retry cannot create a duplicate or credit worked time twice.
@@ -175,6 +183,19 @@ SELECT public.assert_true(:'rollover_result'::jsonb->>'error' = 'TABLE_SESSION_S
 SELECT public.assert_true(
   NOT EXISTS (SELECT 1 FROM public.dealer_assignments WHERE idempotency_key = 'pre_assign_61000000-0000-4000-8000-000000000004'),
   'close-reopen stale failure creates no assignment on B'
+);
+
+-- The same rollover must also reject an unbound historical assignment. The
+-- current active session alone is not proof that the NULL row belongs to it.
+UPDATE public.dealer_assignments
+SET table_session_id = NULL
+WHERE id = '61000000-0000-4000-8000-000000000004';
+SELECT public.execute_pre_assigned_swing_rpc(
+  '61000000-0000-4000-8000-000000000004', '31000000-0000-4000-8000-000000000008', now() + interval '30 minutes', 30, false, 15
+) AS result \gset rollover_null_
+SELECT public.assert_true(
+  :'rollover_null_result'::jsonb->>'error' = 'TABLE_SESSION_BINDING_REQUIRED',
+  'close-reopen NULL assignment requires verified repair before swing'
 );
 
 SELECT 'SWING_EXECUTOR_SESSION_BINDING=PASS';
