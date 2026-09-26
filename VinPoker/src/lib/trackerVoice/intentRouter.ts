@@ -1,4 +1,4 @@
-import type { TrackerWorkflowState } from "@/components/cashier/tournament-live/handinput/trackerWorkflow";
+import type { TrackerWorkflowState } from "../../components/cashier/tournament-live/handinput/trackerWorkflow.ts";
 import { parseTrackerVoiceCommandCore, type TrackerVoiceAmountOptions } from "./parserCore.ts";
 import { parseVoiceBoardCommand } from "./boardParser.ts";
 import { parseVoiceHoleCardsCommand } from "./holeCardsParser.ts";
