@@ -304,6 +304,8 @@ jobs:
             -f tests/trackerCorrectionRelease2/release2.pg17.sql
           echo "TRACKER_CORRECTION_RELEASE2_15000016_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f supabase/migrations/20261238000002_tracker_settlement_outcome_store.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
             -f supabase/migrations/20270115000001_tracker_blind_position_lineage.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
             -f supabase/migration-archive/historical-never-replay/20270115000002_tracker_hand_correction_commit_receipt.sql
