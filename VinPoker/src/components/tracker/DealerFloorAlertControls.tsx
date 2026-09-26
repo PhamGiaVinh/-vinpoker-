@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, PhoneCall } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
-type AlertKind = "call_floor" | "display_issue";
+type AlertKind = "call_floor" | "display_issue" | "wrong_action";
 type CanonicalAction = {
   id: string;
   hand_id: string;
@@ -35,7 +35,8 @@ function loadPending(key: string): PendingAlert | null {
     const action = value.action ?? null;
     const sourceRevision = value.sourceRevision ?? null;
     return typeof value.requestId === "string" && typeof value.tournamentId === "string"
-      && typeof value.tournamentTableId === "string" && (value.kind === "call_floor" || value.kind === "display_issue")
+      && typeof value.tournamentTableId === "string"
+      && (value.kind === "call_floor" || value.kind === "display_issue" || value.kind === "wrong_action")
       && typeof value.message === "string" && (value.handId === null || typeof value.handId === "string")
       && (action === null || (typeof action === "object" && typeof action.id === "string"))
       && (sourceRevision === null || Number.isSafeInteger(sourceRevision))
@@ -120,17 +121,27 @@ export function DealerFloorAlertControls({ tournamentId, tournamentTableId, hand
     setStatus("sending");
     setDetail("");
     try {
-      const { data, error } = await supabase.rpc("report_tracker_floor_operational_alert_v2" as never, {
-        p_tournament_id: request.tournamentId,
-        p_tournament_table_id: request.tournamentTableId,
-        p_hand_id: request.handId,
-        p_action_id: request.action?.id ?? null,
-        p_kind: request.kind,
-        p_message: request.message,
-        p_request_id: request.requestId,
-        p_expected_action: request.action,
-        p_source_revision: request.sourceRevision,
-      } as never);
+      const { data, error } = request.kind === "wrong_action"
+        ? await supabase.rpc("report_tracker_wrong_action_v1" as never, {
+          p_tournament_id: request.tournamentId,
+          p_tournament_table_id: request.tournamentTableId,
+          p_hand_id: request.handId,
+          p_action_id: request.action?.id,
+          p_expected_action: request.action,
+          p_expected_source_revision: request.sourceRevision,
+          p_request_id: request.requestId,
+        } as never)
+        : await supabase.rpc("report_tracker_floor_operational_alert_v2" as never, {
+          p_tournament_id: request.tournamentId,
+          p_tournament_table_id: request.tournamentTableId,
+          p_hand_id: request.handId,
+          p_action_id: request.action?.id ?? null,
+          p_kind: request.kind,
+          p_message: request.message,
+          p_request_id: request.requestId,
+          p_expected_action: request.action,
+          p_source_revision: request.sourceRevision,
+        } as never);
       const receipt = data as { ok?: boolean; alert_id?: string; request_id?: string; error?: string } | null;
       if (error) throw error;
       if (receipt?.ok && typeof receipt.alert_id === "string" && receipt.request_id === request.requestId) {
@@ -177,6 +188,10 @@ export function DealerFloorAlertControls({ tournamentId, tournamentTableId, hand
       <button type="button" disabled={!enabled || Boolean(pending) || status === "sending"} onClick={() => void submit("display_issue")}>
         <AlertTriangle size={16} /> Vấn đề hiển thị
       </button>
+      <button type="button" disabled={!enabled || !selectedAction || sourceRevision === null || Boolean(pending) || status === "sending"}
+        onClick={() => void submit("wrong_action")}>
+        <AlertTriangle size={16} /> Báo sai action
+      </button>
     </div>
     {pending && status !== "sending" && <button type="button" className="dealer-floor-retry" disabled={!enabled}
       onClick={() => void submit(pending.kind)}>Kiểm tra lại yêu cầu đang chờ</button>}
@@ -186,7 +201,7 @@ export function DealerFloorAlertControls({ tournamentId, tournamentTableId, hand
         status === "unknown" ? detail || "Chưa xác nhận được kết quả; kiểm tra lại bằng cùng mã yêu cầu." :
         status === "sent" ? `Đã gửi Floor. ${detail}` :
         status === "rejected" ? `Chưa gửi được: ${detail}` :
-        "Gọi Floor không dừng hand. Báo sai poker state sẽ có luồng sửa riêng."}
+        "Gọi Floor không dừng hand. Báo sai action sẽ tạm dừng tiến hand sau khi máy chủ trả receipt."}
     </p>
     {pending && <small className="dealer-floor-request-id">Mã yêu cầu: {pending.requestId}</small>}
   </section>;

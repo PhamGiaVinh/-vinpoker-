@@ -1,0 +1,45 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const root = process.cwd();
+const migration = readFileSync(resolve(
+  root,
+  "supabase/migrations/20270115000016_tracker_correction_uat_release2.sql",
+), "utf8").replace(/\r\n/g, "\n");
+const edge = readFileSync(resolve(root, "supabase/functions/tournament-live-update/index.ts"), "utf8");
+
+describe("Tracker correction Release 2 contract", () => {
+  it("ships disabled by default and binds capabilities to an exact user/table scope", () => {
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS public.tracker_correction_uat_scopes");
+    expect(migration).toContain("user_id uuid NOT NULL REFERENCES auth.users(id)");
+    expect(migration).toContain("enabled boolean NOT NULL DEFAULT false");
+    expect(migration).not.toMatch(/INSERT INTO public\.tracker_correction_uat_scopes/i);
+    expect(migration).toContain("scope_row.tournament_table_id = p_tournament_table_id");
+    expect(migration).toContain("scope_row.user_id = v_actor");
+  });
+
+  it("keeps legacy undo private and exposes only the reviewed wrapper", () => {
+    expect(migration).toContain("v_legacy := public.delete_last_action(p_hand_id, v_actor)");
+    expect(migration).not.toContain("GRANT EXECUTE ON FUNCTION public.delete_last_action");
+    expect(migration).toContain("p_expected_action_id uuid");
+    expect(migration).toContain("p_expected_source_revision bigint");
+    expect(migration).toContain("UNIQUE (actor_user_id, idempotency_key)");
+    expect(migration).toContain("'undo_boundary_blind'");
+    expect(migration).toContain("'undo_boundary_board'");
+  });
+
+  it("creates correction-pending only from a stable action reference", () => {
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.report_tracker_wrong_action_v1");
+    expect(migration).toContain("v_snapshot IS DISTINCT FROM p_expected_action");
+    expect(migration).toContain("correction_state = 'correction_pending'");
+    expect(migration).toContain("correction_required, title, message");
+  });
+
+  it("routes browser undo through the new server contract", () => {
+    expect(edge).toContain('case "undo_last_action_v1"');
+    expect(edge).toContain('supabase.rpc("undo_tracker_last_action_v1"');
+    expect(edge).toContain("p_expected_action_id: expected_action_id");
+    expect(edge).toContain("p_expected_source_revision: expected_source_revision");
+  });
+});
