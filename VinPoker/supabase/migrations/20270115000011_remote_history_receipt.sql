@@ -1,0 +1,7 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270115000011
+-- Remote ledger name: cashier_refund_without_floor_clearance
+-- Linked production ledger contains this version; the reviewed SQL source is
+-- preserved byte-for-byte under remote-history/recovered-source.
+-- This comment-only receipt must never replay the Cashier migration or mutate
+-- production data. Source equivalence is not inferred from this receipt alone.

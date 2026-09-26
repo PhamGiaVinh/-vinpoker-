@@ -1,4 +1,4 @@
-import type { TrackerWorkflowState, WorkflowStreet } from "@/components/cashier/tournament-live/handinput/trackerWorkflow";
+import type { TrackerWorkflowState, WorkflowStreet } from "../../components/cashier/tournament-live/handinput/trackerWorkflow.ts";
 import type { VoiceCanonicalRequest } from "./canonicalRequest.ts";
 import type { TranscriptRepair } from "./transcriptHardener.ts";
 

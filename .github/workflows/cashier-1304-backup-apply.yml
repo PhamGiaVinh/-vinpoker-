@@ -96,11 +96,13 @@ jobs:
           supabase link --project-ref "$PROJECT_REF"
           supabase db dump --linked --role-only --file "$backup_root/roles.sql"
           supabase db dump --linked --file "$backup_root/schema.sql"
+          supabase db dump --linked --schema supabase_migrations \
+            --file "$backup_root/migration-schema.sql"
           supabase db dump --linked --schema supabase_migrations --data-only --use-copy \
             --file "$backup_root/migration-history.sql"
           supabase db dump --linked --data-only --use-copy --file "$backup_root/data.sql"
           snapshot_finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          for required in roles.sql schema.sql migration-history.sql data.sql; do
+          for required in roles.sql schema.sql migration-schema.sql migration-history.sql data.sql; do
             test -s "$backup_root/$required"
           done
           for table in cashier_refund_requests cashier_buyin_movements cashier_till_shifts \
@@ -113,7 +115,7 @@ jobs:
             echo "project_fingerprint=$project_fingerprint"
             echo "snapshot_started_at=$snapshot_started_at"
             echo "snapshot_finished_at=$snapshot_finished_at"
-            echo "backup_scope=roles,schema,migration_history,data"
+            echo "backup_scope=roles,schema,migration_schema,migration_history,data"
             echo "format=supabase_cli_sql_copy"
           } >"$backup_root/metadata.txt"
           cp "$backup_root/metadata.txt" "$artifact_root/metadata.txt"
@@ -178,7 +180,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm install --global supabase@2.101.0
+          npm install --global supabase@2.117.0
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends age
           docker pull curlimages/curl:8.12.1 >/dev/null
@@ -228,10 +230,6 @@ jobs:
           ref: ${{ inputs.target_sha }}
           fetch-depth: 0
 
-      - name: Install pinned Supabase CLI
-        shell: bash
-        run: npm install --global supabase@2.101.0
-
       - name: Verify recovery freshness and final live preflight
         id: preflight
         working-directory: VinPoker
@@ -252,31 +250,19 @@ jobs:
           [[ "$action" = apply || "$action" = postcheck ]]
           printf 'action=%s\n' "$action" >>"$GITHUB_OUTPUT"
 
-      - name: Stage exactly one migration and apply it versionedly
+      - name: Apply exactly one allowlisted migration atomically
         if: steps.preflight.outputs.action == 'apply'
         working-directory: VinPoker
         shell: bash
         env:
           SUPABASE_PROJECT_REF: ${{ env.PROJECT_REF }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           set -euo pipefail
-          stage_root="$(mktemp -d -t cashier-1304-apply-XXXXXXXX)"
-          trap 'rm -rf -- "$stage_root"' EXIT
-          supabase init --workdir "$stage_root" >/dev/null
-          migration_source="$(pwd)/supabase/pending-migrations/$MIGRATION_FILE"
+          migration_source="$(pwd)/supabase/migration-archive/remote-history/recovered-source/$MIGRATION_FILE"
           test "$(sha256sum "$migration_source" | awk '{print toupper($1)}')" = "$MIGRATION_SHA256"
-          test -z "$(find "$stage_root/supabase/migrations" -mindepth 1 -maxdepth 1 -type f -print -quit)"
-          cp "$migration_source" "$stage_root/supabase/migrations/$MIGRATION_FILE"
-          test "$(find "$stage_root/supabase/migrations" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" = 1
-          test "$(basename "$(find "$stage_root/supabase/migrations" -mindepth 1 -maxdepth 1 -type f)")" = "$MIGRATION_FILE"
-          supabase link --workdir "$stage_root" --project-ref "$PROJECT_REF"
-          set +e
-          supabase migration up --workdir "$stage_root" --linked
-          apply_rc=$?
-          set -e
-          printf 'MIGRATION_COMMAND_EXIT=%s\n' "$apply_rc"
+          node scripts/ops/cashier-1304-release-gate.mjs apply \
+            "${RUNNER_TEMP}/cashier-1304-apply.json"
 
       - name: Verify ledger, function, ACL, and excluded versions
         working-directory: VinPoker

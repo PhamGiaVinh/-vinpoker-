@@ -7,6 +7,23 @@ if [[ -z "$archive_dir" ]]; then
   exit 1
 fi
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+auth_compat_sql="$script_dir/supabase-auth-forward-compat-20260911.sql"
+test -s "$auth_compat_sql" || {
+  echo "Pinned Supabase Auth compatibility migrations are unavailable" >&2
+  exit 1
+}
+storage_compat_sql="$script_dir/supabase-storage-forward-compat-20260925.sql"
+test -s "$storage_compat_sql" || {
+  echo "Pinned Supabase Storage compatibility migrations are unavailable" >&2
+  exit 1
+}
+cashier_acl_sql="$script_dir/cashier-1304-restore-acl.sql"
+test -s "$cashier_acl_sql" || {
+  echo "Cashier restore ACL contract is unavailable" >&2
+  exit 1
+}
+
 for required in cashier-1304-backup.tar.gz.age ciphertext.sha256 archive.sha256 metadata.txt; do
   test -f "$archive_dir/$required" || {
     echo "Missing backup artifact member: $required" >&2
@@ -108,7 +125,7 @@ tar -xzf "$plain_archive" -C "$restore_root"
 rm -f -- "$plain_archive"
 
 backup_root="$restore_root/cashier-1304-backup"
-for required in roles.sql schema.sql migration-history.sql data.sql metadata.txt; do
+for required in roles.sql schema.sql migration-schema.sql migration-history.sql data.sql metadata.txt; do
   test -s "$backup_root/$required" || {
     echo "Decrypted backup member is missing or empty: $required" >&2
     exit 1
@@ -123,7 +140,33 @@ for table in cashier_refund_requests cashier_buyin_movements cashier_till_shifts
   }
 done
 
-for sql_file in roles.sql schema.sql migration-history.sql data.sql; do
+local_superuser_state="$(docker exec "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
+    -c "SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user"')"
+if [[ "$local_superuser_state" != 'supabase_admin|t' ]]; then
+  echo "Disposable Supabase admin role is unavailable or not a superuser" >&2
+  exit 1
+fi
+
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -v ON_ERROR_STOP=1 \
+    -U supabase_admin -d postgres' \
+  <"$auth_compat_sql" >"$test_root/auth-forward-compat.log" 2>&1; then
+  echo "Failed to align disposable Auth schema with pinned Supabase Auth migrations" >&2
+  tail -n 35 "$test_root/auth-forward-compat.log" >&2
+  exit 1
+fi
+
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -v ON_ERROR_STOP=1 \
+    -U supabase_admin -d postgres' \
+  <"$storage_compat_sql" >"$test_root/storage-forward-compat.log" 2>&1; then
+  echo "Failed to align disposable Storage schema with pinned Supabase Storage migrations" >&2
+  tail -n 35 "$test_root/storage-forward-compat.log" >&2
+  exit 1
+fi
+
+for sql_file in roles.sql schema.sql migration-schema.sql migration-history.sql; do
   if ! docker exec -i "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
     <"$backup_root/$sql_file" >"$test_root/${sql_file}.log" 2>&1; then
     echo "Restore failed for $sql_file" >&2
@@ -131,6 +174,24 @@ for sql_file in roles.sql schema.sql migration-history.sql data.sql; do
     exit 1
   fi
 done
+
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -v ON_ERROR_STOP=1 \
+    -U supabase_admin -d postgres' \
+  <"$backup_root/data.sql" >"$test_root/data.sql.log" 2>&1; then
+  echo "Restore failed for data.sql" >&2
+  tail -n 35 "$test_root/data.sql.log" >&2
+  exit 1
+fi
+
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -v ON_ERROR_STOP=1 \
+    -U supabase_admin -d postgres' \
+  <"$cashier_acl_sql" >"$test_root/cashier-acl.log" 2>&1; then
+  echo "Failed to restore the Cashier function ACL contract" >&2
+  tail -n 35 "$test_root/cashier-acl.log" >&2
+  exit 1
+fi
 
 restore_state="$(docker exec "$db_container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres -c "
   SELECT

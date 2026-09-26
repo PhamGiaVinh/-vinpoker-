@@ -30,6 +30,7 @@ on:
       - "VinPoker/supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql"
       - "VinPoker/supabase/migrations/20270115000014_tracker_floor_alert_action_reference.sql"
       - "VinPoker/tests/trackerCorrectionRelease1/**"
+      - "VinPoker/supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
@@ -325,6 +326,17 @@ jobs:
             -f supabase/migrations/20270114000009_tracker_voice_provider_event_idempotency.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql
+          createdb tracker_voice_v0_before_15000015 -T tracker_voice_v0_strict
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql
+          test "$(psql -X -At -d tracker_voice_v0_strict -c \
+            "SELECT position('v_config_exact AND v_config.enabled IS TRUE' IN pg_get_functiondef(
+                      'floor_private.sync_tracker_voice_config(uuid,boolean)'::regprocedure
+                    )) > 0
+                    AND position('v_assignment.user_id IS DISTINCT FROM p_actor' IN pg_get_functiondef(
+                      'public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure
+                    )) > 0")" = "t"
+          echo "TRACKER_VOICE_15000015_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f tests/trackerVoice/voiceHashV2.integration.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
@@ -522,6 +534,22 @@ jobs:
           test "$(psql -X -At -d tracker_voice_v0_before_14000010 -c \
             "SELECT to_regprocedure('public._tracker_voice_runout_reveal_authoritative_v1(uuid)') IS NULL")" = "t"
           echo "TRACKER_VOICE_14000010_ROLLBACK=PASS"
+          before_sync="$(psql -X -At -d tracker_voice_v0_before_15000015 -c \
+            "SELECT md5(pg_get_functiondef('floor_private.sync_tracker_voice_config(uuid,boolean)'::regprocedure))")"
+          before_authority="$(psql -X -At -d tracker_voice_v0_before_15000015 -c \
+            "SELECT md5(pg_get_functiondef('public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure))")"
+          failing="$RUNNER_TEMP/tracker-voice-15000015-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
+            supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql > "$failing"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_15000015 -f "$failing"; then
+            echo "Injected 15000015 migration unexpectedly committed" >&2
+            exit 1
+          fi
+          test "$before_sync" = "$(psql -X -At -d tracker_voice_v0_before_15000015 -c \
+            "SELECT md5(pg_get_functiondef('floor_private.sync_tracker_voice_config(uuid,boolean)'::regprocedure))")"
+          test "$before_authority" = "$(psql -X -At -d tracker_voice_v0_before_15000015 -c \
+            "SELECT md5(pg_get_functiondef('public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure))")"
+          echo "TRACKER_VOICE_15000015_ROLLBACK=PASS"
           echo "TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS"
 
       - name: Run focused Voice, Analytics and contract tests
@@ -536,11 +564,13 @@ jobs:
             tests/trackerVoice/finishSettlement.test.ts \
             src/lib/trackerVoice/canonicalRequest.test.ts \
             src/components/tracker/voice/TrackerVoicePanel.test.tsx \
+            src/components/tracker/voice/TrackerVoicePanelGate.test.tsx \
             src/components/tracker/DealerTabletCockpit.test.tsx \
             src/components/tracker/DealerShotClock.test.tsx \
             tests/trackerVoice/boardAssist.contract.test.ts \
             tests/trackerVoice/holeCardsAssist.contract.test.ts \
             tests/trackerVoice/finishAssist.contract.test.ts \
+            tests/trackerVoice/dealerHandoffAuthority.contract.test.ts \
             tests/trackerVoice/floorModeGlobal.contract.test.ts \
             tests/trackerVoice/trackerVoiceSessionProtocol.test.ts \
             tests/trackerVoice/trackerPlayerAnalytics.test.ts \
