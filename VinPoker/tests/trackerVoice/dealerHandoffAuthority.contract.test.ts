@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
-const migrationName = "20270115000013_tracker_voice_dealer_handoff_authority.sql";
+const migrationName = "20270115000015_tracker_voice_dealer_handoff_authority.sql";
 const migration = readFileSync(
   resolve(root, "supabase/migrations", migrationName),
   "utf8",
@@ -52,8 +52,8 @@ describe("Tracker Voice Dealer handoff authority", () => {
 
   it("applies and rollback-tests the migration in isolated PostgreSQL", () => {
     expect(workflow).toContain(migrationName);
-    expect(workflow).toContain("TRACKER_VOICE_15000013_APPLY=PASS");
-    expect(workflow).toContain("TRACKER_VOICE_15000013_ROLLBACK=PASS");
+    expect(workflow).toContain("TRACKER_VOICE_15000015_APPLY=PASS");
+    expect(workflow).toContain("TRACKER_VOICE_15000015_ROLLBACK=PASS");
     expect(workflow).toContain("image: postgres:17");
     expect(workflow).not.toMatch(/--linked|db push|migration repair|functions deploy|vercel --prod/i);
   });

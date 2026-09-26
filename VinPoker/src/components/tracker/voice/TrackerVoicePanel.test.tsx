@@ -996,23 +996,13 @@ describe("TrackerVoicePanel", () => {
     expect(screen.getByText("30s")).toBeInTheDocument();
   });
 
-  it("routes manual Floor alerts through validation without recording a poker action", async () => {
-    const validateEventOverride = vi.fn(async () => ({
-      ...validatedReceipt,
-      execution_result: "alert_opened" as const,
-      correction_pending: true,
-      alert_id: "floor-alert-1",
-    }));
+  it("keeps wrong-action reporting unavailable until server correction-pending is proven", () => {
+    const validateEventOverride = vi.fn();
     const handleVoiceAction = vi.fn(async () => true);
     renderPanel({ ...hookFixture(), handleVoiceAction }, new MockRealtimeTranscriptionProvider(), validateEventOverride);
 
-    fireEvent.click(screen.getByRole("button", { name: "Báo sai action" }));
-    expect(await screen.findByText("Alert đã vào hàng đợi Floor.")).toBeInTheDocument();
-    expect(validateEventOverride).toHaveBeenCalledOnce();
-    expect(validateEventOverride.mock.calls[0][0]).toMatchObject({
-      finalTranscript: "báo sai action",
-      executionMode: "shadow",
-    });
+    expect(screen.getByRole("button", { name: "Báo sai action (chưa khả dụng)" })).toBeDisabled();
+    expect(validateEventOverride).not.toHaveBeenCalled();
     expect(handleVoiceAction).not.toHaveBeenCalled();
   });
 

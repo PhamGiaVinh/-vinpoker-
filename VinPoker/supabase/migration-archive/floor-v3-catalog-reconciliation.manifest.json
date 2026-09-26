@@ -6844,6 +6844,18 @@
       "filename": "20270115000005_tracker_dealer_floor_operational_alerts.sql",
       "sha256": "533badf8d985b191f27b62c80fb438882f2b1603c93580fd4386117faeaf6cb2",
       "domain": "tracker"
+    },
+    {
+      "version": "20270115000013",
+      "filename": "20270115000013_tracker_correction_capability_disabled.sql",
+      "sha256": "4d184571feca948096d8503c1999b5256e03358adb2b2c75074f7644a32496b6",
+      "domain": "tracker"
+    },
+    {
+      "version": "20270115000014",
+      "filename": "20270115000014_tracker_floor_alert_action_reference.sql",
+      "sha256": "6d3dedeee949859ed19e15d06a753828c9ef5cef0a5269c5107a6e362f41981f",
+      "domain": "tracker"
     }
   ],
   "floorActiveAllowlist": [

@@ -30,6 +30,8 @@ import {
 } from "./resettleApply";
 import type { EditedTargetHand, ResettleBlock, ResettleForwardResult, ResettleOk } from "@/lib/tracker-poker/resettleForward";
 
+const CORRECTION_WRITES_ENABLED = false;
+
 /** Read ALL rows of a query in pages (PostgREST caps a single select, commonly at 1000).
  *  A money-path replay must NEVER run on a silently-truncated chain, so callers page with a
  *  UNIQUE total order (else a non-unique order can skip/dupe rows at page boundaries). */
@@ -73,7 +75,7 @@ interface HandRecord {
   hand_number: number;
   hand_time: string;
   community_cards: string[];
-  pot_size: number;
+  pot_size: number | null;
   status: string;
   is_voided: boolean;
   created_at: string;
@@ -418,7 +420,7 @@ export function HandHistoryWorkspace({
       hand_number: hand.hand_number,
       hand_time: hand.hand_time ?? hand.created_at,
       community_cards: stringArray(hand.community_cards),
-      pot_size: hand.pot_size || 0,
+      pot_size: hand.pot_size ?? null,
       status: hand.status || "completed",
       is_voided: hand.is_voided || false,
       created_at: hand.created_at,
@@ -439,6 +441,10 @@ export function HandHistoryWorkspace({
   useEffect(() => { setEditMode(false); setResettleView(null); }, [selectedHandId]);
 
   const handleSaveEdit = async (patch: HandEditPatch, reason: string) => {
+    if (!CORRECTION_WRITES_ENABLED) {
+      toast.error("Chức năng ghi sửa hand đang tạm khóa. Bản nháp chưa được lưu.");
+      return;
+    }
     const hand = hands.find((h) => h.id === selectedHandId);
     if (!hand) return;
     setSavingEdit(true);
@@ -603,6 +609,10 @@ export function HandHistoryWorkspace({
   // capability is available, the dedicated Edge writer recomputes actions and
   // ending stacks server-side before one transaction commits anything.
   const handleResettleConfirm = async () => {
+    if (!CORRECTION_WRITES_ENABLED) {
+      toast.error("Chức năng ghi sửa hand đang tạm khóa. Chip chưa thay đổi.");
+      return;
+    }
     if (!resettleView || !resettleView.result.ok) return;
     const rv = resettleView;
     const ok = rv.result as ResettleOk;
@@ -791,13 +801,13 @@ export function HandHistoryWorkspace({
         />
       )}
 
-      {workspaceMode && initialHandId && (
+      {workspaceMode && selectedHandId && (
         <Button type="button" variant="outline" className="min-h-11 w-full xl:hidden" onClick={() => setShowHandPicker((current) => !current)}>
           {showHandPicker ? "Ẩn danh sách hand" : "Chọn hand khác"}
         </Button>
       )}
-      <div className={`grid grid-cols-1 gap-3 ${workspaceMode ? "xl:grid-cols-[320px_minmax(0,1fr)]" : "lg:grid-cols-[280px_1fr]"}`}>
-      <div className={`space-y-2 ${workspaceMode && initialHandId && !showHandPicker ? "hidden xl:block" : ""}`}>
+      <div className={`grid min-w-0 grid-cols-1 gap-3 ${workspaceMode ? "xl:grid-cols-[320px_minmax(0,1fr)]" : "lg:grid-cols-[280px_minmax(0,1fr)]"}`}>
+      <div className={`min-w-0 space-y-2 ${workspaceMode && selectedHandId && !showHandPicker ? "hidden xl:block" : ""}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-semibold"><History className="h-4 w-4 text-emerald-300" /> Lịch sử hand</div>
           <Button size="sm" variant="outline" onClick={loadHands} disabled={loading} className="min-h-11 text-xs">
@@ -828,7 +838,7 @@ export function HandHistoryWorkspace({
           </div>
         )}
 
-        <div className="space-y-1 max-h-[600px] overflow-y-auto pr-1">
+        <div className="space-y-1 pr-1 xl:max-h-[600px] xl:overflow-y-auto">
           {hands.length === 0 && !loading && !loadError && (
             <div className="py-8 text-center text-xs italic text-muted-foreground">Chưa có hand nào được ghi</div>
           )}
@@ -863,7 +873,7 @@ export function HandHistoryWorkspace({
                 {hand.community_cards.length > 0 && (
                   <span className="font-mono">{hand.community_cards.map(displayCard).join(" ")}</span>
                 )}
-                {hand.pot_size > 0 && <span className="ml-1.5 text-emerald-400">{formatStack(hand.pot_size)}</span>}
+                {hand.pot_size !== null && <span className="ml-1.5 text-emerald-400">Pot {formatStack(hand.pot_size)}</span>}
               </div>
               <div className="text-[10px] text-muted-foreground mt-0.5">
                 {new Date(hand.hand_time || hand.created_at).toLocaleTimeString()}
@@ -880,7 +890,7 @@ export function HandHistoryWorkspace({
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="min-w-0 space-y-3">
         {selectedHand ? (
           <>
             <div className="flex flex-col gap-3 rounded-lg border border-border/30 bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -917,7 +927,7 @@ export function HandHistoryWorkspace({
                       onClick={() => setEditMode(true)}
                       className="min-h-11 bg-emerald-400 font-semibold text-emerald-950 hover:bg-emerald-300"
                     >
-                      <Wrench className="mr-2 h-4 w-4" /> Sửa dữ liệu hand
+                      <Wrench className="mr-2 h-4 w-4" /> Xem bản nháp sửa hand
                     </Button>
                   )}
                 <div className="w-full text-xs text-muted-foreground sm:w-auto">
@@ -963,6 +973,7 @@ export function HandHistoryWorkspace({
               <HandEditPanel
                 initialActionOrder={editActionOrder}
                 board={selectedHand.community_cards}
+                potSize={selectedHand.pot_size}
                 players={selectedHand.players.map((p) => ({
                   player_id: p.player_id,
                   entry_number: p.entry_number,
@@ -982,13 +993,14 @@ export function HandHistoryWorkspace({
                 }))}
                 buttonSeat={selectedHand.button_seat ?? 0}
                 saving={savingEdit || resettleBusy}
+                writesEnabled={CORRECTION_WRITES_ENABLED}
                 onCancel={() => { setEditMode(false); setResettleView(null); }}
                 onSave={handleSaveEdit}
-                resettleEnabled={FEATURES.trackerResettleForward && resettleSupported}
+                resettleEnabled={CORRECTION_WRITES_ENABLED && FEATURES.trackerResettleForward && resettleSupported}
                 onResettle={handleResettle}
                 onEditChange={() => setResettleView(null)}
               />
-              {resettleView && (
+              {CORRECTION_WRITES_ENABLED && resettleView && (
                 <ResettlePreview
                   view={resettleView}
                   busy={resettleBusy}
@@ -1013,7 +1025,7 @@ export function HandHistoryWorkspace({
                     {displayCard(card)}
                   </div>
                 ))}
-                {selectedHand.pot_size > 0 && (
+                {selectedHand.pot_size !== null && (
                   <div className="ml-3 text-lg">
                     <span className="text-[10px] text-muted-foreground uppercase tracking-widest block">Pot</span>
                     <span className="text-emerald-400 font-bold font-mono">{formatStack(selectedHand.pot_size)}</span>
