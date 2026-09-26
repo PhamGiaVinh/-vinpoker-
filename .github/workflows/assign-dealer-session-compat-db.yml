@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "VinPoker/supabase/migrations/20270114000005_assign_dealer_floor_v3_session_compat.sql"
+      - "VinPoker/supabase/migrations/20270115000016_dealer_assignment_session_binding.sql"
       - "VinPoker/tests/dealerAssignmentSessionCompat/**"
       - ".github/workflows/assign-dealer-session-compat-db.yml"
   workflow_dispatch:
@@ -44,5 +45,9 @@ jobs:
         run: npx vitest run --config tests/dealerAssignmentSessionCompat/vitest.config.ts
       - name: PostgreSQL 17 compatibility matrix
         run: psql -X -v ON_ERROR_STOP=1 -f tests/dealerAssignmentSessionCompat/disposableDb.sql
+      - name: PostgreSQL 17 real Swing RPC matrix
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/dealerAssignmentSessionCompat/swingExecutor.disposable.sql
+      - name: PostgreSQL 17 Swing concurrency matrix
+        run: bash tests/dealerAssignmentSessionCompat/runSwingConcurrency.sh
       - name: PostgreSQL 17 concurrency matrix
         run: bash tests/dealerAssignmentSessionCompat/runConcurrency.sh
