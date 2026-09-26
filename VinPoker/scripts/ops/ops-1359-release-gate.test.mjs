@@ -61,16 +61,17 @@ test("outer transaction source stays byte-for-byte intact around inserted lock, 
   assert.ok(query.endsWith(source.slice(source.lastIndexOf("COMMIT;"))));
 });
 
-test("manifest sources are lexically classified and nonterminal transaction commit fails closed", () => {
-  const rejected = [];
+test("all 41 APPLY sources scan and build one atomic query with the exact receipt source", () => {
   for (const item of manifest.migrations.filter((entry) => entry.action === "APPLY")) {
-    try { scanMigrationSource(files.get(item.version)); }
-    catch (error) { rejected.push([item.version, error.message]); }
+    const source = files.get(item.version).toString("utf8");
+    const scan = scanMigrationSource(source);
+    assert.ok(["wrapped", "outer-transaction"].includes(scan.mode), item.version);
+    const query = buildAtomicMigrationQuery(item, source);
+    assert.ok(query.includes(`$ops1359_receipt$${source}$ops1359_receipt$`), item.version);
+    assert.match(query, /pg_advisory_xact_lock\(1359, 1\)/, item.version);
+    assert.match(query, /INSERT INTO supabase_migrations\.schema_migrations/, item.version);
+    assert.match(query, /COMMIT;\s*$/, item.version);
   }
-  assert.deepEqual(rejected.map(([version]) => version), ["20270120000010"]);
-  assert.match(rejected[0][1], /one outer BEGIN and terminal COMMIT/);
-  const partialTx = files.get("20270120000010").toString("utf8");
-  assert.ok(partialTx.indexOf("COMMIT;") < partialTx.lastIndexOf("CREATE FUNCTION"));
 });
 
 test("resume permits exact prefix plus the declared skip, rejects name drift and gaps", () => {
