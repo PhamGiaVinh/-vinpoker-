@@ -33,6 +33,7 @@ on:
       - "VinPoker/supabase/migrations/20270115000016_tracker_correction_uat_release2.sql"
       - "VinPoker/tests/trackerCorrectionRelease2/**"
       - "VinPoker/supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql"
+      - "VinPoker/supabase/migrations/20270115000017_dealer_assignment_session_binding.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
@@ -337,6 +338,12 @@ jobs:
           createdb tracker_voice_v0_before_15000015 -T tracker_voice_v0_strict
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f supabase/migrations/20260817000003_fix_executor_step9_incoming_credit.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f supabase/migrations/20270115000017_dealer_assignment_session_binding.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f supabase/migration-archive/historical-never-replay/20260801000007_resolve_execute_pre_assigned_rpc_ambiguity.sql
           test "$(psql -X -At -d tracker_voice_v0_strict -c \
             "SELECT position('v_config_exact AND v_config.enabled IS TRUE' IN pg_get_functiondef(
                       'floor_private.sync_tracker_voice_config(uuid,boolean)'::regprocedure

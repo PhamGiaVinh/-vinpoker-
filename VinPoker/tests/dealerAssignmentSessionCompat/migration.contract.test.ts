@@ -19,6 +19,18 @@ const concurrency = readFileSync(
   resolve(root, "tests/dealerAssignmentSessionCompat/runConcurrency.sh"),
   "utf8",
 );
+const swingMigration = readFileSync(
+  resolve(root, "supabase/migrations/20270115000017_dealer_assignment_session_binding.sql"),
+  "utf8",
+);
+const swingDisposable = readFileSync(
+  resolve(root, "tests/dealerAssignmentSessionCompat/swingExecutor.disposable.sql"),
+  "utf8",
+);
+const swingConcurrency = readFileSync(
+  resolve(root, "tests/dealerAssignmentSessionCompat/runSwingConcurrency.sh"),
+  "utf8",
+);
 
 describe("canonical Dealer assignment Floor V3 session compatibility", () => {
   it("preserves the production 10-parameter ABI and current security shape", () => {
@@ -68,5 +80,24 @@ describe("canonical Dealer assignment Floor V3 session compatibility", () => {
     expect(concurrency).toContain("ASSIGN_VS_RELEASE=PASS");
     expect(concurrency).toContain("DOUBLE_ASSIGN=PASS");
     expect(workflow).not.toMatch(/db push|functions deploy|vercel --prod|orlesggcjamwuknxwcpk/i);
+  });
+
+  it("binds the real six-parameter Swing executor to the current session", () => {
+    expect(swingMigration).toContain("CREATE OR REPLACE FUNCTION public.execute_pre_assigned_swing(");
+    expect(swingMigration).toContain("v_active_session_count > 1");
+    expect(swingMigration).toContain("TABLE_SESSION_AMBIGUOUS");
+    expect(swingMigration).toContain("TABLE_SESSION_CHANGED");
+    expect(swingMigration).toContain("TABLE_SESSION_CLOSED");
+    expect(swingMigration).toContain("TABLE_SESSION_STALE");
+    expect(swingMigration).toContain("TABLE_SESSION_BINDING_REQUIRED");
+    expect(swingMigration).toContain("v_incoming_dealer_id");
+    expect(swingMigration).toContain("never replay historical migrations");
+    expect(swingMigration).toMatch(/INSERT INTO dealer_assignments \([\s\S]*?table_session_id[\s\S]*?v_table_session_id/);
+    expect(swingMigration).not.toMatch(/UPDATE\s+dealer_assignments[\s\S]*?SET\s+table_session_id/i);
+    expect(swingDisposable).toContain("execute_pre_assigned_swing_rpc");
+    expect(swingDisposable).toContain("SWING_EXECUTOR_SESSION_BINDING=PASS");
+    expect(workflow).toContain("swingExecutor.disposable.sql");
+    expect(swingConcurrency).toContain("SWING_DOUBLE_EXECUTOR=PASS");
+    expect(swingConcurrency).toContain("SWING_DUPLICATES=0");
   });
 });

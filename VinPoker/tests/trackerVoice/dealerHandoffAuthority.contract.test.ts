@@ -34,7 +34,8 @@ describe("Tracker Voice Dealer handoff authority", () => {
 
   it("proves the real PostgreSQL handoff, denial, isolation, and idempotency matrix", () => {
     for (const evidence of [
-      "Dealer A release preserves approved capability while zero assignments fail closed",
+      "real Swing RPC completes the Voice Dealer handoff",
+      "Swing retry creates no assignment and credits no worked minutes twice",
       "Dealer B receives authority, old Dealer A is denied, and the other table is unchanged",
       "pending write from the old Dealer is rechecked server-side and leaves zero events",
       "multiple active assignments fail closed for both actors, including different Dealers",
@@ -52,6 +53,8 @@ describe("Tracker Voice Dealer handoff authority", () => {
 
   it("applies and rollback-tests the migration in isolated PostgreSQL", () => {
     expect(workflow).toContain(migrationName);
+    expect(workflow).toContain("20270115000017_dealer_assignment_session_binding.sql");
+    expect(workflow).toContain("20260817000003_fix_executor_step9_incoming_credit.sql");
     expect(workflow).toContain("TRACKER_VOICE_15000015_APPLY=PASS");
     expect(workflow).toContain("TRACKER_VOICE_15000015_ROLLBACK=PASS");
     expect(workflow).toContain("image: postgres:17");
