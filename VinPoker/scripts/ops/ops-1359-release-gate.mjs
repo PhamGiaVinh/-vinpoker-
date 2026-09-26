@@ -1,0 +1,149 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve, relative, isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
+
+export const PROJECT_REF = "orlesggcjamwuknxwcpk";
+export const MANIFEST_PATH = "scripts/ops/ops-1359-manifest.json";
+export const APPLY_CONFIRMATION = "APPLY_OPS_1359_42_ENTRIES";
+const LOCK_KEY_1 = 1359;
+const LOCK_KEY_2 = 1;
+const ACTIONS = new Set(["APPLY", "SKIP_ALREADY_APPLIED"]);
+const CANONICAL_VERSIONS = "20260924165219,20270115000006,20270115000007,20270115000008,20270115000009,20270115000010,20270115000011,20260924065041,20270118000001,20270119000000,20270117000001,20270118000002,20270117000002,20260925092509,20270119000002,20270119000003,20270119000004,20270119000005,20270119000006,20270119000007,20270119000009,20270119000008,20270119000010,20270119000011,20270119000012,20270119000013,20270119000014,20270120000000,20270120000001,20270120000002,20270120000003,20270120000004,20270120000005,20270119000001,20270120000006,20270120000007,20270120000008,20270120000009,20270120000010,20270120000011,20270120000012,20270126000001".split(",");
+
+export function validateManifest(manifest) {
+  if (manifest?.projectRef !== PROJECT_REF || manifest?.centerpointId !== "22222222-2222-2222-2222-222222222222" ||
+      manifest?.releaseBaseSha !== "b7d224c368bc2d0033d6a6bd917b1c9af3ca0e49" || !Array.isArray(manifest.migrations) || manifest.migrations.length !== 42) {
+    throw new Error("Manifest identity or 42-entry release boundary is invalid");
+  }
+  const versions = new Set();
+  const paths = new Set();
+  if (manifest.migrations.map((item) => item.version).join(",") !== CANONICAL_VERSIONS.join(",")) throw new Error("Manifest order differs from canonical release order");
+  for (const [index, item] of manifest.migrations.entries()) {
+    if (!/^\d{14}$/.test(item.version) || !/^[a-z0-9_]+$/.test(item.name) ||
+        item.path !== `supabase/${item.path.startsWith("supabase/migrations/") ? "migrations" : "pending-migrations"}/${item.version}_${item.name}.sql` ||
+        !/^[a-f0-9]{64}$/.test(item.sha256) || !ACTIONS.has(item.action)) throw new Error(`Invalid manifest entry ${index + 1}`);
+    if (versions.has(item.version) || paths.has(item.path)) throw new Error("Duplicate migration version or path");
+    versions.add(item.version);
+    paths.add(item.path);
+  }
+  const skips = manifest.migrations.filter((item) => item.action === "SKIP_ALREADY_APPLIED");
+  if (skips.length !== 1 || skips[0].version !== "20270115000011" || skips[0].name !== "cashier_refund_without_floor_clearance" ||
+      manifest.migrations.filter((item) => item.action === "APPLY").length !== 41) throw new Error("Release actions do not match the canonical allowlist");
+  return manifest;
+}
+
+export function loadAndValidateManifest(sourceRoot, manifestPath = MANIFEST_PATH) {
+  const fullManifest = resolve(sourceRoot, manifestPath);
+  if (!fullManifest.startsWith(`${resolve(sourceRoot)}\\`)) throw new Error("Manifest path escaped source root");
+  const manifest = validateManifest(JSON.parse(readFileSync(fullManifest, "utf8")));
+  const files = new Map();
+  for (const item of manifest.migrations) {
+    const fullPath = resolve(sourceRoot, item.path);
+    if (!fullPath.startsWith(`${resolve(sourceRoot)}\\`) || isAbsolute(item.path)) throw new Error("Migration path escaped source root");
+    const bytes = readFileSync(fullPath);
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    if (sha256 !== item.sha256) throw new Error(`Migration checksum mismatch: ${item.version}`);
+    files.set(item.version, bytes);
+  }
+  return { manifest, files };
+}
+
+export function scanMigrationSource(source) {
+  const text = Buffer.isBuffer(source) ? source.toString("utf8") : String(source);
+  const scrubbed = text.replace(/--[^\r\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\$[a-zA-Z_][a-zA-Z0-9_]*\$[\s\S]*?\$[a-zA-Z_][a-zA-Z0-9_]*\$/g, "")
+    .replace(/\$\$[\s\S]*?\$\$/g, "").replace(/'(?:''|[^'])*'/g, "''").replace(/"(?:""|[^"])*"/g, '""');
+  const checks = [
+    [/(?:^|;)\s*(?:BEGIN|COMMIT)\s*;/im, "top-level transaction control"],
+    [/^\s*\\[a-z]/im, "psql meta command"],
+    [/\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\b/i, "CREATE INDEX CONCURRENTLY"],
+    [/(?:^|;)\s*VACUUM\b/im, "VACUUM"],
+  ];
+  for (const [pattern, label] of checks) if (pattern.test(scrubbed)) throw new Error(`Unsafe migration source: ${label}`);
+  return true;
+}
+
+export function classifyResume(history, manifest) {
+  if (!Array.isArray(history)) throw new Error("Live migration history has invalid shape");
+  const byVersion = new Map();
+  for (const row of history) {
+    const version = String(row.version);
+    if (byVersion.has(version)) throw new Error(`Duplicate live ledger version ${version}`);
+    byVersion.set(version, String(row.name));
+  }
+  let gapSeen = false;
+  const result = [];
+  for (const item of manifest.migrations) {
+    const liveName = byVersion.get(item.version);
+    if (item.action === "SKIP_ALREADY_APPLIED") {
+      if (liveName !== item.name) throw new Error(`SKIP entry is not exact in live ledger: ${item.version}`);
+      result.push({ ...item, state: "skipped-exact" });
+      continue;
+    }
+    if (liveName !== undefined) {
+      if (liveName !== item.name || gapSeen) throw new Error(`Applied migration conflicts with release order: ${item.version}`);
+      result.push({ ...item, state: "already-applied-exact" });
+    } else {
+      gapSeen = true;
+      result.push({ ...item, state: "pending" });
+    }
+  }
+  return result;
+}
+
+export function buildAtomicMigrationQuery(item, source) {
+  if (item.action !== "APPLY") throw new Error("Only allowlisted APPLY entries can be executed");
+  const sql = Buffer.isBuffer(source) ? source.toString("utf8") : String(source);
+  scanMigrationSource(sql);
+  const tag = "$ops1359_receipt$";
+  if (sql.includes(tag)) throw new Error("Migration source conflicts with receipt delimiter");
+  return `BEGIN;\nSET LOCAL lock_timeout = '5s';\nSET LOCAL statement_timeout = '120s';\nSELECT pg_advisory_xact_lock(${LOCK_KEY_1}, ${LOCK_KEY_2});\nDO $ops1359_guard$ BEGIN IF EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '${item.version}' OR name = '${item.name}') THEN RAISE EXCEPTION 'migration ledger conflict'; END IF; END $ops1359_guard$;\n${sql}\nINSERT INTO supabase_migrations.schema_migrations(version, name, statements) VALUES ('${item.version}', '${item.name}', ARRAY[${tag}${sql}${tag}]::text[]);\nCOMMIT;`;
+}
+
+async function request(path, token, options = {}) {
+  let response;
+  try {
+    response = await fetch(`https://api.supabase.com/v1/projects/${PROJECT_REF}${path}`, {
+      ...options,
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch { throw new Error("Supabase Management API request failed"); }
+  if (!response.ok) throw new Error(`Supabase Management API returned ${response.status}`);
+  return response.json();
+}
+
+async function readHistory(token) {
+  const history = await request("/database/migrations", token);
+  if (!Array.isArray(history)) throw new Error("Live migration history shape is invalid");
+  return history.map(({ version, name }) => ({ version: String(version), name: String(name) }));
+}
+
+async function execute() {
+  const mode = process.argv[2];
+  if (!["plan", "verify", "apply", "postcheck"].includes(mode)) throw new Error("Usage: node ops-1359-release-gate.mjs plan|verify|apply|postcheck");
+  if (process.env.SUPABASE_PROJECT_REF !== PROJECT_REF || !process.env.SUPABASE_ACCESS_TOKEN) throw new Error("Approved Supabase credential context is unavailable");
+  if (mode === "apply" && process.env.CONFIRM_OPS_1359_APPLY !== APPLY_CONFIRMATION) throw new Error("Exact apply confirmation is missing");
+  const sourceRoot = resolve(import.meta.dirname, "../..");
+  const { manifest, files } = loadAndValidateManifest(sourceRoot);
+  for (const item of manifest.migrations) if (item.action === "APPLY") scanMigrationSource(files.get(item.version));
+  const history = await readHistory(process.env.SUPABASE_ACCESS_TOKEN);
+  let states = classifyResume(history, manifest);
+  if (mode === "apply") {
+    for (const item of states) {
+      if (item.action !== "APPLY" || item.state === "already-applied-exact") continue;
+      const response = await request("/database/query", process.env.SUPABASE_ACCESS_TOKEN, {
+        method: "POST", body: JSON.stringify({ query: buildAtomicMigrationQuery(item, files.get(item.version)) }),
+      });
+      if (response === null) throw new Error(`Apply acknowledgement was empty at ${item.version}`);
+    }
+    states = classifyResume(await readHistory(process.env.SUPABASE_ACCESS_TOKEN), manifest);
+  }
+  if ((mode === "verify" || mode === "postcheck") && states.some((item) => item.action === "APPLY" && item.state === "pending")) throw new Error("Release still has unapplied migrations");
+  console.log(`OPS_1359_${mode.toUpperCase()}=${states.map((item) => `${item.version}:${item.state}`).join(",")}`);
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  execute().catch((error) => { console.error(`OPS_1359_GATE_FAIL: ${error.message}`); process.exitCode = 1; });
+}
