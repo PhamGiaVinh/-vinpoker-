@@ -97,9 +97,9 @@ test("Chip Ops is responsive and only invokes its fixed read contract", async ({
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(`/ops/chip-ops?club=${clubId}&t=${tournamentId}`);
 
-  await expect(page.getByRole("main").getByText("READ_ONLY", { exact: true })).toBeVisible();
-  await expect(page.getByRole("combobox", { name: "Giải đấu" })).toHaveValue(tournamentId);
-  await expect(page.getByText("450.000").first()).toBeVisible();
+  await expect(page.getByRole("main").getByText("READ ONLY", { exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Tournament" })).toHaveValue(tournamentId);
+  await expect(page.getByText("450,000").first()).toBeVisible();
   await expect(page.locator('[data-ops-action="chip-ops.refresh"]')).toBeVisible();
   expect(pageErrors).toEqual([]);
 
