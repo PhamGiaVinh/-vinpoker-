@@ -23,7 +23,7 @@ readonly firewall_chain="FLOORV3_${GITHUB_RUN_ID}"
 readonly plain_archive="$test_root/floor-v3-recovery.tar.gz"
 readonly identity_path="$test_root/age-identity.txt"
 readonly archive_root="$test_root/restore"
-readonly restored_db="floorv3restore${GITHUB_RUN_ID}"
+readonly restored_db="postgres"
 db_container=""
 network=""
 bridge=""
@@ -94,7 +94,7 @@ supabase init --workdir "$project_root" >"$test_root/init.log" 2>&1 || {
 sed -i "s/^project_id = .*/project_id = \"$restored_db\"/" "$project_root/supabase/config.toml"
 test "$(grep -c "^project_id = \"$restored_db\"$" "$project_root/supabase/config.toml")" = 1
 
-exclude_services="analytics,edge-runtime,functions,imgproxy,inbucket,kong,meta,realtime,rest,storage,studio,vector"
+exclude_services="imgproxy,logflare,mailpit,postgres-meta,realtime,storage-api,studio,supavisor,vector"
 supabase start --workdir "$project_root" --exclude "$exclude_services" >"$test_root/start.log" 2>&1 || {
   echo "Isolated Supabase database start failed; raw logs withheld" >&2
   exit 1
@@ -129,9 +129,34 @@ if [[ "$cron_setting" != "off" ]]; then
   exit 1
 fi
 
-if ! docker exec -i "$db_container" psql -X -q -U postgres -d postgres \
-  <"$payload_root/roles-no-passwords.sql" >"$test_root/roles-restore.log" 2>&1; then
+local_superuser_state="$(docker exec "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
+    -c "SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user"')"
+if [[ "$local_superuser_state" != 'supabase_admin|t' ]]; then
+  echo "Disposable Supabase admin role is unavailable or not a superuser" >&2
+  exit 1
+fi
+
+roles_for_restore="$test_root/roles-for-restore.sql"
+postgres_role_after_restore="$test_root/postgres-role-after-restore.sql"
+sed -E \
+  -e '/^(CREATE ROLE|ALTER ROLE) "?(postgres|supabase_admin)"?([ ;]|$)/d' \
+  "$payload_root/roles-no-passwords.sql" >"$roles_for_restore"
+grep -E '^ALTER ROLE "?postgres"?([ ;]|$)' \
+  "$payload_root/roles-no-passwords.sql" >"$postgres_role_after_restore"
+test -s "$roles_for_restore"
+test -s "$postgres_role_after_restore"
+
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -U supabase_admin -d postgres' \
+  <"$roles_for_restore" >"$test_root/roles-restore.log" 2>&1; then
   echo "Role metadata restore failed; raw output withheld" >&2
+  exit 1
+fi
+if [[ "$(docker exec "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
+    -c "SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user"')" != 'supabase_admin|t' ]]; then
+  echo "Disposable Supabase admin lost superuser status during role restore" >&2
   exit 1
 fi
 unexpected_role_errors="$(grep -E 'ERROR:' "$test_root/roles-restore.log" |
@@ -141,21 +166,76 @@ if [[ -n "$unexpected_role_errors" ]]; then
   exit 1
 fi
 
-docker exec "$db_container" createdb -U postgres --template=template0 "$restored_db" >/dev/null 2>&1 || {
-  echo "Could not create the isolated restore database" >&2
+# PostgreSQL requires a superuser-owned function while recreating a
+# superuser-owned event trigger. The encrypted production role receipt is
+# replayed immediately after the archive restore, so this elevation exists
+# only inside the egress-blocked disposable container.
+docker exec "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -v ON_ERROR_STOP=1 -q -U supabase_admin -d postgres -c "ALTER ROLE postgres SUPERUSER"'
+if [[ "$(docker exec "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
+    -c "SELECT string_agg(rolname || '"'"'|'"'"' || rolsuper, '"'"','"'"' ORDER BY rolname) FROM pg_roles WHERE rolname IN ('"'"'postgres'"'"', '"'"'supabase_admin'"'"')"')" != 'postgres|true,supabase_admin|true' ]]; then
+  echo "Disposable restore roles were not elevated as required" >&2
   exit 1
-}
-docker exec -i "$db_container" psql -X -q -U postgres -d "$restored_db" -v ON_ERROR_STOP=1 \
-  >"$test_root/prepare.log" 2>&1 <<'SQL' || {
-DROP SCHEMA IF EXISTS public CASCADE;
-SQL
-  echo "Could not prepare the isolated restore target" >&2
-  exit 1
-}
+fi
 
-if ! docker exec -i "$db_container" pg_restore -U postgres -d "$restored_db" --exit-on-error \
+if ! docker exec "$db_container" sh -ceu '
+  export PGPASSWORD="$POSTGRES_PASSWORD"
+  dropdb -h 127.0.0.1 -U supabase_admin --force postgres
+  createdb -h 127.0.0.1 -U supabase_admin --template=template0 --owner=supabase_admin postgres
+' >"$test_root/prepare.log" 2>&1; then
+  echo "Could not recreate the isolated postgres restore target" >&2
+  exit 1
+fi
+
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -h 127.0.0.1 -U supabase_admin -d "$1" --exit-on-error --verbose' \
+  sh "$restored_db" \
   <"$payload_root/database.dump" >"$test_root/restore.log" 2>&1; then
-  echo "Actual database restore failed; raw PostgreSQL output withheld" >&2
+  restore_diagnostic="$(grep -Ei '^(pg_restore: (error:|from TOC entry|creating (EVENT TRIGGER|FUNCTION))|ERROR:)' "$test_root/restore.log" |
+    sed -E \
+      -e 's/eyJ[A-Za-z0-9_-]{8,}[.]eyJ[A-Za-z0-9_-]{8,}[.][A-Za-z0-9_-]{8,}/[JWT REDACTED]/g' \
+      -e 's#(postgres(ql)?://)[^@[:space:]]+@#\1[REDACTED]@#Ig' \
+      -e 's/(password|token|secret)[=:][[:space:]]*[^[:space:]]+/\1=[REDACTED]/Ig' |
+    tail -n 8 || true)"
+  if [[ -n "$restore_diagnostic" ]]; then
+    printf 'Actual database restore failed; sanitized diagnostic follows:\n%s\n' "$restore_diagnostic" >&2
+  else
+    echo "Actual database restore failed; no safe diagnostic line was available" >&2
+  fi
+  event_function_diagnostic="$(docker exec -i "$db_container" sh -ceu \
+    'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -q -U supabase_admin -d "$1" -At' \
+    sh "$restored_db" <<'SQL'
+SELECT format(
+  'EVENT_FUNCTION=%I.%I OWNER=%I OWNER_SUPERUSER=%s',
+  n.nspname,
+  p.proname,
+  r.rolname,
+  r.rolsuper
+)
+FROM pg_proc AS p
+JOIN pg_namespace AS n ON n.oid = p.pronamespace
+JOIN pg_roles AS r ON r.oid = p.proowner
+WHERE p.proname = 'rls_auto_enable'
+ORDER BY n.nspname;
+SQL
+  )"
+  if [[ -n "$event_function_diagnostic" ]]; then
+    printf '%s\n' "$event_function_diagnostic" >&2
+  fi
+  exit 1
+fi
+
+if ! docker exec -i "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -v ON_ERROR_STOP=1 -q -U supabase_admin -d postgres' \
+  <"$postgres_role_after_restore" >"$test_root/postgres-role-restore.log" 2>&1; then
+  echo "Production postgres role metadata could not be restored; raw output withheld" >&2
+  exit 1
+fi
+if [[ "$(docker exec "$db_container" sh -ceu \
+  'exec env PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -X -Atq -U supabase_admin -d postgres \
+    -c "SELECT string_agg(rolname || '"'"'|'"'"' || rolsuper, '"'"','"'"' ORDER BY rolname) FROM pg_roles WHERE rolname IN ('"'"'postgres'"'"', '"'"'supabase_admin'"'"')"')" != 'postgres|false,supabase_admin|true' ]]; then
+  echo "Restored bootstrap role properties do not match the encrypted production receipt" >&2
   exit 1
 fi
 
