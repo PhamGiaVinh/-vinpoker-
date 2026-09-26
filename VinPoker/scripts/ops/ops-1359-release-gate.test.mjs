@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { buildAtomicMigrationQuery, classifyResume, loadAndValidateManifest, scanMigrationSource, validateManifest } from "./ops-1359-release-gate.mjs";
+import { buildAtomicMigrationQuery, classifyResume, loadAndValidateManifest, resolveWithinRoot, scanMigrationSource, validateManifest } from "./ops-1359-release-gate.mjs";
 
 const root = new URL("../../", import.meta.url);
 const { manifest, files } = loadAndValidateManifest(fileURLToPath(root));
@@ -13,6 +14,8 @@ test("manifest holds all source checksums and only the exact in-scope paths", ()
   assert.equal(manifest.migrations.filter((item) => item.action === "APPLY").length, 41);
   for (const item of manifest.migrations) assert.equal(createHash("sha256").update(files.get(item.version)).digest("hex"), item.sha256);
   assert.throws(() => validateManifest({ ...manifest, migrations: manifest.migrations.map((item, i) => i ? item : { ...item, path: "supabase/pending-migrations/99999999999999_outside.sql" }) }));
+  assert.throws(() => resolveWithinRoot(fileURLToPath(root), "../outside.sql"), /escaped/);
+  assert.throws(() => resolveWithinRoot(fileURLToPath(root), fileURLToPath(new URL("../../../../outside.sql", import.meta.url))), /escaped/);
 });
 
 test("SKIP requires the exact live version and name and never gets an apply query", () => {
@@ -33,11 +36,41 @@ test("atomic query locks, checks ledger, executes source unchanged, then writes 
   assert.ok(query.indexOf(source) < query.indexOf("INSERT INTO supabase_migrations.schema_migrations"));
   assert.match(query, /COMMIT;$/);
   assert.equal(query.includes("CREATE TABLE public.atomic_fixture(id integer);\n"), true);
-  assert.throws(() => scanMigrationSource("BEGIN;\nCREATE TABLE x(i int);\nCOMMIT;"), /transaction control/);
+  const wrapped = "-- leading comment\nBEGIN;\nCREATE TABLE x(i int);\nCOMMIT; -- trailing comment";
+  const scan = scanMigrationSource(wrapped);
+  assert.equal(scan.mode, "outer-transaction");
+  assert.equal(wrapped.slice(0, scan.insertAfterBegin).trimEnd(), "-- leading comment\nBEGIN;");
+  assert.equal(wrapped.slice(scan.insertBeforeCommit).startsWith("COMMIT;"), true);
+  assert.throws(() => scanMigrationSource("BEGIN; CREATE TABLE x(i int); COMMIT; COMMIT;"), /transaction control/);
+  assert.throws(() => scanMigrationSource("BEGIN; SAVEPOINT s; COMMIT;"), /transaction control/);
+  assert.throws(() => scanMigrationSource("COMMIT;"), /transaction control/);
   assert.throws(() => scanMigrationSource("\\i secret.sql"), /psql meta command/);
   assert.throws(() => scanMigrationSource("CREATE INDEX CONCURRENTLY x ON t(i);"), /CONCURRENTLY/);
   assert.throws(() => scanMigrationSource("VACUUM;"), /VACUUM/);
-  assert.equal(scanMigrationSource("CREATE FUNCTION f() RETURNS void LANGUAGE plpgsql AS $$ BEGIN PERFORM 1; END $$;"), true);
+  assert.deepEqual(scanMigrationSource("CREATE FUNCTION f() RETURNS void LANGUAGE plpgsql AS $$ BEGIN PERFORM 'COMMIT;'; END $$;"), { mode: "wrapped" });
+  assert.deepEqual(scanMigrationSource("/* BEGIN; /* COMMIT; */ */ SELECT 'BEGIN;', \"COMMIT\";"), { mode: "wrapped" });
+});
+
+test("outer transaction source stays byte-for-byte intact around inserted lock, guard and receipt", () => {
+  const item = manifest.migrations.find((entry) => entry.version === "20260924165219");
+  const source = readFileSync(new URL(`../../${item.path}`, import.meta.url), "utf8");
+  const query = buildAtomicMigrationQuery(item, source);
+  assert.equal(query.startsWith(source.slice(0, source.indexOf("BEGIN;") + "BEGIN;".length)), true);
+  assert.ok(query.indexOf("pg_advisory_xact_lock") > query.indexOf("BEGIN;"));
+  assert.ok(query.indexOf("INSERT INTO supabase_migrations.schema_migrations") < query.lastIndexOf("COMMIT;"));
+  assert.ok(query.endsWith(source.slice(source.lastIndexOf("COMMIT;"))));
+});
+
+test("manifest sources are lexically classified and nonterminal transaction commit fails closed", () => {
+  const rejected = [];
+  for (const item of manifest.migrations.filter((entry) => entry.action === "APPLY")) {
+    try { scanMigrationSource(files.get(item.version)); }
+    catch (error) { rejected.push([item.version, error.message]); }
+  }
+  assert.deepEqual(rejected.map(([version]) => version), ["20270120000010"]);
+  assert.match(rejected[0][1], /one outer BEGIN and terminal COMMIT/);
+  const partialTx = files.get("20270120000010").toString("utf8");
+  assert.ok(partialTx.indexOf("COMMIT;") < partialTx.lastIndexOf("CREATE FUNCTION"));
 });
 
 test("resume permits exact prefix plus the declared skip, rejects name drift and gaps", () => {
