@@ -76,7 +76,14 @@ test("only encrypted ciphertext is uploaded and restore is isolated with egress 
   assert.match(restore, /restore network still has outbound access/);
   assert.match(restore, /pg_restore[\s\S]*?--exit-on-error/);
   assert.match(restore, /PGPASSWORD="\$POSTGRES_PASSWORD" pg_restore -h 127\.0\.0\.1 -U supabase_admin/);
+  assert.match(restore, /readonly restored_db="postgres"/);
+  assert.match(restore, /dropdb -h 127\.0\.0\.1 -U supabase_admin --force postgres/);
+  assert.match(restore, /createdb -h 127\.0\.0\.1 -U supabase_admin --template=template0 --owner=supabase_admin postgres/);
   assert.match(restore, /Actual database restore failed; sanitized diagnostic follows/);
+  assert.match(restore, /--exit-on-error --verbose/);
+  assert.match(restore, /pg_restore: \(error:\|from TOC entry\|creating \(EVENT TRIGGER\|FUNCTION\)\)/);
+  assert.match(restore, /WHERE p\.proname = 'rls_auto_enable'/);
+  assert.match(restore, /EVENT_FUNCTION=%I\.%I OWNER=%I OWNER_SUPERUSER=%s/);
   assert.match(restore, /\[JWT REDACTED\]/);
   assert.doesNotMatch(restore, /cat "\$test_root\/restore\.log"|tail[^\n]*restore\.log/);
   assert.doesNotMatch(restore, /pg_restore[^\n]*--no-owner/);
@@ -85,6 +92,12 @@ test("only encrypted ciphertext is uploaded and restore is isolated with egress 
   assert.match(restore, /roles-no-passwords\.sql/);
   assert.match(restore, /SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user/);
   assert.match(restore, /PGPASSWORD="\$POSTGRES_PASSWORD" psql -h 127\.0\.0\.1 -X -q -U supabase_admin -d postgres/);
+  assert.match(restore, /roles_for_restore="\$test_root\/roles-for-restore\.sql"/);
+  assert.match(restore, /\^\(CREATE ROLE\|ALTER ROLE\).*\(postgres\|supabase_admin\)/);
+  assert.match(restore, /Disposable Supabase admin lost superuser status during role restore/);
+  assert.match(restore, /ALTER ROLE postgres SUPERUSER/);
+  assert.match(restore, /postgres-role-after-restore\.sql/);
+  assert.match(restore, /postgres\|false,supabase_admin\|true/);
   assert.match(restore, /ROLE_METADATA_RESTORED=PASS/);
   assert.match(restore, /VERIFIED_ANON_FUNCTIONS_PRESERVED=PASS/);
   assert.match(restore, /check-floor-v3-anon-exception\.mjs/);
