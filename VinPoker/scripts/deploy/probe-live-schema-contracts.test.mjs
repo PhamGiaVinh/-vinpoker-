@@ -271,6 +271,47 @@ test("operation ACL requires authenticated access, anon denial, service helper a
   );
 });
 
+test("Tracker record_hand validates the reviewed ten-argument overload while preserving the legacy overload", () => {
+  const { contracts } = contractsForTargets({
+    manifest,
+    rawTargets: "tournament-live-update",
+    targetRoot: repositoryRoot,
+  });
+  const recordHand = contracts.find(
+    (contract) => contract.type === "function" && contract.name === "public.record_hand",
+  );
+  assert.equal(recordHand?.allowOtherOverloads, true);
+
+  const reviewedArguments = recordHand.arguments.map((name, index) => ({
+    ordinal: index + 1,
+    name,
+    type: recordHand.argumentTypes[index],
+  }));
+  const legacyTypes = [
+    "uuid", "uuid", "integer", "timestamp with time zone", "jsonb", "jsonb", "jsonb",
+  ];
+  const catalog = {
+    schemaVersion: 1,
+    relations: [],
+    functions: [
+      {
+        schema: "public",
+        name: "record_hand",
+        arguments: reviewedArguments,
+        executeAcl: { public: false, anon: false, authenticated: true, service_role: false },
+      },
+      {
+        schema: "public",
+        name: "record_hand",
+        arguments: legacyTypes.map((type, index) => ({ ordinal: index + 1, name: `legacy_${index}`, type })),
+        executeAcl: { public: false, anon: false, authenticated: false, service_role: true },
+      },
+    ],
+  };
+
+  assert.deepEqual(findMissingContracts(catalog, [recordHand]), []);
+});
+
 test("ACL probe accepts pg_dump signatures that include argument names", () => {
   const contract = {
     type: "function",
