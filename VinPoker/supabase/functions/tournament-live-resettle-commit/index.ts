@@ -16,19 +16,19 @@ import {
 import { canonicalJsonV1 } from "../_shared/trackerSettlement/outcomeV1.ts";
 
 type Body = {
+  mode?: unknown;
   tournament_id?: unknown;
   hand_id?: unknown;
   idempotency_key?: unknown;
   correction_reason?: unknown;
   expected_target_ending_stacks?: unknown;
   edit?: unknown;
+  expected_source_revision?: unknown;
+  expected_source_chain_hash?: unknown;
+  expected_outcome_hash?: unknown;
 };
 
 type RecordValue = Record<string, unknown>;
-
-// No runtime flag can reopen the legacy commit path. A reviewed forward release
-// must replace this guard after canonical preview/commit has endpoint proof.
-const CORRECTION_WRITES_ENABLED = false;
 
 const text = (value: unknown): string => typeof value === "string" ? value.trim() : "";
 const isRecord = (value: unknown): value is RecordValue => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -42,8 +42,18 @@ async function sha256Hex(value: string): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function publicFailure(req: Request, code: string, status = 409) {
-  return jsonResp(req, { ok: false, code, message: "Hand correction was not accepted" }, status);
+function publicFailure(
+  req: Request,
+  code: string,
+  status = 409,
+  draftStatus?: "INCOMPLETE" | "INVALID",
+) {
+  return jsonResp(req, {
+    ok: false,
+    code,
+    ...(draftStatus ? { draft_status: draftStatus } : {}),
+    message: "Hand correction was not accepted",
+  }, status);
 }
 
 function parseCards(value: unknown, maximum: number): string[] | null {
@@ -126,6 +136,13 @@ function computeFailureCode(error: unknown): string {
   return "settlement_recompute_rejected";
 }
 
+function computeFailureDraftStatus(error: unknown): "INCOMPLETE" | "INVALID" {
+  const message = error instanceof Error ? error.message : "";
+  return message.includes("incomplete") || message.includes("not_terminal")
+    ? "INCOMPLETE"
+    : "INVALID";
+}
+
 function rpcFailureCode(error: { message?: string } | null): string {
   const allowed = new Set([
     "service_role_only",
@@ -150,13 +167,16 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json() as Body;
+    const mode = text(body.mode);
     const tournamentId = text(body.tournament_id);
     const handId = text(body.hand_id);
     const idempotencyKey = text(body.idempotency_key);
     const correctionReason = text(body.correction_reason);
     const edit = parseEdit(body.edit);
     const expectedEndingStacks = parseExpectedTargetEndingStacks(body.expected_target_ending_stacks);
-    if (!tournamentId || !handId || idempotencyKey.length < 12 || correctionReason.length < 8 || correctionReason.length > 500 || !edit || !expectedEndingStacks) {
+    if ((mode !== "preview" && mode !== "commit") || !tournamentId || !handId
+      || (mode === "commit" && idempotencyKey.length < 12)
+      || correctionReason.length < 8 || correctionReason.length > 500 || !edit || !expectedEndingStacks) {
       return publicFailure(req, "invalid_hand_correction_intent", 400);
     }
 
@@ -168,13 +188,13 @@ Deno.serve(async (req) => {
     const user = createClient(url, anonKey, { global: { headers: { Authorization: authorization } } });
     const { data: authData } = await user.auth.getUser();
     if (!authData.user) return jsonResp(req, { ok: false, message: "Unauthorized" }, 401);
-    const { data: authorized, error: authorizationError } = await user.rpc("authorize_tournament_live_resettle", {
+    const { data: authorizationData, error: authorizationError } = await user.rpc("authorize_tracker_completed_hand_correction_uat_v1", {
       p_tournament_id: tournamentId,
+      p_hand_id: handId,
     });
-    if (authorizationError || authorized !== true) return jsonResp(req, { ok: false, message: "Not authorized" }, 403);
-
-    if (!CORRECTION_WRITES_ENABLED) {
-      return publicFailure(req, "CORRECTION_CAPABILITY_DISABLED", 503);
+    const authorizationReceipt = isRecord(authorizationData) ? authorizationData : null;
+    if (authorizationError || authorizationReceipt?.ok !== true) {
+      return publicFailure(req, text(authorizationReceipt?.error) || "actor_not_authorized", 403);
     }
 
     const service = createClient(url, serviceKey);
@@ -223,6 +243,25 @@ Deno.serve(async (req) => {
         }));
       assertExpectedTargetEndingStacks({ expected: expectedEndingStacks, targetPlayers, outcome: result.privateOutcome });
 
+      const preview = {
+        ok: true,
+        status: "preview",
+        draft_status: "READY_TO_APPLY",
+        hand_id: handId,
+        scope: text(authorizationReceipt.scope),
+        source_revision: result.privateOutcome.sourceRevision,
+        source_chain_hash: result.privateOutcome.sourceChainHash,
+        outcome_hash: result.privateOutcome.outcomeHash,
+        public_outcome: result.publicOutcome,
+        target_ending_stacks: redactedTargetEndingStacks({ targetPlayers, outcome: result.privateOutcome }),
+      };
+      if (mode === "preview") return jsonResp(req, preview);
+      if (body.expected_source_revision !== preview.source_revision
+        || body.expected_source_chain_hash !== preview.source_chain_hash
+        || body.expected_outcome_hash !== preview.outcome_hash) {
+        return publicFailure(req, "stale_correction_preview");
+      }
+
       const requestHash = await sha256Hex(canonicalJsonV1({
         contract: "tracker-hand-correction-commit-v1",
         tournamentId,
@@ -260,7 +299,7 @@ Deno.serve(async (req) => {
         target_ending_stacks: redactedTargetEndingStacks({ targetPlayers, outcome: result.privateOutcome }),
       });
     } catch (error) {
-      return publicFailure(req, computeFailureCode(error), 422);
+      return publicFailure(req, computeFailureCode(error), 422, computeFailureDraftStatus(error));
     }
   } catch {
     console.error("[tournament-live-resettle-commit] unexpected_request_failure");

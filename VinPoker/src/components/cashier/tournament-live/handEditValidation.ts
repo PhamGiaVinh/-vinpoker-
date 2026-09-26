@@ -29,6 +29,14 @@ export interface HandEditValidation {
   ok: boolean;
   potSize: number;
   assessments: HandEditActionAssessment[];
+  status: "INCOMPLETE" | "INVALID" | "READY_TO_APPLY";
+  nextAction: {
+    player_id: string;
+    street: Street;
+    action_type: "check" | "call";
+    action_amount: number;
+    action_order: number;
+  } | null;
 }
 
 const STREETS = new Set<Street>(["preflop", "flop", "turn", "river", "showdown"]);
@@ -191,10 +199,26 @@ export function validateHandEditActions(
     }
   }
 
-  const runtime = reduceHandAtStreet(seeds, accepted, buttonSeat, "showdown");
+  const currentStreet = accepted.length > 0 ? accepted[accepted.length - 1].street : "preflop";
+  const runtime = reduceHandAtStreet(seeds, accepted, buttonSeat, currentStreet);
+  const validPrefix = assessments.every((item) => item.legal);
+  const nextActorId = validPrefix ? nextToActAtStreet(seeds, accepted, buttonSeat, currentStreet) : null;
+  const nextView = nextActorId ? actorViewFromRuntime(runtime, nextActorId) : null;
+  const livePlayers = runtime.players.filter((player) => !player.is_folded);
+  const terminal = livePlayers.length <= 1
+    || ((currentStreet === "river" || currentStreet === "showdown") && nextActorId === null);
+  const status = !validPrefix ? "INVALID" : terminal ? "READY_TO_APPLY" : "INCOMPLETE";
   return {
-    ok: assessments.every((item) => item.legal),
+    ok: validPrefix,
     potSize: runtime.players.reduce((sum, player) => sum + player.total_bet, 0),
     assessments,
+    status,
+    nextAction: nextActorId && nextView ? {
+      player_id: nextActorId,
+      street: currentStreet,
+      action_type: nextView.toCall > 0 ? "call" : "check",
+      action_amount: nextView.toCall,
+      action_order: Math.max(0, ...sorted.map((action) => action.action_order)) + 1,
+    } : null,
   };
 }

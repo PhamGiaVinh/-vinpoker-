@@ -6868,6 +6868,12 @@
       "filename": "20270115000016_tracker_correction_uat_release2.sql",
       "sha256": "906ef76a5759a2efe555938f0822fa3845a4a48e87a1957f5a6fe4c0bcdc5744",
       "domain": "tracker"
+    },
+    {
+      "version": "20270115000017",
+      "filename": "20270115000017_tracker_completed_hand_correction_uat.sql",
+      "sha256": "51471b10aa922e749924e3c5b5ebfe5357d1bf080d8f37bc14fd6d09d71342c6",
+      "domain": "tracker"
     }
   ],
   "floorActiveAllowlist": [
