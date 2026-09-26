@@ -32,6 +32,10 @@ on:
       - "VinPoker/tests/trackerCorrectionRelease1/**"
       - "VinPoker/supabase/migrations/20270115000016_tracker_correction_uat_release2.sql"
       - "VinPoker/tests/trackerCorrectionRelease2/**"
+      - "VinPoker/supabase/migration-archive/historical-never-replay/20270115000002_tracker_hand_correction_commit_receipt.sql"
+      - "VinPoker/supabase/migrations/20270115000017_tracker_completed_hand_correction_uat.sql"
+      - "VinPoker/tests/trackerCorrectionRelease3/**"
+      - "VinPoker/supabase/functions/tournament-live-resettle-commit/**"
       - "VinPoker/supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
@@ -299,12 +303,33 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
             -f tests/trackerCorrectionRelease2/release2.pg17.sql
           echo "TRACKER_CORRECTION_RELEASE2_15000016_APPLY=PASS"
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 <<'SQL'
+          CREATE OR REPLACE FUNCTION public.is_club_owner(p_user_id uuid, p_club_id uuid)
+          RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+          AS $$ SELECT public.has_role(p_user_id, 'super_admin'::public.app_role)
+            OR EXISTS (SELECT 1 FROM public.clubs c WHERE c.id = p_club_id AND c.owner_id = p_user_id) $$;
+          CREATE OR REPLACE FUNCTION public.is_club_admin(p_user_id uuid, p_club_id uuid)
+          RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+          AS $$ SELECT EXISTS (SELECT 1 FROM public.clubs c WHERE c.id = p_club_id AND c.owner_id = p_user_id) $$;
+          SQL
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f supabase/migrations/20261238000002_tracker_settlement_outcome_store.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f supabase/migrations/20270115000001_tracker_blind_position_lineage.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f supabase/migration-archive/historical-never-replay/20270115000002_tracker_hand_correction_commit_receipt.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f supabase/migrations/20270115000017_tracker_completed_hand_correction_uat.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f tests/trackerCorrectionRelease3/release3.pg17.sql
+          echo "TRACKER_CORRECTION_RELEASE3_15000017_APPLY=PASS"
 
           # Rehearse exact-file SQL and detect the commit-before-ledger state.
           # Ledger repair is intentionally outside this no-live-command workflow.
           echo '4d184571feca948096d8503c1999b5256e03358adb2b2c75074f7644a32496b6  supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql' | sha256sum -c -
           echo '6d3dedeee949859ed19e15d06a753828c9ef5cef0a5269c5107a6e362f41981f  supabase/migrations/20270115000014_tracker_floor_alert_action_reference.sql' | sha256sum -c -
           echo '906ef76a5759a2efe555938f0822fa3845a4a48e87a1957f5a6fe4c0bcdc5744  supabase/migrations/20270115000016_tracker_correction_uat_release2.sql' | sha256sum -c -
+          echo '51471b10aa922e749924e3c5b5ebfe5357d1bf080d8f37bc14fd6d09d71342c6  supabase/migrations/20270115000017_tracker_completed_hand_correction_uat.sql' | sha256sum -c -
           createdb tracker_correction_resume -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_resume \
             -f supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql
@@ -586,6 +611,7 @@ jobs:
             tests/trackerVoice/trackerAnalyticsSeatControl.test.tsx \
             tests/trackerVoice/migration.contract.test.ts \
             tests/trackerCorrectionRelease2/migration.contract.test.ts \
+            tests/trackerCorrectionRelease3/release3.contract.test.ts \
             tests/trackerStartHandAuthority/migration.contract.test.ts \
             --maxWorkers=1 --minWorkers=1
           deno check supabase/functions/tracker-voice-session/index.ts

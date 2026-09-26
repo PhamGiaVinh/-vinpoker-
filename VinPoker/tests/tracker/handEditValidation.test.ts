@@ -45,4 +45,18 @@ describe("completed-hand action advisory", () => {
     expect(validateHandEditActions(players, underRaise, 1).assessments[2]).toMatchObject({ legal: false, minimumAmount: 150 });
     expect(validateHandEditActions(players, outOfTurn, 1).assessments[2].message).toContain("Sai thứ tự lượt");
   });
+
+  it("keeps a valid SB call draft incomplete and asks the BB to act", () => {
+    const result = validateHandEditActions(players, legalActions.slice(0, 3), 1);
+
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe("INCOMPLETE");
+    expect(result.nextAction).toEqual({
+      player_id: "p2",
+      street: "preflop",
+      action_type: "check",
+      action_amount: 0,
+      action_order: 4,
+    });
+  });
 });
