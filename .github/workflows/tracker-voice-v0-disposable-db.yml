@@ -30,6 +30,8 @@ on:
       - "VinPoker/supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql"
       - "VinPoker/supabase/migrations/20270115000014_tracker_floor_alert_action_reference.sql"
       - "VinPoker/tests/trackerCorrectionRelease1/**"
+      - "VinPoker/supabase/migrations/20270115000016_tracker_correction_uat_release2.sql"
+      - "VinPoker/tests/trackerCorrectionRelease2/**"
       - "VinPoker/supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
@@ -292,11 +294,17 @@ jobs:
           echo "TRACKER_FLOOR_ACTION_REFERENCE_15000012_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
             -f tests/trackerCorrectionRelease1/actionReference.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f supabase/migrations/20270115000016_tracker_correction_uat_release2.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
+            -f tests/trackerCorrectionRelease2/release2.pg17.sql
+          echo "TRACKER_CORRECTION_RELEASE2_15000016_APPLY=PASS"
 
           # Rehearse exact-file SQL and detect the commit-before-ledger state.
           # Ledger repair is intentionally outside this no-live-command workflow.
           echo '4d184571feca948096d8503c1999b5256e03358adb2b2c75074f7644a32496b6  supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql' | sha256sum -c -
           echo '6d3dedeee949859ed19e15d06a753828c9ef5cef0a5269c5107a6e362f41981f  supabase/migrations/20270115000014_tracker_floor_alert_action_reference.sql' | sha256sum -c -
+          echo '906ef76a5759a2efe555938f0822fa3845a4a48e87a1957f5a6fe4c0bcdc5744  supabase/migrations/20270115000016_tracker_correction_uat_release2.sql' | sha256sum -c -
           createdb tracker_correction_resume -T tracker_voice_v0
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_resume \
             -f supabase/migrations/20270115000013_tracker_correction_capability_disabled.sql
@@ -577,6 +585,7 @@ jobs:
             tests/trackerVoice/trackerPlayerAnalyticsPage.test.tsx \
             tests/trackerVoice/trackerAnalyticsSeatControl.test.tsx \
             tests/trackerVoice/migration.contract.test.ts \
+            tests/trackerCorrectionRelease2/migration.contract.test.ts \
             tests/trackerStartHandAuthority/migration.contract.test.ts \
             --maxWorkers=1 --minWorkers=1
           deno check supabase/functions/tracker-voice-session/index.ts
