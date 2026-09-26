@@ -46,6 +46,14 @@ CREATE TABLE public.swing_log (
   metadata jsonb
 );
 
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+    CREATE ROLE service_role NOLOGIN;
+  END IF;
+END;
+$$;
+
 \ir ../../supabase/migrations/20260817000003_fix_executor_step9_incoming_credit.sql
 \ir ../../supabase/migrations/20270115000017_dealer_assignment_session_binding.sql
 \ir ../../supabase/migration-archive/historical-never-replay/20260801000007_resolve_execute_pre_assigned_rpc_ambiguity.sql
