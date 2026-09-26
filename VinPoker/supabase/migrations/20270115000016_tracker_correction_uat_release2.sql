@@ -327,9 +327,56 @@ BEGIN
 END;
 $$;
 
+-- A wrong-action report pauses canonical progression for every client, not
+-- only the browser that raised the alert. Undo remains available because it
+-- deletes the latest action and only bumps hand metadata.
+CREATE OR REPLACE FUNCTION public._block_tracker_progress_while_correction_pending()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_hand_id uuid;
+BEGIN
+  IF TG_TABLE_NAME = 'hand_actions' THEN
+    v_hand_id := NEW.hand_id;
+  ELSE
+    v_hand_id := NEW.id;
+    IF NEW.community_cards IS NOT DISTINCT FROM OLD.community_cards
+       AND NEW.status IS NOT DISTINCT FROM OLD.status
+       AND NEW.is_voided IS NOT DISTINCT FROM OLD.is_voided THEN
+      RETURN NEW;
+    END IF;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.tracker_floor_alerts alert_row
+    WHERE alert_row.hand_id = v_hand_id
+      AND alert_row.correction_required IS TRUE
+      AND alert_row.status IN ('open', 'acknowledged', 'in_progress')
+  ) THEN
+    RAISE EXCEPTION 'tracker_correction_pending' USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_block_tracker_action_while_correction_pending ON public.hand_actions;
+CREATE TRIGGER trg_block_tracker_action_while_correction_pending
+BEFORE INSERT ON public.hand_actions
+FOR EACH ROW EXECUTE FUNCTION public._block_tracker_progress_while_correction_pending();
+
+DROP TRIGGER IF EXISTS trg_block_tracker_hand_progress_while_correction_pending ON public.tournament_hands;
+CREATE TRIGGER trg_block_tracker_hand_progress_while_correction_pending
+BEFORE UPDATE OF community_cards, status, is_voided ON public.tournament_hands
+FOR EACH ROW EXECUTE FUNCTION public._block_tracker_progress_while_correction_pending();
+
 ALTER FUNCTION public._tracker_correction_uat_context(uuid, uuid, uuid, text) OWNER TO postgres;
 ALTER FUNCTION public.report_tracker_wrong_action_v1(uuid, uuid, uuid, uuid, jsonb, bigint, uuid) OWNER TO postgres;
 ALTER FUNCTION public.undo_tracker_last_action_v1(uuid, uuid, uuid, uuid, bigint, uuid) OWNER TO postgres;
+ALTER FUNCTION public._block_tracker_progress_while_correction_pending() OWNER TO postgres;
 
 REVOKE ALL ON FUNCTION public._tracker_correction_uat_context(uuid, uuid, uuid, text)
   FROM PUBLIC, anon, authenticated, service_role;
@@ -341,5 +388,7 @@ REVOKE ALL ON FUNCTION public.undo_tracker_last_action_v1(uuid, uuid, uuid, uuid
   FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.undo_tracker_last_action_v1(uuid, uuid, uuid, uuid, bigint, uuid)
   TO authenticated;
+REVOKE ALL ON FUNCTION public._block_tracker_progress_while_correction_pending()
+  FROM PUBLIC, anon, authenticated, service_role;
 
 COMMIT;

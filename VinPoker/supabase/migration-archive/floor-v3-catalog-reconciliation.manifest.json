@@ -6856,6 +6856,12 @@
       "filename": "20270115000014_tracker_floor_alert_action_reference.sql",
       "sha256": "6d3dedeee949859ed19e15d06a753828c9ef5cef0a5269c5107a6e362f41981f",
       "domain": "tracker"
+    },
+    {
+      "version": "20270115000016",
+      "filename": "20270115000016_tracker_correction_uat_release2.sql",
+      "sha256": "906ef76a5759a2efe555938f0822fa3845a4a48e87a1957f5a6fe4c0bcdc5744",
+      "domain": "tracker"
     }
   ],
   "floorActiveAllowlist": [

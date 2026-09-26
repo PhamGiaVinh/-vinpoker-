@@ -36,6 +36,14 @@ describe("Tracker correction Release 2 contract", () => {
     expect(migration).toContain("correction_required, title, message");
   });
 
+  it("blocks canonical hand progression while a correction alert is open", () => {
+    expect(migration).toContain("_block_tracker_progress_while_correction_pending");
+    expect(migration).toContain("BEFORE INSERT ON public.hand_actions");
+    expect(migration).toContain("BEFORE UPDATE OF community_cards, status, is_voided ON public.tournament_hands");
+    expect(migration).toContain("alert_row.status IN ('open', 'acknowledged', 'in_progress')");
+    expect(migration).toContain("RAISE EXCEPTION 'tracker_correction_pending'");
+  });
+
   it("routes browser undo through the new server contract", () => {
     expect(edge).toContain('case "undo_last_action_v1"');
     expect(edge).toContain('supabase.rpc("undo_tracker_last_action_v1"');

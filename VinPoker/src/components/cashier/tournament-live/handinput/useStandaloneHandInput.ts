@@ -2207,9 +2207,10 @@ export function useStandaloneHandInput(tournamentId: string) {
           .order("action_order", { ascending: false }).order("created_at", { ascending: false })
           .order("id", { ascending: false }).limit(1).maybeSingle(),
       ]);
-      const sourceRevision = handResult.data?.source_revision;
+      const sourceRevision = (handResult.data as unknown as { source_revision?: unknown } | null)?.source_revision;
       const actionId = actionResult.data?.id;
-      if (handResult.error || actionResult.error || !Number.isSafeInteger(sourceRevision) || typeof actionId !== "string") {
+      if (handResult.error || actionResult.error || typeof sourceRevision !== "number"
+        || !Number.isSafeInteger(sourceRevision) || typeof actionId !== "string") {
         return { ok: false, error: "Không xác minh được action cuối và phiên bản máy chủ." };
       }
       pending = { expectedActionId: actionId, expectedSourceRevision: sourceRevision, idempotencyKey: crypto.randomUUID() };
