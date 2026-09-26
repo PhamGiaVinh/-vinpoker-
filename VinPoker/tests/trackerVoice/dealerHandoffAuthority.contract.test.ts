@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
-const migrationName = "20270115000011_tracker_voice_dealer_handoff_authority.sql";
+const migrationName = "20270115000013_tracker_voice_dealer_handoff_authority.sql";
 const migration = readFileSync(
   resolve(root, "supabase/migrations", migrationName),
   "utf8",

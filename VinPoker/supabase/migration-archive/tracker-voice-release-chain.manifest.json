@@ -46,8 +46,8 @@
       "sha256": "059810a9b30f9a020e7c3328ff20816f521084e6fe0f718446703b195c4380eb"
     },
     {
-      "version": "20270115000011",
-      "filename": "20270115000011_tracker_voice_dealer_handoff_authority.sql",
+      "version": "20270115000013",
+      "filename": "20270115000013_tracker_voice_dealer_handoff_authority.sql",
       "sha256": "d6375047a522993fc27c1635a37588c1d29ecc81e4384a0b0f009dbf97ab0d55"
     }
   ],
