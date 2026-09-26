@@ -334,6 +334,31 @@ describe("floorTableControlV3 browser boundary", () => {
     });
   });
 
+  it("continues the active immutable batch using its server revision and an idempotency key", async () => {
+    const rpc = vi.fn()
+      .mockResolvedValueOnce({ data: { batch_id: "batch-a", redraw_revision: 1, moves: [] }, error: null })
+      .mockResolvedValueOnce({ data: { ok: true, batch_id: "batch-a", redraw_revision: 2, clock_resumed: true }, error: null });
+    const client = clientFrom(rpc, true, true);
+
+    const active = await client.getActiveTournamentRedraw("tournament-a");
+    expect(active).toEqual({ ok: true, data: { batchId: "batch-a", redrawRevision: 1 } });
+    const continued = await client.continueTournamentRedraw({
+      batchId: "batch-a",
+      expectedRedrawRevision: active.ok ? active.data?.redrawRevision ?? 0 : 0,
+      requestId: "continue-request-a",
+    });
+
+    expect(continued).toEqual({ ok: true, data: { clockResumed: true } });
+    expect(rpc).toHaveBeenNthCalledWith(1, "get_public_tournament_redraw_v1", {
+      p_tournament_id: "tournament-a",
+    });
+    expect(rpc).toHaveBeenNthCalledWith(2, "floor_continue_tournament_redraw_v1", {
+      p_batch_id: "batch-a",
+      p_expected_redraw_revision: 1,
+      p_request_id: "continue-request-a",
+    });
+  });
+
   it("makes no RPC when redraw and seat locking are dark", async () => {
     const rpc = vi.fn();
     const client = clientFrom(rpc, true, false);
