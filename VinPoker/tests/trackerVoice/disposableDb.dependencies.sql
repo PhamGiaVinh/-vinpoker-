@@ -202,11 +202,72 @@ CREATE TABLE public.dealer_assignments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   club_id UUID,
   dealer_id UUID NOT NULL REFERENCES public.dealers(id) ON DELETE CASCADE,
+  attendance_id UUID,
   table_id UUID NOT NULL REFERENCES public.game_tables(id) ON DELETE CASCADE,
   assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   released_at TIMESTAMPTZ,
-  status TEXT NOT NULL DEFAULT 'assigned'
+  status TEXT NOT NULL DEFAULT 'assigned',
+  swing_due_at TIMESTAMPTZ,
+  idempotency_key TEXT UNIQUE,
+  version INTEGER NOT NULL DEFAULT 1,
+  pre_assigned_attendance_id UUID,
+  pre_assigned_at TIMESTAMPTZ,
+  swing_processed_at TIMESTAMPTZ,
+  overtime_started_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE public.dealer_attendance (
+  id UUID PRIMARY KEY,
+  dealer_id UUID NOT NULL REFERENCES public.dealers(id),
+  current_state TEXT NOT NULL,
+  status TEXT NOT NULL,
+  pre_assigned_table_id UUID,
+  pre_assigned_at TIMESTAMPTZ,
+  check_in_time TIMESTAMPTZ NOT NULL DEFAULT now() - interval '30 minutes',
+  overtime_minutes INTEGER NOT NULL DEFAULT 0,
+  priority_break_flag BOOLEAN NOT NULL DEFAULT false,
+  worked_minutes_since_last_break INTEGER NOT NULL DEFAULT 0,
+  total_worked_minutes_today INTEGER NOT NULL DEFAULT 0,
+  last_released_at TIMESTAMPTZ,
+  pool_entered_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX tracker_voice_one_active_assignment_per_attendance
+  ON public.dealer_assignments(attendance_id)
+  WHERE released_at IS NULL AND status IN ('assigned', 'on_break');
+CREATE TABLE public.dealer_breaks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  assignment_id UUID NOT NULL,
+  break_start TIMESTAMPTZ NOT NULL,
+  break_end TIMESTAMPTZ,
+  expected_duration_minutes INTEGER,
+  reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE public.swing_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  assignment_id UUID,
+  outcome TEXT,
+  club_id UUID,
+  table_id UUID,
+  triggered_by TEXT,
+  metadata JSONB
+);
+CREATE OR REPLACE FUNCTION public.bump_dealer_assignment_version()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  NEW.version := OLD.version + 1;
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_dealer_assignments_version
+  BEFORE UPDATE ON public.dealer_assignments
+  FOR EACH ROW EXECUTE FUNCTION public.bump_dealer_assignment_version();
 
 -- Production Dealer relations are browser-readable only through their own RLS
 -- contracts. The disposable fixture has no Dealer RLS suite, but Voice policy

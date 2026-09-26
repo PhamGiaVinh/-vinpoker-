@@ -89,6 +89,9 @@ describe("canonical Dealer assignment Floor V3 session compatibility", () => {
     expect(swingMigration).toContain("TABLE_SESSION_CHANGED");
     expect(swingMigration).toContain("TABLE_SESSION_CLOSED");
     expect(swingMigration).toContain("TABLE_SESSION_STALE");
+    expect(swingMigration).toContain("TABLE_SESSION_BINDING_REQUIRED");
+    expect(swingMigration).toContain("v_incoming_dealer_id");
+    expect(swingMigration).toContain("never replay historical migrations");
     expect(swingMigration).toMatch(/INSERT INTO dealer_assignments \([\s\S]*?table_session_id[\s\S]*?v_table_session_id/);
     expect(swingMigration).not.toMatch(/UPDATE\s+dealer_assignments[\s\S]*?SET\s+table_session_id/i);
     expect(swingDisposable).toContain("execute_pre_assigned_swing_rpc");

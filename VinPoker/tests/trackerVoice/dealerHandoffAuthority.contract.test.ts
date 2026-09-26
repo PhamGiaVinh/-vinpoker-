@@ -34,7 +34,8 @@ describe("Tracker Voice Dealer handoff authority", () => {
 
   it("proves the real PostgreSQL handoff, denial, isolation, and idempotency matrix", () => {
     for (const evidence of [
-      "Dealer A release preserves approved capability while zero assignments fail closed",
+      "real Swing RPC completes the Voice Dealer handoff",
+      "Swing retry creates no assignment and credits no worked minutes twice",
       "Dealer B receives authority, old Dealer A is denied, and the other table is unchanged",
       "pending write from the old Dealer is rechecked server-side and leaves zero events",
       "multiple active assignments fail closed for both actors, including different Dealers",

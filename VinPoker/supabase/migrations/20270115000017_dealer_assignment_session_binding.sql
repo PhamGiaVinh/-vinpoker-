@@ -1,6 +1,8 @@
 -- Bind Dealer Swing assignments to the one active table session, while
 -- preserving legacy sessionless tables. Source-only until owner-approved apply.
--- Rollback: re-apply 20260817000003_fix_executor_step9_incoming_credit.sql.
+-- Rollback: ship a forward migration restoring the reviewed pre-16 function
+-- definition captured in 20260817000003; never replay historical migrations
+-- against production.
 
 CREATE OR REPLACE FUNCTION public.execute_pre_assigned_swing(
   p_old_assignment_id     uuid,
@@ -23,6 +25,7 @@ DECLARE
   v_old_table_session_id UUID;
   v_active_session_count INT;
   v_old_attendance_id UUID;
+  v_incoming_dealer_id UUID;
   v_new_assignment_id UUID;
   v_rows_updated      INT;
   v_actual_worked_min INT;
@@ -74,10 +77,12 @@ BEGIN
     AND club_id = v_club_id
   FOR UPDATE;
 
-  -- Revalidate and lock the old assignment after taking the physical-table
-  -- lock. Two executor calls for the same handoff cannot both pass this gate.
-  PERFORM 1
-  FROM dealer_assignments
+  -- Re-read every old-assignment value used below after taking the canonical
+  -- locks. Two executor calls cannot both pass, and no pre-lock value decides
+  -- session binding or payroll bookkeeping.
+  SELECT da.attendance_id, da.overtime_started_at, da.table_session_id
+  INTO v_old_attendance_id, v_overtime_started, v_old_table_session_id
+  FROM dealer_assignments da
   WHERE id = p_old_assignment_id
     AND table_id = v_table_id
     AND status = 'assigned'
@@ -145,11 +150,19 @@ BEGIN
       );
     END IF;
 
+    IF v_old_table_session_id IS NULL THEN
+      RETURN jsonb_build_object(
+        'status', 'error',
+        'error',  'TABLE_SESSION_BINDING_REQUIRED',
+        'detail', p_old_assignment_id
+      );
+    END IF;
+
   END IF;
 
   -- [2] Resolve incoming dealer name.
-  SELECT d.full_name
-  INTO   v_incoming_name
+  SELECT d.id, d.full_name
+  INTO   v_incoming_dealer_id, v_incoming_name
   FROM   dealer_attendance datt
   JOIN   dealers d ON d.id = datt.dealer_id
   WHERE  datt.id = p_next_attendance_id;
@@ -309,6 +322,7 @@ BEGIN
   -- ---------------------------------------------------------------------------
   INSERT INTO dealer_assignments (
     attendance_id,
+    dealer_id,
     table_id,
     table_session_id,
     club_id,
@@ -319,6 +333,7 @@ BEGIN
     idempotency_key
   ) VALUES (
     p_next_attendance_id,
+    v_incoming_dealer_id,
     v_table_id,
     v_table_session_id,
     v_club_id,
