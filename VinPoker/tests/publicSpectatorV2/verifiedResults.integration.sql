@@ -76,7 +76,7 @@ BEGIN
   IF jsonb_path_query_first(v_page, '$.items[*] ? (@.handId == "61000000-0000-4000-8000-000000000004").result.status') #>> '{}' IS DISTINCT FROM 'pending' THEN
     RAISE EXCEPTION 'stale source revision was accepted: %', v_page;
   END IF;
-  IF jsonb_path_query_first(v_page, '$.items[*] ? (@.handId == "61000000-0000-4000-8000-000000000005").bigBlind') IS NOT NULL THEN
+  IF jsonb_path_query_first(v_page, '$.items[*] ? (@.handId == "61000000-0000-4000-8000-000000000005").bigBlind') #>> '{}' IS NOT NULL THEN
     RAISE EXCEPTION 'missing BB was invented: %', v_page;
   END IF;
   IF jsonb_path_query_first(v_page, '$.items[*] ? (@.handId == "61000000-0000-4000-8000-000000000006").result.status') #>> '{}' IS DISTINCT FROM 'pending' THEN
