@@ -303,6 +303,15 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
             -f tests/trackerCorrectionRelease2/release2.pg17.sql
           echo "TRACKER_CORRECTION_RELEASE2_15000016_APPLY=PASS"
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 <<'SQL'
+          CREATE OR REPLACE FUNCTION public.is_club_owner(p_user_id uuid, p_club_id uuid)
+          RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+          AS $$ SELECT public.has_role(p_user_id, 'super_admin'::public.app_role)
+            OR EXISTS (SELECT 1 FROM public.clubs c WHERE c.id = p_club_id AND c.owner_id = p_user_id) $$;
+          CREATE OR REPLACE FUNCTION public.is_club_admin(p_user_id uuid, p_club_id uuid)
+          RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+          AS $$ SELECT EXISTS (SELECT 1 FROM public.clubs c WHERE c.id = p_club_id AND c.owner_id = p_user_id) $$;
+          SQL
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
             -f supabase/migrations/20261238000002_tracker_settlement_outcome_store.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
