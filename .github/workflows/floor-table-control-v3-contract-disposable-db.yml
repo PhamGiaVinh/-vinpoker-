@@ -106,11 +106,11 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.authenticated.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/disposableDb.serverContract.concurrent.setup.sql
-          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/redrawClockHold.disposable.sql
-          bash tests/floorTableControlV3/runRedrawContinueStartHandRace.sh
           bash tests/floorTableControlV3/runServerContractConcurrency.sh
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/repairTrackerTestRoster.fixture.sql
           bash tests/floorTableControlV3/runPartialTableLinkRepair.sh
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/rosterActionsRepair.disposable.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/deferredTrackerMove.writerDependencies.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/deferredTrackerMove.disposable.sql
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/redrawClockHold.disposable.sql
+          bash tests/floorTableControlV3/runRedrawContinueStartHandRace.sh
