@@ -294,7 +294,7 @@ jobs:
             -f supabase/migrations/20270114000009_tracker_voice_provider_event_idempotency.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f supabase/migrations/20270114000010_tracker_voice_covering_stack_hole_cards.sql
-          createdb tracker_voice_v0_before_15000011 -T tracker_voice_v0_strict
+          createdb tracker_voice_v0_before_15000013 -T tracker_voice_v0_strict
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f supabase/migrations/20270115000013_tracker_voice_dealer_handoff_authority.sql
           test "$(psql -X -At -d tracker_voice_v0_strict -c \
@@ -304,7 +304,7 @@ jobs:
                     AND position('v_assignment.user_id IS DISTINCT FROM p_actor' IN pg_get_functiondef(
                       'public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure
                     )) > 0")" = "t"
-          echo "TRACKER_VOICE_15000011_APPLY=PASS"
+          echo "TRACKER_VOICE_15000013_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f tests/trackerVoice/voiceHashV2.integration.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
@@ -502,22 +502,22 @@ jobs:
           test "$(psql -X -At -d tracker_voice_v0_before_14000010 -c \
             "SELECT to_regprocedure('public._tracker_voice_runout_reveal_authoritative_v1(uuid)') IS NULL")" = "t"
           echo "TRACKER_VOICE_14000010_ROLLBACK=PASS"
-          before_sync="$(psql -X -At -d tracker_voice_v0_before_15000011 -c \
+          before_sync="$(psql -X -At -d tracker_voice_v0_before_15000013 -c \
             "SELECT md5(pg_get_functiondef('floor_private.sync_tracker_voice_config(uuid,boolean)'::regprocedure))")"
-          before_authority="$(psql -X -At -d tracker_voice_v0_before_15000011 -c \
+          before_authority="$(psql -X -At -d tracker_voice_v0_before_15000013 -c \
             "SELECT md5(pg_get_functiondef('public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure))")"
-          failing="$RUNNER_TEMP/tracker-voice-15000011-failing.sql"
+          failing="$RUNNER_TEMP/tracker-voice-15000013-failing.sql"
           awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
             supabase/migrations/20270115000013_tracker_voice_dealer_handoff_authority.sql > "$failing"
-          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_15000011 -f "$failing"; then
-            echo "Injected 15000011 migration unexpectedly committed" >&2
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_15000013 -f "$failing"; then
+            echo "Injected 15000013 migration unexpectedly committed" >&2
             exit 1
           fi
-          test "$before_sync" = "$(psql -X -At -d tracker_voice_v0_before_15000011 -c \
+          test "$before_sync" = "$(psql -X -At -d tracker_voice_v0_before_15000013 -c \
             "SELECT md5(pg_get_functiondef('floor_private.sync_tracker_voice_config(uuid,boolean)'::regprocedure))")"
-          test "$before_authority" = "$(psql -X -At -d tracker_voice_v0_before_15000011 -c \
+          test "$before_authority" = "$(psql -X -At -d tracker_voice_v0_before_15000013 -c \
             "SELECT md5(pg_get_functiondef('public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure))")"
-          echo "TRACKER_VOICE_15000011_ROLLBACK=PASS"
+          echo "TRACKER_VOICE_15000013_ROLLBACK=PASS"
           echo "TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS"
 
       - name: Run focused Voice, Analytics and contract tests

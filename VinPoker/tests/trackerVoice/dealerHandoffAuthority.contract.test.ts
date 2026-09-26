@@ -52,8 +52,8 @@ describe("Tracker Voice Dealer handoff authority", () => {
 
   it("applies and rollback-tests the migration in isolated PostgreSQL", () => {
     expect(workflow).toContain(migrationName);
-    expect(workflow).toContain("TRACKER_VOICE_15000011_APPLY=PASS");
-    expect(workflow).toContain("TRACKER_VOICE_15000011_ROLLBACK=PASS");
+    expect(workflow).toContain("TRACKER_VOICE_15000013_APPLY=PASS");
+    expect(workflow).toContain("TRACKER_VOICE_15000013_ROLLBACK=PASS");
     expect(workflow).toContain("image: postgres:17");
     expect(workflow).not.toMatch(/--linked|db push|migration repair|functions deploy|vercel --prod/i);
   });
