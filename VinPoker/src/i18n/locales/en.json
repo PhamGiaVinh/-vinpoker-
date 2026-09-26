@@ -3533,5 +3533,9 @@
     "noHandData": "No hand data",
     "player": "Player",
     "playerCards": "{{name}}’s cards"
+  },
+  "tableHistory": {
+    "blindUnavailable": "Blinds —", "ante": "Ante", "received": "Received", "main": "main pot", "side": "side pot",
+    "publicCards": "{{name}}'s revealed cards", "net": "Net change", "pending": "Result under review", "replay": "Replay hand"
   }
 }

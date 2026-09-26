@@ -19,6 +19,30 @@ export function formatViewerBBOrUnavailable(amount: number, bigBlind: number): s
   return formatViewerBB(amount, bigBlind) ?? "— BB";
 }
 
+/** Chip + hand-BB label for public pot and historical result displays. */
+export function formatViewerChipCompact(amount: number | null): string {
+  if (amount === null || !Number.isFinite(amount)) return "—";
+  const magnitude = Math.abs(amount);
+  return magnitude >= 1_000_000
+    ? `${Number((magnitude / 1_000_000).toFixed(2))}M`
+    : magnitude >= 1_000
+      ? `${Number((magnitude / 1_000).toFixed(2))}k`
+      : String(magnitude);
+}
+
+export function formatViewerChipAndBB(amount: number | null, bigBlind: number | null): string {
+  if (amount === null || !Number.isFinite(amount)) return "—";
+  const chips = formatViewerChipCompact(amount);
+  const magnitude = Math.abs(amount);
+  const bb = formatViewerBB(magnitude, bigBlind ?? 0)?.replace(".", ",") ?? "— BB";
+  return `${chips} (${bb})`;
+}
+
+export function formatViewerSignedChipAndBB(amount: number | null, bigBlind: number | null): string {
+  if (amount === null || !Number.isFinite(amount)) return "—";
+  return `${amount > 0 ? "+" : amount < 0 ? "−" : ""}${formatViewerChipAndBB(amount, bigBlind)}`;
+}
+
 export interface BlindActionLike {
   player_id: string;
   action_type: string;

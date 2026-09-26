@@ -3533,5 +3533,9 @@
     "noHandData": "Chưa có dữ liệu",
     "player": "Người chơi",
     "playerCards": "Bài của {{name}}"
+  },
+  "tableHistory": {
+    "blindUnavailable": "Blind —", "ante": "Ante", "received": "Nhận", "main": "pot chính", "side": "pot phụ",
+    "publicCards": "Bài đã công khai của {{name}}", "net": "Lãi ròng", "pending": "Kết quả đang được kiểm tra", "replay": "Xem lại hand"
   }
 }

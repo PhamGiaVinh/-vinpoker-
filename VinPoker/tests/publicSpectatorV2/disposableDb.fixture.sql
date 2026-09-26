@@ -44,7 +44,8 @@ CREATE TABLE public.tournament_hands (
   hand_number integer, button_seat integer, community_cards jsonb DEFAULT '[]',
   pot_size numeric, tracker_small_blind numeric, tracker_big_blind numeric,
   tracker_level_number integer, tracker_bba numeric,
-  status text, is_voided boolean DEFAULT false, created_at timestamptz DEFAULT now()
+  status text, is_voided boolean DEFAULT false, source_revision bigint NOT NULL DEFAULT 1,
+  created_at timestamptz DEFAULT now()
 );
 CREATE TABLE public.hand_players (
   id uuid PRIMARY KEY, hand_id uuid, tournament_id uuid, player_id uuid,
@@ -65,6 +66,15 @@ CREATE TABLE public.tournament_prizes (
 );
 CREATE TABLE public.tournament_eliminations (
   id uuid PRIMARY KEY, tournament_id uuid, player_id uuid, entry_number integer
+);
+CREATE TABLE public.tournament_settlement_outcomes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tournament_id uuid NOT NULL,
+  hand_id uuid NOT NULL,
+  source_revision bigint NOT NULL,
+  settlement_revision bigint NOT NULL,
+  status text NOT NULL,
+  public_outcome jsonb NOT NULL
 );
 
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;

@@ -7,6 +7,7 @@
 
 import { useTranslation } from "react-i18next";
 import { formatStack } from "./LiveFelt";
+import { formatViewerChipAndBB, formatViewerChipCompact } from "@/lib/tracker-poker/viewerAmounts";
 
 interface FeltStatusBarProps {
   blinds: { sb: number; bb: number; ante: number } | null;
@@ -38,11 +39,11 @@ export function FeltStatusBar({ blinds, toActName, potSize, formatBB, viewerAmou
             {t("liveHub.felt.blinds", "Blind")}
           </span>
           <span className="tracker-num font-bold text-white">
-            {formatStack(blinds!.sb)}/{formatStack(blinds!.bb)}
+            {viewerAmountsInBB ? formatViewerChipCompact(blinds!.sb) : formatStack(blinds!.sb)}/{viewerAmountsInBB ? formatViewerChipCompact(blinds!.bb) : formatStack(blinds!.bb)}
           </span>
-          {blinds!.ante > 0 && (
+          {(viewerAmountsInBB || blinds!.ante > 0) && (
             <span className="tracker-num text-white/60">
-              · A {formatStack(blinds!.ante)}
+              · Ante {viewerAmountsInBB ? formatViewerChipCompact(blinds!.ante) : formatStack(blinds!.ante)}
             </span>
           )}
         </span>
@@ -67,7 +68,7 @@ export function FeltStatusBar({ blinds, toActName, potSize, formatBB, viewerAmou
             {t("liveHub.felt.pot", "Pot")}
           </span>
           <span className="tracker-num font-bold" style={{ color: "hsl(var(--poker-gold))" }}>
-            {viewerAmountsInBB ? formatBB(potSize) ?? "— BB" : formatStack(potSize)}
+            {viewerAmountsInBB ? formatViewerChipAndBB(potSize, blinds?.bb ?? null) : formatStack(potSize)}
           </span>
           {!viewerAmountsInBB && formatBB(potSize) && <span className="tracker-num text-white/50">({formatBB(potSize)})</span>}
         </span>
