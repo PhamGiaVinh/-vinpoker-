@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { mapWithConcurrency } from "../supabase/functions/_shared/mapWithConcurrency.ts";
 import {
+  scopeCheckoutAttendanceIds,
+  selectFreshDealerPoolAttendance,
+  selectOperationalDealerAttendance,
   staleCleanupCandidateAttendanceIds,
   staleCleanupAttendanceIds,
   summarizeDealerCheckoutBatch,
@@ -89,6 +92,42 @@ describe("checkout-dealer result reporting", () => {
   });
 });
 
+describe("checkout-dealer club scope", () => {
+  const attendance = [
+    { id: "hsop-a", check_in_time: "2026-08-24T01:00:00Z", dealers: { club_id: "hsop" } },
+    { id: "hsop-b", check_in_time: "2026-08-24T01:10:00Z", dealers: { club_id: "hsop" } },
+    { id: "control-a", check_in_time: "2026-08-24T01:20:00Z", dealers: { club_id: "control" } },
+  ];
+
+  it("requires one selected club before a checkout batch", () => {
+    expect(scopeCheckoutAttendanceIds(attendance, ["hsop-a"], null)).toEqual({
+      ok: false,
+      code: "CLUB_REQUIRED",
+    });
+  });
+
+  it("rejects a mixed-club selection before calling the Edge function", () => {
+    expect(scopeCheckoutAttendanceIds(attendance, ["hsop-a", "control-a"], "hsop")).toEqual({
+      ok: false,
+      code: "ATTENDANCE_CLUB_MISMATCH",
+    });
+  });
+
+  it("rejects attendance IDs that disappeared after the operator selected them", () => {
+    expect(scopeCheckoutAttendanceIds(attendance, ["hsop-a", "stale-selection"], "hsop")).toEqual({
+      ok: false,
+      code: "ATTENDANCE_SCOPE_UNKNOWN",
+    });
+  });
+
+  it("deduplicates a valid same-club batch while preserving order", () => {
+    expect(scopeCheckoutAttendanceIds(attendance, ["hsop-b", "hsop-a", "hsop-b"], "hsop")).toEqual({
+      ok: true,
+      attendanceIds: ["hsop-b", "hsop-a"],
+    });
+  });
+});
+
 describe("checkout-dealer stale attendance guard", () => {
   const now = Date.parse("2026-08-24T02:00:00Z");
 
@@ -134,5 +173,19 @@ describe("dealer pool attendance freshness", () => {
     expect(isFreshDealerPoolAttendance(null, now)).toBe(false);
     expect(isFreshDealerPoolAttendance("not-a-date", now)).toBe(false);
     expect(isFreshDealerPoolAttendance("2026-08-24T03:00:00Z", now)).toBe(false);
+  });
+
+  it("keeps stale assigned attendance visible but never counts it as pool supply", () => {
+    const attendance = [
+      { id: "fresh", check_in_time: "2026-08-24T01:00:00Z" },
+      { id: "stale-assigned", check_in_time: "2026-08-22T01:00:00Z" },
+      { id: "stale-idle", check_in_time: "2026-08-22T01:00:00Z" },
+    ];
+
+    expect(selectFreshDealerPoolAttendance(attendance, now).map((row) => row.id)).toEqual(["fresh"]);
+    expect(
+      selectOperationalDealerAttendance(attendance, new Set(["stale-assigned"]), now)
+        .map((row) => row.id),
+    ).toEqual(["fresh", "stale-assigned"]);
   });
 });

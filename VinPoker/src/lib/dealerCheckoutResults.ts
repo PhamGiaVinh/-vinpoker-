@@ -1,3 +1,5 @@
+import { isFreshDealerPoolAttendance } from "../../supabase/functions/_shared/checkoutSafety.ts";
+
 export interface DealerCheckoutResult {
   attendance_id?: string;
   success?: boolean;
@@ -11,11 +13,74 @@ export interface DealerCheckoutResult {
 }
 
 export const STALE_ATTENDANCE_REQUIRES_CLEANUP = "STALE_ATTENDANCE_REQUIRES_CLEANUP";
-export const NORMAL_CHECKOUT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export interface CheckoutCandidateAttendance {
   id: string;
   check_in_time: string | null;
+}
+
+export interface CheckoutScopedAttendance extends CheckoutCandidateAttendance {
+  dealers?: { club_id?: string | null } | Array<{ club_id?: string | null }> | null;
+}
+
+export type CheckoutBatchScopeResult =
+  | { ok: true; attendanceIds: string[] }
+  | {
+      ok: false;
+      code: "CLUB_REQUIRED" | "ATTENDANCE_SCOPE_UNKNOWN" | "ATTENDANCE_CLUB_MISMATCH";
+    };
+
+function attendanceClubId(attendance: CheckoutScopedAttendance): string | null {
+  const dealer = Array.isArray(attendance.dealers) ? attendance.dealers[0] : attendance.dealers;
+  return dealer?.club_id ?? null;
+}
+
+export function scopeCheckoutAttendanceIds(
+  attendance: CheckoutScopedAttendance[],
+  requestedIds: string[],
+  activeClubId: string | null,
+): CheckoutBatchScopeResult {
+  if (!activeClubId) return { ok: false, code: "CLUB_REQUIRED" };
+
+  const requested = [...new Set(requestedIds.filter(Boolean))];
+  const byId = new Map(attendance.map((row) => [row.id, row]));
+  for (const attendanceId of requested) {
+    const row = byId.get(attendanceId);
+    const clubId = row ? attendanceClubId(row) : null;
+    if (!row || !clubId) {
+      return { ok: false, code: "ATTENDANCE_SCOPE_UNKNOWN" };
+    }
+    if (clubId !== activeClubId) {
+      return { ok: false, code: "ATTENDANCE_CLUB_MISMATCH" };
+    }
+  }
+
+  return { ok: true, attendanceIds: requested };
+}
+
+function isFreshCheckoutCandidate(
+  attendance: CheckoutCandidateAttendance,
+  nowMs: number,
+): boolean {
+  return Boolean(attendance.id)
+    && isFreshDealerPoolAttendance(attendance.check_in_time, nowMs);
+}
+
+export function selectFreshDealerPoolAttendance<T extends CheckoutCandidateAttendance>(
+  attendance: T[],
+  nowMs = Date.now(),
+): T[] {
+  return attendance.filter((row) => isFreshCheckoutCandidate(row, nowMs));
+}
+
+export function selectOperationalDealerAttendance<T extends CheckoutCandidateAttendance>(
+  attendance: T[],
+  activeAssignmentAttendanceIds: ReadonlySet<string>,
+  nowMs = Date.now(),
+): T[] {
+  return attendance.filter((row) =>
+    isFreshCheckoutCandidate(row, nowMs) || activeAssignmentAttendanceIds.has(row.id)
+  );
 }
 
 /**
@@ -31,13 +96,7 @@ export function staleCleanupCandidateAttendanceIds(
   nowMs = Date.now(),
 ): string[] {
   return attendance
-    .filter(({ id, check_in_time }) => {
-      if (!id || !check_in_time) return Boolean(id);
-      const checkInMs = new Date(check_in_time).getTime();
-      return !Number.isFinite(checkInMs)
-        || checkInMs > nowMs
-        || nowMs - checkInMs >= NORMAL_CHECKOUT_MAX_AGE_MS;
-    })
+    .filter((row) => Boolean(row.id) && !isFreshCheckoutCandidate(row, nowMs))
     .map(({ id }) => id);
 }
 

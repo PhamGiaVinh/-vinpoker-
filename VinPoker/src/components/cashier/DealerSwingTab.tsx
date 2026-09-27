@@ -54,6 +54,9 @@ import DealerSwingSummaryStrip from "./dealer-swing/DealerSwingSummaryStrip";
 import { TierBadge, TableTypeBadge, StatusPill } from "./dealer-swing/SwingBadges";
 import DealerSwingInfraHealth from "./dealer-swing/DealerSwingInfraHealth";
 import {
+  scopeCheckoutAttendanceIds,
+  selectFreshDealerPoolAttendance,
+  selectOperationalDealerAttendance,
   staleCleanupCandidateAttendanceIds,
   staleCleanupAttendanceIds,
   summarizeDealerCheckoutBatch,
@@ -226,9 +229,8 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   const [clubFilter, setClubFilter] = useState<string | null>(clubIds.length === 1 ? clubIds[0] : null);
   const activeClubId = clubFilter ?? (clubIds.length === 1 ? clubIds[0] : null);
   const filteredClubIds = useMemo(() => {
-    const ids = clubFilter ? [clubFilter] : clubIds;
-    return [...ids].sort();
-  }, [clubFilter, clubIds]);
+    return activeClubId ? [activeClubId] : [];
+  }, [activeClubId]);
   const [selectedTour, setSelectedTour] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState("");
   const [mobileTab, setMobileTab] = useState<"map" | "left" | "right">("map");
@@ -263,11 +265,27 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   } = useRotationSchedule(filteredClubIds);
   const { data: swingConfigs, refetch: refetchSwingConfigs } = useSwingConfigs(filteredClubIds);
   const { data: tournaments } = useActiveTournaments(clubFilter ?? filteredClubIds[0]);
+  const staleCleanupCandidateIds = useMemo(
+    () => staleCleanupCandidateAttendanceIds(dealers ?? [], nowMs),
+    [dealers, nowMs],
+  );
+  const activeAssignmentAttendanceIds = useMemo(
+    () => new Set((assignments ?? []).map((assignment) => assignment.attendance_id)),
+    [assignments],
+  );
+  const freshPoolDealers = useMemo(
+    () => selectFreshDealerPoolAttendance(dealers ?? [], nowMs),
+    [dealers, nowMs],
+  );
+  const operationalDealers = useMemo(
+    () => selectOperationalDealerAttendance(dealers ?? [], activeAssignmentAttendanceIds, nowMs),
+    [dealers, activeAssignmentAttendanceIds, nowMs],
+  );
   const tablesById = useMemo(() => {
     return new Map((tables ?? []).map((table) => [table.id, table]));
   }, [tables]);
   const { data: breakPool, loading: breakPoolLoading, error: breakPoolError, refetch: refetchBreakPool } =
-    useBreakPool(filteredClubIds, dealers ?? [], swingConfigs ?? []);
+    useBreakPool(filteredClubIds, freshPoolDealers, swingConfigs ?? []);
 
   const timelineByTableId = useMemo(() => {
     const map: Record<string, TableTimeline> = {};
@@ -294,16 +312,10 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   }, [breakPool]);
 
   const rosterDealers = useMemo(
-    () => (dealers ?? []).filter(
+    () => operationalDealers.filter(
       (dealer) => dealer.current_state !== "on_break" && !restingAttendanceIds.has(dealer.id),
     ),
-    [dealers, restingAttendanceIds],
-  );
-  // Read-only, reload-safe prefilter for the stale cleanup affordance. The
-  // server still owns the final decision and evidence checks when cleanup runs.
-  const staleCleanupCandidateIds = useMemo(
-    () => staleCleanupCandidateAttendanceIds(dealers ?? [], nowMs),
-    [dealers, nowMs],
+    [operationalDealers, restingAttendanceIds],
   );
 
   // Manual "Gán dealer" dropdown: only dealers eligible to be assigned right now —
@@ -311,14 +323,14 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   // on-break) who haven't rested the club's min_inter_swing_rest_minutes yet.
   const restMinutesByClub = useMemo(() => buildRestMinutesByClub(swingConfigs ?? []), [swingConfigs]);
   const assignableDealers = useMemo(
-    () => (dealers ?? []).filter((d) =>
+    () => freshPoolDealers.filter((d) =>
       isAssignableDealer(
         { current_state: d.current_state, last_released_at: d.last_released_at, clubId: d.dealers?.club_id ?? null },
         restMinutesByClub,
         nowMs,
       ),
     ),
-    [dealers, restMinutesByClub, nowMs],
+    [freshPoolDealers, restMinutesByClub, nowMs],
   );
   const { optimistic: checkedInCount, onCheckout: onOptCheckout } = useOptimisticDealerCount(rosterDealers.length);
   const { data: nextDealerMap } = useNextDealerPredictions(filteredClubIds, assignments);
@@ -423,6 +435,23 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   const [batchCheckoutPending, setBatchCheckoutPending] = useState<string[]>([]);
   const [staleCleanupIds, setStaleCleanupIds] = useState<string[]>([]);
   const [staleCleanupConfirmOpen, setStaleCleanupConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    setSelectedTour(null);
+    setBatchCheckoutConfirmOpen(false);
+    setBatchCheckoutWarnings([]);
+    setBatchCheckoutPending([]);
+    setStaleCleanupIds([]);
+    setStaleCleanupConfirmOpen(false);
+    setCheckoutOpen(false);
+    setCheckoutAttendanceId("");
+    setCheckinOpen(false);
+    setCheckinDealerIds([]);
+    setModalTable(null);
+    setChangePredictedTableId(null);
+    setCorrectWrongTableId(null);
+    setRoomReconcileOpen(false);
+  }, [activeClubId]);
 
   // Close table confirmation
   const [closeTableConfirmId, setCloseTableConfirmId] = useState<string | null>(null);
@@ -1663,19 +1692,40 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
     setTimeout(refetchDealers, 50);
   };
 
+  const checkoutScopeError = useCallback((code: string) => {
+    if (code === "CLUB_REQUIRED") return "Vui lòng chọn đúng một CLB trước khi check-out";
+    if (code === "ATTENDANCE_CLUB_MISMATCH") return "Danh sách check-out có dealer thuộc CLB khác";
+    return "Danh sách dealer đã thay đổi. Hãy tải lại rồi thử lại";
+  }, []);
+
+  const scopedCheckoutIds = useCallback((ids: string[]): string[] | null => {
+    const scoped = scopeCheckoutAttendanceIds(dealers ?? [], ids, activeClubId);
+    if (!scoped.ok) {
+      toast.error(checkoutScopeError(scoped.code));
+      return null;
+    }
+    return scoped.attendanceIds;
+  }, [activeClubId, checkoutScopeError, dealers]);
+
   // Batch checkout with pre-check for active assignments
   const handleBatchCheckoutClick = async (attendanceIds: string[]) => {
-    if (!attendanceIds.length) return;
+    const scopedIds = scopedCheckoutIds(attendanceIds);
+    if (!scopedIds?.length) return;
 
-    const { data: active } = await supabase
+    const { data: active, error: activeError } = await supabase
       .from("dealer_assignments")
       .select(`
         attendance_id,
         status,
         game_tables!inner(table_name)
       `)
-      .in("attendance_id", attendanceIds)
+      .in("attendance_id", scopedIds)
       .in("status", ["assigned", "pre_assigned"]);
+
+    if (activeError) {
+      toast.error("Không thể kiểm tra assignment hiện tại. Hãy tải lại rồi thử lại");
+      return;
+    }
 
     const activeMap = new Map<string, { tableName: string; status: string }>();
     for (const a of active ?? []) {
@@ -1688,7 +1738,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
 
     if (activeMap.size > 0) {
       const warnings: string[] = [];
-      for (const id of attendanceIds) {
+      for (const id of scopedIds) {
         const info = activeMap.get(id);
         if (info) {
           const dealerEntry = (dealers ?? []).find((d: any) => d.id === id);
@@ -1699,24 +1749,25 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       }
       if (warnings.length > 0) {
         setBatchCheckoutWarnings(warnings);
-        setBatchCheckoutPending(attendanceIds);
+        setBatchCheckoutPending(scopedIds);
         setBatchCheckoutConfirmOpen(true);
         return;
       }
     }
 
     // No active assignments — proceed directly
-    await doBatchCheckout(attendanceIds);
+    await doBatchCheckout(scopedIds);
   };
 
   // Batch checkout via edge function
   const doBatchCheckout = async (ids: string[]) => {
-    if (!ids.length) return;
+    const scopedIds = scopedCheckoutIds(ids);
+    if (!scopedIds?.length) return;
     setStaleCleanupIds([]);
     setProcessing("checkout");
     try {
       const { data, error } = await supabase.functions.invoke("checkout-dealer", {
-        body: { attendance_ids: ids },
+        body: { attendance_ids: scopedIds },
       });
       if (error) {
         let detail = error.message || "Lỗi checkout hàng loạt";
@@ -1730,10 +1781,10 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
         toast.error(detail);
         return;
       }
-      const summary = summarizeDealerCheckoutBatch(data, ids.length);
+      const summary = summarizeDealerCheckoutBatch(data, scopedIds.length);
       setStaleCleanupIds(staleCleanupAttendanceIds(summary.results));
       if (summary.successCount > 0) {
-        toast.success(`Đã checkout ${summary.successCount}/${ids.length} dealer`);
+        toast.success(`Đã checkout ${summary.successCount}/${scopedIds.length} dealer`);
       }
       if (summary.failureMessage) toast.error(summary.failureMessage);
       onOptCheckout(summary.successCount);
@@ -1748,11 +1799,12 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   // Explicit stale-shift cleanup. The server chooses the latest valid evidence
   // per row and never recalculates payroll/OT; rows without evidence stay open.
   const doStaleCleanup = async (ids: string[]) => {
-    if (!ids.length) return;
+    const scopedIds = scopedCheckoutIds(ids);
+    if (!scopedIds?.length) return;
     setProcessing("checkout");
     try {
       const { data, error } = await supabase.functions.invoke("checkout-dealer", {
-        body: { attendance_ids: ids, mode: "stale_cleanup" },
+        body: { attendance_ids: scopedIds, mode: "stale_cleanup" },
       });
       if (error) {
         let detail = error.message || "Lỗi dọn ca treo";
@@ -1766,10 +1818,10 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
         toast.error(detail);
         return;
       }
-      const summary = summarizeDealerCheckoutBatch(data, ids.length);
-      if (summary.successCount > 0) toast.success(`Đã dọn ${summary.successCount}/${ids.length} ca; không tính lại lương/OT`);
+      const summary = summarizeDealerCheckoutBatch(data, scopedIds.length);
+      if (summary.successCount > 0) toast.success(`Đã dọn ${summary.successCount}/${scopedIds.length} ca; không tính lại lương/OT`);
       if (summary.failureMessage) toast.warning(`Giữ lại để kiểm tra: ${summary.failureMessage}`);
-      setStaleCleanupIds(unresolvedCheckoutAttendanceIds(summary.results, ids));
+      setStaleCleanupIds(unresolvedCheckoutAttendanceIds(summary.results, scopedIds));
       onOptCheckout(summary.successCount);
       setTimeout(refetchDealers, 50);
     } catch (e: any) {
@@ -1811,17 +1863,42 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
 
   const loading = dealersLoading || tablesLoading || assignsLoading;
 
+  if (clubs.length > 1 && !activeClubId) {
+    return (
+      <div className="flex min-h-[360px] items-start justify-center px-3 py-10 sm:px-6">
+        <div className="w-full max-w-lg rounded-md border border-border bg-card px-4 py-5 sm:px-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base font-semibold text-foreground">Chọn CLB để vận hành Dealer Swing</h2>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                Pool dealer, bàn và thao tác check-out chỉ được xử lý trong một CLB.
+              </p>
+              <Select value={undefined} onValueChange={setClubFilter}>
+                <SelectTrigger className="mt-4 w-full">
+                  <SelectValue placeholder="Chọn CLB" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clubs.map((club) => <SelectItem key={club.id} value={club.id}>{club.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         {clubs.length > 1 && (
-          <Select value={clubFilter ?? "all"} onValueChange={(v) => setClubFilter(v === "all" ? null : v)}>
+          <Select value={activeClubId ?? undefined} onValueChange={setClubFilter}>
             <SelectTrigger className="w-48">
-              <SelectValue placeholder="Tất cả CLB" />
+              <SelectValue placeholder="Chọn CLB" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tất cả CLB</SelectItem>
               {clubs.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -1963,7 +2040,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
             horizontal
             assignments={assignments ?? []}
             tables={tables ?? []}
-            dealers={dealers ?? []}
+            dealers={operationalDealers}
             tableAssignmentMap={tableAssignmentMap}
             timelineByTableId={timelineByTableId}
             nextDealerMap={nextDealerMap}
@@ -2093,7 +2170,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
                         focusedTableId={focusedTableId}
                         onSwingTable={performSwingForTable}
                         swingingAssignmentId={swingingTableId}
-                        dealers={dealers ?? []}
+                        dealers={operationalDealers}
                         onChangePredicted={setChangePredictedTableId}
                         onCorrectWrongTable={setCorrectWrongTableId}
                         onOpenRoomReconcile={() => setRoomReconcileOpen(true)}
@@ -2136,7 +2213,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
             {FEATURES.dealerStaffingOptimizer && (isAdmin || isClubAdmin || isClubOwner || isFloor) && (
               <StaffingOptimizerCard
                 activeTables={summaryCounts.activeTables}
-                dealers={dealers ?? []}
+                dealers={freshPoolDealers}
                 assignments={assignments ?? []}
                 swingConfigs={swingConfigs ?? []}
                 nowMs={nowMs}
@@ -2145,7 +2222,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
               />
             )}
             {FEATURES.dealerFeatureTables && (isAdmin || isClubAdmin || isClubOwner || isFloor) && (
-              <FeatureTablePoolBox clubId={clubFilter ?? clubIds[0] ?? null} tables={tables ?? []} dealers={dealers ?? []} />
+              <FeatureTablePoolBox clubId={activeClubId} tables={tables ?? []} dealers={freshPoolDealers} />
             )}
             <Collapsible>
               <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-card/70 px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-muted/60 [&[data-state=open]>svg]:rotate-180">
@@ -2188,7 +2265,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
               onOpenSpecialDates={() => setSpecialDatesOpen(true)}
               onAssign={openAssignModal}
               onSendToBreak={(attId) => setBreakDurationOpen(attId)}
-              dealers={dealers ?? []}
+              dealers={operationalDealers}
               swingMetrics={swingMetrics ?? []}
               tables={tables ?? []}
               assignments={assignments ?? []}
@@ -2341,7 +2418,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
             tableName={cpTable?.table_name ?? "Bàn"}
             slot0={cpSlots?.slot0 ?? null}
             currentTableAttendanceId={cpAssignment?.attendance_id ?? null}
-            dealers={dealers ?? []}
+            dealers={freshPoolDealers}
             assignedTableNameByAttendanceId={cpNameByAtt}
             restMinutes={cpRestMinutes}
             onChanged={() => { refetchAssignments(); refetchDealers(); }}
@@ -2366,7 +2443,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
             tableId={cwTable.id}
             tableName={cwTable.table_name ?? "Bàn"}
             recordedAssignment={tableAssignmentMap[correctWrongTableId] ?? null}
-            dealers={dealers ?? []}
+            dealers={operationalDealers}
             tables={tables ?? []}
             tableAssignmentMap={tableAssignmentMap}
             restMinutes={cwRestMinutes}
@@ -2388,7 +2465,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
             open
             onOpenChange={setRoomReconcileOpen}
             clubId={cid}
-            dealers={dealers ?? []}
+            dealers={operationalDealers}
             tables={tables ?? []}
             tableAssignmentMap={tableAssignmentMap}
             restMinutes={rrRest}
@@ -3234,7 +3311,7 @@ function StaleCleanupCard({
           </p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             {hasCandidates
-              ? "Ca quá 24 giờ hoặc thiếu giờ vào. Máy chủ sẽ kiểm tra lại bằng chứng kết thúc, giữ nguyên lương/OT và để riêng ca không đủ bằng chứng."
+              ? "Ca quá 24 giờ hoặc thiếu giờ vào không được tính vào pool sẵn sàng. Máy chủ sẽ kiểm tra bằng chứng kết thúc, giữ nguyên lương/OT và để riêng ca không đủ bằng chứng."
               : "Nút này luôn sẵn để dọn ca cũ sau khi dữ liệu check-in được tải lại."}
           </p>
           <Button

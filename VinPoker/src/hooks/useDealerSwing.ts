@@ -208,7 +208,13 @@ function useRealtimeQuery<T>(
   }, []);
 
   useEffect(() => {
-    if (clubIds.length === 0) return;
+    if (clubIds.length === 0) {
+      generationRef.current += 1;
+      setData([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
 
     refetch();
 

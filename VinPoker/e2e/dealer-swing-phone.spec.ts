@@ -2,6 +2,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 
 const API_ORIGIN = "http://127.0.0.1:54329";
 const CLUB_ID = "22222222-2222-2222-2222-222222222222";
+const CONTROL_CLUB_ID = "99999999-9999-4999-8999-999999999999";
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const DEALER_ONE = "33333333-3333-4333-8333-333333333331";
 const DEALER_TWO = "33333333-3333-4333-8333-333333333332";
@@ -35,6 +36,7 @@ const jsonHeaders = {
 
 let checkoutRequests: Array<Record<string, unknown>> = [];
 let staleFixture = false;
+let multiClubFixture = false;
 
 function todayInClub(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -227,11 +229,16 @@ async function installFixtureRoutes(page: Page) {
     if (rpcName) {
       const payload = request.postDataJSON() as Record<string, unknown> | null;
       if (rpcName === "get_my_floor_operator_scope") {
-        await fulfill(route, [{ club_id: CLUB_ID, can_owner: true, can_cashier: true, can_floor: true }]);
+        await fulfill(route, [
+          { club_id: CLUB_ID, can_owner: true, can_cashier: true, can_floor: true },
+          ...(multiClubFixture
+            ? [{ club_id: CONTROL_CLUB_ID, can_owner: true, can_cashier: true, can_floor: true }]
+            : []),
+        ]);
         return;
       }
       if (rpcName === "dealer_control_club_ids") {
-        await fulfill(route, [CLUB_ID]);
+        await fulfill(route, multiClubFixture ? [CLUB_ID, CONTROL_CLUB_ID] : [CLUB_ID]);
         return;
       }
       if (rpcName === "get_dealer_swing_phone_rollout") {
@@ -331,7 +338,12 @@ async function installFixtureRoutes(page: Page) {
       return;
     }
     if (table === "clubs") {
-      await fulfill(route, [{ id: CLUB_ID, name: "HSOP", owner_id: USER_ID }]);
+      await fulfill(route, [
+        { id: CLUB_ID, name: "HSOP", owner_id: USER_ID },
+        ...(multiClubFixture
+          ? [{ id: CONTROL_CLUB_ID, name: "Control Club", owner_id: USER_ID }]
+          : []),
+      ]);
       return;
     }
     if (table === "dealers") {
@@ -400,10 +412,27 @@ async function assertFitsViewport(page: Page) {
 test.beforeEach(async ({ page }) => {
   checkoutRequests = [];
   staleFixture = false;
+  multiClubFixture = false;
   await installFixtureRoutes(page);
   await page.addInitScript((session) => {
     localStorage.setItem("sb-127-auth-token", JSON.stringify(session));
   }, localSession());
+});
+
+test("requires one club before loading Dealer Swing for a multi-club operator", async ({ page }) => {
+  test.setTimeout(150_000);
+  multiClubFixture = true;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/dealer-swing", { waitUntil: "domcontentloaded", timeout: 120_000 });
+
+  await expect(page.getByRole("heading", { name: "Chọn CLB để vận hành Dealer Swing" })).toBeVisible();
+  const dealerSwingPanel = page.getByRole("tabpanel", { name: "Dealer Swing" });
+  await dealerSwingPanel.getByRole("combobox").click();
+  await page.getByRole("option", { name: "HSOP" }).click();
+  await expect(dealerSwingPanel.getByRole("combobox").filter({ hasText: "HSOP" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Chọn CLB để vận hành Dealer Swing" })).toHaveCount(0);
+  expect(checkoutRequests).toEqual([]);
+  await assertFitsViewport(page);
 });
 
 test("shows the stale cleanup action after reload before a checkout attempt", async ({ page }) => {
