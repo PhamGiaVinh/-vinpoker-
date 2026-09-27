@@ -169,12 +169,12 @@ RESET ROLE;
 
 -- Two independent PostgreSQL sessions race the same owner/admin commit and
 -- idempotency key. Row locking plus replay must leave one settlement revision.
+INSERT INTO public.hand_players(id,hand_id,tournament_id,player_id,entry_number,seat_number,player_name,starting_stack,ending_stack,hole_cards)
+VALUES ('71000000-0000-4000-8000-000000000014','61000000-0000-4000-8000-000000000014','10000000-0000-4000-8000-000000000001','50000000-0000-4000-8000-000000000001',1,1,'Race',1000,1000,'[]');
 DO $$
 DECLARE v_hash text; v_rev bigint; v_sql text; v_outcome jsonb;
   v_one jsonb; v_two jsonb; v_sent int;
 BEGIN
-  INSERT INTO public.hand_players(id,hand_id,tournament_id,player_id,entry_number,seat_number,player_name,starting_stack,ending_stack,hole_cards)
-  VALUES ('71000000-0000-4000-8000-000000000014','61000000-0000-4000-8000-000000000014','10000000-0000-4000-8000-000000000001','50000000-0000-4000-8000-000000000001',1,1,'Race',1000,1000,'[]');
   SELECT source_chain_hash,source_revision INTO v_hash,v_rev FROM public.get_tournament_historical_display_source_hash('61000000-0000-4000-8000-000000000014');
   v_outcome := jsonb_build_object(
     'schemaVersion','settlement-outcome-v1','status','verified','sourceRevision',v_rev,
