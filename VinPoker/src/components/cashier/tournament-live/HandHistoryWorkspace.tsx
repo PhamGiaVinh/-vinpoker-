@@ -31,7 +31,7 @@ import {
 import type { EditedTargetHand, ResettleBlock, ResettleForwardResult, ResettleOk } from "@/lib/tracker-poker/resettleForward";
 
 const LEGACY_CORRECTION_WRITES_ENABLED = false;
-const SERVER_CORRECTION_PREVIEW_ENABLED = true;
+const SERVER_CORRECTION_PREVIEW_ENABLED = false;
 
 /** Read ALL rows of a query in pages (PostgREST caps a single select, commonly at 1000).
  *  A money-path replay must NEVER run on a silently-truncated chain, so callers page with a

@@ -24,6 +24,11 @@ type PendingAlert = {
   message: string;
 };
 
+// Release 2 remains source-only until migrations 00016/00017 and their Edge
+// contracts are promoted together. Keep the production alert surface on the
+// already-live v2 RPC in the meantime.
+const TRACKER_CORRECTION_RELEASE2_ENABLED = false;
+
 const storageKey = (tournamentId: string, tournamentTableId: string) =>
   `dealer-floor-alert:${tournamentId}:${tournamentTableId}`;
 
@@ -105,6 +110,13 @@ export function DealerFloorAlertControls({ tournamentId, tournamentTableId, hand
       handId, action: selectedAction, sourceRevision: selectedAction ? sourceRevision : null,
       kind, message: "",
     };
+    if (request.kind === "wrong_action" && !TRACKER_CORRECTION_RELEASE2_ENABLED) {
+      persistPending(key, null);
+      setPending(null);
+      setStatus("rejected");
+      setDetail("Báo sai action chưa được bật trên máy chủ.");
+      return;
+    }
     if (!pending && selectedAction && sourceRevision === null) {
       setStatus("rejected");
       setDetail("Chưa xác minh được phiên bản action từ máy chủ; chưa gửi Floor.");
@@ -188,10 +200,12 @@ export function DealerFloorAlertControls({ tournamentId, tournamentTableId, hand
       <button type="button" disabled={!enabled || Boolean(pending) || status === "sending"} onClick={() => void submit("display_issue")}>
         <AlertTriangle size={16} /> Vấn đề hiển thị
       </button>
-      <button type="button" disabled={!enabled || !selectedAction || sourceRevision === null || Boolean(pending) || status === "sending"}
-        onClick={() => void submit("wrong_action")}>
-        <AlertTriangle size={16} /> Báo sai action
-      </button>
+      {TRACKER_CORRECTION_RELEASE2_ENABLED && (
+        <button type="button" disabled={!enabled || !selectedAction || sourceRevision === null || Boolean(pending) || status === "sending"}
+          onClick={() => void submit("wrong_action")}>
+          <AlertTriangle size={16} /> Báo sai action
+        </button>
+      )}
     </div>
     {pending && status !== "sending" && <button type="button" className="dealer-floor-retry" disabled={!enabled}
       onClick={() => void submit(pending.kind)}>Kiểm tra lại yêu cầu đang chờ</button>}
@@ -201,7 +215,7 @@ export function DealerFloorAlertControls({ tournamentId, tournamentTableId, hand
         status === "unknown" ? detail || "Chưa xác nhận được kết quả; kiểm tra lại bằng cùng mã yêu cầu." :
         status === "sent" ? `Đã gửi Floor. ${detail}` :
         status === "rejected" ? `Chưa gửi được: ${detail}` :
-        "Gọi Floor không dừng hand. Báo sai action sẽ tạm dừng tiến hand sau khi máy chủ trả receipt."}
+        "Gọi Floor không dừng hand. Báo sai poker state sẽ có luồng sửa riêng."}
     </p>
     {pending && <small className="dealer-floor-request-id">Mã yêu cầu: {pending.requestId}</small>}
   </section>;
