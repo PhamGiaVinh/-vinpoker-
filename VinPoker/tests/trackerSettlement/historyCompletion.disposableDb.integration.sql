@@ -140,6 +140,41 @@ BEGIN
   EXCEPTION WHEN SQLSTATE '22023' THEN NULL; END;
 END $$;
 
+-- The single-statement snapshot sees one committed source generation while an
+-- independent transaction changes both player and action rows, then sees the
+-- complete new generation after commit. It must never combine old/new rows.
+INSERT INTO public.hand_players(id,hand_id,tournament_id,player_id,entry_number,seat_number,player_name,starting_stack,ending_stack,hole_cards)
+VALUES ('71000000-0000-4000-8000-000000000016','61000000-0000-4000-8000-000000000016','10000000-0000-4000-8000-000000000001','50000000-0000-4000-8000-000000000001',1,1,'Snapshot',1000,1000,'[]');
+INSERT INTO public.hand_actions(id,hand_id,player_id,entry_number,action_type,action_amount,action_order,street)
+VALUES ('72000000-0000-4000-8000-000000000016','61000000-0000-4000-8000-000000000016','50000000-0000-4000-8000-000000000001',1,'bet',10,1,'preflop');
+SELECT dblink_connect('snapshot_writer','dbname='||current_database()||' user='||current_user);
+SELECT dblink_exec('snapshot_writer','SET request.jwt.claims = ''{"role":"service_role"}''');
+SELECT dblink_exec('snapshot_writer','BEGIN');
+SELECT dblink_exec('snapshot_writer',$remote$
+  UPDATE public.hand_players SET ending_stack=2000
+  WHERE id='71000000-0000-4000-8000-000000000016'::uuid;
+  UPDATE public.hand_actions SET action_amount=20
+  WHERE id='72000000-0000-4000-8000-000000000016'::uuid
+$remote$);
+DO $$ DECLARE v jsonb; BEGIN
+  v := public.get_tracker_historical_display_snapshot(
+    '61000000-0000-4000-8000-000000000016','10000000-0000-4000-8000-000000000001');
+  IF (v #>> '{players,0,ending_stack}')::numeric <> 1000
+    OR (v #>> '{actions,0,action_amount}')::numeric <> 10 THEN
+    RAISE EXCEPTION 'snapshot mixed an uncommitted source generation: %',v;
+  END IF;
+END $$;
+SELECT dblink_exec('snapshot_writer','COMMIT');
+DO $$ DECLARE v jsonb; BEGIN
+  v := public.get_tracker_historical_display_snapshot(
+    '61000000-0000-4000-8000-000000000016','10000000-0000-4000-8000-000000000001');
+  IF (v #>> '{players,0,ending_stack}')::numeric <> 2000
+    OR (v #>> '{actions,0,action_amount}')::numeric <> 20 THEN
+    RAISE EXCEPTION 'snapshot did not publish the complete committed generation: %',v;
+  END IF;
+END $$;
+SELECT dblink_disconnect('snapshot_writer');
+
 -- Conflicting stored blind values are preserved; the review queue is marked.
 UPDATE public.tournament_hands SET tracker_small_blind=75
 WHERE id='61000000-0000-4000-8000-000000000017';
