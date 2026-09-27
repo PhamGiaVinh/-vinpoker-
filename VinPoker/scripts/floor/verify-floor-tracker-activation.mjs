@@ -7,7 +7,14 @@ export const STATE_SQL = `select
   has_function_privilege('authenticated', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE') as authenticated_execute,
   has_function_privilege('anon', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE') as anon_execute,
   has_function_privilege('service_role', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE') as service_role_execute,
-  has_function_privilege('PUBLIC', 'public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)', 'EXECUTE') as public_execute;`;
+  exists(
+    select 1
+    from pg_proc p,
+      aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+    where p.oid = to_regprocedure('public.floor_queue_tracker_move_v1(uuid,uuid,integer,bigint,bigint,uuid)')
+      and a.grantee = 0
+      and a.privilege_type = 'EXECUTE'
+  ) as public_execute;`;
 
 export function stateProblems(state) {
   const expected = {
