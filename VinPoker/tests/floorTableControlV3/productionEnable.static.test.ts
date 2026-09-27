@@ -49,7 +49,7 @@ describe("Floor Table Control V3 Production enable migration", () => {
 
   it("builds the production bundle from Vercel environment without hardcoding the enable pair", () => {
     expect(productionWorkflow).toContain(
-      "vercel env run --environment=production -- npm run build",
+      "vercel env run --environment=production -- npm --prefix VinPoker run build",
     );
     expect(productionWorkflow).not.toContain("VITE_FLOOR_TABLE_CONTROL_V3: production");
     expect(productionWorkflow).not.toContain("VITE_FLOOR_UAT_ENV: production");
