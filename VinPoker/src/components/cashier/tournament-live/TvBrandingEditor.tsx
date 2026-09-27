@@ -77,7 +77,6 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
     [supabase],
   );
   const [open, setOpen] = useState(false);
-  const [canEdit, setCanEdit] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [brandName, setBrandName] = useState("");
@@ -86,32 +85,6 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [revision, setRevision] = useState(0);
-
-  useEffect(() => {
-    if (!FEATURES.tvLayoutEditorV1) return;
-    let active = true;
-    setCanEdit(false);
-
-    const checkAuthority = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!active) return;
-      if (!session?.user.id) {
-        setCanEdit(false);
-        return;
-      }
-      const { data, error } = await rpc("can_edit_tv_tournament_layout_v1", { p_tournament_id: tournamentId });
-      if (active) setCanEdit(!error && data === true);
-    };
-
-    void checkAuthority();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      void checkAuthority();
-    });
-    return () => {
-      active = false;
-      subscription.unsubscribe();
-    };
-  }, [rpc, supabase, tournamentId]);
 
   useEffect(() => {
     if (!open || !FEATURES.tvLayoutEditorV1) return;
@@ -190,7 +163,7 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
     }
   };
 
-  if (!FEATURES.tvLayoutEditorV1 || !canEdit) return null;
+  if (!FEATURES.tvLayoutEditorV1) return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

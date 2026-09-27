@@ -11,39 +11,24 @@ beforeAll(() => {
   };
 });
 
-const { rpc, client, saveFailure, brandingLayout, brandingAssets, authState } = vi.hoisted(() => {
+const { rpc, client, saveFailure, brandingLayout, brandingAssets } = vi.hoisted(() => {
   const saveFailure = { value: false };
   const brandingLayout = { value: {} as unknown };
   const brandingAssets = { value: { logo_url: null as string | null, background_url: null as string | null } };
   const rpc = vi.fn(async (name: string) => {
     if (name === "save_tv_tournament_layout_v1" && saveFailure.value) throw new Error("offline");
-    if (name === "can_edit_tv_tournament_layout_v1") return { data: true, error: null };
     if (name === "get_tv_tournament_branding_v1") return {
       data: { ...brandingAssets.value, brand_name: "VinPoker", layout: brandingLayout.value, revision: 7 },
       error: null,
     };
     return { data: { revision: 8 }, error: null };
   });
-  const authState = {
-    session: { user: { id: "owner-1" } } as { user: { id: string } } | null,
-    listener: null as null | (() => void),
-  };
   return {
     rpc,
-    client: {
-      rpc,
-      auth: {
-        getSession: vi.fn(async () => ({ data: { session: authState.session }, error: null })),
-        onAuthStateChange: vi.fn((listener: () => void) => {
-          authState.listener = listener;
-          return { data: { subscription: { unsubscribe: vi.fn() } } };
-        }),
-      },
-    },
+    client: { rpc },
     saveFailure,
     brandingLayout,
     brandingAssets,
-    authState,
   };
 });
 
@@ -55,21 +40,14 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 import { TvBrandingEditor } from "./TvBrandingEditor";
 import { toast } from "sonner";
 
-afterEach(() => { cleanup(); rpc.mockClear(); saveFailure.value = false; brandingLayout.value = {}; brandingAssets.value = { logo_url: null, background_url: null }; authState.session = { user: { id: "owner-1" } }; authState.listener = null; });
+afterEach(() => { cleanup(); rpc.mockClear(); saveFailure.value = false; brandingLayout.value = {}; brandingAssets.value = { logo_url: null, background_url: null }; });
 
 describe("TvBrandingEditor publish boundary", () => {
-  it("rechecks server authority when the authenticated owner session becomes available", async () => {
-    authState.session = null;
+  it("keeps the editor discoverable while server RPCs remain the authority boundary", async () => {
     render(<TvBrandingEditor tournamentId="flight-1" />);
 
-    expect(rpc).not.toHaveBeenCalledWith("can_edit_tv_tournament_layout_v1", expect.anything());
-    expect(screen.queryByRole("button", { name: /Edit TV layout/i })).toBeNull();
-
-    authState.session = { user: { id: "owner-1" } };
-    authState.listener?.();
-
     expect(await screen.findByRole("button", { name: /Edit TV layout/i })).toBeVisible();
-    expect(rpc).toHaveBeenCalledWith("can_edit_tv_tournament_layout_v1", { p_tournament_id: "flight-1" });
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it("previews the draft through the broadcast clock renderer", async () => {
