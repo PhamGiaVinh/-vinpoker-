@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
-import { stateProblems } from "./verify-floor-tracker-activation.mjs";
+import { STATE_SQL, stateProblems } from "./verify-floor-tracker-activation.mjs";
 
 const root = resolve(import.meta.dirname, "..", "..", "..");
 const workflow = readFileSync(resolve(root, ".github/workflows/floor-tracker-move-activation-apply.yml"), "utf8");
@@ -25,4 +25,7 @@ test("postcheck requires ledger and narrow role ACL", () => {
     public_execute: false,
   }), []);
   assert.match(stateProblems({})[0], /migration_registered/);
+  assert.match(workflow, /Verify ledger and exact ACL state/);
+  assert.match(STATE_SQL, /a\.grantee = 0/);
+  assert.doesNotMatch(STATE_SQL, /has_function_privilege\('PUBLIC'/);
 });
