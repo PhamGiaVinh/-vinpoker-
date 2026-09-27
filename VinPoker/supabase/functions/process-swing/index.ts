@@ -64,6 +64,7 @@ import {
   assessCoreQueryFailure,
   assessDealerInventory,
   assessLockOwnershipLoss,
+  assessPerformSwingResponse,
   assessShortageAlertFailure,
   assessSwingExecutionFailure,
   ensureLockOwnership,
@@ -632,6 +633,15 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
     dispatchAdmin = admin;
+    const performSwingWithDispatchSafety = async (
+      clubId: string,
+      args: Record<string, unknown>,
+    ) => {
+      const response = await admin.rpc("perform_swing", args);
+      const failure = assessPerformSwingResponse(response.data, response.error);
+      if (failure) recordDispatchSafetyOutcome(clubId, failure);
+      return response;
+    };
 
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
     if (!botToken) {
@@ -2681,7 +2691,7 @@ if (tier2Count > 0) {
 
           if (fbDealer) {
             const { breakDuration: fbBreakDuration } = await getBreakSettings(admin, cid);
-            const { data: fbResult } = await admin.rpc("perform_swing", {
+            const { data: fbResult } = await performSwingWithDispatchSafety(cid, {
               p_assignment_id: fallbackAssignment.id,
               p_duration_minutes: swingDurResult.durationMinutes,
               p_send_to_break: fbBreakDecision.shouldBreak,
@@ -2733,7 +2743,7 @@ if (tier2Count > 0) {
           }
 
           const { breakDuration: otBreakDur } = await getBreakSettings(admin, cid);
-          const { data: otResult } = await admin.rpc("perform_swing", {
+          const { data: otResult } = await performSwingWithDispatchSafety(cid, {
             p_assignment_id: fallbackAssignment.id,
             p_duration_minutes: swingDurResult.durationMinutes,
             p_send_to_break: false,
@@ -3595,7 +3605,7 @@ if (tier2Count > 0) {
                       console.error(`[Pass 3] Failed to re-assign after no-show for ${tableName}:`, emErr);
                       // Fallback to OT
                       const { breakDuration: otBreakDur } = await getBreakSettings(admin, cid);
-                      await admin.rpc("perform_swing", {
+                      await performSwingWithDispatchSafety(cid, {
                         p_assignment_id: assignment.id,
                         p_duration_minutes: swingDurResult.durationMinutes,
                         p_send_to_break: false,
@@ -3620,7 +3630,7 @@ if (tier2Count > 0) {
                   } else {
                     // 4b. No replacement → OT mode
                     const { breakDuration: otBreakDur } = await getBreakSettings(admin, cid);
-                    await admin.rpc("perform_swing", {
+                    await performSwingWithDispatchSafety(cid, {
                       p_assignment_id: assignment.id,
                       p_duration_minutes: swingDurResult.durationMinutes,
                       p_send_to_break: false,
@@ -3706,7 +3716,7 @@ if (tier2Count > 0) {
 
                 if (fbDealer) {
                   const { breakDuration: fbBreakDuration } = await getBreakSettings(admin, cid);
-                  const { data: fbResult } = await admin.rpc("perform_swing", {
+                  const { data: fbResult } = await performSwingWithDispatchSafety(cid, {
                     p_assignment_id: assignment.id,
                     p_duration_minutes: swingDurResult.durationMinutes,
                     p_send_to_break: fbBreakDecision.shouldBreak,
@@ -3738,7 +3748,7 @@ if (tier2Count > 0) {
                 } else {
                   // No fallback → OT path
                   const { breakDuration: otBreakDur } = await getBreakSettings(admin, cid);
-                  const { data: otResult } = await admin.rpc("perform_swing", {
+                  const { data: otResult } = await performSwingWithDispatchSafety(cid, {
                     p_assignment_id: assignment.id,
                     p_duration_minutes: swingDurResult.durationMinutes,
                     p_send_to_break: false,
@@ -3998,7 +4008,7 @@ if (tier2Count > 0) {
                 console.error(`[Pass 3] ❌ Emergency pre-assign DB race for ${tableName}:`, emErr?.message);
                 // Fallback: swing ngay lập tức nếu không thể pre-assign
                 const { breakDuration: fbBreakDur } = await getBreakSettings(admin, cid);
-                const { data: fbSwingResult } = await admin.rpc("perform_swing", {
+                const { data: fbSwingResult } = await performSwingWithDispatchSafety(cid, {
                   p_assignment_id: assignment.id,
                   p_duration_minutes: swingDurResult.durationMinutes,
                   p_send_to_break: breakDecision.shouldBreak,
@@ -4103,7 +4113,7 @@ if (tier2Count > 0) {
                 console.error(`[Pass 3] ❌ Emergency pre-assign DB race for ${tableName}:`, emErr?.message);
                 // Fallback: swing ngay lập tức nếu không thể pre-assign
                 const { breakDuration: fbBreakDur } = await getBreakSettings(admin, cid);
-                const { data: fbSwingResult } = await admin.rpc("perform_swing", {
+                const { data: fbSwingResult } = await performSwingWithDispatchSafety(cid, {
                   p_assignment_id: assignment.id,
                   p_duration_minutes: swingDurResult.durationMinutes,
                   p_send_to_break: breakDecision.shouldBreak,
@@ -4153,7 +4163,7 @@ if (tier2Count > 0) {
 
             // ── Thật sự không có dealer → OT path ──────────────────────────────
             const { breakDuration: pBreakDuration } = await getBreakSettings(admin, cid);
-            const { data: swingResult } = await admin.rpc("perform_swing", {
+            const { data: swingResult } = await performSwingWithDispatchSafety(cid, {
               p_assignment_id: assignment.id,
               p_duration_minutes: swingDurResult.durationMinutes,
               p_send_to_break: breakDecision.shouldBreak,

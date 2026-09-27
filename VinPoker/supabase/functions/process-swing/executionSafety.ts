@@ -135,6 +135,40 @@ export function assessSwingExecutionFailure(errorCode: unknown): DispatchSafetyO
   };
 }
 
+const KNOWN_PERFORM_SWING_OUTCOMES = new Set([
+  "swung",
+  "swung_to_break",
+  "swung_to_pool",
+  "no_dealer",
+  "no_dealer_available",
+  "race_lost",
+  "version_conflict",
+  "already_in_transition",
+  "not_found",
+  "state_mismatch",
+  "enforce_next_swing",
+]);
+
+/** Transport errors and malformed RPC responses must degrade the dispatch.
+ * Business outcomes remain the caller's responsibility. */
+export function assessPerformSwingResponse(
+  data: unknown,
+  error: unknown | null,
+): DispatchSafetyOutcome | null {
+  if (error) return assessCoreQueryFailure("perform_swing", error);
+  const outcome = typeof data === "object" && data !== null
+    ? (data as { outcome?: unknown }).outcome
+    : null;
+  if (typeof outcome === "string" && KNOWN_PERFORM_SWING_OUTCOMES.has(outcome)) {
+    return null;
+  }
+  return {
+    dispatchState: "partial",
+    dispatchErrorCode: "perform_swing_invalid_response",
+    diagnostic: { stage: "perform_swing", code: "INVALID_RPC_RESPONSE" },
+  };
+}
+
 /** Maps a typed candidate snapshot failure without parsing an error message. */
 export function assessCandidateSnapshotFailure(
   stage: string,

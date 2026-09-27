@@ -79,6 +79,7 @@ import { createFloorTableControlV3Client, type FloorTableControlV3Rpc } from "@/
 import { isDealerTableAvailable } from "@/lib/dealerTableInventory";
 import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
+import { classifyManualSwingOutcome, classifyProcessSwingResult } from "@/lib/dealerSwingOutcome";
 import {
   Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
   FileSpreadsheet, Loader2, Clock, AlertTriangle, Coffee,
@@ -630,7 +631,11 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
         console.error("[autoSwingAll]", detail, error);
         return;
       }
-      toast.success(`Đã xử lý ${(data as any)?.processed_count ?? 0} swing`);
+      const processOutcome = classifyProcessSwingResult(data);
+      if (processOutcome.kind === "success") toast.success(processOutcome.message);
+      else if (processOutcome.kind === "warning") toast.warning(processOutcome.message);
+      else if (processOutcome.kind === "info") toast.info(processOutcome.message);
+      else toast.error(processOutcome.message);
       await Promise.all([
         refetchAssignments(),
         refetchTables(),
@@ -658,23 +663,12 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
         console.error("[performSwingForTable]", error);
         return;
       }
-      const result = data as any;
-      const outcome = result?.outcome;
-      if (outcome === "race_lost" || outcome === "version_conflict") {
-        toast.warning("Bàn này vừa được xử lý bởi người khác. Đang cập nhật...");
-      } else if (outcome === "no_dealer" || outcome === "no_dealer_available") {
-        toast.warning("Không đủ dealer khả dụng để thay thế.");
-      } else if (outcome === "not_found" || outcome === "state_mismatch") {
-        toast.warning("Assignment không còn hiệu lực. Đang cập nhật...");
-      } else if (outcome === "enforce_next_swing") {
-        toast.info(result?.message ?? "Dealer tiếp theo cần nghỉ sớm, sẽ swing tiếp.");
-      } else if (outcome === "swung" || outcome === "swung_to_break" || outcome === "swung_to_pool") {
-        toast.success("Swing thành công!");
-      } else if (outcome === "error") {
-        toast.error(`Lỗi: ${result?.message ?? "Unknown"}`);
-      } else {
-        toast.success("Swing thành công!");
-      }
+      const swingOutcome = classifyManualSwingOutcome(data);
+      if (swingOutcome.kind === "success") toast.success(swingOutcome.message);
+      else if (swingOutcome.kind === "warning") toast.warning(swingOutcome.message);
+      else if (swingOutcome.kind === "info") toast.info(swingOutcome.message);
+      else if (swingOutcome.kind === "error") toast.error(swingOutcome.message);
+      else toast.warning(swingOutcome.message);
       await Promise.all([
         refetchAssignments(),
         refetchDealers(),

@@ -39,7 +39,7 @@ on:
       - "VinPoker/supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql"
       - "VinPoker/supabase/migrations/20270115000018_dealer_assignment_session_binding.sql"
       - "VinPoker/supabase/migrations/20270115000019_tracker_voice_floor_owner_authority.sql"
-      - "VinPoker/supabase/migrations/20270115000021_tracker_voice_floor_owner_telegram_dealer.sql"
+      - "VinPoker/supabase/migrations/20270115000022_tracker_voice_floor_owner_telegram_dealer.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
@@ -374,7 +374,7 @@ jobs:
             -f supabase/migrations/20270115000019_tracker_voice_floor_owner_authority.sql
           createdb tracker_voice_v0_before_15000021 -T tracker_voice_v0_strict
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
-            -f supabase/migrations/20270115000021_tracker_voice_floor_owner_telegram_dealer.sql
+            -f supabase/migrations/20270115000022_tracker_voice_floor_owner_telegram_dealer.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f supabase/migration-archive/historical-never-replay/20260801000007_resolve_execute_pre_assigned_rpc_ambiguity.sql
           test "$(psql -X -At -d tracker_voice_v0_strict -c \
@@ -616,7 +616,7 @@ jobs:
             "SELECT md5(pg_get_functiondef('public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure))")"
           failing="$RUNNER_TEMP/tracker-voice-15000021-failing.sql"
           awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
-            supabase/migrations/20270115000021_tracker_voice_floor_owner_telegram_dealer.sql > "$failing"
+            supabase/migrations/20270115000022_tracker_voice_floor_owner_telegram_dealer.sql > "$failing"
           if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_15000021 -f "$failing"; then
             echo "Injected 15000021 migration unexpectedly committed" >&2
             exit 1
