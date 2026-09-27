@@ -11,6 +11,7 @@ import {
   type IssuedStackSummary,
 } from "@/ops/chip-ops/chipOpsReadAdapter";
 import { ChipOpsWorkspaceView } from "@/ops/chip-ops/ChipOpsWorkspaceView";
+import { MultiDayBaggingPanel } from "@/ops/chip-ops/MultiDayBaggingPanel";
 import { useOpsWorkspace } from "@/ops/workspace/OpsWorkspaceProvider";
 
 type WorkspaceState = {
@@ -86,6 +87,7 @@ export default function OpsChipOpsWorkspace() {
   };
 
   return (
+    <div className="space-y-5">
     <ChipOpsWorkspaceView
       clubName={clubName}
       tournaments={state.tournaments}
@@ -97,6 +99,10 @@ export default function OpsChipOpsWorkspace() {
       onSelectTournament={onSelectTournament}
       onRefresh={() => setRevision((value) => value + 1)}
     />
+    {!state.loading && !state.errorCode && selectedTournamentId
+      && state.tournaments.find((row) => row.id === selectedTournamentId)?.phase === "flight"
+      && <MultiDayBaggingPanel key={selectedTournamentId} tournamentId={selectedTournamentId} />}
+    </div>
   );
 }
 

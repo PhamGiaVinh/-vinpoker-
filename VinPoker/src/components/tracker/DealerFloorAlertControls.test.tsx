@@ -76,6 +76,23 @@ describe("Dealer Floor operational alert", () => {
     }));
   });
 
+  it("reports a selected wrong action through the correction-pending contract", async () => {
+    actionRows.value = [{ id: "action-1", hand_id: "hand", action_order: 3, street: "preflop", player_id: "player-1", entry_number: 1, action_type: "call", action_amount: 100000 }];
+    vi.mocked(supabase.rpc).mockImplementation((async (_name, args: { p_request_id: string }) => ({
+      data: { ok: true, alert_id: "alert-1", request_id: args.p_request_id, correction_pending: true }, error: null,
+    })) as never);
+    render(<DealerFloorAlertControls {...props} />);
+    expect(screen.getByRole("button", { name: "Báo sai action" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(await screen.findByText("Chọn action đã lưu"));
+    fireEvent.click(await screen.findByRole("button", { name: /#3 · preflop · Ghế 4 · call/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Báo sai action" }));
+    await screen.findByText(/Đã gửi Floor/);
+    expect(supabase.rpc).toHaveBeenCalledWith("report_tracker_wrong_action_v1", expect.objectContaining({
+      p_hand_id: "hand", p_action_id: "action-1", p_expected_source_revision: 7,
+      p_expected_action: expect.objectContaining({ id: "action-1", action_order: 3, action_type: "call" }),
+    }));
+  });
+
   it("does not send when the request key cannot be retained", () => {
     const storage = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
     try {

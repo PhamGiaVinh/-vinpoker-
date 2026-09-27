@@ -6834,6 +6834,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20260925115949",
+      "filename": "20260925115949_public_table_history_verified_results.sql",
+      "sha256": "9429ab4fcaf2b38f9bb425023fdb20e74f94da6465878bff3a676eeb50793bc7",
+      "domain": "public-spectator"
+    },
+    {
       "version": "20270115000003",
       "filename": "20270115000003_cashier_tour_money_v1.sql",
       "sha256": "083ac776a361c1c00684b0eccd01465967e9777926ae073bc9fdcf97a4356df3",
@@ -6855,6 +6861,18 @@
       "version": "20270115000014",
       "filename": "20270115000014_tracker_floor_alert_action_reference.sql",
       "sha256": "6d3dedeee949859ed19e15d06a753828c9ef5cef0a5269c5107a6e362f41981f",
+      "domain": "tracker"
+    },
+    {
+      "version": "20270115000016",
+      "filename": "20270115000016_tracker_correction_uat_release2.sql",
+      "sha256": "906ef76a5759a2efe555938f0822fa3845a4a48e87a1957f5a6fe4c0bcdc5744",
+      "domain": "tracker"
+    },
+    {
+      "version": "20270115000017",
+      "filename": "20270115000017_tracker_completed_hand_correction_uat.sql",
+      "sha256": "51471b10aa922e749924e3c5b5ebfe5357d1bf080d8f37bc14fd6d09d71342c6",
       "domain": "tracker"
     }
   ],
@@ -6938,6 +6956,11 @@
       "version": "20270115000010",
       "filename": "20270115000010_tracker_v3_hand_start_context.sql",
       "sha256": "8e2bc0fa9b1363a6f19897fdc607e1264687a63077869cd5b7e99a9184848e09"
+    },
+    {
+      "version": "20270115000012",
+      "filename": "20270115000012_floor_tracker_move_activation_v1.sql",
+      "sha256": "eb6a3b8f588595ad00a8ed3fba58a9add4a58d541eeb139820b0118f74e5ab00"
     }
   ],
   "counts": {

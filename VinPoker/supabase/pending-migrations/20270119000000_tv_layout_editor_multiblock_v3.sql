@@ -1,5 +1,6 @@
 -- TV layout v3: bounded independent text blocks, immutable published revisions,
 -- and versioned TV assets. Source-only until the controlled DB apply gate.
+-- Depends on Centerpoint gate #1307 and TV V1/V2; release order is #1307 -> V1 -> V2 -> V3.
 --
 -- ROLLBACK: use a separately reviewed forward migration to revoke the v3 writer
 -- and remove its Storage policies/trigger. Keep layout version rows and Storage
@@ -259,6 +260,7 @@ BEGIN
     OR public.is_club_floor(v_actor, v_tour.club_id)) THEN
     RAISE EXCEPTION 'tv_layout_forbidden' USING ERRCODE = '42501';
   END IF;
+  PERFORM centerpoint_private.assert_tournament_ops_release_v1(v_tour.club_id);
   -- Event lock keeps all Main Event flights on the same published layout.
   IF v_tour.event_id IS NOT NULL THEN
     PERFORM 1 FROM public.tournament_events WHERE id = v_tour.event_id AND club_id = v_tour.club_id FOR UPDATE;

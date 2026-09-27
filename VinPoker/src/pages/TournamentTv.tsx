@@ -30,13 +30,14 @@ const TournamentTv = () => {
   const { t } = useTranslation();
 
   const isMock = searchParams.get("mock") === "1";
-  const redrawScene = FEATURES.floorRedrawSeatLockV1 && searchParams.get("scene") === "redraw";
+  const redrawSceneRequested = searchParams.get("scene") === "redraw";
   const mockData = useMockTvData(isMock);
-  const live = useTournamentTvData(tournamentId, { enabled: !isMock && !redrawScene });
+  const live = useTournamentTvData(tournamentId, { enabled: !isMock });
   const data = isMock ? mockData : live.data;
-  const redraw = useTournamentRedrawTv(tournamentId, redrawScene && !isMock);
+  const redraw = useTournamentRedrawTv(tournamentId, FEATURES.floorRedrawSeatLockV1 && !isMock);
+  const redrawActive = (redraw.state === "ready" || redraw.state === "stale") && redraw.data !== null;
 
-  const pageTournamentName = redrawScene ? redraw.data?.tournamentName : data?.tournamentName;
+  const pageTournamentName = redrawActive ? redraw.data?.tournamentName : data?.tournamentName;
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -64,22 +65,20 @@ const TournamentTv = () => {
               className="absolute bottom-[1.5vmin] left-[1.5vmin] h-[1.2vmin] w-[1.2vmin] animate-pulse rounded-full bg-amber-500/80"
             />
           ) : null}
-          {redrawScene && redraw.state === "stale" ? (
+          {redrawActive && redraw.state === "stale" ? (
             <span className="absolute right-[1.5vmin] top-[1.5vmin] rounded-full border border-amber-400/40 bg-amber-400/15 px-[1.2vmin] py-[0.5vmin] text-[1.4vmin] font-bold text-amber-200">
-              Kết nối chậm · đang giữ danh sách gần nhất
+              Connection delayed · keeping the last confirmed redraw
             </span>
           ) : null}
         </>
       }
     >
-      {redrawScene && (redraw.state === "ready" || redraw.state === "stale") && redraw.data ? (
+      {redrawActive && redraw.data ? (
         <TvRedrawScreen tournamentName={redraw.data.tournamentName} batch={redraw.data} />
-      ) : redrawScene && redraw.state === "loading" ? (
-        <TvStatusScreen title="Đang tải danh sách redraw…" />
-      ) : redrawScene && redraw.state === "empty" ? (
-        <TvStatusScreen title="Chưa có redraw đã áp dụng" hint="Floor cần xác nhận redraw trước khi TV hiển thị." />
-      ) : redrawScene && redraw.state === "error" ? (
-        <TvStatusScreen title="Không tải được redraw" hint="Dữ liệu cũ không được tự suy lại trên TV." />
+      ) : FEATURES.floorRedrawSeatLockV1 && redraw.state === "loading" ? (
+        <TvStatusScreen title="Loading tournament display…" />
+      ) : redrawSceneRequested && redraw.state === "error" && !showScreen ? (
+        <TvStatusScreen title="Could not load the redraw display" hint="The TV will not recreate movements locally." />
       ) : showScreen && data ? (
         <TvClockScreen data={data} />
       ) : live.state === "loading" ? (

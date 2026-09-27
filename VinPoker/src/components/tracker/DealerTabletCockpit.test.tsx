@@ -14,11 +14,17 @@ vi.mock("@/integrations/supabase/client", () => {
   return { supabase: { rpc: vi.fn(), from: vi.fn(() => query) } };
 });
 vi.mock("@/lib/featureFlags", () => ({ FEATURES: { floorTableControlV3: true, trackerOperationalFloorAlerts: false } }));
+vi.mock("@/ops/chip-ops/MultiDayBaggingPanel", () => ({
+  MultiDayBaggingPanel: ({ tournamentId }: { tournamentId: string }) => <p>Dealer bagging for {tournamentId}</p>,
+}));
+vi.mock("@/ops/chip-ops/MultiDayBaggingPanel", () => ({
+  MultiDayBaggingPanel: ({ tournamentId }: { tournamentId: string }) => <p>Dealer bagging for {tournamentId}</p>,
+}));
 import { supabase } from "@/integrations/supabase/client";
 import { DealerTabletCockpit, DealerTabletLayout } from "./DealerTabletCockpit";
 
 afterEach(cleanup);
-beforeEach(() => vi.mocked(supabase.rpc).mockReset());
+beforeEach(() => { vi.mocked(supabase.rpc).mockReset(); vi.mocked(supabase.from).mockReset(); });
 const hook = { actions: [], syncPhase: "idle", tableId: "table" } as unknown as StandaloneHandInput;
 const props = { hook, header: null, orphan: null, progress: null, felt: <p>Bàn</p>, board: null, voice: <p>Voice mounted</p>, guided: <p>Manual writer</p>, log: null };
 describe("Dealer tablet modes", () => {
@@ -75,6 +81,14 @@ describe("Dealer tablet server context", () => {
   function respond(rows: unknown[], allowed = true) {
     vi.mocked(supabase.rpc).mockImplementation((async (name: string) => ({ data: name === "get_floor_tournament_table_roster_v3" ? rows : { ok: allowed, error: allowed ? undefined : "STALE_TRACKER_CONTEXT" }, error: null })) as never);
   }
+  it("places server-scoped bag entry on the dealer tablet only for flights", async () => {
+    respond([row]);
+    vi.mocked(supabase.from).mockReturnValue({
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { phase: "flight" }, error: null }) }) }),
+    } as never);
+    render(<DealerTabletCockpit {...boundProps} />);
+    expect(await screen.findByText("Dealer bagging for tournament")).toBeTruthy();
+  });
   it("accepts server-validated session authority even with a null display table number", async () => {
     respond([row]);
     render(<DealerTabletCockpit {...boundProps} />);

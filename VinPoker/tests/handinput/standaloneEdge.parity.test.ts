@@ -111,16 +111,23 @@ describe("handInputEdge — write-path parity", () => {
     });
   });
 
-  it("void_hand and delete_last_action bodies are exact", () => {
+  it("void_hand and durable undo bodies are exact", () => {
     expect(buildVoidHandBody({ tournamentId: "T1", handId: "H9" })).toEqual({
       tournament_id: "T1",
       action: "void_hand",
       hand_id: "H9",
     });
-    expect(buildDeleteLastActionBody({ tournamentId: "T1", handId: "H9" })).toEqual({
+    expect(buildDeleteLastActionBody({
+      tournamentId: "T1", tournamentTableId: "TT1", handId: "H9",
+      expectedActionId: "A9", expectedSourceRevision: 7, idempotencyKey: "K9",
+    })).toEqual({
       tournament_id: "T1",
-      action: "delete_last_action",
+      tournament_table_id: "TT1",
+      action: "undo_last_action_v1",
       hand_id: "H9",
+      expected_action_id: "A9",
+      expected_source_revision: 7,
+      idempotency_key: "K9",
     });
   });
 

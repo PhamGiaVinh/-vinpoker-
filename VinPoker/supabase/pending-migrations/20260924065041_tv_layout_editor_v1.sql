@@ -12,6 +12,58 @@ ALTER TABLE public.clubs
   ADD COLUMN IF NOT EXISTS tv_brand_name text,
   ADD COLUMN IF NOT EXISTS tv_bg_url text;
 
+-- RLS restrictive policy narrows the existing owner-write policy only for
+-- versioned TV branding assets. Other buckets and backing-proofs paths retain
+-- their existing Storage policy behavior. The path has no club id, so require
+-- the authenticated path owner to control at least one enabled allowlisted
+-- club; the TV publish RPC separately binds the asset to its tournament club.
+CREATE OR REPLACE FUNCTION centerpoint_private.tv_branding_storage_insert_allowed_v1(
+  p_bucket_id text,
+  p_name text
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN p_bucket_id IS DISTINCT FROM 'backing-proofs'
+      OR p_name !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/tv/branding-(logo|background)/v1/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[.](png|jpg)$'
+      THEN true
+    ELSE coalesce(
+      (SELECT auth.uid()) IS NOT NULL
+      AND (storage.foldername(p_name))[1] = (SELECT auth.uid())::text
+      AND EXISTS (
+        SELECT 1
+        FROM public.centerpoint_tournament_ops_release AS r
+        CROSS JOIN LATERAL unnest(r.allowed_club_ids) AS allowlisted(club_id)
+        WHERE r.id
+          AND centerpoint_private.tournament_ops_release_allowed_v1(allowlisted.club_id)
+          AND (
+            public.has_role((SELECT auth.uid()), 'super_admin'::public.app_role)
+            OR public.is_club_dealer_control((SELECT auth.uid()), allowlisted.club_id)
+          )
+      ),
+      false
+    )
+  END;
+$$;
+ALTER FUNCTION centerpoint_private.tv_branding_storage_insert_allowed_v1(text,text)
+  OWNER TO postgres;
+GRANT USAGE ON SCHEMA centerpoint_private TO authenticated;
+REVOKE ALL ON FUNCTION centerpoint_private.tv_branding_storage_insert_allowed_v1(text,text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION centerpoint_private.tv_branding_storage_insert_allowed_v1(text,text)
+  TO authenticated;
+
+DROP POLICY IF EXISTS "TV branding v1 release gate on insert" ON storage.objects;
+CREATE POLICY "TV branding v1 release gate on insert"
+  ON storage.objects AS RESTRICTIVE FOR INSERT TO authenticated
+  WITH CHECK (
+    centerpoint_private.tv_branding_storage_insert_allowed_v1(bucket_id, name)
+  );
+
 CREATE OR REPLACE FUNCTION public.is_valid_tv_layout_config(p_value jsonb)
 RETURNS boolean
 LANGUAGE plpgsql
@@ -109,6 +161,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'tv_branding_forbidden' USING ERRCODE = '42501';
   END IF;
+  PERFORM centerpoint_private.assert_tournament_ops_release_v1(p_club_id);
 
   IF length(coalesce(p_brand_name, '')) > 40
      OR length(coalesce(p_logo_url, '')) > 2048

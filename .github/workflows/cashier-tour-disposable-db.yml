@@ -7,9 +7,42 @@ on:
       - "VinPoker/supabase/migrations/20270115000003_cashier_tour_money_v1.sql"
       - "VinPoker/supabase/migration-archive/remote-history/recovered-source/20270115000011_cashier_refund_without_floor_clearance.sql"
       - "VinPoker/supabase/pending-migrations/20270119000002_satellite_registration_pool_row_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000003_satellite_source_funding_preview_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000004_satellite_frozen_ticket_components_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000005_satellite_source_cutoff_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000006_satellite_entry_cutoff_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000007_satellite_offline_source_guard_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000008_satellite_verified_award_lock_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000009_satellite_source_rules_fixed_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000010_satellite_locked_registration_evidence_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000011_satellite_issue_and_secret_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000012_satellite_unmatched_funding_guard_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000013_satellite_atomic_redeem_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_atomic_redeem_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_real_initial_historical_fixture.sql"
+      - "VinPoker/supabase/pending-tests/satellite_real_reentry_historical_fixture.sql"
+      - "VinPoker/supabase/pending-tests/satellite_redeem_race_*.sql"
+      - "VinPoker/supabase/pending-migrations/20270119000014_satellite_redemption_reversal_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_reversal_hand_disposable_setup.sql"
+      - "VinPoker/supabase/pending-tests/satellite_redemption_reversal_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_issue_secret_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_unmatched_funding_guard_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20260925092509_satellite_funding_preview_math_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270117000001_satellite_award_plan_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270117000002_satellite_ticket_issue_v1.sql"
+      - "VinPoker/supabase/pending-migrations/20270118000002_satellite_single_ticket_rank_v2.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_disposable_baseline.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_money_v1.sql"
       - "VinPoker/supabase/pending-tests/satellite_registration_pool_row_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_source_funding_disposable_setup.sql"
+      - "VinPoker/supabase/pending-tests/satellite_source_funding_preview_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_frozen_ticket_components_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_source_cutoff_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_verified_award_lock_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_verified_lock_golden_v1.sql"
+      - "VinPoker/supabase/pending-tests/satellite_cutoff_race_*.sql"
+      - "VinPoker/supabase/pending-tests/satellite_lock_race_*.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_concurrency_*.sql"
       - "VinPoker/supabase/pending-tests/cashier_tour_load_*.sql"
       - "VinPoker/tests/opsFloorCashier/disposableDb.fixture.sql"
@@ -40,6 +73,9 @@ jobs:
       - name: Build synthetic Cashier baseline
         working-directory: VinPoker
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/cashier_tour_disposable_baseline.sql
+      - name: Apply real canonical offline buy-in migration to disposable PostgreSQL
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270109000000_ops_floor_cashier_canonical_mutations.sql
       - name: Apply exact pending migration to disposable PostgreSQL only
         working-directory: VinPoker
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270115000003_cashier_tour_money_v1.sql
@@ -105,3 +141,204 @@ jobs:
             -v ON_ERROR_STOP=1 -v customer={} -f supabase/pending-tests/cashier_tour_load_cash.sql >/dev/null
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/pending-tests/cashier_tour_load_assert.sql
+      - name: Extend synthetic Cashier schema for Satellite pending chain
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_source_funding_disposable_setup.sql
+      - name: Apply Satellite dependent pending migrations to disposable PostgreSQL only
+        working-directory: VinPoker
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270117000001_satellite_award_plan_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270118000002_satellite_single_ticket_rank_v2.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270117000002_satellite_ticket_issue_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20260925092509_satellite_funding_preview_math_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000003_satellite_source_funding_preview_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000004_satellite_frozen_ticket_components_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000005_satellite_source_cutoff_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000006_satellite_entry_cutoff_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000007_satellite_offline_source_guard_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000009_satellite_source_rules_fixed_v1.sql
+      - name: Run Satellite ledger-derived funding preview and closed-write assertions
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_source_funding_preview_v1.sql
+      - name: Assert frozen target components in held Lock and Issue paths
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_frozen_ticket_components_v1.sql
+      - name: Assert Satellite source cutoff and funding-only revision
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_source_cutoff_v1.sql
+      - name: Apply verified Satellite Lock while retaining Issue hold
+        working-directory: VinPoker
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000008_satellite_verified_award_lock_v1.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000010_satellite_locked_registration_evidence_v1.sql
+      - name: Assert atomic Satellite Lock request and funding receipt
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_verified_award_lock_v1.sql
+      - name: Assert 33 34 and GTD6 ledger-backed Lock golden cases
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_verified_lock_golden_v1.sql
+      - name: Apply Satellite verified Issue and current-secret lifecycle
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000011_satellite_issue_and_secret_v1.sql
+      - name: Assert funded Issue, frozen components, rotate and void
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_issue_secret_v1.sql
+      - name: Apply Satellite unmatched source-funding guard
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000012_satellite_unmatched_funding_guard_v1.sql
+      - name: Assert orphan buy-in refund and late-receipt reconciliation
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_unmatched_funding_guard_v1.sql
+      - name: Apply source-only atomic Satellite Redeem
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-migrations/20270119000013_satellite_atomic_redeem_v1.sql
+      - name: Assert Redeem gates and immutable transfer contract
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_atomic_redeem_v1.sql
+      - name: Seed actual canonical and Cashier cutoff races
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_cutoff_race_seed.sql
+      - name: Race in-flight cutoff against canonical, direct entry, cash and SePay
+        working-directory: VinPoker
+        shell: bash
+        run: |
+          set -euo pipefail
+          for spec in '1 canonical' '2 cash' '3 bank'; do
+            read -r suffix kind <<< "$spec"
+            tour="cc000000-0000-4000-8000-00000000000${suffix}"
+            psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              -v tour="$tour" -f supabase/pending-tests/satellite_cutoff_race_close.sql >/tmp/sat-close.log 2>&1 &
+            first=$!
+            sleep 0.25
+            psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              -v kind="$kind" -f supabase/pending-tests/satellite_cutoff_race_writer.sql >/tmp/sat-writer.log 2>&1 &
+            second=$!
+            wait "$first" || { cat /tmp/sat-close.log; exit 1; }
+            wait "$second" || { cat /tmp/sat-writer.log; exit 1; }
+          done
+          for spec in '4 cash' '5 bank'; do
+            read -r suffix kind <<< "$spec"
+            tour="cc000000-0000-4000-8000-00000000000${suffix}"
+            psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              -v kind="$kind" -f supabase/pending-tests/satellite_cutoff_race_writer_first.sql >/tmp/sat-first.log 2>&1 &
+            first=$!
+            sleep 0.25
+            psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              -v tour="$tour" -f supabase/pending-tests/satellite_cutoff_race_close.sql >/tmp/sat-close.log 2>&1 &
+            second=$!
+            wait "$first" || { cat /tmp/sat-first.log; exit 1; }
+            wait "$second" || { cat /tmp/sat-close.log; exit 1; }
+          done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/pending-tests/satellite_cutoff_race_assert.sql
+      - name: Seed verified Lock double-click and refund races
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_lock_race_seed.sql
+      - name: Race duplicate Lock and direct refund request against in-flight Lock
+        working-directory: VinPoker
+        shell: bash
+        run: |
+          set -euo pipefail
+          source='bc000000-0000-4000-8000-000000000001'
+          request='b1000000-0000-4000-8000-000000000001'
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v source="$source" -v request="$request" -v hold_seconds=2 \
+            -f supabase/pending-tests/satellite_lock_race_lock.sql >/tmp/sat-lock-a.log 2>&1 &
+          first=$!
+          sleep 0.25
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v source="$source" -v request="$request" -v hold_seconds=0 \
+            -f supabase/pending-tests/satellite_lock_race_lock.sql >/tmp/sat-lock-b.log 2>&1 &
+          second=$!
+          wait "$first" || { cat /tmp/sat-lock-a.log; exit 1; }
+          wait "$second" || { cat /tmp/sat-lock-b.log; exit 1; }
+          grep -xq 'f' /tmp/sat-lock-a.log
+          grep -xq 't' /tmp/sat-lock-b.log
+
+          source='bc000000-0000-4000-8000-000000000002'
+          request='b1000000-0000-4000-8000-000000000002'
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v source="$source" -v request="$request" -v hold_seconds=2 \
+            -f supabase/pending-tests/satellite_lock_race_lock.sql >/tmp/sat-lock-refund.log 2>&1 &
+          first=$!
+          sleep 0.25
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/pending-tests/satellite_lock_race_refund.sql >/tmp/sat-refund.log 2>&1 &
+          second=$!
+          wait "$first" || { cat /tmp/sat-lock-refund.log; exit 1; }
+          wait "$second" || { cat /tmp/sat-refund.log; exit 1; }
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/pending-tests/satellite_lock_race_assert.sql
+      - name: Seed real-seat Satellite Redeem races
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_redeem_race_seed.sql
+      - name: Race two tickets and Cashier cash registration against Redeem
+        working-directory: VinPoker
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v serial=1 -v worker=ticket-a -v player=d1000000-0000-4000-8000-000000000013 \
+            -v request=d8000000-0000-4000-8000-000000000021 -v hold_seconds=2 \
+            -f supabase/pending-tests/satellite_redeem_race_ticket.sql >/tmp/sat-redeem-a.log 2>&1 &
+          first=$!
+          sleep 0.25
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v serial=2 -v worker=ticket-b -v player=d1000000-0000-4000-8000-000000000013 \
+            -v request=d8000000-0000-4000-8000-000000000022 -v hold_seconds=0 \
+            -f supabase/pending-tests/satellite_redeem_race_ticket.sql >/tmp/sat-redeem-b.log 2>&1 &
+          second=$!
+          wait "$first" || { cat /tmp/sat-redeem-a.log; exit 1; }
+          wait "$second" || { cat /tmp/sat-redeem-b.log; exit 1; }
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/pending-tests/satellite_redeem_race_cash.sql >/tmp/sat-redeem-cash.log 2>&1 &
+          first=$!
+          sleep 0.25
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v serial=2 -v worker=ticket-after-cash -v player=d1000000-0000-4000-8000-000000000014 \
+            -v request=d8000000-0000-4000-8000-000000000023 -v hold_seconds=0 \
+            -f supabase/pending-tests/satellite_redeem_race_ticket.sql >/tmp/sat-redeem-after-cash.log 2>&1 &
+          second=$!
+          wait "$first" || { cat /tmp/sat-redeem-cash.log; exit 1; }
+          wait "$second" || { cat /tmp/sat-redeem-after-cash.log; exit 1; }
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v worker=direct-first -v player=d1000000-0000-4000-8000-000000000015 \
+            -v hold_seconds=2 -f supabase/pending-tests/satellite_redeem_race_direct.sql \
+            >/tmp/sat-direct-first.log 2>&1 &
+          first=$!
+          sleep 0.25
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v serial=2 -v worker=ticket-after-direct -v player=d1000000-0000-4000-8000-000000000015 \
+            -v request=d8000000-0000-4000-8000-000000000024 -v hold_seconds=0 \
+            -f supabase/pending-tests/satellite_redeem_race_ticket.sql \
+            >/tmp/sat-ticket-after-direct.log 2>&1 &
+          second=$!
+          wait "$first" || { cat /tmp/sat-direct-first.log; exit 1; }
+          wait "$second" || { cat /tmp/sat-ticket-after-direct.log; exit 1; }
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v serial=2 -v worker=ticket-first -v player=d1000000-0000-4000-8000-000000000016 \
+            -v request=d8000000-0000-4000-8000-000000000025 -v hold_seconds=2 \
+            -f supabase/pending-tests/satellite_redeem_race_ticket.sql \
+            >/tmp/sat-ticket-first.log 2>&1 &
+          first=$!
+          sleep 0.25
+          psql -X -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v worker=direct-after-ticket -v player=d1000000-0000-4000-8000-000000000016 \
+            -v hold_seconds=0 -f supabase/pending-tests/satellite_redeem_race_direct.sql \
+            >/tmp/sat-direct-after-ticket.log 2>&1 &
+          second=$!
+          wait "$first" || { cat /tmp/sat-ticket-first.log; exit 1; }
+          wait "$second" || { cat /tmp/sat-direct-after-ticket.log; exit 1; }
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/pending-tests/satellite_redeem_race_assert.sql
+      - name: Apply reversal hand dependencies and forward migration (disposable only)
+        working-directory: VinPoker
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/pending-tests/satellite_reversal_hand_disposable_setup.sql \
+            -f supabase/pending-migrations/20270119000014_satellite_redemption_reversal_v1.sql
+      - name: Assert audited Satellite correction and reversal
+        working-directory: VinPoker
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/pending-tests/satellite_redemption_reversal_v1.sql

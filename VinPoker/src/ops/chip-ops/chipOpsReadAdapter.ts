@@ -6,6 +6,7 @@ export type ChipOpsTournamentOption = {
   name: string;
   status: string;
   startTime: string | null;
+  phase: string | null;
 };
 
 export type IssuedChipDenomination = {
@@ -37,7 +38,7 @@ export async function loadChipOpsTournamentOptions(
 ): Promise<ChipOpsTournamentOption[]> {
   const result = await client
     .from("tournaments")
-    .select("id, name, status, start_time")
+    .select("id, name, status, start_time, phase")
     .eq("club_id", clubId)
     .is("deleted_at", null)
     .order("start_time", { ascending: false })
@@ -48,6 +49,7 @@ export async function loadChipOpsTournamentOptions(
     name: row.name,
     status: row.status,
     startTime: row.start_time,
+    phase: row.phase,
   }));
 }
 

@@ -297,4 +297,31 @@
   .vpc-aside-r { order: 4; }
   .vpc-footer-cell { order: 5; }
   .vpc-ring { width: min(72vw, 360px); }
+
+  /* Keep the editor's canvas in broadcast proportions even on a phone. The
+     public TV renderer keeps its stacked mobile layout; only this preview
+     pins the 16:9 scene so editing matches the landscape TV output. */
+  .vpc-root.vpc-editor-preview {
+    aspect-ratio: 16 / 9;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+  }
+  .vpc-editor-preview .vpc-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.18fr) minmax(0, 1fr);
+    grid-template-rows: auto 1fr auto;
+    grid-auto-rows: auto;
+    gap: 2vmin 2.4vmin;
+    height: 100%;
+    min-height: 100%;
+    padding: 3vmin 3.4vmin;
+    align-content: stretch;
+  }
+  .vpc-editor-preview .vpc-title-cell,
+  .vpc-editor-preview .vpc-footer-cell { grid-column: 1 / -1; }
+  .vpc-editor-preview .vpc-center,
+  .vpc-editor-preview .vpc-aside-l,
+  .vpc-editor-preview .vpc-aside-r,
+  .vpc-editor-preview .vpc-footer-cell { order: initial; }
+  .vpc-editor-preview .tv-branding-item { display: block !important; }
 }

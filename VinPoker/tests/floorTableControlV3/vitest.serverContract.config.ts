@@ -6,7 +6,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["tests/floorTableControlV3/serverContract.contract.test.ts"],
+    include: [
+      "tests/floorTableControlV3/serverContract.contract.test.ts",
+      "tests/redrawClockHoldV1/migration.contract.test.ts",
+    ],
     pool: "forks",
     poolOptions: {
       forks: {

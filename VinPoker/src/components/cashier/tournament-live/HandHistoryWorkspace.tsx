@@ -30,7 +30,8 @@ import {
 } from "./resettleApply";
 import type { EditedTargetHand, ResettleBlock, ResettleForwardResult, ResettleOk } from "@/lib/tracker-poker/resettleForward";
 
-const CORRECTION_WRITES_ENABLED = false;
+const LEGACY_CORRECTION_WRITES_ENABLED = false;
+const SERVER_CORRECTION_PREVIEW_ENABLED = true;
 
 /** Read ALL rows of a query in pages (PostgREST caps a single select, commonly at 1000).
  *  A money-path replay must NEVER run on a silently-truncated chain, so callers page with a
@@ -241,6 +242,13 @@ export function HandHistoryWorkspace({
     laterRows: ResettleHandRow[];
     editedTarget: EditedTargetHand;
     expectedEndingStacks: ExpectedHandEndStack[];
+    serverPreview: {
+      sourceRevision: number;
+      sourceChainHash: string;
+      outcomeHash: string;
+      scope: string;
+    };
+    idempotencyKey: string;
   } | null>(null);
 
   useEffect(() => {
@@ -441,7 +449,7 @@ export function HandHistoryWorkspace({
   useEffect(() => { setEditMode(false); setResettleView(null); }, [selectedHandId]);
 
   const handleSaveEdit = async (patch: HandEditPatch, reason: string) => {
-    if (!CORRECTION_WRITES_ENABLED) {
+    if (!LEGACY_CORRECTION_WRITES_ENABLED) {
       toast.error("Chức năng ghi sửa hand đang tạm khóa. Bản nháp chưa được lưu.");
       return;
     }
@@ -588,6 +596,40 @@ export function HandHistoryWorkspace({
         later: laterRows,
         editedTarget,
       });
+      if (!result.ok) {
+        setResettleView({
+          result, entryByPlayer, entryByHandPlayer, patch, reason,
+          targetHandId: target.id, targetRow, laterRows, editedTarget,
+          expectedEndingStacks,
+          serverPreview: { sourceRevision: 0, sourceChainHash: "", outcomeHash: "", scope: "blocked" },
+          idempotencyKey: crypto.randomUUID(),
+        });
+        return;
+      }
+      const serverEdit = buildServerSettlementEdit(patch);
+      if (Object.keys(serverEdit).length === 0) {
+        toast.error("Chưa có action, Board hoặc bài để máy chủ xem trước.");
+        return;
+      }
+      const { data: previewData, error: previewError } = await supabase.functions.invoke("tournament-live-resettle-commit", {
+        body: {
+          mode: "preview",
+          tournament_id: tournamentId,
+          hand_id: target.id,
+          correction_reason: reason,
+          edit: serverEdit,
+          expected_target_ending_stacks: expectedEndingStacks,
+        },
+      });
+      const preview = record(previewData);
+      if (previewError || preview?.ok !== true || preview.status !== "preview"
+        || preview.draft_status !== "READY_TO_APPLY"
+        || typeof preview.source_revision !== "number"
+        || typeof preview.source_chain_hash !== "string"
+        || typeof preview.outcome_hash !== "string") {
+        toast.error(textValue(preview?.code) ?? previewError?.message ?? "Máy chủ chưa chấp nhận bản xem trước.");
+        return;
+      }
       setResettleView({
         result,
         entryByPlayer,
@@ -599,6 +641,13 @@ export function HandHistoryWorkspace({
         laterRows,
         editedTarget,
         expectedEndingStacks,
+        serverPreview: {
+          sourceRevision: preview.source_revision,
+          sourceChainHash: preview.source_chain_hash,
+          outcomeHash: preview.outcome_hash,
+          scope: textValue(preview.scope) ?? "latest_completed_hand_only",
+        },
+        idempotencyKey: crypto.randomUUID(),
       });
     } finally {
       setResettleBusy(false);
@@ -609,10 +658,6 @@ export function HandHistoryWorkspace({
   // capability is available, the dedicated Edge writer recomputes actions and
   // ending stacks server-side before one transaction commits anything.
   const handleResettleConfirm = async () => {
-    if (!CORRECTION_WRITES_ENABLED) {
-      toast.error("Chức năng ghi sửa hand đang tạm khóa. Chip chưa thay đổi.");
-      return;
-    }
     if (!resettleView || !resettleView.result.ok) return;
     const rv = resettleView;
     const ok = rv.result as ResettleOk;
@@ -646,12 +691,16 @@ export function HandHistoryWorkspace({
         }
         const { data, error } = await supabase.functions.invoke("tournament-live-resettle-commit", {
           body: {
+            mode: "commit",
             tournament_id: tournamentId,
             hand_id: rv.targetHandId,
             correction_reason: rv.reason,
             edit: serverEdit,
             expected_target_ending_stacks: rv.expectedEndingStacks,
-            idempotency_key: crypto.randomUUID(),
+            idempotency_key: rv.idempotencyKey,
+            expected_source_revision: rv.serverPreview.sourceRevision,
+            expected_source_chain_hash: rv.serverPreview.sourceChainHash,
+            expected_outcome_hash: rv.serverPreview.outcomeHash,
           },
         });
         if (error || (data as any)?.ok === false) {
@@ -993,14 +1042,14 @@ export function HandHistoryWorkspace({
                 }))}
                 buttonSeat={selectedHand.button_seat ?? 0}
                 saving={savingEdit || resettleBusy}
-                writesEnabled={CORRECTION_WRITES_ENABLED}
+                writesEnabled={LEGACY_CORRECTION_WRITES_ENABLED}
                 onCancel={() => { setEditMode(false); setResettleView(null); }}
                 onSave={handleSaveEdit}
-                resettleEnabled={CORRECTION_WRITES_ENABLED && FEATURES.trackerResettleForward && resettleSupported}
+                resettleEnabled={SERVER_CORRECTION_PREVIEW_ENABLED && FEATURES.trackerResettleForward && resettleSupported}
                 onResettle={handleResettle}
                 onEditChange={() => setResettleView(null)}
               />
-              {CORRECTION_WRITES_ENABLED && resettleView && (
+              {SERVER_CORRECTION_PREVIEW_ENABLED && resettleView && (
                 <ResettlePreview
                   view={resettleView}
                   busy={resettleBusy}

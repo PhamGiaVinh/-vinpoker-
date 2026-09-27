@@ -135,7 +135,15 @@ function HandEditPanelContent({ board, potSize = null, players, actions, initial
   const actionsValid = patch.p_actions === null || actionValidation.ok;
   const validReason = reason.trim().length >= 8 && reason.trim().length <= 500;
   const canSave = writesEnabled && dirty && actionsValid && validReason && !saving;
-  const canResettle = !!resettleEnabled && !!onResettle && dirty && actionsValid && expectedStacksValid && validReason && !saving;
+  const effectiveStatus = actionValidation.status === "INCOMPLETE"
+    && actionValidation.nextAction === null && fromSlots(boardSlots).length === 5
+    ? "READY_TO_APPLY"
+    : actionValidation.status;
+  const canResettle = !!resettleEnabled && !!onResettle && dirty && actionsValid
+    && effectiveStatus === "READY_TO_APPLY" && expectedStacksValid && validReason && !saving;
+  const nextActionPlayer = actionValidation.nextAction
+    ? players.find((player) => player.player_id === actionValidation.nextAction?.player_id)
+    : null;
 
   const submit = () => {
     if (!canSave) return;
@@ -222,10 +230,31 @@ function HandEditPanelContent({ board, potSize = null, players, actions, initial
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/50 bg-background/40 px-2.5 py-2 text-xs">
           <span className="text-muted-foreground">Pot đã lưu: <strong className="font-mono text-foreground">{potSize === null ? "Chưa có dữ liệu" : potSize.toLocaleString("vi-VN")}</strong></span>
           <span className="text-muted-foreground">Pot từ action nháp: <strong className="font-mono text-foreground">{actionValidation.potSize.toLocaleString("vi-VN")}</strong></span>
-          <span className={actionValidation.ok ? "font-medium text-emerald-300" : "font-medium text-rose-300"}>
-            {actionValidation.ok ? "Các action đã nhập hợp lệ; chưa xác nhận hand kết thúc" : "Có action cần kiểm tra"}
+          <span className={effectiveStatus === "READY_TO_APPLY" ? "font-medium text-emerald-300" : effectiveStatus === "INCOMPLETE" ? "font-medium text-amber-300" : "font-medium text-rose-300"}>
+            {effectiveStatus === "READY_TO_APPLY" ? "READY_TO_APPLY · đủ diễn biến"
+              : effectiveStatus === "INCOMPLETE" ? "INCOMPLETE · cần nhập tiếp diễn biến"
+              : "INVALID · có action cần kiểm tra"}
           </span>
         </div>
+        {actionValidation.status === "INCOMPLETE" && actionValidation.nextAction && nextActionPlayer && (
+          <button
+            type="button"
+            className="mb-2 min-h-11 w-full rounded-lg border border-amber-400/50 bg-amber-400/10 px-3 text-left text-sm font-semibold text-amber-100"
+            onClick={() => setRows((current) => [...current, {
+              player_id: actionValidation.nextAction!.player_id,
+              entry_number: nextActionPlayer.entry_number,
+              street: actionValidation.nextAction!.street,
+              action_type: actionValidation.nextAction!.action_type,
+              action_amount: actionValidation.nextAction!.action_amount,
+              action_order: actionValidation.nextAction!.action_order,
+            }])}
+          >
+            + Nhập lượt Ghế {nextActionPlayer.seat_number} · {nextActionPlayer.display_name}
+            <span className="ml-2 font-normal text-amber-200/80">
+              gợi ý {actionValidation.nextAction.action_type} {actionValidation.nextAction.action_amount > 0 ? actionValidation.nextAction.action_amount.toLocaleString("vi-VN") : ""}
+            </span>
+          </button>
+        )}
         <p className="mb-2 text-[11px] text-muted-foreground">
           Call, bet và raise dùng số chip thêm vào ở action đó, không phải tổng mức raise-to. Engine hiển thị mức cần theo và mức raise tối thiểu cho từng dòng.
         </p>

@@ -12,11 +12,45 @@ export type TournamentRedrawTvMove = {
 
 export type TournamentRedrawTvBatch = {
   batchId: string;
+  redrawRevision: number;
   tournamentName: string;
   targetMaxSeats: 8 | 9;
   appliedAt: string;
   moves: TournamentRedrawTvMove[];
 };
+
+export type TournamentRedrawTvPage = {
+  tableNumber: number;
+  moves: TournamentRedrawTvMove[];
+};
+
+export function buildTournamentRedrawTvPages(batch: TournamentRedrawTvBatch): TournamentRedrawTvPage[] {
+  const byTable = new Map<number, TournamentRedrawTvMove[]>();
+  for (const move of batch.moves) {
+    const rows = byTable.get(move.toTableNumber) ?? [];
+    rows.push(move);
+    byTable.set(move.toTableNumber, rows);
+  }
+  return [...byTable.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([tableNumber, moves]) => ({
+      tableNumber,
+      moves: [...moves].sort((left, right) => left.ordinal - right.ordinal),
+    }));
+}
+
+export function getTournamentRedrawPageIndex(
+  appliedAt: string,
+  pageCount: number,
+  nowMs = Date.now(),
+  pageDurationMs = 12_000,
+): number {
+  if (pageCount < 2 || pageDurationMs < 1) return 0;
+  const startMs = Date.parse(appliedAt);
+  if (!Number.isFinite(startMs)) return 0;
+  const elapsedMs = Math.max(0, nowMs - startMs);
+  return Math.floor(elapsedMs / pageDurationMs) % pageCount;
+}
 
 export function useTournamentRedrawTv(tournamentId: string | undefined, enabled: boolean) {
   const supabase = useSupabaseClient();
@@ -76,6 +110,7 @@ export function parseTournamentRedrawTvBatch(value: unknown): TournamentRedrawTv
   if (row.batch_id == null) return "empty";
   if (
     typeof row.batch_id !== "string"
+    || typeof row.redraw_revision !== "number" || !Number.isSafeInteger(row.redraw_revision) || row.redraw_revision < 1
     || typeof row.tournament_name !== "string" || !row.tournament_name.trim()
     || (row.target_max_seats !== 8 && row.target_max_seats !== 9)
     || typeof row.applied_at !== "string"
@@ -107,7 +142,14 @@ export function parseTournamentRedrawTvBatch(value: unknown): TournamentRedrawTv
       toSeatNumber: move.to_seat_number,
     });
   }
-  return { batchId: row.batch_id, tournamentName: row.tournament_name, targetMaxSeats: row.target_max_seats, appliedAt: row.applied_at, moves };
+  return {
+    batchId: row.batch_id,
+    redrawRevision: row.redraw_revision,
+    tournamentName: row.tournament_name,
+    targetMaxSeats: row.target_max_seats,
+    appliedAt: row.applied_at,
+    moves,
+  };
 }
 
 function validTable(value: unknown): value is number {

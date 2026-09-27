@@ -41,4 +41,12 @@ describe("HandEditPanel action amounts", () => {
     expect(screen.getByText("Chưa có dữ liệu")).toBeInTheDocument();
     expect(screen.getByText(/Bản nháp để đối chiếu/)).toBeInTheDocument();
   });
+
+  it("offers the canonical next BB action when an edited SB call leaves the draft incomplete", () => {
+    render(<HandEditPanel {...props} actions={props.actions.slice(0, 3)} />);
+
+    expect(screen.getByText(/INCOMPLETE/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Nhập lượt Ghế 2/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Xem trước tính chip" })).toBeDisabled();
+  });
 });

@@ -5,6 +5,7 @@ import { FEATURES } from "@/lib/featureFlags";
 import { NewTournamentDialog, TournamentCard } from "./TournamentManagerShared";
 import type { EventMeta, FloorBoardProps } from "./useFloorTournaments";
 import { BoardEmpty, BoardError } from "./floorBoardStates";
+import { MultiDayFloorEventPanel } from "./MultiDayFloorEventPanel";
 
 type EventGroup = { eventId: string; name: string; itmPercent: number; flights: any[]; final: any | null };
 
@@ -68,6 +69,7 @@ export function MultiDayTournamentsBoard(p: FloorBoardProps) {
 
 function EventCard({ group, p }: { group: EventGroup; p: FloorBoardProps }) {
   const [open, setOpen] = useState(true);
+  const [verifiedRelease, setVerifiedRelease] = useState(false);
   const entrants = group.flights.reduce((s, fl) => s + (p.flightMeta[fl.id]?.entrants ?? 0), 0);
   const cardProps = (tr: any) => ({
     tour: tr,
@@ -80,6 +82,7 @@ function EventCard({ group, p }: { group: EventGroup; p: FloorBoardProps }) {
     onSetStatus: p.setTourStatus,
     onStart: p.startTournament,
     onSelect: p.onSelect,
+    legacyMultiDayActions: !verifiedRelease,
   });
 
   return (
@@ -93,6 +96,7 @@ function EventCard({ group, p }: { group: EventGroup; p: FloorBoardProps }) {
       </button>
       {open && (
         <div className="space-y-2 border-l-2 border-primary/15 pl-2">
+          <MultiDayFloorEventPanel eventId={group.eventId} onReleaseRead={setVerifiedRelease} />
           {group.flights.map((fl) => <TournamentCard key={fl.id} {...cardProps(fl)} />)}
           {group.final ? (
             <TournamentCard {...cardProps(group.final)} />

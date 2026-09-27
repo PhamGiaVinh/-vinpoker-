@@ -9,7 +9,8 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ProofUploader } from "@/components/ProofUploader";
-import { TvBrandingOverlay } from "@/components/tournament-clock/TvBrandingOverlay";
+import { VinPokerTournamentClock } from "@/components/tournament-clock/VinPokerTournamentClock";
+import type { TournamentClockData } from "@/components/tournament-clock/types";
 import { FEATURES } from "@/lib/featureFlags";
 import {
   DEFAULT_TV_BRANDING_LAYOUT,
@@ -22,6 +23,29 @@ import {
   type TvBrandingLayout,
   type TvTextStyle,
 } from "@/lib/tv/brandingLayout";
+
+const BRANDING_PREVIEW_DATA: TournamentClockData = {
+  title: "MAIN EVENT · DAY 1",
+  players: 93,
+  entries: 128,
+  reEntries: 35,
+  prizePool: "2,910,000,000 VND",
+  totalChips: "38,400,000",
+  averageStack: "412,903 · 82 BB",
+  levelLabel: "Level 8",
+  secondsLeft: 35 * 60 + 31,
+  nextBreakSecondsLeft: 18 * 60,
+  currentLevel: "2,000 / 4,000 / 4,000",
+  nextLevel: "2,500 / 5,000 / 5,000",
+  payouts: [
+    { rank: "1st", amount: "720,000,000 VND" },
+    { rank: "2nd", amount: "480,000,000 VND" },
+    { rank: "3rd", amount: "320,000,000 VND" },
+    { rank: "4th", amount: "210,000,000 VND" },
+    { rank: "5th", amount: "150,000,000 VND" },
+  ],
+  footerNote: "Next level · 40 min",
+};
 
 type UntypedRpc = (fn: string, args?: Record<string, unknown>) => PromiseLike<{
   data: unknown;
@@ -99,13 +123,13 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
     return () => { cancelled = true; };
   }, [open, tournamentId]);
 
-  const previewStyle = useMemo(() => ({
-    backgroundImage: bgUrl
-      ? `linear-gradient(rgba(0,0,0,.56), rgba(0,0,0,.72)), url("${bgUrl}")`
-      : "radial-gradient(circle at 50% 45%, #143522, #03100a 62%)",
-    backgroundPosition: `${layout.backgroundX}% ${layout.backgroundY}%`,
-    backgroundSize: "cover",
-  }), [bgUrl, layout.backgroundX, layout.backgroundY]);
+  const previewData = useMemo<TournamentClockData>(() => ({
+    ...BRANDING_PREVIEW_DATA,
+    clubBackgroundUrl: bgUrl,
+    clubLogoUrl: logoUrl,
+    brandName: brandName.trim() || "VINPOKER",
+    brandingLayout: layout,
+  }), [bgUrl, brandName, layout, logoUrl]);
 
   const patchLayout = <K extends keyof TvBrandingLayout>(key: K, value: TvBrandingLayout[K]) => {
     setLayout((current) => ({ ...current, [key]: value }));
@@ -174,19 +198,12 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
               <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[.18em] text-white/60">
                 <span>Draft 16:9 preview · not on TV</span><span>Safe area: 4–96%</span>
               </div>
-              <div className="relative aspect-video overflow-hidden rounded-xl border border-emerald-400/30 shadow-2xl" style={{ ...previewStyle, containerType: "inline-size" }} data-tv-branding-canvas>
-                <div className="absolute inset-3 rounded-lg border border-emerald-400/30" />
-                <div className="absolute left-1/2 top-[6%] w-[55%] -translate-x-1/2 truncate text-center text-[clamp(12px,2vw,28px)] font-black uppercase tracking-wider text-emerald-100">MAIN EVENT · DAY 1</div>
-                <div className="absolute left-[3%] top-[18%] grid h-[66%] w-[31%] content-start gap-3 rounded-lg border border-emerald-400/25 bg-black/45 p-2 text-center text-[clamp(6px,.7vw,11px)] uppercase tracking-wider text-emerald-100/80">PLAYERS · STATS · PRIZES</div>
-                <div className="absolute left-[34%] top-[33%] grid h-[38%] w-[32%] place-items-center rounded-full border-4 border-emerald-300/70 bg-black/70 text-[clamp(24px,5vw,64px)] font-black text-white shadow-[0_0_32px_rgba(98,255,143,.35)]">35:31</div>
-                <div className="absolute right-[3%] top-[18%] grid h-[66%] w-[31%] content-start gap-3 rounded-lg border border-emerald-400/25 bg-black/45 p-2 text-center text-[clamp(6px,.7vw,11px)] uppercase tracking-wider text-emerald-100/80">BLINDS · LEVEL · PAYOUTS</div>
-                <div className="absolute bottom-[8%] left-[29%] right-[29%] h-[10%] rounded-lg border border-emerald-400/35 bg-black/65" />
-                <TvBrandingOverlay
-                  layout={layout}
-                  logoUrl={logoUrl}
-                  brandName={brandName.trim() || "VINPOKER"}
-                  editing
-                  onLayoutChange={setLayout}
+              <div className="relative aspect-video overflow-hidden rounded-xl border border-emerald-400/30 shadow-2xl">
+                <VinPokerTournamentClock
+                  data={previewData}
+                  brandingEditing
+                  editorPreview
+                  onBrandingLayoutChange={setLayout}
                 />
               </div>
               <p className="mt-3 text-xs leading-relaxed text-white/55">Changes appear on TV only after Publish. Tournament numbers remain server-controlled.</p>

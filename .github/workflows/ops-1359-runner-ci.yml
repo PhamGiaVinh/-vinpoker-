@@ -1,0 +1,59 @@
+name: Ops 1359 release runner PostgreSQL 17 CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ops-1359-runner-ci.yml"
+      - "VinPoker/scripts/ops/ops-1359-release-gate.mjs"
+      - "VinPoker/scripts/ops/ops-1359-release-gate.test.mjs"
+      - "VinPoker/scripts/ops/ops-1359-release-gate.pg17.test.mjs"
+      - "VinPoker/scripts/ops/ops-1359-manifest.json"
+      - "VinPoker/supabase/migrations/**"
+      - "VinPoker/supabase/pending-migrations/**"
+
+permissions:
+  contents: read
+
+jobs:
+  release-runner-postgres-17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Run existing release runner unit tests
+        working-directory: VinPoker
+        run: node --test scripts/ops/ops-1359-release-gate.test.mjs
+
+      - name: Run PostgreSQL 17 atomic release gate tests
+        working-directory: VinPoker
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGDATABASE: postgres
+          PGPASSWORD: ""
+        run: node --test scripts/ops/ops-1359-release-gate.pg17.test.mjs

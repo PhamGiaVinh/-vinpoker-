@@ -12,7 +12,11 @@ import {
 
 type RedrawClient = Pick<
   ReturnType<typeof createFloorTableControlV3Client>,
-  "getTournamentTableInventory" | "planTournamentRedraw" | "applyTournamentRedraw"
+  | "getTournamentTableInventory"
+  | "planTournamentRedraw"
+  | "applyTournamentRedraw"
+  | "getActiveTournamentRedraw"
+  | "continueTournamentRedraw"
 >;
 
 export function FloorRedrawDialogV1({
@@ -37,6 +41,9 @@ export function FloorRedrawDialogV1({
   const [plan, setPlan] = useState<FloorRedrawPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [continued, setContinued] = useState(false);
+  const [continueRequestId, setContinueRequestId] = useState<string | null>(null);
+  const [continueRevision, setContinueRevision] = useState<number | null>(null);
   const playerCount = useMemo(() => tables.reduce((sum, table) => sum + table.seats.length, 0), [tables]);
   const requiredTableCount = Math.max(1, Math.ceil(playerCount / capacity));
   const selectable = useMemo(
@@ -51,6 +58,9 @@ export function FloorRedrawDialogV1({
     setPhase("setup");
     setPlan(null);
     setError(null);
+    setContinued(false);
+    setContinueRequestId(null);
+    setContinueRevision(null);
     setBusy(true);
     void client.getTournamentTableInventory(tournamentId).then((result) => {
       if (!active) return;
@@ -135,13 +145,58 @@ export function FloorRedrawDialogV1({
     }
   };
 
+  const continueRedraw = async () => {
+    if (!plan || continued) return;
+    setBusy(true);
+    setError(null);
+    try {
+      let requestId = continueRequestId;
+      let expectedRedrawRevision = continueRevision;
+      if (!requestId || expectedRedrawRevision == null) {
+        const active = await client.getActiveTournamentRedraw(tournamentId);
+        if (active.ok === false) {
+          setError(redrawMessage(active.error));
+          return;
+        }
+        if (!active.data || active.data.batchId !== plan.batchId) {
+          setError(redrawMessage("REDRAW_HOLD_NOT_ACTIVE"));
+          return;
+        }
+        requestId = crypto.randomUUID();
+        expectedRedrawRevision = active.data.redrawRevision;
+        setContinueRequestId(requestId);
+        setContinueRevision(expectedRedrawRevision);
+      }
+      const result = await client.continueTournamentRedraw({
+        batchId: plan.batchId,
+        expectedRedrawRevision,
+        requestId,
+      });
+      if (result.ok === false) {
+        setError(redrawMessage(result.error));
+        return;
+      }
+      setContinued(true);
+      setContinueRequestId(null);
+      setContinueRevision(null);
+      setError(result.data.clockResumed
+        ? "Redraw finished. The tournament clock is running again."
+        : "Redraw finished. The clock remains paused because it was already paused or changed during the display.");
+      await onApplied();
+    } catch {
+      setError("Connection interrupted. Retry Continue; the same request will safely return its original receipt.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!busy) onOpenChange(next); }}>
       <DialogContent className="h-[100dvh] w-screen max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden border-0 bg-[#0d0913] p-0 sm:h-[90vh] sm:w-[calc(100vw-2rem)] sm:max-w-4xl sm:rounded-3xl sm:border sm:border-white/10">
         <DialogHeader className="border-b border-white/8 px-4 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))] text-left sm:px-6">
-          <DialogTitle className="flex items-center gap-2 text-xl text-[#f2ece6]"><Shuffle className="h-5 w-5 text-[#c9a86a]" /> Redraw giải đấu</DialogTitle>
+          <DialogTitle className="flex items-center gap-2 text-xl text-[#f2ece6]"><Shuffle className="h-5 w-5 text-[#c9a86a]" /> Tournament redraw</DialogTitle>
           <DialogDescription className="text-sm text-[#9b8e97]">
-            {phase === "setup" ? "Chọn 8-max hoặc 9-max và đúng số bàn của giải này." : phase === "preview" ? "Bản xem trước đã được lưu cố định. Xác nhận sẽ áp dụng đúng các ghế bên dưới." : "Redraw đã được áp dụng và sẵn sàng hiển thị trên TV."}
+            {phase === "setup" ? "Choose 8-max or 9-max and the required tables for this tournament." : phase === "preview" ? "This preview is fixed. Confirm to apply these exact seat movements." : "The redraw is on the TV. Continue when players have reached their new seats."}
           </DialogDescription>
         </DialogHeader>
 
@@ -150,12 +205,12 @@ export function FloorRedrawDialogV1({
           {phase === "setup" ? (
             <div className="space-y-5">
               <section>
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9b8e97]">Sức chứa mỗi bàn</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9b8e97]">Seats per table</div>
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   {([8, 9] as const).map((value) => (
                     <button key={value} type="button" data-ops-action="floor.redraw.select_capacity" onClick={() => setCapacity(value)} className={cn("min-h-14 rounded-2xl border px-3 text-left", capacity === value ? "border-[#c9a86a] bg-[#c9a86a]/14 text-[#f2ece6]" : "border-white/10 bg-white/[0.035] text-[#9b8e97]") }>
                       <span className="block text-lg font-bold">{value}-max</span>
-                      <span className="text-xs">Ghế 1–{value}</span>
+                      <span className="text-xs">Seats 1–{value}</span>
                     </button>
                   ))}
                 </div>
@@ -164,8 +219,8 @@ export function FloorRedrawDialogV1({
               <section>
                 <div className="flex items-end justify-between gap-3">
                   <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9b8e97]">Bàn đích</div>
-                    <div className="mt-1 text-sm text-[#f2ece6]">{playerCount} người → cần {requiredTableCount} bàn</div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9b8e97]">Destination tables</div>
+                    <div className="mt-1 text-sm text-[#f2ece6]">{playerCount} players → {requiredTableCount} tables required</div>
                   </div>
                   <div className={cn("font-mono text-sm", selectedIds.length === requiredTableCount ? "text-emerald-300" : "text-amber-300")}>{selectedIds.length}/{requiredTableCount}</div>
                 </div>
@@ -174,55 +229,59 @@ export function FloorRedrawDialogV1({
                     const selected = selectedIds.includes(item.gameTableId);
                     return (
                       <button key={item.gameTableId} type="button" data-ops-action="floor.redraw.select_table" onClick={() => toggleTable(item.gameTableId)} className={cn("min-h-14 rounded-2xl border px-3 py-2 text-left", selected ? "border-emerald-400/60 bg-emerald-400/12" : "border-white/10 bg-white/[0.035]") }>
-                        <span className="flex items-center justify-between gap-2 text-sm font-semibold text-[#f2ece6]">Bàn {item.tableNumber}{selected && <Check className="h-4 w-4 text-emerald-300" />}</span>
-                        <span className="mt-0.5 block truncate text-[11px] text-[#9b8e97]">{item.availabilityStatus === "current_tournament" ? `Đang thuộc giải · ${item.maxSeats}-max` : "Đang trống"}</span>
+                        <span className="flex items-center justify-between gap-2 text-sm font-semibold text-[#f2ece6]">Table {item.tableNumber}{selected && <Check className="h-4 w-4 text-emerald-300" />}</span>
+                        <span className="mt-0.5 block truncate text-[11px] text-[#9b8e97]">{item.availabilityStatus === "current_tournament" ? `In this tournament · ${item.maxSeats}-max` : "Available"}</span>
                       </button>
                     );
                   })}
                 </div>
-                {selectable.length < requiredTableCount && <p className="mt-2 text-xs text-rose-300">Không đủ bàn trống của CLB. Bàn của giải khác/Cash/VIP đã được ẩn và không thể chọn.</p>}
+                {selectable.length < requiredTableCount && <p className="mt-2 text-xs text-rose-300">Not enough club tables are available. Tables assigned to another tournament, Cash, or VIP are hidden.</p>}
               </section>
             </div>
           ) : (
             <section className="space-y-3">
               <div className="rounded-2xl border border-emerald-400/25 bg-emerald-400/8 px-3 py-3 text-sm text-[#f2ece6]">
-                {plan?.moves.length ?? 0} người · {plan?.targetTableCount ?? requiredTableCount} bàn · {plan?.targetMaxSeats ?? capacity}-max
+                {plan?.moves.length ?? 0} players · {plan?.targetTableCount ?? requiredTableCount} tables · {plan?.targetMaxSeats ?? capacity}-max
               </div>
               <div className="overflow-hidden rounded-2xl border border-white/10">
                 {(plan?.moves ?? []).map((move) => (
                   <div key={move.entryId} className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-white/8 px-3 py-2 last:border-b-0">
                     <span className="min-w-0 truncate text-sm font-semibold text-[#f2ece6]">{move.playerName}</span>
                     <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-xs text-[#9b8e97]">
-                      B{move.fromTableNumber}·G{move.fromSeatNumber}<ArrowRight className="h-3.5 w-3.5 text-[#c9a86a]" /><b className="text-emerald-300">B{move.toTableNumber}·G{move.toSeatNumber}</b>
+                      T{move.fromTableNumber}·S{move.fromSeatNumber}<ArrowRight className="h-3.5 w-3.5 text-[#c9a86a]" /><b className="text-emerald-300">T{move.toTableNumber}·S{move.toSeatNumber}</b>
                     </span>
                   </div>
                 ))}
               </div>
-              {phase === "done" && <div className="flex items-center gap-2 rounded-2xl border border-[#c9a86a]/30 bg-[#c9a86a]/10 px-3 py-3 text-sm text-[#f2ece6]"><Tv2 className="h-5 w-5 text-[#c9a86a]" /> TV đọc đúng batch này; không bốc lại lần hai.</div>}
+              {phase === "done" && <div className="flex items-center gap-2 rounded-2xl border border-[#c9a86a]/30 bg-[#c9a86a]/10 px-3 py-3 text-sm text-[#f2ece6]"><Tv2 className="h-5 w-5 text-[#c9a86a]" /> TV is showing this saved redraw. It will not generate or apply another draw.</div>}
             </section>
           )}
         </div>
 
         <footer className="border-t border-white/8 bg-[#0d0913]/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:px-6 sm:pb-4">
           {phase === "setup" ? (
-            <Button data-ops-action="floor.redraw.preview" className="min-h-12 w-full" disabled={busy || selectedIds.length !== requiredTableCount || selectable.length < requiredTableCount} onClick={() => void preview()}>
-              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Shuffle className="mr-2 h-4 w-4" />} Lưu bản xem trước
+              <Button data-ops-action="floor.redraw.preview" className="min-h-12 w-full" disabled={busy || selectedIds.length !== requiredTableCount || selectable.length < requiredTableCount} onClick={() => void preview()}>
+              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Shuffle className="mr-2 h-4 w-4" />} Save preview
             </Button>
           ) : phase === "preview" ? (
             <div className="grid grid-cols-[0.8fr_1.2fr] gap-2">
-              <Button variant="outline" className="min-h-12" disabled={busy} onClick={() => { setPlan(null); setPhase("setup"); }}>Sửa lại</Button>
+              <Button variant="outline" className="min-h-12" disabled={busy} onClick={() => { setPlan(null); setPhase("setup"); }}>Edit</Button>
               <Button data-ops-action="floor.redraw.apply" className="min-h-12 bg-rose-600 hover:bg-rose-500" disabled={busy} onClick={() => void apply()}>
-                {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Shuffle className="mr-2 h-4 w-4" />} Xác nhận redraw
+                {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Shuffle className="mr-2 h-4 w-4" />} Confirm redraw
               </Button>
             </div>
           ) : (
-            <div className="grid grid-cols-[1.2fr_0.8fr] gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_0.7fr]">
               <Button asChild variant="outline" className="min-h-12">
                 <a data-ops-action="floor.redraw.open_tv" href={`/tv/${tournamentId}?scene=redraw`} target="_blank" rel="noreferrer">
-                  <Tv2 className="mr-2 h-4 w-4" /> Mở màn hình TV
+                  <Tv2 className="mr-2 h-4 w-4" /> Open TV
                 </a>
               </Button>
-              <Button className="min-h-12" onClick={() => onOpenChange(false)}>Xong</Button>
+              <Button data-ops-action="floor.redraw.continue" className="min-h-12" disabled={busy || continued} onClick={() => void continueRedraw()}>
+                {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                {continued ? "Continued" : "Continue"}
+              </Button>
+              <Button variant="outline" className="min-h-12" disabled={busy} onClick={() => onOpenChange(false)}>Close</Button>
             </div>
           )}
         </footer>
@@ -233,14 +292,18 @@ export function FloorRedrawDialogV1({
 
 function redrawMessage(code: string): string {
   switch (code) {
-    case "target_table_not_available": return "Một bàn đích vừa được dùng ở nơi khác. Hãy tải lại.";
-    case "target_table_count_mismatch": return "Số bàn đã chọn không khớp số bàn cần thiết.";
-    case "insufficient_unlocked_capacity": return "Không đủ ghế vì có ghế đang khóa.";
-    case "locked_seat_outside_capacity": return "Hãy mở khóa ghế 9 trước khi chuyển bàn sang 8-max.";
-    case "table_has_active_hand": return "Có bàn đang chạy ván. Kết thúc ván trước khi redraw.";
-    case "STALE_REDRAW_PLAN": return "Bàn/người/ghế đã thay đổi sau khi xem trước. Kế hoạch cũ đã bị hủy; hãy xem lại.";
-    case "no_active_players": return "Giải chưa có người chơi đang ngồi để redraw.";
-    case "FLOOR_REDRAW_SEAT_LOCK_V1_DISABLED": return "Redraw 8/9-max chưa được bật cho môi trường này.";
-    default: return `Không thể redraw (${code}).`;
+    case "target_table_not_available": return "A destination table was just taken. Reload and try again.";
+    case "target_table_count_mismatch": return "The selected table count no longer matches the required count.";
+    case "insufficient_unlocked_capacity": return "There are not enough unlocked seats.";
+    case "locked_seat_outside_capacity": return "Unlock seat 9 before switching this table to 8-max.";
+    case "table_has_active_hand": return "A table still has an active hand. Finish it before redrawing.";
+    case "STALE_REDRAW_PLAN": return "The tables, players, or seats changed after preview. Review a new plan.";
+    case "no_active_players": return "There are no seated players to redraw.";
+    case "FLOOR_REDRAW_SEAT_LOCK_V1_DISABLED": return "Tournament redraw is not enabled in this environment.";
+    case "REDRAW_HOLD_NOT_ACTIVE": return "This redraw is no longer active. Reload the tournament view.";
+    case "STALE_REDRAW_REVISION": return "The redraw changed. Reload before continuing.";
+    case "redraw_table_hold_active": return "A redraw is still on hold. Continue it from the Floor screen first.";
+    case "actor_not_allowed": return "Your account is not authorized to continue this tournament.";
+    default: return `Redraw failed (${code}).`;
   }
 }

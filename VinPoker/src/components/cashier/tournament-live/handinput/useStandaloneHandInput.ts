@@ -2189,6 +2189,55 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
   };
 
+  const requestDurableUndo = async (): Promise<{ ok: boolean; error?: string }> => {
+    if (!handId || !tournamentTableId) return { ok: false, error: "Thiếu phiên bàn Tracker." };
+    const storageKey = `tracker-undo:${tournamentId}:${handId}`;
+    type PendingUndo = { expectedActionId: string; expectedSourceRevision: number; idempotencyKey: string };
+    let pending: PendingUndo | null = null;
+    try {
+      const raw = window.sessionStorage.getItem(storageKey);
+      if (raw) pending = JSON.parse(raw) as PendingUndo;
+    } catch {
+      return { ok: false, error: "Không lưu được mã hoàn tác an toàn trong trình duyệt." };
+    }
+    if (!pending) {
+      const [handResult, actionResult] = await Promise.all([
+        supabase.from("tournament_hands").select("source_revision").eq("id", handId).maybeSingle(),
+        supabase.from("hand_actions").select("id").eq("hand_id", handId)
+          .order("action_order", { ascending: false }).order("created_at", { ascending: false })
+          .order("id", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      const sourceRevision = (handResult.data as unknown as { source_revision?: unknown } | null)?.source_revision;
+      const actionId = actionResult.data?.id;
+      if (handResult.error || actionResult.error || typeof sourceRevision !== "number"
+        || !Number.isSafeInteger(sourceRevision) || typeof actionId !== "string") {
+        return { ok: false, error: "Không xác minh được action cuối và phiên bản máy chủ." };
+      }
+      pending = { expectedActionId: actionId, expectedSourceRevision: sourceRevision, idempotencyKey: crypto.randomUUID() };
+      try {
+        window.sessionStorage.setItem(storageKey, JSON.stringify(pending));
+      } catch {
+        return { ok: false, error: "Không lưu được mã hoàn tác an toàn trong trình duyệt." };
+      }
+    }
+    const { data, error } = await supabase.functions.invoke("tournament-live-update", {
+      body: buildDeleteLastActionBody({
+        tournamentId, tournamentTableId, handId,
+        expectedActionId: pending.expectedActionId,
+        expectedSourceRevision: pending.expectedSourceRevision,
+        idempotencyKey: pending.idempotencyKey,
+      }),
+    });
+    const rejection = (data as { error?: unknown } | null)?.error;
+    if (error || rejection) {
+      if (error) return { ok: false, error: "Chưa rõ hoàn tác đã ghi hay chưa. Bấm lại để kiểm tra cùng mã yêu cầu." };
+      window.sessionStorage.removeItem(storageKey);
+      return { ok: false, error: typeof rejection === "string" ? rejection : "Không hoàn tác được hành động." };
+    }
+    window.sessionStorage.removeItem(storageKey);
+    return { ok: true };
+  };
+
   const handleUndo = async () => {
     if (isReadOnly) {
       toast.error("Phiên làm việc đã hết hạn");
@@ -2206,12 +2255,9 @@ export function useStandaloneHandInput(tournamentId: string) {
       restoreLastSnapshot();
       return;
     }
-    const { data, error } = await supabase.functions.invoke("tournament-live-update", {
-      body: buildDeleteLastActionBody({ tournamentId, handId }),
-    });
-    const rejection = (error as any)?.context?.body?.error || (data as any)?.error;
-    if (rejection) {
-      toast.error(typeof rejection === "string" ? rejection : "Không hoàn tác được hành động");
+    const undo = await requestDurableUndo();
+    if (!undo.ok) {
+      toast.error(undo.error ?? "Không hoàn tác được hành động");
       return;
     }
     restoreLastSnapshot();
@@ -2302,19 +2348,15 @@ export function useStandaloneHandInput(tournamentId: string) {
     if (step.kind === "delete") {
       const stepNo = streetRollback.total - streetRollback.deletesRemaining + 1;
       markSync("sending", `Hoàn tác ${label} (${stepNo}/${streetRollback.total})`);
-      supabase.functions
-        .invoke("tournament-live-update", {
-          body: buildDeleteLastActionBody({ tournamentId, handId }),
-        })
-        .then(({ data, error }) => {
+      requestDurableUndo()
+        .then((undo) => {
           if (cancelled) return;
-          const rejection = (error as any)?.context?.body?.error || (data as any)?.error;
-          if (error || rejection) {
+          if (!undo.ok) {
             // Earlier confirmed deletes stand and were each mirrored by a pop —
             // local == server. Re-tap recomputes the remaining count and resumes.
             const done = streetRollback.total - streetRollback.deletesRemaining;
             failChain(
-              `Hoàn tác dừng giữa chừng — đã xoá ${done}/${streetRollback.total} hành động. Bấm "Hoàn tác cả vòng" lần nữa để tiếp tục.`,
+              `${undo.error ?? "Hoàn tác dừng giữa chừng"} Đã xoá ${done}/${streetRollback.total} hành động.`,
             );
             return;
           }
