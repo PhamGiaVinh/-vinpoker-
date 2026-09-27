@@ -10,6 +10,14 @@ const LOCK_KEY_1 = 1359;
 const LOCK_KEY_2 = 1;
 const SKIPPED_MIGRATION_PATH = "supabase/migration-archive/remote-history/recovered-source/20270115000011_cashier_refund_without_floor_clearance.sql";
 const ACTIONS = new Set(["APPLY", "SKIP_ALREADY_APPLIED"]);
+const CANONICAL_SKIPS = new Map([
+  ["20270115000006", "floor_roster_actions_repair"],
+  ["20270115000007", "floor_break_eligible_destinations"],
+  ["20270115000008", "floor_deferred_tracker_move_v1"],
+  ["20270115000009", "tracker_record_hand_v3_identity"],
+  ["20270115000010", "tracker_v3_hand_start_context"],
+  ["20270115000011", "cashier_refund_without_floor_clearance"],
+]);
 const CANONICAL_VERSIONS = "20260924165219,20270115000006,20270115000007,20270115000008,20270115000009,20270115000010,20270115000011,20260924065041,20270118000001,20270119000000,20270117000001,20270118000002,20270117000002,20260925092509,20270119000002,20270119000003,20270119000004,20270119000005,20270119000006,20270119000007,20270119000009,20270119000008,20270119000010,20270119000011,20270119000012,20270119000013,20270119000014,20270120000000,20270120000001,20270120000002,20270120000003,20270120000004,20270120000005,20270119000001,20270120000006,20270120000007,20270120000008,20270120000009,20270120000010,20270120000011,20270120000012,20270126000001".split(",");
 
 export function validateManifest(manifest) {
@@ -32,8 +40,8 @@ export function validateManifest(manifest) {
     paths.add(item.path);
   }
   const skips = manifest.migrations.filter((item) => item.action === "SKIP_ALREADY_APPLIED");
-  if (skips.length !== 1 || skips[0].version !== "20270115000011" || skips[0].name !== "cashier_refund_without_floor_clearance" ||
-      manifest.migrations.filter((item) => item.action === "APPLY").length !== 41) throw new Error("Release actions do not match the canonical allowlist");
+  if (skips.length !== CANONICAL_SKIPS.size || skips.some((item) => CANONICAL_SKIPS.get(item.version) !== item.name) ||
+      manifest.migrations.filter((item) => item.action === "APPLY").length !== 36) throw new Error("Release actions do not match the canonical allowlist");
   return manifest;
 }
 

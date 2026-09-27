@@ -7,11 +7,16 @@ import { buildAtomicMigrationQuery, canonicalSqlText, classifyResume, loadAndVal
 
 const root = new URL("../../", import.meta.url);
 const { manifest, files } = loadAndValidateManifest(fileURLToPath(root));
-const skipped = manifest.migrations.find((item) => item.action === "SKIP_ALREADY_APPLIED");
+const skipped = manifest.migrations.filter((item) => item.action === "SKIP_ALREADY_APPLIED");
 
 test("manifest holds all source checksums and only the exact in-scope paths", () => {
   assert.equal(manifest.migrations.length, 42);
-  assert.equal(manifest.migrations.filter((item) => item.action === "APPLY").length, 41);
+  assert.equal(manifest.migrations.filter((item) => item.action === "APPLY").length, 36);
+  assert.equal(skipped.length, 6);
+  assert.deepEqual(skipped.map(({ version }) => version), [
+    "20270115000006", "20270115000007", "20270115000008",
+    "20270115000009", "20270115000010", "20270115000011",
+  ]);
   assert.equal(manifest.migrations.find((item) => item.version === "20270115000011").path,
     "supabase/migration-archive/remote-history/recovered-source/20270115000011_cashier_refund_without_floor_clearance.sql");
   for (const item of manifest.migrations) assert.equal(createHash("sha256").update(files.get(item.version)).digest("hex"), item.sha256);
@@ -22,11 +27,14 @@ test("manifest holds all source checksums and only the exact in-scope paths", ()
 });
 
 test("SKIP requires the exact live version and name and never gets an apply query", () => {
-  assert.throws(() => classifyResume([], manifest), /SKIP entry/);
-  assert.throws(() => classifyResume([{ version: skipped.version, name: "wrong_name" }], manifest), /SKIP entry/);
-  const states = classifyResume([{ version: skipped.version, name: skipped.name }], manifest);
-  assert.equal(states.find((item) => item.version === skipped.version).state, "skipped-exact");
-  assert.throws(() => buildAtomicMigrationQuery(skipped, "SELECT 1;"));
+  const exactRows = skipped.map(({ version, name }) => ({ version, name }));
+  for (const [index, item] of skipped.entries()) {
+    assert.throws(() => classifyResume(exactRows.filter((row) => row.version !== item.version), manifest), /SKIP entry/);
+    assert.throws(() => classifyResume(exactRows.map((row) => row.version === item.version ? { ...row, name: "wrong_name" } : row), manifest), /SKIP entry/);
+    assert.throws(() => buildAtomicMigrationQuery(item, "SELECT 1;"));
+  }
+  const states = classifyResume(exactRows, manifest);
+  for (const item of skipped) assert.equal(states.find((state) => state.version === item.version).state, "skipped-exact");
 });
 
 test("atomic query locks, checks ledger, executes source unchanged, then writes receipt before commit", () => {
@@ -80,7 +88,7 @@ test("outer transaction source stays byte-for-byte intact around inserted lock, 
   assert.ok(query.endsWith(source.slice(source.lastIndexOf("COMMIT;"))));
 });
 
-test("all 41 APPLY sources scan and build one atomic query with the exact receipt source", () => {
+test("all 36 APPLY sources scan and build one atomic query with the exact receipt source", () => {
   for (const item of manifest.migrations.filter((entry) => entry.action === "APPLY")) {
     const source = files.get(item.version).toString("utf8");
     const scan = scanMigrationSource(source);
@@ -93,13 +101,20 @@ test("all 41 APPLY sources scan and build one atomic query with the exact receip
   }
 });
 
-test("resume permits exact prefix plus the declared skip, rejects name drift and gaps", () => {
-  const history = manifest.migrations.slice(0, 8).map(({ version, name }) => ({ version, name }));
-  const states = classifyResume(history, manifest);
-  assert.equal(states[7].state, "already-applied-exact");
-  assert.equal(states[8].state, "pending");
-  assert.throws(() => classifyResume([{ version: manifest.migrations[0].version, name: "wrong" }, ...history.slice(1)], manifest), /conflicts/);
-  assert.throws(() => classifyResume([history[0], history[2], ...history.slice(3)], manifest), /conflicts/);
+test("resume permits exact declared skips and rejects applied-name drift and order gaps", () => {
+  const skipHistory = skipped.map(({ version, name }) => ({ version, name }));
+  const firstApply = manifest.migrations[0];
+  const firstPostSkipApply = manifest.migrations.find((item) => item.version === "20260924065041");
+  const states = classifyResume([{ version: firstApply.version, name: firstApply.name }, ...skipHistory], manifest);
+  assert.equal(states.find((item) => item.version === firstApply.version).state, "already-applied-exact");
+  assert.equal(states.find((item) => item.version === firstPostSkipApply.version).state, "pending");
+  assert.throws(() => classifyResume([
+    { version: firstApply.version, name: "wrong" }, ...skipHistory,
+  ], manifest), /conflicts/);
+  assert.throws(() => classifyResume([
+    { version: firstApply.version, name: firstApply.name }, ...skipHistory,
+    { version: manifest.migrations[8].version, name: manifest.migrations[8].name },
+  ], manifest), /conflicts/);
 });
 
 test("receipt delimiter conflict is rejected", () => {
