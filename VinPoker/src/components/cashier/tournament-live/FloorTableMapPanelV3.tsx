@@ -24,6 +24,7 @@ import {
   createFloorTableControlV3Client,
   type FloorRestorableEntry,
   type FloorPendingTrackerMove,
+  type FloorBreakPlan,
   type FloorTableControlV3Rpc,
   type FloorTableRosterSeat,
   type FloorSeatableEntry,
@@ -100,6 +101,7 @@ export function FloorTableMapPanelV3({
   const [seatableEntries, setSeatableEntries] = useState<FloorSeatableEntry[]>([]);
   const [restorableEntries, setRestorableEntries] = useState<FloorRestorableEntry[]>([]);
   const [pendingMoves, setPendingMoves] = useState<FloorPendingTrackerMove[]>([]);
+  const [secondaryLoadError, setSecondaryLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -116,6 +118,9 @@ export function FloorTableMapPanelV3({
   const [pendingBustSeat, setPendingBustSeat] = useState<FloorTableRosterSeat | null>(null);
   const [pendingFreeSitSeat, setPendingFreeSitSeat] = useState<FloorTableRosterSeat | null>(null);
   const [pendingTableAction, setPendingTableAction] = useState<PendingTableAction | null>(null);
+  const [breakPlan, setBreakPlan] = useState<FloorBreakPlan | null>(null);
+  const [breakPlanLoading, setBreakPlanLoading] = useState(false);
+  const [breakPlanError, setBreakPlanError] = useState<string | null>(null);
   const [redrawOpen, setRedrawOpen] = useState(false);
   const [lockReason, setLockReason] = useState("Giữ ghế cho vận hành");
 
@@ -158,36 +163,33 @@ export function FloorTableMapPanelV3({
     }
     if (!silent) setLoading(true);
     try {
-      const [roster, entries, restorable, pending] = await Promise.all([
+      const settled = await Promise.allSettled([
         v3.getTournamentTableRoster(tournament.id),
         v3.getSeatableEntries(tournament.id),
         v3.getRestorableEntries(tournament.id),
         v3.getPendingTrackerMoves(tournament.id),
       ]);
-      if (roster.ok === false || entries.ok === false || restorable.ok === false || pending.ok === false) {
-        if (!silent) {
-          setTables([]);
-          setSeatableEntries([]);
-          setRestorableEntries([]);
-          setPendingMoves([]);
-        }
-        const failure = roster.ok === false
-          ? roster.error
-          : entries.ok === false
-            ? entries.error
-            : restorable.ok === false
-              ? restorable.error
-              : pending.ok === false ? pending.error : "V3_STATE_LOAD_FAILED";
-        const message = `Không tải được dữ liệu bàn: ${v3ErrorMessage(failure)}`;
+      const failed = (error: string) => ({ ok: false as const, error });
+      const roster = settled[0].status === "fulfilled" ? settled[0].value : failed("V3_ROSTER_NETWORK_FAILED");
+      const entries = settled[1].status === "fulfilled" ? settled[1].value : failed("V3_SEATABLE_NETWORK_FAILED");
+      const restorable = settled[2].status === "fulfilled" ? settled[2].value : failed("V3_RESTORABLE_NETWORK_FAILED");
+      const pending = settled[3].status === "fulfilled" ? settled[3].value : failed("V3_PENDING_MOVES_NETWORK_FAILED");
+      if (roster.ok === false) {
+        if (!silent) setTables([]);
+        const message = `Không tải được danh sách bàn: ${v3ErrorMessage(roster.error)}`;
         setLoadError(message);
         if (!silent) toast.error(message);
       } else {
         setTables(roster.data);
-        setSeatableEntries(entries.data);
-        setRestorableEntries(restorable.data);
-        setPendingMoves(pending.data);
         setLoadError(null);
       }
+      if (entries.ok) setSeatableEntries(entries.data);
+      if (restorable.ok) setRestorableEntries(restorable.data);
+      if (pending.ok) setPendingMoves(pending.data);
+      const secondaryFailures = [entries, restorable, pending].filter((result) => !result.ok);
+      setSecondaryLoadError(secondaryFailures.length > 0
+        ? "Danh sách bàn vẫn hiển thị, nhưng một số thao tác phụ chưa tải được. Hãy thử lại."
+        : null);
     } catch {
       if (!silent) {
         setTables([]);
@@ -216,7 +218,9 @@ export function FloorTableMapPanelV3({
   useEffect(() => {
     if (!selectedTable) return;
     const current = selectedSeatNumber;
-    if (current != null && (selectedTable.seats.some((seat) => seat.seatNumber === current) || emptySeatNumbers.includes(current))) return;
+    if (current != null && (selectedTable.seats.some((seat) => seat.seatNumber === current)
+      || selectedTable.seatLocks.some((lock) => lock.seatNumber === current)
+      || emptySeatNumbers.includes(current))) return;
     setSelectedSeatNumber(null);
   }, [emptySeatNumbers, selectedSeatNumber, selectedTable]);
 
@@ -228,6 +232,8 @@ export function FloorTableMapPanelV3({
     setPendingBustSeat(null);
     setPendingFreeSitSeat(null);
     setPendingTableAction(null);
+    setBreakPlan(null);
+    setBreakPlanError(null);
     setLockReason("Giữ ghế cho vận hành");
   }, [selectedSeatNumber, selectedTableId]);
 
@@ -277,6 +283,8 @@ export function FloorTableMapPanelV3({
     playerName: seat.displayName,
     chipsLabel: formatStack(seat.chipCount),
     entryNumber: seat.entryNo,
+    integrityStatus: seat.integrityStatus,
+    playerId: seat.playerId,
   })) ?? [], [selectedTable]);
 
   const tableIndex = useMemo(() => tables.map((table) => ({
@@ -291,6 +299,15 @@ export function FloorTableMapPanelV3({
 
   const seatAction = (seat: FloorTableRosterSeat | undefined) => {
     if (!seat || !selectedTable) return null;
+    if (seat.integrityStatus === "missing_entry" || !seat.entryId) {
+      return (
+        <section className="rounded-xl border border-destructive/35 bg-destructive/10 p-3" role="alert">
+          <p className="font-semibold text-destructive">Cần sửa dữ liệu ghế {seat.seatNumber}</p>
+          <p className="mt-1 text-sm text-muted-foreground">Đang có người trên server nhưng thiếu hồ sơ dự giải. Các thao tác chuyển, rời ghế và loại được khóa để tránh nhầm người.</p>
+          <p className="mt-2 break-all font-mono text-xs text-muted-foreground">Mã người chơi: {seat.playerId}</p>
+        </section>
+      );
+    }
     const trackerChipBlocked = selectedTable.controlMode === "tracker" && seat.chipCount !== 0;
     const pendingForEntry = pendingMoves.find((move) => move.entryId === seat.entryId && move.status === "pending");
     const staleForEntry = pendingMoves.find((move) => move.entryId === seat.entryId && move.status === "stale");
@@ -403,10 +420,11 @@ export function FloorTableMapPanelV3({
       </div>
 
       {loadError && <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{loadError}</p>}
+      {secondaryLoadError && <p role="status" className="rounded-xl border border-amber-400/35 bg-amber-400/10 p-3 text-sm text-amber-100">{secondaryLoadError}</p>}
       {operationError && <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{operationError}</p>}
 
       {loading ? (
-        <div role="status" aria-live="polite" aria-busy="true" className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> Đang tải roster V3…</div>
+        <div role="status" aria-live="polite" aria-busy="true" className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> Đang tải danh sách bàn…</div>
       ) : tables.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Chưa có bàn đang hoạt động. Chọn “Mở bàn” để lấy một bàn vật lý còn trống.</div>
       ) : (
@@ -600,7 +618,32 @@ export function FloorTableMapPanelV3({
 
                 <section className="grid gap-2 sm:grid-cols-2">
                   <Button data-ops-action="floor.tables.open_close_table" variant="outline" className="min-h-12" disabled={busy || selectedTable.seats.length !== 0} onClick={() => setPendingTableAction("close")}>Đóng bàn trống</Button>
-                  <Button data-ops-action="floor.tables.open_break_v3" variant="outline" className="min-h-12" disabled={busy || selectedTable.seats.length === 0} onClick={() => setPendingTableAction("break")}>Đóng & chuyển người</Button>
+                  <Button
+                    data-ops-action="floor.tables.open_break_v3"
+                    variant="outline"
+                    className="min-h-12"
+                    disabled={busy || breakPlanLoading || selectedTable.seats.length === 0}
+                    onClick={async () => {
+                      setPendingTableAction("break");
+                      setBreakPlan(null);
+                      setBreakPlanError(null);
+                      if (!v3.redrawSeatLockEnabled) return;
+                      setBreakPlanLoading(true);
+                      try {
+                        const plan = await v3.planBreakTable({
+                          tournamentTableId: selectedTable.tournamentTableId,
+                          expectedRevision: selectedTable.sessionRevision,
+                          drawMode: "fill_lowest_table",
+                        });
+                        if (plan.ok === true) setBreakPlan(plan.data);
+                        else setBreakPlanError(v3ErrorMessage(plan.error));
+                      } catch {
+                        setBreakPlanError("Mất kết nối khi lập phương án chuyển. Chưa có thay đổi nào được ghi.");
+                      } finally {
+                        setBreakPlanLoading(false);
+                      }
+                    }}
+                  >Đóng & chuyển người</Button>
                 </section>
               </div>
             </>
@@ -703,17 +746,36 @@ export function FloorTableMapPanelV3({
             <AlertDialogTitle>{pendingTableAction === "break" ? "Đóng và chuyển toàn bộ người chơi?" : "Đóng bàn trống?"}</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingTableAction === "break"
-                ? `Chuyển ${selectedTable?.seats.length ?? 0} người sang bàn còn chỗ, rồi đóng Bàn ${selectedTable?.tableNumber ?? ""}?`
+                ? `Kiểm tra vị trí mới của từng người trước khi xác nhận.`
                 : `Đóng Bàn ${selectedTable?.tableNumber ?? ""} để giải khác có thể sử dụng?`}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {pendingTableAction === "break" && (
+            <div className="min-w-0 space-y-2" aria-live="polite">
+              {v3.redrawSeatLockEnabled ? (
+                <>
+                  {breakPlanLoading && <p className="text-sm text-muted-foreground">Đang lập phương án chuyển…</p>}
+                  {breakPlan?.moves.map((move) => (
+                    <div key={move.entryId} className="grid min-w-0 grid-cols-[1fr_auto] gap-3 rounded-lg border border-border p-3 text-sm">
+                      <span className="min-w-0 truncate">{move.playerName} · Ghế {move.sourceSeatNumber}</span>
+                      <span className="text-right font-medium">Bàn {move.destinationTableNumber} · Ghế {move.destinationSeatNumber}<br/><small className="text-muted-foreground">{move.transferMode === "after_current_hand" ? "Chuyển sau ván" : "Chuyển ngay"}</small></span>
+                    </div>
+                  ))}
+                  {breakPlanError && <p role="alert" className="text-sm text-destructive">{breakPlanError}</p>}
+                  {breakPlan && !breakPlan.complete && <p role="alert" className="text-sm text-destructive">Chưa có phương án đầy đủ. Bàn sẽ không bị đóng.</p>}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">Hệ thống sẽ kiểm tra sức chứa và chuyển người trước khi đóng bàn.</p>
+              )}
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel data-ops-action="floor.tables.cancel_close_table" className="min-h-12">Huỷ</AlertDialogCancel>
             {pendingTableAction === "break" ? (
               <AlertDialogAction
                 data-ops-action="floor.tables.break_v3"
                 className="min-h-12"
-                disabled={busy || !selectedTable}
+                disabled={busy || !selectedTable || (v3.redrawSeatLockEnabled && !breakPlan?.complete)}
                  onClick={async (event) => {
                    event.preventDefault();
                    if (!selectedTable) return;
@@ -722,6 +784,7 @@ export function FloorTableMapPanelV3({
                      expectedRevision: selectedTable.sessionRevision,
                      requestId: crypto.randomUUID(),
                      drawMode: "fill_lowest_table",
+                     planHash: breakPlan?.planHash,
                    }));
                    if (ok) setPendingTableAction(null);
                  }}
