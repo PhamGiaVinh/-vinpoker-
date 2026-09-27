@@ -19,7 +19,7 @@ const completionBaseMigration = readFileSync(
   "utf8",
 );
 const completionFixMigration = readFileSync(
-  resolve(process.cwd(), "supabase/migrations/20270115000021_tracker_history_completion_audit_fixes.sql"),
+  resolve(process.cwd(), "supabase/migrations/20270115000022_tracker_history_completion_audit_fixes.sql"),
   "utf8",
 );
 const completionMigration = `${completionBaseMigration}\n${completionFixMigration}`;
