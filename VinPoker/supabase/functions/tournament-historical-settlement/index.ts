@@ -16,6 +16,10 @@ type Body = {
   expected_source_chain_hash?: string;
   expected_outcome_hash?: string;
   blind_level_id?: string;
+  blind_level_number?: number;
+  blind_small_blind?: number;
+  blind_big_blind?: number;
+  blind_ante?: number;
   correction_reason?: string;
   correction_evidence?: Record<string, unknown>;
 };
@@ -42,6 +46,7 @@ function rpcFailureCode(error: { message?: string } | null): string {
     "invalid_historical_hand",
     "historical_player_projection_mismatch",
     "blind_snapshot_already_present",
+    "blind_snapshot_conflict",
     "invalid_tournament_level_snapshot",
     "invalid_blind_correction_request",
     "stale_source_revision",
@@ -86,8 +91,13 @@ Deno.serve(async (req) => {
     if (mode === "correct_blinds") {
       if (!Number.isSafeInteger(body.expected_source_revision)
         || !text(body.blind_level_id) || text(body.correction_reason).length < 8
+        || !Number.isSafeInteger(body.blind_level_number) || (body.blind_level_number ?? 0) < 1
+        || !Number.isSafeInteger(body.blind_small_blind) || (body.blind_small_blind ?? 0) <= 0
+        || !Number.isSafeInteger(body.blind_big_blind) || (body.blind_big_blind ?? 0) <= (body.blind_small_blind ?? 0)
+        || !Number.isSafeInteger(body.blind_ante) || (body.blind_ante ?? -1) < 0
         || text(body.idempotency_key).length < 12
-        || !body.correction_evidence || typeof body.correction_evidence !== "object") {
+        || !body.correction_evidence || typeof body.correction_evidence !== "object"
+        || Array.isArray(body.correction_evidence) || Object.keys(body.correction_evidence).length === 0) {
         return publicFailure(req, "invalid_blind_correction_request", 400);
       }
       const { data: correction, error: correctionError } = await service.rpc("correct_tracker_historical_hand_blinds", {
@@ -95,42 +105,56 @@ Deno.serve(async (req) => {
         p_actor_user_id: authData.user.id,
         p_expected_source_revision: body.expected_source_revision,
         p_level_id: text(body.blind_level_id),
+        p_level_number: body.blind_level_number,
+        p_small_blind: body.blind_small_blind,
+        p_big_blind: body.blind_big_blind,
+        p_ante: body.blind_ante,
         p_reason: text(body.correction_reason),
         p_idempotency_key: text(body.idempotency_key),
         p_evidence: body.correction_evidence,
       });
       if (correctionError) return publicFailure(req, rpcFailureCode(correctionError));
+      if (correction?.status === "needs_attention") {
+        return jsonResp(req, { ok: false, status: "needs_attention", code: "blind_snapshot_conflict", hand_id: handId }, 409);
+      }
       return jsonResp(req, { ok: true, status: "corrected", hand_id: handId, receipt: correction });
     }
-    const [{ data: hand, error: handError }, { data: players, error: playerError }, { data: actions, error: actionError }, { data: source, error: sourceError }, { data: priorOutcomes, error: priorOutcomeError }] = await Promise.all([
-      service.from("tournament_hands")
-        .select("id,tournament_id,hand_number,table_id,table_session_id,button_seat,community_cards,pot_size,side_pots,status,is_voided,updated_at,created_at,source_revision,tracker_level_id,tracker_level_number,tracker_small_blind,tracker_big_blind,tracker_bba,tracker_is_break,tracker_blind_evidence")
-        .eq("id", handId)
-        .eq("tournament_id", tournamentId)
-        .maybeSingle(),
-      service.from("hand_players")
-        .select("hand_id,player_id,entry_number,seat_number,starting_stack,ending_stack,hole_cards,is_eliminated")
-        .eq("hand_id", handId)
-        .order("seat_number")
-        .order("player_id")
-        .order("entry_number"),
-      service.from("hand_actions")
-        .select("id,hand_id,player_id,entry_number,street,action_type,action_amount,action_order")
-        .eq("hand_id", handId)
-        .order("action_order")
-        .order("id"),
-      service.rpc("get_tournament_historical_display_source_hash", { p_hand_id: handId }),
+    if (mode === "commit" && Number.isSafeInteger(body.expected_source_revision)
+      && /^[0-9a-f]{64}$/.test(text(body.expected_source_chain_hash))
+      && /^[0-9a-f]{64}$/.test(text(body.expected_outcome_hash))) {
+      const { data: priorReceipt, error: priorReceiptError } = await service.rpc(
+        "get_tracker_historical_display_commit_receipt",
+        {
+          p_hand_id: handId,
+          p_tournament_id: tournamentId,
+          p_actor_user_id: authData.user.id,
+          p_idempotency_key: text(body.idempotency_key),
+          p_expected_source_revision: body.expected_source_revision,
+          p_expected_source_chain_hash: text(body.expected_source_chain_hash),
+          p_expected_outcome_hash: text(body.expected_outcome_hash),
+        },
+      );
+      if (priorReceiptError) return publicFailure(req, rpcFailureCode(priorReceiptError));
+      if (priorReceipt) return jsonResp(req, { ok: true, status: "verified", hand_id: handId, receipt: priorReceipt });
+    }
+    const [{ data: snapshotData, error: snapshotError }, { data: priorOutcomes, error: priorOutcomeError }] = await Promise.all([
+      service.rpc("get_tracker_historical_display_snapshot", { p_hand_id: handId, p_tournament_id: tournamentId }),
       service.from("tournament_settlement_outcomes").select("settlement_revision")
         .eq("hand_id", handId).order("settlement_revision", { ascending: false }).limit(1),
     ]);
-    if (handError || playerError || actionError || sourceError || priorOutcomeError) throw handError || playerError || actionError || sourceError || priorOutcomeError;
-    if (!hand) return publicFailure(req, "historical_hand_not_found", 404);
-    const settlementSource = normalizeSettlementSourceRpcResult(source);
+    if (snapshotError || priorOutcomeError) throw snapshotError || priorOutcomeError;
+    if (!snapshotData || typeof snapshotData !== "object" || Array.isArray(snapshotData)) return publicFailure(req, "historical_hand_not_found", 404);
+    const snapshot = snapshotData as { hand?: SettlementDbHand; players?: SettlementDbPlayer[]; actions?: SettlementDbAction[]; sourceRevision?: unknown; sourceChainHash?: unknown };
+    if (!snapshot.hand || !Array.isArray(snapshot.players) || !Array.isArray(snapshot.actions)) return publicFailure(req, "historical_hand_not_found", 404);
+    const settlementSource = normalizeSettlementSourceRpcResult({
+      source_revision: snapshot.sourceRevision, source_chain_hash: snapshot.sourceChainHash,
+    });
+    if (Number(snapshot.hand.source_revision) !== settlementSource.sourceRevision) return publicFailure(req, "stale_source_revision");
     const result = await verifyHistoricalDisplaySettlement({
       tournamentId,
-      hand: hand as SettlementDbHand,
-      players: (players ?? []) as SettlementDbPlayer[],
-      actions: (actions ?? []) as SettlementDbAction[],
+      hand: snapshot.hand,
+      players: snapshot.players,
+      actions: snapshot.actions,
       sourceRevision: settlementSource.sourceRevision,
       sourceChainHash: settlementSource.sourceChainHash,
       settlementRevision: Number(priorOutcomes?.[0]?.settlement_revision ?? 0) + 1,
