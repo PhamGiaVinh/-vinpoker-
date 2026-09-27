@@ -50,13 +50,21 @@ INSERT INTO public.tournament_tables(
 INSERT INTO public.dealers(id, club_id, user_id, full_name, status) VALUES
   ('87000000-0000-4000-8000-000000000001', '81000000-0000-4000-8000-000000000001', '81200000-0000-4000-8000-000000000001', 'Dealer Voice A', 'active'),
   ('87000000-0000-4000-8000-000000000002', '81000000-0000-4000-8000-000000000002', '81500000-0000-4000-8000-000000000001', 'Dealer Other Club', 'active'),
-  ('87000000-0000-4000-8000-000000000003', '81000000-0000-4000-8000-000000000001', '81700000-0000-4000-8000-000000000001', 'Dealer Voice B', 'active');
+  ('87000000-0000-4000-8000-000000000003', '81000000-0000-4000-8000-000000000001', '81700000-0000-4000-8000-000000000001', 'Dealer Voice B', 'active'),
+  ('87000000-0000-4000-8000-000000000004', '81000000-0000-4000-8000-000000000001', NULL, 'Dealer Repair Fixture', 'active');
+
+INSERT INTO public.dealer_attendance(id, dealer_id, current_state, status) VALUES
+  ('87500000-0000-4000-8000-000000000001', '87000000-0000-4000-8000-000000000001', 'assigned', 'checked_in'),
+  ('87500000-0000-4000-8000-000000000002', '87000000-0000-4000-8000-000000000002', 'assigned', 'checked_in'),
+  ('87500000-0000-4000-8000-000000000003', '87000000-0000-4000-8000-000000000003', 'pre_assigned', 'checked_in'),
+  ('87500000-0000-4000-8000-000000000004', '87000000-0000-4000-8000-000000000004', 'assigned', 'checked_in');
 
 INSERT INTO public.dealer_assignments(
-  id, dealer_id, table_id, table_session_id, assigned_at, status
+  id, dealer_id, attendance_id, table_id, table_session_id, club_id, assigned_at, status
 ) VALUES
-  ('88000000-0000-4000-8000-000000000001', '87000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000001', '83500000-0000-4000-8000-000000000001', now(), 'assigned'),
-  ('88000000-0000-4000-8000-000000000002', '87000000-0000-4000-8000-000000000002', '83000000-0000-4000-8000-000000000003', '83500000-0000-4000-8000-000000000003', now(), 'assigned');
+  ('88000000-0000-4000-8000-000000000001', '87000000-0000-4000-8000-000000000001', '87500000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000001', '83500000-0000-4000-8000-000000000001', '81000000-0000-4000-8000-000000000001', now(), 'assigned'),
+  ('88000000-0000-4000-8000-000000000002', '87000000-0000-4000-8000-000000000002', '87500000-0000-4000-8000-000000000002', '83000000-0000-4000-8000-000000000003', '83500000-0000-4000-8000-000000000003', '81000000-0000-4000-8000-000000000002', now(), 'assigned'),
+  ('88000000-0000-4000-8000-000000000009', '87000000-0000-4000-8000-000000000004', '87500000-0000-4000-8000-000000000004', '83000000-0000-4000-8000-000000000002', NULL, '81000000-0000-4000-8000-000000000001', now() - interval '5 minutes', 'assigned');
 
 INSERT INTO public.tournament_hands(
   id, tournament_id, table_id, tournament_table_id, table_session_id,
@@ -105,6 +113,41 @@ INSERT INTO public.tracker_voice_configs(
   '83000000-0000-4000-8000-000000000002',
   '83500000-0000-4000-8000-000000000002', 1,
   false, 'assist', 'gemini-3.5-transcribe-live', 1, false, false
+);
+
+-- Production repair shape: exact row/version/session guard, triggers enabled.
+SELECT assigned_at AS assigned_at_before, version AS version_before, updated_at AS updated_at_before
+FROM public.dealer_assignments
+WHERE id = '88000000-0000-4000-8000-000000000009' \gset repair_
+SELECT total_worked_minutes_today AS worked_before, overtime_minutes AS ot_before
+FROM public.dealer_attendance
+WHERE id = '87500000-0000-4000-8000-000000000004' \gset repair_attendance_
+WITH repaired AS (
+  UPDATE public.dealer_assignments
+  SET table_session_id = '83500000-0000-4000-8000-000000000002'
+  WHERE id = '88000000-0000-4000-8000-000000000009'
+    AND version = :repair_version_before::INTEGER
+    AND status = 'assigned'
+    AND released_at IS NULL
+    AND club_id = '81000000-0000-4000-8000-000000000001'
+    AND table_id = '83000000-0000-4000-8000-000000000002'
+    AND table_session_id IS NULL
+  RETURNING 1
+)
+SELECT pg_catalog.count(*) AS repaired_count FROM repaired \gset repair_result_
+SELECT public.tracker_voice_test_assert(
+  :repair_result_repaired_count::INTEGER = 1
+  AND (SELECT table_session_id = '83500000-0000-4000-8000-000000000002'::UUID
+       AND version = :repair_version_before::INTEGER + 1
+       AND assigned_at = :'repair_assigned_at_before'::TIMESTAMPTZ
+       AND updated_at >= :'repair_updated_at_before'::TIMESTAMPTZ
+       FROM public.dealer_assignments WHERE id = '88000000-0000-4000-8000-000000000009')
+  AND (SELECT total_worked_minutes_today = :repair_attendance_worked_before::INTEGER
+       AND overtime_minutes = :repair_attendance_ot_before::INTEGER
+       FROM public.dealer_attendance WHERE id = '87500000-0000-4000-8000-000000000004')
+  AND NOT (SELECT enabled FROM public.tracker_voice_configs
+           WHERE tournament_table_id = '84000000-0000-4000-8000-000000000002'),
+  'one-row repair preserves business fields while version/sync triggers run'
 );
 
 SELECT public.tracker_voice_test_assert(
@@ -196,32 +239,44 @@ SELECT public.tracker_voice_test_assert(
 );
 RESET ROLE;
 
--- Real Dealer handoff in separate autocommit transactions. Releasing A must
--- preserve the approved exact capability while runtime denies the zero-Dealer
--- gap. Assigning B then transfers runtime authority without a reconcile.
-UPDATE public.dealer_assignments
-SET status = 'released', released_at = pg_catalog.now()
-WHERE id = '88000000-0000-4000-8000-000000000001';
+-- The production writer itself performs A -> B. Migration 15's real trigger
+-- keeps the reviewed capability, then public runtime entrypoints re-authorize
+-- both identities against the new exact-session assignment.
+SELECT public.execute_pre_assigned_swing_rpc(
+  '88000000-0000-4000-8000-000000000001',
+  '87500000-0000-4000-8000-000000000003',
+  pg_catalog.now() + interval '30 minutes',
+  30,
+  false,
+  15
+)::TEXT AS payload \gset voice_swing_
 SELECT public.tracker_voice_test_assert(
-  (SELECT enabled FROM public.tracker_voice_configs
-   WHERE tournament_table_id = '84000000-0000-4000-8000-000000000001')
-  AND public._tracker_voice_assignment_context(
-    '85000000-0000-4000-8000-000000000001',
-    '84000000-0000-4000-8000-000000000001',
-    '81200000-0000-4000-8000-000000000001'
-  )->>'error' = 'dealer_assignment_missing',
-  'Dealer A release preserves approved capability while zero assignments fail closed'
+  :'voice_swing_payload'::JSONB->>'status' = 'success',
+  'real Swing RPC completes the Voice Dealer handoff'
 );
-
-INSERT INTO public.dealer_assignments(
-  id, dealer_id, table_id, table_session_id, assigned_at, status
-) VALUES (
-  '88000000-0000-4000-8000-000000000003',
-  '87000000-0000-4000-8000-000000000003',
-  '83000000-0000-4000-8000-000000000001',
-  '83500000-0000-4000-8000-000000000001',
-  pg_catalog.now(),
-  'assigned'
+SELECT total_worked_minutes_today AS value
+FROM public.dealer_attendance
+WHERE id = '87500000-0000-4000-8000-000000000001' \gset voice_swing_minutes_
+SELECT pg_catalog.count(*) AS value
+FROM public.dealer_assignments
+WHERE idempotency_key = 'pre_assign_88000000-0000-4000-8000-000000000001' \gset voice_swing_count_
+SELECT public.execute_pre_assigned_swing_rpc(
+  '88000000-0000-4000-8000-000000000001',
+  '87500000-0000-4000-8000-000000000003',
+  pg_catalog.now() + interval '30 minutes',
+  30,
+  false,
+  15
+)::TEXT AS payload \gset voice_swing_retry_
+SELECT public.tracker_voice_test_assert(
+  :'voice_swing_retry_payload'::JSONB->>'error' = 'OLD_ASSIGNMENT_NOT_FOUND_OR_NOT_ASSIGNED'
+  AND (SELECT pg_catalog.count(*) = :voice_swing_count_value::BIGINT
+       FROM public.dealer_assignments
+       WHERE idempotency_key = 'pre_assign_88000000-0000-4000-8000-000000000001')
+  AND (SELECT total_worked_minutes_today = :voice_swing_minutes_value::INTEGER
+       FROM public.dealer_attendance
+       WHERE id = '87500000-0000-4000-8000-000000000001'),
+  'Swing retry creates no assignment and credits no worked minutes twice'
 );
 SELECT public.tracker_voice_test_assert(
   (public._tracker_voice_assignment_context(
@@ -305,7 +360,9 @@ SET value = 'true'::JSONB
 WHERE key = 'tracker_voice_auto_provision_enabled';
 UPDATE public.dealer_assignments
 SET status = 'released', released_at = pg_catalog.now()
-WHERE id = '88000000-0000-4000-8000-000000000003';
+WHERE attendance_id = '87500000-0000-4000-8000-000000000003'
+  AND status = 'assigned'
+  AND released_at IS NULL;
 INSERT INTO public.dealer_assignments(
   id, dealer_id, table_id, table_session_id, assigned_at, status
 ) VALUES (

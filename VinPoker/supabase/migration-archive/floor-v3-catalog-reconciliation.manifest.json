@@ -6874,6 +6874,12 @@
       "filename": "20270115000017_tracker_completed_hand_correction_uat.sql",
       "sha256": "51471b10aa922e749924e3c5b5ebfe5357d1bf080d8f37bc14fd6d09d71342c6",
       "domain": "tracker"
+    },
+    {
+      "version": "20270115000018",
+      "filename": "20270115000018_dealer_assignment_session_binding.sql",
+      "sha256": "530659ed7a03b503a8b518a55ec2724272e7c9ab095a9762e5f22e98f594133a",
+      "domain": "dealer"
     }
   ],
   "floorActiveAllowlist": [
