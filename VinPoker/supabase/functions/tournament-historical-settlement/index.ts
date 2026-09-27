@@ -8,13 +8,16 @@ import { canonicalJsonV1 } from "../_shared/trackerSettlement/outcomeV1.ts";
 import { normalizeSettlementSourceRpcResult, type SettlementDbAction, type SettlementDbHand, type SettlementDbPlayer } from "../_shared/trackerSettlement/compute.ts";
 
 type Body = {
-  mode?: "preview" | "commit";
+  mode?: "preview" | "commit" | "correct_blinds";
   tournament_id?: string;
   hand_id?: string;
   idempotency_key?: string;
   expected_source_revision?: number;
   expected_source_chain_hash?: string;
   expected_outcome_hash?: string;
+  blind_level_id?: string;
+  correction_reason?: string;
+  correction_evidence?: Record<string, unknown>;
 };
 
 const text = (value: unknown): string => typeof value === "string" ? value.trim() : "";
@@ -38,6 +41,11 @@ function rpcFailureCode(error: { message?: string } | null): string {
     "actor_not_authorized",
     "invalid_historical_hand",
     "historical_player_projection_mismatch",
+    "blind_snapshot_already_present",
+    "invalid_tournament_level_snapshot",
+    "invalid_blind_correction_request",
+    "stale_source_revision",
+    "tracker_blind_snapshot_server_owned",
   ]);
   return error?.message && allowed.has(error.message) ? error.message : "historical_display_commit_rejected";
 }
@@ -54,7 +62,7 @@ Deno.serve(async (req) => {
     const mode = body.mode;
     const tournamentId = text(body.tournament_id);
     const handId = text(body.hand_id);
-    if ((mode !== "preview" && mode !== "commit") || !tournamentId || !handId) {
+    if ((mode !== "preview" && mode !== "commit" && mode !== "correct_blinds") || !tournamentId || !handId) {
       return jsonResp(req, { ok: false, message: "Invalid historical settlement intent" }, 400);
     }
     if (mode === "commit" && text(body.idempotency_key).length < 12) {
@@ -75,9 +83,28 @@ Deno.serve(async (req) => {
     if (authorizationError || authorized !== true) return jsonResp(req, { ok: false, message: "Not authorized" }, 403);
 
     const service = createClient(url, serviceKey);
-    const [{ data: hand, error: handError }, { data: players, error: playerError }, { data: actions, error: actionError }, { data: source, error: sourceError }] = await Promise.all([
+    if (mode === "correct_blinds") {
+      if (!Number.isSafeInteger(body.expected_source_revision)
+        || !text(body.blind_level_id) || text(body.correction_reason).length < 8
+        || text(body.idempotency_key).length < 12
+        || !body.correction_evidence || typeof body.correction_evidence !== "object") {
+        return publicFailure(req, "invalid_blind_correction_request", 400);
+      }
+      const { data: correction, error: correctionError } = await service.rpc("correct_tracker_historical_hand_blinds", {
+        p_hand_id: handId,
+        p_actor_user_id: authData.user.id,
+        p_expected_source_revision: body.expected_source_revision,
+        p_level_id: text(body.blind_level_id),
+        p_reason: text(body.correction_reason),
+        p_idempotency_key: text(body.idempotency_key),
+        p_evidence: body.correction_evidence,
+      });
+      if (correctionError) return publicFailure(req, rpcFailureCode(correctionError));
+      return jsonResp(req, { ok: true, status: "corrected", hand_id: handId, receipt: correction });
+    }
+    const [{ data: hand, error: handError }, { data: players, error: playerError }, { data: actions, error: actionError }, { data: source, error: sourceError }, { data: priorOutcomes, error: priorOutcomeError }] = await Promise.all([
       service.from("tournament_hands")
-        .select("id,tournament_id,hand_number,table_id,button_seat,community_cards,pot_size,side_pots,status,is_voided,updated_at,created_at,source_revision")
+        .select("id,tournament_id,hand_number,table_id,table_session_id,button_seat,community_cards,pot_size,side_pots,status,is_voided,updated_at,created_at,source_revision,tracker_level_id,tracker_level_number,tracker_small_blind,tracker_big_blind,tracker_bba,tracker_is_break,tracker_blind_evidence")
         .eq("id", handId)
         .eq("tournament_id", tournamentId)
         .maybeSingle(),
@@ -93,8 +120,10 @@ Deno.serve(async (req) => {
         .order("action_order")
         .order("id"),
       service.rpc("get_tournament_historical_display_source_hash", { p_hand_id: handId }),
+      service.from("tournament_settlement_outcomes").select("settlement_revision")
+        .eq("hand_id", handId).order("settlement_revision", { ascending: false }).limit(1),
     ]);
-    if (handError || playerError || actionError || sourceError) throw handError || playerError || actionError || sourceError;
+    if (handError || playerError || actionError || sourceError || priorOutcomeError) throw handError || playerError || actionError || sourceError || priorOutcomeError;
     if (!hand) return publicFailure(req, "historical_hand_not_found", 404);
     const settlementSource = normalizeSettlementSourceRpcResult(source);
     const result = await verifyHistoricalDisplaySettlement({
@@ -104,6 +133,7 @@ Deno.serve(async (req) => {
       actions: (actions ?? []) as SettlementDbAction[],
       sourceRevision: settlementSource.sourceRevision,
       sourceChainHash: settlementSource.sourceChainHash,
+      settlementRevision: Number(priorOutcomes?.[0]?.settlement_revision ?? 0) + 1,
       actor: { userId: authData.user.id, role: "club_owner_or_admin" },
     });
 
@@ -133,16 +163,18 @@ Deno.serve(async (req) => {
       outcomeHash: preview.outcome_hash,
     }));
     const { data: receipt, error: commitError } = await service.rpc(
-      "commit_historical_tournament_settlement_display_outcome",
+      "commit_tracker_historical_display_outcome_v2",
       {
         p_hand_id: handId,
         p_actor_user_id: authData.user.id,
+        p_actor_kind: "owner_admin",
         p_expected_source_revision: preview.source_revision,
         p_expected_source_chain_hash: preview.source_chain_hash,
         p_outcome_hash: preview.outcome_hash,
         p_request_hash: requestHash,
         p_idempotency_key: text(body.idempotency_key),
         p_public_outcome: result.publicOutcome,
+        p_lease_token: null,
       },
     );
     if (commitError) return publicFailure(req, rpcFailureCode(commitError));

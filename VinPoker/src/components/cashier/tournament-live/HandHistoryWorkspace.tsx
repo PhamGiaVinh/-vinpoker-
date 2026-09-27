@@ -141,6 +141,8 @@ type HandActionQueryRow = {
   action_order: number;
 };
 
+type HistoryCompletionStatus = "missing_blind" | "missing_outcome" | "stale" | "pending" | "needs_attention";
+
 export type HandHistorySelection = {
   tableId: string | null;
   handId: string | null;
@@ -212,6 +214,9 @@ export function HandHistoryWorkspace({
 }: HandHistoryPanelProps) {
   const supabase = useSupabaseClient();
   const [hands, setHands] = useState<HandRecord[]>([]);
+  const [completionStatusByHand, setCompletionStatusByHand] = useState<Map<string, HistoryCompletionStatus>>(new Map());
+  const [completionFilter, setCompletionFilter] = useState<"all" | HistoryCompletionStatus>("all");
+  const [completionStatusError, setCompletionStatusError] = useState(false);
   const [selectedHandId, setSelectedHandId] = useState<string | null>(initialHandId);
   const [showHandPicker, setShowHandPicker] = useState(!workspaceMode || !initialHandId);
   const [editActionOrder, setEditActionOrder] = useState<number | null>(null);
@@ -438,6 +443,24 @@ export function HandHistoryWorkspace({
     }));
 
     setHands(handRecords);
+    if (FEATURES.trackerHistoryCompletionWorker) {
+      const { data: queueStatus, error: queueStatusError } = await supabase.rpc(
+        "get_tracker_historical_display_queue_status" as never,
+        { p_tournament_id: tournamentId } as never,
+      );
+      if (isCurrentLoad()) {
+        const rows = Array.isArray(queueStatus) ? queueStatus as Array<Record<string, unknown>> : [];
+        const validStatuses = new Set<HistoryCompletionStatus>(["missing_blind", "missing_outcome", "stale", "pending", "needs_attention"]);
+        setCompletionStatusByHand(new Map(rows.flatMap((row) =>
+          typeof row.hand_id === "string" && validStatuses.has(row.queue_status as HistoryCompletionStatus)
+            ? [[row.hand_id, row.queue_status as HistoryCompletionStatus] as const]
+            : [])));
+        setCompletionStatusError(!!queueStatusError);
+      }
+    } else {
+      setCompletionStatusByHand(new Map());
+      setCompletionStatusError(false);
+    }
     setSelectedHandId((current) => current && handRecords.some((hand) => hand.id === current) ? current : null);
     setLoading(false);
   }, [selectedTableId, supabase, tables, tournamentId]);
@@ -819,6 +842,15 @@ export function HandHistoryWorkspace({
       tableId: hand.table_id,
       tableName: hand.table_id ? tableNameById.get(hand.table_id) ?? null : null,
     }));
+  const visibleHands = hands.filter((hand) => completionFilter === "all"
+    || completionStatusByHand.get(hand.id) === completionFilter);
+  const completionStatusLabel: Record<HistoryCompletionStatus, string> = {
+    missing_blind: "Thiếu blind đóng băng",
+    missing_outcome: "Thiếu kết quả xác minh",
+    stale: "Kết quả cũ",
+    pending: "Đang xác minh",
+    needs_attention: "Cần kiểm tra",
+  };
 
   const selectHand = (handId: string) => {
     setSelectedHandId(handId);
@@ -877,6 +909,23 @@ export function HandHistoryWorkspace({
           ))}
         </select>
 
+        {FEATURES.trackerHistoryCompletionWorker && (
+          <>
+            <select
+              className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={completionFilter}
+              onChange={(event) => setCompletionFilter(event.target.value as typeof completionFilter)}
+              aria-label="Lọc lịch sử theo trạng thái xác minh"
+            >
+              <option value="all">Mọi trạng thái xác minh</option>
+              {(Object.entries(completionStatusLabel) as Array<[HistoryCompletionStatus, string]>).map(([status, label]) => (
+                <option key={status} value={status}>{label}</option>
+              ))}
+            </select>
+            {completionStatusError && <p role="status" className="text-xs text-amber-300">Không tải được trạng thái hàng đợi xác minh.</p>}
+          </>
+        )}
+
         {loadError && (
           <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 border border-destructive/30 rounded-lg text-xs text-destructive">
             <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -888,10 +937,12 @@ export function HandHistoryWorkspace({
         )}
 
         <div className="space-y-1 pr-1 xl:max-h-[600px] xl:overflow-y-auto">
-          {hands.length === 0 && !loading && !loadError && (
-            <div className="py-8 text-center text-xs italic text-muted-foreground">Chưa có hand nào được ghi</div>
+          {visibleHands.length === 0 && !loading && !loadError && (
+            <div className="py-8 text-center text-xs italic text-muted-foreground">
+              {completionFilter === "all" ? "Chưa có hand nào được ghi" : "Không có hand phù hợp bộ lọc"}
+            </div>
           )}
-          {hands.map((hand) => (
+          {visibleHands.map((hand) => (
             <button
               key={hand.id}
               onClick={() => selectHand(hand.id)}
@@ -908,6 +959,11 @@ export function HandHistoryWorkspace({
                 <div className="flex items-center gap-1.5">
                   {hand.is_voided && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-bold">VOID</span>
+                  )}
+                  {FEATURES.trackerHistoryCompletionWorker && completionStatusByHand.get(hand.id) && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${completionStatusByHand.get(hand.id) === "needs_attention" || completionStatusByHand.get(hand.id) === "missing_blind" ? "bg-red-500/20 text-red-300" : "bg-amber-500/15 text-amber-200"}`}>
+                      {completionStatusLabel[completionStatusByHand.get(hand.id)!]}
+                    </span>
                   )}
                   <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
                     hand.status === "completed" ? "bg-emerald-500/20 text-emerald-400" :

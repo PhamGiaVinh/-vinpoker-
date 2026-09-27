@@ -1,0 +1,134 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { handleOptions, jsonResp } from "../_shared/cors.ts";
+import {
+  HistoricalDisplayVerificationError,
+  verifyHistoricalDisplaySettlement,
+} from "../_shared/trackerSettlement/historicalDisplayVerification.ts";
+import { canonicalJsonV1 } from "../_shared/trackerSettlement/outcomeV1.ts";
+import {
+  historicalWorkerFailureStatus,
+  TRACKER_HISTORY_WORKER_MAX_BATCH,
+} from "../_shared/trackerSettlement/historyWorkerPolicy.ts";
+import {
+  normalizeSettlementSourceRpcResult,
+  type SettlementDbAction,
+  type SettlementDbHand,
+  type SettlementDbPlayer,
+} from "../_shared/trackerSettlement/compute.ts";
+
+const SYSTEM_ACTOR = "00000000-0000-4000-8000-000000000001";
+
+type ClaimedJob = { hand_id: string; source_revision: number; lease_token: string };
+
+async function hash(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+Deno.serve(async (req) => {
+  const options = handleOptions(req);
+  if (options) return options;
+  if (req.method !== "POST") return jsonResp(req, { ok: false, message: "Method not allowed" }, 405);
+  if (Deno.env.get("TRACKER_HISTORY_COMPLETION_WORKER_ENABLED") !== "true") {
+    return jsonResp(req, { ok: false, code: "worker_disabled" }, 404);
+  }
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey || req.headers.get("Authorization") !== `Bearer ${serviceKey}`) {
+    return jsonResp(req, { ok: false, message: "Unauthorized" }, 401);
+  }
+  try {
+    const body = await req.json().catch(() => ({})) as { limit?: unknown };
+    const limit = body.limit === undefined ? TRACKER_HISTORY_WORKER_MAX_BATCH : Number(body.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > TRACKER_HISTORY_WORKER_MAX_BATCH) {
+      return jsonResp(req, { ok: false, code: "invalid_batch_limit" }, 400);
+    }
+    const service = createClient(url, serviceKey);
+    const { data: claimed, error: claimError } = await service.rpc("claim_tracker_historical_display_jobs", {
+      p_limit: limit,
+    });
+    if (claimError) throw claimError;
+    const jobs = (claimed ?? []) as ClaimedJob[];
+    let completed = 0;
+    let retried = 0;
+    let needsAttention = 0;
+
+    for (const job of jobs) {
+      try {
+        const [handResult, playersResult, actionsResult, sourceResult, priorResult] = await Promise.all([
+          service.from("tournament_hands").select("id,tournament_id,hand_number,table_id,table_session_id,button_seat,community_cards,pot_size,side_pots,status,is_voided,updated_at,created_at,source_revision,tracker_level_id,tracker_level_number,tracker_small_blind,tracker_big_blind,tracker_bba,tracker_is_break,tracker_blind_evidence")
+            .eq("id", job.hand_id).maybeSingle(),
+          service.from("hand_players").select("hand_id,player_id,entry_number,seat_number,starting_stack,ending_stack,hole_cards,is_eliminated")
+            .eq("hand_id", job.hand_id).order("seat_number").order("player_id").order("entry_number"),
+          service.from("hand_actions").select("id,hand_id,player_id,entry_number,street,action_type,action_amount,action_order")
+            .eq("hand_id", job.hand_id).order("action_order").order("id"),
+          service.rpc("get_tournament_historical_display_source_hash", { p_hand_id: job.hand_id }),
+          service.from("tournament_settlement_outcomes").select("settlement_revision")
+            .eq("hand_id", job.hand_id).order("settlement_revision", { ascending: false }).limit(1),
+        ]);
+        const dbError = handResult.error || playersResult.error || actionsResult.error || sourceResult.error || priorResult.error;
+        if (dbError) throw dbError;
+        if (!handResult.data) throw new HistoricalDisplayVerificationError("invalid_historical_hand");
+        const source = normalizeSettlementSourceRpcResult(sourceResult.data);
+        if (Number(handResult.data.source_revision) !== source.sourceRevision) {
+          throw new HistoricalDisplayVerificationError("stale_source_revision");
+        }
+        const settlementRevision = Number(priorResult.data?.[0]?.settlement_revision ?? 0) + 1;
+        const result = await verifyHistoricalDisplaySettlement({
+          tournamentId: handResult.data.tournament_id,
+          hand: handResult.data as SettlementDbHand,
+          players: (playersResult.data ?? []) as SettlementDbPlayer[],
+          actions: (actionsResult.data ?? []) as SettlementDbAction[],
+          sourceRevision: source.sourceRevision,
+          sourceChainHash: source.sourceChainHash,
+          settlementRevision,
+          actor: { userId: SYSTEM_ACTOR, role: "system_worker" },
+        });
+        const idempotencyKey = `history-worker:${job.hand_id}:${source.sourceRevision}:${settlementRevision}:${result.privateOutcome.outcomeHash}`;
+        const requestHash = await hash(canonicalJsonV1({
+          contract: "historical-settlement-display-worker-v1",
+          handId: job.hand_id,
+          sourceRevision: source.sourceRevision,
+          sourceChainHash: source.sourceChainHash,
+          settlementRevision,
+          outcomeHash: result.privateOutcome.outcomeHash,
+        }));
+        const { error: commitError } = await service.rpc("commit_tracker_historical_display_outcome_v2", {
+          p_hand_id: job.hand_id,
+          p_actor_user_id: SYSTEM_ACTOR,
+          p_actor_kind: "system_worker",
+          p_expected_source_revision: source.sourceRevision,
+          p_expected_source_chain_hash: source.sourceChainHash,
+          p_outcome_hash: result.privateOutcome.outcomeHash,
+          p_request_hash: requestHash,
+          p_idempotency_key: idempotencyKey,
+          p_public_outcome: result.publicOutcome,
+          p_lease_token: job.lease_token,
+        });
+        if (commitError) throw commitError;
+        completed += 1;
+      } catch (error) {
+        const code = error instanceof HistoricalDisplayVerificationError
+          ? error.code
+          : typeof error === "object" && error !== null && "message" in error
+            ? String((error as { message: unknown }).message).slice(0, 80)
+            : "historical_worker_transient_failure";
+        const status = historicalWorkerFailureStatus(code, error instanceof HistoricalDisplayVerificationError);
+        const { data: finished, error: finishError } = await service.rpc("finish_tracker_historical_display_job", {
+          p_hand_id: job.hand_id,
+          p_source_revision: job.source_revision,
+          p_lease_token: job.lease_token,
+          p_status: status,
+          p_error_code: code,
+        });
+        if (finishError) throw finishError;
+        if (finished === true && status === "needs_attention") needsAttention += 1;
+        if (finished === true && status === "pending") retried += 1;
+      }
+    }
+    return jsonResp(req, { ok: true, claimed: jobs.length, completed, retried, needs_attention: needsAttention });
+  } catch {
+    console.error("[tournament-historical-settlement-worker] batch_failed");
+    return jsonResp(req, { ok: false, code: "worker_batch_failed" }, 503);
+  }
+});

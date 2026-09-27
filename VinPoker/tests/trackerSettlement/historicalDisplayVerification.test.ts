@@ -18,6 +18,12 @@ function hand(overrides: Record<string, unknown> = {}) {
     side_pots: [],
     status: "completed",
     is_voided: false,
+    tracker_level_id: "level-1",
+    tracker_level_number: 1,
+    tracker_small_blind: 100,
+    tracker_big_blind: 200,
+    tracker_bba: 25,
+    tracker_is_break: false,
     updated_at: "2026-07-12T00:00:00.000Z",
     created_at: "2026-07-12T00:00:00.000Z",
     ...overrides,
@@ -38,6 +44,7 @@ function validInput() {
     ],
     sourceRevision: 3,
     sourceChainHash,
+    settlementRevision: 1,
   };
 }
 
@@ -102,6 +109,40 @@ describe("historical display settlement verification", () => {
     const result = await verifyHistoricalDisplaySettlement(input);
     expect(result.winnerIds).toEqual(["A"]);
     expect(result.publicOutcome.handRanks).toEqual([]);
+  });
+
+  it("requires a frozen blind snapshot and never infers from posts", async () => {
+    const input = validInput();
+    input.hand = hand({ tracker_big_blind: null, tracker_small_blind: null, tracker_level_id: null });
+    await expect(verifyHistoricalDisplaySettlement(input)).rejects.toMatchObject<Partial<HistoricalDisplayVerificationError>>({
+      code: "historical_blind_snapshot_missing",
+    });
+  });
+
+  it("keeps Hand #9's frozen 200k BB and advances corrected display revisions", async () => {
+    const input = validInput();
+    input.hand = hand({
+      id: "hand-9", hand_number: 9, button_seat: 2,
+      community_cards: ["2c", "7d", "9h", "3s", "Kc"], pot_size: 4_800_000,
+      tracker_level_id: "level-9", tracker_level_number: 3,
+      tracker_small_blind: 100_000, tracker_big_blind: 200_000, tracker_bba: 25_000,
+    });
+    input.players = [
+      { hand_id: "hand-9", player_id: "winner", entry_number: 1, seat_number: 1, starting_stack: 5_000_000, ending_stack: 7_400_000, hole_cards: ["As", "Ad"], is_eliminated: false },
+      { hand_id: "hand-9", player_id: "loser", entry_number: 1, seat_number: 2, starting_stack: 5_000_000, ending_stack: 2_600_000, hole_cards: ["Qs", "Qd"], is_eliminated: false },
+    ];
+    input.actions = [
+      { id: "h9-a1", hand_id: "hand-9", player_id: "winner", entry_number: 1, street: "preflop", action_type: "post_sb", action_amount: 100_000, action_order: 1 },
+      { id: "h9-a2", hand_id: "hand-9", player_id: "winner", entry_number: 1, street: "preflop", action_type: "post_ante", action_amount: 25_000, action_order: 2 },
+      { id: "h9-a3", hand_id: "hand-9", player_id: "loser", entry_number: 1, street: "preflop", action_type: "post_bb", action_amount: 200_000, action_order: 3 },
+      { id: "h9-a4", hand_id: "hand-9", player_id: "loser", entry_number: 1, street: "preflop", action_type: "post_ante", action_amount: 25_000, action_order: 4 },
+      { id: "h9-a5", hand_id: "hand-9", player_id: "winner", entry_number: 1, street: "preflop", action_type: "all_in", action_amount: 2_275_000, action_order: 5 },
+      { id: "h9-a6", hand_id: "hand-9", player_id: "loser", entry_number: 1, street: "preflop", action_type: "call", action_amount: 2_175_000, action_order: 6 },
+    ];
+    input.settlementRevision = 2;
+    const result = await verifyHistoricalDisplaySettlement(input);
+    expect(result.publicOutcome.players.find((player) => player.playerId === "winner")?.netDelta).toBe(2_400_000);
+    expect(result.privateOutcome.settlementRevision).toBe(2);
   });
 
   it("accepts legacy forced-bet labels without changing the stored action evidence", async () => {

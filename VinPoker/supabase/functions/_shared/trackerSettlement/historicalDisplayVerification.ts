@@ -43,6 +43,7 @@ export type HistoricalDisplayVerificationInput = {
   actions: readonly SettlementDbAction[];
   sourceRevision: number;
   sourceChainHash: string;
+  settlementRevision?: number;
   actor?: { userId: string; role: string };
 };
 
@@ -165,6 +166,16 @@ export async function verifyHistoricalDisplaySettlement(
   }
   if (!Number.isSafeInteger(input.sourceRevision) || input.sourceRevision < 1 || !/^[0-9a-f]{64}$/.test(input.sourceChainHash)) {
     fail("invalid_historical_source");
+  }
+  if (!Number.isSafeInteger(input.settlementRevision ?? 1) || (input.settlementRevision ?? 1) < 1) {
+    fail("invalid_historical_settlement_revision");
+  }
+  if (!hand.tracker_level_id || !Number.isSafeInteger(hand.tracker_level_number)
+    || !Number.isSafeInteger(hand.tracker_small_blind) || (hand.tracker_small_blind ?? 0) <= 0
+    || !Number.isSafeInteger(hand.tracker_big_blind) || (hand.tracker_big_blind ?? 0) <= (hand.tracker_small_blind ?? 0)
+    || !Number.isSafeInteger(hand.tracker_bba) || (hand.tracker_bba ?? -1) < 0
+    || hand.tracker_is_break === true) {
+    fail("historical_blind_snapshot_missing");
   }
 
   const players = input.players.map((player) => ({ ...player }));
@@ -315,7 +326,7 @@ export async function verifyHistoricalDisplaySettlement(
     status: "verified",
     sourceRevision: input.sourceRevision,
     sourceChainHash: input.sourceChainHash,
-    settlementRevision: 1,
+    settlementRevision: input.settlementRevision ?? 1,
     outcomeHash: "0".repeat(64),
     ruleVersion: ODD_CHIP_RULE_V1,
     players: settlements,

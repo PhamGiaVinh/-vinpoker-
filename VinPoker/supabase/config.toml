@@ -10,3 +10,6 @@ verify_jwt = true
 
 [functions.public-spectator-projector-v2]
 verify_jwt = false
+
+[functions.tournament-historical-settlement-worker]
+verify_jwt = true

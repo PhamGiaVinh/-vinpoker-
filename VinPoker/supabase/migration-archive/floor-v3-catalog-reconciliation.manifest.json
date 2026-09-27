@@ -6880,6 +6880,12 @@
       "filename": "20270115000018_dealer_assignment_session_binding.sql",
       "sha256": "530659ed7a03b503a8b518a55ec2724272e7c9ab095a9762e5f22e98f594133a",
       "domain": "dealer"
+    },
+    {
+      "version": "20270115000019",
+      "filename": "20270115000019_tracker_history_completion_queue.sql",
+      "sha256": "fb2b559c5f58d361adb7ea403527c9e187bcbdbbb686f78e78777f2d5a7c4646",
+      "domain": "tracker"
     }
   ],
   "floorActiveAllowlist": [
