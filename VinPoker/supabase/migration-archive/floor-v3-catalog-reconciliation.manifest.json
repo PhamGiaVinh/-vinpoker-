@@ -6886,6 +6886,12 @@
       "filename": "20270115000019_tracker_history_completion_queue.sql",
       "sha256": "fb2b559c5f58d361adb7ea403527c9e187bcbdbbb686f78e78777f2d5a7c4646",
       "domain": "tracker"
+    },
+    {
+      "version": "20270115000021",
+      "filename": "20270115000021_tracker_correction_floor_tracker_authority.sql",
+      "sha256": "891ee5a0e8e0c03f906205947962bb4b0f2496dce48b5030798f2ac163725a4e",
+      "domain": "tracker"
     }
   ],
   "floorActiveAllowlist": [

@@ -1,16 +1,13 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { actionRows } = vi.hoisted(() => ({ actionRows: { value: [] as Record<string, unknown>[] } }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {
   rpc: vi.fn(),
-  from: vi.fn((table: string) => {
+  from: vi.fn(() => {
     const query = {
       eq: () => query,
-      order: async () => ({ data: actionRows.value, error: null }),
       maybeSingle: async () => ({ data: { id: "hand", source_revision: 7 }, error: null }),
-      then: (resolve: (value: unknown) => void) => resolve({ data: table === "hand_players"
-        ? [{ player_id: "player-1", entry_number: 1, seat_number: 4 }] : [], error: null }),
+      then: (resolve: (value: unknown) => void) => resolve({ data: [], error: null }),
     };
     return { select: () => query };
   }),
@@ -23,7 +20,6 @@ const props = { tournamentId: "tournament", tournamentTableId: "table", handId: 
 beforeEach(() => {
   vi.mocked(supabase.rpc).mockReset();
   window.sessionStorage.clear();
-  actionRows.value = [];
 });
 afterEach(cleanup);
 
@@ -60,37 +56,27 @@ describe("Dealer Floor operational alert", () => {
     }));
   });
 
-  it("sends the selected canonical action ID and source revision", async () => {
-    actionRows.value = [{ id: "action-1", hand_id: "hand", action_order: 3, street: "preflop", player_id: "player-1", entry_number: 1, action_type: "call", action_amount: 100000 }];
+  it("reports the whole hand without forcing the operator to select an action", async () => {
     vi.mocked(supabase.rpc).mockImplementation((async (_name, args: { p_request_id: string }) => ({
       data: { ok: true, alert_id: "alert-1", request_id: args.p_request_id }, error: null,
     })) as never);
     render(<DealerFloorAlertControls {...props} />);
-    fireEvent.click(await screen.findByText("Chọn action đã lưu"));
-    fireEvent.click(await screen.findByRole("button", { name: /#3 · preflop · Ghế 4 · call/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Gọi Floor" }));
+    const reportButton = screen.getByRole("button", { name: "Báo sai hand" });
+    await waitFor(() => expect(reportButton.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(reportButton);
     await screen.findByText(/Đã gửi Floor/);
-    expect(supabase.rpc).toHaveBeenCalledWith("report_tracker_floor_operational_alert_v2", expect.objectContaining({
-      p_action_id: "action-1", p_source_revision: 7,
-      p_expected_action: expect.objectContaining({ id: "action-1", action_order: 3, action_type: "call" }),
+    expect(supabase.rpc).toHaveBeenCalledWith("report_tracker_wrong_hand_v1", expect.objectContaining({
+      p_hand_id: "hand", p_expected_source_revision: 7,
     }));
   });
 
-  it("reports a selected wrong action through the correction-pending contract", async () => {
-    actionRows.value = [{ id: "action-1", hand_id: "hand", action_order: 3, street: "preflop", player_id: "player-1", entry_number: 1, action_type: "call", action_amount: 100000 }];
+  it("requires an active hand before reporting a wrong hand", async () => {
     vi.mocked(supabase.rpc).mockImplementation((async (_name, args: { p_request_id: string }) => ({
       data: { ok: true, alert_id: "alert-1", request_id: args.p_request_id, correction_pending: true }, error: null,
     })) as never);
-    render(<DealerFloorAlertControls {...props} />);
-    expect(screen.getByRole("button", { name: "Báo sai action" }).hasAttribute("disabled")).toBe(true);
-    fireEvent.click(await screen.findByText("Chọn action đã lưu"));
-    fireEvent.click(await screen.findByRole("button", { name: /#3 · preflop · Ghế 4 · call/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Báo sai action" }));
-    await screen.findByText(/Đã gửi Floor/);
-    expect(supabase.rpc).toHaveBeenCalledWith("report_tracker_wrong_action_v1", expect.objectContaining({
-      p_hand_id: "hand", p_action_id: "action-1", p_expected_source_revision: 7,
-      p_expected_action: expect.objectContaining({ id: "action-1", action_order: 3, action_type: "call" }),
-    }));
+    render(<DealerFloorAlertControls {...props} handId={null} />);
+    expect(screen.getByRole("button", { name: "Báo sai hand" }).hasAttribute("disabled")).toBe(true);
+    expect(supabase.rpc).not.toHaveBeenCalled();
   });
 
   it("does not send when the request key cannot be retained", () => {
@@ -126,7 +112,7 @@ describe("Dealer Floor operational alert", () => {
     expect(window.sessionStorage.length).toBe(0);
   });
 
-  it.each(["dealer_assignment_not_unique", "dealer_assignment_changed"])("retains an uncertain request after %s before retry", async (reason) => {
+  it.each(["tracker_lock_not_owned", "actor_not_allowed"])("retains an uncertain request after %s before retry", async (reason) => {
     vi.mocked(supabase.rpc).mockRejectedValueOnce(new Error("network lost"));
     render(<DealerFloorAlertControls {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Gọi Floor" }));
