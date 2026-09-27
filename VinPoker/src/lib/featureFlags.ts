@@ -995,12 +995,12 @@ export const FEATURES = {
    */
   tournamentClockV2: true,
   /**
-   * Per-club TV layout editor + paired-display branding contract v2.
-   * Default OFF: requires source-only migration 20260924065041. While OFF,
-   * direct and paired TV reads keep their existing database contracts and the
-   * editor button is hidden. Enable only after DB apply + owner visual UAT.
+   * Tournament/Main Event TV layout editor + paired-display branding contract v3.
+   * ON for the owner-opened Centerpoint production UAT. Every editor mutation
+   * remains fail-closed behind can_edit_tv_tournament_layout_v1 and the server
+   * release/club/role gate; this source flag only ships the integrated reader UI.
    */
-  tvLayoutEditorV1: false,
+  tvLayoutEditorV1: true,
   /**
    * Per-tournament SERVICE FEE (phí dịch vụ) — a SECOND configured per-entry charge, separate from
    * rake. Player price = buy_in + rake_amount + service_fee_amount. Default **OFF** (dark). While

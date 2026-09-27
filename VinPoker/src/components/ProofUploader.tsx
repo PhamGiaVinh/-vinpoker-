@@ -1,8 +1,7 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { Upload, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { compressImage } from "@/lib/compressImage";
@@ -22,20 +21,26 @@ const MAX_BYTES = 5 * 1024 * 1024;
 
 export const ProofUploader = ({ folder, value, onChange, label, className, required, versioned = false }: Props) => {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const supabase = useSupabaseClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const lbl = label ?? t("proofUpload.defaultLabel");
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.files?.[0];
-    if (!raw || !user) return;
+    if (!raw) return;
     if (!raw.type.startsWith("image/")) {
       toast.error(t("proofUpload.onlyImg"));
       return;
     }
     if (raw.size > MAX_BYTES) {
       toast.error(t("proofUpload.max5"));
+      return;
+    }
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const user = authData.user;
+    if (authError || !user) {
+      toast.error("Please sign in again before uploading.");
       return;
     }
     setUploading(true);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Palette, RotateCcw, Save } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +51,6 @@ type UntypedRpc = (fn: string, args?: Record<string, unknown>) => PromiseLike<{
   data: unknown;
   error: { message: string } | null;
 }>;
-const rpc = supabase.rpc.bind(supabase) as UntypedRpc;
 
 function RangeControl({ label, value, min, max, onChange }: {
   label: string;
@@ -72,6 +71,11 @@ function RangeControl({ label, value, min, max, onChange }: {
 }
 
 export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
+  const supabase = useSupabaseClient();
+  const rpc = useMemo(
+    () => supabase.rpc.bind(supabase) as UntypedRpc,
+    [supabase],
+  );
   const [open, setOpen] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -91,7 +95,7 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
       if (active) setCanEdit(!error && data === true);
     });
     return () => { active = false; };
-  }, [tournamentId]);
+  }, [rpc, tournamentId]);
 
   useEffect(() => {
     if (!open || !FEATURES.tvLayoutEditorV1) return;
@@ -121,7 +125,7 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [open, tournamentId]);
+  }, [open, rpc, tournamentId]);
 
   const previewData = useMemo<TournamentClockData>(() => ({
     ...BRANDING_PREVIEW_DATA,

@@ -25,6 +25,7 @@ import type { TournamentLeaderboardPlayer } from "@/types/tournament";
 import type { FloorTournamentSection } from "@/ops/floor/floorTournamentSections";
 import { useTournamentOps } from "@/ops/workspace/TournamentOpsProvider";
 import { MultiDayFloorEventPanel } from "@/components/floor/MultiDayFloorEventPanel";
+import { TvBrandingEditor } from "@/components/cashier/tournament-live/TvBrandingEditor";
 
 type UnappliedFloorRpcResult = { data: unknown; error: { message?: string; code?: string } | null };
 /**
@@ -620,6 +621,11 @@ export default function OpsTournamentCockpit({ section }: { section: FloorTourna
             <div className="mt-1 text-[13px] leading-5 text-[#9b8e97]">
               Mở màn hình đồng hồ của giải ở tab riêng. Ops không truyền phiên đăng nhập hoặc secret sang đường dẫn TV.
             </div>
+            {id && (
+              <div className="mt-4">
+                <TvBrandingEditor tournamentId={id} />
+              </div>
+            )}
             <a
               data-ops-action="floor.screens.open_public_tv"
               href={`/tv/${id}`}

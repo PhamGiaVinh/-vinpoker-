@@ -16,6 +16,7 @@ export type FloorOperatorScopeRow = {
  */
 export function useOperatorClubs() {
   const { user, loading: authLoading } = useAuth();
+  const userId = user?.id ?? null;
   const [clubs, setClubs] = useState<OperatorClubRow[] | null>(null);
   const [cashierClubIds, setCashierClubIds] = useState<string[]>([]);
   const [floorClubIds, setFloorClubIds] = useState<string[]>([]);
@@ -24,7 +25,7 @@ export function useOperatorClubs() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       setClubs(authLoading ? null : []);
       setCashierClubIds([]);
       setFloorClubIds([]);
@@ -45,7 +46,7 @@ export function useOperatorClubs() {
     void (async () => {
       const [scopeResult, dealerResult] = await Promise.all([
         supabase.rpc("get_my_floor_operator_scope"),
-        supabase.rpc("dealer_control_club_ids", { _user_id: user.id }),
+        supabase.rpc("dealer_control_club_ids", { _user_id: userId }),
       ]);
       if (scopeResult.error) {
         if (!cancelled) {
@@ -100,7 +101,10 @@ export function useOperatorClubs() {
     })();
 
     return () => { cancelled = true; };
-  }, [user, authLoading]);
+  // Supabase may refresh the session when an authenticated TV iframe mounts.
+  // Depend on the stable actor id, not the User object identity, so an equivalent
+  // auth refresh cannot tear down Floor state and drop the selected tournament.
+  }, [userId, authLoading]);
 
   const clubIds = (clubs ?? []).map((club) => club.id);
   const operatorClubIds = scope.map((row) => row.club_id);
