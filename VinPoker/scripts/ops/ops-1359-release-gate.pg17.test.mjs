@@ -116,7 +116,13 @@ test("PostgreSQL 17 atomic release gate integration", async (t) => {
 
   assert.throws(() => buildAtomicMigrationQuery({ ...item, action: "SKIP_ALREADY_APPLIED" }, "CREATE TABLE public.ops_1359_outside_manifest_probe(id int);"), /allowlisted APPLY/);
   assert.throws(() => resolveWithinRoot(sourceRoot, "../outside-manifest.sql"), /escaped/);
-  assert.equal(manifest.migrations.filter(({ action }) => action === "APPLY").length, 41);
+  assert.equal(manifest.migrations.filter(({ action }) => action === "APPLY").length, 36);
+  const skipped = manifest.migrations.filter(({ action }) => action === "SKIP_ALREADY_APPLIED");
+  assert.equal(skipped.length, 6);
+  assert.deepEqual(skipped.map(({ version }) => version), [
+    "20270115000006", "20270115000007", "20270115000008",
+    "20270115000009", "20270115000010", "20270115000011",
+  ]);
   for (const migration of manifest.migrations.filter(({ action }) => action === "APPLY")) {
     const source = files.get(migration.version);
     const scan = scanMigrationSource(source);
