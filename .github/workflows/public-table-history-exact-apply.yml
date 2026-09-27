@@ -112,7 +112,11 @@ jobs:
           set -euo pipefail
           hold="${RUNNER_TEMP}/public-table-history-hold"
           mkdir -p "$hold"
-          excluded=(20270115000015_tracker_voice_dealer_handoff_authority.sql)
+          excluded=(
+            20270115000015_tracker_voice_dealer_handoff_authority.sql
+            20270115000016_tracker_correction_uat_release2.sql
+            20270115000017_tracker_completed_hand_correction_uat.sql
+          )
           restore_catalog() {
             for name in "${excluded[@]}"; do
               if [[ -f "$hold/$name" ]]; then
