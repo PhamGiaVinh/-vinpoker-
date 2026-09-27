@@ -38,7 +38,7 @@ on:
       - "VinPoker/supabase/functions/tournament-live-resettle-commit/**"
       - "VinPoker/supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql"
       - "VinPoker/supabase/migrations/20270115000018_dealer_assignment_session_binding.sql"
-      - "VinPoker/supabase/migrations/20270115000019_tracker_voice_floor_owner_authority.sql"
+      - "VinPoker/supabase/migrations/20270115000020_tracker_voice_floor_owner_authority.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
@@ -368,9 +368,9 @@ jobs:
             -f supabase/migrations/20260817000003_fix_executor_step9_incoming_credit.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f supabase/migrations/20270115000018_dealer_assignment_session_binding.sql
-          createdb tracker_voice_v0_before_15000019 -T tracker_voice_v0_strict
+          createdb tracker_voice_v0_before_15000020 -T tracker_voice_v0_strict
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
-            -f supabase/migrations/20270115000019_tracker_voice_floor_owner_authority.sql
+            -f supabase/migrations/20270115000020_tracker_voice_floor_owner_authority.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f supabase/migration-archive/historical-never-replay/20260801000007_resolve_execute_pre_assigned_rpc_ambiguity.sql
           test "$(psql -X -At -d tracker_voice_v0_strict -c \
@@ -381,7 +381,7 @@ jobs:
                       'public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure
                     )) > 0")" = "t"
           echo "TRACKER_VOICE_15000015_APPLY=PASS"
-          echo "TRACKER_VOICE_15000019_APPLY=PASS"
+          echo "TRACKER_VOICE_15000020_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f tests/trackerVoice/voiceHashV2.integration.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
@@ -595,18 +595,18 @@ jobs:
           test "$before_authority" = "$(psql -X -At -d tracker_voice_v0_before_15000015 -c \
             "SELECT md5(pg_get_functiondef('public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure))")"
           echo "TRACKER_VOICE_15000015_ROLLBACK=PASS"
-          before_authority="$(psql -X -At -d tracker_voice_v0_before_15000019 -c \
+          before_authority="$(psql -X -At -d tracker_voice_v0_before_15000020 -c \
             "SELECT md5(pg_get_functiondef('public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure))")"
-          failing="$RUNNER_TEMP/tracker-voice-15000019-failing.sql"
+          failing="$RUNNER_TEMP/tracker-voice-15000020-failing.sql"
           awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
-            supabase/migrations/20270115000019_tracker_voice_floor_owner_authority.sql > "$failing"
-          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_15000019 -f "$failing"; then
-            echo "Injected 15000019 migration unexpectedly committed" >&2
+            supabase/migrations/20270115000020_tracker_voice_floor_owner_authority.sql > "$failing"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_15000020 -f "$failing"; then
+            echo "Injected 15000020 migration unexpectedly committed" >&2
             exit 1
           fi
-          test "$before_authority" = "$(psql -X -At -d tracker_voice_v0_before_15000019 -c \
+          test "$before_authority" = "$(psql -X -At -d tracker_voice_v0_before_15000020 -c \
             "SELECT md5(pg_get_functiondef('public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure))")"
-          echo "TRACKER_VOICE_15000019_ROLLBACK=PASS"
+          echo "TRACKER_VOICE_15000020_ROLLBACK=PASS"
           echo "TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS"
 
       - name: Run focused Voice, Analytics and contract tests
