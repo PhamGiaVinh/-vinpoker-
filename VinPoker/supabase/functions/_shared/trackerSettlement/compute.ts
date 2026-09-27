@@ -38,6 +38,14 @@ export type SettlementDbHand = {
   updated_at: string | null;
   created_at: string;
   source_revision?: number;
+  table_session_id?: string | null;
+  tracker_level_id?: string | null;
+  tracker_level_number?: number | null;
+  tracker_small_blind?: number | null;
+  tracker_big_blind?: number | null;
+  tracker_bba?: number | null;
+  tracker_is_break?: boolean | null;
+  tracker_blind_evidence?: unknown;
 };
 
 export type SettlementDbPlayer = {

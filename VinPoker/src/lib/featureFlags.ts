@@ -736,6 +736,11 @@ export const FEATURES = {
    */
   trackerHistoricalSettlementBulk: false,
   /**
+   * Durable historical display worker and owner/admin queue view. Both stay
+   * dark until the database and Edge gates pass owner UAT.
+   */
+  trackerHistoryCompletionWorker: false,
+  /**
    * Viewer Felt V2 — responsive, CoinPoker-style public spectator poker table.
    * Fixes the mobile bug where hole cards overlap each other / the central board by
    * sizing every card with the felt's own width (CSS container query + clamp), and

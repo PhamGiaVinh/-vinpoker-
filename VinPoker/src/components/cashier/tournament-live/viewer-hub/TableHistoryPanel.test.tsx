@@ -10,6 +10,19 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (_key: string, fal
 afterEach(() => rpc.mockReset());
 
 describe("table-specific public history cards", () => {
+  it("formats Hand #9 from its frozen 100k/200k/25k blind snapshot", async () => {
+    rpc.mockResolvedValue({ data: { access: "public", items: [
+      { handId: "hand-9", tableSessionId: "session-9", handNumber: 9, createdAt: "2026-09-27T01:00:00Z", board: ["2c", "7d", "9h", "3s", "Kc"], pot: 4_800_000, smallBlind: 100_000, bigBlind: 200_000, ante: 25_000, result: { status: "verified", recipients: [
+        { playerId: "winner", entryNumber: 1, seatNumber: 1, name: "Winner", avatarUrl: null, holeCards: [], potAward: 4_800_000, netDelta: 2_400_000, potKinds: ["main"] },
+      ] } },
+    ], nextCursor: null }, error: null });
+    render(<TableHistoryPanel tournamentId="tour-9" tableId="table-9" currentSessionId="session-9" onSelectHand={vi.fn()} onAccessRevoked={vi.fn()} />);
+    const card = (await screen.findByText("Hand #9")).closest("article")!;
+    expect(within(card).getByText("Pot 4.8M (24 BB)")).toBeInTheDocument();
+    expect(within(card).getByText("100k/200k · Ante 25k")).toBeInTheDocument();
+    expect(within(card).getByText("+2.4M (12 BB)")).toHaveClass("text-emerald-400");
+  });
+
   it("renders verified recipients once with signed net, and keeps unverified hands visible", async () => {
     rpc.mockResolvedValue({ data: { access: "public", items: [
       { handId: "split", tableSessionId: "old-session", handNumber: 26, createdAt: "2026-09-17T01:00:00Z", board: ["AS"], pot: 280_000, smallBlind: 10_000, bigBlind: 20_000, ante: 0, result: { status: "verified", recipients: [
