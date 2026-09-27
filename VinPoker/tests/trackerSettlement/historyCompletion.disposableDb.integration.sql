@@ -79,14 +79,26 @@ END $$;
 
 -- True two-connection SKIP LOCKED proof: lock the oldest pending job remotely,
 -- then the local claim must take a different hand without waiting.
+UPDATE public.tracker_historical_display_queue
+SET next_attempt_at=now()+interval '1 day'
+WHERE status='pending';
+UPDATE public.tracker_historical_display_queue
+SET next_attempt_at=now(), enqueued_at=CASE hand_id
+  WHEN '61000000-0000-4000-8000-000000000013'::uuid THEN now()-interval '2 seconds'
+  ELSE now()-interval '1 second' END
+WHERE status='pending'
+  AND hand_id IN (
+    '61000000-0000-4000-8000-000000000013'::uuid,
+    '61000000-0000-4000-8000-000000000014'::uuid
+  );
 SELECT dblink_connect('queue_lock', 'dbname=' || current_database());
 SELECT dblink_exec('queue_lock', 'BEGIN');
 SELECT * FROM dblink('queue_lock', $$SELECT 1 FROM public.tracker_historical_display_queue
   WHERE hand_id='61000000-0000-4000-8000-000000000013' AND source_revision=1 FOR UPDATE$$) AS locked(id integer);
 DO $$ DECLARE v record; BEGIN
   SELECT * INTO v FROM public.claim_tracker_historical_display_jobs(1) LIMIT 1;
-  IF NOT FOUND OR v.hand_id='61000000-0000-4000-8000-000000000013' THEN
-    RAISE EXCEPTION 'claim did not skip the row locked by independent connection';
+  IF NOT FOUND OR v.hand_id<>'61000000-0000-4000-8000-000000000014' THEN
+    RAISE EXCEPTION 'claim did not skip locked priority hand 13 for ready hand 14: %',v.hand_id;
   END IF;
 END $$;
 SELECT dblink_exec('queue_lock','ROLLBACK');
@@ -190,11 +202,18 @@ BEGIN
   PERFORM dblink_connect('commit_two','dbname='||current_database()||' user='||current_user);
   PERFORM dblink_exec('commit_one', 'SET request.jwt.claims = ''{"role":"service_role"}''');
   PERFORM dblink_exec('commit_two', 'SET request.jwt.claims = ''{"role":"service_role"}''');
-  v_sent := dblink_send_query('commit_one',v_sql); IF v_sent <> 1 THEN RAISE EXCEPTION 'first concurrent commit did not start'; END IF;
+  PERFORM dblink_exec('commit_one','BEGIN');
+  PERFORM * FROM dblink('commit_one',
+    'SELECT 1 FROM public.tournament_hands WHERE id=''61000000-0000-4000-8000-000000000014''::uuid FOR UPDATE')
+    AS locked(id integer);
   v_sent := dblink_send_query('commit_two',v_sql); IF v_sent <> 1 THEN RAISE EXCEPTION 'second concurrent commit did not start'; END IF;
-  SELECT result INTO v_one FROM dblink_get_result('commit_one') AS r(result jsonb);
+  PERFORM pg_sleep(0.1);
+  IF dblink_is_busy('commit_two') <> 1 THEN
+    RAISE EXCEPTION 'competing same-hand commit did not wait behind the observed hand lock';
+  END IF;
+  SELECT result INTO v_one FROM dblink('commit_one',v_sql) AS r(result jsonb);
+  PERFORM dblink_exec('commit_one','COMMIT');
   SELECT result INTO v_two FROM dblink_get_result('commit_two') AS r(result jsonb);
-  PERFORM * FROM dblink_get_result('commit_one') AS r(result jsonb);
   PERFORM * FROM dblink_get_result('commit_two') AS r(result jsonb);
   PERFORM dblink_disconnect('commit_one'); PERFORM dblink_disconnect('commit_two');
   IF v_one->>'ok' <> 'true' OR v_two->>'ok' <> 'true'
