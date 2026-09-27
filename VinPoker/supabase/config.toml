@@ -13,3 +13,6 @@ verify_jwt = false
 
 [functions.tournament-historical-settlement-worker]
 verify_jwt = true
+
+[functions.tournament-historical-settlement-dispatcher]
+verify_jwt = true
