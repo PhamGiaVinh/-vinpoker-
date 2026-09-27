@@ -44,8 +44,10 @@ describe("Tracker correction Release 2 contract", () => {
     expect(migration).toContain("RAISE EXCEPTION 'tracker_correction_pending'");
   });
 
-  it("keeps the source-only undo contract out of the live Edge route", () => {
-    expect(edge).not.toContain('case "undo_last_action_v1"');
-    expect(edge).not.toContain('supabase.rpc("undo_tracker_last_action_v1"');
+  it("routes browser undo through the new server contract", () => {
+    expect(edge).toContain('case "undo_last_action_v1"');
+    expect(edge).toContain('supabase.rpc("undo_tracker_last_action_v1"');
+    expect(edge).toContain("p_expected_action_id: expected_action_id");
+    expect(edge).toContain("p_expected_source_revision: expected_source_revision");
   });
 });
