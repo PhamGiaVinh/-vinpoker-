@@ -156,15 +156,27 @@ SELECT dblink_exec('snapshot_writer',$remote$
   UPDATE public.hand_actions SET action_amount=20
   WHERE id='72000000-0000-4000-8000-000000000016'::uuid
 $remote$);
-DO $$ DECLARE v jsonb; BEGIN
-  v := public.get_tracker_historical_display_snapshot(
-    '61000000-0000-4000-8000-000000000016','10000000-0000-4000-8000-000000000001');
-  IF (v #>> '{players,0,ending_stack}')::numeric <> 1000
-    OR (v #>> '{actions,0,action_amount}')::numeric <> 10 THEN
-    RAISE EXCEPTION 'snapshot mixed an uncommitted source generation: %',v;
+SELECT dblink_connect('snapshot_reader','dbname='||current_database()||' user='||current_user);
+SELECT dblink_send_query('snapshot_reader',$remote$
+  SELECT public.get_tracker_historical_display_snapshot(
+    '61000000-0000-4000-8000-000000000016','10000000-0000-4000-8000-000000000001')
+  FROM (SELECT pg_sleep(0.3)) AS statement_barrier
+$remote$);
+SELECT pg_sleep(0.1);
+DO $$ BEGIN
+  IF dblink_is_busy('snapshot_reader') <> 1 THEN
+    RAISE EXCEPTION 'snapshot reader completed before concurrent commit barrier';
   END IF;
 END $$;
 SELECT dblink_exec('snapshot_writer','COMMIT');
+DO $$ DECLARE v jsonb; BEGIN
+  SELECT result INTO v FROM dblink_get_result('snapshot_reader') AS r(result jsonb);
+  IF (v #>> '{players,0,ending_stack}')::numeric <> 1000
+    OR (v #>> '{actions,0,action_amount}')::numeric <> 10 THEN
+    RAISE EXCEPTION 'snapshot mixed generations across a concurrent commit: %',v;
+  END IF;
+END $$;
+SELECT dblink_disconnect('snapshot_reader');
 DO $$ DECLARE v jsonb; BEGIN
   v := public.get_tracker_historical_display_snapshot(
     '61000000-0000-4000-8000-000000000016','10000000-0000-4000-8000-000000000001');
