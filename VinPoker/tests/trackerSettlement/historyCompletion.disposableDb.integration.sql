@@ -188,6 +188,12 @@ BEGIN
     '61000000-0000-4000-8000-000000000014','80000000-0000-4000-8000-000000000001','owner_admin',v_rev,v_hash,repeat('f',64),repeat('a',64),'concurrent-same-hand-key-0001',v_outcome::text);
   PERFORM dblink_connect('commit_one','dbname='||current_database()||' user='||current_user);
   PERFORM dblink_connect('commit_two','dbname='||current_database()||' user='||current_user);
+  PERFORM dblink_exec('commit_one', $remote$DO $claim$ BEGIN
+    PERFORM set_config('request.jwt.claims','{"role":"service_role"}',false);
+  END $claim$$remote$);
+  PERFORM dblink_exec('commit_two', $remote$DO $claim$ BEGIN
+    PERFORM set_config('request.jwt.claims','{"role":"service_role"}',false);
+  END $claim$$remote$);
   v_sent := dblink_send_query('commit_one',v_sql); IF v_sent <> 1 THEN RAISE EXCEPTION 'first concurrent commit did not start'; END IF;
   v_sent := dblink_send_query('commit_two',v_sql); IF v_sent <> 1 THEN RAISE EXCEPTION 'second concurrent commit did not start'; END IF;
   SELECT result INTO v_one FROM dblink_get_result('commit_one') AS r(result jsonb);
