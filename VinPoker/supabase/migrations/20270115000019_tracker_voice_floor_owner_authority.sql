@@ -74,7 +74,7 @@ BEGIN
       WHERE club_row.id = v_tour.club_id
         AND club_row.owner_id = p_actor
     )
-    OR pg_catalog.coalesce(public.is_club_floor(p_actor, v_tour.club_id), FALSE)
+    OR COALESCE(public.is_club_floor(p_actor, v_tour.club_id), FALSE)
   INTO v_actor_is_owner_or_floor;
 
   SELECT
@@ -122,7 +122,7 @@ BEGIN
   FROM public.app_settings settings
   WHERE settings.key = 'tracker_voice_global_enabled'
   FOR SHARE;
-  IF pg_catalog.coalesce(v_global_enabled, FALSE) IS NOT TRUE THEN
+  IF COALESCE(v_global_enabled, FALSE) IS NOT TRUE THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'voice_global_disabled');
   END IF;
 
