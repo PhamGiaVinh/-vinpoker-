@@ -6,6 +6,7 @@ import {
   assessCoreQueryFailure,
   assessDealerInventory,
   assessLockOwnershipLoss,
+  assessPerformSwingResponse,
   assessShortageNotifySetting,
   assessSwingExecutionFailure,
   ensureLockOwnership,
@@ -38,6 +39,21 @@ Deno.test("a reclaimed lease aborts remaining passes without a completed dispatc
       diagnostic: { stage: "club_lock_ownership", code: "LEASE_RECLAIMED" },
     },
   );
+});
+
+Deno.test("perform_swing transport and malformed responses cannot leave dispatch completed", () => {
+  assertEquals(assessPerformSwingResponse(null, { code: "XX000", message: "private" }), {
+    dispatchState: "partial",
+    dispatchErrorCode: "perform_swing_query_failed",
+    diagnostic: { stage: "perform_swing", code: "XX000" },
+  });
+  assertEquals(assessPerformSwingResponse(null, null), {
+    dispatchState: "partial",
+    dispatchErrorCode: "perform_swing_invalid_response",
+    diagnostic: { stage: "perform_swing", code: "INVALID_RPC_RESPONSE" },
+  });
+  assertEquals(assessPerformSwingResponse({ outcome: "swung" }, null), null);
+  assertEquals(assessPerformSwingResponse({ outcome: "no_dealer" }, null), null);
 });
 
 Deno.test("a failed lease ownership RPC check fails closed before later mutations", async () => {
