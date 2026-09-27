@@ -24,18 +24,30 @@ const { rpc, client, saveFailure, brandingLayout, brandingAssets, authState } = 
     };
     return { data: { revision: 8 }, error: null };
   });
+  const authState = {
+    session: { user: { id: "owner-1" } } as { user: { id: string } } | null,
+    listener: null as null | (() => void),
+  };
   return {
     rpc,
-    client: { rpc },
+    client: {
+      rpc,
+      auth: {
+        getSession: vi.fn(async () => ({ data: { session: authState.session }, error: null })),
+        onAuthStateChange: vi.fn((listener: () => void) => {
+          authState.listener = listener;
+          return { data: { subscription: { unsubscribe: vi.fn() } } };
+        }),
+      },
+    },
     saveFailure,
     brandingLayout,
     brandingAssets,
-    authState: { user: { id: "owner-1" } as { id: string } | null },
+    authState,
   };
 });
 
 vi.mock("@/integrations/supabase/SupabaseClientContext", () => ({ useSupabaseClient: () => client }));
-vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: authState.user }) }));
 vi.mock("@/lib/featureFlags", () => ({ FEATURES: { tvLayoutEditorV1: true } }));
 vi.mock("@/components/ProofUploader", () => ({ ProofUploader: () => <div>Image upload</div> }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
@@ -43,18 +55,18 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 import { TvBrandingEditor } from "./TvBrandingEditor";
 import { toast } from "sonner";
 
-afterEach(() => { cleanup(); rpc.mockClear(); saveFailure.value = false; brandingLayout.value = {}; brandingAssets.value = { logo_url: null, background_url: null }; authState.user = { id: "owner-1" }; });
+afterEach(() => { cleanup(); rpc.mockClear(); saveFailure.value = false; brandingLayout.value = {}; brandingAssets.value = { logo_url: null, background_url: null }; authState.session = { user: { id: "owner-1" } }; authState.listener = null; });
 
 describe("TvBrandingEditor publish boundary", () => {
   it("rechecks server authority when the authenticated owner session becomes available", async () => {
-    authState.user = null;
-    const view = render(<TvBrandingEditor tournamentId="flight-1" />);
+    authState.session = null;
+    render(<TvBrandingEditor tournamentId="flight-1" />);
 
     expect(rpc).not.toHaveBeenCalledWith("can_edit_tv_tournament_layout_v1", expect.anything());
     expect(screen.queryByRole("button", { name: /Edit TV layout/i })).toBeNull();
 
-    authState.user = { id: "owner-1" };
-    view.rerender(<TvBrandingEditor tournamentId="flight-1" />);
+    authState.session = { user: { id: "owner-1" } };
+    authState.listener?.();
 
     expect(await screen.findByRole("button", { name: /Edit TV layout/i })).toBeVisible();
     expect(rpc).toHaveBeenCalledWith("can_edit_tv_tournament_layout_v1", { p_tournament_id: "flight-1" });

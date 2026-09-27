@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Palette, RotateCcw, Save } from "lucide-react";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
-import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -73,7 +72,6 @@ function RangeControl({ label, value, min, max, onChange }: {
 
 export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
   const supabase = useSupabaseClient();
-  const { user } = useAuth();
   const rpc = useMemo(
     () => supabase.rpc.bind(supabase) as UntypedRpc,
     [supabase],
@@ -90,14 +88,30 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
   const [revision, setRevision] = useState(0);
 
   useEffect(() => {
-    if (!FEATURES.tvLayoutEditorV1 || !user?.id) return;
+    if (!FEATURES.tvLayoutEditorV1) return;
     let active = true;
     setCanEdit(false);
-    void rpc("can_edit_tv_tournament_layout_v1", { p_tournament_id: tournamentId }).then(({ data, error }) => {
+
+    const checkAuthority = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!active) return;
+      if (!session?.user.id) {
+        setCanEdit(false);
+        return;
+      }
+      const { data, error } = await rpc("can_edit_tv_tournament_layout_v1", { p_tournament_id: tournamentId });
       if (active) setCanEdit(!error && data === true);
+    };
+
+    void checkAuthority();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      void checkAuthority();
     });
-    return () => { active = false; };
-  }, [rpc, tournamentId, user?.id]);
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [rpc, supabase, tournamentId]);
 
   useEffect(() => {
     if (!open || !FEATURES.tvLayoutEditorV1) return;
