@@ -114,6 +114,27 @@ export function assessCoreQueryFailure(
   };
 }
 
+const SWING_SESSION_FAILURE_CODES = new Map<string, string>([
+  ["TABLE_SESSION_BINDING_REQUIRED", "swing_table_session_binding_required"],
+  ["TABLE_SESSION_AMBIGUOUS", "swing_table_session_ambiguous"],
+  ["TABLE_SESSION_CLOSED", "swing_table_session_closed"],
+  ["TABLE_SESSION_STALE", "swing_table_session_stale"],
+  ["TABLE_SESSION_CHANGED", "swing_table_session_changed"],
+]);
+
+export function assessSwingExecutionFailure(errorCode: unknown): DispatchSafetyOutcome {
+  const rawCode = typeof errorCode === "string" ? errorCode : "";
+  const stableCode = SWING_SESSION_FAILURE_CODES.get(rawCode);
+  return {
+    dispatchState: "partial",
+    dispatchErrorCode: stableCode ?? "swing_execution_failed",
+    diagnostic: {
+      stage: "swing_execution",
+      code: stableCode ? rawCode : "SWING_EXECUTION_FAILED",
+    },
+  };
+}
+
 /** Maps a typed candidate snapshot failure without parsing an error message. */
 export function assessCandidateSnapshotFailure(
   stage: string,

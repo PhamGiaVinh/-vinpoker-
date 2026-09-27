@@ -43,7 +43,7 @@ import {
   replanSingleTable,
   type PassRContext,
 } from "./passes/passR-rotation-planner.ts";
-import { runPass3Diagnostic } from "./diagnostics.ts";
+import { runPass3Diagnostic, shouldPersistPass3Diagnostic } from "./diagnostics.ts";
 import { endMealBreak } from "../_shared/mealBreakService.ts";
 import {
   ZOMBIE_LOCK_WINDOW_MS,
@@ -65,6 +65,7 @@ import {
   assessDealerInventory,
   assessLockOwnershipLoss,
   assessShortageAlertFailure,
+  assessSwingExecutionFailure,
   ensureLockOwnership,
   LockOwnershipLost,
   mergeDispatchOutcome,
@@ -789,6 +790,7 @@ Deno.serve(async (req: Request) => {
     for (const cid of clubIds) {
       let lockAcquired = false;
       let lockToken: string | null = null;  // B2.2b: fencing token from the fenced acquire
+      let clubHadPass3Error = false;
       // C3 — per-club-run trace + pass-timing checkpoints (durations = diffs between marks).
       const traceId = crypto.randomUUID();
       const swingMarks: Array<{ pass: string; at: number }> = [];
@@ -2453,18 +2455,20 @@ if (tier2Count > 0) {
             simple_count: diagnostic.simple_query.count,
             nested_count: diagnostic.nested_query.data_length
           });
-          await admin.from("diagnostic_logs").insert({
-            timestamp: diagnostic.timestamp,
-            club_id: diagnostic.club_id,
-            diagnostic_type: 'pass3_query_issue',
-            result: diagnostic,
-            metadata: { force_all: forceAll, pass: 3 }
-          }).then((result: any) => {
-            const { error: insertErr } = result ?? {};
-            if (insertErr) {
-              console.warn('[Pass 3 Diagnostic] Failed to save:', insertErr.message);
-            }
-          });
+          if (shouldPersistPass3Diagnostic(diagnostic)) {
+            await admin.from("diagnostic_logs").insert({
+              timestamp: diagnostic.timestamp,
+              club_id: diagnostic.club_id,
+              diagnostic_type: 'pass3_query_issue',
+              result: diagnostic,
+              metadata: { force_all: forceAll, pass: 3 }
+            }).then((result: any) => {
+              const { error: insertErr } = result ?? {};
+              if (insertErr) {
+                console.warn('[Pass 3 Diagnostic] Failed to save:', insertErr.message);
+              }
+            });
+          }
         } catch (diagErr: any) {
           console.warn('[Pass 3 Diagnostic] Diagnostic failed (non-blocking):', diagErr?.message);
         }
@@ -2539,7 +2543,14 @@ if (tier2Count > 0) {
 
         if (preAssignedDueErr || normalDueErr || zombieDueErr) {
           const err = preAssignedDueErr ?? normalDueErr ?? zombieDueErr;
-          console.error(`[process-swing] Pass 3 query error for club ${cid}:`, err?.message);
+          const failure = assessCoreQueryFailure("pass3_due_query", err);
+          recordDispatchSafetyOutcome(cid, failure);
+          clubsSkippedError++;
+          console.error("[process-swing] Pass 3 query failed", {
+            club_id: cid,
+            stage: failure.diagnostic.stage,
+            code: failure.diagnostic.code,
+          });
           continue;
         }
 
@@ -3257,16 +3268,18 @@ if (tier2Count > 0) {
             );
 
             if (rpcErr) {
-              console.error("[process-swing] execute_pre_assigned_swing RPC error:", rpcErr.message);
+              const failure = assessCoreQueryFailure("swing_execution_rpc", rpcErr);
+              recordDispatchSafetyOutcome(cid, failure);
+              clubHadPass3Error = true;
               console.error("[process-swing][pass3][execute-failed]", {
                 club_id: cid,
-                table_id: assignment.table_id,
-                table_name: tableName,
-                assignment_id: assignment.id,
-                incoming_dealer_id: assignment.pre_assigned_attendance_id,
-                incoming_dealer_name: preflightAtt?.full_name,
-                reason: "rpc_error",
-                error: rpcErr.message,
+                stage: failure.diagnostic.stage,
+                code: failure.diagnostic.code,
+              });
+              await logPass3Diagnostic("swing_execution_blocked", assignment, {
+                status: "failed",
+                error_code: failure.dispatchErrorCode,
+                provider_code: failure.diagnostic.code,
               });
               metrics.failed++;
               if (preflightInvalid) {
@@ -3745,20 +3758,23 @@ if (tier2Count > 0) {
                 break;
               }
 
-              default:
-                console.error("[process-swing] execute_pre_assigned_swing failed:", rpcResult);
+              default: {
+                const failure = assessSwingExecutionFailure(rpcResult?.error);
+                recordDispatchSafetyOutcome(cid, failure);
+                clubHadPass3Error = true;
                 console.error("[process-swing][pass3][execute-failed]", {
                   club_id: cid,
-                  table_id: assignment.table_id,
-                  table_name: tableName,
-                  assignment_id: assignment.id,
-                  incoming_dealer_id: assignment.pre_assigned_attendance_id,
-                  incoming_dealer_name: preflightAtt?.full_name,
-                  reason: "unknown_status",
-                  rpc_result: rpcResult,
+                  stage: failure.diagnostic.stage,
+                  code: failure.diagnostic.code,
+                });
+                await logPass3Diagnostic("swing_execution_blocked", assignment, {
+                  status: "blocked",
+                  error_code: failure.dispatchErrorCode,
+                  rpc_status: typeof rpcResult?.status === "string" ? rpcResult.status : "unknown",
                 });
                 metrics.failed++;
                 break;
+              }
             }
           } else {
             // ── Non-pre-assigned path ─────────────────────────────────────
@@ -4378,6 +4394,7 @@ if (tier2Count > 0) {
           );
         }
 
+        if (clubHadPass3Error) clubsSkippedError++;
         clubsProcessed++; // Track successful club processing
 
       } catch (err) {

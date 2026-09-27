@@ -91,6 +91,7 @@ export function useAllDealers(clubIds: string[]): {
 } {
   return usePollingQuery<DealerRecord>(
     async () => {
+      if (!clubIds.length) return [];
       const { data, error } = await supabase
         .from("dealers")
         .select(

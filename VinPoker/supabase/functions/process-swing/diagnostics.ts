@@ -27,6 +27,13 @@ export interface DiagnosticResult {
   confirmed_bug: boolean;
 }
 
+export function shouldPersistPass3Diagnostic(diagnostic: DiagnosticResult): boolean {
+  return diagnostic.confirmed_bug
+    || diagnostic.lost_rows > 0
+    || diagnostic.simple_query.error !== null
+    || diagnostic.nested_query.error !== null;
+}
+
 export async function runPass3Diagnostic(
   admin: SupabaseClient,
   clubId: string,

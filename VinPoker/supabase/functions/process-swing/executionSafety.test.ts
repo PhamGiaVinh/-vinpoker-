@@ -7,6 +7,7 @@ import {
   assessDealerInventory,
   assessLockOwnershipLoss,
   assessShortageNotifySetting,
+  assessSwingExecutionFailure,
   ensureLockOwnership,
   LockOwnershipLost,
   mergeDispatchOutcome,
@@ -191,4 +192,28 @@ Deno.test("a settings query failure never defaults shortage Telegram to enabled"
     assessShortageNotifySetting({ shortage_notify_telegram: false }, null),
     { notify: false, failure: null },
   );
+});
+
+Deno.test("Floor and Tracker session binding failures make the dispatch partial", () => {
+  for (const [rpcCode, dispatchCode] of [
+    ["TABLE_SESSION_BINDING_REQUIRED", "swing_table_session_binding_required"],
+    ["TABLE_SESSION_AMBIGUOUS", "swing_table_session_ambiguous"],
+    ["TABLE_SESSION_CLOSED", "swing_table_session_closed"],
+    ["TABLE_SESSION_STALE", "swing_table_session_stale"],
+    ["TABLE_SESSION_CHANGED", "swing_table_session_changed"],
+  ] as const) {
+    assertEquals(assessSwingExecutionFailure(rpcCode), {
+      dispatchState: "partial",
+      dispatchErrorCode: dispatchCode,
+      diagnostic: { stage: "swing_execution", code: rpcCode },
+    });
+  }
+});
+
+Deno.test("an unknown swing execution error fails honestly instead of completing", () => {
+  assertEquals(assessSwingExecutionFailure("PRIVATE ERROR WITH IDS"), {
+    dispatchState: "partial",
+    dispatchErrorCode: "swing_execution_failed",
+    diagnostic: { stage: "swing_execution", code: "SWING_EXECUTION_FAILED" },
+  });
 });
