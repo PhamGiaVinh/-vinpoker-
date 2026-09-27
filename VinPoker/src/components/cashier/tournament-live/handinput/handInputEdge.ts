@@ -195,22 +195,11 @@ export function buildVoidHandBody(p: { tournamentId: string; handId: string }) {
 }
 
 // --- delete_last_action (HandInputPanel.tsx:961-963) -----------------------
-export function buildDeleteLastActionBody(p: {
-  tournamentId: string;
-  tournamentTableId: string;
-  handId: string;
-  expectedActionId: string;
-  expectedSourceRevision: number;
-  idempotencyKey: string;
-}) {
+export function buildDeleteLastActionBody(p: { tournamentId: string; handId: string }) {
   return {
     tournament_id: p.tournamentId,
-    tournament_table_id: p.tournamentTableId,
-    action: "undo_last_action_v1",
+    action: "delete_last_action",
     hand_id: p.handId,
-    expected_action_id: p.expectedActionId,
-    expected_source_revision: p.expectedSourceRevision,
-    idempotency_key: p.idempotencyKey,
   };
 }
 
