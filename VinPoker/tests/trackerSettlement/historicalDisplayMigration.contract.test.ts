@@ -15,7 +15,7 @@ const publicSettlementReader = readFileSync(
   "utf8",
 );
 const completionMigration = readFileSync(
-  resolve(process.cwd(), "supabase/migrations/20270115000019_tracker_history_completion_queue.sql"),
+  resolve(process.cwd(), "supabase/migrations/20270115000020_tracker_history_completion_queue.sql"),
   "utf8",
 );
 const worker = readFileSync(

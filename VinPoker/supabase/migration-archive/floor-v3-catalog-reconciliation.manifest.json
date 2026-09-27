@@ -6883,8 +6883,20 @@
     },
     {
       "version": "20270115000019",
-      "filename": "20270115000019_tracker_history_completion_queue.sql",
+      "filename": "20270115000019_tracker_voice_floor_owner_authority.sql",
+      "sha256": "be67d23b2e24bfb6edb4b4ac427dd8d3d984729bebf08af0d2e81b5997e01c8a",
+      "domain": "tracker"
+    },
+    {
+      "version": "20270115000020",
+      "filename": "20270115000020_tracker_history_completion_queue.sql",
       "sha256": "fb2b559c5f58d361adb7ea403527c9e187bcbdbbb686f78e78777f2d5a7c4646",
+      "domain": "tracker"
+    },
+    {
+      "version": "20270115000021",
+      "filename": "20270115000021_tracker_voice_floor_owner_telegram_dealer.sql",
+      "sha256": "e9743b969141ad68bf4ec4595b5486f9cdfe6d8c167796d01cb5cf7e66a8776c",
       "domain": "tracker"
     }
   ],
