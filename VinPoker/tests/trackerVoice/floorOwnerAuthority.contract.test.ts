@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 const authorityMigrationName = "20270115000019_tracker_voice_floor_owner_authority.sql";
-const telegramDealerMigrationName = "20270115000022_tracker_voice_floor_owner_telegram_dealer.sql";
+const telegramDealerMigrationName = "20270115000023_tracker_voice_floor_owner_telegram_dealer.sql";
 const authorityMigration = readFileSync(
   resolve(root, "supabase/migrations", authorityMigrationName),
   "utf8",

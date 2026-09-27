@@ -16,7 +16,7 @@ on:
       - "VinPoker/supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql"
       - "VinPoker/supabase/migrations/20270115000018_dealer_assignment_session_binding.sql"
       - "VinPoker/supabase/migrations/20270115000019_tracker_voice_floor_owner_authority.sql"
-      - "VinPoker/supabase/migrations/20270115000022_tracker_voice_floor_owner_telegram_dealer.sql"
+      - "VinPoker/supabase/migrations/20270115000023_tracker_voice_floor_owner_telegram_dealer.sql"
       - "VinPoker/supabase/functions/tournament-live-update/index.ts"
       - "VinPoker/src/components/cashier/tournament-live/handinput/**"
       - "VinPoker/tests/trackerRecordActionAuthority/**"
@@ -147,7 +147,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
             -f supabase/migrations/20270115000019_tracker_voice_floor_owner_authority.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
-            -f supabase/migrations/20270115000022_tracker_voice_floor_owner_telegram_dealer.sql
+            -f supabase/migrations/20270115000023_tracker_voice_floor_owner_telegram_dealer.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \
             -f supabase/migration-archive/historical-never-replay/20260801000007_resolve_execute_pre_assigned_rpc_ambiguity.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_record_action_voice_chain \

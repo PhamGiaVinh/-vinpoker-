@@ -55,30 +55,35 @@ Deno.serve(async (req) => {
 
     for (const job of jobs) {
       try {
-        const [handResult, playersResult, actionsResult, sourceResult, priorResult] = await Promise.all([
-          service.from("tournament_hands").select("id,tournament_id,hand_number,table_id,table_session_id,button_seat,community_cards,pot_size,side_pots,status,is_voided,updated_at,created_at,source_revision,tracker_level_id,tracker_level_number,tracker_small_blind,tracker_big_blind,tracker_bba,tracker_is_break,tracker_blind_evidence")
-            .eq("id", job.hand_id).maybeSingle(),
-          service.from("hand_players").select("hand_id,player_id,entry_number,seat_number,starting_stack,ending_stack,hole_cards,is_eliminated")
-            .eq("hand_id", job.hand_id).order("seat_number").order("player_id").order("entry_number"),
-          service.from("hand_actions").select("id,hand_id,player_id,entry_number,street,action_type,action_amount,action_order")
-            .eq("hand_id", job.hand_id).order("action_order").order("id"),
-          service.rpc("get_tournament_historical_display_source_hash", { p_hand_id: job.hand_id }),
+        const [snapshotResult, priorResult] = await Promise.all([
+          service.rpc("get_tracker_historical_display_snapshot", { p_hand_id: job.hand_id, p_tournament_id: null }),
           service.from("tournament_settlement_outcomes").select("settlement_revision")
             .eq("hand_id", job.hand_id).order("settlement_revision", { ascending: false }).limit(1),
         ]);
-        const dbError = handResult.error || playersResult.error || actionsResult.error || sourceResult.error || priorResult.error;
+        const dbError = snapshotResult.error || priorResult.error;
         if (dbError) throw dbError;
-        if (!handResult.data) throw new HistoricalDisplayVerificationError("invalid_historical_hand");
-        const source = normalizeSettlementSourceRpcResult(sourceResult.data);
-        if (Number(handResult.data.source_revision) !== source.sourceRevision) {
+        if (!snapshotResult.data || typeof snapshotResult.data !== "object" || Array.isArray(snapshotResult.data)) {
+          throw new HistoricalDisplayVerificationError("invalid_historical_hand");
+        }
+        const snapshot = snapshotResult.data as {
+          hand?: SettlementDbHand; players?: SettlementDbPlayer[]; actions?: SettlementDbAction[];
+          sourceRevision?: unknown; sourceChainHash?: unknown;
+        };
+        if (!snapshot.hand || !Array.isArray(snapshot.players) || !Array.isArray(snapshot.actions)) {
+          throw new HistoricalDisplayVerificationError("invalid_historical_hand");
+        }
+        const source = normalizeSettlementSourceRpcResult({
+          source_revision: snapshot.sourceRevision, source_chain_hash: snapshot.sourceChainHash,
+        });
+        if (Number(snapshot.hand.source_revision) !== source.sourceRevision || source.sourceRevision !== job.source_revision) {
           throw new HistoricalDisplayVerificationError("stale_source_revision");
         }
         const settlementRevision = Number(priorResult.data?.[0]?.settlement_revision ?? 0) + 1;
         const result = await verifyHistoricalDisplaySettlement({
-          tournamentId: handResult.data.tournament_id,
-          hand: handResult.data as SettlementDbHand,
-          players: (playersResult.data ?? []) as SettlementDbPlayer[],
-          actions: (actionsResult.data ?? []) as SettlementDbAction[],
+          tournamentId: snapshot.hand.tournament_id,
+          hand: snapshot.hand,
+          players: snapshot.players,
+          actions: snapshot.actions,
           sourceRevision: source.sourceRevision,
           sourceChainHash: source.sourceChainHash,
           settlementRevision,
