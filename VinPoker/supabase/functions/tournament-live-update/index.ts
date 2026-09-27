@@ -327,6 +327,26 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      case "undo_last_action_v1": {
+        const {
+          tournament_table_id, hand_id, expected_action_id,
+          expected_source_revision, idempotency_key,
+        } = body;
+        if (typeof tournament_table_id !== "string" || typeof hand_id !== "string"
+          || typeof expected_action_id !== "string" || typeof idempotency_key !== "string"
+          || !Number.isSafeInteger(expected_source_revision) || expected_source_revision < 1) {
+          return validationError("INVALID_UNDO_REQUEST", "Yêu cầu hoàn tác thiếu action hoặc phiên bản máy chủ.");
+        }
+        result = await supabase.rpc("undo_tracker_last_action_v1", {
+          p_tournament_id: tournament_id,
+          p_tournament_table_id: tournament_table_id,
+          p_hand_id: hand_id,
+          p_expected_action_id: expected_action_id,
+          p_expected_source_revision: expected_source_revision,
+          p_idempotency_key: idempotency_key,
+        });
+        break;
+      }
       case "update_stack": {
         const { player_id, entry_number, chip_count } = body;
         result = await supabase.rpc("update_stack", {
