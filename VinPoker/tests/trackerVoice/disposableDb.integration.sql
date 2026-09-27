@@ -253,6 +253,41 @@ SELECT public.tracker_voice_test_assert(
   'exact-club Floor can use Voice while the sole current Dealer remains assigned'
 );
 
+RESET ROLE;
+UPDATE public.dealers
+SET user_id = NULL
+WHERE id = '87000000-0000-4000-8000-000000000001';
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '81100000-0000-4000-8000-000000000001', false);
+SELECT set_config('request.jwt.claims', '{"sub":"81100000-0000-4000-8000-000000000001","role":"authenticated"}', false);
+SELECT public.get_tracker_voice_runtime_context(
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001'
+)::TEXT AS payload \gset runtime_owner_telegram_dealer_
+SELECT set_config('request.jwt.claim.sub', '81300000-0000-4000-8000-000000000001', false);
+SELECT set_config('request.jwt.claims', '{"sub":"81300000-0000-4000-8000-000000000001","role":"authenticated"}', false);
+SELECT public.get_tracker_voice_runtime_context(
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001'
+)::TEXT AS payload \gset runtime_floor_telegram_dealer_
+SELECT set_config('request.jwt.claim.sub', '81200000-0000-4000-8000-000000000001', false);
+SELECT set_config('request.jwt.claims', '{"sub":"81200000-0000-4000-8000-000000000001","role":"authenticated"}', false);
+SELECT public.get_tracker_voice_runtime_context(
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001'
+)::TEXT AS payload \gset runtime_unlinked_dealer_
+SELECT public.tracker_voice_test_assert(
+  (:'runtime_owner_telegram_dealer_payload'::JSONB->>'ok')::BOOLEAN
+  AND (:'runtime_floor_telegram_dealer_payload'::JSONB->>'ok')::BOOLEAN
+  AND :'runtime_unlinked_dealer_payload'::JSONB->>'error' = 'dealer_assignment_missing',
+  'Owner and Floor can use Voice with an active Telegram-only Dealer while that Dealer cannot impersonate a login'
+);
+RESET ROLE;
+UPDATE public.dealers
+SET user_id = '81200000-0000-4000-8000-000000000001'
+WHERE id = '87000000-0000-4000-8000-000000000001';
+SET ROLE authenticated;
+
 SELECT set_config('request.jwt.claim.sub', '81600000-0000-4000-8000-000000000001', false);
 SELECT set_config('request.jwt.claims', '{"sub":"81600000-0000-4000-8000-000000000001","role":"authenticated"}', false);
 SELECT public.get_tracker_voice_runtime_context(
