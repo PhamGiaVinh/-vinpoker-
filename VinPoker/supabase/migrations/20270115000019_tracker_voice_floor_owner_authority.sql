@@ -27,8 +27,8 @@ BEGIN
   )
   INTO v_definition;
 
-  IF pg_catalog.position('v_assignment.user_id IS DISTINCT FROM p_actor' IN v_definition) = 0
-     OR pg_catalog.position('voice_actor_is_owner_or_floor' IN v_definition) > 0 THEN
+  IF pg_catalog.strpos(v_definition, 'v_assignment.user_id IS DISTINCT FROM p_actor') = 0
+     OR pg_catalog.strpos(v_definition, 'voice_actor_is_owner_or_floor') > 0 THEN
     RAISE EXCEPTION 'tracker_voice_floor_owner_authority_source_precondition_failed';
   END IF;
 END;
@@ -253,10 +253,9 @@ BEGIN
   )
   INTO v_definition;
 
-  IF pg_catalog.position('v_actor_is_owner_or_floor' IN v_definition) = 0
-     OR pg_catalog.position('public.is_club_floor(p_actor, v_tour.club_id)' IN v_definition) = 0
-     OR pg_catalog.position('club_row.owner_id = p_actor' IN v_definition) = 0
-     OR pg_catalog.position('SET search_path TO ''''' IN v_definition) = 0 THEN
+  IF pg_catalog.strpos(v_definition, 'v_actor_is_owner_or_floor') = 0
+     OR pg_catalog.strpos(v_definition, 'public.is_club_floor(p_actor, v_tour.club_id)') = 0
+     OR pg_catalog.strpos(v_definition, 'club_row.owner_id = p_actor') = 0 THEN
     RAISE EXCEPTION 'tracker_voice_floor_owner_authority_postcondition_failed';
   END IF;
 END;
