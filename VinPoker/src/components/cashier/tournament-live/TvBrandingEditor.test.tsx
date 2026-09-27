@@ -11,11 +11,11 @@ beforeAll(() => {
   };
 });
 
-const { rpc, saveFailure, brandingLayout, brandingAssets } = vi.hoisted(() => ({
-  saveFailure: { value: false },
-  brandingLayout: { value: {} as unknown },
-  brandingAssets: { value: { logo_url: null as string | null, background_url: null as string | null } },
-  rpc: vi.fn(async (name: string) => {
+const { rpc, client, saveFailure, brandingLayout, brandingAssets } = vi.hoisted(() => {
+  const saveFailure = { value: false };
+  const brandingLayout = { value: {} as unknown };
+  const brandingAssets = { value: { logo_url: null as string | null, background_url: null as string | null } };
+  const rpc = vi.fn(async (name: string) => {
     if (name === "save_tv_tournament_layout_v1" && saveFailure.value) throw new Error("offline");
     if (name === "can_edit_tv_tournament_layout_v1") return { data: true, error: null };
     if (name === "get_tv_tournament_branding_v1") return {
@@ -23,10 +23,11 @@ const { rpc, saveFailure, brandingLayout, brandingAssets } = vi.hoisted(() => ({
       error: null,
     };
     return { data: { revision: 8 }, error: null };
-  }),
-}));
+  });
+  return { rpc, client: { rpc }, saveFailure, brandingLayout, brandingAssets };
+});
 
-vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc } }));
+vi.mock("@/integrations/supabase/SupabaseClientContext", () => ({ useSupabaseClient: () => client }));
 vi.mock("@/lib/featureFlags", () => ({ FEATURES: { tvLayoutEditorV1: true } }));
 vi.mock("@/components/ProofUploader", () => ({ ProofUploader: () => <div>Image upload</div> }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
