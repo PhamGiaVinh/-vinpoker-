@@ -159,10 +159,9 @@ describe("historical settlement display migration contract", () => {
   });
 
   it("returns only verified historical results for the matching hand revision", () => {
-    expect(completionMigration).toContain("o.status = 'verified' AND o.source_revision = p.source_revision");
-    expect(completionFixMigration).toContain("WHERE o.hand_id = p.id AND o.status = 'verified' AND o.source_revision = p.source_revision");
-    expect(completionFixMigration).not.toContain("WHERE o.hand_id = p.id AND o.status = 'verified' AND o.verification_scope = 'historical_display'");
-    expect(completionMigration).toContain("AND o.source_revision = p.source_revision");
+    expect(completionFixMigration).toContain("WHERE o.hand_id = p.id AND o.status = 'verified'");
+    expect(completionFixMigration).toContain("o.source_revision = current_source.historical_revision");
+    expect(completionFixMigration).toContain("o.source_revision = current_source.chain_revision");
     expect(completionMigration).toContain("'status','pending'");
     expect(completionMigration).toContain("interval '10 seconds'");
     expect(completionMigration).toContain("'netDelta'");
@@ -177,10 +176,21 @@ describe("historical settlement display migration contract", () => {
   });
 
   it("publishes only current-revision outcomes whose canonical source hash still matches", () => {
-    expect(completionFixMigration).toContain("LEFT JOIN LATERAL public.get_tournament_historical_display_source_hash(p.id) current_source");
-    expect(completionFixMigration).toContain("o.source_revision = p.source_revision");
+    expect(completionFixMigration).toContain("LEFT JOIN LATERAL public.get_tournament_historical_display_source_hash(p.id) historical");
+    expect(completionFixMigration).toContain("LEFT JOIN LATERAL public.get_tournament_settlement_source_hash(p.id) chain");
+    expect(completionFixMigration).toContain("o.source_revision = current_source.historical_revision");
+    expect(completionFixMigration).toContain("o.source_chain_hash = current_source.historical_hash");
+    expect(completionFixMigration).toContain("o.source_revision = current_source.chain_revision");
+    expect(completionFixMigration).toContain("o.source_chain_hash = current_source.chain_hash");
+    expect(completionFixMigration).toContain("ORDER BY CASE WHEN o.verification_scope = 'historical_display' THEN 0 ELSE 1 END");
+    expect(completionFixMigration).toContain("ELSE jsonb_build_object('status','pending')");
+  });
+
+  it("requires target-only historical proof for queue coverage and backfill", () => {
+    expect(completionFixMigration).toContain("o.verification_scope = 'historical_display'");
     expect(completionFixMigration).toContain("o.source_chain_hash = current_source.source_chain_hash");
-    expect(completionFixMigration).not.toContain("o.verification_scope = 'historical_display'");
+    expect(completionFixMigration).toContain("JOIN LATERAL public.get_tournament_historical_display_source_hash(h.id) current_source ON true");
+    expect(completionFixMigration).not.toContain("o.verification_scope IN ('chain', 'historical_display')");
   });
 
   it("keeps operator statuses and filter controls dark behind the default-off feature gate", () => {

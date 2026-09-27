@@ -261,13 +261,16 @@ BEGIN
     q.enqueued_at, q.updated_at
   FROM public.tournament_hands h LEFT JOIN public.tracker_historical_display_queue q
     ON q.hand_id = h.id AND q.source_revision = h.source_revision
+  LEFT JOIN LATERAL public.get_tournament_historical_display_source_hash(h.id) current_source ON true
   WHERE h.tournament_id = p_tournament_id AND h.status = 'completed' AND NOT COALESCE(h.is_voided, false)
     AND (h.tracker_small_blind IS NULL OR h.tracker_small_blind <= 0
       OR h.tracker_big_blind IS NULL OR h.tracker_big_blind <= h.tracker_small_blind
       OR h.tracker_bba IS NULL OR h.tracker_bba < 0 OR h.tracker_level_id IS NULL
       OR q.status IN ('needs_attention','pending','processing')
       OR NOT EXISTS (SELECT 1 FROM public.tournament_settlement_outcomes o WHERE o.hand_id = h.id
-        AND o.status = 'verified' AND o.source_revision = h.source_revision));
+        AND o.status = 'verified' AND o.verification_scope = 'historical_display'
+        AND o.source_revision = h.source_revision
+        AND o.source_chain_hash = current_source.source_chain_hash));
 END $$;
 
 CREATE OR REPLACE FUNCTION public.get_public_tournament_table_history_v2(
@@ -291,6 +294,13 @@ WITH scope AS (
 ), tail AS (
   SELECT created_at, id FROM rows ORDER BY created_at DESC, id DESC
   OFFSET LEAST(GREATEST(p_limit, 1), 50) LIMIT 1
+), current_sources AS (
+  SELECT p.id, historical.source_revision AS historical_revision,
+    historical.source_chain_hash AS historical_hash,
+    chain.source_revision AS chain_revision, chain.source_chain_hash AS chain_hash
+  FROM page p
+  LEFT JOIN LATERAL public.get_tournament_historical_display_source_hash(p.id) historical ON true
+  LEFT JOIN LATERAL public.get_tournament_settlement_source_hash(p.id) chain ON true
 ), page_results AS (
   SELECT p.*, outcome.public_outcome,
     CASE WHEN p.tracker_small_blind > 0 AND p.tracker_big_blind > p.tracker_small_blind
@@ -303,13 +313,18 @@ WITH scope AS (
             AND checked_player.player_id::text = checked_allocation.value->>'winnerId') <> 1
       ) THEN jsonb_build_object('status','verified','recipients',recipient.items)
       ELSE jsonb_build_object('status','pending') END AS result
-  FROM page p
-  LEFT JOIN LATERAL public.get_tournament_historical_display_source_hash(p.id) current_source ON true
+  FROM page p JOIN current_sources current_source ON current_source.id = p.id
   LEFT JOIN LATERAL (
     SELECT o.public_outcome FROM public.tournament_settlement_outcomes o
-    WHERE o.hand_id = p.id AND o.status = 'verified' AND o.source_revision = p.source_revision
-      AND o.source_chain_hash = current_source.source_chain_hash
-    ORDER BY o.settlement_revision DESC LIMIT 1
+    WHERE o.hand_id = p.id AND o.status = 'verified'
+      AND ((o.verification_scope = 'historical_display'
+          AND o.source_revision = current_source.historical_revision
+          AND o.source_chain_hash = current_source.historical_hash)
+        OR (o.verification_scope = 'chain'
+          AND o.source_revision = current_source.chain_revision
+          AND o.source_chain_hash = current_source.chain_hash))
+    ORDER BY CASE WHEN o.verification_scope = 'historical_display' THEN 0 ELSE 1 END,
+      o.settlement_revision DESC LIMIT 1
   ) outcome ON true
   LEFT JOIN LATERAL (
     SELECT jsonb_agg(jsonb_build_object(
@@ -364,7 +379,10 @@ SELECT h.id, h.source_revision
 FROM public.tournament_hands h
 JOIN public.tournament_tables tt ON tt.id = h.tournament_table_id
 JOIN public.tournaments t ON t.id = h.tournament_id AND t.deleted_at IS NULL
+JOIN LATERAL public.get_tournament_historical_display_source_hash(h.id) current_source ON true
 WHERE h.status = 'completed' AND NOT COALESCE(h.is_voided, false)
   AND NOT EXISTS (SELECT 1 FROM public.tournament_settlement_outcomes o
-    WHERE o.hand_id = h.id AND o.status = 'verified' AND o.source_revision = h.source_revision)
+    WHERE o.hand_id = h.id AND o.status = 'verified' AND o.verification_scope = 'historical_display'
+      AND o.source_revision = current_source.source_revision
+      AND o.source_chain_hash = current_source.source_chain_hash)
 ON CONFLICT (hand_id, source_revision) DO NOTHING;
