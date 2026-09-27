@@ -12,7 +12,7 @@ on:
         required: true
         default: preflight
         type: choice
-        options: [preflight, apply]
+        options: [preflight, verify, apply]
       confirmation:
         description: "For apply: APPLY_FLOOR_TRACKER_MOVE_20270115000012"
         required: true
@@ -76,7 +76,7 @@ jobs:
           if [[ "$APPLY_MODE" == "apply" ]]; then
             test "$APPLY_CONFIRMATION" = "APPLY_FLOOR_TRACKER_MOVE_20270115000012"
           else
-            test "$APPLY_MODE" = "preflight"
+            [[ "$APPLY_MODE" == "preflight" || "$APPLY_MODE" == "verify" ]]
           fi
 
       - name: Setup Node.js 20
@@ -99,6 +99,7 @@ jobs:
         run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
 
       - name: Prove exact migration plan and optionally apply
+        if: inputs.mode != 'verify'
         working-directory: VinPoker
         shell: bash
         env:
@@ -138,7 +139,7 @@ jobs:
           fi
 
       - name: Verify ledger and exact ACL state
-        if: inputs.mode == 'apply'
+        if: inputs.mode == 'apply' || inputs.mode == 'verify'
         working-directory: VinPoker
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}

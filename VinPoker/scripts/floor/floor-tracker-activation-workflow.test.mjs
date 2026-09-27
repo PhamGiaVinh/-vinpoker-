@@ -13,6 +13,8 @@ test("activation workflow is exact, protected, and versioned", () => {
   assert.match(workflow, /20270115000012_floor_tracker_move_activation_v1\.sql/);
   assert.match(workflow, /EXACT_SCOPE_DRY_RUN=PASS/);
   assert.match(workflow, /supabase db push --linked --include-all --yes/);
+  assert.match(workflow, /options: \[preflight, verify, apply\]/);
+  assert.match(workflow, /inputs\.mode == 'apply' \|\| inputs\.mode == 'verify'/);
   assert.doesNotMatch(workflow, /migration repair|schema_migrations.*(?:insert|update|delete)/i);
 });
 
