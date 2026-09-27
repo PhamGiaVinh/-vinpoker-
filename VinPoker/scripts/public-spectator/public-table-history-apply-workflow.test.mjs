@@ -16,6 +16,8 @@ test("table-history workflow is exact, protected, hashed and versioned", () => {
   assert.match(workflow, /supabase db push --linked --include-all --yes/);
   assert.match(workflow, /options: \[preflight, verify, apply\]/);
   assert.match(workflow, /20270115000015_tracker_voice_dealer_handoff_authority\.sql/);
+  assert.match(workflow, /20270115000016_tracker_correction_uat_release2\.sql/);
+  assert.match(workflow, /20270115000017_tracker_completed_hand_correction_uat\.sql/);
   assert.doesNotMatch(workflow, /migration repair|schema_migrations.*(?:insert|update|delete)/i);
 });
 
