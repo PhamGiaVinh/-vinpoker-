@@ -11,7 +11,7 @@ beforeAll(() => {
   };
 });
 
-const { rpc, client, saveFailure, brandingLayout, brandingAssets } = vi.hoisted(() => {
+const { rpc, client, saveFailure, brandingLayout, brandingAssets, authState } = vi.hoisted(() => {
   const saveFailure = { value: false };
   const brandingLayout = { value: {} as unknown };
   const brandingAssets = { value: { logo_url: null as string | null, background_url: null as string | null } };
@@ -24,10 +24,18 @@ const { rpc, client, saveFailure, brandingLayout, brandingAssets } = vi.hoisted(
     };
     return { data: { revision: 8 }, error: null };
   });
-  return { rpc, client: { rpc }, saveFailure, brandingLayout, brandingAssets };
+  return {
+    rpc,
+    client: { rpc },
+    saveFailure,
+    brandingLayout,
+    brandingAssets,
+    authState: { user: { id: "owner-1" } as { id: string } | null },
+  };
 });
 
 vi.mock("@/integrations/supabase/SupabaseClientContext", () => ({ useSupabaseClient: () => client }));
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: authState.user }) }));
 vi.mock("@/lib/featureFlags", () => ({ FEATURES: { tvLayoutEditorV1: true } }));
 vi.mock("@/components/ProofUploader", () => ({ ProofUploader: () => <div>Image upload</div> }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
@@ -35,9 +43,23 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 import { TvBrandingEditor } from "./TvBrandingEditor";
 import { toast } from "sonner";
 
-afterEach(() => { cleanup(); rpc.mockClear(); saveFailure.value = false; brandingLayout.value = {}; brandingAssets.value = { logo_url: null, background_url: null }; });
+afterEach(() => { cleanup(); rpc.mockClear(); saveFailure.value = false; brandingLayout.value = {}; brandingAssets.value = { logo_url: null, background_url: null }; authState.user = { id: "owner-1" }; });
 
 describe("TvBrandingEditor publish boundary", () => {
+  it("rechecks server authority when the authenticated owner session becomes available", async () => {
+    authState.user = null;
+    const view = render(<TvBrandingEditor tournamentId="flight-1" />);
+
+    expect(rpc).not.toHaveBeenCalledWith("can_edit_tv_tournament_layout_v1", expect.anything());
+    expect(screen.queryByRole("button", { name: /Edit TV layout/i })).toBeNull();
+
+    authState.user = { id: "owner-1" };
+    view.rerender(<TvBrandingEditor tournamentId="flight-1" />);
+
+    expect(await screen.findByRole("button", { name: /Edit TV layout/i })).toBeVisible();
+    expect(rpc).toHaveBeenCalledWith("can_edit_tv_tournament_layout_v1", { p_tournament_id: "flight-1" });
+  });
+
   it("previews the draft through the broadcast clock renderer", async () => {
     render(<TvBrandingEditor tournamentId="flight-1" />);
     fireEvent.click(await screen.findByRole("button", { name: /Edit TV layout/i }));
