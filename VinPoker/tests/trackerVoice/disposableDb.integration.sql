@@ -228,6 +228,57 @@ SELECT public.tracker_voice_test_assert(
   AND (:'runtime_ok_payload'::JSONB->>'physical_table_id')::UUID = '83000000-0000-4000-8000-000000000001',
   'assigned Dealer resolves exact canonical table and physical table'
 );
+
+SELECT set_config('request.jwt.claim.sub', '81100000-0000-4000-8000-000000000001', false);
+SELECT set_config('request.jwt.claims', '{"sub":"81100000-0000-4000-8000-000000000001","role":"authenticated"}', false);
+SELECT public.get_tracker_voice_runtime_context(
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001'
+)::TEXT AS payload \gset runtime_owner_
+SELECT public.tracker_voice_test_assert(
+  (:'runtime_owner_payload'::JSONB->>'ok')::BOOLEAN
+  AND (:'runtime_owner_payload'::JSONB->>'can_mint_session')::BOOLEAN,
+  'exact-club Owner can use Voice while the sole current Dealer remains assigned'
+);
+
+SELECT set_config('request.jwt.claim.sub', '81300000-0000-4000-8000-000000000001', false);
+SELECT set_config('request.jwt.claims', '{"sub":"81300000-0000-4000-8000-000000000001","role":"authenticated"}', false);
+SELECT public.get_tracker_voice_runtime_context(
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001'
+)::TEXT AS payload \gset runtime_floor_
+SELECT public.tracker_voice_test_assert(
+  (:'runtime_floor_payload'::JSONB->>'ok')::BOOLEAN
+  AND (:'runtime_floor_payload'::JSONB->>'can_mint_session')::BOOLEAN,
+  'exact-club Floor can use Voice while the sole current Dealer remains assigned'
+);
+
+SELECT set_config('request.jwt.claim.sub', '81600000-0000-4000-8000-000000000001', false);
+SELECT set_config('request.jwt.claims', '{"sub":"81600000-0000-4000-8000-000000000001","role":"authenticated"}', false);
+SELECT public.get_tracker_voice_runtime_context(
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001'
+)::TEXT AS payload \gset runtime_cross_club_
+SELECT public.tracker_voice_test_assert(
+  :'runtime_cross_club_payload'::JSONB->>'error' = 'dealer_assignment_missing'
+  AND (:'runtime_cross_club_payload'::JSONB->>'read_only')::BOOLEAN,
+  'Owner or Floor from another club cannot use Voice'
+);
+
+SELECT set_config('request.jwt.claim.sub', '81400000-0000-4000-8000-000000000001', false);
+SELECT set_config('request.jwt.claims', '{"sub":"81400000-0000-4000-8000-000000000001","role":"authenticated"}', false);
+SELECT public.get_tracker_voice_runtime_context(
+  '85000000-0000-4000-8000-000000000001',
+  '84000000-0000-4000-8000-000000000001'
+)::TEXT AS payload \gset runtime_tracker_only_
+SELECT public.tracker_voice_test_assert(
+  :'runtime_tracker_only_payload'::JSONB->>'error' = 'dealer_assignment_missing'
+  AND (:'runtime_tracker_only_payload'::JSONB->>'read_only')::BOOLEAN,
+  'Tracker-only member cannot gain Owner or Floor Voice authority'
+);
+
+SELECT set_config('request.jwt.claim.sub', '81200000-0000-4000-8000-000000000001', false);
+SELECT set_config('request.jwt.claims', '{"sub":"81200000-0000-4000-8000-000000000001","role":"authenticated"}', false);
 SELECT public.get_tracker_voice_runtime_context(
   '85000000-0000-4000-8000-000000000001',
   '84000000-0000-4000-8000-000000000002'
