@@ -75,6 +75,7 @@ export function OpenTableDialog({
   const supabase = useSupabaseClient();
   const [catalog, setCatalog] = useState<FloorTableCatalogRow[]>([]);
   const [unconfiguredTables, setUnconfiguredTables] = useState<string[]>([]);
+  const [repairTables, setRepairTables] = useState<string[]>([]);
   const [v3GameTableIdByNumber, setV3GameTableIdByNumber] = useState<Record<number, string>>({});
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
   const [controlMode, setControlMode] = useState<FloorTableControlMode>("manual");
@@ -97,6 +98,7 @@ export function OpenTableDialog({
     setLoadingCatalog(true);
     setCatalogError(null);
     setUnconfiguredTables([]);
+    setRepairTables([]);
     try {
       if (tableControlV3.enabled) {
         if (tableControlV3.redrawSeatLockEnabled) {
@@ -105,13 +107,21 @@ export function OpenTableDialog({
           if (inventory.ok === false) {
             setCatalog([]);
             setV3GameTableIdByNumber({});
-            setCatalogError("Không tải được kho bàn của giải. Bàn đang dùng ở giải khác đã được ẩn để tránh chọn nhầm.");
+            setCatalogError(inventory.error === "actor_not_allowed" || inventory.error.includes("access_denied")
+              ? "Tài khoản này không có quyền xem kho bàn của giải."
+              : inventory.error.includes("NETWORK")
+                ? "Mất kết nối khi tải kho bàn. Hãy kiểm tra mạng và thử lại."
+                : "Không tải được kho bàn. Hãy tải lại; nếu lỗi còn tiếp diễn, dữ liệu phiên bàn cần được kiểm tra.");
             return;
           }
           const tableIds: Record<number, string> = {};
           for (const item of inventory.data) if (item.tableNumber != null) tableIds[item.tableNumber] = item.gameTableId;
           setV3GameTableIdByNumber(tableIds);
-          setUnconfiguredTables(inventory.data.filter((item) => item.tableNumber == null).map((item) => item.tableName || "Bàn chưa chuẩn hóa"));
+          const repairs = inventory.data.filter((item) => item.availabilityStatus === "repair_required");
+          setUnconfiguredTables([
+            ...inventory.data.filter((item) => item.tableNumber == null).map((item) => item.tableName || "Bàn chưa chuẩn hóa"),
+          ]);
+          setRepairTables(repairs.map((item) => `Bàn ${item.tableNumber ?? "?"}`));
           setCatalog(inventory.data.map((item) => ({
             table_number: item.tableNumber,
             status: item.availabilityStatus === "current_tournament" ? "active" : null,
@@ -277,6 +287,11 @@ export function OpenTableDialog({
               {unconfiguredTables.length > 0 && (
                 <p role="status" className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-3 text-sm text-amber-100">
                   {unconfiguredTables.length} bàn cũ chưa có số chuẩn ({unconfiguredTables.join(", ")}). Các bàn này không thể chọn; cần đối soát trước khi đưa vào kho bàn V3.
+                </p>
+              )}
+              {repairTables.length > 0 && (
+                <p role="status" className="rounded-xl border border-rose-400/30 bg-rose-400/8 px-3 py-3 text-sm text-rose-100">
+                  {repairTables.join(", ")} đang có phiên bàn cần sửa nên tạm khóa. Các bàn khác vẫn có thể mở bình thường.
                 </p>
               )}
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]">
