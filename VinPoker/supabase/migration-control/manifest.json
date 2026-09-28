@@ -129,6 +129,21 @@
       "state": "SOURCE_BOUND"
     },
     {
+      "domain": "History",
+      "oldVersion": null,
+      "newVersion": "20270128000009",
+      "semanticName": "tracker_history_reparent_invalidation_v1",
+      "filename": "20270128000009_tracker_history_reparent_invalidation_v1.sql",
+      "normalizedSqlSha256": null,
+      "dependencies": [
+        "20270128000004",
+        "20270128000006"
+      ],
+      "ownerSession": "S4",
+      "sourceSha": "5eac09ec76ebd5f5babd5fca775930a087e15a03",
+      "state": "RESERVED_NO_SQL"
+    },
+    {
       "domain": "Floor",
       "oldVersion": "20270127000000",
       "newVersion": "20270128000007",
@@ -169,7 +184,8 @@
     "20270128000005",
     "20270128000006",
     "20270128000007",
-    "20270128000008"
+    "20270128000008",
+    "20270128000009"
   ],
   "safety": {
     "daybreakEnabled": false,

@@ -16,6 +16,7 @@ production gates remain off.
 | History audit | `20270115000022` | `20270128000006` | `tracker_history_completion_audit_fixes` | `20270128000004` | S4 |
 | Floor | `20270127000000` | `20270128000007` | `floor_v3_critical_consistency` | `20270115000018` | S5 |
 | Voice | `20270115000023` | `20270128000008` | `tracker_voice_floor_owner_telegram_dealer` | `20270115000020`, `20270115000018` | S6 |
+| History reparent invalidation | none | `20270128000009` | `tracker_history_reparent_invalidation_v1` | `20270128000004`, `20270128000006` | S4 |
 
 The numeric order is the only permitted protected apply order. A dependency
 must be verified before its dependent migration is considered. Independent

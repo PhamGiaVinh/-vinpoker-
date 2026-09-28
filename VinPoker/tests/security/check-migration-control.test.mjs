@@ -117,6 +117,57 @@ test("rejects a branch reservation collision", () => {
   ));
 });
 
+test("protects the S4 History reparent invalidation reservation and predecessors", () => {
+  const foundation = reservation({
+    newVersion: "20270128000004",
+    semanticName: "tracker_history_completion_queue",
+    filename: "20270128000004_tracker_history_completion_queue.sql",
+    dependencies: [],
+    normalizedSqlSha256: null,
+    state: "RESERVED_NO_SQL",
+  });
+  const audit = reservation({
+    newVersion: "20270128000006",
+    semanticName: "tracker_history_completion_audit_fixes",
+    filename: "20270128000006_tracker_history_completion_audit_fixes.sql",
+    dependencies: ["20270128000004"],
+    normalizedSqlSha256: null,
+    state: "RESERVED_NO_SQL",
+  });
+  const reparent = reservation({
+    oldVersion: null,
+    newVersion: "20270128000009",
+    semanticName: "tracker_history_reparent_invalidation_v1",
+    filename: "20270128000009_tracker_history_reparent_invalidation_v1.sql",
+    dependencies: ["20270128000004", "20270128000006"],
+    normalizedSqlSha256: null,
+    ownerSession: "S4",
+    state: "RESERVED_NO_SQL",
+  });
+  const competingBranch = {
+    ...reparent,
+    semanticName: "tracker_history_other_semantic_v1",
+    filename: "20270128000009_tracker_history_other_semantic_v1.sql",
+    ownerSession: "S1",
+  };
+  const valid = fixture({ reservations: [foundation, audit, reparent] });
+  assert.deepEqual(findMigrationControlProblems(valid), []);
+  const input = fixture({
+    reservations: [foundation, audit, reparent, competingBranch],
+    rows: [row("20270128000009", "tracker_history_other_semantic_v1", "select 1;\n")],
+  });
+  const problems = findMigrationControlProblems(input);
+  assert.ok(problems.some(
+    (problem) => problem.includes("branch reservation collision 20270128000009"),
+  ));
+  assert.ok(problems.some(
+    (problem) => problem.includes("reserved semantic collision 20270128000009"),
+  ));
+  assert.ok(problems.some(
+    (problem) => problem.includes("protected apply order must list every reservation exactly once"),
+  ));
+});
+
 test("rejects local SQL that disagrees with an immutable production receipt", () => {
   const source = "select 'voice';\n";
   const input = fixture({
