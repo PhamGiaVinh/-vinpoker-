@@ -125,6 +125,7 @@ SELECT jsonb_build_object(
     jsonb_build_object('winnerId','d3000000-0000-4000-8000-000000000032','amount',100)))),
   'refunds','[]'::jsonb,'handRanks','[]'::jsonb,'totals','{}'::jsonb
 ) AS payload FROM history_runtime_source;
+GRANT SELECT ON history_runtime_source, history_runtime_outcome TO service_role;
 
 SET ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',false);
