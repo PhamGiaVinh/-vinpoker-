@@ -42,6 +42,13 @@ test("package contains no named live-data mutation", () => {
   const source = [JSON.stringify({ entries, control }), readFileSync("../.github/workflows/protected-nine-exact-apply.yml", "utf8"), readFileSync("docs/operations/PROTECTED_NINE_CUTOVER.md", "utf8")].join("\n");
   for (const forbidden of ["Phil", "Tom", "Bàn 8", "Ban 8"]) assert.equal(source.includes(forbidden), false);
 });
+test("TV v1 preflight matches the authenticated live legacy shape exactly", () => {
+  const [query] = entries.find((entry) => entry.newVersion === "20270128000002").postcheck.preflightQueries;
+  assert.match(query, /f5e98d5224cdee45586c69b789a14a7fc5fd8cd7cf23f78451ca68097a7a7bf8/);
+  assert.match(query, /proconfig=ARRAY\['search_path=public'\]/);
+  assert.match(query, /has_function_privilege\('anon'/);
+  assert.match(query, /has_function_privilege\('authenticated'/);
+});
 test("atomic query owns a separate lock and inserts one immutable receipt", () => {
   for (const entry of entries) {
     const query = buildAtomicMigrationQuery(entry);
