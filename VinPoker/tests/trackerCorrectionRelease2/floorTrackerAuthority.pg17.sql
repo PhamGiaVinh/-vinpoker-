@@ -83,6 +83,7 @@ INSERT INTO public.tracker_correction_uat_scopes(
 ) VALUES
   ('91000000-0000-4000-8000-000000000001', '95000000-0000-4000-8000-000000000001', '94000000-0000-4000-8000-000000000001', '91100000-0000-4000-8000-000000000001', 'report_wrong_action', true),
   ('91000000-0000-4000-8000-000000000001', '95000000-0000-4000-8000-000000000001', '94000000-0000-4000-8000-000000000001', '91100000-0000-4000-8000-000000000002', 'report_wrong_action', true),
+  ('91000000-0000-4000-8000-000000000001', '95000000-0000-4000-8000-000000000001', '94000000-0000-4000-8000-000000000001', '91100000-0000-4000-8000-000000000002', 'undo_open_hand', true),
   ('91000000-0000-4000-8000-000000000001', '95000000-0000-4000-8000-000000000001', '94000000-0000-4000-8000-000000000001', '91100000-0000-4000-8000-000000000003', 'report_wrong_action', true),
   ('91000000-0000-4000-8000-000000000001', '95000000-0000-4000-8000-000000000001', '94000000-0000-4000-8000-000000000001', '91100000-0000-4000-8000-000000000004', 'report_wrong_action', true),
   ('91000000-0000-4000-8000-000000000001', '95000000-0000-4000-8000-000000000001', '94000000-0000-4000-8000-000000000001', '91100000-0000-4000-8000-000000000004', 'undo_open_hand', true),
@@ -202,8 +203,32 @@ SELECT public.tracker_voice_test_assert(
   'whole-hand report enforces tenant and exact table-session-hand lineage'
 );
 
--- Owner/Floor reporting scope cannot be reused for action-level report or
--- undo. Existing edit authority remains Tracker + Dealer assignment + lock.
+-- A Floor reporting scope cannot be reused for action-level report or undo.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '91100000-0000-4000-8000-000000000002', false);
+SELECT public.report_tracker_wrong_action_v1(
+  '95000000-0000-4000-8000-000000000001',
+  '94000000-0000-4000-8000-000000000001',
+  '96000000-0000-4000-8000-000000000001',
+  '99900000-0000-4000-8000-000000000001', '{}'::jsonb, 7,
+  '99000000-0000-4000-8000-000000000010'
+)::text AS payload \gset floor_action_
+SELECT public.undo_tracker_last_action_v1(
+  '95000000-0000-4000-8000-000000000001',
+  '94000000-0000-4000-8000-000000000001',
+  '96000000-0000-4000-8000-000000000001',
+  '99900000-0000-4000-8000-000000000001', 7,
+  '99000000-0000-4000-8000-000000000011'
+)::text AS payload \gset floor_undo_
+RESET ROLE;
+SELECT public.tracker_voice_test_assert(
+  :'floor_action_payload'::jsonb->>'error' = 'actor_not_allowed'
+  AND :'floor_undo_payload'::jsonb->>'error' = 'actor_not_allowed',
+  'Floor whole-hand reporting does not grant action report or undo authority'
+);
+
+-- Canonical is_club_tracker includes the club owner. Preserve that old helper
+-- meaning, then fail closed because the owner has no exact Dealer assignment.
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '91100000-0000-4000-8000-000000000001', false);
 SELECT public.report_tracker_wrong_action_v1(
@@ -222,9 +247,9 @@ SELECT public.undo_tracker_last_action_v1(
 )::text AS payload \gset owner_undo_
 RESET ROLE;
 SELECT public.tracker_voice_test_assert(
-  :'owner_action_payload'::jsonb->>'error' = 'actor_not_allowed'
-  AND :'owner_undo_payload'::jsonb->>'error' = 'actor_not_allowed',
-  'Owner whole-hand reporting does not grant action report or undo authority'
+  :'owner_action_payload'::jsonb->>'error' = 'dealer_assignment_not_unique'
+  AND :'owner_undo_payload'::jsonb->>'error' = 'dealer_assignment_not_unique',
+  'Owner without an exact Dealer assignment cannot report an action or undo'
 );
 
 -- The alert row, not tracker_voice_configs, is the canonical progression
