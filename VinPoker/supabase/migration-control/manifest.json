@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "kind": "vinpoker-migration-control",
+  "normalization": "UTF-8 with CRLF and lone CR normalized to LF",
+  "baselineSourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
+  "productionReceipts": [
+    {
+      "version": "20270115000018",
+      "semanticName": "dealer_assignment_session_binding",
+      "normalizedSqlSha256": "530659ed7a03b503a8b518a55ec2724272e7c9ab095a9762e5f22e98f594133a"
+    },
+    {
+      "version": "20270115000019",
+      "semanticName": "tracker_voice_floor_owner_authority",
+      "normalizedSqlSha256": "be67d23b2e24bfb6edb4b4ac427dd8d3d984729bebf08af0d2e81b5997e01c8a"
+    },
+    {
+      "version": "20270115000020",
+      "semanticName": "tracker_voice_floor_owner_authority",
+      "normalizedSqlSha256": "be67d23b2e24bfb6edb4b4ac427dd8d3d984729bebf08af0d2e81b5997e01c8a"
+    }
+  ],
+  "knownSourceCollisions": [
+    {
+      "version": "20270115000001",
+      "reason": "active Tracker migration and owner-gated Public Spectator pending source are intentionally separated",
+      "identities": [
+        "public_spectator_live_display:6fd63ce2f66915fdf28531c1219df29728aa58eeaa55cd92f428d67883272f52",
+        "tracker_blind_position_lineage:8ad8fcd6056a663ff024863adeb2697091be5384d217f32b1df7521a5f943ba2"
+      ]
+    },
+    {
+      "version": "20270115000002",
+      "reason": "active immutable remote-history receipt and owner-gated appearance pending source are intentionally separated",
+      "identities": [
+        "remote_history_receipt:b5f473b2e8693a44d9ff26b73124a6d094835378b0a73db8eb4bf84d43c19247",
+        "tournament_table_appearance:559c90188a84c6f77216180bd4e26b57088de17faea2d49c8121cd8892f2f8fb"
+      ]
+    }
+  ],
+  "reservations": [
+    {
+      "domain": "Dealer Swing",
+      "oldVersion": "20270115000018",
+      "newVersion": "20270128000001",
+      "semanticName": "dealer_swing_authorization_containment_v1",
+      "filename": "20270128000001_dealer_swing_authorization_containment_v1.sql",
+      "normalizedSqlSha256": null,
+      "dependencies": [
+        "20270115000018"
+      ],
+      "ownerSession": "S3",
+      "sourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
+      "state": "RESERVED_NO_SQL"
+    },
+    {
+      "domain": "TV",
+      "oldVersion": "20260924065041",
+      "newVersion": "20270128000002",
+      "semanticName": "tv_display_config_guarded_rpc_v1",
+      "filename": "20270128000002_tv_display_config_guarded_rpc_v1.sql",
+      "normalizedSqlSha256": null,
+      "dependencies": [],
+      "ownerSession": "S2",
+      "sourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
+      "state": "RESERVED_NO_SQL",
+      "releaseGates": [
+        "verify exact live TV v1 digest and ACL before Stage A"
+      ]
+    },
+    {
+      "domain": "TV",
+      "oldVersion": null,
+      "newVersion": "20270128000003",
+      "semanticName": "tv_display_direct_update_revoke_v1",
+      "filename": "20270128000003_tv_display_direct_update_revoke_v1.sql",
+      "normalizedSqlSha256": null,
+      "dependencies": [
+        "20270128000002"
+      ],
+      "ownerSession": "S2",
+      "sourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
+      "state": "RESERVED_NO_SQL",
+      "releaseGates": [
+        "compatible frontend proof must pass before Stage B"
+      ]
+    },
+    {
+      "domain": "History",
+      "oldVersion": "20270115000019",
+      "newVersion": "20270128000004",
+      "semanticName": "tracker_history_completion_queue",
+      "filename": "20270128000004_tracker_history_completion_queue.sql",
+      "normalizedSqlSha256": "fb2b559c5f58d361adb7ea403527c9e187bcbdbbb686f78e78777f2d5a7c4646",
+      "dependencies": [
+        "20270115000018"
+      ],
+      "ownerSession": "S4",
+      "sourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
+      "state": "SOURCE_BOUND"
+    },
+    {
+      "domain": "Correction",
+      "oldVersion": "20270115000021",
+      "newVersion": "20270128000005",
+      "semanticName": "tracker_correction_floor_tracker_authority",
+      "filename": "20270128000005_tracker_correction_floor_tracker_authority.sql",
+      "normalizedSqlSha256": "891ee5a0e8e0c03f906205947962bb4b0f2496dce48b5030798f2ac163725a4e",
+      "dependencies": [
+        "20270115000020",
+        "20270128000004"
+      ],
+      "ownerSession": "S1",
+      "sourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
+      "state": "SOURCE_BOUND"
+    },
+    {
+      "domain": "History",
+      "oldVersion": "20270115000022",
+      "newVersion": "20270128000006",
+      "semanticName": "tracker_history_completion_audit_fixes",
+      "filename": "20270128000006_tracker_history_completion_audit_fixes.sql",
+      "normalizedSqlSha256": "4d30a36f2866e09b5ab8f5616ca1e4b5db97e11c6e25e8fde345be7e29ac84d3",
+      "dependencies": [
+        "20270128000004"
+      ],
+      "ownerSession": "S4",
+      "sourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
+      "state": "SOURCE_BOUND"
+    },
+    {
+      "domain": "Floor",
+      "oldVersion": "20270127000000",
+      "newVersion": "20270128000007",
+      "semanticName": "floor_v3_critical_consistency",
+      "filename": "20270128000007_floor_v3_critical_consistency.sql",
+      "normalizedSqlSha256": "bdf7376f98b7da84d394b41d200682d5fd4e742b56f5726e8043832d314facf8",
+      "dependencies": [
+        "20270115000018"
+      ],
+      "ownerSession": "S5",
+      "sourceSha": "a0fc0747ddca67635b3b90ea0aae2127c35e2372",
+      "state": "RESERVED_BRANCH_SOURCE"
+    },
+    {
+      "domain": "Voice",
+      "oldVersion": "20270115000023",
+      "newVersion": "20270128000008",
+      "semanticName": "tracker_voice_floor_owner_telegram_dealer",
+      "filename": "20270128000008_tracker_voice_floor_owner_telegram_dealer.sql",
+      "normalizedSqlSha256": "e9743b969141ad68bf4ec4595b5486f9cdfe6d8c167796d01cb5cf7e66a8776c",
+      "dependencies": [
+        "20270115000020",
+        "20270115000018"
+      ],
+      "ownerSession": "S6",
+      "sourceSha": "7d7cfb19c29a531ef29681b2f8ab94a044bcc4ca",
+      "state": "RESERVED_BRANCH_SOURCE",
+      "releaseGates": [
+        "verify live authority function digest before exact apply"
+      ]
+    }
+  ],
+  "protectedApplyOrder": [
+    "20270128000001",
+    "20270128000002",
+    "20270128000003",
+    "20270128000004",
+    "20270128000005",
+    "20270128000006",
+    "20270128000007",
+    "20270128000008"
+  ],
+  "safety": {
+    "daybreakEnabled": false,
+    "dbApply": false,
+    "edgeDeploy": false,
+    "frontendDeploy": false,
+    "flagActivation": false,
+    "ledgerRepair": false
+  }
+}
