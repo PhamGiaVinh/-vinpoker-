@@ -1,653 +1,794 @@
 {
-  "tables": [
+  "schemaVersion": 2,
+  "stages": [
     {
-      "acl": [
-        "postgres:INSERT",
-        "postgres:SELECT",
-        "postgres:UPDATE",
-        "postgres:DELETE",
-        "postgres:TRUNCATE",
-        "postgres:REFERENCES",
-        "postgres:TRIGGER",
-        "postgres:MAINTAIN"
-      ],
-      "rls": true,
-      "name": "public.dealer_swing_operator_requests",
-      "force_rls": false
+      "version": "20270128000001",
+      "scope_sha256": "c29a75fb265466cd04984b30cf5a91946165dc104c5745b045fa80c6234a4956",
+      "contract_sha256": "0c8075ae31901d85da0babb0bc1ed5a7e64453207e21c538271e65fd3d1b17e9"
     },
     {
-      "acl": [
-        "postgres:INSERT",
-        "postgres:SELECT",
-        "postgres:UPDATE",
-        "postgres:DELETE",
-        "postgres:TRUNCATE",
-        "postgres:REFERENCES",
-        "postgres:TRIGGER",
-        "postgres:MAINTAIN",
-        "service_role:INSERT",
-        "service_role:SELECT",
-        "service_role:UPDATE",
-        "service_role:DELETE",
-        "service_role:TRUNCATE",
-        "service_role:REFERENCES",
-        "service_role:TRIGGER",
-        "service_role:MAINTAIN"
-      ],
-      "rls": true,
-      "name": "public.tracker_hand_blind_correction_audit",
-      "force_rls": false
+      "version": "20270128000002",
+      "scope_sha256": "9b86791d1a4bde71de6fef4f765471ab1903cedfe869264fbf74c85b1997b533",
+      "contract_sha256": "aef3f88792b32805dc2e1d64609db70061cca33a394f7e16b49f5760827664b6"
     },
     {
-      "acl": [
-        "postgres:INSERT",
-        "postgres:SELECT",
-        "postgres:UPDATE",
-        "postgres:DELETE",
-        "postgres:TRUNCATE",
-        "postgres:REFERENCES",
-        "postgres:TRIGGER",
-        "postgres:MAINTAIN",
-        "service_role:INSERT",
-        "service_role:SELECT",
-        "service_role:UPDATE",
-        "service_role:DELETE",
-        "service_role:TRUNCATE",
-        "service_role:REFERENCES",
-        "service_role:TRIGGER",
-        "service_role:MAINTAIN"
-      ],
-      "rls": true,
-      "name": "public.tracker_historical_display_queue",
-      "force_rls": false
+      "version": "20270128000003",
+      "scope_sha256": "9aa60d59bb501562b00bbad3b0b1301d74e9e70e9e86b4f9f9630ebbc4528006",
+      "contract_sha256": "7ccd867e574f432b347c15db5125ed8dbe7dc182ea1ba5727e857d7c4ddaf032"
     },
     {
-      "acl": [
-        "postgres:INSERT",
-        "postgres:SELECT",
-        "postgres:UPDATE",
-        "postgres:DELETE",
-        "postgres:TRUNCATE",
-        "postgres:REFERENCES",
-        "postgres:TRIGGER",
-        "postgres:MAINTAIN",
-        "anon:INSERT",
-        "anon:SELECT",
-        "anon:UPDATE",
-        "anon:DELETE",
-        "anon:TRUNCATE",
-        "anon:REFERENCES",
-        "anon:TRIGGER",
-        "anon:MAINTAIN",
-        "authenticated:INSERT",
-        "authenticated:SELECT",
-        "authenticated:DELETE",
-        "authenticated:TRUNCATE",
-        "authenticated:REFERENCES",
-        "authenticated:TRIGGER",
-        "authenticated:MAINTAIN",
-        "service_role:INSERT",
-        "service_role:SELECT",
-        "service_role:UPDATE",
-        "service_role:DELETE",
-        "service_role:TRUNCATE",
-        "service_role:REFERENCES",
-        "service_role:TRIGGER",
-        "service_role:MAINTAIN"
-      ],
-      "rls": true,
-      "name": "public.tv_displays",
-      "force_rls": false
+      "version": "20270128000004",
+      "scope_sha256": "e208b91f1d6ad7a64c14e638e476ddd5ced6e372e05bc0463a859123768c4fe2",
+      "contract_sha256": "e4132bb23faa854a67cf8dbbf85560495856eb0965a7857f7bb555ec08600e3a"
+    },
+    {
+      "version": "20270128000005",
+      "scope_sha256": "a9e589f430ff1cbf2ef21449b821c60615db07bec8987e0c9934801d6a4bc435",
+      "contract_sha256": "43be4af76b94aaacc33fc6445b32234ee2a42a316b02dad6d645f062360e16f8"
+    },
+    {
+      "version": "20270128000006",
+      "scope_sha256": "cbd1b44c022249fd04fb81555a4dcf86d1a0d1d3cee2b4f895dc687c991e93f5",
+      "contract_sha256": "f9c0abe360821ca3bf6db80ed8a12a63ccaf5119fdf65f2a83805f208eff6cef"
+    },
+    {
+      "version": "20270128000007",
+      "scope_sha256": "49bc15fc4168d0ba5b550a8475b292b38e5ca262c22a530f45e4ca8541996c0c",
+      "contract_sha256": "7f51584415ad3cd27c1dc51a0c483a00f49776f4b6fb02869d9e866c82de54ed"
+    },
+    {
+      "version": "20270128000008",
+      "scope_sha256": "bb764f5712d38f39ffcc34a445704cdd36a40f36e882c78afa3ffa194c7fe76f",
+      "contract_sha256": "7044fcf6e92ad3066b9ec2b8aebd8d8a669304645fc97e97ee8c40cb574013a6"
+    },
+    {
+      "version": "20270128000009",
+      "scope_sha256": "63903fd79006a37c49577d670074c98d376ea9cbb48cfe766a8cf6c69eec6ff9",
+      "contract_sha256": "038c949ce39a01bfe2acf452657aafd4d9008673eea5553bc5ac2c5f5ecf1db8"
     }
   ],
-  "indexes": [
-    {
-      "name": "idx_tracker_history_queue_ready",
-      "definition": "CREATE INDEX idx_tracker_history_queue_ready ON public.tracker_historical_display_queue USING btree (next_attempt_at, enqueued_at) WHERE (status = ANY (ARRAY['pending'::text, 'processing'::text]))"
-    }
-  ],
-  "policies": [
-    {
-      "name": "tracker_floor_alerts_select_ops",
-      "roles": [
-        "authenticated"
-      ],
-      "command": "r",
-      "relation": "public.tracker_floor_alerts",
-      "permissive": true,
-      "check_expression": "",
-      "using_expression": "(is_club_tracker(( SELECT auth.uid() AS uid), club_id) OR is_club_floor(( SELECT auth.uid() AS uid), club_id) OR is_club_owner(( SELECT auth.uid() AS uid), club_id) OR is_club_admin(( SELECT auth.uid() AS uid), club_id) OR ((reported_by = ( SELECT auth.uid() AS uid)) AND ((assignment_id IS NULL) OR (EXISTS ( SELECT 1\n   FROM dealer_assignments da\n  WHERE ((da.id = tracker_floor_alerts.assignment_id) AND (da.status = 'assigned'::text) AND (da.released_at IS NULL)))))))"
-    }
-  ],
-  "triggers": [
-    {
-      "name": "trg_guard_tracker_blind_snapshot_insert",
-      "function": "floor_private.guard_tracker_blind_snapshot()",
-      "relation": "public.tournament_hands",
-      "definition": "CREATE TRIGGER trg_guard_tracker_blind_snapshot_insert BEFORE INSERT ON tournament_hands FOR EACH ROW EXECUTE FUNCTION floor_private.guard_tracker_blind_snapshot()"
-    },
-    {
-      "name": "trg_guard_tracker_blind_snapshot_update",
-      "function": "floor_private.guard_tracker_blind_snapshot()",
-      "relation": "public.tournament_hands",
-      "definition": "CREATE TRIGGER trg_guard_tracker_blind_snapshot_update BEFORE UPDATE OF tracker_level_id, tracker_level_number, tracker_small_blind, tracker_big_blind, tracker_bba, tracker_is_break, tracker_blind_evidence ON tournament_hands FOR EACH ROW EXECUTE FUNCTION floor_private.guard_tracker_blind_snapshot()"
-    },
-    {
-      "name": "trg_tracker_enqueue_historical_display",
-      "function": "public.tracker_enqueue_historical_display_trigger()",
-      "relation": "public.tournament_hands",
-      "definition": "CREATE TRIGGER trg_tracker_enqueue_historical_display AFTER INSERT OR UPDATE ON tournament_hands FOR EACH ROW EXECUTE FUNCTION tracker_enqueue_historical_display_trigger()"
-    },
-    {
-      "name": "trg_tracker_hand_action_source_revision",
-      "function": "public.tracker_bump_hand_source_revision()",
-      "relation": "public.hand_actions",
-      "definition": "CREATE TRIGGER trg_tracker_hand_action_source_revision BEFORE INSERT OR DELETE OR UPDATE ON hand_actions FOR EACH ROW EXECUTE FUNCTION tracker_bump_hand_source_revision()"
-    },
-    {
-      "name": "trg_tracker_hand_player_source_revision",
-      "function": "public.tracker_bump_hand_source_revision()",
-      "relation": "public.hand_players",
-      "definition": "CREATE TRIGGER trg_tracker_hand_player_source_revision BEFORE INSERT OR DELETE OR UPDATE ON hand_players FOR EACH ROW EXECUTE FUNCTION tracker_bump_hand_source_revision()"
-    },
-    {
-      "name": "trg_tracker_hand_source_revision",
-      "function": "public.tracker_bump_hand_source_revision()",
-      "relation": "public.tournament_hands",
-      "definition": "CREATE TRIGGER trg_tracker_hand_source_revision BEFORE UPDATE OF button_seat, community_cards, pot_size, side_pots, status, is_voided, tracker_level_id, tracker_level_number, tracker_small_blind, tracker_big_blind, tracker_bba, tracker_is_break, tracker_blind_evidence ON tournament_hands FOR EACH ROW EXECUTE FUNCTION tracker_bump_hand_source_revision()"
-    }
-  ],
-  "functions": [
-    {
-      "acl": [
-        "postgres:EXECUTE"
-      ],
-      "args": "p_tournament_id uuid, p_source_tournament_table_id uuid",
-      "name": "floor_private.floor_break_plan_rows_v1",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "s",
-      "body_sha256": "056a4ca20e375b1e81e86da7b9928e6d305187dc2c34ed4e336ccb08670af355",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE"
-      ],
-      "args": "",
-      "name": "floor_private.floor_close_completed_break_source_v1",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "df253ff7cf08b87134f883df5d6744c27d226e9acca20c8f1d7e9e5eb7ca172c",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE"
-      ],
-      "args": "",
-      "name": "floor_private.guard_tracker_blind_snapshot",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "852beb24a6ecfd4ea1aebc4e7e82100f446960fd8646225296871fef63743082",
-      "security_definer": false
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE"
-      ],
-      "args": "p_table_id uuid, p_table_session_id uuid, p_assignment_id uuid, p_expected_version integer, p_next_attendance_id uuid",
-      "name": "public._dealer_swing_assert_exact_context",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "aebfd65a056497b54c38131cc7937469b625c2e5a1946e204932bd769f17e1bf",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE"
-      ],
-      "args": "p_result jsonb, p_club_id uuid, p_table_id uuid, p_table_session_id uuid",
-      "name": "public._dealer_swing_bind_result_session",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "d5d1a44266409a90957c4fe0ebb2a3872f7c93a1b00cf4116600e1b5b7bf8d4f",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE"
-      ],
-      "args": "p_tournament_id uuid, p_tournament_table_id uuid, p_hand_id uuid, p_capability text",
-      "name": "public._tracker_correction_uat_context",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "cb89ff39ecd152584c3fdadaba269ef704806a2ddd9745fbb1dc58940a1723cd",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE"
-      ],
-      "args": "p_tournament_id uuid, p_tournament_table_id uuid, p_actor uuid",
-      "name": "public._tracker_voice_assignment_context",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "98bcaf90139ec711934a2905ef29b43b1984cbf8353f676fb253802bb1e7b158",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "service_role:EXECUTE"
-      ],
-      "args": "p_limit integer",
-      "name": "public.claim_tracker_historical_display_jobs",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "7ed536bdf807e7f24d37ff3bd7671050ecb00b8f5bf29fc43e0484e94630107e",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "service_role:EXECUTE"
-      ],
-      "args": "p_hand_id uuid, p_actor_user_id uuid, p_expected_source_revision bigint, p_expected_source_chain_hash text, p_outcome_hash text, p_request_hash text, p_idempotency_key text, p_public_outcome jsonb",
-      "name": "public.commit_historical_tournament_settlement_display_outcome",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "5fd65fc8b14755c53865d43644594d969d4224b53ec66bff72cf2cf559c59d68",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "service_role:EXECUTE"
-      ],
-      "args": "p_hand_id uuid, p_actor_user_id uuid, p_actor_kind text, p_expected_source_revision bigint, p_expected_source_chain_hash text, p_outcome_hash text, p_request_hash text, p_idempotency_key text, p_public_outcome jsonb, p_lease_token uuid",
-      "name": "public.commit_tracker_historical_display_outcome_v2",
-      "owner": "postgres",
-      "config": [
-        "search_path=public, extensions"
-      ],
-      "volatility": "v",
-      "body_sha256": "466a93b6ecee2bd84e2660ced87d08917431ef7449409e9b0caf408230ca26df",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "service_role:EXECUTE"
-      ],
-      "args": "p_hand_id uuid, p_actor_user_id uuid, p_expected_source_revision bigint, p_level_id uuid, p_level_number integer, p_small_blind bigint, p_big_blind bigint, p_ante bigint, p_reason text, p_idempotency_key text, p_evidence jsonb",
-      "name": "public.correct_tracker_historical_hand_blinds",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "b0c58000c51ccd630baac62807f9d3566f2ed599b36e98a19827cefd32514995",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "service_role:EXECUTE"
-      ],
-      "args": "p_hand_id uuid, p_source_revision bigint, p_lease_token uuid, p_status text, p_error_code text",
-      "name": "public.finish_tracker_historical_display_job",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "9b49302c8744fee3612d6fec5a4e36e49c833bacdc942cd9b9ccf05ea5ef547d",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "authenticated:EXECUTE"
-      ],
-      "args": "p_tournament_table_id uuid, p_expected_revision bigint, p_request_id uuid, p_draw_mode text, p_plan_hash text",
-      "name": "public.floor_break_table_v5",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "fb39708620cc0f9bb3ed8f22aeb7ffa43f40007b056ad0dee93d83b9cc1ed393",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "authenticated:EXECUTE"
-      ],
-      "args": "p_tournament_table_id uuid, p_expected_revision bigint, p_draw_mode text",
-      "name": "public.floor_plan_break_table_v1",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "s",
-      "body_sha256": "859052b7fbf1b48d30c960da45499352758e2cff987abc318a92bf89d5cd8ebd",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "authenticated:EXECUTE"
-      ],
-      "args": "p_tournament_id uuid",
-      "name": "public.get_floor_tournament_table_inventory_v1",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "s",
-      "body_sha256": "3b9d1e43fc183460d08bc12287194de81f942eafeb21d879de819d05eb838945",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "authenticated:EXECUTE"
-      ],
-      "args": "p_tournament_id uuid",
-      "name": "public.get_floor_tournament_table_roster_v5",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "s",
-      "body_sha256": "1410a169125e1bcc23b04c80767cc7a1bf24fb50fecaed6419e0d8597ee51fd5",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "anon:EXECUTE",
-        "authenticated:EXECUTE",
-        "service_role:EXECUTE"
-      ],
-      "args": "p_tournament_id uuid, p_tournament_table_id uuid, p_limit integer, p_before_created_at timestamp with time zone, p_before_id uuid",
-      "name": "public.get_public_tournament_table_history_v2",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "s",
-      "body_sha256": "8cb05d32ac2c6716fda50de53781bcb4af99524f2b97f933c659614ed6651987",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "service_role:EXECUTE"
-      ],
-      "args": "p_hand_id uuid",
-      "name": "public.get_tournament_historical_display_source_hash",
-      "owner": "postgres",
-      "config": [
-        "search_path=public, extensions"
-      ],
-      "volatility": "s",
-      "body_sha256": "fdf52ab2900f57ca8c35d25f67d7ee65695f00443790e5c9876ac35f06adf8e0",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "service_role:EXECUTE"
-      ],
-      "args": "p_hand_id uuid, p_tournament_id uuid, p_actor_user_id uuid, p_idempotency_key text, p_expected_source_revision bigint, p_expected_source_chain_hash text, p_expected_outcome_hash text",
-      "name": "public.get_tracker_historical_display_commit_receipt",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "d708d77ff95dd490fc61aa10a539fcd41da16ebb9b09f43c83067062f0133be3",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "authenticated:EXECUTE",
-        "service_role:EXECUTE"
-      ],
-      "args": "p_tournament_id uuid",
-      "name": "public.get_tracker_historical_display_queue_status",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "6f47fa48aa2476a9063a815cafd4e67f8f4e3f4b02066484189ff68d72de453e",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "service_role:EXECUTE"
-      ],
-      "args": "p_hand_id uuid, p_tournament_id uuid",
-      "name": "public.get_tracker_historical_display_snapshot",
-      "owner": "postgres",
-      "config": [
-        "search_path=public, extensions"
-      ],
-      "volatility": "s",
-      "body_sha256": "e93e78c7ab459bae39ba1e3a3dc4d4f40dd11dcf9f15b143340c693a7e63b8a0",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "service_role:EXECUTE",
-        "anon:EXECUTE",
-        "authenticated:EXECUTE"
-      ],
-      "args": "p_display_token text",
-      "name": "public.get_tv_display_state_v3",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "5af51b2f079cd49f42fbe01d1d3d7ab0ea8327126e6777a42f6f5f474f0fb90f",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "authenticated:EXECUTE",
-        "service_role:EXECUTE"
-      ],
-      "args": "p_tournament_id uuid",
-      "name": "public.get_tv_tournament_branding_v1",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "s",
-      "body_sha256": "d183a711d859115aaccaa099bd95aaf43009a35e5c36e4becf5a36b4d6c4e088",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "authenticated:EXECUTE"
-      ],
-      "args": "p_tournament_id uuid, p_status text",
-      "name": "public.list_tracker_floor_alerts",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "f4062352bf03c9d38e0153c1882d061fbda55e22e918f6df140100b0f3291479",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "authenticated:EXECUTE"
-      ],
-      "args": "p_table_id uuid, p_table_session_id uuid, p_assignment_id uuid, p_expected_version integer, p_request_id uuid",
-      "name": "public.operator_perform_swing",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "bb6abc9cf7816e294c14f5f7b3e2a7f4cfe3c3277211b7929a67b5a409ea4739",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "authenticated:EXECUTE"
-      ],
-      "args": "p_tournament_id uuid, p_tournament_table_id uuid, p_hand_id uuid, p_expected_source_revision bigint, p_request_id uuid",
-      "name": "public.report_tracker_wrong_hand_v1",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "c66279da2d66dfee1d17ee372e08bd2b076c6628e4f7f3e3e4e478620af93c40",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "service_role:EXECUTE",
-        "authenticated:EXECUTE"
-      ],
-      "args": "p_display_id uuid, p_assigned_tournament_id uuid, p_layout text, p_announcement text, p_name text, p_zone text",
-      "name": "public.save_tv_display_config_v1",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "6bfc8bbf88503d2f39c14f070667f97f22ffc924337de8e66c615cbb299fac2c",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE"
-      ],
-      "args": "",
-      "name": "public.tracker_bump_hand_source_revision",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "b4f5fa36d7320014df81f2bf667c10b666ee804fbe63f7cb3b366afb3f3b36a7",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE"
-      ],
-      "args": "p_hand_id uuid",
-      "name": "public.tracker_enqueue_historical_display",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "fa9e0085fb22de55d1bfc97a2bbd210ce7f1b1520fef78225c60883e735542f7",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE"
-      ],
-      "args": "",
-      "name": "public.tracker_enqueue_historical_display_trigger",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "210f01333128b61b16dfe8c48945cf35a61cb2d2ba6c889a86b4baf5020c7c52",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "service_role:EXECUTE"
-      ],
-      "args": "p_table_id uuid, p_table_session_id uuid, p_old_assignment_id uuid, p_expected_version integer, p_next_attendance_id uuid, p_swing_due_at timestamp with time zone, p_duration_minutes integer, p_send_to_break boolean, p_break_duration_minutes integer",
-      "name": "public.worker_execute_pre_assigned_swing",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "3972351f2dc219d130a420fcc16a1cb8ae2b20a917af85b90cd96f75779db8f9",
-      "security_definer": true
-    },
-    {
-      "acl": [
-        "postgres:EXECUTE",
-        "service_role:EXECUTE"
-      ],
-      "args": "p_table_id uuid, p_table_session_id uuid, p_assignment_id uuid, p_duration_minutes integer, p_send_to_break boolean, p_break_duration_minutes integer, p_max_break_minutes integer, p_expected_version integer, p_next_attendance_id uuid, p_rest_deficit_minutes integer",
-      "name": "public.worker_perform_swing",
-      "owner": "postgres",
-      "config": [
-        "search_path=\"\""
-      ],
-      "volatility": "v",
-      "body_sha256": "a9ec2420cfda2e25a5f0f588a8b73a618a6839233547ca531f45dd275aa61c24",
-      "security_definer": true
-    }
-  ],
-  "constraints": [
-    {
-      "name": "tournament_settlement_outcomes_actor_kind_check",
-      "relation": "public.tournament_settlement_outcomes",
-      "definition": "CHECK (actor_kind = ANY (ARRAY['owner_admin'::text, 'system_worker'::text]))"
-    },
-    {
-      "name": "tracker_hand_blind_correction_audit_source_kind_check",
-      "relation": "public.tracker_hand_blind_correction_audit",
-      "definition": "CHECK (source_kind IS NULL OR source_kind = 'owner_admin_selected_snapshot'::text)"
-    }
-  ],
-  "scope_sha256": "2bae36cf4d3579a47f75d9a8674b70f51030de08c8898eea2cf99eba906bbe01"
+  "finalContract": {
+    "tables": [
+      {
+        "acl": [
+          "postgres:INSERT",
+          "postgres:SELECT",
+          "postgres:UPDATE",
+          "postgres:DELETE",
+          "postgres:TRUNCATE",
+          "postgres:REFERENCES",
+          "postgres:TRIGGER",
+          "postgres:MAINTAIN"
+        ],
+        "rls": true,
+        "name": "public.dealer_swing_operator_requests",
+        "force_rls": false
+      },
+      {
+        "acl": [
+          "postgres:INSERT",
+          "postgres:SELECT",
+          "postgres:UPDATE",
+          "postgres:DELETE",
+          "postgres:TRUNCATE",
+          "postgres:REFERENCES",
+          "postgres:TRIGGER",
+          "postgres:MAINTAIN",
+          "service_role:INSERT",
+          "service_role:SELECT",
+          "service_role:UPDATE",
+          "service_role:DELETE",
+          "service_role:TRUNCATE",
+          "service_role:REFERENCES",
+          "service_role:TRIGGER",
+          "service_role:MAINTAIN"
+        ],
+        "rls": true,
+        "name": "public.tracker_hand_blind_correction_audit",
+        "force_rls": false
+      },
+      {
+        "acl": [
+          "postgres:INSERT",
+          "postgres:SELECT",
+          "postgres:UPDATE",
+          "postgres:DELETE",
+          "postgres:TRUNCATE",
+          "postgres:REFERENCES",
+          "postgres:TRIGGER",
+          "postgres:MAINTAIN",
+          "service_role:INSERT",
+          "service_role:SELECT",
+          "service_role:UPDATE",
+          "service_role:DELETE",
+          "service_role:TRUNCATE",
+          "service_role:REFERENCES",
+          "service_role:TRIGGER",
+          "service_role:MAINTAIN"
+        ],
+        "rls": true,
+        "name": "public.tracker_historical_display_queue",
+        "force_rls": false
+      },
+      {
+        "acl": [
+          "postgres:INSERT",
+          "postgres:SELECT",
+          "postgres:UPDATE",
+          "postgres:DELETE",
+          "postgres:TRUNCATE",
+          "postgres:REFERENCES",
+          "postgres:TRIGGER",
+          "postgres:MAINTAIN",
+          "anon:INSERT",
+          "anon:SELECT",
+          "anon:UPDATE",
+          "anon:DELETE",
+          "anon:TRUNCATE",
+          "anon:REFERENCES",
+          "anon:TRIGGER",
+          "anon:MAINTAIN",
+          "authenticated:INSERT",
+          "authenticated:SELECT",
+          "authenticated:DELETE",
+          "authenticated:TRUNCATE",
+          "authenticated:REFERENCES",
+          "authenticated:TRIGGER",
+          "authenticated:MAINTAIN",
+          "service_role:INSERT",
+          "service_role:SELECT",
+          "service_role:UPDATE",
+          "service_role:DELETE",
+          "service_role:TRUNCATE",
+          "service_role:REFERENCES",
+          "service_role:TRIGGER",
+          "service_role:MAINTAIN"
+        ],
+        "rls": true,
+        "name": "public.tv_displays",
+        "force_rls": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "idx_tracker_history_queue_ready",
+        "definition": "CREATE INDEX idx_tracker_history_queue_ready ON public.tracker_historical_display_queue USING btree (next_attempt_at, enqueued_at) WHERE (status = ANY (ARRAY['pending'::text, 'processing'::text]))"
+      }
+    ],
+    "policies": [
+      {
+        "name": "tracker_floor_alerts_select_ops",
+        "roles": [
+          "authenticated"
+        ],
+        "command": "r",
+        "relation": "public.tracker_floor_alerts",
+        "permissive": true,
+        "check_expression": "",
+        "using_expression": "(is_club_tracker(( SELECT auth.uid() AS uid), club_id) OR is_club_floor(( SELECT auth.uid() AS uid), club_id) OR is_club_owner(( SELECT auth.uid() AS uid), club_id) OR is_club_admin(( SELECT auth.uid() AS uid), club_id) OR ((reported_by = ( SELECT auth.uid() AS uid)) AND ((assignment_id IS NULL) OR (EXISTS ( SELECT 1\n   FROM dealer_assignments da\n  WHERE ((da.id = tracker_floor_alerts.assignment_id) AND (da.status = 'assigned'::text) AND (da.released_at IS NULL)))))))"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "trg_floor_close_completed_break_source_v1",
+        "function": "floor_private.floor_close_completed_break_source_v1()",
+        "relation": "public.floor_pending_tracker_moves",
+        "definition": "CREATE CONSTRAINT TRIGGER trg_floor_close_completed_break_source_v1 AFTER UPDATE ON floor_pending_tracker_moves DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION floor_private.floor_close_completed_break_source_v1()"
+      },
+      {
+        "name": "trg_guard_tracker_blind_snapshot_insert",
+        "function": "floor_private.guard_tracker_blind_snapshot()",
+        "relation": "public.tournament_hands",
+        "definition": "CREATE TRIGGER trg_guard_tracker_blind_snapshot_insert BEFORE INSERT ON tournament_hands FOR EACH ROW EXECUTE FUNCTION floor_private.guard_tracker_blind_snapshot()"
+      },
+      {
+        "name": "trg_guard_tracker_blind_snapshot_update",
+        "function": "floor_private.guard_tracker_blind_snapshot()",
+        "relation": "public.tournament_hands",
+        "definition": "CREATE TRIGGER trg_guard_tracker_blind_snapshot_update BEFORE UPDATE OF tracker_level_id, tracker_level_number, tracker_small_blind, tracker_big_blind, tracker_bba, tracker_is_break, tracker_blind_evidence ON tournament_hands FOR EACH ROW EXECUTE FUNCTION floor_private.guard_tracker_blind_snapshot()"
+      },
+      {
+        "name": "trg_tracker_enqueue_historical_display",
+        "function": "public.tracker_enqueue_historical_display_trigger()",
+        "relation": "public.tournament_hands",
+        "definition": "CREATE TRIGGER trg_tracker_enqueue_historical_display AFTER INSERT OR UPDATE ON tournament_hands FOR EACH ROW EXECUTE FUNCTION tracker_enqueue_historical_display_trigger()"
+      },
+      {
+        "name": "trg_tracker_hand_action_source_revision",
+        "function": "public.tracker_bump_hand_source_revision()",
+        "relation": "public.hand_actions",
+        "definition": "CREATE TRIGGER trg_tracker_hand_action_source_revision BEFORE INSERT OR DELETE OR UPDATE ON hand_actions FOR EACH ROW EXECUTE FUNCTION tracker_bump_hand_source_revision()"
+      },
+      {
+        "name": "trg_tracker_hand_player_source_revision",
+        "function": "public.tracker_bump_hand_source_revision()",
+        "relation": "public.hand_players",
+        "definition": "CREATE TRIGGER trg_tracker_hand_player_source_revision BEFORE INSERT OR DELETE OR UPDATE ON hand_players FOR EACH ROW EXECUTE FUNCTION tracker_bump_hand_source_revision()"
+      },
+      {
+        "name": "trg_tracker_hand_source_revision",
+        "function": "public.tracker_bump_hand_source_revision()",
+        "relation": "public.tournament_hands",
+        "definition": "CREATE TRIGGER trg_tracker_hand_source_revision BEFORE UPDATE OF button_seat, community_cards, pot_size, side_pots, status, is_voided, tracker_level_id, tracker_level_number, tracker_small_blind, tracker_big_blind, tracker_bba, tracker_is_break, tracker_blind_evidence ON tournament_hands FOR EACH ROW EXECUTE FUNCTION tracker_bump_hand_source_revision()"
+      }
+    ],
+    "functions": [
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "p_tournament_id uuid, p_source_tournament_table_id uuid",
+        "name": "floor_private.floor_break_plan_rows_v1",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "s",
+        "body_sha256": "056a4ca20e375b1e81e86da7b9928e6d305187dc2c34ed4e336ccb08670af355",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "",
+        "name": "floor_private.floor_close_completed_break_source_v1",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "df253ff7cf08b87134f883df5d6744c27d226e9acca20c8f1d7e9e5eb7ca172c",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "",
+        "name": "floor_private.guard_tracker_blind_snapshot",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "852beb24a6ecfd4ea1aebc4e7e82100f446960fd8646225296871fef63743082",
+        "security_definer": false
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "p_table_id uuid, p_table_session_id uuid, p_assignment_id uuid, p_expected_version integer, p_next_attendance_id uuid",
+        "name": "public._dealer_swing_assert_exact_context",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "aebfd65a056497b54c38131cc7937469b625c2e5a1946e204932bd769f17e1bf",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "p_result jsonb, p_club_id uuid, p_table_id uuid, p_table_session_id uuid",
+        "name": "public._dealer_swing_bind_result_session",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "d5d1a44266409a90957c4fe0ebb2a3872f7c93a1b00cf4116600e1b5b7bf8d4f",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "p_tournament_id uuid, p_tournament_table_id uuid, p_hand_id uuid, p_capability text",
+        "name": "public._tracker_correction_uat_context",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "cb89ff39ecd152584c3fdadaba269ef704806a2ddd9745fbb1dc58940a1723cd",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "p_tournament_id uuid, p_tournament_table_id uuid, p_actor uuid",
+        "name": "public._tracker_voice_assignment_context",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "98bcaf90139ec711934a2905ef29b43b1984cbf8353f676fb253802bb1e7b158",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_limit integer",
+        "name": "public.claim_tracker_historical_display_jobs",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "7ed536bdf807e7f24d37ff3bd7671050ecb00b8f5bf29fc43e0484e94630107e",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_hand_id uuid, p_actor_user_id uuid, p_expected_source_revision bigint, p_expected_source_chain_hash text, p_outcome_hash text, p_request_hash text, p_idempotency_key text, p_public_outcome jsonb",
+        "name": "public.commit_historical_tournament_settlement_display_outcome",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "5fd65fc8b14755c53865d43644594d969d4224b53ec66bff72cf2cf559c59d68",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_hand_id uuid, p_actor_user_id uuid, p_actor_kind text, p_expected_source_revision bigint, p_expected_source_chain_hash text, p_outcome_hash text, p_request_hash text, p_idempotency_key text, p_public_outcome jsonb, p_lease_token uuid",
+        "name": "public.commit_tracker_historical_display_outcome_v2",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, extensions"
+        ],
+        "volatility": "v",
+        "body_sha256": "466a93b6ecee2bd84e2660ced87d08917431ef7449409e9b0caf408230ca26df",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_hand_id uuid, p_actor_user_id uuid, p_expected_source_revision bigint, p_level_id uuid, p_level_number integer, p_small_blind bigint, p_big_blind bigint, p_ante bigint, p_reason text, p_idempotency_key text, p_evidence jsonb",
+        "name": "public.correct_tracker_historical_hand_blinds",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "b0c58000c51ccd630baac62807f9d3566f2ed599b36e98a19827cefd32514995",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "p_old_assignment_id uuid, p_next_attendance_id uuid, p_swing_due_at timestamp with time zone, p_duration_minutes integer, p_send_to_break boolean, p_break_duration_minutes integer",
+        "name": "public.execute_pre_assigned_swing",
+        "owner": "postgres",
+        "config": [
+          "search_path=public"
+        ],
+        "volatility": "v",
+        "body_sha256": "75e26f10d4679472b78af91324a3c45aeb86c6f5e77cbd2e6d3eac122b13f62b",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "p_old_assignment_id uuid, p_next_attendance_id uuid, p_swing_due_at timestamp with time zone, p_duration_minutes integer, p_send_to_break boolean, p_break_duration_minutes integer",
+        "name": "public.execute_pre_assigned_swing_rpc",
+        "owner": "postgres",
+        "config": [
+          "search_path=public"
+        ],
+        "volatility": "v",
+        "body_sha256": "a7bbb8477425af0082313b3dd717ddd8eae89244c8454ceff4781a41ebce0634",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_hand_id uuid, p_source_revision bigint, p_lease_token uuid, p_status text, p_error_code text",
+        "name": "public.finish_tracker_historical_display_job",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "9b49302c8744fee3612d6fec5a4e36e49c833bacdc942cd9b9ccf05ea5ef547d",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "authenticated:EXECUTE"
+        ],
+        "args": "p_tournament_table_id uuid, p_expected_revision bigint, p_request_id uuid, p_draw_mode text, p_plan_hash text",
+        "name": "public.floor_break_table_v5",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "fb39708620cc0f9bb3ed8f22aeb7ffa43f40007b056ad0dee93d83b9cc1ed393",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "authenticated:EXECUTE"
+        ],
+        "args": "p_tournament_table_id uuid, p_expected_revision bigint, p_draw_mode text",
+        "name": "public.floor_plan_break_table_v1",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "s",
+        "body_sha256": "859052b7fbf1b48d30c960da45499352758e2cff987abc318a92bf89d5cd8ebd",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "authenticated:EXECUTE"
+        ],
+        "args": "p_tournament_id uuid",
+        "name": "public.get_floor_tournament_table_inventory_v1",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "s",
+        "body_sha256": "3b9d1e43fc183460d08bc12287194de81f942eafeb21d879de819d05eb838945",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "authenticated:EXECUTE"
+        ],
+        "args": "p_tournament_id uuid",
+        "name": "public.get_floor_tournament_table_roster_v5",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "s",
+        "body_sha256": "1410a169125e1bcc23b04c80767cc7a1bf24fb50fecaed6419e0d8597ee51fd5",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "anon:EXECUTE",
+          "authenticated:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_tournament_id uuid, p_tournament_table_id uuid, p_limit integer, p_before_created_at timestamp with time zone, p_before_id uuid",
+        "name": "public.get_public_tournament_table_history_v2",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "s",
+        "body_sha256": "8cb05d32ac2c6716fda50de53781bcb4af99524f2b97f933c659614ed6651987",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_hand_id uuid",
+        "name": "public.get_tournament_historical_display_source_hash",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, extensions"
+        ],
+        "volatility": "s",
+        "body_sha256": "fdf52ab2900f57ca8c35d25f67d7ee65695f00443790e5c9876ac35f06adf8e0",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_hand_id uuid, p_tournament_id uuid, p_actor_user_id uuid, p_idempotency_key text, p_expected_source_revision bigint, p_expected_source_chain_hash text, p_expected_outcome_hash text",
+        "name": "public.get_tracker_historical_display_commit_receipt",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "d708d77ff95dd490fc61aa10a539fcd41da16ebb9b09f43c83067062f0133be3",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "authenticated:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_tournament_id uuid",
+        "name": "public.get_tracker_historical_display_queue_status",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "6f47fa48aa2476a9063a815cafd4e67f8f4e3f4b02066484189ff68d72de453e",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_hand_id uuid, p_tournament_id uuid",
+        "name": "public.get_tracker_historical_display_snapshot",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, extensions"
+        ],
+        "volatility": "s",
+        "body_sha256": "e93e78c7ab459bae39ba1e3a3dc4d4f40dd11dcf9f15b143340c693a7e63b8a0",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_display_token text",
+        "name": "public.get_tv_display_state",
+        "owner": "postgres",
+        "config": [
+          "search_path=public"
+        ],
+        "volatility": "v",
+        "body_sha256": "f5e98d5224cdee45586c69b789a14a7fc5fd8cd7cf23f78451ca68097a7a7bf8",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "service_role:EXECUTE",
+          "anon:EXECUTE",
+          "authenticated:EXECUTE"
+        ],
+        "args": "p_display_token text",
+        "name": "public.get_tv_display_state_v3",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "5af51b2f079cd49f42fbe01d1d3d7ab0ea8327126e6777a42f6f5f474f0fb90f",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "authenticated:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_tournament_id uuid",
+        "name": "public.get_tv_tournament_branding_v1",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "s",
+        "body_sha256": "d183a711d859115aaccaa099bd95aaf43009a35e5c36e4becf5a36b4d6c4e088",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "authenticated:EXECUTE"
+        ],
+        "args": "p_tournament_id uuid, p_status text",
+        "name": "public.list_tracker_floor_alerts",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "f4062352bf03c9d38e0153c1882d061fbda55e22e918f6df140100b0f3291479",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "authenticated:EXECUTE"
+        ],
+        "args": "p_table_id uuid, p_table_session_id uuid, p_assignment_id uuid, p_expected_version integer, p_request_id uuid",
+        "name": "public.operator_perform_swing",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "bb6abc9cf7816e294c14f5f7b3e2a7f4cfe3c3277211b7929a67b5a409ea4739",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "p_assignment_id uuid, p_duration_minutes integer, p_send_to_break boolean, p_break_duration_minutes integer, p_max_break_minutes integer, p_expected_version integer, p_next_attendance_id uuid, p_rest_deficit_minutes integer",
+        "name": "public.perform_swing",
+        "owner": "postgres",
+        "config": [
+          "search_path=public"
+        ],
+        "volatility": "v",
+        "body_sha256": "8ee507f2f6700043e993002e16a5da54b63fcc549a0532d5c2581ffffae0524f",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "p_assignment_id uuid, p_next_attendance_id uuid, p_send_to_break boolean, p_break_duration_minutes integer, p_reason text",
+        "name": "public.perform_swing",
+        "owner": "postgres",
+        "config": [
+          "search_path=public"
+        ],
+        "volatility": "v",
+        "body_sha256": "fdd94c6867b0c40de16be58958693c19d72afd793d1f898194f5746c265ed859",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "p_assignment_id uuid, p_version integer, p_next_attendance_id uuid, p_send_to_break boolean, p_break_duration_minutes integer, p_swing_duration_minutes integer, p_swing_due_at timestamp with time zone, p_rest_deficit_minutes integer",
+        "name": "public.perform_swing",
+        "owner": "postgres",
+        "config": [
+          "search_path=public"
+        ],
+        "volatility": "v",
+        "body_sha256": "e37b537dd2580cd96d168e3663e4cc25da2abe931719fdcfe7501fd20be589bb",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "authenticated:EXECUTE"
+        ],
+        "args": "p_tournament_id uuid, p_tournament_table_id uuid, p_hand_id uuid, p_expected_source_revision bigint, p_request_id uuid",
+        "name": "public.report_tracker_wrong_hand_v1",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "c66279da2d66dfee1d17ee372e08bd2b076c6628e4f7f3e3e4e478620af93c40",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "service_role:EXECUTE",
+          "authenticated:EXECUTE"
+        ],
+        "args": "p_display_id uuid, p_assigned_tournament_id uuid, p_layout text, p_announcement text, p_name text, p_zone text",
+        "name": "public.save_tv_display_config_v1",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "6bfc8bbf88503d2f39c14f070667f97f22ffc924337de8e66c615cbb299fac2c",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "",
+        "name": "public.tracker_bump_hand_source_revision",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "b4f5fa36d7320014df81f2bf667c10b666ee804fbe63f7cb3b366afb3f3b36a7",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "p_hand_id uuid",
+        "name": "public.tracker_enqueue_historical_display",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "fa9e0085fb22de55d1bfc97a2bbd210ce7f1b1520fef78225c60883e735542f7",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "",
+        "name": "public.tracker_enqueue_historical_display_trigger",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "210f01333128b61b16dfe8c48945cf35a61cb2d2ba6c889a86b4baf5020c7c52",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_table_id uuid, p_table_session_id uuid, p_old_assignment_id uuid, p_expected_version integer, p_next_attendance_id uuid, p_swing_due_at timestamp with time zone, p_duration_minutes integer, p_send_to_break boolean, p_break_duration_minutes integer",
+        "name": "public.worker_execute_pre_assigned_swing",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "3972351f2dc219d130a420fcc16a1cb8ae2b20a917af85b90cd96f75779db8f9",
+        "security_definer": true
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE",
+          "service_role:EXECUTE"
+        ],
+        "args": "p_table_id uuid, p_table_session_id uuid, p_assignment_id uuid, p_duration_minutes integer, p_send_to_break boolean, p_break_duration_minutes integer, p_max_break_minutes integer, p_expected_version integer, p_next_attendance_id uuid, p_rest_deficit_minutes integer",
+        "name": "public.worker_perform_swing",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "a9ec2420cfda2e25a5f0f588a8b73a618a6839233547ca531f45dd275aa61c24",
+        "security_definer": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "tournament_settlement_outcomes_actor_kind_check",
+        "relation": "public.tournament_settlement_outcomes",
+        "definition": "CHECK (actor_kind = ANY (ARRAY['owner_admin'::text, 'system_worker'::text]))"
+      },
+      {
+        "name": "tracker_hand_blind_correction_audit_source_kind_check",
+        "relation": "public.tracker_hand_blind_correction_audit",
+        "definition": "CHECK (source_kind IS NULL OR source_kind = 'owner_admin_selected_snapshot'::text)"
+      }
+    ],
+    "scope_sha256": "63903fd79006a37c49577d670074c98d376ea9cbb48cfe766a8cf6c69eec6ff9"
+  }
 }
 

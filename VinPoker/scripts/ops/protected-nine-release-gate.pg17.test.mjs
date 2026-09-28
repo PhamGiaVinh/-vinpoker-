@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { buildAtomicMigrationQuery, classifyTarget, loadRelease, normalizedHash } from "./protected-nine-release-gate.mjs";
-import { catalogSnapshotSql, compareObjectContract, deriveObjectScope } from "./protected-nine-object-contract.mjs";
+import { catalogSnapshotSql, compareObjectContract, contractHash, deriveObjectScope } from "./protected-nine-object-contract.mjs";
 
 const artifactDir = process.env.PROTECTED_NINE_SCHEMA_ARTIFACT_DIR;
 const schemaPath = artifactDir && resolve(artifactDir, "live-public-schema.sql");
@@ -97,13 +97,16 @@ test("PostgreSQL 17 restores the authenticated baseline and applies the exact ni
     stageContracts.push({ version: entry.newVersion, contract: JSON.parse(psql(catalogSnapshotSql(stageScope))) });
   }
   assert.equal(psql("SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version LIKE '2027012800000%';"), "9");
-  const candidate = { schemaVersion: 1, stages: stageContracts };
+  const candidate = {
+    schemaVersion: 2,
+    stages: stageContracts.map((stage) => ({ version: stage.version, scope_sha256: stage.contract.scope_sha256, contract_sha256: contractHash(stage.contract) })),
+    finalContract: stageContracts.at(-1).contract,
+  };
   if (process.env.PROTECTED_NINE_CONTRACT_OUTPUT) writeFileSync(process.env.PROTECTED_NINE_CONTRACT_OUTPUT, `${JSON.stringify(candidate, null, 2)}\n`, { mode: 0o600 });
-  if (process.env.PROTECTED_NINE_GENERATE_CONTRACT === "1") return;
   const expected = JSON.parse(readFileSync("scripts/ops/protected-nine-object-contract.json", "utf8"));
-  assert.deepEqual(stageContracts, expected.stages, "per-stage object contract drift");
+  assert.deepEqual(candidate.stages, expected.stages, "per-stage object contract drift");
   const contract = stageContracts.at(-1).contract;
-  const expectedContract = expected.stages.at(-1).contract;
+  const expectedContract = expected.finalContract;
   const snapshotSql = catalogSnapshotSql(deriveObjectScope(entries));
 
   const mutations = [

@@ -26,6 +26,10 @@ export function scopeHash(scope) {
   return createHash("sha256").update(JSON.stringify(scope), "utf8").digest("hex");
 }
 
+export function contractHash(contract) {
+  return createHash("sha256").update(JSON.stringify(contract), "utf8").digest("hex");
+}
+
 export function catalogSnapshotSql(scope) {
   const functionNames = literals(scope.functionNames);
   const triggerNames = literals(scope.triggerNames);
@@ -83,7 +87,7 @@ SELECT jsonb_build_object(
   'indexes',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY name) FROM index_rows x),'[]'::jsonb),
   'constraints',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY name,relation) FROM constraint_rows x),'[]'::jsonb),
   'tables',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY name) FROM table_rows x),'[]'::jsonb)
-)::text;
+)::text AS contract;
 `;
 }
 

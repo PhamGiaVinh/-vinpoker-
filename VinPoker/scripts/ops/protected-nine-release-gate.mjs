@@ -3,11 +3,12 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canonicalSqlText, scanMigrationSource } from "./ops-1359-release-gate.mjs";
+import { catalogSnapshotSql, contractHash, deriveObjectScope } from "./protected-nine-object-contract.mjs";
 
 export const PROJECT_REF = "orlesggcjamwuknxwcpk";
 export const ORDER = Array.from({ length: 9 }, (_, index) => `2027012800000${index + 1}`);
 export const CONFIRM_PREFIX = "APPLY_PROTECTED_NINE";
-export const OBJECT_CONTRACT_SHA256 = "60a46c68b8f227ba8fbdb0669455e006089176cb3977514bef45ad8df09baef4";
+export const OBJECT_CONTRACT_SHA256 = "d0f2905e33003da53efd0658a806d689e388fc7b4cf51e9d9f2aa90fbcb56ddb";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const RECEIPT_TAG = "$protected_nine_receipt$";
 
@@ -24,6 +25,8 @@ export function loadRelease(root = ROOT) {
   const postchecks = JSON.parse(readFileSync(resolve(root, "scripts/ops/protected-nine-postchecks.json"), "utf8"));
   const objectContractSource = readFileSync(resolve(root, "scripts/ops/protected-nine-object-contract.json"), "utf8");
   verifyObjectContractSource(objectContractSource);
+  const objectContract = JSON.parse(objectContractSource);
+  if (objectContract.schemaVersion !== 2 || objectContract.stages?.map((stage) => stage.version).join(",") !== ORDER.join(",")) throw new Error("Protected-nine per-stage object contract mismatch");
   if (control.kind !== "vinpoker-migration-control" || control.protectedApplyOrder?.join(",") !== ORDER.join(",")) throw new Error("Protected order is not the exact nine-entry reservation order");
   if (Object.values(control.safety ?? {}).some((value) => value !== false)) throw new Error("Production safety gates must remain OFF");
   const entries = ORDER.map((version) => {
@@ -43,7 +46,7 @@ export function loadRelease(root = ROOT) {
     return { ...reservation, name: reservation.semanticName, path, sql, postcheck, requiredReceipts };
   });
   if (postchecks.projectRef !== PROJECT_REF || postchecks.entries?.map((item) => item.version).join(",") !== ORDER.join(",")) throw new Error("Postcheck manifest identity/order mismatch");
-  return { control, entries, postchecks };
+  return { control, entries, postchecks, objectContract };
 }
 
 export function classifyTarget(history, entries, targetVersion) {
@@ -97,7 +100,7 @@ async function request(path, token, options = {}) {
 async function execute() {
   const mode = process.argv[2];
   if (!new Set(["plan", "apply", "postcheck"]).has(mode)) throw new Error("Usage: protected-nine-release-gate.mjs plan|apply|postcheck");
-  const { entries } = loadRelease();
+  const { entries, objectContract } = loadRelease();
   const entry = entries.find((item) => item.filename === process.env.TARGET_MIGRATION);
   if (!entry) throw new Error("Target migration filename is not allowlisted");
   validateInvocation(process.env, entry, mode);
@@ -120,6 +123,12 @@ async function execute() {
       const result = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query }) });
       if (!Array.isArray(result) || result.length !== 1 || result[0]?.ok !== true) throw new Error(`Postcheck failed ${entry.newVersion}`);
     }
+    const entryIndex = entries.findIndex((candidate) => candidate.newVersion === entry.newVersion);
+    const expectedStage = objectContract.stages[entryIndex];
+    const catalogResult = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query: catalogSnapshotSql(deriveObjectScope(entries.slice(0, entryIndex + 1))) }) });
+    const rawContract = catalogResult?.[0]?.contract;
+    const liveContract = typeof rawContract === "string" ? JSON.parse(rawContract) : rawContract;
+    if (!liveContract || liveContract.scope_sha256 !== expectedStage.scope_sha256 || contractHash(liveContract) !== expectedStage.contract_sha256) throw new Error(`Object contract postcheck failed ${entry.newVersion}`);
   }
   console.log(`PROTECTED_NINE_${mode.toUpperCase()}=${entry.newVersion}:${state}`);
 }
