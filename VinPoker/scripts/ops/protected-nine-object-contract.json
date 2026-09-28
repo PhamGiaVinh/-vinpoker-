@@ -45,6 +45,11 @@
       "version": "20270128000009",
       "scope_sha256": "63903fd79006a37c49577d670074c98d376ea9cbb48cfe766a8cf6c69eec6ff9",
       "contract_sha256": "038c949ce39a01bfe2acf452657aafd4d9008673eea5553bc5ac2c5f5ecf1db8"
+    },
+    {
+      "version": "20270128000010",
+      "scope_sha256": "3060c09ab0fe868d1b966f8e101af328dbc847b54bfc8471d6727c151355c620",
+      "contract_sha256": "8d349fedc6e51348aa123988c42d15df143e850e914a199b371e498b3545f76d"
     }
   ],
   "finalContract": {
@@ -254,6 +259,20 @@
         "volatility": "v",
         "body_sha256": "852beb24a6ecfd4ea1aebc4e7e82100f446960fd8646225296871fef63743082",
         "security_definer": false
+      },
+      {
+        "acl": [
+          "postgres:EXECUTE"
+        ],
+        "args": "",
+        "name": "private.multi_day_after_end_play_guard_v1",
+        "owner": "postgres",
+        "config": [
+          "search_path=\"\""
+        ],
+        "volatility": "v",
+        "body_sha256": "7bd5d860d3dedff0cc78d10f1438911d02faa1e59a200789639e563ea9c6e794",
+        "security_definer": true
       },
       {
         "acl": [
@@ -788,7 +807,7 @@
         "definition": "CHECK (source_kind IS NULL OR source_kind = 'owner_admin_selected_snapshot'::text)"
       }
     ],
-    "scope_sha256": "63903fd79006a37c49577d670074c98d376ea9cbb48cfe766a8cf6c69eec6ff9"
+    "scope_sha256": "3060c09ab0fe868d1b966f8e101af328dbc847b54bfc8471d6727c151355c620"
   }
 }
 
