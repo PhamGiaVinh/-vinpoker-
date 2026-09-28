@@ -426,12 +426,14 @@ SELECT public.tracker_voice_test_assert(
 -- Two different Dealers must be counted across the whole session. Filtering by
 -- caller first would incorrectly allow each actor to observe a count of one.
 INSERT INTO public.dealer_assignments(
-  id, dealer_id, table_id, table_session_id, assigned_at, status
+  id, dealer_id, attendance_id, table_id, table_session_id, club_id, assigned_at, status
 ) VALUES (
   '88000000-0000-4000-8000-000000000004',
   '87000000-0000-4000-8000-000000000001',
+  '87500000-0000-4000-8000-000000000001',
   '83000000-0000-4000-8000-000000000001',
   '83500000-0000-4000-8000-000000000001',
+  '81000000-0000-4000-8000-000000000001',
   now() + interval '1 second',
   'assigned'
 );
@@ -466,12 +468,14 @@ WHERE attendance_id = '87500000-0000-4000-8000-000000000003'
   AND status = 'assigned'
   AND released_at IS NULL;
 INSERT INTO public.dealer_assignments(
-  id, dealer_id, table_id, table_session_id, assigned_at, status
+  id, dealer_id, attendance_id, table_id, table_session_id, club_id, assigned_at, status
 ) VALUES (
   '88000000-0000-4000-8000-000000000005',
   '87000000-0000-4000-8000-000000000003',
+  '87500000-0000-4000-8000-000000000003',
   '83000000-0000-4000-8000-000000000001',
   '83500000-0000-4000-8000-000000000001',
+  '81000000-0000-4000-8000-000000000001',
   pg_catalog.now(),
   'assigned'
 );
@@ -513,12 +517,14 @@ UPDATE public.dealer_assignments
 SET status = 'released', released_at = pg_catalog.now()
 WHERE id = '88000000-0000-4000-8000-000000000005';
 INSERT INTO public.dealer_assignments(
-  id, dealer_id, table_id, table_session_id, assigned_at, status
+  id, dealer_id, attendance_id, table_id, table_session_id, club_id, assigned_at, status
 ) VALUES (
   '88000000-0000-4000-8000-000000000006',
   '87000000-0000-4000-8000-000000000001',
+  '87500000-0000-4000-8000-000000000001',
   '83000000-0000-4000-8000-000000000001',
   '83500000-0000-4000-8000-000000000001',
+  '81000000-0000-4000-8000-000000000001',
   pg_catalog.now(),
   'assigned'
 );
