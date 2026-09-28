@@ -26,7 +26,14 @@ export function loadRelease(root = ROOT) {
   const objectContractSource = readFileSync(resolve(root, "scripts/ops/protected-nine-object-contract.json"), "utf8");
   verifyObjectContractSource(objectContractSource);
   const objectContract = JSON.parse(objectContractSource);
-  if (objectContract.schemaVersion !== 2 || objectContract.stages?.map((stage) => stage.version).join(",") !== ORDER.join(",")) throw new Error("Protected-nine per-stage object contract mismatch");
+  const contractVersions = objectContract.stages?.map((stage) => stage.version) ?? [];
+  const isRefreshCandidateRun = Boolean(process.env.PROTECTED_NINE_CONTRACT_OUTPUT);
+  const isExactContract = contractVersions.join(",") === ORDER.join(",");
+  const isPreviousPrefix = contractVersions.length === ORDER.length - 1
+    && contractVersions.every((version, index) => version === ORDER[index]);
+  if (objectContract.schemaVersion !== 2 || (!isExactContract && !(isRefreshCandidateRun && isPreviousPrefix))) {
+    throw new Error("Protected-nine per-stage object contract mismatch");
+  }
   if (control.kind !== "vinpoker-migration-control" || control.protectedApplyOrder?.join(",") !== ORDER.join(",")) throw new Error("Protected order is not the exact release reservation order");
   if (Object.values(control.safety ?? {}).some((value) => value !== false)) throw new Error("Production safety gates must remain OFF");
   const entries = ORDER.map((version) => {
