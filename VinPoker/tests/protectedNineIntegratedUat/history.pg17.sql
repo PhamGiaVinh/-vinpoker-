@@ -84,6 +84,12 @@ INSERT INTO public.tournament_tables(
 ) VALUES (
   'd3000000-0000-4000-8000-000000000015','d3000000-0000-4000-8000-000000000012','d3000000-0000-4000-8000-000000000013','d3000000-0000-4000-8000-000000000013','d3000000-0000-4000-8000-000000000014',1,'History table TEST','active','tracker'
 );
+INSERT INTO public.tournament_seats(
+  id,tournament_id,player_id,table_id,tournament_table_id,table_session_id,
+  seat_number,chip_count,player_name
+) VALUES
+  ('d3000000-0000-4000-8000-000000000016','d3000000-0000-4000-8000-000000000012','d3000000-0000-4000-8000-000000000032','d3000000-0000-4000-8000-000000000015','d3000000-0000-4000-8000-000000000015','d3000000-0000-4000-8000-000000000014',1,1100,'History winner TEST'),
+  ('d3000000-0000-4000-8000-000000000017','d3000000-0000-4000-8000-000000000012','d3000000-0000-4000-8000-000000000033','d3000000-0000-4000-8000-000000000015','d3000000-0000-4000-8000-000000000015','d3000000-0000-4000-8000-000000000014',2,900,'History opponent TEST');
 INSERT INTO public.tournament_hands(
   id,tournament_id,table_id,tournament_table_id,table_session_id,hand_number,status,
   pot_size,button_seat,tracker_level_number,tracker_small_blind,tracker_big_blind,tracker_bba,tracker_is_break
