@@ -38,8 +38,6 @@ jobs:
           exit 1
       - name: Migration-control and runner contracts
         working-directory: VinPoker
-        env:
-          PROTECTED_NINE_CONTRACT_OUTPUT: ${{ runner.temp }}/protected-nine-object-contract.json
         run: |
           npm run check:migration-control
           node --test scripts/ops/protected-nine-release-gate.test.mjs
