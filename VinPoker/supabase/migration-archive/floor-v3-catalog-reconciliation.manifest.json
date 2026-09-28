@@ -6882,20 +6882,20 @@
       "domain": "dealer"
     },
     {
-      "version": "20270115000019",
-      "filename": "20270115000019_tracker_history_completion_queue.sql",
+      "version": "20270128000004",
+      "filename": "20270128000004_tracker_history_completion_queue.sql",
       "sha256": "fb2b559c5f58d361adb7ea403527c9e187bcbdbbb686f78e78777f2d5a7c4646",
       "domain": "tracker"
     },
     {
-      "version": "20270115000021",
-      "filename": "20270115000021_tracker_correction_floor_tracker_authority.sql",
+      "version": "20270128000005",
+      "filename": "20270128000005_tracker_correction_floor_tracker_authority.sql",
       "sha256": "891ee5a0e8e0c03f906205947962bb4b0f2496dce48b5030798f2ac163725a4e",
       "domain": "tracker"
     },
     {
-      "version": "20270115000022",
-      "filename": "20270115000022_tracker_history_completion_audit_fixes.sql",
+      "version": "20270128000006",
+      "filename": "20270128000006_tracker_history_completion_audit_fixes.sql",
       "sha256": "4d30a36f2866e09b5ab8f5616ca1e4b5db97e11c6e25e8fde345be7e29ac84d3",
       "domain": "tracker"
     }
