@@ -1,11 +1,11 @@
-name: Protected nine exact owner-gated migration apply
+name: Protected exact owner-gated migration apply
 
 on:
   workflow_dispatch:
     inputs:
       release_sha: { description: "Exact reviewed 40-character source SHA", required: true, type: string }
       project_ref: { description: "Production project", required: true, type: choice, options: [orlesggcjamwuknxwcpk] }
-      migration_filename: { description: "Exact next 20270128000001..00009 migration filename", required: true, type: string }
+      migration_filename: { description: "Exact next 20270128000001..00010 migration filename", required: true, type: string }
       normalized_sql_sha256: { description: "Exact normalized SQL SHA-256 from migration-control", required: true, type: string }
       recovery_run_id: { description: "Fresh successful restore-verified recovery workflow run ID", required: true, type: string }
       confirmation_phrase: { description: "APPLY_PROTECTED_NINE_<version>_<hash>", required: true, type: string }

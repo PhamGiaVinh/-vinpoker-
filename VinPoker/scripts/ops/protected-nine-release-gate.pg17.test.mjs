@@ -40,7 +40,7 @@ function snapshotWithMutation(mutation, snapshotSql) {
   return JSON.parse(result.stdout.trim());
 }
 
-test("PostgreSQL 17 restores the authenticated baseline and applies the exact nine migrations", { timeout: 180_000 }, () => {
+test("PostgreSQL 17 restores the authenticated baseline and applies the complete exact sequence", { timeout: 180_000 }, () => {
   assert.ok(schemaPath, "PROTECTED_NINE_SCHEMA_ARTIFACT_DIR is required");
   const schema = readFileSync(schemaPath, "utf8");
   assert.equal(createHash("sha256").update(schema, "utf8").digest("hex"), expectedSchemaSha, "captured baseline checksum drift");
@@ -110,7 +110,7 @@ test("PostgreSQL 17 restores the authenticated baseline and applies the exact ni
     const stageScope = deriveObjectScope(entries.slice(0, entryIndex + 1));
     stageContracts.push({ version: entry.newVersion, contract: JSON.parse(psql(catalogSnapshotSql(stageScope))) });
   }
-  assert.equal(psql("SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version LIKE '2027012800000%';"), "9");
+  assert.equal(psql("SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version BETWEEN '20270128000001' AND '20270128000010';"), "10");
   const candidate = {
     schemaVersion: 2,
     stages: stageContracts.map((stage) => ({ version: stage.version, scope_sha256: stage.contract.scope_sha256, contract_sha256: contractHash(stage.contract) })),
