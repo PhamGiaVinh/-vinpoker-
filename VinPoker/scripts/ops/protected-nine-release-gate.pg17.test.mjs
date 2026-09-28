@@ -50,6 +50,9 @@ test("PostgreSQL 17 restores the authenticated baseline and applies the exact ni
     END $roles$;
     CREATE SCHEMA IF NOT EXISTS extensions;
     CREATE SCHEMA IF NOT EXISTS auth;
+    CREATE SCHEMA IF NOT EXISTS centerpoint_private;
+    CREATE SCHEMA IF NOT EXISTS floor_private;
+    CREATE SCHEMA IF NOT EXISTS private;
     CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
     CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
     CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT NULL::uuid';
