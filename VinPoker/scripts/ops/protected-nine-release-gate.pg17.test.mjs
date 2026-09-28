@@ -66,8 +66,22 @@ test("PostgreSQL 17 restores the authenticated baseline and applies the exact ni
     CREATE SCHEMA IF NOT EXISTS private;
     CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
     CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
-    CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT NULL::uuid';
-    CREATE OR REPLACE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS 'SELECT NULL::text';
+    CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $auth$
+      SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
+    $auth$;
+    CREATE OR REPLACE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $auth$
+      SELECT COALESCE(
+        NULLIF(current_setting('request.jwt.claim.role', true), ''),
+        NULLIF(current_setting('request.jwt.claims', true), '')::jsonb->>'role'
+      )
+    $auth$;
+    CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $auth$
+      SELECT COALESCE(
+        NULLIF(current_setting('request.jwt.claim', true), ''),
+        NULLIF(current_setting('request.jwt.claims', true), ''),
+        '{}'
+      )::jsonb
+    $auth$;
     CREATE TABLE IF NOT EXISTS auth.users(id uuid PRIMARY KEY);
     CREATE OR REPLACE FUNCTION centerpoint_private.tv_branding_storage_insert_allowed_v1(text,text)
     RETURNS boolean LANGUAGE sql STABLE AS 'SELECT false';
