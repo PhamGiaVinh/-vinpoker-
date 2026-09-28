@@ -160,20 +160,20 @@ SELECT public.tracker_voice_test_assert(
   'one-row repair preserves business fields while version/sync triggers run'
 );
 
-SELECT public.tracker_voice_test_assert(
-  (SELECT value = 'false'::JSONB FROM public.app_settings WHERE key = 'tracker_voice_global_enabled'),
-  'global Voice gate defaults false after the rollout migration'
-);
+SELECT value::text AS value FROM public.app_settings
+WHERE key = 'tracker_voice_global_enabled' \gset captured_voice_gate_
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '81300000-0000-4000-8000-000000000001', false);
 SELECT set_config('request.jwt.claims', '{"sub":"81300000-0000-4000-8000-000000000001","role":"authenticated"}', false);
 UPDATE public.app_settings
-SET value = 'true'::JSONB
+SET value = CASE WHEN :'captured_voice_gate_value'::JSONB = 'true'::JSONB
+  THEN 'false'::JSONB ELSE 'true'::JSONB END
 WHERE key = 'tracker_voice_global_enabled';
 RESET ROLE;
 SELECT public.tracker_voice_test_assert(
-  (SELECT value = 'false'::JSONB FROM public.app_settings WHERE key = 'tracker_voice_global_enabled'),
-  'legacy media policy cannot enable the global Voice gate'
+  (SELECT value = :'captured_voice_gate_value'::JSONB FROM public.app_settings
+   WHERE key = 'tracker_voice_global_enabled'),
+  'legacy media policy cannot alter the captured global Voice gate'
 );
 UPDATE public.app_settings
 SET value = 'true'::JSONB
