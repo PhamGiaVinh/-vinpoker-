@@ -18,6 +18,14 @@ const report = {
   testCommit: process.env.GITHUB_SHA ?? null,
   migrations,
   domains: JSON.parse(process.env.UAT_DOMAIN_RESULTS ?? "{}"),
+  blockers: [
+    {
+      code: "CAPTURED_TRIGGER_CHILD_COLUMN_MISMATCH",
+      object: "private.multi_day_after_end_play_guard_v1()",
+      binding: "public.hand_actions.multi_day_end_play_actions_guard_v1",
+      evidence: "captured function evaluates OLD.tournament_id on hand_actions, which has no tournament_id column",
+    },
+  ],
 };
 report.reportSha256 = createHash("sha256").update(JSON.stringify(report)).digest("hex");
 writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });

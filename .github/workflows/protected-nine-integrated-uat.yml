@@ -78,7 +78,7 @@ jobs:
           BASELINE_RUN: "36422707061"
           BASELINE_SHA256: "703aed6b620cd24f34c31d4545b2d7e97e4a488f89fe81dfc1a36b175d259223"
           PG17_IMAGE: "postgres:17"
-          UAT_DOMAIN_RESULTS: '{"dealerSwing":"${{ steps.voice_swing.outcome }}","tv":"${{ steps.post_nine.outcome }}","historyQueueAudit":"${{ steps.post_nine.outcome }}","trackerCorrection":"${{ steps.correction.outcome }}","floor":"${{ steps.post_nine.outcome }}","trackerVoice":"${{ steps.voice_swing.outcome }}"}'
+          UAT_DOMAIN_RESULTS: '{"dealerSwing":"INCONCLUSIVE_COUPLED_WITH_VOICE","tv":"NOT_MEASURED_RUNTIME_ACL_ONLY","historyQueueAudit":"NOT_MEASURED_RUNTIME_ACL_ONLY","trackerCorrection":"${{ steps.correction.outcome }}","floor":"NOT_MEASURED_RUNTIME_ACL_ONLY","trackerVoice":"${{ steps.voice_swing.outcome }}"}'
         run: node scripts/ops/protected-nine-uat-report.mjs "$RUNNER_TEMP/protected-nine-uat-report.json"
       - name: Upload machine-readable UAT report
         if: always()
