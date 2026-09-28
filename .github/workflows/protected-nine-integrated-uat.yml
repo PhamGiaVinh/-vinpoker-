@@ -91,10 +91,6 @@ jobs:
       - name: Fail unless every integrated domain passed
         if: always()
         run: |
-          test '${{ steps.exact_nine.outcome }}' = success
-          test '${{ steps.post_nine.outcome }}' = success
-          test '${{ steps.correction.outcome }}' = success
-          test '${{ steps.voice_swing.outcome }}' = success
           node - "$RUNNER_TEMP/protected-nine-uat-report.json" <<'NODE'
           const { readFileSync } = require("node:fs");
           const report = JSON.parse(readFileSync(process.argv[2], "utf8"));
@@ -111,3 +107,7 @@ jobs:
             throw new Error(`integrated UAT domains not passed: ${failures.join(", ")}`);
           }
           NODE
+          test '${{ steps.exact_nine.outcome }}' = success
+          test '${{ steps.post_nine.outcome }}' = success
+          test '${{ steps.correction.outcome }}' = success
+          test '${{ steps.voice_swing.outcome }}' = success
