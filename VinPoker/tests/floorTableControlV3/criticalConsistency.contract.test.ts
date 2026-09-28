@@ -11,6 +11,10 @@ const repairRunbook = readFileSync(resolve(
   process.cwd(),
   "docs/runbooks/FLOOR_V3_ORPHAN_SESSION_REPAIR_20260927.sql",
 ), "utf8");
+const reconciliation = JSON.parse(readFileSync(resolve(
+  process.cwd(),
+  "supabase/migration-archive/floor-v3-catalog-reconciliation.manifest.json",
+), "utf8"));
 
 const baseRosterRow = {
   tournament_id: "tour-1",
@@ -79,6 +83,15 @@ describe("Floor V3 critical consistency contract", () => {
     }
     expect(migration).toContain("SECURITY DEFINER SET search_path = ''");
     expect(migration).toContain("auth.uid()");
+  });
+
+  it("allowlists only the exact reserved S5 migration bytes", () => {
+    expect(reconciliation.ownerGatedActiveAllowlist).toContainEqual({
+      version: "20270128000007",
+      filename: "20270128000007_floor_v3_critical_consistency.sql",
+      sha256: "9477d01fd480c0bd2f765d46ef2bcc969e4576e7855006a6f22c99b0588ec2c6",
+      domain: "floor",
+    });
   });
 
   it("parses an explicit missing-entry seat without treating it as an empty seat", async () => {
