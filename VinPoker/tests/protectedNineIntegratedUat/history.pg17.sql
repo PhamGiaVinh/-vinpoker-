@@ -7,9 +7,28 @@ END $$;
 
 SET ROLE service_role;
 SELECT set_config('request.jwt.claims', '{"role":"service_role"}', false);
+CREATE TEMP TABLE history_first_claim AS
+SELECT * FROM public.claim_tracker_historical_display_jobs(1);
 SELECT pg_temp.assert_true(
-  NOT EXISTS (SELECT 1 FROM public.claim_tracker_historical_display_jobs(1)),
-  'worker can claim safely when the queue is empty');
+  (SELECT count(*) = 1 AND bool_and(lease_token IS NOT NULL) FROM history_first_claim),
+  'worker claims one eligible queued revision with a lease token');
+UPDATE public.tracker_historical_display_queue q
+SET lease_until = now() - interval '1 second'
+FROM history_first_claim c
+WHERE q.hand_id = c.hand_id AND q.source_revision = c.source_revision;
+CREATE TEMP TABLE history_second_claim AS
+SELECT * FROM public.claim_tracker_historical_display_jobs(1);
+SELECT pg_temp.assert_true(
+  (SELECT count(*) = 1 FROM history_second_claim)
+  AND (SELECT a.hand_id = b.hand_id AND a.source_revision = b.source_revision
+         AND a.lease_token <> b.lease_token
+       FROM history_first_claim a CROSS JOIN history_second_claim b),
+  'expired processing lease is reclaimed with a fresh token');
+SELECT pg_temp.assert_true(
+  (SELECT public.finish_tracker_historical_display_job(
+    hand_id, source_revision, lease_token, 'completed', NULL)
+   FROM history_second_claim),
+  'current lease token completes exactly one queued revision');
 DO $$ BEGIN
   BEGIN
     PERFORM public.claim_tracker_historical_display_jobs(0);
