@@ -1,11 +1,11 @@
-name: Protected nine exact owner-gated migration apply
+name: Protected exact owner-gated migration apply
 
 on:
   workflow_dispatch:
     inputs:
       release_sha: { description: "Exact reviewed 40-character source SHA", required: true, type: string }
       project_ref: { description: "Production project", required: true, type: choice, options: [orlesggcjamwuknxwcpk] }
-      migration_filename: { description: "Exact next 20270128000001..00009 migration filename", required: true, type: string }
+      migration_filename: { description: "Exact next 20270128000001..00010 migration filename", required: true, type: string }
       normalized_sql_sha256: { description: "Exact normalized SQL SHA-256 from migration-control", required: true, type: string }
       recovery_run_id: { description: "Fresh successful restore-verified recovery workflow run ID", required: true, type: string }
       confirmation_phrase: { description: "APPLY_PROTECTED_NINE_<version>_<hash>", required: true, type: string }
@@ -15,7 +15,7 @@ permissions: { actions: read, contents: read }
 concurrency: { group: vinpoker-production-database-release, cancel-in-progress: false }
 env:
   PROJECT_REF: orlesggcjamwuknxwcpk
-  PROTECTED_NINE_OBJECT_CONTRACT_SHA256: d0f2905e33003da53efd0658a806d689e388fc7b4cf51e9d9f2aa90fbcb56ddb
+  PROTECTED_NINE_OBJECT_CONTRACT_SHA256: 20d227469425cf66f55530721e777f733d28a4af60d2cf46b055388507d50bdc
   RECOVERY_WORKFLOW: floor-v3-recovery-backup.yml
 
 jobs:
