@@ -413,8 +413,48 @@ $$;
 
 CREATE OR REPLACE FUNCTION floor_private.floor_close_completed_break_source_v1()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_game_table_id uuid;
 BEGIN
-  IF OLD.status <> 'pending' OR NEW.status <> 'applied' THEN RETURN NEW; END IF;
+  IF OLD.status <> 'pending' OR NEW.status NOT IN ('applied', 'stale', 'cancelled') THEN
+    RETURN NEW;
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.tournament_seats s
+      WHERE s.table_session_id = NEW.source_table_session_id AND s.is_active)
+     OR EXISTS (SELECT 1 FROM public.floor_pending_tracker_moves q
+      WHERE q.source_table_session_id = NEW.source_table_session_id AND q.status = 'pending') THEN
+    RETURN NEW;
+  END IF;
+
+  -- Match Floor break and Dealer Swing exactly: physical table -> active
+  -- assignment -> session -> tournament table. Re-read the identities after
+  -- the locks so a close/reopen cannot redirect this terminal queue row.
+  SELECT ts.game_table_id INTO v_game_table_id
+  FROM public.table_sessions ts
+  WHERE ts.id = NEW.source_table_session_id;
+  IF NOT FOUND THEN RETURN NEW; END IF;
+  PERFORM 1 FROM public.game_tables gt
+  WHERE gt.id = v_game_table_id
+  FOR UPDATE;
+  PERFORM 1 FROM public.dealer_assignments d
+  WHERE d.table_session_id = NEW.source_table_session_id
+    AND d.released_at IS NULL
+  ORDER BY d.id FOR UPDATE;
+  PERFORM 1 FROM public.table_sessions ts
+  WHERE ts.id = NEW.source_table_session_id
+    AND ts.game_table_id = v_game_table_id
+    AND ts.tournament_id = NEW.tournament_id
+    AND ts.closed_at IS NULL
+  FOR UPDATE;
+  IF NOT FOUND THEN RETURN NEW; END IF;
+  PERFORM 1 FROM public.tournament_tables tt
+  WHERE tt.id = NEW.source_tournament_table_id
+    AND tt.tournament_id = NEW.tournament_id
+    AND tt.game_table_id = v_game_table_id
+    AND tt.table_session_id = NEW.source_table_session_id
+    AND tt.status = 'active'
+  FOR UPDATE;
+  IF NOT FOUND THEN RETURN NEW; END IF;
   IF EXISTS (SELECT 1 FROM public.tournament_seats s
       WHERE s.table_session_id = NEW.source_table_session_id AND s.is_active)
      OR EXISTS (SELECT 1 FROM public.floor_pending_tracker_moves q
@@ -424,11 +464,11 @@ BEGIN
   UPDATE public.dealer_assignments SET released_at = COALESCE(released_at, pg_catalog.now()),
     status = CASE WHEN status IN ('assigned','on_break') THEN 'completed' ELSE status END
     WHERE table_session_id = NEW.source_table_session_id AND released_at IS NULL;
-  UPDATE public.tournament_tables SET status = 'closed'
-    WHERE id = NEW.source_tournament_table_id AND status = 'active';
   UPDATE public.table_sessions SET closed_at = pg_catalog.now(), closed_by = NEW.requested_by,
     close_reason = 'floor_break_v5_completed', revision = revision + 1
     WHERE id = NEW.source_table_session_id AND closed_at IS NULL;
+  UPDATE public.tournament_tables SET status = 'closed'
+    WHERE id = NEW.source_tournament_table_id AND status = 'active';
   RETURN NEW;
 END;
 $$;

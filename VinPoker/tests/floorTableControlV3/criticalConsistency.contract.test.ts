@@ -47,6 +47,7 @@ describe("Floor V3 critical consistency contract", () => {
     expect(migration).toContain("'after_current_hand'");
     expect(migration).toContain("'STALE_BREAK_PLAN'");
     expect(migration).toContain("CREATE CONSTRAINT TRIGGER trg_floor_close_completed_break_source_v1");
+    expect(migration).toContain("NEW.status NOT IN ('applied', 'stale', 'cancelled')");
     expect(migration).toContain("public.tournament_entries.status = 'seated'");
     expect(migration).toContain("INSERT INTO public.tournament_chip_counts");
     expect(migration).toContain("ts.tournament_id = tt.tournament_id");
@@ -69,6 +70,16 @@ describe("Floor V3 critical consistency contract", () => {
     expect(sessionLock).toBeGreaterThan(assignmentLock);
     expect(tableLock).toBeGreaterThan(sessionLock);
     expect(moveLoop).toBeGreaterThan(tableLock);
+
+    const terminalTrigger = migration.indexOf("FUNCTION floor_private.floor_close_completed_break_source_v1");
+    const terminalGameLock = migration.indexOf("PERFORM 1 FROM public.game_tables gt", terminalTrigger);
+    const terminalAssignmentLock = migration.indexOf("PERFORM 1 FROM public.dealer_assignments d", terminalGameLock);
+    const terminalSessionLock = migration.indexOf("PERFORM 1 FROM public.table_sessions ts", terminalAssignmentLock);
+    const terminalTableLock = migration.indexOf("PERFORM 1 FROM public.tournament_tables tt", terminalSessionLock);
+    expect(terminalGameLock).toBeGreaterThan(terminalTrigger);
+    expect(terminalAssignmentLock).toBeGreaterThan(terminalGameLock);
+    expect(terminalSessionLock).toBeGreaterThan(terminalAssignmentLock);
+    expect(terminalTableLock).toBeGreaterThan(terminalSessionLock);
   });
 
   it("pins security-definer search paths and exposes only the reviewed authenticated RPCs", () => {
@@ -89,7 +100,7 @@ describe("Floor V3 critical consistency contract", () => {
     expect(reconciliation.ownerGatedActiveAllowlist).toContainEqual({
       version: "20270128000007",
       filename: "20270128000007_floor_v3_critical_consistency.sql",
-      sha256: "9477d01fd480c0bd2f765d46ef2bcc969e4576e7855006a6f22c99b0588ec2c6",
+      sha256: "2ec5997988f9b9a8eca6fe3af0c8998af03a9665958422e314aff7d33413f9eb",
       domain: "floor",
     });
   });
