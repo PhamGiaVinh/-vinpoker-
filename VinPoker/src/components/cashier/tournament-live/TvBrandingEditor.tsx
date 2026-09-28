@@ -191,7 +191,7 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5 border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10">
+        <Button variant="outline" size="sm" className="min-h-11 gap-1.5 border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10">
           <Palette className="h-4 w-4" /> Edit TV layout
         </Button>
       </DialogTrigger>

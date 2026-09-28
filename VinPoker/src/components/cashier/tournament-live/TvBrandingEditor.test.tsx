@@ -59,7 +59,9 @@ describe("TvBrandingEditor publish boundary", () => {
   it("keeps the editor discoverable while server RPCs remain the authority boundary", async () => {
     render(<TvBrandingEditor tournamentId="flight-1" />);
 
-    expect(await screen.findByRole("button", { name: /Edit TV layout/i })).toBeVisible();
+    const trigger = await screen.findByRole("button", { name: /Edit TV layout/i });
+    expect(trigger).toBeVisible();
+    expect(trigger).toHaveClass("min-h-11");
     expect(rpc).not.toHaveBeenCalled();
   });
 
