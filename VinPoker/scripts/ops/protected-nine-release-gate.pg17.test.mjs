@@ -86,19 +86,25 @@ test("PostgreSQL 17 restores the authenticated baseline and applies the exact ni
     psql(`INSERT INTO supabase_migrations.schema_migrations(version,name,statements) VALUES ('${receipt.version}','${receipt.semanticName}',ARRAY[$receipt$${prerequisiteSql[receipt.version]}$receipt$]::text[]);`);
   }
 
-  for (const entry of entries) {
+  const stageContracts = [];
+  for (const [entryIndex, entry] of entries.entries()) {
     assert.equal(classifyTarget(history(), entries, entry.newVersion), "pending");
     assertChecks(entry.postcheck.preflightQueries, `${entry.newVersion} preflight`);
     psql(buildAtomicMigrationQuery(entry));
     assert.equal(classifyTarget(history(), entries, entry.newVersion), "already-applied-exact");
     assertChecks(entry.postcheck.queries, `${entry.newVersion} postcheck`);
+    const stageScope = deriveObjectScope(entries.slice(0, entryIndex + 1));
+    stageContracts.push({ version: entry.newVersion, contract: JSON.parse(psql(catalogSnapshotSql(stageScope))) });
   }
   assert.equal(psql("SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version LIKE '2027012800000%';"), "9");
-  const scope = deriveObjectScope(entries);
-  const snapshotSql = catalogSnapshotSql(scope);
-  const contract = JSON.parse(psql(snapshotSql));
-  const expectedContract = JSON.parse(readFileSync("scripts/ops/protected-nine-object-contract.json", "utf8"));
-  compareObjectContract(contract, expectedContract);
+  const candidate = { schemaVersion: 1, stages: stageContracts };
+  if (process.env.PROTECTED_NINE_CONTRACT_OUTPUT) writeFileSync(process.env.PROTECTED_NINE_CONTRACT_OUTPUT, `${JSON.stringify(candidate, null, 2)}\n`, { mode: 0o600 });
+  if (process.env.PROTECTED_NINE_GENERATE_CONTRACT === "1") return;
+  const expected = JSON.parse(readFileSync("scripts/ops/protected-nine-object-contract.json", "utf8"));
+  assert.deepEqual(stageContracts, expected.stages, "per-stage object contract drift");
+  const contract = stageContracts.at(-1).contract;
+  const expectedContract = expected.stages.at(-1).contract;
+  const snapshotSql = catalogSnapshotSql(deriveObjectScope(entries));
 
   const mutations = [
     {
@@ -125,7 +131,6 @@ test("PostgreSQL 17 restores the authenticated baseline and applies the exact ni
   for (const mutation of mutations) {
     assert.throws(() => compareObjectContract(snapshotWithMutation(mutation.sql, snapshotSql), expectedContract), mutation.section, mutation.name);
   }
-  if (process.env.PROTECTED_NINE_CONTRACT_OUTPUT) writeFileSync(process.env.PROTECTED_NINE_CONTRACT_OUTPUT, `${JSON.stringify(contract, null, 2)}\n`, { mode: 0o600 });
 });
 
 test("receipt SQL hash drift is rejected", () => {

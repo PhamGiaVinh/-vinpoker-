@@ -82,8 +82,10 @@ jobs:
           PGPASSWORD: ""
           PROTECTED_NINE_SCHEMA_ARTIFACT_DIR: ${{ runner.temp }}/protected-nine-schema
           PROTECTED_NINE_CONTRACT_OUTPUT: ${{ runner.temp }}/protected-nine-object-contract.json
+          PROTECTED_NINE_GENERATE_CONTRACT: "1"
         run: node --test scripts/ops/protected-nine-release-gate.pg17.test.mjs
       - name: Upload metadata-only object contract candidate
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: protected-nine-object-contract-${{ github.run_id }}
