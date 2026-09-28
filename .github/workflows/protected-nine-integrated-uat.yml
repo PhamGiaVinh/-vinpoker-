@@ -6,8 +6,6 @@ on:
       - ".github/workflows/protected-nine-integrated-uat.yml"
       - "VinPoker/scripts/ops/protected-nine-*"
       - "VinPoker/tests/protectedNineIntegratedUat/**"
-      - "VinPoker/tests/trackerCorrectionRelease2/floorTrackerAuthority.pg17.sql"
-      - "VinPoker/tests/trackerVoice/disposableDb.integration.sql"
 
 permissions:
   actions: read
@@ -67,12 +65,12 @@ jobs:
         run: |
           psql -X -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS dblink;'
           psql -X -v ON_ERROR_STOP=1 -c "CREATE OR REPLACE FUNCTION public.tracker_voice_test_assert(ok boolean,message text) RETURNS void LANGUAGE plpgsql AS \$\$ BEGIN IF ok IS NOT TRUE THEN RAISE EXCEPTION 'assertion_failed: %',message; END IF; END \$\$;"
-          psql -X -v ON_ERROR_STOP=1 -f tests/trackerCorrectionRelease2/floorTrackerAuthority.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/trackerCorrectionFloorAuthority.pg17.sql
       - name: Tracker Voice and Swing interleave real DB coverage
         id: voice_swing
         continue-on-error: true
         working-directory: VinPoker
-        run: psql -X -v ON_ERROR_STOP=1 -f tests/trackerVoice/disposableDb.integration.sql
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/trackerVoiceSwing.integration.sql
       - name: Record machine-readable UAT report
         if: always()
         working-directory: VinPoker
