@@ -1,0 +1,46 @@
+name: Tracker History reparent PostgreSQL 17 proof
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/tracker-history-reparent-pg17.yml"
+      - "VinPoker/supabase/migrations/20270128000009_tracker_history_reparent_invalidation_v1.sql"
+      - "VinPoker/scripts/public-spectator/tracker-history-reparent-invalidation.pg17.test.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  history-reparent-postgres-17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Start disposable PostgreSQL 17
+        run: docker run --detach --name tracker-history-reparent-pg17 --env POSTGRES_PASSWORD=postgres --publish 5432:5432 postgres:17
+
+      - name: Wait for PostgreSQL 17
+        run: |
+          for attempt in $(seq 1 30); do
+            if docker exec --env PGPASSWORD=postgres tracker-history-reparent-pg17 pg_isready --username postgres --dbname postgres; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+
+      - name: Run history reparent migration and two-connection barrier proof
+        working-directory: VinPoker
+        env:
+          TRACKER_HISTORY_PG17_DOCKER_CONTAINER: tracker-history-reparent-pg17
+          TRACKER_HISTORY_PG17_ALLOW_DISPOSABLE: "1"
+        run: node --test scripts/public-spectator/tracker-history-reparent-invalidation.pg17.test.mjs
+
+      - name: Stop disposable PostgreSQL 17
+        if: always()
+        run: docker rm --force tracker-history-reparent-pg17 || true
