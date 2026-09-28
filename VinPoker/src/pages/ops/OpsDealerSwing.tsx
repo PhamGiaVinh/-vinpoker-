@@ -29,6 +29,7 @@ import {
 import { useShiftPlanner } from "@/hooks/useShiftPlanner";
 import type { AvailabilityRequest } from "@/types/shiftPlanner";
 import { summarizeDealerCheckoutBatch } from "@/lib/dealerCheckoutResults";
+import { classifyManualSwingOutcome } from "@/lib/dealerSwingOutcome";
 
 /**
  * Dealer Swing (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads).
@@ -293,6 +294,7 @@ function DealerSwingClubView({
   // flag remains a hard stop and never falls through to an RPC/Edge call.
   const LIVE = FEATURES.opsSwingActions;
   const busyRef = useRef(false);
+  const swingRequestIdsRef = useRef(new Map<string, string>());
   const [busy, setBusy] = useState(false);
   const reloadAll = () => { tablesQ.refetch(); asgQ.refetch(); rosterQ.refetch(); outQ.refetch(); };
   const runAction = async (fn: () => Promise<void>) => {
@@ -302,16 +304,30 @@ function DealerSwingClubView({
     try { await fn(); } catch (e: any) { toast.error(e?.message ?? "Lỗi mạng"); } finally { busyRef.current = false; setBusy(false); }
   };
 
-  // Swing 1 bàn → RPC perform_swing (mirror performSwingForTable)
+  // Swing 1 bàn → authenticated operator RPC (mirror performSwingForTable)
   const doSwing = (t: TableVM) => runAction(async () => {
-    const asgId = t.assignment?.id;
-    if (!asgId) { toast.error("Bàn chưa có lượt để swing."); return; }
-    const { data, error } = await (supabase.rpc as any)("perform_swing", { p_assignment_id: asgId });
+    const assignment = t.assignment;
+    if (!assignment) { toast.error("Bàn chưa có lượt để swing."); return; }
+    if (!assignment.table_session_id) {
+      toast.error("Bàn chưa có liên kết phiên hợp lệ. Không thể đổi dealer.");
+      return;
+    }
+    const requestId = swingRequestIdsRef.current.get(assignment.id) ?? crypto.randomUUID();
+    swingRequestIdsRef.current.set(assignment.id, requestId);
+    const { data, error } = await (supabase.rpc as any)("operator_perform_swing", {
+      p_assignment_id: assignment.id,
+      p_table_id: assignment.table_id,
+      p_table_session_id: assignment.table_session_id,
+      p_expected_version: assignment.version,
+      p_request_id: requestId,
+    });
     if (error) { toast.error(`Lỗi swing: ${error.message}`); return; }
-    const outcome = (data as any)?.outcome;
-    if (outcome === "no_dealer" || outcome === "no_dealer_available") toast.warning("Không đủ dealer khả dụng để thay.");
-    else if (outcome === "race_lost" || outcome === "version_conflict" || outcome === "not_found" || outcome === "state_mismatch") toast.warning("Bàn vừa được xử lý — đang cập nhật.");
-    else toast.success("Swing thành công!");
+    const swingOutcome = classifyManualSwingOutcome(data);
+    if (swingOutcome.kind === "success") toast.success(swingOutcome.message);
+    else if (swingOutcome.kind === "warning") toast.warning(swingOutcome.message);
+    else if (swingOutcome.kind === "info") toast.info(swingOutcome.message);
+    else toast.error(swingOutcome.message);
+    swingRequestIdsRef.current.delete(assignment.id);
     setTableSheet(null);
     reloadAll();
   });

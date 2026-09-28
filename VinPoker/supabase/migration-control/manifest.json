@@ -45,13 +45,13 @@
       "newVersion": "20270128000001",
       "semanticName": "dealer_swing_authorization_containment_v1",
       "filename": "20270128000001_dealer_swing_authorization_containment_v1.sql",
-      "normalizedSqlSha256": null,
+      "normalizedSqlSha256": "badcdf01c5e28cb505778f70038eefe340a11ce0d02c9486e413224f43022aa4",
       "dependencies": [
         "20270115000018"
       ],
       "ownerSession": "S3",
-      "sourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
-      "state": "RESERVED_NO_SQL"
+      "sourceSha": "a18e74ab367d08f71a41f2f39cc11be9f62d38e6",
+      "state": "SOURCE_BOUND"
     },
     {
       "domain": "TV",
@@ -129,21 +129,6 @@
       "state": "SOURCE_BOUND"
     },
     {
-      "domain": "History",
-      "oldVersion": null,
-      "newVersion": "20270128000009",
-      "semanticName": "tracker_history_reparent_invalidation_v1",
-      "filename": "20270128000009_tracker_history_reparent_invalidation_v1.sql",
-      "normalizedSqlSha256": null,
-      "dependencies": [
-        "20270128000004",
-        "20270128000006"
-      ],
-      "ownerSession": "S4",
-      "sourceSha": "5eac09ec76ebd5f5babd5fca775930a087e15a03",
-      "state": "RESERVED_NO_SQL"
-    },
-    {
       "domain": "Floor",
       "oldVersion": "20270127000000",
       "newVersion": "20270128000007",
@@ -174,6 +159,21 @@
       "releaseGates": [
         "verify live authority function digest before exact apply"
       ]
+    },
+    {
+      "domain": "History",
+      "oldVersion": null,
+      "newVersion": "20270128000009",
+      "semanticName": "tracker_history_reparent_invalidation_v1",
+      "filename": "20270128000009_tracker_history_reparent_invalidation_v1.sql",
+      "normalizedSqlSha256": null,
+      "dependencies": [
+        "20270128000004",
+        "20270128000006"
+      ],
+      "ownerSession": "S4",
+      "sourceSha": "5eac09ec76ebd5f5babd5fca775930a087e15a03",
+      "state": "RESERVED_NO_SQL"
     }
   ],
   "protectedApplyOrder": [

@@ -650,13 +650,30 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
 
   // Manual swing: perform swing for a single assignment only (no side effects on other tables)
   const swingingRef = useRef(false);
+  const swingRequestIdsRef = useRef(new Map<string, string>());
   const performSwingForTable = async (assignmentId: string) => {
     if (swingingRef.current) return; // prevent double-click (ref is synchronous)
+    const assignment = (assignments ?? []).find((row) => row.id === assignmentId);
+    if (!assignment) {
+      toast.warning("Lượt chia đã thay đổi — đang tải lại.");
+      await refetchAssignments();
+      return;
+    }
+    if (!assignment.table_session_id) {
+      toast.error("Bàn chưa có liên kết phiên hợp lệ. Không thể đổi dealer.");
+      return;
+    }
+    const requestId = swingRequestIdsRef.current.get(assignmentId) ?? crypto.randomUUID();
+    swingRequestIdsRef.current.set(assignmentId, requestId);
     swingingRef.current = true;
     setSwingingTableId(assignmentId);
     try {
-      const { data, error } = await supabase.rpc("perform_swing", {
+      const { data, error } = await (supabase.rpc as any)("operator_perform_swing", {
         p_assignment_id: assignmentId,
+        p_table_id: assignment.table_id,
+        p_table_session_id: assignment.table_session_id,
+        p_expected_version: assignment.version,
+        p_request_id: requestId,
       });
       if (error) {
         toast.error(`Lỗi swing: ${error.message}`);
@@ -669,6 +686,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       else if (swingOutcome.kind === "info") toast.info(swingOutcome.message);
       else if (swingOutcome.kind === "error") toast.error(swingOutcome.message);
       else toast.warning(swingOutcome.message);
+      swingRequestIdsRef.current.delete(assignmentId);
       await Promise.all([
         refetchAssignments(),
         refetchDealers(),

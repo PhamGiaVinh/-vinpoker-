@@ -6882,6 +6882,12 @@
       "domain": "dealer"
     },
     {
+      "version": "20270128000001",
+      "filename": "20270128000001_dealer_swing_authorization_containment_v1.sql",
+      "sha256": "badcdf01c5e28cb505778f70038eefe340a11ce0d02c9486e413224f43022aa4",
+      "domain": "dealer"
+    },
+    {
       "version": "20270128000004",
       "filename": "20270128000004_tracker_history_completion_queue.sql",
       "sha256": "fb2b559c5f58d361adb7ea403527c9e187bcbdbbb686f78e78777f2d5a7c4646",
