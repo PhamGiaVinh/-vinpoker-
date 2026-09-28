@@ -138,15 +138,21 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
   const layoutError = validateTvBrandingLayout(layout);
 
   const save = async () => {
+    const submitted = {
+      brandName: brandName.trim(),
+      logoUrl: logoUrl?.trim() || null,
+      backgroundUrl: bgUrl?.trim() || null,
+      layout: serializeTvBrandingLayout(layout),
+    };
     setSaving(true);
     try {
       const { data, error } = await rpc("save_tv_tournament_layout_v1", {
         p_tournament_id: tournamentId,
         p_expected_revision: revision,
-        p_brand_name: brandName.trim(),
-        p_logo_url: logoUrl?.trim() ?? "",
-        p_bg_url: bgUrl?.trim() ?? "",
-        p_layout: serializeTvBrandingLayout(layout),
+        p_brand_name: submitted.brandName,
+        p_logo_url: submitted.logoUrl ?? "",
+        p_bg_url: submitted.backgroundUrl ?? "",
+        p_layout: submitted.layout,
       });
       if (error || !data) {
         toast.error(error?.message?.includes("tv_layout_stale_revision")
@@ -157,7 +163,24 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
       toast.success("TV layout published. Screens update on their next refresh.");
       setOpen(false);
     } catch {
-      toast.error("The TV layout could not be published. Your draft is still open; please retry.");
+      // A lost response can happen after the transaction commits. Re-read the
+      // canonical head before inviting a retry, which would otherwise produce
+      // a misleading revision conflict.
+      const { data } = await rpc("get_tv_tournament_branding_v1", { p_tournament_id: tournamentId });
+      const canonical = data as null | {
+        brand_name: string | null; logo_url: string | null;
+        background_url: string | null; layout: unknown;
+      };
+      if (canonical
+        && (canonical.brand_name ?? "") === submitted.brandName
+        && canonical.logo_url === submitted.logoUrl
+        && canonical.background_url === submitted.backgroundUrl
+        && JSON.stringify(canonical.layout) === JSON.stringify(submitted.layout)) {
+        toast.success("TV layout published. Screens update on their next refresh.");
+        setOpen(false);
+      } else {
+        toast.error("The TV layout response was lost and the published state could not be confirmed. Reopen the editor before retrying.");
+      }
     } finally {
       setSaving(false);
     }
@@ -168,7 +191,7 @@ export function TvBrandingEditor({ tournamentId }: { tournamentId: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5 border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10">
+        <Button variant="outline" size="sm" className="min-h-11 gap-1.5 border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10">
           <Palette className="h-4 w-4" /> Edit TV layout
         </Button>
       </DialogTrigger>

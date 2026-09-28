@@ -28,6 +28,7 @@ import {
   claimDisplay, displayLabel, isDisplayOnline, listClubDisplays, pingDisplay,
   revokeDisplay, updateDisplay, type TvDisplayLayout, type TvDisplayRow,
 } from "@/lib/tv/displayAdminRpc";
+import { createRequestGenerationFence } from "@/lib/tv/requestGenerationFence";
 import { TvLivePreviewCard } from "./TvLivePreviewCard";
 import { TvBrandingEditor } from "./TvBrandingEditor";
 
@@ -61,6 +62,7 @@ export function TvDisplaysPanel({ tournamentId, tournamentName, clubId, tourname
   const [revokeRow, setRevokeRow] = useState<TvDisplayRow | null>(null);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const loadFenceRef = useRef(createRequestGenerationFence());
   const nowMs = useLiveClock(); // 1s tick → recompute online dots from last_seen_at
 
   // Tournaments in this club, for the assign select.
@@ -70,8 +72,10 @@ export function TvDisplaysPanel({ tournamentId, tournamentName, clubId, tourname
   );
 
   const load = useCallback(async () => {
+    const requestGeneration = loadFenceRef.current.begin();
     setRefreshing(true);
     const { data, error } = await listClubDisplays(clubId);
+    if (!loadFenceRef.current.isCurrent(requestGeneration)) return;
     if (error) {
       setLoadError(error);
     } else {
@@ -81,7 +85,10 @@ export function TvDisplaysPanel({ tournamentId, tournamentName, clubId, tourname
     setRefreshing(false);
   }, [clubId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    return () => loadFenceRef.current.invalidate();
+  }, [load]);
 
   // Realtime: new claims / heartbeats / config changes on this club's displays.
   useEffect(() => {
@@ -129,11 +136,14 @@ export function TvDisplaysPanel({ tournamentId, tournamentName, clubId, tourname
   // Optimistic patch + broadcast ping so the TV switches within seconds.
   const patchDisplay = async (row: TvDisplayRow, patch: Partial<TvDisplayRow>) => {
     setDisplays((prev) => prev?.map((d) => (d.id === row.id ? { ...d, ...patch } : d)) ?? prev);
-    const { error } = await updateDisplay(row.id, patch);
+    const { data, error } = await updateDisplay(row, patch);
     if (error) {
       toast.error(error);
       void load();
       return;
+    }
+    if (data) {
+      setDisplays((prev) => prev?.map((display) => (display.id === data.id ? data : display)) ?? prev);
     }
     void pingDisplay(row.id);
   };
