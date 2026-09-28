@@ -105,7 +105,7 @@
       "newVersion": "20270128000005",
       "semanticName": "tracker_correction_floor_tracker_authority",
       "filename": "20270128000005_tracker_correction_floor_tracker_authority.sql",
-      "normalizedSqlSha256": "891ee5a0e8e0c03f906205947962bb4b0f2496dce48b5030798f2ac163725a4e",
+      "normalizedSqlSha256": "a4dd6be800a2ecd6b32dd982b954d74c9d16e93683394c064f8fe895543aee91",
       "dependencies": [
         "20270115000020",
         "20270128000004"

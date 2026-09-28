@@ -4,12 +4,35 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { rpc, maybeSingle, voidState, handRow } = vi.hoisted(() => ({
-  rpc: vi.fn(async () => ({ data: { ok: true }, error: null })),
-  maybeSingle: vi.fn(async () => ({ data: handRow.value, error: null })),
-  voidState: { value: false },
-  handRow: { value: { id: "hand-1", is_voided: true } },
-}));
+const { rpc, maybeSingle, voidState, handRow, baseAlert, alertRows } = vi.hoisted(() => {
+  const baseAlert = {
+    id: "alert-1",
+    tournament_id: "tournament-1",
+    tournament_table_id: "table-1",
+    physical_table_id: "physical-1",
+    hand_id: "hand-1",
+    dealer_name: "Dealer",
+    alert_kind: "wrong_action",
+    priority: "urgent",
+    status: "open",
+    version: 1,
+    correction_required: true,
+    title: "Sai action",
+    message: null,
+    source_action_id: "action-original",
+    source_action_snapshot: { action_order: 4, action_type: "call", action_amount: 200000 },
+    created_at: "2026-09-17T00:00:00Z",
+  };
+
+  return {
+    rpc: vi.fn(async () => ({ data: { ok: true }, error: null })),
+    maybeSingle: vi.fn(async () => ({ data: handRow.value, error: null })),
+    voidState: { value: false },
+    handRow: { value: { id: "hand-1", is_voided: true } },
+    baseAlert,
+    alertRows: { value: [baseAlert] },
+  };
+});
 const channel = { on: vi.fn(), subscribe: vi.fn() };
 channel.on.mockReturnValue(channel);
 
@@ -26,24 +49,7 @@ vi.mock("@/integrations/supabase/SupabaseClientContext", () => {
 vi.mock("@/lib/tracker-floor-alerts/trackerFloorAlertsRead", () => ({
   listTrackerFloorAlerts: vi.fn(async () => ({
     ok: true,
-    alerts: [{
-      id: "alert-1",
-      tournament_id: "tournament-1",
-      tournament_table_id: "table-1",
-      physical_table_id: "physical-1",
-      hand_id: "hand-1",
-      dealer_name: "Dealer",
-      alert_kind: "wrong_action",
-      priority: "urgent",
-      status: "open",
-      version: 1,
-      correction_required: true,
-      title: "Sai action",
-      message: null,
-      source_action_id: "action-original",
-      source_action_snapshot: { action_order: 4, action_type: "call", action_amount: 200000 },
-      created_at: "2026-09-17T00:00:00Z",
-    }],
+    alerts: alertRows.value,
   })),
 }));
 
@@ -58,7 +64,14 @@ vi.mock("./HandHistoryWorkspace", () => ({
 
 import { TrackerFloorAlertLane } from "./TrackerFloorAlertLane";
 
-afterEach(() => { cleanup(); voidState.value = false; handRow.value.is_voided = true; rpc.mockClear(); maybeSingle.mockClear(); });
+afterEach(() => {
+  cleanup();
+  voidState.value = false;
+  handRow.value.is_voided = true;
+  alertRows.value = [baseAlert];
+  rpc.mockClear();
+  maybeSingle.mockClear();
+});
 
 describe("TrackerFloorAlertLane", () => {
   it("opens the exact hand action history from a Floor alert deep link", async () => {
@@ -83,6 +96,26 @@ describe("TrackerFloorAlertLane", () => {
     })));
     expect(maybeSingle).toHaveBeenCalledOnce();
     vi.mocked(window.confirm).mockRestore();
+  });
+
+  it("labels a whole-hand alert without Dealer or action references", async () => {
+    alertRows.value = [{
+      ...baseAlert,
+      id: "alert-2",
+      hand_id: "hand-2",
+      dealer_id: null,
+      assignment_id: null,
+      dealer_name: null,
+      priority: "high",
+      title: "Báo sai hand",
+      source_action_id: null,
+      source_action_snapshot: null,
+      created_at: "2026-09-17T00:01:00Z",
+    }];
+    render(<MemoryRouter><TrackerFloorAlertLane tournamentId="tournament-1" /></MemoryRouter>);
+
+    expect(await screen.findByText(/Floor \/ Owner/)).toBeVisible();
+    expect(screen.getByText(/Action sai chưa được chỉ rõ/)).toBeVisible();
   });
 
   it("does not clear the alert when the server no longer confirms void", async () => {
