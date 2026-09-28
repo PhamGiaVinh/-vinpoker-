@@ -12,10 +12,13 @@ SELECT * FROM public.claim_tracker_historical_display_jobs(1);
 SELECT pg_temp.assert_true(
   (SELECT count(*) = 1 AND bool_and(lease_token IS NOT NULL) FROM history_first_claim),
   'worker claims one eligible queued revision with a lease token');
+RESET ROLE;
 UPDATE public.tracker_historical_display_queue q
 SET lease_until = now() - interval '1 second'
 FROM history_first_claim c
 WHERE q.hand_id = c.hand_id AND q.source_revision = c.source_revision;
+SET ROLE service_role;
+SELECT set_config('request.jwt.claims', '{"role":"service_role"}', false);
 CREATE TEMP TABLE history_second_claim AS
 SELECT * FROM public.claim_tracker_historical_display_jobs(1);
 SELECT pg_temp.assert_true(
