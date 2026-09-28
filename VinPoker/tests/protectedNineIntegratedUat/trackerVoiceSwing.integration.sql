@@ -423,36 +423,43 @@ SELECT public.tracker_voice_test_assert(
   'pending write from the old Dealer is rechecked server-side and leaves zero events'
 );
 
--- Two different Dealers must be counted across the whole session. Filtering by
--- caller first would incorrectly allow each actor to observe a count of one.
-INSERT INTO public.dealer_assignments(
-  id, dealer_id, attendance_id, table_id, table_session_id, club_id, assigned_at, status
-) VALUES (
-  '88000000-0000-4000-8000-000000000004',
-  '87000000-0000-4000-8000-000000000001',
-  '87500000-0000-4000-8000-000000000001',
-  '83000000-0000-4000-8000-000000000001',
-  '83500000-0000-4000-8000-000000000001',
-  '81000000-0000-4000-8000-000000000001',
-  now() + interval '1 second',
-  'assigned'
-);
+-- The captured schema has the stronger invariant: a second active assignment
+-- cannot be persisted at all. Prove the duplicate attempt fails atomically,
+-- then verify the canonical Dealer remains the sole authorized actor.
+DO $duplicate_assignment$
+BEGIN
+  BEGIN
+    INSERT INTO public.dealer_assignments(
+      id, dealer_id, attendance_id, table_id, table_session_id, club_id, assigned_at, status
+    ) VALUES (
+      '88000000-0000-4000-8000-000000000004',
+      '87000000-0000-4000-8000-000000000001',
+      '87500000-0000-4000-8000-000000000001',
+      '83000000-0000-4000-8000-000000000001',
+      '83500000-0000-4000-8000-000000000001',
+      '81000000-0000-4000-8000-000000000001',
+      now() + interval '1 second', 'assigned'
+    );
+    RAISE EXCEPTION 'duplicate_active_assignment_unexpectedly_persisted';
+  EXCEPTION WHEN unique_violation THEN NULL;
+  END;
+END
+$duplicate_assignment$;
 SELECT public.tracker_voice_test_assert(
   public._tracker_voice_assignment_context(
     '85000000-0000-4000-8000-000000000001',
     '84000000-0000-4000-8000-000000000001',
     '81200000-0000-4000-8000-000000000001'
-  )->>'error' = 'dealer_assignment_ambiguous'
-  AND public._tracker_voice_assignment_context(
+  )->>'error' = 'dealer_assignment_missing'
+  AND (public._tracker_voice_assignment_context(
     '85000000-0000-4000-8000-000000000001',
     '84000000-0000-4000-8000-000000000001',
     '81700000-0000-4000-8000-000000000001'
-  )->>'error' = 'dealer_assignment_ambiguous',
-  'multiple active assignments fail closed for both actors, including different Dealers'
+  )->>'ok')::boolean
+  AND NOT EXISTS (SELECT 1 FROM public.dealer_assignments
+    WHERE id='88000000-0000-4000-8000-000000000004'),
+  'duplicate active assignment is rejected and cannot change Voice authority'
 );
-UPDATE public.dealer_assignments
-SET status = 'released', released_at = pg_catalog.now()
-WHERE id = '88000000-0000-4000-8000-000000000004';
 
 -- A disabled config is an administrative decision. Even with auto-provision on,
 -- assignment churn cannot revive it; only the explicit service reconcile can.
