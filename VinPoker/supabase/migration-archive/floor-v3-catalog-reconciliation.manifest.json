@@ -6898,6 +6898,12 @@
       "filename": "20270128000006_tracker_history_completion_audit_fixes.sql",
       "sha256": "4d30a36f2866e09b5ab8f5616ca1e4b5db97e11c6e25e8fde345be7e29ac84d3",
       "domain": "tracker"
+    },
+    {
+      "version": "20270128000008",
+      "filename": "20270128000008_tracker_voice_floor_owner_telegram_dealer.sql",
+      "sha256": "ed7f3012388bee3941d2ade54e68479b46bce36a719ca542dceade5d63ffd02f",
+      "domain": "tracker-voice"
     }
   ],
   "floorActiveAllowlist": [
