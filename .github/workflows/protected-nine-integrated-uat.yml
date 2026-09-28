@@ -76,7 +76,7 @@ jobs:
         continue-on-error: true
         working-directory: VinPoker
         run: psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/tv.pg17.sql
-      - name: History partial queue lease runtime probes
+      - name: History lease commit crash public and reparent runtime
         id: history
         continue-on-error: true
         working-directory: VinPoker
@@ -106,7 +106,7 @@ jobs:
           BASELINE_RUN: "36422707061"
           BASELINE_SHA256: "703aed6b620cd24f34c31d4545b2d7e97e4a488f89fe81dfc1a36b175d259223"
           PG17_IMAGE: "postgres:17"
-          UAT_DOMAIN_RESULTS: '{"dealerSwing":"${{ steps.dealer_swing.outcome }}","tv":"${{ steps.tv.outcome }}","historyQueueAudit":"INCOMPLETE_RUNTIME_COMMIT_PUBLIC_INVALIDATION","trackerCorrection":"${{ steps.correction.outcome }}","floor":"INCOMPLETE_RUNTIME_CAS_DEFER_EXACTLY_ONCE","trackerVoice":"${{ steps.voice_swing.outcome }}"}'
+          UAT_DOMAIN_RESULTS: '{"dealerSwing":"${{ steps.dealer_swing.outcome }}","tv":"${{ steps.tv.outcome }}","historyQueueAudit":"${{ steps.history.outcome }}","trackerCorrection":"${{ steps.correction.outcome }}","floor":"INCOMPLETE_RUNTIME_CAS_DEFER_EXACTLY_ONCE","trackerVoice":"${{ steps.voice_swing.outcome }}"}'
         run: node scripts/ops/protected-nine-uat-report.mjs "$RUNNER_TEMP/protected-nine-uat-report.json"
       - name: Upload machine-readable UAT report
         if: always()
