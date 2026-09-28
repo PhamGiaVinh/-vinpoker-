@@ -45,13 +45,13 @@
       "newVersion": "20270128000001",
       "semanticName": "dealer_swing_authorization_containment_v1",
       "filename": "20270128000001_dealer_swing_authorization_containment_v1.sql",
-      "normalizedSqlSha256": null,
+      "normalizedSqlSha256": "badcdf01c5e28cb505778f70038eefe340a11ce0d02c9486e413224f43022aa4",
       "dependencies": [
         "20270115000018"
       ],
       "ownerSession": "S3",
-      "sourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
-      "state": "RESERVED_NO_SQL"
+      "sourceSha": "6ad8d399b17941264b3924e7ce3ee7ab6e8a373f",
+      "state": "SOURCE_BOUND"
     },
     {
       "domain": "TV",

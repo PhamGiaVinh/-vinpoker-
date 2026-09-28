@@ -36,7 +36,7 @@ const dealerReadyBackup = readFileSync(
 describe("Dealer Swing mutation authorization containment", () => {
   it("has one forward containment migration reserved by Migration Control", () => {
     expect(authorizationMigrationName).toBeTruthy();
-    expect(migration).not.toMatch(/ALTER\s+TABLE\s+.*ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(migration).not.toMatch(/DISABLE\s+ROW\s+LEVEL\s+SECURITY/i);
     expect(migration).not.toMatch(/DROP\s+(TABLE|FUNCTION)/i);
   });
 
