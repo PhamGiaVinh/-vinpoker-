@@ -33,9 +33,7 @@ SELECT pg_temp.assert_true(
     'public.get_public_tournament_table_history_v2(uuid,uuid,integer,timestamp with time zone,uuid)'::regprocedure)) > 0,
   'public history exposes only verified historical display outcomes');
 SELECT pg_temp.assert_true(
-  position('UPDATE public.tournament_settlement_outcomes' in
-    pg_get_functiondef('public.tracker_bump_hand_source_revision()'::regprocedure)) > 0
-  AND position('status = ''stale''' in
+  position('tracker_mark_prior_settlements_stale' in
     pg_get_functiondef('public.tracker_bump_hand_source_revision()'::regprocedure)) > 0,
   'reparent/source mutation invalidates published outcomes');
 

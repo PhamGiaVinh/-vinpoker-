@@ -12,10 +12,10 @@ INSERT INTO public.clubs(id, owner_id, name, region)
 VALUES ('a1200000-0000-4000-8000-000000000001','a1100000-0000-4000-8000-000000000001','Multi-day Guard TEST','TEST');
 INSERT INTO public.tournament_events(id,club_id,name,status)
 VALUES ('a1300000-0000-4000-8000-000000000001','a1200000-0000-4000-8000-000000000001','Guard Event TEST','active');
-INSERT INTO public.tournaments(id,club_id,name,status,live_status,phase,event_id)
+INSERT INTO public.tournaments(id,club_id,name,status,live_status,phase,flight_label,event_id)
 VALUES
-  ('a1400000-0000-4000-8000-000000000001','a1200000-0000-4000-8000-000000000001','Closed Flight TEST','active','live','flight','a1300000-0000-4000-8000-000000000001'),
-  ('a1400000-0000-4000-8000-000000000002','a1200000-0000-4000-8000-000000000001','Open Flight TEST','active','live','flight','a1300000-0000-4000-8000-000000000001');
+  ('a1400000-0000-4000-8000-000000000001','a1200000-0000-4000-8000-000000000001','Closed Flight TEST','active','live','flight','A','a1300000-0000-4000-8000-000000000001'),
+  ('a1400000-0000-4000-8000-000000000002','a1200000-0000-4000-8000-000000000001','Open Flight TEST','active','live','flight','B','a1300000-0000-4000-8000-000000000001');
 INSERT INTO public.tournament_hands(id,tournament_id,hand_number,status,button_seat)
 VALUES
   ('a1500000-0000-4000-8000-000000000001','a1400000-0000-4000-8000-000000000001',1,'completed',1),
