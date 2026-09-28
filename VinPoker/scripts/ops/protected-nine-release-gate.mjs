@@ -6,7 +6,7 @@ import { canonicalSqlText, scanMigrationSource } from "./ops-1359-release-gate.m
 import { catalogSnapshotSql, contractHash, deriveObjectScope } from "./protected-nine-object-contract.mjs";
 
 export const PROJECT_REF = "orlesggcjamwuknxwcpk";
-export const ORDER = Array.from({ length: 9 }, (_, index) => `2027012800000${index + 1}`);
+export const ORDER = Array.from({ length: 10 }, (_, index) => `202701280000${String(index + 1).padStart(2, "0")}`);
 export const CONFIRM_PREFIX = "APPLY_PROTECTED_NINE";
 export const OBJECT_CONTRACT_SHA256 = "d0f2905e33003da53efd0658a806d689e388fc7b4cf51e9d9f2aa90fbcb56ddb";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -27,7 +27,7 @@ export function loadRelease(root = ROOT) {
   verifyObjectContractSource(objectContractSource);
   const objectContract = JSON.parse(objectContractSource);
   if (objectContract.schemaVersion !== 2 || objectContract.stages?.map((stage) => stage.version).join(",") !== ORDER.join(",")) throw new Error("Protected-nine per-stage object contract mismatch");
-  if (control.kind !== "vinpoker-migration-control" || control.protectedApplyOrder?.join(",") !== ORDER.join(",")) throw new Error("Protected order is not the exact nine-entry reservation order");
+  if (control.kind !== "vinpoker-migration-control" || control.protectedApplyOrder?.join(",") !== ORDER.join(",")) throw new Error("Protected order is not the exact release reservation order");
   if (Object.values(control.safety ?? {}).some((value) => value !== false)) throw new Error("Production safety gates must remain OFF");
   const entries = ORDER.map((version) => {
     const reservation = control.reservations?.find((item) => item.newVersion === version);
@@ -50,7 +50,7 @@ export function loadRelease(root = ROOT) {
 }
 
 export function classifyTarget(history, entries, targetVersion) {
-  if (!ORDER.includes(targetVersion)) throw new Error("Target is outside protected nine-entry order");
+  if (!ORDER.includes(targetVersion)) throw new Error("Target is outside protected release order");
   const rows = new Map();
   for (const row of history) {
     const version = String(row.version);
