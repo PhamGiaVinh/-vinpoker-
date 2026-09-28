@@ -1,4 +1,4 @@
-name: Protected nine integrated UAT
+name: Protected migration sequence integrated UAT
 
 on:
   pull_request:
@@ -6,6 +6,8 @@ on:
       - ".github/workflows/protected-nine-integrated-uat.yml"
       - "VinPoker/scripts/ops/protected-nine-*"
       - "VinPoker/tests/protectedNineIntegratedUat/**"
+      - "VinPoker/supabase/migration-control/manifest.json"
+      - "VinPoker/supabase/migrations/202701280000*.sql"
 
 permissions:
   actions: read
@@ -46,18 +48,39 @@ jobs:
           unzip -q "$RUNNER_TEMP/protected-nine-schema.zip" -d "$RUNNER_TEMP/protected-nine-schema"
           node VinPoker/scripts/deploy/validate-live-public-schema-artifact.mjs --artifact-directory "$RUNNER_TEMP/protected-nine-schema"
           test "$(cut -d' ' -f1 "$RUNNER_TEMP/protected-nine-schema/live-public-schema.sha256")" = 703aed6b620cd24f34c31d4545b2d7e97e4a488f89fe81dfc1a36b175d259223
-      - name: Restore baseline and apply exact nine on the one intact database
-        id: exact_nine
+      - name: Restore baseline and apply the complete exact sequence on one intact database
+        id: exact_sequence
+        continue-on-error: true
         working-directory: VinPoker
         env:
           PROTECTED_NINE_SCHEMA_ARTIFACT_DIR: "${{ runner.temp }}/protected-nine-schema"
           PROTECTED_NINE_CONTRACT_OUTPUT: "${{ runner.temp }}/protected-nine-object-contract.json"
         run: node --test scripts/ops/protected-nine-release-gate.pg17.test.mjs
-      - name: Post-nine runtime and ACL probes
-        id: post_nine
+      - name: Post-sequence runtime and ACL probes
+        id: post_sequence
         continue-on-error: true
         working-directory: VinPoker
         run: psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/postNineRuntime.sql
+      - name: Multi-day child trigger binding regression
+        id: multi_day_guard
+        continue-on-error: true
+        working-directory: VinPoker
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/multiDayGuard.pg17.sql
+      - name: Dealer Swing independent contained path
+        id: dealer_swing
+        continue-on-error: true
+        working-directory: VinPoker
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/dealerSwing.pg17.sql
+      - name: TV public reader editor and event isolation
+        id: tv
+        continue-on-error: true
+        working-directory: VinPoker
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/tv.pg17.sql
+      - name: History queue lease commit public and invalidation
+        id: history
+        continue-on-error: true
+        working-directory: VinPoker
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/history.pg17.sql
       - name: Tracker correction real DB actor and concurrency coverage
         id: correction
         continue-on-error: true
@@ -66,6 +89,11 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS dblink;'
           psql -X -v ON_ERROR_STOP=1 -c "CREATE OR REPLACE FUNCTION public.tracker_voice_test_assert(ok boolean,message text) RETURNS void LANGUAGE plpgsql AS \$\$ BEGIN IF ok IS NOT TRUE THEN RAISE EXCEPTION 'assertion_failed: %',message; END IF; END \$\$;"
           psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/trackerCorrectionFloorAuthority.pg17.sql
+      - name: Floor invalid legacy lock plan hash and deferred completion
+        id: floor
+        continue-on-error: true
+        working-directory: VinPoker
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/floor.pg17.sql
       - name: Tracker Voice and Swing interleave real DB coverage
         id: voice_swing
         continue-on-error: true
@@ -78,7 +106,7 @@ jobs:
           BASELINE_RUN: "36422707061"
           BASELINE_SHA256: "703aed6b620cd24f34c31d4545b2d7e97e4a488f89fe81dfc1a36b175d259223"
           PG17_IMAGE: "postgres:17"
-          UAT_DOMAIN_RESULTS: '{"dealerSwing":"INCONCLUSIVE_COUPLED_WITH_VOICE","tv":"NOT_MEASURED_RUNTIME_ACL_ONLY","historyQueueAudit":"NOT_MEASURED_RUNTIME_ACL_ONLY","trackerCorrection":"${{ steps.correction.outcome }}","floor":"NOT_MEASURED_RUNTIME_ACL_ONLY","trackerVoice":"${{ steps.voice_swing.outcome }}"}'
+          UAT_DOMAIN_RESULTS: '{"dealerSwing":"${{ steps.dealer_swing.outcome }}","tv":"${{ steps.tv.outcome }}","historyQueueAudit":"${{ steps.history.outcome }}","trackerCorrection":"${{ steps.correction.outcome }}","floor":"${{ steps.floor.outcome }}","trackerVoice":"${{ steps.voice_swing.outcome }}"}'
         run: node scripts/ops/protected-nine-uat-report.mjs "$RUNNER_TEMP/protected-nine-uat-report.json"
       - name: Upload machine-readable UAT report
         if: always()
@@ -107,7 +135,12 @@ jobs:
             throw new Error(`integrated UAT domains not passed: ${failures.join(", ")}`);
           }
           NODE
-          test '${{ steps.exact_nine.outcome }}' = success
-          test '${{ steps.post_nine.outcome }}' = success
+          test '${{ steps.exact_sequence.outcome }}' = success
+          test '${{ steps.post_sequence.outcome }}' = success
+          test '${{ steps.multi_day_guard.outcome }}' = success
+          test '${{ steps.dealer_swing.outcome }}' = success
+          test '${{ steps.tv.outcome }}' = success
+          test '${{ steps.history.outcome }}' = success
           test '${{ steps.correction.outcome }}' = success
+          test '${{ steps.floor.outcome }}' = success
           test '${{ steps.voice_swing.outcome }}' = success

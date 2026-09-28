@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- Runs only after the captured production schema and all nine protected
+-- Runs only after the captured production schema and the complete protected
 -- migrations have been applied to the same disposable PostgreSQL 17 database.
 -- It deliberately does not recreate or replace any production function.
 CREATE OR REPLACE FUNCTION public.protected_nine_uat_assert(ok boolean, message text)

@@ -269,10 +269,8 @@ DO $progression$
 DECLARE
   v_hand_blocked boolean := false;
 BEGIN
-  -- The captured baseline has a pre-existing multi-day trigger defect on
-  -- hand_actions: its generic UPDATE branch references OLD.tournament_id even
-  -- though that column is not present on the child table. Action/undo RPC
-  -- authority is covered above without weakening or replacing that trigger.
+  -- Action/undo authority is covered above. The child-table trigger repair is
+  -- exercised separately by multiDayGuard.pg17.sql on this same restored DB.
   BEGIN
     UPDATE public.tournament_hands
     SET community_cards = '["As","Kd","Qc"]'::jsonb
