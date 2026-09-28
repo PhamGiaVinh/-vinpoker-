@@ -74,16 +74,28 @@ export async function revokeDisplay(
   return { error: error?.message ?? null, payloadError };
 }
 
-/** Patch a paired display (RLS UPDATE). Used for assign/layout/name/zone/announcement. */
+/**
+ * Save the complete reviewed configuration through the server-authoritative
+ * boundary. The RPC returns the canonical row after validation and locking.
+ */
 export async function updateDisplay(
-  displayId: string,
+  row: TvDisplayRow,
   patch: Partial<
     Pick<TvDisplayRow, "assigned_tournament_id" | "layout" | "announcement" | "name" | "zone">
   >,
-): Promise<{ error: string | null }> {
-  const { error } = await sb.from("tv_displays").update(patch).eq("id", displayId);
-  return { error: error?.message ?? null };
+): Promise<{ data: TvDisplayRow | null; error: string | null }> {
+  const next = { ...row, ...patch };
+  const { data, error } = await sb.rpc("save_tv_display_config_v1", {
+    p_display_id: row.id,
+    p_assigned_tournament_id: next.assigned_tournament_id,
+    p_layout: next.layout,
+    p_announcement: next.announcement,
+    p_name: next.name,
+    p_zone: next.zone,
+  });
+  return { data: error ? null : data as TvDisplayRow, error: error?.message ?? null };
 }
+
 
 /**
  * Notify a TV to refetch immediately after a dashboard change. Broadcast needs

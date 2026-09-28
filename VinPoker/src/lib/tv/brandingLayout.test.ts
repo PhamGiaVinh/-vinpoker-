@@ -35,6 +35,17 @@ describe("TV branding layout", () => {
     expect(parseTvBrandingLayout(serializeTvBrandingLayout(layout))).toEqual(layout);
   });
 
+  it("parses, validates, and republishes the canonical server fallback", () => {
+    const fallback = {
+      brand_x: 13, brand_y: 10, brand_scale: 70, logo_scale: 80,
+      background_x: 50, background_y: 50, font: "serif", text_blocks: [],
+    };
+    const parsed = parseTvBrandingLayout(fallback);
+    expect(parsed).toEqual(DEFAULT_TV_BRANDING_LAYOUT);
+    expect(validateTvBrandingLayout(parsed)).toBeNull();
+    expect(serializeTvBrandingLayout(parsed)).toEqual(fallback);
+  });
+
   it("keeps a legacy custom_text document visible as a stable editable block", () => {
     const parsed = parseTvBrandingLayout({
       brand_x: 18,

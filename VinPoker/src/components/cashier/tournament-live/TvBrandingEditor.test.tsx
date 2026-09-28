@@ -11,14 +11,25 @@ beforeAll(() => {
   };
 });
 
-const { rpc, client, saveFailure, brandingLayout, brandingAssets } = vi.hoisted(() => {
+const { rpc, client, saveFailure, lostResponseCommitted, submittedState, brandingLayout, brandingAssets } = vi.hoisted(() => {
   const saveFailure = { value: false };
+  const lostResponseCommitted = { value: false };
+  const submittedState = { value: null as Record<string, unknown> | null };
   const brandingLayout = { value: {} as unknown };
   const brandingAssets = { value: { logo_url: null as string | null, background_url: null as string | null } };
-  const rpc = vi.fn(async (name: string) => {
-    if (name === "save_tv_tournament_layout_v1" && saveFailure.value) throw new Error("offline");
+  const rpc = vi.fn(async (name: string, args?: Record<string, unknown>) => {
+    if (name === "save_tv_tournament_layout_v1" && saveFailure.value) {
+      if (lostResponseCommitted.value) submittedState.value = args ?? null;
+      throw new Error("offline");
+    }
     if (name === "get_tv_tournament_branding_v1") return {
-      data: { ...brandingAssets.value, brand_name: "VinPoker", layout: brandingLayout.value, revision: 7 },
+      data: submittedState.value ? {
+        logo_url: submittedState.value.p_logo_url || null,
+        background_url: submittedState.value.p_bg_url || null,
+        brand_name: submittedState.value.p_brand_name || null,
+        layout: submittedState.value.p_layout,
+        revision: 8,
+      } : { ...brandingAssets.value, brand_name: "VinPoker", layout: brandingLayout.value, revision: 7 },
       error: null,
     };
     return { data: { revision: 8 }, error: null };
@@ -27,6 +38,8 @@ const { rpc, client, saveFailure, brandingLayout, brandingAssets } = vi.hoisted(
     rpc,
     client: { rpc },
     saveFailure,
+    lostResponseCommitted,
+    submittedState,
     brandingLayout,
     brandingAssets,
   };
@@ -40,7 +53,7 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 import { TvBrandingEditor } from "./TvBrandingEditor";
 import { toast } from "sonner";
 
-afterEach(() => { cleanup(); rpc.mockClear(); saveFailure.value = false; brandingLayout.value = {}; brandingAssets.value = { logo_url: null, background_url: null }; });
+afterEach(() => { cleanup(); rpc.mockClear(); saveFailure.value = false; lostResponseCommitted.value = false; submittedState.value = null; brandingLayout.value = {}; brandingAssets.value = { logo_url: null, background_url: null }; });
 
 describe("TvBrandingEditor publish boundary", () => {
   it("keeps the editor discoverable while server RPCs remain the authority boundary", async () => {
@@ -86,8 +99,20 @@ describe("TvBrandingEditor publish boundary", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Edit TV layout/i }));
     expect(await screen.findByText(/Draft 16:9 preview/i)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: /Publish TV layout/i }));
-    await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("could not be published")));
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("response was lost")));
     expect(screen.getByRole("button", { name: /Publish TV layout/i })).toBeEnabled();
+  });
+
+  it("reconciles a committed publish whose response was lost", async () => {
+    saveFailure.value = true;
+    lostResponseCommitted.value = true;
+    render(<TvBrandingEditor tournamentId="flight-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: /Edit TV layout/i }));
+    await screen.findByText(/Draft 16:9 preview/i);
+    fireEvent.change(screen.getByLabelText("Brand name"), { target: { value: "Committed brand" } });
+    fireEvent.click(screen.getByRole("button", { name: /Publish TV layout/i }));
+    await vi.waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("published")));
+    expect(rpc).toHaveBeenCalledWith("get_tv_tournament_branding_v1", { p_tournament_id: "flight-1" });
   });
 
   it("renders the legacy single custom_text as a visible text block", async () => {
