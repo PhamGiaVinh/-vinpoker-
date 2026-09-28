@@ -225,6 +225,7 @@ CREATE TABLE public.dealer_attendance (
   pre_assigned_table_id UUID,
   pre_assigned_at TIMESTAMPTZ,
   check_in_time TIMESTAMPTZ NOT NULL DEFAULT now() - interval '30 minutes',
+  check_out_time TIMESTAMPTZ,
   overtime_minutes INTEGER NOT NULL DEFAULT 0,
   priority_break_flag BOOLEAN NOT NULL DEFAULT false,
   worked_minutes_since_last_break INTEGER NOT NULL DEFAULT 0,
