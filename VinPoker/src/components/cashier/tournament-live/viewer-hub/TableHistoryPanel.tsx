@@ -32,9 +32,11 @@ export function TableHistoryPanel({
   const [revoked, setRevoked] = useState(false);
   const [loadedContext, setLoadedContext] = useState<string | null>(null);
   const requestGenerationRef = useRef(0);
+  const loadedPageCountRef = useRef(1);
+  const nextCursorRef = useRef<{ createdAt: string; handId: string } | null>(null);
   const context = `${tournamentId}:${tableId ?? ""}`;
 
-  const load = useCallback(async (append: boolean) => {
+  const load = useCallback(async (mode: "replace" | "append" | "refresh") => {
     const generation = ++requestGenerationRef.current;
     if (!tableId) {
       setItems([]);
@@ -43,40 +45,69 @@ export function TableHistoryPanel({
     }
     setLoading(true);
     setError(null);
-    const cursor = append ? nextCursor : null;
-    const { data, error: rpcError } = await supabase.rpc("get_public_tournament_table_history_v2" as never, {
-      p_tournament_id: tournamentId,
-      p_tournament_table_id: tableId,
-      p_limit: PAGE_SIZE,
-      p_before_created_at: cursor?.createdAt ?? null,
-      p_before_id: cursor?.handId ?? null,
-    } as never);
+    const pageTarget = mode === "refresh" ? loadedPageCountRef.current : 1;
+    let cursor = mode === "append" ? nextCursorRef.current : null;
+    const refreshedItems: PublicTableHistoryItem[] = [];
+    let finalCursor = cursor;
+    let fetchedPages = 0;
+    let accessRevoked = false;
+    let loadError: string | null = null;
+    for (let pageIndex = 0; pageIndex < pageTarget; pageIndex += 1) {
+      const { data, error: rpcError } = await supabase.rpc("get_public_tournament_table_history_v2" as never, {
+        p_tournament_id: tournamentId,
+        p_tournament_table_id: tableId,
+        p_limit: PAGE_SIZE,
+        p_before_created_at: cursor?.createdAt ?? null,
+        p_before_id: cursor?.handId ?? null,
+      } as never);
+      if (rpcError) {
+        loadError = "Không thể tải lịch sử bàn. Dữ liệu đang hiển thị vẫn được giữ nguyên.";
+        break;
+      }
+      const page = parsePublicTableHistoryPage(data, tournamentId, tableId);
+      if (!page) {
+        loadError = "Dữ liệu lịch sử không hợp lệ.";
+        break;
+      }
+      if (page.access === "revoked") {
+        accessRevoked = true;
+        break;
+      }
+      for (const item of page.items) {
+        if (!refreshedItems.some((seen) => seen.handId === item.handId)) refreshedItems.push(item);
+      }
+      fetchedPages += 1;
+      finalCursor = page.nextCursor;
+      cursor = page.nextCursor;
+      if (!cursor) break;
+    }
     if (generation !== requestGenerationRef.current) return;
-    if (rpcError) {
-      setError("Không thể tải lịch sử bàn. Dữ liệu đang hiển thị vẫn được giữ nguyên.");
+    if (loadError) {
+      setError(loadError);
       setLoading(false);
       return;
     }
-    const page = parsePublicTableHistoryPage(data, tournamentId, tableId);
-    if (!page) {
-      setError("Dữ liệu lịch sử không hợp lệ.");
-      setLoading(false);
-      return;
-    }
-    if (page.access === "revoked") {
+    if (accessRevoked) {
       setItems([]);
       setNextCursor(null);
+      nextCursorRef.current = null;
+      loadedPageCountRef.current = 1;
       setLoadedContext(null);
       setRevoked(true);
       setLoading(false);
       onAccessRevoked();
       return;
     }
-    setItems((previous) => append ? [...previous, ...page.items.filter((item) => !previous.some((seen) => seen.handId === item.handId))] : page.items);
-    setNextCursor(page.nextCursor);
+    setItems((previous) => mode === "append"
+      ? [...previous, ...refreshedItems.filter((item) => !previous.some((seen) => seen.handId === item.handId))]
+      : refreshedItems);
+    setNextCursor(finalCursor);
+    nextCursorRef.current = finalCursor;
+    if (mode === "append") loadedPageCountRef.current += fetchedPages;
+    else if (mode === "replace") loadedPageCountRef.current = Math.max(1, fetchedPages);
     setLoadedContext(context);
     setLoading(false);
-  }, [context, nextCursor, onAccessRevoked, tableId, tournamentId]);
+  }, [context, onAccessRevoked, tableId, tournamentId]);
 
   useEffect(() => {
     // Invalidate a response from the previous physical table/session before
@@ -84,10 +115,12 @@ export function TableHistoryPanel({
     requestGenerationRef.current += 1;
     setItems([]);
     setNextCursor(null);
+    nextCursorRef.current = null;
+    loadedPageCountRef.current = 1;
     setLoadedContext(null);
     setRevoked(false);
     setError(null);
-    void load(false);
+    void load("replace");
     return () => { requestGenerationRef.current += 1; };
   // The panel is remounted by its table identity. Do not reload on nextCursor.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,7 +128,7 @@ export function TableHistoryPanel({
 
   useEffect(() => {
     if (revoked) return;
-    const refresh = () => { if (document.visibilityState === "visible") void load(false); };
+    const refresh = () => { if (document.visibilityState === "visible") void load("refresh"); };
     const timer = window.setInterval(refresh, 15_000);
     window.addEventListener("focus", refresh);
     return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
@@ -137,6 +170,6 @@ export function TableHistoryPanel({
         </article>;
       })}
     </div>
-    {visibleCursor && <button type="button" disabled={loading} onClick={() => void load(true)} className="inline-flex min-h-11 items-center rounded-xl border border-border/60 px-3 text-xs font-bold disabled:opacity-50">{loading ? "Đang tải…" : "Tải thêm"}</button>}
+    {visibleCursor && <button type="button" disabled={loading} onClick={() => void load("append")} className="inline-flex min-h-11 items-center rounded-xl border border-border/60 px-3 text-xs font-bold disabled:opacity-50">{loading ? "Đang tải…" : "Tải thêm"}</button>}
   </section>;
 }

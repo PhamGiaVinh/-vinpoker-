@@ -54,6 +54,138 @@ function hand8Input(): AuthoritativeSettlementInput {
 }
 
 describe("authoritative settlement computation", () => {
+  it("awards an odd tied chip to the first winner strictly after the button", async () => {
+    const input = hand8Input();
+    input.hands = [{ ...hand("hand-8", 8), button_seat: 2 }];
+    input.players = [
+      { hand_id: "hand-8", player_id: "button", entry_number: 1, seat_number: 2, starting_stack: 5, ending_stack: 7, hole_cards: ["As", "Kd"] },
+      { hand_id: "hand-8", player_id: "left", entry_number: 1, seat_number: 3, starting_stack: 5, ending_stack: 8, hole_cards: ["Ah", "Jd"] },
+      { hand_id: "hand-8", player_id: "loser", entry_number: 1, seat_number: 4, starting_stack: 5, ending_stack: 0, hole_cards: ["Qs", "Qc"] },
+    ];
+    input.actions = [
+      action("hand-8", "odd-a1", "left", "post_sb", 2, 1),
+      action("hand-8", "odd-a2", "loser", "post_bb", 5, 2),
+      action("hand-8", "odd-a3", "button", "call", 5, 3),
+      action("hand-8", "odd-a4", "left", "call", 3, 4),
+    ];
+    input.edit = { communityCards: ["2c", "3d", "4h", "5s", "9c"], actions: input.actions };
+    input.liveStacks = [
+      { player_id: "button", entry_number: 1, chip_count: 7 },
+      { player_id: "left", entry_number: 1, chip_count: 8 },
+      { player_id: "loser", entry_number: 1, chip_count: 0 },
+    ];
+
+    const result = await computeAuthoritativeSettlement(input);
+    expect(result.publicOutcome.pots[0].allocations).toEqual([
+      { potId: "main-0", winnerId: "left", amount: 8, includesOddChip: true },
+      { potId: "main-0", winnerId: "button", amount: 7, includesOddChip: false },
+    ]);
+  });
+
+  it("awards an odd side-pot chip only among eligible tied winners", async () => {
+    const input = hand8Input();
+    input.hands = [{ ...hand("hand-8", 8), button_seat: 2 }];
+    input.players = [
+      { hand_id: "hand-8", player_id: "main", entry_number: 1, seat_number: 1, starting_stack: 1, ending_stack: 4, hole_cards: ["6s", "7s"] },
+      { hand_id: "hand-8", player_id: "side-button", entry_number: 1, seat_number: 2, starting_stack: 2, ending_stack: 1, hole_cards: ["As", "Kd"] },
+      { hand_id: "hand-8", player_id: "side-left", entry_number: 1, seat_number: 3, starting_stack: 2, ending_stack: 2, hole_cards: ["Ah", "Jd"] },
+      { hand_id: "hand-8", player_id: "side-loser", entry_number: 1, seat_number: 4, starting_stack: 2, ending_stack: 0, hole_cards: ["Qs", "Qc"] },
+    ];
+    input.actions = [
+      action("hand-8", "side-odd-a1", "side-left", "post_sb", 1, 1),
+      action("hand-8", "side-odd-a2", "side-loser", "post_bb", 2, 2),
+      action("hand-8", "side-odd-a3", "main", "all_in", 1, 3),
+      action("hand-8", "side-odd-a4", "side-button", "all_in", 2, 4),
+      action("hand-8", "side-odd-a5", "side-left", "call", 1, 5),
+    ];
+    input.edit = { communityCards: ["2c", "3d", "4h", "5s", "9c"], actions: input.actions };
+    input.liveStacks = [
+      { player_id: "main", entry_number: 1, chip_count: 4 },
+      { player_id: "side-button", entry_number: 1, chip_count: 1 },
+      { player_id: "side-left", entry_number: 1, chip_count: 2 },
+      { player_id: "side-loser", entry_number: 1, chip_count: 0 },
+    ];
+
+    const result = await computeAuthoritativeSettlement(input);
+    expect(result.publicOutcome.pots[1]).toMatchObject({
+      kind: "side",
+      allocations: [
+        { potId: "side-1", winnerId: "side-left", amount: 2, includesOddChip: true },
+        { potId: "side-1", winnerId: "side-button", amount: 1, includesOddChip: false },
+      ],
+    });
+    expect(new Set(result.publicOutcome.pots[1].eligiblePlayerIds)).toEqual(
+      new Set(["side-button", "side-left", "side-loser"]),
+    );
+  });
+
+  it("matches a final stack by player and entry instead of player id alone", async () => {
+    const input = hand8Input();
+    input.liveStacks = [
+      { player_id: "limitless", entry_number: 2, chip_count: 100_000_000 },
+      { player_id: "limitless", entry_number: 1, chip_count: 17_400_000 },
+      { player_id: "kayhan", entry_number: 1, chip_count: 38_700_000 },
+    ];
+
+    const result = await computeAuthoritativeSettlement(input);
+    expect(result.finalStacks.find((row) => row.player_id === "limitless")).toMatchObject({
+      player_id: "limitless",
+      entry_number: 1,
+      expected_current: 17_400_000,
+    });
+
+    const permuted = hand8Input();
+    permuted.liveStacks = [...input.liveStacks].reverse();
+    const permutedResult = await computeAuthoritativeSettlement(permuted);
+    expect(permutedResult.finalStacks.find((row) => row.player_id === "limitless")).toMatchObject({
+      player_id: "limitless",
+      entry_number: 1,
+      expected_current: 17_400_000,
+    });
+  });
+
+  it("fails closed when only a newer re-entry stack exists", async () => {
+    const input = hand8Input();
+    input.liveStacks = [
+      { player_id: "limitless", entry_number: 2, chip_count: 100_000_000 },
+      { player_id: "kayhan", entry_number: 1, chip_count: 38_700_000 },
+    ];
+
+    await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("live_stack_missing:limitless#1");
+  });
+
+  it("does not carry a prior entry balance into a later re-entry", async () => {
+    const input = hand8Input();
+    input.hands = [hand("hand-8", 8), hand("hand-9", 9)];
+    input.players = [
+      ...input.players,
+      { hand_id: "hand-9", player_id: "limitless", entry_number: 2, seat_number: 2, starting_stack: 1_000_000, ending_stack: 900_000, hole_cards: [] },
+      { hand_id: "hand-9", player_id: "kayhan", entry_number: 1, seat_number: 3, starting_stack: 38_700_000, ending_stack: 38_800_000, hole_cards: [] },
+    ];
+    input.actions = [
+      ...input.actions,
+      { ...action("hand-9", "h9-reentry-a1", "limitless", "bet", 100_000, 1), entry_number: 2 },
+      action("hand-9", "h9-reentry-a2", "kayhan", "call", 100_000, 2),
+    ];
+    input.liveStacks = [
+      { player_id: "limitless", entry_number: 1, chip_count: 17_400_000 },
+      { player_id: "limitless", entry_number: 2, chip_count: 900_000 },
+      { player_id: "kayhan", entry_number: 1, chip_count: 38_800_000 },
+    ];
+
+    const result = await computeAuthoritativeSettlement(input);
+    expect(result.handChanges).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ hand_id: "hand-9", player_id: "limitless", entry_number: 2 }),
+    ]));
+    expect(result.finalStacks.find((row) => row.player_id === "limitless" && row.entry_number === 2))
+      .toMatchObject({ expected_current: 900_000, chip_count: 900_000 });
+  });
+
+  it("rejects duplicate live rows for the same entry", async () => {
+    const input = hand8Input();
+    input.liveStacks = [...input.liveStacks, { ...input.liveStacks[0] }];
+    await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("live_stack_ambiguous:limitless#1");
+  });
   it("settles Hand #8 as a chop with a separate uncalled refund", async () => {
     const result = await computeAuthoritativeSettlement(hand8Input());
     expect(result.privateOutcome.totals).toMatchObject({
@@ -61,7 +193,7 @@ describe("authoritative settlement computation", () => {
       distributablePot: 17_400_000,
       refundTotal: 38_700_000,
     });
-    expect(result.privateOutcome.pots[0].winnerIds).toEqual(["limitless", "kayhan"]);
+    expect(result.privateOutcome.pots[0].winnerIds).toEqual(["kayhan", "limitless"]);
     expect(result.privateOutcome.pots[0].allocations.map((allocation) => allocation.amount)).toEqual([8_700_000, 8_700_000]);
     expect(result.privateOutcome.refunds).toEqual([{ playerId: "kayhan", amount: 38_700_000, sourceActionId: "h8-a4" }]);
     expect(result.privateOutcome.players.map((player) => player.endingStack)).toEqual([8_700_000, 47_400_000]);
