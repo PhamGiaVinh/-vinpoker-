@@ -57,6 +57,17 @@ describe("Floor table picker presentation", () => {
     expect(options[6]).toEqual({ number: 7, state: "unavailable" });
   });
 
+  it("keeps an orphan session visible but impossible to select", () => {
+    const options = buildFloorTableNumberOptions([{
+      table_number: 8,
+      status: null,
+      availability_status: "repair_required",
+      session_type: null,
+    }], "unavailable");
+
+    expect(options[7]).toEqual({ number: 8, state: "unavailable", detail: "Cần sửa dữ liệu" });
+  });
+
   it("fails visibly on duplicate seats instead of choosing a hidden winner", () => {
     const roster = buildFloorSeatRoster([
       { seatNumber: 4, playerName: "First", chipsLabel: "10" },
