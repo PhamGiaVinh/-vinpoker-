@@ -58,6 +58,8 @@ test("PostgreSQL 17 restores the authenticated baseline and applies the exact ni
     CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT NULL::uuid';
     CREATE OR REPLACE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS 'SELECT NULL::text';
     CREATE TABLE IF NOT EXISTS auth.users(id uuid PRIMARY KEY);
+    CREATE OR REPLACE FUNCTION centerpoint_private.tv_branding_storage_insert_allowed_v1(text,text)
+    RETURNS boolean LANGUAGE sql STABLE AS 'SELECT false';
   `);
   psqlFile(schemaPath);
   psql("CREATE SCHEMA IF NOT EXISTS supabase_migrations; CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations(version text PRIMARY KEY,name text NOT NULL,statements text[] NOT NULL);");
