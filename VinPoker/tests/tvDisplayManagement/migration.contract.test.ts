@@ -39,7 +39,7 @@ describe("TV display management authority", () => {
     expect(reader).toContain("t.deleted_at IS NULL");
     expect(reader.indexOf("RETURN jsonb_build_object('status', 'invalid')"))
       .toBeLessThan(reader.indexOf("v_payload := public.get_tv_display_state"));
-    expect(stageA).toContain("REVOKE ALL ON FUNCTION public.get_tv_display_state(text) FROM PUBLIC, anon, authenticated");
+    expect(stageA).not.toContain("REVOKE ALL ON FUNCTION public.get_tv_display_state(text)");
   });
 
   it("keeps the event-branding scope separate from tournament clock state", () => {
@@ -63,6 +63,8 @@ describe("TV display management authority", () => {
   it("makes Stage B an explicit direct-update revoke with no live execution machinery", () => {
     expect(stageB).toContain("DROP POLICY IF EXISTS tv_displays_staff_update");
     expect(stageB).toContain("REVOKE UPDATE ON TABLE public.tv_displays FROM authenticated");
+    expect(stageB).toContain("REVOKE ALL ON FUNCTION public.get_tv_display_state(text)");
+    expect(stageB).toContain("only after every public display caller is proven to use guarded V3");
     expect(stageB).not.toMatch(/GRANT UPDATE/i);
     expect(stageB).not.toMatch(/status\s*=|display_token\s*=|club_id\s*=/i);
   });

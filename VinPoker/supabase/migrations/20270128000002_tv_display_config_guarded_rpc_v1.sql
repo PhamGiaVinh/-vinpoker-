@@ -144,10 +144,6 @@ $$;
 REVOKE ALL ON FUNCTION public.get_tv_display_state_v3(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_tv_display_state_v3(text) TO anon, authenticated;
 
--- V3 is the only public token reader after Stage A. Keeping the old reader
--- callable would let clients bypass the same-club/deleted-tournament fence.
-REVOKE ALL ON FUNCTION public.get_tv_display_state(text) FROM PUBLIC, anon, authenticated;
-
 -- The canonical fallback matches DEFAULT_TV_BRANDING_LAYOUT and the current
 -- serializer. Existing stored layouts are not rewritten.
 CREATE OR REPLACE FUNCTION public.get_tv_tournament_branding_v1(p_tournament_id uuid)
