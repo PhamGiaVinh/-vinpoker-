@@ -24,13 +24,19 @@ test("wrong order and receipt-name drift are rejected", () => {
   assert.throws(() => classifyTarget([{ version: ORDER[0], name: entries[0].semanticName, statements: ["select 'drift';"] }], entries, ORDER[1]), /SQL hash drift/);
 });
 test("current immutable 00018/00019/00020 receipts allow exact one-at-a-time advancement", () => {
-  const legacy = control.productionReceipts.map((receipt) => ({ version: receipt.version, name: receipt.semanticName, statements: [entries.find((entry) => entry.newVersion === receipt.version)?.sql ?? ""] }));
+  const legacySource = {
+    "20270115000018": readFileSync("supabase/migrations/20270115000018_dealer_assignment_session_binding.sql", "utf8"),
+    "20270115000019": readFileSync("supabase/migrations/20270115000020_tracker_voice_floor_owner_authority.sql", "utf8"),
+    "20270115000020": readFileSync("supabase/migrations/20270115000020_tracker_voice_floor_owner_authority.sql", "utf8"),
+  };
+  const legacy = control.productionReceipts.map((receipt) => ({ version: receipt.version, name: receipt.semanticName, statements: [legacySource[receipt.version]] }));
   const rows = [];
   for (let index = 0; index < entries.length; index += 1) {
     assert.equal(classifyTarget([...legacy, ...rows], entries, entries[index].newVersion), "pending");
     rows.push({ version: entries[index].newVersion, name: entries[index].semanticName, statements: [entries[index].sql] });
     assert.equal(classifyTarget([...legacy, ...rows], entries, entries[index].newVersion), "already-applied-exact");
   }
+  assert.throws(() => classifyTarget([{ ...legacy[0], statements: ["select 'drift';"] }, ...legacy.slice(1)], entries, entries[0].newVersion), /predecessor receipt SQL hash drift/);
 });
 test("package contains no named live-data mutation", () => {
   const source = [JSON.stringify({ entries, control }), readFileSync("../.github/workflows/protected-nine-exact-apply.yml", "utf8"), readFileSync("docs/operations/PROTECTED_NINE_CUTOVER.md", "utf8")].join("\n");

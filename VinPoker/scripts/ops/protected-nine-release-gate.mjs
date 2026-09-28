@@ -29,7 +29,10 @@ export function loadRelease(root = ROOT) {
     const postcheck = postchecks.entries?.find((item) => item.version === version);
     if (!postcheck || postcheck.filename !== reservation.filename || !Array.isArray(postcheck.queries) || postcheck.queries.length === 0) throw new Error(`Missing exact postcheck ${version}`);
     const requiredVersions = [...new Set(reservation.dependencies ?? [])];
-    const requiredReceipts = requiredVersions.map((version) => ({ version, semanticName: control.productionReceipts?.find((receipt) => receipt.version === version)?.semanticName ?? null }));
+    const requiredReceipts = requiredVersions.map((version) => {
+      const receipt = control.productionReceipts?.find((candidate) => candidate.version === version);
+      return { version, semanticName: receipt?.semanticName ?? null, normalizedSqlSha256: receipt?.normalizedSqlSha256 ?? null };
+    });
     return { ...reservation, name: reservation.semanticName, path, sql, postcheck, requiredReceipts };
   });
   if (postchecks.projectRef !== PROJECT_REF || postchecks.entries?.map((item) => item.version).join(",") !== ORDER.join(",")) throw new Error("Postcheck manifest identity/order mismatch");
@@ -57,6 +60,7 @@ export function classifyTarget(history, entries, targetVersion) {
   for (const dependency of entries[targetIndex].requiredReceipts ?? []) {
     if (!rows.has(dependency.version)) throw new Error(`Required predecessor receipt missing ${dependency.version}`);
     if (dependency.semanticName && rows.get(dependency.version).name !== dependency.semanticName) throw new Error(`Required predecessor receipt name drift ${dependency.version}`);
+    if (dependency.normalizedSqlSha256 && rows.get(dependency.version).hash !== dependency.normalizedSqlSha256) throw new Error(`Required predecessor receipt SQL hash drift ${dependency.version}`);
   }
   return "pending";
 }

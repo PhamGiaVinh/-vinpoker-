@@ -89,6 +89,8 @@ jobs:
           test "$(jq -r .status <<<"$run")" = completed
           test "$(jq -r .conclusion <<<"$run")" = success
           test "$(jq -r .actor.login <<<"$run")" = "$GITHUB_REPOSITORY_OWNER"
+          test "$(jq -r .head_branch <<<"$run")" = main
+          test "$(jq -r .head_sha <<<"$run")" = "${{ inputs.release_sha }}"
           artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$UAT_RUN_ID/artifacts")"
           artifact="$(jq -ce --arg name "tv-stage-a-production-uat-$UAT_RUN_ID" '[.artifacts[] | select(.name==$name and .expired==false and .size_in_bytes>0)] | if length==1 then .[0] else error("missing UAT receipt") end' <<<"$artifacts")"
           mkdir "$RUNNER_TEMP/uat"; gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$(jq -r .id <<<"$artifact")/zip" >"$RUNNER_TEMP/uat.zip"; unzip -q "$RUNNER_TEMP/uat.zip" -d "$RUNNER_TEMP/uat"
