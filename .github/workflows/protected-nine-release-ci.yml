@@ -1,0 +1,100 @@
+name: Protected nine release package CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/protected-nine-*.yml"
+      - ".github/workflows/tv-stage-a-production-uat.yml"
+      - ".github/workflows/floor-v3-recovery-backup.yml"
+      - "VinPoker/scripts/ops/protected-nine-*"
+      - "VinPoker/scripts/ops/tv-stage-a-auth-uat.mjs"
+      - "VinPoker/scripts/security/check-migration-control.mjs"
+      - "VinPoker/supabase/migration-control/**"
+      - "VinPoker/supabase/migrations/2027012800000*.sql"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  release-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: 22 }
+      - name: Action workflow static validation
+        run: >-
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7
+          .github/workflows/protected-nine-exact-apply.yml
+          .github/workflows/protected-nine-release-ci.yml
+          .github/workflows/tv-stage-a-production-uat.yml
+          .github/workflows/floor-v3-recovery-backup.yml
+      - name: Start disposable PostgreSQL 17
+        run: |
+          docker run --detach --name tracker-history-reparent-pg17 --env POSTGRES_HOST_AUTH_METHOD=trust --publish 5432:5432 postgres:17
+          for _ in $(seq 1 30); do docker exec tracker-history-reparent-pg17 pg_isready -U postgres -d postgres && exit 0; sleep 1; done
+          exit 1
+      - name: Migration-control and runner contracts
+        working-directory: VinPoker
+        run: |
+          npm run check:migration-control
+          node --test scripts/ops/protected-nine-release-gate.test.mjs
+      - name: Install locked domain-test dependencies
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+      - name: Protected-nine domain contracts
+        working-directory: VinPoker
+        run: >-
+          ./node_modules/.bin/vitest run
+          tests/dealerSwingAuthorization/authorization.contract.test.ts
+          tests/tvDisplayManagement/migration.contract.test.ts
+          tests/trackerSettlement/historicalDisplayMigration.contract.test.ts
+          tests/trackerSettlement/historicalDisplayVerification.test.ts
+          tests/trackerCorrectionRelease2/floorTrackerAuthority.contract.test.ts
+          tests/trackerCorrectionRelease2/migration.contract.test.ts
+          tests/floorTableControlV3/criticalConsistency.contract.test.ts
+          tests/trackerVoice/floorOwnerAuthority.contract.test.ts
+          tests/trackerVoice/migration.contract.test.ts
+      - name: Download owner-authorized sanitized schema baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/36422707061" --jq .workflow_id)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/capture-live-public-schema.yml" --jq .id)"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/36422707061" --jq .event)" = workflow_dispatch
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/36422707061" --jq .conclusion)" = success
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/36422707061" --jq .head_branch)" = main
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/36422707061" --jq .head_sha)" = d64df388d42b51cb851e8d23361d4fe568988eb7
+          artifact_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/36422707061/artifacts" --jq '[.artifacts[] | select(.name=="live-public-schema" and .expired==false)] | if length==1 then .[0].id else error("exact schema artifact missing") end')"
+          mkdir "$RUNNER_TEMP/protected-nine-schema"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/protected-nine-schema.zip"
+          unzip -q "$RUNNER_TEMP/protected-nine-schema.zip" -d "$RUNNER_TEMP/protected-nine-schema"
+          node VinPoker/scripts/deploy/validate-live-public-schema-artifact.mjs --artifact-directory "$RUNNER_TEMP/protected-nine-schema"
+          test "$(cut -d' ' -f1 "$RUNNER_TEMP/protected-nine-schema/live-public-schema.sha256")" = 703aed6b620cd24f34c31d4545b2d7e97e4a488f89fe81dfc1a36b175d259223
+      - name: PostgreSQL 17 exact baseline plan/apply/postcheck integration
+        working-directory: VinPoker
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGDATABASE: postgres
+          PGPASSWORD: ""
+          PROTECTED_NINE_SCHEMA_ARTIFACT_DIR: ${{ runner.temp }}/protected-nine-schema
+          PROTECTED_NINE_CONTRACT_OUTPUT: ${{ runner.temp }}/protected-nine-object-contract.json
+        run: node --test scripts/ops/protected-nine-release-gate.pg17.test.mjs
+      - name: Upload metadata-only object contract candidate
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: protected-nine-object-contract-${{ github.run_id }}
+          path: ${{ runner.temp }}/protected-nine-object-contract.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: History reparent BEFORE trigger semantic proof
+        working-directory: VinPoker
+        env: { TRACKER_HISTORY_PG17_DOCKER_CONTAINER: tracker-history-reparent-pg17, TRACKER_HISTORY_PG17_ALLOW_DISPOSABLE: "1" }
+        run: node --test scripts/public-spectator/tracker-history-reparent-invalidation.pg17.test.mjs
+      - name: Stop disposable PostgreSQL 17
+        if: always()
+        run: docker rm --force tracker-history-reparent-pg17 || true

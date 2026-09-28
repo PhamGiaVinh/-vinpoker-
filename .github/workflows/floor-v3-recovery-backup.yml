@@ -261,8 +261,30 @@ jobs:
             echo "- production_mutation=false"
           } >>"$GITHUB_STEP_SUMMARY"
 
+      - name: Create metadata-only restore verification receipt
+        if: success()
+        shell: bash
+        env:
+          SNAPSHOT_AT: ${{ needs.backup.outputs.snapshot_at }}
+          SOURCE_SHA: ${{ inputs.target_sha }}
+          CIPHERTEXT_SHA256: ${{ needs.backup.outputs.ciphertext_sha256 }}
+        run: |
+          set -euo pipefail
+          jq -n --arg sourceSha "$SOURCE_SHA" --arg snapshotAt "$SNAPSHOT_AT" --arg ciphertextSha256 "$CIPHERTEXT_SHA256" \
+            '{schemaVersion:1,kind:"vinpoker-restore-verification",sourceSha:$sourceSha,snapshotAt:$snapshotAt,ciphertextSha256:$ciphertextSha256,isolatedRestore:"PASS",tableCountMatch:"PASS",productionMutation:false}' \
+            >"$RUNNER_TEMP/recovery-verification.json"
+
+      - name: Upload metadata-only restore verification receipt
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: floor-v3-restore-verification-${{ github.run_id }}
+          path: ${{ runner.temp }}/recovery-verification.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Clean local plaintext and database
         if: always()
         shell: bash
         run: |
-          rm -rf -- "${RUNNER_TEMP}/floor-v3-artifact" "${RUNNER_TEMP}/floor-v3-restore-${GITHUB_RUN_ID}"
+          rm -rf -- "${RUNNER_TEMP}/floor-v3-artifact" "${RUNNER_TEMP}/floor-v3-restore-${GITHUB_RUN_ID}" "${RUNNER_TEMP}/recovery-verification.json"
