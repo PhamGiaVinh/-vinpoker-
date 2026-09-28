@@ -59,11 +59,11 @@
       "newVersion": "20270128000002",
       "semanticName": "tv_display_config_guarded_rpc_v1",
       "filename": "20270128000002_tv_display_config_guarded_rpc_v1.sql",
-      "normalizedSqlSha256": null,
+      "normalizedSqlSha256": "3f66393912b2feccff0ea2954460d20a13697f13b14c9bd8e1dc52dcc635d07f",
       "dependencies": [],
       "ownerSession": "S2",
-      "sourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
-      "state": "RESERVED_NO_SQL",
+      "sourceSha": "1085a202b52813fbe31d8dc389088265fe86153c",
+      "state": "SOURCE_BOUND",
       "releaseGates": [
         "verify exact live TV v1 digest and ACL before Stage A"
       ]
@@ -74,13 +74,13 @@
       "newVersion": "20270128000003",
       "semanticName": "tv_display_direct_update_revoke_v1",
       "filename": "20270128000003_tv_display_direct_update_revoke_v1.sql",
-      "normalizedSqlSha256": null,
+      "normalizedSqlSha256": "daf892e544dfd43fc2fd5c035c637dc982ca75f09aacd653df38d69e7f009005",
       "dependencies": [
         "20270128000002"
       ],
       "ownerSession": "S2",
-      "sourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
-      "state": "RESERVED_NO_SQL",
+      "sourceSha": "1085a202b52813fbe31d8dc389088265fe86153c",
+      "state": "SOURCE_BOUND",
       "releaseGates": [
         "compatible frontend proof must pass before Stage B"
       ]

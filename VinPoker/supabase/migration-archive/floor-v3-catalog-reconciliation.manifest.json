@@ -6882,6 +6882,18 @@
       "domain": "dealer"
     },
     {
+      "version": "20270128000002",
+      "filename": "20270128000002_tv_display_config_guarded_rpc_v1.sql",
+      "sha256": "3f66393912b2feccff0ea2954460d20a13697f13b14c9bd8e1dc52dcc635d07f",
+      "domain": "tv"
+    },
+    {
+      "version": "20270128000003",
+      "filename": "20270128000003_tv_display_direct_update_revoke_v1.sql",
+      "sha256": "daf892e544dfd43fc2fd5c035c637dc982ca75f09aacd653df38d69e7f009005",
+      "domain": "tv"
+    },
+    {
       "version": "20270128000004",
       "filename": "20270128000004_tracker_history_completion_queue.sql",
       "sha256": "fb2b559c5f58d361adb7ea403527c9e187bcbdbbb686f78e78777f2d5a7c4646",
