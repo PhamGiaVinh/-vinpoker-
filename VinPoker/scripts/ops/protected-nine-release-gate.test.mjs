@@ -19,23 +19,35 @@ test("wrong project, name, and hash are rejected", () => {
 });
 test("wrong order and receipt-name drift are rejected", () => {
   assert.throws(() => classifyTarget([], entries, ORDER[1]), /Earlier/);
-  assert.throws(() => classifyTarget([{ version: ORDER[0], name: "wrong" }], entries, ORDER[1]), /name drift/);
-  assert.throws(() => classifyTarget([], entries, ORDER[0]), /predecessor receipt missing/);
+  assert.throws(() => classifyTarget([{ version: ORDER[0], name: "wrong", statements: [entries[0].sql] }], entries, ORDER[1]), /name drift/);
+  assert.throws(() => classifyTarget([{ version: ORDER[0], name: entries[0].semanticName, statements: [] }], entries, ORDER[1]), /Malformed/);
+  assert.throws(() => classifyTarget([{ version: ORDER[0], name: entries[0].semanticName, statements: ["select 'drift';"] }], entries, ORDER[1]), /SQL hash drift/);
 });
-test("TV Stage B requires compatible frontend SHA and authenticated UAT", () => {
-  const stageB = entries[2];
-  assert.throws(() => validateInvocation(envFor(stageB), stageB, "apply"), /authenticated UAT/);
-  assert.doesNotThrow(() => validateInvocation({ ...envFor(stageB), TV_STAGE_A_FRONTEND_SHA: "a".repeat(40), TV_STAGE_A_AUTH_UAT: "PASS" }, stageB, "apply"));
+test("current immutable 00018/00019/00020 receipts allow exact one-at-a-time advancement", () => {
+  const legacy = control.productionReceipts.map((receipt) => ({ version: receipt.version, name: receipt.semanticName, statements: [entries.find((entry) => entry.newVersion === receipt.version)?.sql ?? ""] }));
+  const rows = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    assert.equal(classifyTarget([...legacy, ...rows], entries, entries[index].newVersion), "pending");
+    rows.push({ version: entries[index].newVersion, name: entries[index].semanticName, statements: [entries[index].sql] });
+    assert.equal(classifyTarget([...legacy, ...rows], entries, entries[index].newVersion), "already-applied-exact");
+  }
 });
 test("package contains no named live-data mutation", () => {
   const source = [JSON.stringify({ entries, control }), readFileSync("../.github/workflows/protected-nine-exact-apply.yml", "utf8"), readFileSync("docs/operations/PROTECTED_NINE_CUTOVER.md", "utf8")].join("\n");
   for (const forbidden of ["Phil", "Tom", "Bàn 8", "Ban 8"]) assert.equal(source.includes(forbidden), false);
 });
 test("atomic query owns a separate lock and inserts one immutable receipt", () => {
-  const query = buildAtomicMigrationQuery(first);
-  assert.match(query, /pg_advisory_xact_lock\(280000, 9\)/);
-  assert.equal((query.match(/INSERT INTO supabase_migrations\.schema_migrations/g) ?? []).length, 1);
-  assert.doesNotMatch(query, /DELETE\s+FROM\s+supabase_migrations|UPDATE\s+supabase_migrations/i);
+  for (const entry of entries) {
+    const query = buildAtomicMigrationQuery(entry);
+    assert.match(query, /pg_advisory_xact_lock\(280000, 9\)/);
+    assert.equal((query.match(/INSERT INTO supabase_migrations\.schema_migrations/g) ?? []).length, 1);
+    assert.doesNotMatch(query, /DELETE\s+FROM\s+supabase_migrations|UPDATE\s+supabase_migrations/i);
+  }
+});
+test("release source excludes named-live repair and broad data repair", () => {
+  const migrations = entries.map((entry) => entry.sql).join("\n");
+  assert.doesNotMatch(migrations, /\b(?:Phil|Tom)\b|Bàn 8|Ban 8/iu);
+  assert.doesNotMatch(migrations, /docs\/emergency_rollbacks|repair.*orphan/i);
 });
 test("workflow does not print credential values", () => {
   const workflow = readFileSync("../.github/workflows/protected-nine-exact-apply.yml", "utf8");

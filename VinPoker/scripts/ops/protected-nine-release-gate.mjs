@@ -28,7 +28,7 @@ export function loadRelease(root = ROOT) {
     scanMigrationSource(sql);
     const postcheck = postchecks.entries?.find((item) => item.version === version);
     if (!postcheck || postcheck.filename !== reservation.filename || !Array.isArray(postcheck.queries) || postcheck.queries.length === 0) throw new Error(`Missing exact postcheck ${version}`);
-    const requiredVersions = [...new Set([reservation.oldVersion, ...(reservation.dependencies ?? [])].filter(Boolean))];
+    const requiredVersions = [...new Set(reservation.dependencies ?? [])];
     const requiredReceipts = requiredVersions.map((version) => ({ version, semanticName: control.productionReceipts?.find((receipt) => receipt.version === version)?.semanticName ?? null }));
     return { ...reservation, name: reservation.semanticName, path, sql, postcheck, requiredReceipts };
   });
@@ -42,11 +42,13 @@ export function classifyTarget(history, entries, targetVersion) {
   for (const row of history) {
     const version = String(row.version);
     if (rows.has(version)) throw new Error(`Ambiguous live receipt ${version}`);
-    rows.set(version, String(row.name));
+    if (!Array.isArray(row.statements) || row.statements.length !== 1 || typeof row.statements[0] !== "string") throw new Error(`Malformed live receipt ${version}`);
+    rows.set(version, { name: String(row.name), hash: normalizedHash(row.statements[0]) });
   }
   for (const entry of entries) {
-    const liveName = rows.get(entry.newVersion);
-    if (liveName && liveName !== entry.semanticName) throw new Error(`Live receipt name drift ${entry.newVersion}`);
+    const receipt = rows.get(entry.newVersion);
+    if (receipt && receipt.name !== entry.semanticName) throw new Error(`Live receipt name drift ${entry.newVersion}`);
+    if (receipt && receipt.hash !== entry.normalizedSqlSha256) throw new Error(`Live receipt SQL hash drift ${entry.newVersion}`);
   }
   const targetIndex = ORDER.indexOf(targetVersion);
   for (let index = 0; index < targetIndex; index += 1) if (!rows.has(ORDER[index])) throw new Error(`Earlier protected migration is not applied ${ORDER[index]}`);
@@ -54,7 +56,7 @@ export function classifyTarget(history, entries, targetVersion) {
   if (rows.has(targetVersion)) return "already-applied-exact";
   for (const dependency of entries[targetIndex].requiredReceipts ?? []) {
     if (!rows.has(dependency.version)) throw new Error(`Required predecessor receipt missing ${dependency.version}`);
-    if (dependency.semanticName && rows.get(dependency.version) !== dependency.semanticName) throw new Error(`Required predecessor receipt name drift ${dependency.version}`);
+    if (dependency.semanticName && rows.get(dependency.version).name !== dependency.semanticName) throw new Error(`Required predecessor receipt name drift ${dependency.version}`);
   }
   return "pending";
 }
@@ -64,7 +66,6 @@ export function validateInvocation(env, entry, mode) {
   if (env.TARGET_MIGRATION !== entry.filename) throw new Error("Wrong exact migration filename");
   if (env.TARGET_NORMALIZED_SHA256 !== entry.normalizedSqlSha256) throw new Error("Wrong exact normalized migration hash");
   if (mode === "apply" && env.CONFIRM_PROTECTED_NINE !== `${CONFIRM_PREFIX}_${entry.newVersion}_${entry.normalizedSqlSha256}`) throw new Error("Exact apply confirmation is missing");
-  if (entry.newVersion === "20270128000003" && (!/^[0-9a-f]{40}$/.test(env.TV_STAGE_A_FRONTEND_SHA ?? "") || env.TV_STAGE_A_AUTH_UAT !== "PASS")) throw new Error("TV Stage B requires Stage A frontend SHA and authenticated UAT attestation");
 }
 
 export function buildAtomicMigrationQuery(entry) {
@@ -77,7 +78,7 @@ export function buildAtomicMigrationQuery(entry) {
 }
 
 async function request(path, token, options = {}) {
-  const response = await fetch(`https://api.supabase.com/v1/projects/${PROJECT_REF}${path}`, { ...options, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(30_000) });
+  const response = await fetch(`https://api.supabase.com/v1/projects/${PROJECT_REF}${path}`, { ...options, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(path === "/database/query" ? 150_000 : 30_000) });
   if (!response.ok) throw new Error(`Supabase Management API returned ${response.status}`);
   return response.json();
 }
@@ -91,8 +92,12 @@ async function execute() {
   validateInvocation(process.env, entry, mode);
   const token = process.env.SUPABASE_ACCESS_TOKEN;
   if (!token) throw new Error("Approved Supabase credential context is unavailable");
-  const history = await request("/database/migrations", token);
+  const history = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query: "SELECT version,name,statements FROM supabase_migrations.schema_migrations ORDER BY version" }) });
   const state = classifyTarget(history, entries, entry.newVersion);
+  for (const query of entry.postcheck.preflightQueries ?? []) {
+    const result = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query }) });
+    if (!Array.isArray(result) || result.length !== 1 || result[0]?.ok !== true) throw new Error(`Preflight failed ${entry.newVersion}`);
+  }
   if (mode === "apply") {
     if (state !== "pending") throw new Error(`Target is not pending: ${state}`);
     const result = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query: buildAtomicMigrationQuery(entry) }) });

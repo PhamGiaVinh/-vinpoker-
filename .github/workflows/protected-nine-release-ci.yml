@@ -1,0 +1,47 @@
+name: Protected nine release package CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/protected-nine-*.yml"
+      - ".github/workflows/tv-stage-a-production-uat.yml"
+      - ".github/workflows/floor-v3-recovery-backup.yml"
+      - "VinPoker/scripts/ops/protected-nine-*"
+      - "VinPoker/scripts/ops/tv-stage-a-auth-uat.mjs"
+      - "VinPoker/scripts/security/check-migration-control.mjs"
+      - "VinPoker/supabase/migration-control/**"
+      - "VinPoker/supabase/migrations/2027012800000*.sql"
+
+permissions: { contents: read }
+
+jobs:
+  release-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: 22 }
+      - name: Action workflow static validation
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7
+      - name: Start disposable PostgreSQL 17
+        run: |
+          docker run --detach --name tracker-history-reparent-pg17 --env POSTGRES_HOST_AUTH_METHOD=trust --publish 5432:5432 postgres:17
+          for _ in $(seq 1 30); do docker exec tracker-history-reparent-pg17 pg_isready -U postgres -d postgres && exit 0; sleep 1; done
+          exit 1
+      - name: Migration-control and runner contracts
+        working-directory: VinPoker
+        run: |
+          npm run check:migration-control
+          node --test scripts/ops/protected-nine-release-gate.test.mjs
+      - name: PostgreSQL 17 atomic plan/apply/postcheck simulation
+        working-directory: VinPoker
+        env: { PGHOST: 127.0.0.1, PGPORT: 5432, PGUSER: postgres, PGDATABASE: postgres, PGPASSWORD: "" }
+        run: node --test scripts/ops/protected-nine-release-gate.pg17.test.mjs
+      - name: History reparent BEFORE trigger semantic proof
+        working-directory: VinPoker
+        env: { TRACKER_HISTORY_PG17_DOCKER_CONTAINER: tracker-history-reparent-pg17, TRACKER_HISTORY_PG17_ALLOW_DISPOSABLE: "1" }
+        run: node --test scripts/public-spectator/tracker-history-reparent-invalidation.pg17.test.mjs
+      - name: Stop disposable PostgreSQL 17
+        if: always()
+        run: docker rm --force tracker-history-reparent-pg17 || true
