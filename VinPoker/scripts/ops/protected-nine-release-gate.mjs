@@ -97,6 +97,19 @@ async function request(path, token, options = {}) {
   return response.json();
 }
 
+async function verifyLiveObjectContract(entries, objectContract, stageIndex, token) {
+  const expectedStage = objectContract.stages[stageIndex];
+  const catalogResult = await request("/database/query", token, {
+    method: "POST",
+    body: JSON.stringify({ query: catalogSnapshotSql(deriveObjectScope(entries.slice(0, stageIndex + 1))) }),
+  });
+  const rawContract = catalogResult?.[0]?.contract;
+  const liveContract = typeof rawContract === "string" ? JSON.parse(rawContract) : rawContract;
+  if (!liveContract || liveContract.scope_sha256 !== expectedStage.scope_sha256 || contractHash(liveContract) !== expectedStage.contract_sha256) {
+    throw new Error(`Object contract postcheck failed ${expectedStage.version}`);
+  }
+}
+
 async function execute() {
   const mode = process.argv[2];
   if (!new Set(["plan", "apply", "postcheck"]).has(mode)) throw new Error("Usage: protected-nine-release-gate.mjs plan|apply|postcheck");
@@ -108,6 +121,10 @@ async function execute() {
   if (!token) throw new Error("Approved Supabase credential context is unavailable");
   const history = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query: "SELECT version,name,statements FROM supabase_migrations.schema_migrations ORDER BY version" }) });
   const state = classifyTarget(history, entries, entry.newVersion);
+  const entryIndex = entries.findIndex((candidate) => candidate.newVersion === entry.newVersion);
+  if ((mode === "plan" || mode === "apply") && state === "pending" && entryIndex > 0) {
+    await verifyLiveObjectContract(entries, objectContract, entryIndex - 1, token);
+  }
   for (const query of entry.postcheck.preflightQueries ?? []) {
     const result = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query }) });
     if (!Array.isArray(result) || result.length !== 1 || result[0]?.ok !== true) throw new Error(`Preflight failed ${entry.newVersion}`);
@@ -123,12 +140,7 @@ async function execute() {
       const result = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query }) });
       if (!Array.isArray(result) || result.length !== 1 || result[0]?.ok !== true) throw new Error(`Postcheck failed ${entry.newVersion}`);
     }
-    const entryIndex = entries.findIndex((candidate) => candidate.newVersion === entry.newVersion);
-    const expectedStage = objectContract.stages[entryIndex];
-    const catalogResult = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query: catalogSnapshotSql(deriveObjectScope(entries.slice(0, entryIndex + 1))) }) });
-    const rawContract = catalogResult?.[0]?.contract;
-    const liveContract = typeof rawContract === "string" ? JSON.parse(rawContract) : rawContract;
-    if (!liveContract || liveContract.scope_sha256 !== expectedStage.scope_sha256 || contractHash(liveContract) !== expectedStage.contract_sha256) throw new Error(`Object contract postcheck failed ${entry.newVersion}`);
+    await verifyLiveObjectContract(entries, objectContract, entryIndex, token);
   }
   console.log(`PROTECTED_NINE_${mode.toUpperCase()}=${entry.newVersion}:${state}`);
 }

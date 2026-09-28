@@ -23,3 +23,9 @@ Before every entry: owner approval; fresh recovery workflow (snapshot no older t
 ## Forward-only containment
 
 The exact per-entry containment action and postcheck SQL live in `scripts/ops/protected-nine-postchecks.json`. On any failure or unknown acknowledgement: stop consumers/keep flags OFF, preserve receipts and audit data, collect metadata-only evidence, and create a new reviewed forward migration. The apply job always runs metadata-only reconciliation after a possible response loss and never retries the migration automatically. A database restore is only an owner data-loss decision after assessing intervening writes; it is never automatic.
+
+## Evidence boundary before owner approval
+
+The disposable PostgreSQL 17 gate restores the protected sanitized production-schema capture, applies the nine exact migration bytes in order, checks every staged catalog/object contract, and exercises the History reparent runtime behavior. The Dealer Swing, TV, History queue/audit, correction, Floor and Tracker Voice suites run here are source-contract tests; they are not post-nine database runtime proof.
+
+Those existing domain suites cannot be reused as integrated runtime proof because they bootstrap or replace their own pre-nine schemas/functions and would overwrite the restored post-nine state. Therefore the package remains Draft and is not production-ready on catalog/source evidence alone. Before any production apply or flag activation, owner-approved TEST/UAT must exercise each domain against one intact post-nine database in sequence, including the authorization, double-submit/retry/idempotency and no-unexpected-row-delta checks named above. Record the exact tested release SHA and evidence artifact; any missing domain result is a stop gate, not an inferred PASS.

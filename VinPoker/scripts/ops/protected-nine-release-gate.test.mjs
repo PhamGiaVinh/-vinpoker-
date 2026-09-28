@@ -54,6 +54,13 @@ test("object contract tampering is rejected before planning", () => {
   assert.doesNotThrow(() => verifyObjectContractSource(contract));
   assert.throws(() => verifyObjectContractSource(`${contract} `), /object contract hash drift/);
 });
+test("plan and apply verify the prior-stage live contract before any mutation", () => {
+  const runner = readFileSync("scripts/ops/protected-nine-release-gate.mjs", "utf8");
+  const guard = runner.indexOf('if ((mode === "plan" || mode === "apply") && state === "pending" && entryIndex > 0)');
+  const priorStageCheck = runner.indexOf("verifyLiveObjectContract(entries, objectContract, entryIndex - 1, token)", guard);
+  const mutation = runner.indexOf('if (mode === "apply")', priorStageCheck);
+  assert.ok(guard >= 0 && priorStageCheck > guard && mutation > priorStageCheck);
+});
 test("atomic query owns a separate lock and inserts one immutable receipt", () => {
   for (const entry of entries) {
     const query = buildAtomicMigrationQuery(entry);
