@@ -62,6 +62,7 @@ export interface DealerAssignment {
   id: string;
   attendance_id: string;
   table_id: string;
+  table_session_id: string | null;
   assigned_at: string;
   released_at: string | null;
   status: "assigned" | "on_break" | "completed";
@@ -544,7 +545,7 @@ function useActiveAssignments(clubIds: string[], shiftId?: string) {
        let q = supabase
          .from("dealer_assignments")
          .select(
-            `id, attendance_id, table_id, assigned_at, released_at, status,
+            `id, attendance_id, table_id, table_session_id, assigned_at, released_at, status,
              version, updated_at, last_swing_attempted_at, swing_in_progress,
              swing_processed_at, swing_due_at, planned_relief_at,
              pre_assigned_attendance_id, pre_assigned_at,

@@ -1,0 +1,39 @@
+name: Migration control manifest
+
+on:
+  pull_request:
+    paths:
+      - "VinPoker/supabase/migrations/**"
+      - "VinPoker/supabase/pending-migrations/**"
+      - "VinPoker/supabase/migration-control/**"
+      - "VinPoker/scripts/security/check-migration-control.mjs"
+      - "VinPoker/tests/security/check-migration-control.test.mjs"
+      - ".github/workflows/migration-control.yml"
+  push:
+    branches: [main]
+    paths:
+      - "VinPoker/supabase/migrations/**"
+      - "VinPoker/supabase/pending-migrations/**"
+      - "VinPoker/supabase/migration-control/**"
+      - "VinPoker/scripts/security/check-migration-control.mjs"
+      - "VinPoker/tests/security/check-migration-control.test.mjs"
+      - ".github/workflows/migration-control.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  collision-guard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: VinPoker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify immutable migration identities and reservations
+        run: npm run check:migration-control
+      - name: Run migration-control contract tests
+        run: node --test tests/security/check-migration-control.test.mjs

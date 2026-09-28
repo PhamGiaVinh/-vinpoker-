@@ -1,0 +1,46 @@
+name: Dealer Swing authorization disposable DB
+
+on:
+  pull_request:
+    paths:
+      - "VinPoker/supabase/migrations/20270128000001_dealer_swing_authorization_containment_v1.sql"
+      - "VinPoker/tests/dealerSwingAuthorization/**"
+      - ".github/workflows/dealer-swing-auth-disposable.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  postgres:
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["16", "17"]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:${{ matrix.version }}
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vinpoker_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vinpoker_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGPASSWORD: postgres
+      DB_URL: postgresql://postgres:postgres@localhost:5432/vinpoker_test
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Apply fixture and containment twice
+        run: |
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f VinPoker/tests/dealerSwingAuthorization/disposableDb.fixture.sql
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f VinPoker/supabase/migrations/20270128000001_dealer_swing_authorization_containment_v1.sql
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f VinPoker/supabase/migrations/20270128000001_dealer_swing_authorization_containment_v1.sql
+      - name: ACL actor and lifecycle matrix
+        run: psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f VinPoker/tests/dealerSwingAuthorization/disposableDb.integration.sql
+      - name: Concurrent replay matrix
+        run: bash VinPoker/tests/dealerSwingAuthorization/runConcurrency.sh "$DB_URL"
