@@ -163,14 +163,14 @@
       "newVersion": "20270128000008",
       "semanticName": "tracker_voice_floor_owner_telegram_dealer",
       "filename": "20270128000008_tracker_voice_floor_owner_telegram_dealer.sql",
-      "normalizedSqlSha256": "e9743b969141ad68bf4ec4595b5486f9cdfe6d8c167796d01cb5cf7e66a8776c",
+      "normalizedSqlSha256": "ed7f3012388bee3941d2ade54e68479b46bce36a719ca542dceade5d63ffd02f",
       "dependencies": [
         "20270115000020",
         "20270115000018"
       ],
       "ownerSession": "S6",
       "sourceSha": "7d7cfb19c29a531ef29681b2f8ab94a044bcc4ca",
-      "state": "RESERVED_BRANCH_SOURCE",
+      "state": "SOURCE_BOUND",
       "releaseGates": [
         "verify live authority function digest before exact apply"
       ]

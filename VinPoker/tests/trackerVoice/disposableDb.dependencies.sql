@@ -143,6 +143,22 @@ AS $$
   );
 $$;
 
+CREATE OR REPLACE FUNCTION public.is_club_admin(
+  p_user_id UUID,
+  p_club_id UUID
+)
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.clubs
+    WHERE id = p_club_id AND owner_id = p_user_id
+  );
+$$;
+
 ALTER TABLE public.tournament_hands
   ADD COLUMN IF NOT EXISTS source_revision BIGINT NOT NULL DEFAULT 1,
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
