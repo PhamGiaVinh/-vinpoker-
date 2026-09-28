@@ -160,6 +160,12 @@ SELECT public.tracker_voice_test_assert(
   'one-row repair preserves business fields while version/sync triggers run'
 );
 
+-- The protected artifact is schema-only, so seed an explicit live-like ON
+-- state and verify the authority path preserves it rather than assuming a
+-- migration-owned default or silently flipping a production flag.
+INSERT INTO public.app_settings(key,value)
+VALUES ('tracker_voice_global_enabled','true'::jsonb)
+ON CONFLICT (key) DO NOTHING;
 SELECT value::text AS value FROM public.app_settings
 WHERE key = 'tracker_voice_global_enabled' \gset captured_voice_gate_
 SET ROLE authenticated;
