@@ -6898,6 +6898,12 @@
       "filename": "20270128000006_tracker_history_completion_audit_fixes.sql",
       "sha256": "4d30a36f2866e09b5ab8f5616ca1e4b5db97e11c6e25e8fde345be7e29ac84d3",
       "domain": "tracker"
+    },
+    {
+      "version": "20270128000009",
+      "filename": "20270128000009_tracker_history_reparent_invalidation_v1.sql",
+      "sha256": "ea9c595603d69fd9a9bdc959254410112b17f71f8139af7f5c631887a2516024",
+      "domain": "tracker"
     }
   ],
   "floorActiveAllowlist": [
