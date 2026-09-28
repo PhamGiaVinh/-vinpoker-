@@ -14,6 +14,9 @@ const fixture = vi.hoisted(() => ({
     movePlayerSeat: vi.fn(),
     queueTrackerMove: vi.fn(),
     cancelPendingTrackerMove: vi.fn(),
+    planBreakTable: vi.fn(),
+    breakTournamentTable: vi.fn(),
+    redrawSeatLockEnabled: true,
     deferredTrackerMoveEnabled: true,
   },
 }));
@@ -31,7 +34,7 @@ vi.mock("@/components/ops/shared/FloorSeatRoster", () => ({
 vi.mock("@/components/cashier/tournament-live/OpenTableDialog", () => ({ OpenTableDialog: () => null }));
 vi.mock("@/components/cashier/tournament-live/FloorRedrawDialogV1", () => ({ FloorRedrawDialogV1: () => null }));
 
-function setup() {
+function setup(options: { pendingNetworkFailure?: boolean } = {}) {
   vi.clearAllMocks();
   fixture.client.getTournamentTableRoster.mockResolvedValue({ ok: true, data: [{
     tournamentId: "tour-1", tournamentTableId: "table-1", gameTableId: "physical-1",
@@ -51,7 +54,18 @@ function setup() {
   }] });
   fixture.client.getSeatableEntries.mockResolvedValue({ ok: true, data: [] });
   fixture.client.getRestorableEntries.mockResolvedValue({ ok: true, data: [] });
-  fixture.client.getPendingTrackerMoves.mockResolvedValue({ ok: true, data: [] });
+  if (options.pendingNetworkFailure) fixture.client.getPendingTrackerMoves.mockRejectedValue(new Error("offline"));
+  else fixture.client.getPendingTrackerMoves.mockResolvedValue({ ok: true, data: [] });
+  fixture.client.planBreakTable.mockResolvedValue({ ok: true, data: {
+    planHash: "plan-hash-1", complete: true,
+    sourceTournamentTableId: "table-1", sourceTableNumber: 4, expectedRevision: 3,
+    moves: [{
+      entryId: "entry-1", playerName: fixture.longName, sourceSeatNumber: 1,
+      destinationTournamentTableId: "table-2", destinationTableNumber: 5,
+      destinationSeatNumber: 2, transferMode: "after_current_hand",
+    }],
+  } });
+  fixture.client.breakTournamentTable.mockResolvedValue({ ok: true, data: { ok: true, break_pending: true } });
   render(<FloorTableMapPanelV3 tournament={{ id: "tour-1" } as Tournament} refreshTrigger={0} />);
 }
 
@@ -101,5 +115,26 @@ describe("Floor roster mobile actions", () => {
     })));
     expect(fixture.client.movePlayerSeat).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("Chờ hết ván · Bàn 5 · Ghế 2")).toBeTruthy();
+  });
+
+  it("keeps the roster usable when a secondary request fails", async () => {
+    setup({ pendingNetworkFailure: true });
+    expect(await screen.findByRole("button", { name: "Mở Bàn 4" })).toBeTruthy();
+    expect(screen.getByText(/Danh sách bàn vẫn hiển thị/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Mở Bàn 4" }));
+    expect(screen.getByRole("button", { name: "Mở Ghế 1" })).toBeTruthy();
+  });
+
+  it("shows the server break plan before allowing a close", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+    fireEvent.click(screen.getByRole("button", { name: "Đóng & chuyển người" }));
+    expect(await screen.findByText(/Bàn 5 · Ghế 2/)).toBeTruthy();
+    expect(screen.getByText("Chuyển sau ván")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận đóng & chuyển" }));
+    await waitFor(() => expect(fixture.client.breakTournamentTable).toHaveBeenCalledWith(expect.objectContaining({
+      tournamentTableId: "table-1",
+      planHash: "plan-hash-1",
+    })));
   });
 });

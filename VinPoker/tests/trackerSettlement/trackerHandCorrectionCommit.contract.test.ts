@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
-const migration = read("supabase/migrations/20270115000002_tracker_hand_correction_commit_receipt.sql");
+const migration = read("supabase/migration-archive/historical-never-replay/20270115000002_tracker_hand_correction_commit_receipt.sql");
 const edge = read("supabase/functions/tournament-live-resettle-commit/index.ts");
 
 describe("Tracker atomic hand correction commit contract", () => {
@@ -26,7 +26,7 @@ describe("Tracker atomic hand correction commit contract", () => {
     expect(edge).toContain("assertExpectedTargetEndingStacks");
     expect(edge).toContain("commit_tracker_hand_correction_outcome");
     expect(edge).toContain("redactedTargetEndingStacks");
-    expect(edge).toContain("authorize_tournament_live_resettle");
+    expect(edge).toContain("authorize_tracker_completed_hand_correction_uat_v1");
     expect(edge).not.toContain("apply_resettle_forward");
     expect(edge).not.toContain("holeCardsByPlayer");
   });

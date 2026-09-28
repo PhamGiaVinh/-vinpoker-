@@ -19,6 +19,7 @@ import { compareRankVec, evaluateBestWithCards } from "../pokerEngine/evaluate.t
 import { parseCard } from "../pokerEngine/deck.ts";
 import type { Card } from "../pokerEngine/types.ts";
 import { computePotBreakdown, contributionsFromActions } from "../trackerEngine/potEngine.ts";
+import { entryKey, orderClockwiseAfterButton, type EntryKey } from "./participantIdentity.ts";
 
 const RANK_NAME: Record<number, string> = {
   14: "A",
@@ -76,14 +77,6 @@ function safeSum(values: readonly number[], code: string): number {
 
 function actionId(action: SettlementDbAction): string {
   return action.id && action.id.trim() ? action.id : `${action.hand_id}:${action.action_order}`;
-}
-
-function clockwise<T extends { seat_number: number }>(players: readonly T[], buttonSeat: number): T[] {
-  return [...players].sort((left, right) => {
-    const leftDistance = (left.seat_number - buttonSeat + 10_000) % 10_000;
-    const rightDistance = (right.seat_number - buttonSeat + 10_000) % 10_000;
-    return leftDistance - rightDistance || left.seat_number - right.seat_number;
-  });
 }
 
 function validateCards(board: readonly string[], players: readonly SettlementDbPlayer[]): void {
@@ -184,25 +177,31 @@ export async function verifyHistoricalDisplaySettlement(
   if (players.some((player) => player.hand_id !== hand.id)) fail("historical_player_hand_mismatch");
   if (actions.some((action) => action.hand_id !== hand.id)) fail("historical_action_hand_mismatch");
 
-  const playersById = new Map<string, SettlementDbPlayer>();
+  const playersByEntry = new Map<EntryKey, SettlementDbPlayer>();
+  const playerIds = new Set<string>();
   const seats = new Set<number>();
   for (const player of players) {
-    if (!player.player_id || playersById.has(player.player_id)) fail("duplicate_historical_player");
+    let key: EntryKey;
+    try { key = entryKey(player); } catch { fail("invalid_historical_entry"); }
+    if (playerIds.has(player.player_id) || playersByEntry.has(key)) fail("duplicate_historical_player");
     if (!Number.isSafeInteger(player.entry_number) || player.entry_number < 1 || !Number.isSafeInteger(player.seat_number) || player.seat_number < 1 || seats.has(player.seat_number)) {
       fail("invalid_historical_seat");
     }
     chip(player.starting_stack, "invalid_historical_starting_stack");
     chip(player.ending_stack, "invalid_historical_ending_stack");
     if (typeof player.is_eliminated !== "boolean") fail("invalid_historical_elimination_state");
-    playersById.set(player.player_id, player);
+    playersByEntry.set(key, player);
+    playerIds.add(player.player_id);
     seats.add(player.seat_number);
   }
 
   const actionOrders = new Set<number>();
   const actionIds = new Set<string>();
   for (const action of actions) {
-    const player = playersById.get(action.player_id);
-    if (!player || action.entry_number !== player.entry_number || !Number.isSafeInteger(action.action_order) || action.action_order < 1 || actionOrders.has(action.action_order)) {
+    let key: EntryKey;
+    try { key = entryKey(action); } catch { fail("historical_action_identity_mismatch"); }
+    const player = playersByEntry.get(key);
+    if (!player || !Number.isSafeInteger(action.action_order) || action.action_order < 1 || actionOrders.has(action.action_order)) {
       fail("historical_action_identity_mismatch");
     }
     const id = actionId(action);
@@ -216,9 +215,10 @@ export async function verifyHistoricalDisplaySettlement(
   validateCards(board, players);
   const potActions = normalizeHistoricalPotActions(actions);
   const contributions = contributionsFromActions(potActions);
-  const committedByPlayer = new Map(contributions.map((row) => [row.player_id, row]));
+  const entryByPlayerId = new Map(players.map((player) => [player.player_id, entryKey(player)]));
+  const committedByEntry = new Map(contributions.map((row) => [entryByPlayerId.get(row.player_id)!, row]));
   for (const player of players) {
-    const committed = committedByPlayer.get(player.player_id)?.total_bet ?? 0;
+    const committed = committedByEntry.get(entryKey(player))?.total_bet ?? 0;
     if (!Number.isSafeInteger(committed) || committed > chip(player.starting_stack, "invalid_historical_starting_stack")) {
       fail("historical_action_exceeds_stack");
     }
@@ -233,14 +233,14 @@ export async function verifyHistoricalDisplaySettlement(
     fail("historical_pot_size_mismatch");
   }
 
-  const folded = new Set(contributions.filter((row) => row.is_folded).map((row) => row.player_id));
-  const awards = new Map<string, number>();
-  const ranksByPlayer = new Map<string, PrivateHandRankV1>();
+  const folded = new Set(contributions.filter((row) => row.is_folded).map((row) => entryByPlayerId.get(row.player_id)!));
+  const awards = new Map<EntryKey, number>();
+  const ranksByEntry = new Map<EntryKey, PrivateHandRankV1>();
   const pots: SettledPotV1[] = [];
   const winnerIds = new Set<string>();
 
   for (const [index, layer] of breakdown.pots.entries()) {
-    const eligible = players.filter((player) => layer.eligible_player_ids.includes(player.player_id) && !folded.has(player.player_id));
+    const eligible = players.filter((player) => layer.eligible_player_ids.includes(player.player_id) && !folded.has(entryKey(player)));
     if (eligible.length === 0) fail("historical_pot_has_no_eligible_player");
     let winners: SettlementDbPlayer[];
     if (eligible.length === 1) {
@@ -258,19 +258,21 @@ export async function verifyHistoricalDisplaySettlement(
       for (const winner of winners) {
         // Public replay only needs the winning hand's rank. Keep a side-pot
         // winner unique without publishing a losing showdown player's rank.
-        if (!ranksByPlayer.has(winner.player_id)) {
-          ranksByPlayer.set(winner.player_id, handRank(winner, board));
+        const key = entryKey(winner);
+        if (!ranksByEntry.has(key)) {
+          ranksByEntry.set(key, handRank(winner, board));
         }
       }
     }
 
-    const orderedWinners = clockwise(winners, hand.button_seat);
+    const orderedWinners = orderClockwiseAfterButton(winners, hand.button_seat);
     const share = Math.floor(layer.amount / orderedWinners.length);
     const oddChipCount = layer.amount - share * orderedWinners.length;
     const potId = index === 0 ? "main-0" : `side-${index}`;
     const allocations = orderedWinners.map((winner, winnerIndex) => {
       const amount = share + (winnerIndex < oddChipCount ? 1 : 0);
-      awards.set(winner.player_id, safeSum([awards.get(winner.player_id) ?? 0, amount], "historical_award_overflow"));
+      const key = entryKey(winner);
+      awards.set(key, safeSum([awards.get(key) ?? 0, amount], "historical_award_overflow"));
       winnerIds.add(winner.player_id);
       return { potId, winnerId: winner.player_id, amount, includesOddChip: winnerIndex < oddChipCount };
     });
@@ -294,8 +296,9 @@ export async function verifyHistoricalDisplaySettlement(
     : [];
   const settlements = players.map((player) => {
     const startingStack = chip(player.starting_stack, "invalid_historical_starting_stack");
-    const committedTotal = committedByPlayer.get(player.player_id)?.total_bet ?? 0;
-    const potAward = awards.get(player.player_id) ?? 0;
+    const key = entryKey(player);
+    const committedTotal = committedByEntry.get(key)?.total_bet ?? 0;
+    const potAward = awards.get(key) ?? 0;
     const playerRefund = breakdown.uncalled?.player_id === player.player_id ? refund : 0;
     const creditedTotal = safeSum([potAward, playerRefund], "historical_credit_overflow");
     const netDelta = creditedTotal - committedTotal;
@@ -332,7 +335,7 @@ export async function verifyHistoricalDisplaySettlement(
     players: settlements,
     pots,
     refunds,
-    handRanks: [...ranksByPlayer.values()],
+    handRanks: [...ranksByEntry.values()],
     totals,
     privateEvidence: {
       targetHandId: hand.id,

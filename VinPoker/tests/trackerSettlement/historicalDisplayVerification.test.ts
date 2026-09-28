@@ -49,12 +49,63 @@ function validInput() {
 }
 
 describe("historical display settlement verification", () => {
+  it("awards an odd tied chip clockwise after the button and leaves the button last", async () => {
+    const input = validInput();
+    input.hand = hand({ button_seat: 2, community_cards: ["2c", "3d", "4h", "5s", "9c"], pot_size: 15 });
+    input.players = [
+      { hand_id: "hand-8", player_id: "button", entry_number: 1, seat_number: 2, starting_stack: 100, ending_stack: 102, hole_cards: ["As", "Kd"], is_eliminated: false },
+      { hand_id: "hand-8", player_id: "left", entry_number: 1, seat_number: 3, starting_stack: 100, ending_stack: 103, hole_cards: ["Ah", "Jd"], is_eliminated: false },
+      { hand_id: "hand-8", player_id: "loser", entry_number: 1, seat_number: 4, starting_stack: 100, ending_stack: 95, hole_cards: ["Qs", "Qc"], is_eliminated: false },
+    ];
+    input.actions = [
+      { id: "odd-a1", hand_id: "hand-8", player_id: "button", entry_number: 1, street: "preflop", action_type: "all_in", action_amount: 5, action_order: 1 },
+      { id: "odd-a2", hand_id: "hand-8", player_id: "left", entry_number: 1, street: "preflop", action_type: "all_in", action_amount: 5, action_order: 2 },
+      { id: "odd-a3", hand_id: "hand-8", player_id: "loser", entry_number: 1, street: "preflop", action_type: "all_in", action_amount: 5, action_order: 3 },
+    ];
+
+    const result = await verifyHistoricalDisplaySettlement(input);
+    expect(result.publicOutcome.pots[0].allocations).toEqual([
+      { potId: "main-0", winnerId: "left", amount: 8, includesOddChip: true },
+      { potId: "main-0", winnerId: "button", amount: 7, includesOddChip: false },
+    ]);
+  });
+
+  it("awards an odd side-pot chip only among eligible tied winners", async () => {
+    const input = validInput();
+    input.hand = hand({ button_seat: 2, community_cards: ["2c", "3d", "4h", "5s", "9c"], pot_size: 7 });
+    input.players = [
+      { hand_id: "hand-8", player_id: "main", entry_number: 1, seat_number: 1, starting_stack: 1, ending_stack: 4, hole_cards: ["6s", "7s"], is_eliminated: false },
+      { hand_id: "hand-8", player_id: "side-button", entry_number: 1, seat_number: 2, starting_stack: 2, ending_stack: 1, hole_cards: ["As", "Kd"], is_eliminated: false },
+      { hand_id: "hand-8", player_id: "side-left", entry_number: 1, seat_number: 3, starting_stack: 2, ending_stack: 2, hole_cards: ["Ah", "Jd"], is_eliminated: false },
+      { hand_id: "hand-8", player_id: "side-loser", entry_number: 1, seat_number: 4, starting_stack: 2, ending_stack: 0, hole_cards: ["Qs", "Qc"], is_eliminated: true },
+    ];
+    input.actions = input.players.map((player, index) => ({
+      id: `side-odd-a${index + 1}`,
+      hand_id: "hand-8",
+      player_id: player.player_id,
+      entry_number: 1,
+      street: "preflop",
+      action_type: "all_in",
+      action_amount: player.starting_stack,
+      action_order: index + 1,
+    }));
+
+    const result = await verifyHistoricalDisplaySettlement(input);
+    expect(result.publicOutcome.pots[1]).toMatchObject({
+      kind: "side",
+      eligiblePlayerIds: ["side-button", "side-left", "side-loser"],
+      allocations: [
+        { potId: "side-1", winnerId: "side-left", amount: 2, includesOddChip: true },
+        { potId: "side-1", winnerId: "side-button", amount: 1, includesOddChip: false },
+      ],
+    });
+  });
   it("verifies a completed chop without reading or propagating later hands", async () => {
     const result = await verifyHistoricalDisplaySettlement(validInput());
-    expect(result.winnerIds).toEqual(["limitless", "kayhan"]);
+    expect(result.winnerIds).toEqual(["kayhan", "limitless"]);
     expect(result.publicOutcome.pots[0].allocations).toEqual([
-      { potId: "main-0", winnerId: "limitless", amount: 8_700_000, includesOddChip: false },
       { potId: "main-0", winnerId: "kayhan", amount: 8_700_000, includesOddChip: false },
+      { potId: "main-0", winnerId: "limitless", amount: 8_700_000, includesOddChip: false },
     ]);
     expect(result.publicOutcome.refunds).toEqual([{ playerId: "kayhan", amount: 38_700_000, sourceActionId: "h8-a2" }]);
     expect(result.publicOutcome.handRanks.map((rank) => [rank.playerId, rank.category, rank.kickers, rank.bestFive.length])).toEqual([

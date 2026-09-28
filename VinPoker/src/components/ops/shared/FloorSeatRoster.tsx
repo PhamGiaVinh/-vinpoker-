@@ -43,7 +43,7 @@ export function FloorSeatRoster({
           </p>
         </div>
         <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 font-mono text-xs text-primary">
-          {maxSeats} MAX
+          {maxSeats} ghế
         </span>
       </div>
 
@@ -65,8 +65,9 @@ export function FloorSeatRoster({
       <div className="mt-3 overflow-hidden rounded-2xl border border-border bg-card/55">
         {roster.slots.map(({ seatNumber, seat }) => {
           const seatLock = lockBySeat.get(seatNumber);
+          const dataIssue = seat?.integrityStatus === "missing_entry";
           const interactive = seat
-            ? Boolean(onSeatTap)
+            ? Boolean(onSeatTap) && !dataIssue
             : seatLock
               ? Boolean(onLockedSeatTap)
               : Boolean(onEmptySeatTap);
@@ -88,10 +89,12 @@ export function FloorSeatRoster({
                 !interactive && "cursor-default",
               )}
               aria-label={seat
-                ? `Ghế ${seatNumber}, ${seat.playerName}`
+                ? dataIssue
+                  ? `Ghế ${seatNumber}, cần sửa dữ liệu`
+                  : `Ghế ${seatNumber}, ${seat.playerName}`
                 : seatLock
                   ? `Ghế ${seatNumber}, đang khóa, ${seatLock.reason}`
-                  : `Ghế ${seatNumber}, Empty`}
+                  : `Ghế ${seatNumber}, trống`}
             >
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border bg-background/80 font-mono text-sm text-muted-foreground">
                 {seatNumber}
@@ -106,12 +109,18 @@ export function FloorSeatRoster({
                     <span className="block truncate text-sm font-semibold text-foreground">
                       {seat.playerName}
                     </span>
-                    <span className="mt-0.5 block truncate font-mono text-xs text-primary">
-                      {seat.chipsLabel}
-                      {seat.entryNumber != null ? ` · Entry ${seat.entryNumber}` : ""}
-                    </span>
+                    {dataIssue ? (
+                      <span className="mt-0.5 block text-xs font-medium text-destructive">
+                        Cần sửa dữ liệu · thiếu hồ sơ dự giải
+                      </span>
+                    ) : (
+                      <span className="mt-0.5 block truncate font-mono text-xs text-primary">
+                        {seat.chipsLabel}
+                        {seat.entryNumber != null ? ` · Lần tham gia ${seat.entryNumber}` : ""}
+                      </span>
+                    )}
                   </span>
-                  <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">Đang ngồi</span>
+                  <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{dataIssue ? "Khóa thao tác" : "Đang ngồi"}</span>
                 </>
               ) : seatLock ? (
                 <>
@@ -127,7 +136,7 @@ export function FloorSeatRoster({
               ) : (
                 <>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium italic text-muted-foreground">Empty</span>
+                    <span className="block text-sm font-medium italic text-muted-foreground">Ghế trống</span>
                     <span className="mt-0.5 block text-xs text-muted-foreground/75">Ghế trống</span>
                   </span>
                   {onEmptySeatTap && (

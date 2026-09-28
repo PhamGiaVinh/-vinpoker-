@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, PhoneCall } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -55,22 +55,28 @@ export function DealerFloorAlertControls({ tournamentId, tournamentTableId, hand
   const [detail, setDetail] = useState("");
   const [sourceRevision, setSourceRevision] = useState<number | null>(null);
 
+  const readSourceRevision = useCallback(async (): Promise<number | null> => {
+    if (!enabled || !handId) return null;
+    const handResult = await supabase.from("tournament_hands")
+      .select("id,source_revision")
+      .eq("id", handId).eq("tournament_id", tournamentId)
+      .eq("tournament_table_id", tournamentTableId).maybeSingle();
+    return handResult.error || !handResult.data
+      || !Number.isSafeInteger(handResult.data.source_revision)
+      ? null : handResult.data.source_revision;
+  }, [enabled, handId, tournamentId, tournamentTableId]);
+
   useEffect(() => {
     let active = true;
     setSourceRevision(null);
     if (!enabled || !handId) return () => { active = false; };
     const load = async () => {
-      const handResult = await supabase.from("tournament_hands")
-        .select("id,source_revision")
-        .eq("id", handId).eq("tournament_id", tournamentId)
-        .eq("tournament_table_id", tournamentTableId).maybeSingle();
-      if (!active || handResult.error || !handResult.data
-        || !Number.isSafeInteger(handResult.data.source_revision)) return;
-      setSourceRevision(handResult.data.source_revision);
+      const revision = await readSourceRevision();
+      if (active) setSourceRevision(revision);
     };
     void load();
     return () => { active = false; };
-  }, [enabled, handId, tournamentId, tournamentTableId]);
+  }, [enabled, handId, readSourceRevision]);
 
   async function submit(kind: AlertKind) {
     if (!enabled || status === "sending") return;
@@ -122,6 +128,17 @@ export function DealerFloorAlertControls({ tournamentId, tournamentTableId, hand
         setStatus("sent");
         setDetail(`Mã cảnh báo: ${receipt.alert_id}`);
       } else {
+        if (request.kind === "wrong_action" && receipt?.error === "stale_source_revision") {
+          setPending(null);
+          persistPending(key, null);
+          const freshRevision = await readSourceRevision();
+          setSourceRevision(freshRevision);
+          setStatus("rejected");
+          setDetail(freshRevision === null
+            ? "Hand đã thay đổi trên máy chủ nhưng chưa tải được phiên bản mới. Hãy tải lại màn hình rồi kiểm tra hand trước khi báo lại."
+            : "Hand đã thay đổi trên máy chủ. Đã tải phiên bản mới; kiểm tra lại hand rồi bấm Báo sai hand.");
+          return;
+        }
         if (pending && ["stale_tracker_context", "tracker_lock_not_owned", "actor_not_allowed"].includes(receipt?.error ?? "")) {
           setStatus("unknown");
           setDetail("Không còn quyền xác minh yêu cầu cũ. Liên hệ Floor bằng kênh khác và cung cấp mã yêu cầu; không gửi lại bằng mã mới.");

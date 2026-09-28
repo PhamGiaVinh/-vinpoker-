@@ -45,13 +45,13 @@
       "newVersion": "20270128000001",
       "semanticName": "dealer_swing_authorization_containment_v1",
       "filename": "20270128000001_dealer_swing_authorization_containment_v1.sql",
-      "normalizedSqlSha256": null,
+      "normalizedSqlSha256": "badcdf01c5e28cb505778f70038eefe340a11ce0d02c9486e413224f43022aa4",
       "dependencies": [
         "20270115000018"
       ],
       "ownerSession": "S3",
-      "sourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
-      "state": "RESERVED_NO_SQL"
+      "sourceSha": "a18e74ab367d08f71a41f2f39cc11be9f62d38e6",
+      "state": "SOURCE_BOUND"
     },
     {
       "domain": "TV",
@@ -59,11 +59,11 @@
       "newVersion": "20270128000002",
       "semanticName": "tv_display_config_guarded_rpc_v1",
       "filename": "20270128000002_tv_display_config_guarded_rpc_v1.sql",
-      "normalizedSqlSha256": null,
+      "normalizedSqlSha256": "fa345b6d5ff0ef77b071242c94f729d8bbfc44ce56c7ba53134b1c5e1cc178ed",
       "dependencies": [],
       "ownerSession": "S2",
-      "sourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
-      "state": "RESERVED_NO_SQL",
+      "sourceSha": "4ddbef6f5043f389fe4af492a3882edae41fc1bd",
+      "state": "SOURCE_BOUND",
       "releaseGates": [
         "verify exact live TV v1 digest and ACL before Stage A"
       ]
@@ -74,13 +74,13 @@
       "newVersion": "20270128000003",
       "semanticName": "tv_display_direct_update_revoke_v1",
       "filename": "20270128000003_tv_display_direct_update_revoke_v1.sql",
-      "normalizedSqlSha256": null,
+      "normalizedSqlSha256": "37e50e1b4cf43ad0e82827493576f186cd3ccd15372a44baa459a31966dd1b09",
       "dependencies": [
         "20270128000002"
       ],
       "ownerSession": "S2",
-      "sourceSha": "d64df388d42b51cb851e8d23361d4fe568988eb7",
-      "state": "RESERVED_NO_SQL",
+      "sourceSha": "4ddbef6f5043f389fe4af492a3882edae41fc1bd",
+      "state": "SOURCE_BOUND",
       "releaseGates": [
         "compatible frontend proof must pass before Stage B"
       ]
@@ -105,7 +105,7 @@
       "newVersion": "20270128000005",
       "semanticName": "tracker_correction_floor_tracker_authority",
       "filename": "20270128000005_tracker_correction_floor_tracker_authority.sql",
-      "normalizedSqlSha256": "891ee5a0e8e0c03f906205947962bb4b0f2496dce48b5030798f2ac163725a4e",
+      "normalizedSqlSha256": "a4dd6be800a2ecd6b32dd982b954d74c9d16e93683394c064f8fe895543aee91",
       "dependencies": [
         "20270115000020",
         "20270128000004"
@@ -129,33 +129,18 @@
       "state": "SOURCE_BOUND"
     },
     {
-      "domain": "History",
-      "oldVersion": null,
-      "newVersion": "20270128000009",
-      "semanticName": "tracker_history_reparent_invalidation_v1",
-      "filename": "20270128000009_tracker_history_reparent_invalidation_v1.sql",
-      "normalizedSqlSha256": null,
-      "dependencies": [
-        "20270128000004",
-        "20270128000006"
-      ],
-      "ownerSession": "S4",
-      "sourceSha": "5eac09ec76ebd5f5babd5fca775930a087e15a03",
-      "state": "RESERVED_NO_SQL"
-    },
-    {
       "domain": "Floor",
       "oldVersion": "20270127000000",
       "newVersion": "20270128000007",
       "semanticName": "floor_v3_critical_consistency",
       "filename": "20270128000007_floor_v3_critical_consistency.sql",
-      "normalizedSqlSha256": "bdf7376f98b7da84d394b41d200682d5fd4e742b56f5726e8043832d314facf8",
+      "normalizedSqlSha256": "2ec5997988f9b9a8eca6fe3af0c8998af03a9665958422e314aff7d33413f9eb",
       "dependencies": [
         "20270115000018"
       ],
       "ownerSession": "S5",
-      "sourceSha": "a0fc0747ddca67635b3b90ea0aae2127c35e2372",
-      "state": "RESERVED_BRANCH_SOURCE"
+      "sourceSha": "61f27125387409f031d2a02616082d5e74ab8139",
+      "state": "SOURCE_BOUND"
     },
     {
       "domain": "Voice",
@@ -163,17 +148,32 @@
       "newVersion": "20270128000008",
       "semanticName": "tracker_voice_floor_owner_telegram_dealer",
       "filename": "20270128000008_tracker_voice_floor_owner_telegram_dealer.sql",
-      "normalizedSqlSha256": "e9743b969141ad68bf4ec4595b5486f9cdfe6d8c167796d01cb5cf7e66a8776c",
+      "normalizedSqlSha256": "ed7f3012388bee3941d2ade54e68479b46bce36a719ca542dceade5d63ffd02f",
       "dependencies": [
         "20270115000020",
         "20270115000018"
       ],
       "ownerSession": "S6",
       "sourceSha": "7d7cfb19c29a531ef29681b2f8ab94a044bcc4ca",
-      "state": "RESERVED_BRANCH_SOURCE",
+      "state": "SOURCE_BOUND",
       "releaseGates": [
         "verify live authority function digest before exact apply"
       ]
+    },
+    {
+      "domain": "History",
+      "oldVersion": null,
+      "newVersion": "20270128000009",
+      "semanticName": "tracker_history_reparent_invalidation_v1",
+      "filename": "20270128000009_tracker_history_reparent_invalidation_v1.sql",
+      "normalizedSqlSha256": "ea9c595603d69fd9a9bdc959254410112b17f71f8139af7f5c631887a2516024",
+      "dependencies": [
+        "20270128000004",
+        "20270128000006"
+      ],
+      "ownerSession": "S4",
+      "sourceSha": "6950dc6d2dfe571d933281dfd7a4b2ccddae0644",
+      "state": "SOURCE_BOUND"
     }
   ],
   "protectedApplyOrder": [
