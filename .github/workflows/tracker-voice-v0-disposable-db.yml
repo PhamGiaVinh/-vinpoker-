@@ -39,6 +39,7 @@ on:
       - "VinPoker/supabase/migrations/20270115000015_tracker_voice_dealer_handoff_authority.sql"
       - "VinPoker/supabase/migrations/20270115000018_dealer_assignment_session_binding.sql"
       - "VinPoker/supabase/migrations/20270115000020_tracker_voice_floor_owner_authority.sql"
+      - "VinPoker/supabase/migrations/20270128000005_tracker_correction_floor_tracker_authority.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
@@ -314,6 +315,12 @@ jobs:
           RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
           AS $$ SELECT EXISTS (SELECT 1 FROM public.clubs c WHERE c.id = p_club_id AND c.owner_id = p_user_id) $$;
           SQL
+          createdb tracker_correction_s1 -T tracker_correction_release1
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_s1 \
+            -f supabase/migrations/20270128000005_tracker_correction_floor_tracker_authority.sql
+          psql -X -v ON_ERROR_STOP=1 -d tracker_correction_s1 \
+            -f tests/trackerCorrectionRelease2/floorTrackerAuthority.pg17.sql
+          echo "TRACKER_CORRECTION_FLOOR_TRACKER_AUTHORITY_28000005=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
             -f supabase/migrations/20261238000002_tracker_settlement_outcome_store.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_correction_release1 \
