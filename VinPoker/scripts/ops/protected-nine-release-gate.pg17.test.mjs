@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { buildAtomicMigrationQuery, classifyTarget, loadRelease, normalizedHash } from "./protected-nine-release-gate.mjs";
-import { catalogSnapshotSql, deriveObjectScope } from "./protected-nine-object-contract.mjs";
+import { catalogSnapshotSql, compareObjectContract, deriveObjectScope } from "./protected-nine-object-contract.mjs";
 
 const artifactDir = process.env.PROTECTED_NINE_SCHEMA_ARTIFACT_DIR;
 const schemaPath = artifactDir && resolve(artifactDir, "live-public-schema.sql");
@@ -28,6 +28,16 @@ function history() {
 
 function assertChecks(queries, label) {
   for (const [index, query] of (queries ?? []).entries()) assert.equal(psql(query), "t", `${label} query ${index + 1}`);
+}
+
+function snapshotWithMutation(mutation, snapshotSql) {
+  const result = spawnSync("psql", ["-X", "-q", "-v", "ON_ERROR_STOP=1", "-At"], {
+    input: `BEGIN;\n${mutation}\n${snapshotSql}\nROLLBACK;\n`,
+    encoding: "utf8",
+    env: process.env,
+  });
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout);
+  return JSON.parse(result.stdout.trim());
 }
 
 test("PostgreSQL 17 restores the authenticated baseline and applies the exact nine migrations", { timeout: 180_000 }, () => {
@@ -84,7 +94,37 @@ test("PostgreSQL 17 restores the authenticated baseline and applies the exact ni
     assertChecks(entry.postcheck.queries, `${entry.newVersion} postcheck`);
   }
   assert.equal(psql("SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version LIKE '2027012800000%';"), "9");
-  const contract = JSON.parse(psql(catalogSnapshotSql(deriveObjectScope(entries))));
+  const scope = deriveObjectScope(entries);
+  const snapshotSql = catalogSnapshotSql(scope);
+  const contract = JSON.parse(psql(snapshotSql));
+  const expectedContract = JSON.parse(readFileSync("scripts/ops/protected-nine-object-contract.json", "utf8"));
+  compareObjectContract(contract, expectedContract);
+
+  const mutations = [
+    {
+      name: "extra function grant",
+      sql: "GRANT EXECUTE ON FUNCTION public._tracker_voice_assignment_context(uuid,uuid,uuid) TO authenticated;",
+      section: /functions/,
+    },
+    {
+      name: "wrong function search_path",
+      sql: "ALTER FUNCTION public._tracker_voice_assignment_context(uuid,uuid,uuid) SET search_path=public;",
+      section: /functions/,
+    },
+    {
+      name: "function body drift",
+      sql: "CREATE OR REPLACE FUNCTION public._tracker_voice_assignment_context(uuid,uuid,uuid) RETURNS jsonb LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path='' AS $mutated$ SELECT '{}'::jsonb $mutated$;",
+      section: /functions/,
+    },
+    {
+      name: "History reparent trigger changed to AFTER",
+      sql: "DROP TRIGGER trg_tracker_hand_action_source_revision ON public.hand_actions; CREATE TRIGGER trg_tracker_hand_action_source_revision AFTER INSERT OR UPDATE OR DELETE ON public.hand_actions FOR EACH ROW EXECUTE FUNCTION public.tracker_bump_hand_source_revision();",
+      section: /triggers/,
+    },
+  ];
+  for (const mutation of mutations) {
+    assert.throws(() => compareObjectContract(snapshotWithMutation(mutation.sql, snapshotSql), expectedContract), mutation.section, mutation.name);
+  }
   if (process.env.PROTECTED_NINE_CONTRACT_OUTPUT) writeFileSync(process.env.PROTECTED_NINE_CONTRACT_OUTPUT, `${JSON.stringify(contract, null, 2)}\n`, { mode: 0o600 });
 });
 

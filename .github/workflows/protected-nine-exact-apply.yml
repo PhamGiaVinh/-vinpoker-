@@ -15,6 +15,7 @@ permissions: { actions: read, contents: read }
 concurrency: { group: vinpoker-production-database-release, cancel-in-progress: false }
 env:
   PROJECT_REF: orlesggcjamwuknxwcpk
+  PROTECTED_NINE_OBJECT_CONTRACT_SHA256: 60a46c68b8f227ba8fbdb0669455e006089176cb3977514bef45ad8df09baef4
   RECOVERY_WORKFLOW: floor-v3-recovery-backup.yml
 
 jobs:

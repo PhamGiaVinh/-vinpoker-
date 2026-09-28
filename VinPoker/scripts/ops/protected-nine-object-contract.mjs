@@ -85,5 +85,7 @@ SELECT jsonb_build_object(
 }
 
 export function compareObjectContract(actual, expected) {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error("Protected-nine object contract drift");
+  for (const section of ["scope_sha256", "functions", "triggers", "policies", "indexes", "constraints", "tables"]) {
+    if (JSON.stringify(actual[section]) !== JSON.stringify(expected[section])) throw new Error(`Protected-nine object contract drift: ${section}`);
+  }
 }

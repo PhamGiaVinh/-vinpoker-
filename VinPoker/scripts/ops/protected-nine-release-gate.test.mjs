@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { buildAtomicMigrationQuery, classifyTarget, loadRelease, ORDER, PROJECT_REF, validateInvocation } from "./protected-nine-release-gate.mjs";
+import { buildAtomicMigrationQuery, classifyTarget, loadRelease, ORDER, PROJECT_REF, validateInvocation, verifyObjectContractSource } from "./protected-nine-release-gate.mjs";
 
 const { entries, control } = loadRelease();
 const first = entries[0];
@@ -48,6 +48,11 @@ test("TV v1 preflight matches the authenticated live legacy shape exactly", () =
   assert.match(query, /proconfig=ARRAY\['search_path=public'\]/);
   assert.match(query, /has_function_privilege\('anon'/);
   assert.match(query, /has_function_privilege\('authenticated'/);
+});
+test("object contract tampering is rejected before planning", () => {
+  const contract = readFileSync("scripts/ops/protected-nine-object-contract.json", "utf8");
+  assert.doesNotThrow(() => verifyObjectContractSource(contract));
+  assert.throws(() => verifyObjectContractSource(`${contract} `), /object contract hash drift/);
 });
 test("atomic query owns a separate lock and inserts one immutable receipt", () => {
   for (const entry of entries) {

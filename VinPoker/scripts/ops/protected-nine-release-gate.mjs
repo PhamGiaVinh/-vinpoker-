@@ -7,6 +7,7 @@ import { canonicalSqlText, scanMigrationSource } from "./ops-1359-release-gate.m
 export const PROJECT_REF = "orlesggcjamwuknxwcpk";
 export const ORDER = Array.from({ length: 9 }, (_, index) => `2027012800000${index + 1}`);
 export const CONFIRM_PREFIX = "APPLY_PROTECTED_NINE";
+export const OBJECT_CONTRACT_SHA256 = "60a46c68b8f227ba8fbdb0669455e006089176cb3977514bef45ad8df09baef4";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const RECEIPT_TAG = "$protected_nine_receipt$";
 
@@ -14,9 +15,15 @@ export function normalizedHash(source) {
   return createHash("sha256").update(canonicalSqlText(source), "utf8").digest("hex");
 }
 
+export function verifyObjectContractSource(source) {
+  if (createHash("sha256").update(source, "utf8").digest("hex") !== OBJECT_CONTRACT_SHA256) throw new Error("Protected-nine object contract hash drift");
+}
+
 export function loadRelease(root = ROOT) {
   const control = JSON.parse(readFileSync(resolve(root, "supabase/migration-control/manifest.json"), "utf8"));
   const postchecks = JSON.parse(readFileSync(resolve(root, "scripts/ops/protected-nine-postchecks.json"), "utf8"));
+  const objectContractSource = readFileSync(resolve(root, "scripts/ops/protected-nine-object-contract.json"), "utf8");
+  verifyObjectContractSource(objectContractSource);
   if (control.kind !== "vinpoker-migration-control" || control.protectedApplyOrder?.join(",") !== ORDER.join(",")) throw new Error("Protected order is not the exact nine-entry reservation order");
   if (Object.values(control.safety ?? {}).some((value) => value !== false)) throw new Error("Production safety gates must remain OFF");
   const entries = ORDER.map((version) => {
