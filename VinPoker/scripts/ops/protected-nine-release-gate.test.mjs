@@ -7,7 +7,7 @@ const { entries, control } = loadRelease();
 const first = entries[0];
 const envFor = (entry) => ({ SUPABASE_PROJECT_REF: PROJECT_REF, TARGET_MIGRATION: entry.filename, TARGET_NORMALIZED_SHA256: entry.normalizedSqlSha256, CONFIRM_PROTECTED_NINE: `APPLY_PROTECTED_NINE_${entry.newVersion}_${entry.normalizedSqlSha256}` });
 
-test("binds exactly nine migration-control reservations and keeps production gates off", () => {
+test("binds the complete migration-control release order and keeps production gates off", () => {
   assert.deepEqual(entries.map((entry) => entry.newVersion), ORDER);
   assert.ok(Object.values(control.safety).every((value) => value === false));
 });
