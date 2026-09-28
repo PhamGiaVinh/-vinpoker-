@@ -70,6 +70,11 @@ INSERT INTO public.clubs(id,owner_id,name,region) VALUES
   ('d3000000-0000-4000-8000-000000000011','d3000000-0000-4000-8000-000000000010','History runtime TEST','TEST');
 INSERT INTO public.tournaments(id,club_id,name,status,live_status,current_level) VALUES
   ('d3000000-0000-4000-8000-000000000012','d3000000-0000-4000-8000-000000000011','History runtime TEST','active','live',1);
+INSERT INTO public.tournament_levels(
+  tournament_id,level_number,small_blind,big_blind,ante,duration_minutes,is_break
+) VALUES (
+  'd3000000-0000-4000-8000-000000000012',1,100,200,200,20,false
+);
 INSERT INTO public.game_tables(id,club_id,table_name,table_type,status) VALUES
   ('d3000000-0000-4000-8000-000000000013','d3000000-0000-4000-8000-000000000011','History table TEST','tournament','active');
 INSERT INTO public.table_sessions(id,club_id,game_table_id,session_type,tournament_id,control_mode) VALUES

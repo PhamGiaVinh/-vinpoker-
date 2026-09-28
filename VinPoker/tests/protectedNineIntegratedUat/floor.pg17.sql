@@ -17,6 +17,11 @@ INSERT INTO public.club_floors(club_id,user_id,granted_by) VALUES
   ('00000000-0000-0000-0000-000000000010','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001');
 INSERT INTO public.tournaments(id,club_id,name,status,live_status,current_level) VALUES
   ('00000000-0000-0000-0000-000000000131','00000000-0000-0000-0000-000000000010','Floor consistency TEST','active','live',1);
+INSERT INTO public.tournament_levels(
+  tournament_id,level_number,small_blind,big_blind,ante,duration_minutes,is_break
+) VALUES (
+  '00000000-0000-0000-0000-000000000131',1,100,200,200,20,false
+);
 
 \ir ../floorTableControlV3/criticalConsistency.disposable.sql
 

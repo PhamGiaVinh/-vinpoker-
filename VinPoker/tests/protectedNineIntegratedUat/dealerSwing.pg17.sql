@@ -81,6 +81,7 @@ SELECT pg_temp.assert_true(
   'operator success and response-loss replay create one session-bound replacement');
 
 SET ROLE service_role;
+SELECT set_config('request.jwt.claim.role','service_role',false);
 SELECT set_config('request.jwt.claims', '{"role":"service_role"}', false);
 DO $$ BEGIN
   BEGIN
