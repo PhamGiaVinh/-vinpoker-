@@ -47,7 +47,8 @@ SELECT public.protected_nine_uat_assert(
 SELECT public.protected_nine_uat_assert(
   has_function_privilege('authenticated','public.report_tracker_wrong_hand_v1(uuid,uuid,uuid,bigint,uuid)','EXECUTE')
   AND NOT has_function_privilege('anon','public.report_tracker_wrong_hand_v1(uuid,uuid,uuid,bigint,uuid)','EXECUTE')
-  AND NOT has_function_privilege('authenticated','public.undo_tracker_last_action_v1(uuid,uuid,uuid,bigint,uuid)','EXECUTE'),
+  AND has_function_privilege('authenticated','public.undo_tracker_last_action_v1(uuid,uuid,uuid,uuid,bigint,uuid)','EXECUTE')
+  AND NOT has_function_privilege('anon','public.undo_tracker_last_action_v1(uuid,uuid,uuid,uuid,bigint,uuid)','EXECUTE'),
   'tracker_correction_authority_surface'
 );
 
