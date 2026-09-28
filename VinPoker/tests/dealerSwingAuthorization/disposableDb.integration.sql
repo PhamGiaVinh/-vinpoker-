@@ -109,6 +109,7 @@ SELECT public.assert_true(
   ) ->> 'outcome' = 'swung',
   'trusted automatic worker'
 );
+RESET ROLE;
 SELECT public.assert_true(
   (SELECT count(*) = 1 FROM public.dealer_assignments
    WHERE table_id='20000000-0000-4000-8000-000000000004' AND status='assigned'
@@ -116,7 +117,6 @@ SELECT public.assert_true(
      AND table_session_id='30000000-0000-4000-8000-000000000004'),
   'worker replacement remains bound to the exact session'
 );
-RESET ROLE;
 
 UPDATE public.dealer_assignments SET table_session_id=NULL
 WHERE id='60000000-0000-4000-8000-000000000003';
