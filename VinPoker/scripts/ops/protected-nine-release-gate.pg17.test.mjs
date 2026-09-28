@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { buildAtomicMigrationQuery, classifyTarget, loadRelease, normalizedHash } from "./protected-nine-release-gate.mjs";
+import { catalogSnapshotSql, deriveObjectScope } from "./protected-nine-object-contract.mjs";
 
 const artifactDir = process.env.PROTECTED_NINE_SCHEMA_ARTIFACT_DIR;
 const schemaPath = artifactDir && resolve(artifactDir, "live-public-schema.sql");
@@ -83,6 +84,8 @@ test("PostgreSQL 17 restores the authenticated baseline and applies the exact ni
     assertChecks(entry.postcheck.queries, `${entry.newVersion} postcheck`);
   }
   assert.equal(psql("SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version LIKE '2027012800000%';"), "9");
+  const contract = JSON.parse(psql(catalogSnapshotSql(deriveObjectScope(entries))));
+  if (process.env.PROTECTED_NINE_CONTRACT_OUTPUT) writeFileSync(process.env.PROTECTED_NINE_CONTRACT_OUTPUT, `${JSON.stringify(contract, null, 2)}\n`, { mode: 0o600 });
 });
 
 test("receipt SQL hash drift is rejected", () => {
