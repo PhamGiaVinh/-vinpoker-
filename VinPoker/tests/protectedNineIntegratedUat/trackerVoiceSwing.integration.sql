@@ -68,7 +68,8 @@ INSERT INTO public.dealer_assignments(
 
 INSERT INTO public.tournament_hands(
   id, tournament_id, table_id, tournament_table_id, table_session_id,
-  hand_number, status, button_seat, created_by
+  hand_number, status, button_seat, created_by, tracker_level_number,
+  tracker_small_blind, tracker_big_blind, tracker_bba, tracker_is_break
 ) VALUES (
   '86000000-0000-4000-8000-000000000001',
   '85000000-0000-4000-8000-000000000001',
@@ -78,7 +79,8 @@ INSERT INTO public.tournament_hands(
   1,
   'in_progress',
   1,
-  '81400000-0000-4000-8000-000000000001'
+  '81400000-0000-4000-8000-000000000001',
+  1, 100, 200, 200, false
 );
 
 INSERT INTO public.hand_players(
