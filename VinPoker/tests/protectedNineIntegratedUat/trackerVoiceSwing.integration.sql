@@ -470,7 +470,7 @@ UPDATE public.app_settings
 SET value = 'true'::JSONB
 WHERE key = 'tracker_voice_auto_provision_enabled';
 UPDATE public.dealer_assignments
-SET status = 'released', released_at = pg_catalog.now()
+SET status = 'completed', released_at = pg_catalog.now()
 WHERE attendance_id = '87500000-0000-4000-8000-000000000003'
   AND status = 'assigned'
   AND released_at IS NULL;
@@ -521,7 +521,7 @@ WHERE key = 'tracker_voice_auto_provision_enabled';
 
 -- Restore Dealer A for the remaining canonical writer/idempotency suite.
 UPDATE public.dealer_assignments
-SET status = 'released', released_at = pg_catalog.now()
+SET status = 'completed', released_at = pg_catalog.now()
 WHERE id = '88000000-0000-4000-8000-000000000005';
 INSERT INTO public.dealer_assignments(
   id, dealer_id, attendance_id, table_id, table_session_id, club_id, assigned_at, status
