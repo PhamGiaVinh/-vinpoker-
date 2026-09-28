@@ -70,3 +70,16 @@ $$;
 ALTER FUNCTION public.tracker_bump_hand_source_revision() OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.tracker_bump_hand_source_revision()
   FROM PUBLIC, anon, authenticated, service_role;
+
+-- Run before the foreign-key constraint triggers can lock NEW.hand_id. This
+-- ensures opposite reparents enter the ordered parent-lock protocol before
+-- either transaction holds a key-share lock on the other's source hand.
+DROP TRIGGER IF EXISTS trg_tracker_hand_player_source_revision ON public.hand_players;
+CREATE TRIGGER trg_tracker_hand_player_source_revision
+BEFORE INSERT OR UPDATE OR DELETE ON public.hand_players
+FOR EACH ROW EXECUTE FUNCTION public.tracker_bump_hand_source_revision();
+
+DROP TRIGGER IF EXISTS trg_tracker_hand_action_source_revision ON public.hand_actions;
+CREATE TRIGGER trg_tracker_hand_action_source_revision
+BEFORE INSERT OR UPDATE OR DELETE ON public.hand_actions
+FOR EACH ROW EXECUTE FUNCTION public.tracker_bump_hand_source_revision();

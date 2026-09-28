@@ -42,6 +42,55 @@ function dockerPsqlAsync(db, sql) {
   });
 }
 
+function openBarrierController(db, lockKey) {
+  const child = spawn("docker", [
+    "exec", "-i", "-e", "PGPASSWORD=postgres", container,
+    "psql", "--no-psqlrc", "--set", "ON_ERROR_STOP=1", "--tuples-only",
+    "--no-align", "--quiet", "--username", "postgres", "--dbname", db,
+  ], { stdio: ["pipe", "pipe", "pipe"] });
+  let stdout = "";
+  let stderr = "";
+  let readyResolve;
+  let readyReject;
+  let isReady = false;
+  const ready = new Promise((resolve, reject) => {
+    readyResolve = resolve;
+    readyReject = reject;
+  });
+  const done = new Promise((resolve) => {
+    child.once("close", (code) => {
+      if (!isReady) readyReject(new Error(stderr || stdout || `barrier controller exited ${code}`));
+      resolve({ code, stdout, stderr });
+    });
+  });
+  child.stdout.setEncoding("utf8").on("data", (chunk) => {
+    stdout += chunk;
+    if (stdout.includes("barrier_ready")) {
+      isReady = true;
+      readyResolve();
+    }
+  });
+  child.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk; });
+  child.once("error", readyReject);
+  child.stdin.write(`BEGIN;\nSELECT pg_advisory_xact_lock(${lockKey});\n\\echo barrier_ready\n`);
+  return {
+    ready,
+    release() { child.stdin.end("COMMIT;\n\\q\n"); },
+    done,
+  };
+}
+
+async function waitForScalar(db, sql, expected, label) {
+  const deadline = Date.now() + 5_000;
+  let actual = "";
+  while (Date.now() < deadline) {
+    actual = dockerPsql(db, sql);
+    if (actual === expected) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.equal(actual, expected, label);
+}
+
 const bootstrap = String.raw`
 DO $roles$
 BEGIN
@@ -117,15 +166,38 @@ END $fn$;
 CREATE TRIGGER trg_tracker_enqueue_historical_display
 AFTER UPDATE ON public.tournament_hands
 FOR EACH ROW EXECUTE FUNCTION public.tracker_enqueue_historical_display_trigger();
-`;
 
-const triggerSql = String.raw`
+-- Previous migration state: 00009 must replace this function and move both
+-- outcome-relevant child triggers from AFTER to BEFORE.
+CREATE OR REPLACE FUNCTION public.tracker_bump_hand_source_revision()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $fn$
+BEGIN
+  UPDATE public.tournament_hands SET source_revision = source_revision + 1, updated_at = now()
+  WHERE id = COALESCE(NEW.hand_id, OLD.hand_id);
+  PERFORM public.tracker_mark_prior_settlements_stale(COALESCE(NEW.hand_id, OLD.hand_id));
+  RETURN COALESCE(NEW, OLD);
+END $fn$;
 CREATE TRIGGER trg_tracker_hand_player_source_revision
 AFTER INSERT OR UPDATE OR DELETE ON public.hand_players
 FOR EACH ROW EXECUTE FUNCTION public.tracker_bump_hand_source_revision();
 CREATE TRIGGER trg_tracker_hand_action_source_revision
 AFTER INSERT OR UPDATE OR DELETE ON public.hand_actions
 FOR EACH ROW EXECUTE FUNCTION public.tracker_bump_hand_source_revision();
+`;
+
+const barrierKey = 424242;
+const barrierSql = String.raw`
+CREATE OR REPLACE FUNCTION public.tracker_test_reparent_barrier()
+RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $fn$
+BEGIN
+  PERFORM pg_catalog.pg_advisory_xact_lock_shared(${barrierKey});
+  RETURN NEW;
+END $fn$;
+-- PostgreSQL fires same-kind triggers in name order. The aaa_ prefix makes the
+-- disposable barrier run before the production revision trigger.
+CREATE TRIGGER aaa_tracker_test_reparent_barrier
+BEFORE UPDATE OF hand_id ON public.hand_actions
+FOR EACH ROW EXECUTE FUNCTION public.tracker_test_reparent_barrier();
 `;
 
 const ids = {
@@ -158,7 +230,6 @@ test("PostgreSQL 17 reparent invalidates both hands without stale worker publica
   t.after(() => dockerPsql("postgres", `DROP DATABASE IF EXISTS ${database} WITH (FORCE);`));
   dockerPsql(database, bootstrap);
   dockerPsql(database, migration);
-  dockerPsql(database, triggerSql);
 
   dockerPsql(database, `
     ${seedHand(ids.playerA, 1)} ${seedHand(ids.playerB, 2)}
@@ -234,13 +305,31 @@ test("PostgreSQL 17 reparent invalidates both hands without stale worker publica
     INSERT INTO public.hand_actions(id,hand_id,note) VALUES
       ('66000000-0000-4000-8000-000000000001',${q(ids.concurrentA)},'a-to-b'),
       ('66000000-0000-4000-8000-000000000002',${q(ids.concurrentB)},'b-to-a');
+    ${barrierSql}
   `);
-  const first = dockerPsqlAsync(database, `BEGIN; UPDATE public.hand_actions SET hand_id=${q(ids.concurrentB)} WHERE id='66000000-0000-4000-8000-000000000001'; SELECT pg_sleep(0.4); COMMIT;`);
-  await new Promise((resolve) => setTimeout(resolve, 75));
+  assert.equal(dockerPsql(database, `
+    SELECT string_agg(tgname || ':' || CASE WHEN (tgtype & 2) = 2 THEN 'BEFORE' ELSE 'AFTER' END, ',' ORDER BY tgname)
+    FROM pg_catalog.pg_trigger
+    WHERE tgrelid IN ('public.hand_players'::regclass, 'public.hand_actions'::regclass)
+      AND tgname IN ('trg_tracker_hand_player_source_revision','trg_tracker_hand_action_source_revision');
+  `), "trg_tracker_hand_action_source_revision:BEFORE,trg_tracker_hand_player_source_revision:BEFORE");
+
+  const controller = openBarrierController(database, barrierKey);
+  await controller.ready;
+  const first = dockerPsqlAsync(database, `BEGIN; UPDATE public.hand_actions SET hand_id=${q(ids.concurrentB)} WHERE id='66000000-0000-4000-8000-000000000001'; COMMIT;`);
   const second = dockerPsqlAsync(database, `BEGIN; UPDATE public.hand_actions SET hand_id=${q(ids.concurrentA)} WHERE id='66000000-0000-4000-8000-000000000002'; COMMIT;`);
-  const results = await Promise.all([first, second]);
-  assert.deepEqual(results.map(({ code }) => code), [0, 0], results.map(({ stderr }) => stderr).join("\n"));
+  await waitForScalar(database, `
+    SELECT count(*) FROM pg_catalog.pg_locks
+    WHERE locktype='advisory' AND classid=0 AND objid=${barrierKey} AND NOT granted;
+  `, "2", "both opposite child UPDATEs must be blocked inside the test barrier");
+  controller.release();
+  const results = await Promise.all([first, second, controller.done]);
+  assert.deepEqual(results.map(({ code }) => code), [0, 0, 0], results.map(({ stderr }) => stderr).join("\n"));
   assert.ok(results.every(({ stderr }) => !/deadlock detected/i.test(stderr)), "opposite reparent overlap must not deadlock");
+  assert.equal(dockerPsql(database, `
+    SELECT string_agg(id::text || ':' || source_revision::text, ',' ORDER BY id)
+    FROM public.tournament_hands WHERE id IN (${q(ids.concurrentA)},${q(ids.concurrentB)});
+  `), `${ids.concurrentA}:4,${ids.concurrentB}:4`, "each overlapped reparent must bump both hands exactly once");
 });
 
 assert.ok(root.endsWith("VinPoker"));
