@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -15,6 +16,12 @@ const authorizationMigrationName = readdirSync(migrationsDir)
 const migration = authorizationMigrationName
   ? readFileSync(resolve(migrationsDir, authorizationMigrationName), "utf8")
   : "";
+const catalogManifest = JSON.parse(readFileSync(
+  resolve(root, "supabase/migration-archive/floor-v3-catalog-reconciliation.manifest.json"),
+  "utf8",
+)) as {
+  ownerGatedActiveAllowlist?: Array<{ version: string; filename: string; sha256: string; domain: string }>;
+};
 const desktop = readFileSync(
   resolve(root, "src/components/cashier/DealerSwingTab.tsx"),
   "utf8",
@@ -38,6 +45,18 @@ describe("Dealer Swing mutation authorization containment", () => {
     expect(authorizationMigrationName).toBeTruthy();
     expect(migration).not.toMatch(/DISABLE\s+ROW\s+LEVEL\s+SECURITY/i);
     expect(migration).not.toMatch(/DROP\s+(TABLE|FUNCTION)/i);
+  });
+
+  it("registers the exact migration bytes in the owner-gated active catalog", () => {
+    const entry = catalogManifest.ownerGatedActiveAllowlist?.find(
+      (candidate) => candidate.filename === authorizationMigrationName,
+    );
+    expect(entry).toEqual({
+      version: "20270128000001",
+      filename: authorizationMigrationName,
+      sha256: createHash("sha256").update(migration.replace(/\r\n/g, "\n")).digest("hex"),
+      domain: "dealer",
+    });
   });
 
   it("keeps every canonical mutation core private", () => {
