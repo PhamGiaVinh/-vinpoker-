@@ -5,7 +5,7 @@ import { createFloorTableControlV3Client } from "@/lib/floorTableControlV3";
 
 const migration = readFileSync(resolve(
   process.cwd(),
-  "supabase/migrations/20270127000000_floor_v3_critical_consistency.sql",
+  "supabase/migrations/20270128000007_floor_v3_critical_consistency.sql",
 ), "utf8");
 const repairRunbook = readFileSync(resolve(
   process.cwd(),
@@ -49,6 +49,22 @@ describe("Floor V3 critical consistency contract", () => {
     expect(migration).toContain("ts.game_table_id = tt.game_table_id");
     expect(migration).toContain("ts.club_id = tournament_row.club_id");
     expect(migration).toContain("gt.club_id = tournament_row.club_id");
+    expect(migration).toContain("v_tournament.status IN ('completed', 'cancelled')");
+    expect(migration).toContain("v_session.game_table_id IS DISTINCT FROM v_tt.game_table_id");
+    expect(migration).toContain("v_session.club_id IS DISTINCT FROM v_tournament.club_id");
+  });
+
+  it("uses one physical-table, dealer-assignment, session, table and seat lock order", () => {
+    const gameLock = migration.indexOf("PERFORM 1 FROM public.game_tables gt", migration.indexOf("FUNCTION public.floor_break_table_v5"));
+    const assignmentLock = migration.indexOf("PERFORM 1 FROM public.dealer_assignments d", gameLock);
+    const sessionLock = migration.indexOf("PERFORM 1 FROM public.table_sessions ts", assignmentLock);
+    const tableLock = migration.indexOf("SELECT * INTO v_tt FROM public.tournament_tables", sessionLock);
+    const moveLoop = migration.indexOf("FOR v_row IN SELECT * FROM floor_private.floor_break_plan_rows_v1", tableLock);
+    expect(gameLock).toBeGreaterThan(-1);
+    expect(assignmentLock).toBeGreaterThan(gameLock);
+    expect(sessionLock).toBeGreaterThan(assignmentLock);
+    expect(tableLock).toBeGreaterThan(sessionLock);
+    expect(moveLoop).toBeGreaterThan(tableLock);
   });
 
   it("pins security-definer search paths and exposes only the reviewed authenticated RPCs", () => {

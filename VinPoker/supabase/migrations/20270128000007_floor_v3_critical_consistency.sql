@@ -208,7 +208,13 @@ BEGIN
   SELECT * INTO v_session FROM public.table_sessions
     WHERE id = v_tt.table_session_id AND closed_at IS NULL;
   SELECT * INTO v_tournament FROM public.tournaments WHERE id = v_tt.tournament_id;
-  IF v_session.id IS NULL OR v_session.tournament_id IS DISTINCT FROM v_tournament.id THEN
+  IF v_tournament.id IS NULL OR v_tournament.status IN ('completed', 'cancelled') THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'tournament_not_open');
+  END IF;
+  IF v_session.id IS NULL
+     OR v_session.tournament_id IS DISTINCT FROM v_tournament.id
+     OR v_session.game_table_id IS DISTINCT FROM v_tt.game_table_id
+     OR v_session.club_id IS DISTINCT FROM v_tournament.club_id THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'table_session_mismatch');
   END IF;
   IF NOT floor_private.floor_table_v3_actor_is_tournament_operator(v_actor, v_tournament.club_id) THEN
@@ -272,10 +278,16 @@ BEGIN
     END IF;
     RETURN v_receipt.result;
   END IF;
+  -- Read identity first, then take the canonical lock order shared with Dealer
+  -- Swing: tournament -> physical table -> active assignment -> session ->
+  -- tournament table -> seats/moves. No pre-lock value authorizes a write.
   SELECT * INTO v_tt FROM public.tournament_tables
-    WHERE id = p_tournament_table_id AND status = 'active' FOR UPDATE;
+    WHERE id = p_tournament_table_id AND status = 'active';
   IF NOT FOUND THEN RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'table_not_found'); END IF;
   SELECT * INTO v_tournament FROM public.tournaments WHERE id = v_tt.tournament_id FOR UPDATE;
+  IF NOT FOUND OR v_tournament.status IN ('completed', 'cancelled') THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'tournament_not_open');
+  END IF;
   IF NOT floor_private.floor_table_v3_actor_is_tournament_operator(v_actor, v_tournament.club_id) THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'actor_not_allowed');
   END IF;
@@ -283,11 +295,34 @@ BEGIN
     JOIN public.table_sessions ts ON ts.game_table_id = gt.id
     WHERE ts.tournament_id = v_tournament.id AND ts.closed_at IS NULL
     ORDER BY gt.id FOR UPDATE OF gt;
+  -- Dealer writers lock the physical table before the assignment. Match that
+  -- order before any session row to avoid Floor-break/Dealer-Swing inversion.
+  PERFORM 1 FROM public.dealer_assignments d
+    JOIN public.game_tables gt ON gt.id = d.table_id
+    WHERE d.table_session_id IN (
+      SELECT ts.id FROM public.table_sessions ts
+      WHERE ts.tournament_id = v_tournament.id AND ts.closed_at IS NULL
+    ) AND d.released_at IS NULL
+    ORDER BY gt.id, d.id FOR UPDATE OF d;
   PERFORM 1 FROM public.table_sessions ts JOIN public.game_tables gt ON gt.id = ts.game_table_id
     WHERE ts.tournament_id = v_tournament.id AND ts.closed_at IS NULL
     ORDER BY gt.id, ts.id FOR UPDATE OF ts;
+  SELECT * INTO v_tt FROM public.tournament_tables
+    WHERE id = p_tournament_table_id
+      AND tournament_id = v_tournament.id
+      AND game_table_id IS NOT NULL
+      AND table_session_id IS NOT NULL
+      AND status = 'active'
+    FOR UPDATE;
+  IF NOT FOUND THEN RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'table_state_changed'); END IF;
   SELECT * INTO v_session FROM public.table_sessions
     WHERE id = v_tt.table_session_id AND closed_at IS NULL FOR UPDATE;
+  IF NOT FOUND
+     OR v_session.tournament_id IS DISTINCT FROM v_tournament.id
+     OR v_session.game_table_id IS DISTINCT FROM v_tt.game_table_id
+     OR v_session.club_id IS DISTINCT FROM v_tournament.club_id THEN
+    RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'table_session_mismatch');
+  END IF;
   IF v_session.revision <> p_expected_revision THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'STALE_STATE');
   END IF;
