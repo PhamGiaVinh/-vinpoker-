@@ -179,7 +179,7 @@ SELECT public.finish_tracker_historical_display_job(
 FROM history_runtime_claim2 c \gset late_finish_
 SELECT public.get_tracker_historical_display_commit_receipt(
   c.hand_id,'d3000000-0000-4000-8000-000000000012','00000000-0000-4000-8000-000000000001',
-  'history-runtime-idempotency-0001',s.source_revision,s.source_chain_hash,repeat('a',64)
+  'history-runtime-idempotency-0001',s.source_revision,s.source_chain_hash,repeat('b',64)
 )::text AS payload
 FROM history_runtime_claim2 c CROSS JOIN history_runtime_source s \gset receipt_
 RESET ROLE;
