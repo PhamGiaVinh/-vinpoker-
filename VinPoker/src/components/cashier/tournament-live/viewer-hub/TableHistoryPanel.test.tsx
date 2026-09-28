@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TableHistoryPanel } from "./TableHistoryPanel";
 
@@ -46,5 +46,31 @@ describe("table-specific public history cards", () => {
     within(card).getByRole("button", { name: "Xem lại hand" }).click();
     expect(select).toHaveBeenCalledWith({ handId: "split", tableId: "table-a", handNumber: 26 });
     await waitFor(() => expect(rpc).toHaveBeenCalledWith("get_public_tournament_table_history_v2", expect.objectContaining({ p_tournament_id: "tour-a", p_tournament_table_id: "table-a" })));
+  });
+
+  it("keeps all loaded pages when focus refreshes history", async () => {
+    const page = (handId: string, handNumber: number, nextCursor: { createdAt: string; id: string } | null) => ({
+      data: { access: "public", items: [{ handId, tableSessionId: "session", handNumber, createdAt: `2026-09-27T0${handNumber}:00:00Z`, board: [], pot: 100, smallBlind: 50, bigBlind: 100, ante: 0, result: { status: "pending" } }], nextCursor },
+      error: null,
+    });
+    rpc
+      .mockResolvedValueOnce(page("hand-2", 2, { createdAt: "2026-09-27T02:00:00Z", id: "hand-2" }))
+      .mockResolvedValueOnce(page("hand-1", 1, null))
+      .mockResolvedValueOnce(page("hand-2", 2, { createdAt: "2026-09-27T02:00:00Z", id: "hand-2" }))
+      .mockResolvedValueOnce(page("hand-1", 1, null));
+
+    render(<TableHistoryPanel tournamentId="tour" tableId="table" currentSessionId="session" onSelectHand={vi.fn()} onAccessRevoked={vi.fn()} />);
+    await screen.findByText("Hand #2");
+    fireEvent.click(screen.getByRole("button", { name: "Tải thêm" }));
+    await screen.findByText("Hand #1");
+
+    fireEvent.focus(window);
+    await waitFor(() => expect(rpc).toHaveBeenCalledTimes(4));
+    expect(screen.getByText("Hand #2")).toBeInTheDocument();
+    expect(screen.getByText("Hand #1")).toBeInTheDocument();
+    expect(rpc).toHaveBeenNthCalledWith(4, "get_public_tournament_table_history_v2", expect.objectContaining({
+      p_before_created_at: "2026-09-27T02:00:00Z",
+      p_before_id: "hand-2",
+    }));
   });
 });
