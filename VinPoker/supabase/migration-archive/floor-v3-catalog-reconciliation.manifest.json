@@ -6924,6 +6924,12 @@
       "domain": "floor"
     },
     {
+      "version": "20270128000008",
+      "filename": "20270128000008_tracker_voice_floor_owner_telegram_dealer.sql",
+      "sha256": "ed7f3012388bee3941d2ade54e68479b46bce36a719ca542dceade5d63ffd02f",
+      "domain": "tracker-voice"
+    },
+    {
       "version": "20270128000009",
       "filename": "20270128000009_tracker_history_reparent_invalidation_v1.sql",
       "sha256": "ea9c595603d69fd9a9bdc959254410112b17f71f8139af7f5c631887a2516024",

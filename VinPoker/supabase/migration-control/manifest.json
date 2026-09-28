@@ -129,21 +129,6 @@
       "state": "SOURCE_BOUND"
     },
     {
-      "domain": "History",
-      "oldVersion": null,
-      "newVersion": "20270128000009",
-      "semanticName": "tracker_history_reparent_invalidation_v1",
-      "filename": "20270128000009_tracker_history_reparent_invalidation_v1.sql",
-      "normalizedSqlSha256": "ea9c595603d69fd9a9bdc959254410112b17f71f8139af7f5c631887a2516024",
-      "dependencies": [
-        "20270128000004",
-        "20270128000006"
-      ],
-      "ownerSession": "S4",
-      "sourceSha": "6950dc6d2dfe571d933281dfd7a4b2ccddae0644",
-      "state": "SOURCE_BOUND"
-    },
-    {
       "domain": "Floor",
       "oldVersion": "20270127000000",
       "newVersion": "20270128000007",
@@ -163,14 +148,14 @@
       "newVersion": "20270128000008",
       "semanticName": "tracker_voice_floor_owner_telegram_dealer",
       "filename": "20270128000008_tracker_voice_floor_owner_telegram_dealer.sql",
-      "normalizedSqlSha256": "e9743b969141ad68bf4ec4595b5486f9cdfe6d8c167796d01cb5cf7e66a8776c",
+      "normalizedSqlSha256": "ed7f3012388bee3941d2ade54e68479b46bce36a719ca542dceade5d63ffd02f",
       "dependencies": [
         "20270115000020",
         "20270115000018"
       ],
       "ownerSession": "S6",
       "sourceSha": "7d7cfb19c29a531ef29681b2f8ab94a044bcc4ca",
-      "state": "RESERVED_BRANCH_SOURCE",
+      "state": "SOURCE_BOUND",
       "releaseGates": [
         "verify live authority function digest before exact apply"
       ]

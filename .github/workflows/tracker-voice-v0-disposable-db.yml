@@ -40,6 +40,7 @@ on:
       - "VinPoker/supabase/migrations/20270115000018_dealer_assignment_session_binding.sql"
       - "VinPoker/supabase/migrations/20270115000020_tracker_voice_floor_owner_authority.sql"
       - "VinPoker/supabase/migrations/20270128000005_tracker_correction_floor_tracker_authority.sql"
+      - "VinPoker/supabase/migrations/20270128000008_tracker_voice_floor_owner_telegram_dealer.sql"
       - "VinPoker/supabase/functions/_shared/trackerSettlement/finishAssist.ts"
       - "VinPoker/supabase/functions/_shared/trackerPlayerAnalytics.ts"
       - "VinPoker/supabase/functions/_shared/trackerVoiceParser.ts"
@@ -378,6 +379,9 @@ jobs:
           createdb tracker_voice_v0_before_15000020 -T tracker_voice_v0_strict
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f supabase/migrations/20270115000020_tracker_voice_floor_owner_authority.sql
+          createdb tracker_voice_v0_before_28000008 -T tracker_voice_v0_strict
+          psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
+            -f supabase/migrations/20270128000008_tracker_voice_floor_owner_telegram_dealer.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f supabase/migration-archive/historical-never-replay/20260801000007_resolve_execute_pre_assigned_rpc_ambiguity.sql
           test "$(psql -X -At -d tracker_voice_v0_strict -c \
@@ -389,6 +393,7 @@ jobs:
                     )) > 0")" = "t"
           echo "TRACKER_VOICE_15000015_APPLY=PASS"
           echo "TRACKER_VOICE_15000020_APPLY=PASS"
+          echo "TRACKER_VOICE_28000008_APPLY=PASS"
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
             -f tests/trackerVoice/voiceHashV2.integration.sql
           psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_strict \
@@ -614,6 +619,18 @@ jobs:
           test "$before_authority" = "$(psql -X -At -d tracker_voice_v0_before_15000020 -c \
             "SELECT md5(pg_get_functiondef('public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure))")"
           echo "TRACKER_VOICE_15000020_ROLLBACK=PASS"
+          before_authority="$(psql -X -At -d tracker_voice_v0_before_28000008 -c \
+            "SELECT md5(pg_get_functiondef('public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure))")"
+          failing="$RUNNER_TEMP/tracker-voice-28000008-failing.sql"
+          awk '{ if ($0 == "COMMIT;") print "SELECT 1 / 0 AS tracker_voice_injected_migration_failure;"; print }' \
+            supabase/migrations/20270128000008_tracker_voice_floor_owner_telegram_dealer.sql > "$failing"
+          if psql -X -v ON_ERROR_STOP=1 -d tracker_voice_v0_before_28000008 -f "$failing"; then
+            echo "Injected 28000008 migration unexpectedly committed" >&2
+            exit 1
+          fi
+          test "$before_authority" = "$(psql -X -At -d tracker_voice_v0_before_28000008 -c \
+            "SELECT md5(pg_get_functiondef('public._tracker_voice_assignment_context(uuid,uuid,uuid)'::regprocedure))")"
+          echo "TRACKER_VOICE_28000008_ROLLBACK=PASS"
           echo "TRACKER_VOICE_EXACT_CHAIN_ROLLBACK=PASS"
 
       - name: Run focused Voice, Analytics and contract tests
