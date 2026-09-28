@@ -23,7 +23,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with: { node-version: 22 }
       - name: Action workflow static validation
-        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7
+        run: >-
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7
+          .github/workflows/protected-nine-exact-apply.yml
+          .github/workflows/protected-nine-release-ci.yml
+          .github/workflows/tv-stage-a-production-uat.yml
+          .github/workflows/floor-v3-recovery-backup.yml
       - name: Start disposable PostgreSQL 17
         run: |
           docker run --detach --name tracker-history-reparent-pg17 --env POSTGRES_HOST_AUTH_METHOD=trust --publish 5432:5432 postgres:17
