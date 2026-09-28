@@ -1,29 +1,73 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { buildAtomicMigrationQuery, classifyTarget, normalizedHash, ORDER } from "./protected-nine-release-gate.mjs";
+import { buildAtomicMigrationQuery, classifyTarget, loadRelease, normalizedHash } from "./protected-nine-release-gate.mjs";
 
-const psql = (sql) => {
+const artifactDir = process.env.PROTECTED_NINE_SCHEMA_ARTIFACT_DIR;
+const schemaPath = artifactDir && resolve(artifactDir, "live-public-schema.sql");
+const expectedSchemaSha = "703aed6b620cd24f34c31d4545b2d7e97e4a488f89fe81dfc1a36b175d259223";
+
+function psql(sql) {
   const result = spawnSync("psql", ["-X", "-v", "ON_ERROR_STOP=1", "-At"], { input: sql, encoding: "utf8", env: process.env });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
   return result.stdout.trim();
-};
+}
 
-test("PostgreSQL 17 simulates plan/apply/hash/postcheck one entry at a time", () => {
-  psql("DROP SCHEMA IF EXISTS supabase_migrations CASCADE; CREATE SCHEMA supabase_migrations; CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY,name text NOT NULL,statements text[] NOT NULL);");
-  const entries = ORDER.map((version, index) => {
-    const sql = `CREATE TABLE public.protected_nine_fixture_${index + 1}(id integer);`;
-    return { newVersion: version, semanticName: `fixture_${index + 1}`, filename: `${version}_fixture_${index + 1}.sql`, normalizedSqlSha256: normalizedHash(sql), dependencies: index ? [ORDER[index - 1]] : [], requiredReceipts: index ? [{ version: ORDER[index - 1], semanticName: `fixture_${index}` }] : [], sql, postcheck: { queries: [`SELECT (to_regclass('public.protected_nine_fixture_${index + 1}') IS NOT NULL) AS ok`] } };
-  });
-  const history = [];
-  for (const entry of entries) {
-    assert.equal(classifyTarget(history, entries, entry.newVersion), "pending");
-    psql(buildAtomicMigrationQuery(entry));
-    const receipt = JSON.parse(psql(`SELECT json_build_object('version',version,'name',name,'statements',statements) FROM supabase_migrations.schema_migrations WHERE version='${entry.newVersion}'`));
-    history.push(receipt);
-    assert.equal(classifyTarget(history, entries, entry.newVersion), "already-applied-exact");
-    assert.equal(psql(entry.postcheck.queries[0]), "t");
+function psqlFile(path) {
+  const result = spawnSync("psql", ["-X", "-v", "ON_ERROR_STOP=1", "-f", path], { encoding: "utf8", env: process.env });
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout);
+}
+
+function history() {
+  return JSON.parse(psql("SELECT COALESCE(json_agg(json_build_object('version',version,'name',name,'statements',statements) ORDER BY version),'[]'::json) FROM supabase_migrations.schema_migrations;"));
+}
+
+function assertChecks(queries, label) {
+  for (const [index, query] of (queries ?? []).entries()) assert.equal(psql(query), "t", `${label} query ${index + 1}`);
+}
+
+test("PostgreSQL 17 restores the authenticated baseline and applies the exact nine migrations", { timeout: 180_000 }, () => {
+  assert.ok(schemaPath, "PROTECTED_NINE_SCHEMA_ARTIFACT_DIR is required");
+  const schema = readFileSync(schemaPath, "utf8");
+  assert.equal(normalizedHash(schema), expectedSchemaSha, "captured baseline checksum drift");
+  psql(`
+    DO $roles$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role NOLOGIN; END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='supabase_admin') THEN CREATE ROLE supabase_admin NOLOGIN; END IF;
+    END $roles$;
+    CREATE SCHEMA IF NOT EXISTS extensions;
+    CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+  `);
+  psqlFile(schemaPath);
+  psql("CREATE SCHEMA IF NOT EXISTS supabase_migrations; CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations(version text PRIMARY KEY,name text NOT NULL,statements text[] NOT NULL);");
+
+  const { control, entries } = loadRelease();
+  const prerequisiteSql = {
+    "20270115000018": readFileSync("supabase/migrations/20270115000018_dealer_assignment_session_binding.sql", "utf8"),
+    "20270115000019": readFileSync("supabase/migrations/20270115000020_tracker_voice_floor_owner_authority.sql", "utf8"),
+    "20270115000020": readFileSync("supabase/migrations/20270115000020_tracker_voice_floor_owner_authority.sql", "utf8"),
+  };
+  for (const receipt of control.productionReceipts) {
+    assert.equal(normalizedHash(prerequisiteSql[receipt.version]), receipt.normalizedSqlSha256);
+    psql(`INSERT INTO supabase_migrations.schema_migrations(version,name,statements) VALUES ('${receipt.version}','${receipt.semanticName}',ARRAY[$receipt$${prerequisiteSql[receipt.version]}$receipt$]::text[]);`);
   }
-  assert.equal(psql("SELECT count(*) FROM supabase_migrations.schema_migrations"), "9");
+
+  for (const entry of entries) {
+    assert.equal(classifyTarget(history(), entries, entry.newVersion), "pending");
+    assertChecks(entry.postcheck.preflightQueries, `${entry.newVersion} preflight`);
+    psql(buildAtomicMigrationQuery(entry));
+    assert.equal(classifyTarget(history(), entries, entry.newVersion), "already-applied-exact");
+    assertChecks(entry.postcheck.queries, `${entry.newVersion} postcheck`);
+  }
+  assert.equal(psql("SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version LIKE '2027012800000%';"), "9");
 });
 
+test("receipt SQL hash drift is rejected", () => {
+  const { control, entries } = loadRelease();
+  const rows = control.productionReceipts.map((receipt) => ({ version: receipt.version, name: receipt.semanticName, statements: ["select 'drift';"] }));
+  assert.throws(() => classifyTarget(rows, entries, entries[0].newVersion), /predecessor receipt SQL hash drift/);
+});

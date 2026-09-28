@@ -12,7 +12,9 @@ on:
       - "VinPoker/supabase/migration-control/**"
       - "VinPoker/supabase/migrations/2027012800000*.sql"
 
-permissions: { contents: read }
+permissions:
+  actions: read
+  contents: read
 
 jobs:
   release-package:
@@ -39,9 +41,30 @@ jobs:
         run: |
           npm run check:migration-control
           node --test scripts/ops/protected-nine-release-gate.test.mjs
-      - name: PostgreSQL 17 atomic plan/apply/postcheck simulation
+      - name: Download owner-authorized sanitized schema baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/36422707061" --jq .workflow_id)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/capture-live-public-schema.yml" --jq .id)"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/36422707061" --jq .event)" = workflow_dispatch
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/36422707061" --jq .conclusion)" = success
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/36422707061" --jq .head_branch)" = main
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/36422707061" --jq .head_sha)" = d64df388d42b51cb851e8d23361d4fe568988eb7
+          artifact_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/36422707061/artifacts" --jq '[.artifacts[] | select(.name=="live-public-schema" and .expired==false)] | if length==1 then .[0].id else error("exact schema artifact missing") end')"
+          mkdir "$RUNNER_TEMP/protected-nine-schema"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/protected-nine-schema.zip"
+          unzip -q "$RUNNER_TEMP/protected-nine-schema.zip" -d "$RUNNER_TEMP/protected-nine-schema"
+          node VinPoker/scripts/deploy/validate-live-public-schema-artifact.mjs --artifact-directory "$RUNNER_TEMP/protected-nine-schema"
+          test "$(cut -d' ' -f1 "$RUNNER_TEMP/protected-nine-schema/live-public-schema.sha256")" = 703aed6b620cd24f34c31d4545b2d7e97e4a488f89fe81dfc1a36b175d259223
+      - name: PostgreSQL 17 exact baseline plan/apply/postcheck integration
         working-directory: VinPoker
-        env: { PGHOST: 127.0.0.1, PGPORT: 5432, PGUSER: postgres, PGDATABASE: postgres, PGPASSWORD: "" }
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGDATABASE: postgres
+          PGPASSWORD: ""
+          PROTECTED_NINE_SCHEMA_ARTIFACT_DIR: ${{ runner.temp }}/protected-nine-schema
         run: node --test scripts/ops/protected-nine-release-gate.pg17.test.mjs
       - name: History reparent BEFORE trigger semantic proof
         working-directory: VinPoker
