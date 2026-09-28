@@ -169,7 +169,7 @@ export function TrackerFloorAlertLane({ tournamentId }: TrackerFloorAlertLanePro
                     </span>
                   </div>
                   <p className="text-xs text-zinc-400">
-                    {alert.dealer_name || "Dealer"} · {new Date(alert.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                    {alert.dealer_name || (alert.dealer_id ? "Dealer" : "Floor / Owner")} · {new Date(alert.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
                   </p>
                   <p className="mt-1 text-xs font-semibold text-amber-100">
                     {location?.tableNumber != null ? `Bàn ${location.tableNumber}` : "Đang tải bàn"}
