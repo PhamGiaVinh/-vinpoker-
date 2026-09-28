@@ -113,7 +113,7 @@ test("PostgreSQL 17 restores the authenticated baseline and applies the exact ni
     },
     {
       name: "function body drift",
-      sql: "CREATE OR REPLACE FUNCTION public._tracker_voice_assignment_context(uuid,uuid,uuid) RETURNS jsonb LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path='' AS $mutated$ SELECT '{}'::jsonb $mutated$;",
+      sql: "CREATE OR REPLACE FUNCTION public._tracker_voice_assignment_context(p_tournament_id uuid,p_tournament_table_id uuid,p_actor uuid) RETURNS jsonb LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path='' AS $mutated$ SELECT '{}'::jsonb $mutated$;",
       section: /functions/,
     },
     {
