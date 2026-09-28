@@ -41,6 +41,22 @@ jobs:
         run: |
           npm run check:migration-control
           node --test scripts/ops/protected-nine-release-gate.test.mjs
+      - name: Install locked domain-test dependencies
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+      - name: Protected-nine domain contracts
+        working-directory: VinPoker
+        run: >-
+          ./node_modules/.bin/vitest run
+          tests/dealerSwingAuthorization/authorization.contract.test.ts
+          tests/tvDisplayManagement/migration.contract.test.ts
+          tests/trackerSettlement/historicalDisplayMigration.contract.test.ts
+          tests/trackerSettlement/historicalDisplayVerification.test.ts
+          tests/trackerCorrectionRelease2/floorTrackerAuthority.contract.test.ts
+          tests/trackerCorrectionRelease2/migration.contract.test.ts
+          tests/floorTableControlV3/criticalConsistency.contract.test.ts
+          tests/trackerVoice/floorOwnerAuthority.contract.test.ts
+          tests/trackerVoice/migration.contract.test.ts
       - name: Download owner-authorized sanitized schema baseline
         env:
           GH_TOKEN: ${{ github.token }}
