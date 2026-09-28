@@ -66,17 +66,17 @@ jobs:
         continue-on-error: true
         working-directory: VinPoker
         run: psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/multiDayGuard.pg17.sql
-      - name: Dealer Swing independent contained path
+      - name: Dealer Swing partial authorization probes
         id: dealer_swing
         continue-on-error: true
         working-directory: VinPoker
         run: psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/dealerSwing.pg17.sql
-      - name: TV public reader editor and event isolation
+      - name: TV partial authorization and source probes
         id: tv
         continue-on-error: true
         working-directory: VinPoker
         run: psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/tv.pg17.sql
-      - name: History queue lease commit public and invalidation
+      - name: History partial queue lease runtime probes
         id: history
         continue-on-error: true
         working-directory: VinPoker
@@ -89,7 +89,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS dblink;'
           psql -X -v ON_ERROR_STOP=1 -c "CREATE OR REPLACE FUNCTION public.tracker_voice_test_assert(ok boolean,message text) RETURNS void LANGUAGE plpgsql AS \$\$ BEGIN IF ok IS NOT TRUE THEN RAISE EXCEPTION 'assertion_failed: %',message; END IF; END \$\$;"
           psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/trackerCorrectionFloorAuthority.pg17.sql
-      - name: Floor invalid legacy lock plan hash and deferred completion
+      - name: Floor partial authorization and source probes
         id: floor
         continue-on-error: true
         working-directory: VinPoker
@@ -106,7 +106,7 @@ jobs:
           BASELINE_RUN: "36422707061"
           BASELINE_SHA256: "703aed6b620cd24f34c31d4545b2d7e97e4a488f89fe81dfc1a36b175d259223"
           PG17_IMAGE: "postgres:17"
-          UAT_DOMAIN_RESULTS: '{"dealerSwing":"${{ steps.dealer_swing.outcome }}","tv":"${{ steps.tv.outcome }}","historyQueueAudit":"${{ steps.history.outcome }}","trackerCorrection":"${{ steps.correction.outcome }}","floor":"${{ steps.floor.outcome }}","trackerVoice":"${{ steps.voice_swing.outcome }}"}'
+          UAT_DOMAIN_RESULTS: '{"dealerSwing":"INCOMPLETE_RUNTIME_OPERATOR_WORKER_PATHS","tv":"INCOMPLETE_RUNTIME_STAGE_A_B_CONTRACT","historyQueueAudit":"INCOMPLETE_RUNTIME_COMMIT_PUBLIC_INVALIDATION","trackerCorrection":"${{ steps.correction.outcome }}","floor":"INCOMPLETE_RUNTIME_CAS_DEFER_EXACTLY_ONCE","trackerVoice":"${{ steps.voice_swing.outcome }}"}'
         run: node scripts/ops/protected-nine-uat-report.mjs "$RUNNER_TEMP/protected-nine-uat-report.json"
       - name: Upload machine-readable UAT report
         if: always()
