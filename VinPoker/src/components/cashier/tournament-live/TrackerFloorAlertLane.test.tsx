@@ -11,6 +11,7 @@ const { rpc, maybeSingle, voidState, handRow, baseAlert, alertRows } = vi.hoiste
     tournament_table_id: "table-1",
     physical_table_id: "physical-1",
     hand_id: "hand-1",
+    dealer_id: null,
     dealer_name: "Dealer",
     alert_kind: "wrong_action",
     priority: "urgent",

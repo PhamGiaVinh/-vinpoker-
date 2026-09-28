@@ -1712,7 +1712,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
 
   const scopedCheckoutIds = useCallback((ids: string[]): string[] | null => {
     const scoped = scopeCheckoutAttendanceIds(dealers ?? [], ids, activeClubId);
-    if (!scoped.ok) {
+    if (scoped.ok === false) {
       toast.error(checkoutScopeError(scoped.code));
       return null;
     }
