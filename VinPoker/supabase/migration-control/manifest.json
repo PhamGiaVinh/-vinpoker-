@@ -134,14 +134,14 @@
       "newVersion": "20270128000009",
       "semanticName": "tracker_history_reparent_invalidation_v1",
       "filename": "20270128000009_tracker_history_reparent_invalidation_v1.sql",
-      "normalizedSqlSha256": null,
+      "normalizedSqlSha256": "1cbd9ef554674bb71643a0c56f19ce7a6eeb72e560c4408e53741fa04293faf5",
       "dependencies": [
         "20270128000004",
         "20270128000006"
       ],
       "ownerSession": "S4",
-      "sourceSha": "5eac09ec76ebd5f5babd5fca775930a087e15a03",
-      "state": "RESERVED_NO_SQL"
+      "sourceSha": "51dd73cf04f25ec28cf82e86f6fa874165cdba95",
+      "state": "SOURCE_BOUND"
     },
     {
       "domain": "Floor",
