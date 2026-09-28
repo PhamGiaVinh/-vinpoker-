@@ -1,8 +1,20 @@
 SELECT public.assert_true(
   NOT has_function_privilege('anon','public.perform_swing(uuid,integer,boolean,integer,integer,integer,uuid,integer)','EXECUTE')
   AND NOT has_function_privilege('authenticated','public.perform_swing(uuid,integer,boolean,integer,integer,integer,uuid,integer)','EXECUTE')
-  AND NOT has_function_privilege('service_role','public.perform_swing(uuid,integer,boolean,integer,integer,integer,uuid,integer)','EXECUTE'),
-  'canonical core must be private'
+  AND NOT has_function_privilege('service_role','public.perform_swing(uuid,integer,boolean,integer,integer,integer,uuid,integer)','EXECUTE')
+  AND NOT has_function_privilege('anon','public.perform_swing(uuid,uuid,boolean,integer,text)','EXECUTE')
+  AND NOT has_function_privilege('authenticated','public.perform_swing(uuid,uuid,boolean,integer,text)','EXECUTE')
+  AND NOT has_function_privilege('service_role','public.perform_swing(uuid,uuid,boolean,integer,text)','EXECUTE')
+  AND NOT has_function_privilege('anon','public.perform_swing(uuid,integer,uuid,boolean,integer,integer,timestamp with time zone,integer)','EXECUTE')
+  AND NOT has_function_privilege('authenticated','public.perform_swing(uuid,integer,uuid,boolean,integer,integer,timestamp with time zone,integer)','EXECUTE')
+  AND NOT has_function_privilege('service_role','public.perform_swing(uuid,integer,uuid,boolean,integer,integer,timestamp with time zone,integer)','EXECUTE')
+  AND NOT has_function_privilege('anon','public.execute_pre_assigned_swing(uuid,uuid,timestamp with time zone,integer,boolean,integer)','EXECUTE')
+  AND NOT has_function_privilege('authenticated','public.execute_pre_assigned_swing(uuid,uuid,timestamp with time zone,integer,boolean,integer)','EXECUTE')
+  AND NOT has_function_privilege('service_role','public.execute_pre_assigned_swing(uuid,uuid,timestamp with time zone,integer,boolean,integer)','EXECUTE')
+  AND NOT has_function_privilege('anon','public.execute_pre_assigned_swing_rpc(uuid,uuid,timestamp with time zone,integer,boolean,integer)','EXECUTE')
+  AND NOT has_function_privilege('authenticated','public.execute_pre_assigned_swing_rpc(uuid,uuid,timestamp with time zone,integer,boolean,integer)','EXECUTE')
+  AND NOT has_function_privilege('service_role','public.execute_pre_assigned_swing_rpc(uuid,uuid,timestamp with time zone,integer,boolean,integer)','EXECUTE'),
+  'all legacy core entrypoints must be private'
 );
 SELECT public.assert_true(
   has_function_privilege('authenticated','public.operator_perform_swing(uuid,uuid,uuid,integer,uuid)','EXECUTE')
@@ -59,6 +71,16 @@ SELECT public.assert_true(
 SET ROLE service_role;
 SELECT set_config('request.jwt.claim.sub','90000000-0000-4000-8000-000000000001',false);
 SELECT set_config('request.jwt.claim.role','service_role',false);
+SELECT public.assert_raises('TABLE_SESSION_STALE', $$
+  SELECT public.worker_perform_swing(
+    '20000000-0000-4000-8000-000000000003','30000000-0000-4000-8000-000000000002',
+    '60000000-0000-4000-8000-000000000003',30,false,15,60,1,NULL,0)
+$$);
+SELECT public.assert_raises('SWING_VERSION_CONFLICT', $$
+  SELECT public.worker_perform_swing(
+    '20000000-0000-4000-8000-000000000003','30000000-0000-4000-8000-000000000003',
+    '60000000-0000-4000-8000-000000000003',30,false,15,60,999,NULL,0)
+$$);
 SELECT public.assert_raises('SWING_INCOMING_CLUB_MISMATCH', $$
   SELECT public.worker_perform_swing(
     '20000000-0000-4000-8000-000000000002','30000000-0000-4000-8000-000000000002',
@@ -78,6 +100,21 @@ SELECT public.assert_true(
     '50000000-0000-4000-8000-000000000003',now()+interval '30 minutes',30,false,15
   ) ->> 'status' = 'success',
   'trusted preassigned worker'
+);
+SELECT public.assert_true(
+  public.worker_perform_swing(
+    '20000000-0000-4000-8000-000000000004','30000000-0000-4000-8000-000000000004',
+    '60000000-0000-4000-8000-000000000004',30,false,15,60,1,
+    '50000000-0000-4000-8000-000000000010',0
+  ) ->> 'outcome' = 'swung',
+  'trusted automatic worker'
+);
+SELECT public.assert_true(
+  (SELECT count(*) = 1 FROM public.dealer_assignments
+   WHERE table_id='20000000-0000-4000-8000-000000000004' AND status='assigned'
+     AND released_at IS NULL
+     AND table_session_id='30000000-0000-4000-8000-000000000004'),
+  'worker replacement remains bound to the exact session'
 );
 RESET ROLE;
 
