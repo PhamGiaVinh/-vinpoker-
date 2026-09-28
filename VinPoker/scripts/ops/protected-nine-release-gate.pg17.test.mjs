@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -31,7 +32,7 @@ function assertChecks(queries, label) {
 test("PostgreSQL 17 restores the authenticated baseline and applies the exact nine migrations", { timeout: 180_000 }, () => {
   assert.ok(schemaPath, "PROTECTED_NINE_SCHEMA_ARTIFACT_DIR is required");
   const schema = readFileSync(schemaPath, "utf8");
-  assert.equal(normalizedHash(schema), expectedSchemaSha, "captured baseline checksum drift");
+  assert.equal(createHash("sha256").update(schema, "utf8").digest("hex"), expectedSchemaSha, "captured baseline checksum drift");
   psql(`
     DO $roles$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF;
