@@ -95,3 +95,19 @@ jobs:
           test '${{ steps.post_nine.outcome }}' = success
           test '${{ steps.correction.outcome }}' = success
           test '${{ steps.voice_swing.outcome }}' = success
+          node - "$RUNNER_TEMP/protected-nine-uat-report.json" <<'NODE'
+          const { readFileSync } = require("node:fs");
+          const report = JSON.parse(readFileSync(process.argv[2], "utf8"));
+          const requiredDomains = [
+            "dealerSwing",
+            "tv",
+            "historyQueueAudit",
+            "trackerCorrection",
+            "floor",
+            "trackerVoice",
+          ];
+          const failures = requiredDomains.filter((domain) => report.domains?.[domain] !== "success");
+          if (failures.length > 0) {
+            throw new Error(`integrated UAT domains not passed: ${failures.join(", ")}`);
+          }
+          NODE
