@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { basename } from "node:path";
 import test from "node:test";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -219,7 +220,9 @@ const seedProof = (id, outcomeId, lease = false) => `
   SELECT ${q(outcomeId)},id,source_revision,'verified' FROM public.tournament_hands WHERE id=${q(id)};
   INSERT INTO public.tracker_historical_display_queue(hand_id,source_revision,status,lease_token,lease_until)
   SELECT id,source_revision,${lease ? "'processing'" : "'completed'"},${lease ? "'99999999-9999-4999-8999-999999999999'::uuid" : "NULL"},${lease ? "now()+interval '10 minutes'" : "NULL"}
-  FROM public.tournament_hands WHERE id=${q(id)};
+  FROM public.tournament_hands WHERE id=${q(id)}
+  ON CONFLICT (hand_id,source_revision) DO UPDATE
+  SET status=EXCLUDED.status, lease_token=EXCLUDED.lease_token, lease_until=EXCLUDED.lease_until;
 `;
 
 test("PostgreSQL 17 reparent invalidates both hands without stale worker publication", async (t) => {
@@ -332,4 +335,4 @@ test("PostgreSQL 17 reparent invalidates both hands without stale worker publica
   `), `${ids.concurrentA}:4,${ids.concurrentB}:4`, "each overlapped reparent must bump both hands exactly once");
 });
 
-assert.ok(root.endsWith("VinPoker"));
+assert.equal(basename(root), "VinPoker");
