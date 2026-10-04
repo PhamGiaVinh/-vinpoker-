@@ -118,7 +118,9 @@ jobs:
           SUPABASE_ACCESS_TOKEN: "${{ secrets.SUPABASEACCESSTOKEN }}"
           TARGET_MIGRATION: "${{ inputs.migration_filename }}"
           TARGET_NORMALIZED_SHA256: "${{ inputs.normalized_sql_sha256 }}"
-        run: node scripts/ops/protected-nine-release-gate.mjs plan | tee "$RUNNER_TEMP/protected-nine-plan.txt"
+        run: |
+          set -euo pipefail
+          node scripts/ops/protected-nine-release-gate.mjs plan | tee "$RUNNER_TEMP/protected-nine-plan.txt"
       - name: Apply one atomic migration and immutable receipt
         working-directory: VinPoker
         env:
@@ -127,7 +129,9 @@ jobs:
           TARGET_MIGRATION: "${{ inputs.migration_filename }}"
           TARGET_NORMALIZED_SHA256: "${{ inputs.normalized_sql_sha256 }}"
           CONFIRM_PROTECTED_NINE: "${{ inputs.confirmation_phrase }}"
-        run: node scripts/ops/protected-nine-release-gate.mjs apply | tee "$RUNNER_TEMP/protected-nine-apply.txt"
+        run: |
+          set -euo pipefail
+          node scripts/ops/protected-nine-release-gate.mjs apply | tee "$RUNNER_TEMP/protected-nine-apply.txt"
       - name: Exact receipt, object, and ACL postchecks
         working-directory: VinPoker
         env:
@@ -135,7 +139,9 @@ jobs:
           SUPABASE_ACCESS_TOKEN: "${{ secrets.SUPABASEACCESSTOKEN }}"
           TARGET_MIGRATION: "${{ inputs.migration_filename }}"
           TARGET_NORMALIZED_SHA256: "${{ inputs.normalized_sql_sha256 }}"
-        run: node scripts/ops/protected-nine-release-gate.mjs postcheck | tee "$RUNNER_TEMP/protected-nine-postcheck.txt"
+        run: |
+          set -euo pipefail
+          node scripts/ops/protected-nine-release-gate.mjs postcheck | tee "$RUNNER_TEMP/protected-nine-postcheck.txt"
       - name: Reconcile response loss without retrying
         if: always()
         working-directory: VinPoker
@@ -144,7 +150,9 @@ jobs:
           SUPABASE_ACCESS_TOKEN: "${{ secrets.SUPABASEACCESSTOKEN }}"
           TARGET_MIGRATION: "${{ inputs.migration_filename }}"
           TARGET_NORMALIZED_SHA256: "${{ inputs.normalized_sql_sha256 }}"
-        run: node scripts/ops/protected-nine-release-gate.mjs postcheck 2>&1 | tee "$RUNNER_TEMP/protected-nine-reconcile.txt"
+        run: |
+          set -euo pipefail
+          node scripts/ops/protected-nine-release-gate.mjs postcheck 2>&1 | tee "$RUNNER_TEMP/protected-nine-reconcile.txt"
       - name: Upload metadata-safe release receipts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

@@ -23,6 +23,14 @@ test("wrong order and receipt-name drift are rejected", () => {
   assert.throws(() => classifyTarget([{ version: ORDER[0], name: entries[0].semanticName, statements: [] }], entries, ORDER[1]), /Malformed/);
   assert.throws(() => classifyTarget([{ version: ORDER[0], name: entries[0].semanticName, statements: ["select 'drift';"] }], entries, ORDER[1]), /SQL hash drift/);
 });
+test("unrelated historical multi-statement receipts do not block the protected release", () => {
+  const unrelated = { version: "20260422080820", name: "historical_migration", statements: Array.from({ length: 46 }, (_, index) => `select ${index};`) };
+  const predecessor = control.productionReceipts.find((receipt) => receipt.version === "20270115000018");
+  const source = readFileSync("supabase/migrations/20270115000018_dealer_assignment_session_binding.sql", "utf8");
+  assert.equal(classifyTarget([unrelated, { version: predecessor.version, name: predecessor.semanticName, statements: [source] }], entries, ORDER[0]), "pending");
+  assert.throws(() => classifyTarget([unrelated, unrelated], entries, ORDER[0]), /Ambiguous live receipt/);
+  assert.throws(() => classifyTarget([{ version: predecessor.version, name: predecessor.semanticName, statements: [source, source] }], entries, ORDER[0]), /Malformed live receipt/);
+});
 test("current immutable 00018/00019/00020 receipts allow exact one-at-a-time advancement", () => {
   const legacySource = {
     "20270115000018": readFileSync("supabase/migrations/20270115000018_dealer_assignment_session_binding.sql", "utf8"),
@@ -78,4 +86,5 @@ test("workflow does not print credential values", () => {
   const workflow = readFileSync("../.github/workflows/protected-nine-exact-apply.yml", "utf8");
   assert.doesNotMatch(workflow, /echo[^\n]*(SUPABASE_ACCESS_TOKEN|SUPABASEACCESSTOKEN)/);
   assert.match(workflow, /environment: dealer-swing-production-critical/);
+  assert.equal((workflow.match(/set -euo pipefail\n\s+node scripts\/ops\/protected-nine-release-gate\.mjs (?:plan|apply|postcheck)/g) ?? []).length, 4);
 });
