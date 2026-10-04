@@ -206,8 +206,10 @@ SELECT public.get_public_tournament_table_history_v2(
   'd3000000-0000-4000-8000-000000000012','d3000000-0000-4000-8000-000000000015',20,NULL,NULL
 )::text AS payload \gset public_before_
 SELECT pg_temp.assert_true(
-  :'public_before_payload'::jsonb->'items'->0->'result'->>'status'='verified'
-  AND :'public_before_payload'::jsonb->'items'->0->'result'->'recipients'->0->>'playerId'='d3000000-0000-4000-8000-000000000032',
+  (SELECT item.value->'result'->>'status'='verified'
+     AND item.value->'result'->'recipients'->0->>'playerId'='d3000000-0000-4000-8000-000000000032'
+   FROM jsonb_array_elements(:'public_before_payload'::jsonb->'items') AS item(value)
+   WHERE item.value->>'handId'='d3000000-0000-4000-8000-000000000021'),
   'public projection exposes only the verified historical result and recipient');
 
 SELECT source_revision AS old_revision FROM public.tournament_hands
@@ -222,7 +224,9 @@ SELECT pg_temp.assert_true(
    WHERE id='d3000000-0000-4000-8000-000000000021')
   AND (SELECT status='stale' FROM public.tournament_settlement_outcomes
        WHERE hand_id='d3000000-0000-4000-8000-000000000021' AND verification_scope='historical_display')
-  AND :'public_after_payload'::jsonb->'items'->1->'result'->>'status'='pending'
+  AND (SELECT item.value->'result'->>'status'='pending'
+       FROM jsonb_array_elements(:'public_after_payload'::jsonb->'items') AS item(value)
+       WHERE item.value->>'handId'='d3000000-0000-4000-8000-000000000021')
   AND EXISTS (SELECT 1 FROM public.tracker_historical_display_queue q
     JOIN public.tournament_hands h ON h.id=q.hand_id AND h.source_revision=q.source_revision
     WHERE q.hand_id IN ('d3000000-0000-4000-8000-000000000021','d3000000-0000-4000-8000-000000000022')
