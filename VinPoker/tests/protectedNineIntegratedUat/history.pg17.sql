@@ -185,7 +185,7 @@ BEGIN
   BEGIN
     PERFORM public.get_tracker_historical_display_commit_receipt(
       c.hand_id,'d3000000-0000-4000-8000-000000000012','00000000-0000-4000-8000-000000000001',
-      'history-runtime-idempotency-0001',s.source_revision,s.source_chain_hash,repeat('b',64));
+      'history-runtime-idempotency-0001',s.source_revision,s.source_chain_hash,repeat('a',64));
     RAISE EXCEPTION 'worker outcome unexpectedly accepted by owner receipt endpoint';
   EXCEPTION WHEN invalid_parameter_value THEN
     IF SQLERRM <> 'idempotency_mismatch' THEN RAISE; END IF;
