@@ -1,4 +1,4 @@
-# Protected nine migration cutover (owner-only)
+# Protected exact migration cutover (owner-only)
 
 Status: source-only. Daybreak, DB apply, Edge deploy, frontend deploy and every production flag remain OFF. This runbook never authorizes production work by itself.
 
@@ -19,6 +19,7 @@ Before every entry: owner approval; fresh recovery workflow (snapshot no older t
 7. `00007` Floor V3 consistency. Keep Floor V3 flag OFF; verify inventory/roster/planner/writer ACL and no seat/chip mutation. STOP.
 8. `00008` Tracker Voice authority. Keep Voice/Telegram mutation OFF; verify exact live predecessor digest and TEST authorization. STOP.
 9. `00009` history reparent invalidation. Keep worker OFF; verify revision triggers without rewriting historical receipts. STOP.
+10. `00010` Multi-day child-trigger binding repair. Keep every feature flag at its captured value; verify all four End Play triggers remain enabled and `hand_actions` resolves both OLD and NEW tournaments through `tournament_hands.hand_id`. STOP.
 
 ## Forward-only containment
 
@@ -26,6 +27,6 @@ The exact per-entry containment action and postcheck SQL live in `scripts/ops/pr
 
 ## Evidence boundary before owner approval
 
-The disposable PostgreSQL 17 gate restores the protected sanitized production-schema capture, applies the nine exact migration bytes in order, checks every staged catalog/object contract, and exercises the History reparent runtime behavior. The Dealer Swing, TV, History queue/audit, correction, Floor and Tracker Voice suites run here are source-contract tests; they are not post-nine database runtime proof.
+The disposable PostgreSQL 17 gate restores the protected sanitized production-schema capture, applies the complete exact migration sequence in order, checks every staged catalog/object contract, and exercises every required runtime domain on that same intact database.
 
-Those existing domain suites cannot be reused as integrated runtime proof because they bootstrap or replace their own pre-nine schemas/functions and would overwrite the restored post-nine state. Therefore the package remains Draft and is not production-ready on catalog/source evidence alone. Before any production apply or flag activation, owner-approved TEST/UAT must exercise each domain against one intact post-nine database in sequence, including the authorization, double-submit/retry/idempotency and no-unexpected-row-delta checks named above. Record the exact tested release SHA and evidence artifact; any missing domain result is a stop gate, not an inferred PASS.
+The integrated suites must not bootstrap or replace pre-release schemas/functions. Dealer Swing, TV, History queue/audit, correction, Floor and Tracker Voice each emit an independent PASS against the restored database; any missing, inconclusive or not-measured domain result is a stop gate. This disposable proof does not authorize production apply, deploy or flag changes.

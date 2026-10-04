@@ -6934,6 +6934,12 @@
       "filename": "20270128000009_tracker_history_reparent_invalidation_v1.sql",
       "sha256": "ea9c595603d69fd9a9bdc959254410112b17f71f8139af7f5c631887a2516024",
       "domain": "tracker"
+    },
+    {
+      "version": "20270128000010",
+      "filename": "20270128000010_multi_day_after_end_play_guard_child_binding_v1.sql",
+      "sha256": "be254e8c94434c055893be227ac4bcb84f2e2b4881236e066872437c47eeb584",
+      "domain": "multi-day"
     }
   ],
   "floorActiveAllowlist": [

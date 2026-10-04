@@ -1,6 +1,9 @@
 \set ON_ERROR_STOP on
 -- Runs last in the disposable Floor V3 chain. All IDs are TEST-only.
+\if :{?SKIP_CRITICAL_CONSISTENCY_MIGRATION}
+\else
 \ir ../../supabase/migrations/20270128000007_floor_v3_critical_consistency.sql
+\endif
 
 SELECT public.floor_table_v3_assert(
   has_function_privilege('authenticated', 'public.get_floor_tournament_table_roster_v5(uuid)', 'EXECUTE')
@@ -58,10 +61,10 @@ INSERT INTO public.tournament_entries
   (id, tournament_id, registration_id, player_id, entry_no, current_stack, status)
 VALUES
   ('00000000-0000-0000-0000-000000000862', '00000000-0000-0000-0000-000000000131',
-   '00000000-0000-0000-0000-000000000a62', '00000000-0000-0000-0000-000000000962',
+   NULL, '00000000-0000-0000-0000-000000000962',
    62, 25000, 'seated'),
   ('00000000-0000-0000-0000-000000000863', '00000000-0000-0000-0000-000000000131',
-   '00000000-0000-0000-0000-000000000a63', '00000000-0000-0000-0000-000000000963',
+   NULL, '00000000-0000-0000-0000-000000000963',
    63, 10000, 'seated');
 
 INSERT INTO public.tournament_seats
