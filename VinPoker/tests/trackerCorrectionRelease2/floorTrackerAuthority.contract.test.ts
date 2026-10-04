@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(resolve(
   process.cwd(),
-  "supabase/migrations/20270115000021_tracker_correction_floor_tracker_authority.sql",
+  "supabase/migrations/20270128000005_tracker_correction_floor_tracker_authority.sql",
 ), "utf8").replace(/\r\n/g, "\n");
 
 describe("Tracker correction Floor/Tracker authority", () => {

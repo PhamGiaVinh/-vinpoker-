@@ -15,11 +15,11 @@ const publicSettlementReader = readFileSync(
   "utf8",
 );
 const completionBaseMigration = readFileSync(
-  resolve(process.cwd(), "supabase/migrations/20270115000019_tracker_history_completion_queue.sql"),
+  resolve(process.cwd(), "supabase/migrations/20270128000004_tracker_history_completion_queue.sql"),
   "utf8",
 );
 const completionFixMigration = readFileSync(
-  resolve(process.cwd(), "supabase/migrations/20270115000022_tracker_history_completion_audit_fixes.sql"),
+  resolve(process.cwd(), "supabase/migrations/20270128000006_tracker_history_completion_audit_fixes.sql"),
   "utf8",
 );
 const completionMigration = `${completionBaseMigration}\n${completionFixMigration}`;
