@@ -1,0 +1,159 @@
+name: Protected nine exact owner-gated migration apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha: { description: "Exact reviewed 40-character source SHA", required: true, type: string }
+      project_ref: { description: "Production project", required: true, type: choice, options: [orlesggcjamwuknxwcpk] }
+      migration_filename: { description: "Exact next 20270128000001..00009 migration filename", required: true, type: string }
+      normalized_sql_sha256: { description: "Exact normalized SQL SHA-256 from migration-control", required: true, type: string }
+      recovery_run_id: { description: "Fresh successful restore-verified recovery workflow run ID", required: true, type: string }
+      confirmation_phrase: { description: "APPLY_PROTECTED_NINE_<version>_<hash>", required: true, type: string }
+      tv_stage_a_uat_run_id: { description: "Required only for 00003: successful protected TV Stage A production UAT workflow run", required: false, type: string }
+
+permissions: { actions: read, contents: read }
+concurrency: { group: vinpoker-production-database-release, cancel-in-progress: false }
+env:
+  PROJECT_REF: orlesggcjamwuknxwcpk
+  PROTECTED_NINE_OBJECT_CONTRACT_SHA256: d0f2905e33003da53efd0658a806d689e388fc7b4cf51e9d9f2aa90fbcb56ddb
+  RECOVERY_WORKFLOW: floor-v3-recovery-backup.yml
+
+jobs:
+  validate:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: { ref: "${{ inputs.release_sha }}", fetch-depth: 1 }
+      - name: Fail closed on source, actor, project, manifest, and unit checks
+        working-directory: VinPoker
+        env:
+          INITIAL_ACTOR: "${{ github.actor }}"
+          TRIGGERING_ACTOR: "${{ github.triggering_actor }}"
+          REPOSITORY_OWNER: "${{ github.repository_owner }}"
+          RELEASE_SHA: "${{ inputs.release_sha }}"
+          INPUT_PROJECT_REF: "${{ inputs.project_ref }}"
+          TARGET_MIGRATION: "${{ inputs.migration_filename }}"
+          TARGET_NORMALIZED_SHA256: "${{ inputs.normalized_sql_sha256 }}"
+        run: |
+          set -euo pipefail
+          test "$INITIAL_ACTOR" = "$REPOSITORY_OWNER"
+          test "$TRIGGERING_ACTOR" = "$REPOSITORY_OWNER"
+          test "$INPUT_PROJECT_REF" = "$PROJECT_REF"
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$RELEASE_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          npm run check:migration-control
+          node --test scripts/ops/protected-nine-release-gate.test.mjs
+
+  recovery:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a fresh successful restore-verified artifact
+        env: { GH_TOKEN: "${{ github.token }}", RECOVERY_RUN_ID: "${{ inputs.recovery_run_id }}" }
+        run: |
+          set -euo pipefail
+          [[ "$RECOVERY_RUN_ID" =~ ^[0-9]+$ ]]
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RECOVERY_RUN_ID")"
+          test "$(jq -r .workflow_id <<<"$run")" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$RECOVERY_WORKFLOW" --jq .id)"
+          test "$(jq -r .name <<<"$run")" = "Floor V3 encrypted recovery backup and restore verification"
+          test "$(jq -r .event <<<"$run")" = workflow_dispatch
+          test "$(jq -r .status <<<"$run")" = completed
+          test "$(jq -r .actor.login <<<"$run")" = "$GITHUB_REPOSITORY_OWNER"
+          test "$(jq -r .head_branch <<<"$run")" = main
+          test "$(jq -r .head_sha <<<"$run")" = "${{ inputs.release_sha }}"
+          test "$(jq -r .conclusion <<<"$run")" = success
+          artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RECOVERY_RUN_ID/artifacts")"
+          artifact="$(jq -ce --arg name "floor-v3-restore-verification-$RECOVERY_RUN_ID" '[.artifacts[] | select(.name==$name and .expired==false and .size_in_bytes>0)] | if length==1 then .[0] else error("missing restore receipt") end' <<<"$artifacts")"
+          mkdir "$RUNNER_TEMP/recovery-receipt"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$(jq -r .id <<<"$artifact")/zip" >"$RUNNER_TEMP/recovery.zip"
+          unzip -q "$RUNNER_TEMP/recovery.zip" -d "$RUNNER_TEMP/recovery-receipt"
+          receipt="$RUNNER_TEMP/recovery-receipt/recovery-verification.json"
+          jq -e --arg sha "${{ inputs.release_sha }}" '.kind=="vinpoker-restore-verification" and .sourceSha==$sha and .isolatedRestore=="PASS" and .tableCountMatch=="PASS" and .productionMutation==false' "$receipt"
+          snapshot="$(jq -r .snapshotAt "$receipt")"; now="$(date -u +%s)"; snap="$(date -u -d "$snapshot" +%s)"
+          (( snap <= now && now - snap <= 3600 ))
+
+  tv-stage-a-evidence:
+    needs: validate
+    if: startsWith(inputs.migration_filename, '20270128000003_')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify protected authenticated UAT artifact and deployed SHA
+        env: { GH_TOKEN: "${{ github.token }}", UAT_RUN_ID: "${{ inputs.tv_stage_a_uat_run_id }}" }
+        run: |
+          set -euo pipefail
+          [[ "$UAT_RUN_ID" =~ ^[0-9]+$ ]]
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$UAT_RUN_ID")"
+          test "$(jq -r .workflow_id <<<"$run")" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/tv-stage-a-production-uat.yml" --jq .id)"
+          test "$(jq -r .event <<<"$run")" = workflow_dispatch
+          test "$(jq -r .status <<<"$run")" = completed
+          test "$(jq -r .conclusion <<<"$run")" = success
+          test "$(jq -r .actor.login <<<"$run")" = "$GITHUB_REPOSITORY_OWNER"
+          test "$(jq -r .head_branch <<<"$run")" = main
+          test "$(jq -r .head_sha <<<"$run")" = "${{ inputs.release_sha }}"
+          artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$UAT_RUN_ID/artifacts")"
+          artifact="$(jq -ce --arg name "tv-stage-a-production-uat-$UAT_RUN_ID" '[.artifacts[] | select(.name==$name and .expired==false and .size_in_bytes>0)] | if length==1 then .[0] else error("missing UAT receipt") end' <<<"$artifacts")"
+          mkdir "$RUNNER_TEMP/uat"; gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$(jq -r .id <<<"$artifact")/zip" >"$RUNNER_TEMP/uat.zip"; unzip -q "$RUNNER_TEMP/uat.zip" -d "$RUNNER_TEMP/uat"
+          jq -e --arg release "${{ inputs.release_sha }}" '.kind=="vinpoker-tv-stage-a-production-uat" and .releaseSha==$release and .deployedSha==$release and .authenticatedRead=="PASS" and .publicRead=="PASS"' "$RUNNER_TEMP/uat/tv-stage-a-uat.json"
+
+  apply:
+    needs: [validate, recovery, tv-stage-a-evidence]
+    if: always() && needs.validate.result == 'success' && needs.recovery.result == 'success' && (needs.tv-stage-a-evidence.result == 'success' || needs.tv-stage-a-evidence.result == 'skipped')
+    environment: dealer-swing-production-critical
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: { ref: "${{ inputs.release_sha }}", fetch-depth: 1 }
+      - name: Stop if another production apply/release is active
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          set -euo pipefail
+          active="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" --jq '.workflow_runs[] | select((.id|tostring) != env.GITHUB_RUN_ID) | select(.status == "in_progress" or .status == "queued" or .status == "waiting" or .status == "requested") | select(.name | test("database|migration|protected.*apply|release";"i")) | .id')"
+          test -z "$active"
+      - name: Plan exact next entry
+        working-directory: VinPoker
+        env:
+          SUPABASE_PROJECT_REF: "${{ inputs.project_ref }}"
+          SUPABASE_ACCESS_TOKEN: "${{ secrets.SUPABASEACCESSTOKEN }}"
+          TARGET_MIGRATION: "${{ inputs.migration_filename }}"
+          TARGET_NORMALIZED_SHA256: "${{ inputs.normalized_sql_sha256 }}"
+        run: node scripts/ops/protected-nine-release-gate.mjs plan | tee "$RUNNER_TEMP/protected-nine-plan.txt"
+      - name: Apply one atomic migration and immutable receipt
+        working-directory: VinPoker
+        env:
+          SUPABASE_PROJECT_REF: "${{ inputs.project_ref }}"
+          SUPABASE_ACCESS_TOKEN: "${{ secrets.SUPABASEACCESSTOKEN }}"
+          TARGET_MIGRATION: "${{ inputs.migration_filename }}"
+          TARGET_NORMALIZED_SHA256: "${{ inputs.normalized_sql_sha256 }}"
+          CONFIRM_PROTECTED_NINE: "${{ inputs.confirmation_phrase }}"
+        run: node scripts/ops/protected-nine-release-gate.mjs apply | tee "$RUNNER_TEMP/protected-nine-apply.txt"
+      - name: Exact receipt, object, and ACL postchecks
+        working-directory: VinPoker
+        env:
+          SUPABASE_PROJECT_REF: "${{ inputs.project_ref }}"
+          SUPABASE_ACCESS_TOKEN: "${{ secrets.SUPABASEACCESSTOKEN }}"
+          TARGET_MIGRATION: "${{ inputs.migration_filename }}"
+          TARGET_NORMALIZED_SHA256: "${{ inputs.normalized_sql_sha256 }}"
+        run: node scripts/ops/protected-nine-release-gate.mjs postcheck | tee "$RUNNER_TEMP/protected-nine-postcheck.txt"
+      - name: Reconcile response loss without retrying
+        if: always()
+        working-directory: VinPoker
+        env:
+          SUPABASE_PROJECT_REF: "${{ inputs.project_ref }}"
+          SUPABASE_ACCESS_TOKEN: "${{ secrets.SUPABASEACCESSTOKEN }}"
+          TARGET_MIGRATION: "${{ inputs.migration_filename }}"
+          TARGET_NORMALIZED_SHA256: "${{ inputs.normalized_sql_sha256 }}"
+        run: node scripts/ops/protected-nine-release-gate.mjs postcheck 2>&1 | tee "$RUNNER_TEMP/protected-nine-reconcile.txt"
+      - name: Upload metadata-safe release receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: protected-nine-receipts-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/protected-nine-plan.txt
+            ${{ runner.temp }}/protected-nine-apply.txt
+            ${{ runner.temp }}/protected-nine-postcheck.txt
+            ${{ runner.temp }}/protected-nine-reconcile.txt
+          if-no-files-found: warn
+          retention-days: 30
