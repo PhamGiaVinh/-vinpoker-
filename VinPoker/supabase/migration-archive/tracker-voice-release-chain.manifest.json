@@ -54,6 +54,11 @@
       "version": "20270115000020",
       "filename": "20270115000020_tracker_voice_floor_owner_authority.sql",
       "sha256": "be67d23b2e24bfb6edb4b4ac427dd8d3d984729bebf08af0d2e81b5997e01c8a"
+    },
+    {
+      "version": "20270128000008",
+      "filename": "20270128000008_tracker_voice_floor_owner_telegram_dealer.sql",
+      "sha256": "ed7f3012388bee3941d2ade54e68479b46bce36a719ca542dceade5d63ffd02f"
     }
   ],
   "safety": {

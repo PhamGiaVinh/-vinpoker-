@@ -23,6 +23,7 @@ import { computePotBreakdown, contributionsFromActions, toSidePotsJson } from ".
 import { isRunout, nextToAct, reduceHand, STREET_ORDER } from "../trackerEngine/handState.ts";
 import { validateAction } from "../trackerEngine/validateAction.ts";
 import type { ActionRow, PlayerSeed, Street, TrackerActionType } from "../trackerEngine/types.ts";
+import { entryKey, orderClockwiseAfterButton, type EntryKey } from "./participantIdentity.ts";
 
 export type SettlementDbHand = {
   id: string;
@@ -185,14 +186,6 @@ async function sha256Json(value: unknown): Promise<string> {
   return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function clockwise<T extends { seat_number: number }>(players: readonly T[], buttonSeat: number): T[] {
-  return [...players].sort((left, right) => {
-    const leftDistance = (left.seat_number - buttonSeat + 10) % 10;
-    const rightDistance = (right.seat_number - buttonSeat + 10) % 10;
-    return leftDistance - rightDistance || left.seat_number - right.seat_number;
-  });
-}
-
 function handRank(player: SettlementDbPlayer, board: string[]): PrivateHandRankV1 | null {
   const holeCards = player.hole_cards ?? [];
   if (holeCards.length !== 2 || board.length !== 5) return null;
@@ -210,13 +203,15 @@ function handRank(player: SettlementDbPlayer, board: string[]): PrivateHandRankV
 }
 
 function ensureUniqueEntries(players: readonly SettlementDbPlayer[]): void {
-  const entries = new Map<string, number>();
+  const entries = new Set<string>();
+  const playersByHand = new Set<string>();
   for (const player of players) {
-    const previous = entries.get(player.player_id);
-    if (previous !== undefined && previous !== player.entry_number) {
-      throw new Error("reentry_boundary");
-    }
-    entries.set(player.player_id, player.entry_number);
+    const key = entryKey(player);
+    const handEntry = `${player.hand_id}:${key}`;
+    const handPlayer = `${player.hand_id}:${player.player_id}`;
+    if (entries.has(handEntry) || playersByHand.has(handPlayer)) throw new Error("duplicate_hand_participant");
+    entries.add(handEntry);
+    playersByHand.add(handPlayer);
   }
 }
 
@@ -442,23 +437,24 @@ export async function computeAuthoritativeSettlement(
   validateCardSet(board, players);
   validateEditedTargetActions(target, players, actions, board);
 
+  const entryKeyByPlayerId = new Map(players.map((player) => [player.player_id, entryKey(player)]));
   const contributions = contributionsFromActions(actions);
-  const contributionByPlayer = new Map(contributions.map((row) => [row.player_id, row]));
+  const contributionByEntry = new Map(contributions.map((row) => [entryKeyByPlayerId.get(row.player_id)!, row]));
   for (const player of players) {
     const starting = chips(player.starting_stack, `${player.player_id}.starting_stack`);
-    const committed = contributionByPlayer.get(player.player_id)?.total_bet ?? 0;
+    const committed = contributionByEntry.get(entryKey(player))?.total_bet ?? 0;
     if (committed > starting) throw new Error("target_action_exceeds_stack");
   }
   const breakdown = computePotBreakdown(contributions);
   if (breakdown.pots.length === 0) throw new Error("empty_pot");
-  const folded = new Set(contributions.filter((row) => row.is_folded).map((row) => row.player_id));
-  const awards = new Map<string, number>();
+  const folded = new Set(contributions.filter((row) => row.is_folded).map((row) => entryKeyByPlayerId.get(row.player_id)!));
+  const awards = new Map<EntryKey, number>();
   const potAllocations: PotAllocation[] = [];
   const ranks: PrivateHandRankV1[] = [];
   const winnerIds = new Set<string>();
 
   for (const [potIndex, layer] of breakdown.pots.entries()) {
-    const eligible = players.filter((player) => layer.eligible_player_ids.includes(player.player_id) && !folded.has(player.player_id));
+    const eligible = players.filter((player) => layer.eligible_player_ids.includes(player.player_id) && !folded.has(entryKey(player)));
     if (eligible.length === 0) throw new Error("pot_has_no_eligible_player");
     let winners: SettlementDbPlayer[];
     if (eligible.length === 1) {
@@ -473,14 +469,15 @@ export async function computeAuthoritativeSettlement(
         if (rank) ranks.push(rank);
       }
     }
-    const ordered = clockwise(winners, target.button_seat);
+    const ordered = orderClockwiseAfterButton(winners, target.button_seat);
     const share = Math.floor(layer.amount / ordered.length);
     const odd = layer.amount - share * ordered.length;
     for (const [winnerIndex, winner] of ordered.entries()) {
       const amount = share + (winnerIndex < odd ? 1 : 0);
       const potId = potIndex === 0 ? "main-0" : `side-${potIndex}`;
       potAllocations.push({ potId, winnerId: winner.player_id, amount, includesOddChip: winnerIndex < odd });
-      awards.set(winner.player_id, (awards.get(winner.player_id) ?? 0) + amount);
+      const key = entryKey(winner);
+      awards.set(key, (awards.get(key) ?? 0) + amount);
       winnerIds.add(winner.player_id);
     }
   }
@@ -489,29 +486,29 @@ export async function computeAuthoritativeSettlement(
   const refunds = breakdown.uncalled
     ? [{ playerId: breakdown.uncalled.player_id, amount: refund, sourceActionId: actionSourceId(sourceActionForRefund(actions, breakdown.uncalled.player_id)) }]
     : [];
-  if (breakdown.uncalled) awards.set(breakdown.uncalled.player_id, awards.get(breakdown.uncalled.player_id) ?? 0);
-
-  const ending = new Map<string, number>();
+  const ending = new Map<EntryKey, number>();
   for (const player of players) {
+    const key = entryKey(player);
     const starting = chips(player.starting_stack, `${player.player_id}.starting_stack`);
-    const committed = contributionByPlayer.get(player.player_id)?.total_bet ?? 0;
-    ending.set(player.player_id, starting - committed + (awards.get(player.player_id) ?? 0) + (breakdown.uncalled?.player_id === player.player_id ? refund : 0));
+    const committed = contributionByEntry.get(key)?.total_bet ?? 0;
+    ending.set(key, starting - committed + (awards.get(key) ?? 0) + (breakdown.uncalled?.player_id === player.player_id ? refund : 0));
   }
   const startingTotal = players.reduce((sum, player) => sum + chips(player.starting_stack, `${player.player_id}.starting_stack`), 0);
   const endingTotal = [...ending.values()].reduce((sum, value) => sum + value, 0);
   if (startingTotal !== endingTotal) throw new Error("target_not_conserved");
 
   const handChanges: SettlementHandChange[] = [];
-  const carry = new Map<string, number>();
-  const oldDelta = new Map<string, number>();
-  const newDelta = new Map<string, number>();
+  const carry = new Map<EntryKey, number>();
+  const oldDelta = new Map<EntryKey, number>();
+  const newDelta = new Map<EntryKey, { identity: SettlementDbPlayer; value: number }>();
   for (const player of players) {
+    const key = entryKey(player);
     const oldEnding = chips(player.ending_stack ?? 0, `${player.player_id}.ending_stack`);
-    const nextEnding = ending.get(player.player_id)!;
+    const nextEnding = ending.get(key)!;
     if ((oldEnding === 0) !== (nextEnding === 0)) throw new Error("bust_state_change_requires_void");
-    carry.set(player.player_id, nextEnding);
-    oldDelta.set(player.player_id, oldEnding);
-    newDelta.set(player.player_id, nextEnding);
+    carry.set(key, nextEnding);
+    oldDelta.set(key, oldEnding);
+    newDelta.set(key, { identity: player, value: nextEnding });
     if (oldEnding !== nextEnding) handChanges.push({ hand_id: target.id, player_id: player.player_id, entry_number: player.entry_number, starting_stack: chips(player.starting_stack, `${player.player_id}.starting_stack`), ending_stack: nextEnding });
   }
   for (const later of chain.slice(1)) {
@@ -519,28 +516,36 @@ export async function computeAuthoritativeSettlement(
     const laterActions = input.actions.filter((action) => action.hand_id === later.id);
     const laterContributions = new Map(contributionsFromActions(laterActions).map((row) => [row.player_id, row.total_bet]));
     for (const player of laterPlayers) {
+      const key = entryKey(player);
       const oldStart = chips(player.starting_stack, `${player.player_id}.starting_stack`);
       const oldEnd = chips(player.ending_stack ?? 0, `${player.player_id}.ending_stack`);
-      const newStart = carry.get(player.player_id) ?? oldStart;
+      const newStart = carry.get(key) ?? oldStart;
       const committed = laterContributions.get(player.player_id) ?? 0;
       if (committed > newStart) throw new Error(`later_hand_action_exceeds_stack:${later.hand_number}`);
       const newEnd = newStart + (oldEnd - oldStart);
       if (newEnd < 0 || (oldEnd === 0) !== (newEnd === 0)) throw new Error(`later_hand_state_divergence:${later.hand_number}`);
-      carry.set(player.player_id, newEnd);
-      oldDelta.set(player.player_id, oldEnd);
-      newDelta.set(player.player_id, newEnd);
+      carry.set(key, newEnd);
+      oldDelta.set(key, oldEnd);
+      newDelta.set(key, { identity: player, value: newEnd });
       if (newStart !== oldStart || newEnd !== oldEnd) handChanges.push({ hand_id: later.id, player_id: player.player_id, entry_number: player.entry_number, starting_stack: newStart, ending_stack: newEnd });
     }
   }
 
+  const liveStacksByEntry = new Map<EntryKey, SettlementLiveStack>();
+  for (const live of input.liveStacks) {
+    const key = entryKey(live);
+    if (liveStacksByEntry.has(key)) throw new Error(`live_stack_ambiguous:${key}`);
+    liveStacksByEntry.set(key, live);
+  }
   const finalStacks: SettlementFinalStack[] = [];
-  for (const [playerId, next] of newDelta) {
-    const live = input.liveStacks.find((row) => row.player_id === playerId);
-    if (!live) throw new Error(`live_stack_missing:${playerId}`);
-    const expected = chips(live.chip_count, `${playerId}.live_stack`);
-    const delta = next - (oldDelta.get(playerId) ?? expected);
+  for (const [key, { identity, value: next }] of newDelta) {
+    const live = liveStacksByEntry.get(key);
+    if (!live) throw new Error(`live_stack_missing:${key}`);
+    const expected = chips(live.chip_count, `${key}.live_stack`);
+    const delta = next - (oldDelta.get(key) ?? expected);
     const chipCount = expected + delta;
-    if (chipCount < 0) throw new Error(`live_stack_negative:${playerId}`);
+    if (chipCount < 0) throw new Error(`live_stack_negative:${key}`);
+    if (live.player_id !== identity.player_id || live.entry_number !== identity.entry_number) throw new Error(`live_stack_identity_mismatch:${key}`);
     finalStacks.push({ ...live, expected_current: expected, chip_count: chipCount });
   }
 
@@ -566,9 +571,10 @@ export async function computeAuthoritativeSettlement(
     outcomeHash: "0".repeat(64),
     ruleVersion: ODD_CHIP_RULE_V1,
     players: players.map((player) => {
+      const key = entryKey(player);
       const startingStack = chips(player.starting_stack, `${player.player_id}.starting_stack`);
-      const committedTotal = contributionByPlayer.get(player.player_id)?.total_bet ?? 0;
-      const potAward = awards.get(player.player_id) ?? 0;
+      const committedTotal = contributionByEntry.get(key)?.total_bet ?? 0;
+      const potAward = awards.get(key) ?? 0;
       const playerRefund = breakdown.uncalled?.player_id === player.player_id ? refund : 0;
       const creditedTotal = potAward + playerRefund;
       const netDelta = creditedTotal - committedTotal;
@@ -607,7 +613,7 @@ export async function computeAuthoritativeSettlement(
     finalStacks,
     winnerIds: [...winnerIds],
     affectedHandCount: new Set(handChanges.map((change) => change.hand_id)).size,
-    affectedPlayerCount: new Set(handChanges.map((change) => change.player_id)).size,
+    affectedPlayerCount: new Set(handChanges.map((change) => entryKey(change))).size,
     persistedEdit: persistedEdit(input.edit, actions, breakdown),
   };
 }

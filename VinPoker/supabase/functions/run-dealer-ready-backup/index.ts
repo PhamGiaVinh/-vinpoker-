@@ -175,6 +175,7 @@ Deno.serve(async (req) => {
                 id,
                 version,
                 table_id,
+                table_session_id,
                 swing_due_at
               `)
               .eq("club_id", cid)
@@ -188,14 +189,21 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            const { data: swingResult, error: swingErr } = await admin.rpc("perform_swing", {
+            if (!overdueTable.table_session_id) {
+              errors.push(`swing ${dealer.id}: table_session_binding_required`);
+              consecutiveFailures++;
+              continue;
+            }
+
+            const { data: swingResult, error: swingErr } = await admin.rpc("worker_perform_swing", {
               p_assignment_id: overdueTable.id,
-              p_version: overdueTable.version,
+              p_table_id: overdueTable.table_id,
+              p_table_session_id: overdueTable.table_session_id,
+              p_expected_version: overdueTable.version,
               p_next_attendance_id: dealer.id,
               p_send_to_break: false,
               p_break_duration_minutes: 15,
-              p_swing_duration_minutes: 30,
-              p_swing_due_at: null,
+              p_duration_minutes: 30,
               p_rest_deficit_minutes: restDeficit,
             });
 

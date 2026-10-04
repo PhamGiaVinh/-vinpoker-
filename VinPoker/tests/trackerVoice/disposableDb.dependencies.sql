@@ -143,6 +143,22 @@ AS $$
   );
 $$;
 
+CREATE OR REPLACE FUNCTION public.is_club_admin(
+  p_user_id UUID,
+  p_club_id UUID
+)
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.clubs
+    WHERE id = p_club_id AND owner_id = p_user_id
+  );
+$$;
+
 ALTER TABLE public.tournament_hands
   ADD COLUMN IF NOT EXISTS source_revision BIGINT NOT NULL DEFAULT 1,
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
@@ -225,6 +241,7 @@ CREATE TABLE public.dealer_attendance (
   pre_assigned_table_id UUID,
   pre_assigned_at TIMESTAMPTZ,
   check_in_time TIMESTAMPTZ NOT NULL DEFAULT now() - interval '30 minutes',
+  check_out_time TIMESTAMPTZ,
   overtime_minutes INTEGER NOT NULL DEFAULT 0,
   priority_break_flag BOOLEAN NOT NULL DEFAULT false,
   worked_minutes_since_last_break INTEGER NOT NULL DEFAULT 0,

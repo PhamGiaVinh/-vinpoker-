@@ -121,6 +121,7 @@ async function installMockOpsSession(page: Page) {
         entry_no: 1,
         chip_count: 40_000,
         is_active: true,
+        integrity_status: "valid",
       }],
     }]);
     if (path.endsWith("/rpc/get_floor_seatable_entries")) return json([]);
@@ -192,7 +193,7 @@ test("Floor V3 table sheet is compact, uses tournament-chip units and exposes fo
 
   const modeButton = page.locator('[data-ops-action="floor.tables.open_v3_control_mode"]');
   await expect(modeButton).toBeVisible();
-  await expect(page.getByText("40.000 · Entry 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("40.000 · Lần tham gia 1", { exact: true })).toBeVisible();
   await expect(page.getByText(/40\.000\s*₫/u)).toHaveCount(0);
   await modeButton.click();
   await expect(page.locator('[data-ops-action="floor.tables.save_v3_control_mode"]')).toBeVisible();

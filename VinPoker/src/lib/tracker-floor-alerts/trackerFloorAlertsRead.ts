@@ -8,6 +8,9 @@ export interface TrackerFloorAlert {
   readonly tournament_table_id: string;
   readonly physical_table_id: string;
   readonly hand_id: string | null;
+  readonly dealer_id?: string | null;
+  readonly assignment_id?: string | null;
+  readonly reported_by?: string;
   readonly dealer_name: string | null;
   readonly alert_kind: "wrong_action" | "call_floor" | "display_issue";
   readonly priority: "high" | "urgent";
@@ -48,6 +51,9 @@ function isAlert(value: unknown): value is TrackerFloorAlert {
     && Number.isSafeInteger(row.version)
     && typeof row.correction_required === "boolean"
     && (row.hand_id === null || typeof row.hand_id === "string")
+    && (row.dealer_id === undefined || row.dealer_id === null || typeof row.dealer_id === "string")
+    && (row.assignment_id === undefined || row.assignment_id === null || typeof row.assignment_id === "string")
+    && (row.reported_by === undefined || typeof row.reported_by === "string")
     && (row.dealer_name === null || typeof row.dealer_name === "string")
     && (row.message === null || typeof row.message === "string")
     && (row.source_action_id === undefined || row.source_action_id === null || typeof row.source_action_id === "string")

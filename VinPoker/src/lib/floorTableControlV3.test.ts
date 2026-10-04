@@ -39,6 +39,7 @@ const rosterRow = {
     entry_no: 1,
     chip_count: 30000,
     is_active: true,
+    integrity_status: "valid",
   }],
 };
 
@@ -265,7 +266,7 @@ describe("floorTableControlV3 browser boundary", () => {
       ok: true,
       data: [expect.objectContaining({ maxSeats: 8, seatLocks: [expect.objectContaining({ seatNumber: 8 })] })],
     });
-    expect(rpc).toHaveBeenCalledWith("get_floor_tournament_table_roster_v4", { p_tournament_id: "tournament-a" });
+    expect(rpc).toHaveBeenCalledWith("get_floor_tournament_table_roster_v5", { p_tournament_id: "tournament-a" });
   });
 
   it("routes seat assignment and table lifecycle writes through the lock-aware contracts", async () => {
@@ -284,6 +285,7 @@ describe("floorTableControlV3 browser boundary", () => {
       expectedRevision: 4,
       requestId: "request-break",
       drawMode: "fill_lowest_table",
+      planHash: "plan-hash-a",
     });
     await client.closeTournamentTable({
       tournamentTableId: "assignment-a",
@@ -292,8 +294,27 @@ describe("floorTableControlV3 browser boundary", () => {
     });
 
     expect(rpc).toHaveBeenNthCalledWith(1, "floor_assign_entry_to_seat_v4", expect.any(Object));
-    expect(rpc).toHaveBeenNthCalledWith(2, "floor_break_table_v4", expect.any(Object));
+    expect(rpc).toHaveBeenNthCalledWith(2, "floor_break_table_v5", expect.objectContaining({ p_plan_hash: "plan-hash-a" }));
     expect(rpc).toHaveBeenNthCalledWith(3, "close_tournament_table_v4", expect.any(Object));
+  });
+
+  it("keeps the flag-off break flow on the legacy RPC without a plan hash", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: { ok: true }, error: null });
+    const client = clientFrom(rpc, true, false);
+
+    await client.breakTournamentTable({
+      tournamentTableId: "assignment-a",
+      expectedRevision: 4,
+      requestId: "request-break-legacy",
+      drawMode: "fill_lowest_table",
+    });
+
+    expect(rpc).toHaveBeenCalledWith("floor_break_table_v3", {
+      p_tournament_table_id: "assignment-a",
+      p_expected_revision: 4,
+      p_request_id: "request-break-legacy",
+      p_draw_mode: "fill_lowest_table",
+    });
   });
 
   it("persists a redraw preview and applies the exact batch id", async () => {

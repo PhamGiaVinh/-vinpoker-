@@ -24,6 +24,8 @@ export interface FloorRosterSeat {
   playerName: string;
   chipsLabel: string;
   entryNumber?: number | null;
+  integrityStatus?: "valid" | "missing_entry";
+  playerId?: string;
 }
 
 export interface FloorRosterSlot {
@@ -74,7 +76,15 @@ export function buildFloorTableNumberOptions(
                 : "Đang dùng",
         }
         : availability
-          ? { number, state: "unavailable", detail: availability === "maintenance" ? "Bảo trì" : "Không khả dụng" }
+          ? {
+            number,
+            state: "unavailable",
+            detail: availability === "maintenance"
+              ? "Bảo trì"
+              : availability === "repair_required"
+                ? "Cần sửa dữ liệu"
+                : "Không khả dụng",
+          }
           : { number, state: row.status === "active" ? "active" : "closed" };
     const current = stateByNumber.get(number);
     if (!current || next.state === "active" || (next.state === "unavailable" && current.state !== "active")) {

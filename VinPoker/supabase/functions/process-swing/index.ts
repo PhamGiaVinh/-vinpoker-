@@ -637,7 +637,26 @@ Deno.serve(async (req: Request) => {
       clubId: string,
       args: Record<string, unknown>,
     ) => {
-      const response = await admin.rpc("perform_swing", args);
+      const assignmentId = args.p_assignment_id;
+      const { data: assignmentContext, error: contextError } = await admin
+        .from("dealer_assignments")
+        .select("id, club_id, table_id, table_session_id")
+        .eq("id", assignmentId)
+        .eq("club_id", clubId)
+        .maybeSingle();
+
+      if (contextError || !assignmentContext?.table_session_id) {
+        const error = contextError ?? { code: "TABLE_SESSION_BINDING_REQUIRED" };
+        const failure = assessCoreQueryFailure("perform_swing_context", error);
+        recordDispatchSafetyOutcome(clubId, failure);
+        return { data: null, error };
+      }
+
+      const response = await admin.rpc("worker_perform_swing", {
+        ...args,
+        p_table_id: assignmentContext.table_id,
+        p_table_session_id: assignmentContext.table_session_id,
+      });
       const failure = assessPerformSwingResponse(response.data, response.error);
       if (failure) recordDispatchSafetyOutcome(clubId, failure);
       return response;
@@ -2485,7 +2504,7 @@ if (tier2Count > 0) {
         // ═══ End diagnostic ═════════════════════════════════════════════
 
         const dueColumns = `
-          id, table_id, attendance_id, swing_due_at, version, updated_at,
+          id, table_id, table_session_id, attendance_id, swing_due_at, version, updated_at,
           last_swing_attempted_at, pre_assigned_attendance_id, pre_assigned_at,
           planned_relief_at,
           overtime_started_at, last_ot_alert_at, swing_in_progress, is_emergency_pre_assign,
@@ -3266,9 +3285,12 @@ if (tier2Count > 0) {
             });
 
             const { data: rpcResult, error: rpcErr } = await admin.rpc(
-              "execute_pre_assigned_swing_rpc",
+              "worker_execute_pre_assigned_swing",
               {
+                p_table_id:             assignment.table_id,
+                p_table_session_id:     assignment.table_session_id,
                 p_old_assignment_id:    assignment.id,
+                p_expected_version:     (assignment as any).__lockedVersion ?? assignment.version,
                 p_next_attendance_id:   assignment.pre_assigned_attendance_id,
                 p_swing_due_at:         pass3SwingDueAt,
                 p_duration_minutes:     swingDurResult.durationMinutes,
