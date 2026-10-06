@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       release_sha: { description: "Exact reviewed main SHA already deployed to production", required: true, type: string }
+      tv_tournament_id: { description: "Existing tournament checked in the production browser", required: true, type: string }
+      browser_uat_ack: { description: "BROWSER_TV_READ_PASS_<exact release SHA> after viewing editor and tournament TV", required: true, type: string }
 
 permissions: { contents: read, deployments: read }
 concurrency: { group: tv-stage-a-production-uat, cancel-in-progress: false }
@@ -28,19 +30,18 @@ jobs:
           state="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses?per_page=20" --jq '.[0].state')"
           test "$state" = success
           echo "deployed_sha=$RELEASE_SHA" >>"$GITHUB_OUTPUT"
-      - name: Run public and authenticated read-only Stage A checks
+      - name: Run role-scoped read-only Stage A contract checks
         working-directory: VinPoker
         env:
-          SUPABASE_URL: ${{ secrets.TV_STAGE_A_SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.TV_STAGE_A_ANON_KEY }}
-          TV_UAT_EMAIL: ${{ secrets.TV_STAGE_A_UAT_EMAIL }}
-          TV_UAT_PASSWORD: ${{ secrets.TV_STAGE_A_UAT_PASSWORD }}
-          TV_DISPLAY_TOKEN: ${{ secrets.TV_STAGE_A_DISPLAY_TOKEN }}
-          TV_TOURNAMENT_ID: ${{ secrets.TV_STAGE_A_TOURNAMENT_ID }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          TV_TOURNAMENT_ID: ${{ inputs.tv_tournament_id }}
+          BROWSER_UAT_ACK: ${{ inputs.browser_uat_ack }}
           RELEASE_SHA: ${{ inputs.release_sha }}
           DEPLOYED_SHA: ${{ steps.provenance.outputs.deployed_sha }}
           OUTPUT_PATH: ${{ runner.temp }}/tv-stage-a-uat.json
-        run: node scripts/ops/tv-stage-a-auth-uat.mjs
+        run: |
+          docker pull postgres:17.6-bookworm >/dev/null
+          node scripts/ops/tv-stage-a-auth-uat.mjs
       - name: Upload metadata-only UAT receipt
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
