@@ -8,9 +8,20 @@ import { catalogSnapshotSql, contractHash, deriveObjectScope } from "./protected
 export const PROJECT_REF = "orlesggcjamwuknxwcpk";
 export const ORDER = Array.from({ length: 10 }, (_, index) => `202701280000${String(index + 1).padStart(2, "0")}`);
 export const CONFIRM_PREFIX = "APPLY_PROTECTED_NINE";
-export const OBJECT_CONTRACT_SHA256 = "20d227469425cf66f55530721e777f733d28a4af60d2cf46b055388507d50bdc";
+export const OBJECT_CONTRACT_SHA256 = "c1a20b9a200e308e94c43a68dd5f1442913f79f8e831613c461c59e12e8a38e5";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const RECEIPT_TAG = "$protected_nine_receipt$";
+const LEGACY_SWING_REVOCATION_QUERY = `SELECT (count(*)=5 AND bool_and(
+  NOT has_function_privilege('anon',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('service_role',p.oid,'EXECUTE')
+)) AS ok FROM pg_proc p WHERE p.oid IN (
+  'public.perform_swing(uuid,integer,boolean,integer,integer,integer,uuid,integer)'::regprocedure,
+  'public.perform_swing(uuid,uuid,boolean,integer,text)'::regprocedure,
+  'public.perform_swing(uuid,integer,uuid,boolean,integer,integer,timestamp with time zone,integer)'::regprocedure,
+  'public.execute_pre_assigned_swing(uuid,uuid,timestamp with time zone,integer,boolean,integer)'::regprocedure,
+  'public.execute_pre_assigned_swing_rpc(uuid,uuid,timestamp with time zone,integer,boolean,integer)'::regprocedure
+)`;
 
 export function normalizedHash(source) {
   return createHash("sha256").update(canonicalSqlText(source), "utf8").digest("hex");
@@ -142,6 +153,10 @@ async function execute() {
   }
   if (mode === "postcheck") {
     if (state !== "already-applied-exact") throw new Error("Exact receipt is not present");
+    if (entry.newVersion === "20270128000001") {
+      const result = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query: LEGACY_SWING_REVOCATION_QUERY }) });
+      if (!Array.isArray(result) || result.length !== 1 || result[0]?.ok !== true) throw new Error("Legacy Swing revocation postcheck failed");
+    }
     for (const query of entry.postcheck.queries) {
       const result = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query }) });
       if (!Array.isArray(result) || result.length !== 1 || result[0]?.ok !== true) throw new Error(`Postcheck failed ${entry.newVersion}`);

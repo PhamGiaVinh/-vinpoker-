@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { buildAtomicMigrationQuery, classifyTarget, loadRelease, ORDER, PROJECT_REF, validateInvocation, verifyObjectContractSource } from "./protected-nine-release-gate.mjs";
+import { deriveObjectScope } from "./protected-nine-object-contract.mjs";
 
 const { entries, control } = loadRelease();
 const first = entries[0];
@@ -68,6 +69,19 @@ test("plan and apply verify the prior-stage live contract before any mutation", 
   const priorStageCheck = runner.indexOf("verifyLiveObjectContract(entries, objectContract, entryIndex - 1, token)", guard);
   const mutation = runner.indexOf('if (mode === "apply")', priorStageCheck);
   assert.ok(guard >= 0 && priorStageCheck > guard && mutation > priorStageCheck);
+});
+test("object fingerprint excludes legacy functions whose bodies are fixture stubs", () => {
+  const scope = deriveObjectScope(entries.slice(0, 1));
+  assert.ok(scope.functionNames.includes("public.operator_perform_swing"));
+  assert.ok(scope.functionNames.includes("public.worker_perform_swing"));
+  assert.ok(!scope.functionNames.includes("public.perform_swing"));
+  assert.ok(!scope.functionNames.includes("public.execute_pre_assigned_swing"));
+});
+test("legacy Swing overloads retain an explicit deny postcheck outside the object fingerprint", () => {
+  const runner = readFileSync("scripts/ops/protected-nine-release-gate.mjs", "utf8");
+  assert.match(runner, /LEGACY_SWING_REVOCATION_QUERY/);
+  assert.match(runner, /count\(\*\)=5 AND bool_and/);
+  assert.match(runner, /Legacy Swing revocation postcheck failed/);
 });
 test("postcheck and exact-receipt reconciliation do not rerun old-state preflight or migration SQL", () => {
   const runner = readFileSync("scripts/ops/protected-nine-release-gate.mjs", "utf8");

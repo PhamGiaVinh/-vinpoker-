@@ -3,53 +3,53 @@
   "stages": [
     {
       "version": "20270128000001",
-      "scope_sha256": "c29a75fb265466cd04984b30cf5a91946165dc104c5745b045fa80c6234a4956",
-      "contract_sha256": "0c8075ae31901d85da0babb0bc1ed5a7e64453207e21c538271e65fd3d1b17e9"
+      "scope_sha256": "bbd0ed20fbd936c57c05f74e777694dfd7afc1e5ea7da102e00afa75e3b391f4",
+      "contract_sha256": "a0591a375c4fddd65c2960862ef565812e661ad2c38c23781b50cab704795532"
     },
     {
       "version": "20270128000002",
-      "scope_sha256": "9b86791d1a4bde71de6fef4f765471ab1903cedfe869264fbf74c85b1997b533",
-      "contract_sha256": "aef3f88792b32805dc2e1d64609db70061cca33a394f7e16b49f5760827664b6"
+      "scope_sha256": "ab5258f7f336c0ae4a752e2d0df7828fdba4f709372973c1b0ff879ae5bbad73",
+      "contract_sha256": "d957ff7083cc0f74940a9f9188f8206d0a9a89ec6b4c9d2eeb0927317991284f"
     },
     {
       "version": "20270128000003",
-      "scope_sha256": "9aa60d59bb501562b00bbad3b0b1301d74e9e70e9e86b4f9f9630ebbc4528006",
-      "contract_sha256": "7ccd867e574f432b347c15db5125ed8dbe7dc182ea1ba5727e857d7c4ddaf032"
+      "scope_sha256": "69a105415c69f0d8dbe8b1b80bc69dad7afb795ad822380f3ebc30a2bac47a93",
+      "contract_sha256": "a55891705b9e671ea6df8247b3eaaa16f684df8c3265e227bfb4ccde0d8cac85"
     },
     {
       "version": "20270128000004",
-      "scope_sha256": "e208b91f1d6ad7a64c14e638e476ddd5ced6e372e05bc0463a859123768c4fe2",
-      "contract_sha256": "e4132bb23faa854a67cf8dbbf85560495856eb0965a7857f7bb555ec08600e3a"
+      "scope_sha256": "6db5aeb63a6ebbb55716cedb42cd73dbb2780ea73924d076c74d5eb612627c25",
+      "contract_sha256": "bb68cbc90bb35ed5e633fc010db91f59a4c9a0d40eaaee71b40d54b1ab8bee23"
     },
     {
       "version": "20270128000005",
-      "scope_sha256": "a9e589f430ff1cbf2ef21449b821c60615db07bec8987e0c9934801d6a4bc435",
-      "contract_sha256": "43be4af76b94aaacc33fc6445b32234ee2a42a316b02dad6d645f062360e16f8"
+      "scope_sha256": "56bcada14722e0a8a46028924800f0ea9d0a19363c944a52feb8826f02d9ae74",
+      "contract_sha256": "9deaeb0882a6e4abbe1f54257d24fb31fdede2e21560fec645b3b303d082f1fb"
     },
     {
       "version": "20270128000006",
-      "scope_sha256": "cbd1b44c022249fd04fb81555a4dcf86d1a0d1d3cee2b4f895dc687c991e93f5",
-      "contract_sha256": "f9c0abe360821ca3bf6db80ed8a12a63ccaf5119fdf65f2a83805f208eff6cef"
+      "scope_sha256": "2c65774600cf8161c2ed227e5885d1028150de44e0d07eb7865dc22090a99f35",
+      "contract_sha256": "d79cf027d998f7616d2a0570a06e50419866d23985343efd60fca9a47c7401a5"
     },
     {
       "version": "20270128000007",
-      "scope_sha256": "49bc15fc4168d0ba5b550a8475b292b38e5ca262c22a530f45e4ca8541996c0c",
-      "contract_sha256": "7f51584415ad3cd27c1dc51a0c483a00f49776f4b6fb02869d9e866c82de54ed"
+      "scope_sha256": "5e260239bdd7f7f57690772409b57474274d5d12361e6007fc055811625384ba",
+      "contract_sha256": "4337105fbb924ac21471a5576fc9f653a8c1d194ef4fe322d2a6503e57a80c27"
     },
     {
       "version": "20270128000008",
-      "scope_sha256": "bb764f5712d38f39ffcc34a445704cdd36a40f36e882c78afa3ffa194c7fe76f",
-      "contract_sha256": "7044fcf6e92ad3066b9ec2b8aebd8d8a669304645fc97e97ee8c40cb574013a6"
+      "scope_sha256": "d105b79f4890689bce2be8581e0e5211d3a33b501289cecbe0b1ded2d5e4fcde",
+      "contract_sha256": "384b6da64d6c8f8d7fa06d2676458829c2c26ba8ee9d700572819cb883cc7859"
     },
     {
       "version": "20270128000009",
-      "scope_sha256": "63903fd79006a37c49577d670074c98d376ea9cbb48cfe766a8cf6c69eec6ff9",
-      "contract_sha256": "038c949ce39a01bfe2acf452657aafd4d9008673eea5553bc5ac2c5f5ecf1db8"
+      "scope_sha256": "356796b2bbebad6c8a429c88f3a186674dd633dfd8126039d8bf752c59ea1488",
+      "contract_sha256": "ff3ef3848b97bc0bee2af6e1e8fd74a760e3edfb02fab1b8d1beac713ab91bb9"
     },
     {
       "version": "20270128000010",
-      "scope_sha256": "3060c09ab0fe868d1b966f8e101af328dbc847b54bfc8471d6727c151355c620",
-      "contract_sha256": "8d349fedc6e51348aa123988c42d15df143e850e914a199b371e498b3545f76d"
+      "scope_sha256": "fd678a35f26729f867d4be16dd9fd1fc2c857ce624a396aa2a007a8c2fbddca8",
+      "contract_sha256": "0a4baec6833c4e8492e74583146a2d406c1921cfcd0540a26577e152f9795e43"
     }
   ],
   "finalContract": {
@@ -392,34 +392,6 @@
       },
       {
         "acl": [
-          "postgres:EXECUTE"
-        ],
-        "args": "p_old_assignment_id uuid, p_next_attendance_id uuid, p_swing_due_at timestamp with time zone, p_duration_minutes integer, p_send_to_break boolean, p_break_duration_minutes integer",
-        "name": "public.execute_pre_assigned_swing",
-        "owner": "postgres",
-        "config": [
-          "search_path=public"
-        ],
-        "volatility": "v",
-        "body_sha256": "75e26f10d4679472b78af91324a3c45aeb86c6f5e77cbd2e6d3eac122b13f62b",
-        "security_definer": true
-      },
-      {
-        "acl": [
-          "postgres:EXECUTE"
-        ],
-        "args": "p_old_assignment_id uuid, p_next_attendance_id uuid, p_swing_due_at timestamp with time zone, p_duration_minutes integer, p_send_to_break boolean, p_break_duration_minutes integer",
-        "name": "public.execute_pre_assigned_swing_rpc",
-        "owner": "postgres",
-        "config": [
-          "search_path=public"
-        ],
-        "volatility": "v",
-        "body_sha256": "a7bbb8477425af0082313b3dd717ddd8eae89244c8454ceff4781a41ebce0634",
-        "security_definer": true
-      },
-      {
-        "acl": [
           "postgres:EXECUTE",
           "service_role:EXECUTE"
         ],
@@ -574,21 +546,6 @@
       {
         "acl": [
           "postgres:EXECUTE",
-          "service_role:EXECUTE"
-        ],
-        "args": "p_display_token text",
-        "name": "public.get_tv_display_state",
-        "owner": "postgres",
-        "config": [
-          "search_path=public"
-        ],
-        "volatility": "v",
-        "body_sha256": "f5e98d5224cdee45586c69b789a14a7fc5fd8cd7cf23f78451ca68097a7a7bf8",
-        "security_definer": true
-      },
-      {
-        "acl": [
-          "postgres:EXECUTE",
           "service_role:EXECUTE",
           "anon:EXECUTE",
           "authenticated:EXECUTE"
@@ -647,48 +604,6 @@
         ],
         "volatility": "v",
         "body_sha256": "bb6abc9cf7816e294c14f5f7b3e2a7f4cfe3c3277211b7929a67b5a409ea4739",
-        "security_definer": true
-      },
-      {
-        "acl": [
-          "postgres:EXECUTE"
-        ],
-        "args": "p_assignment_id uuid, p_duration_minutes integer, p_send_to_break boolean, p_break_duration_minutes integer, p_max_break_minutes integer, p_expected_version integer, p_next_attendance_id uuid, p_rest_deficit_minutes integer",
-        "name": "public.perform_swing",
-        "owner": "postgres",
-        "config": [
-          "search_path=public"
-        ],
-        "volatility": "v",
-        "body_sha256": "8ee507f2f6700043e993002e16a5da54b63fcc549a0532d5c2581ffffae0524f",
-        "security_definer": true
-      },
-      {
-        "acl": [
-          "postgres:EXECUTE"
-        ],
-        "args": "p_assignment_id uuid, p_next_attendance_id uuid, p_send_to_break boolean, p_break_duration_minutes integer, p_reason text",
-        "name": "public.perform_swing",
-        "owner": "postgres",
-        "config": [
-          "search_path=public"
-        ],
-        "volatility": "v",
-        "body_sha256": "fdd94c6867b0c40de16be58958693c19d72afd793d1f898194f5746c265ed859",
-        "security_definer": true
-      },
-      {
-        "acl": [
-          "postgres:EXECUTE"
-        ],
-        "args": "p_assignment_id uuid, p_version integer, p_next_attendance_id uuid, p_send_to_break boolean, p_break_duration_minutes integer, p_swing_duration_minutes integer, p_swing_due_at timestamp with time zone, p_rest_deficit_minutes integer",
-        "name": "public.perform_swing",
-        "owner": "postgres",
-        "config": [
-          "search_path=public"
-        ],
-        "volatility": "v",
-        "body_sha256": "e37b537dd2580cd96d168e3663e4cc25da2abe931719fdcfe7501fd20be589bb",
         "security_definer": true
       },
       {
@@ -807,7 +722,6 @@
         "definition": "CHECK (source_kind IS NULL OR source_kind = 'owner_admin_selected_snapshot'::text)"
       }
     ],
-    "scope_sha256": "3060c09ab0fe868d1b966f8e101af328dbc847b54bfc8471d6727c151355c620"
+    "scope_sha256": "fd678a35f26729f867d4be16dd9fd1fc2c857ce624a396aa2a007a8c2fbddca8"
   }
 }
-
