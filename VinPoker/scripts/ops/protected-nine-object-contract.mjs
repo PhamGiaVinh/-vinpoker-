@@ -8,7 +8,6 @@ export function deriveObjectScope(entries) {
   const sql = entries.map((entry) => entry.sql).join("\n");
   const functionNames = unique([
     ...matches(sql, /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-z_][\w]*\.[a-z_][\w]*)/gi),
-    ...matches(sql, /(?:GRANT|REVOKE)[\s\S]*?\s+ON\s+FUNCTION\s+([a-z_][\w]*\.[a-z_][\w]*)\s*\(/gi),
   ]);
   const triggerNames = unique(matches(sql, /CREATE\s+(?:CONSTRAINT\s+)?TRIGGER\s+([a-z_][\w]*)/gi));
   const policyNames = unique(matches(sql, /(?:CREATE|DROP)\s+POLICY\s+([a-z_][\w]*)/gi));
