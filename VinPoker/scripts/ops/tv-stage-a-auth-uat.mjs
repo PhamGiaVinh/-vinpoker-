@@ -1,22 +1,51 @@
-import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
-const required = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "TV_UAT_EMAIL", "TV_UAT_PASSWORD", "TV_DISPLAY_TOKEN", "TV_TOURNAMENT_ID", "RELEASE_SHA", "DEPLOYED_SHA", "OUTPUT_PATH"];
+const required = ["SUPABASE_DB_PASSWORD", "TV_TOURNAMENT_ID", "BROWSER_UAT_ACK", "RELEASE_SHA", "DEPLOYED_SHA", "OUTPUT_PATH"];
 for (const name of required) if (!process.env[name]) throw new Error(`Missing protected UAT input ${name}`);
-if (!/^[0-9a-f]{40}$/.test(process.env.RELEASE_SHA) || process.env.DEPLOYED_SHA !== process.env.RELEASE_SHA) throw new Error("Deployment provenance mismatch");
-const headers = { apikey: process.env.SUPABASE_ANON_KEY, "Content-Type": "application/json" };
-const auth = await fetch(`${process.env.SUPABASE_URL}/auth/v1/token?grant_type=password`, { method: "POST", headers, body: JSON.stringify({ email: process.env.TV_UAT_EMAIL, password: process.env.TV_UAT_PASSWORD }) });
-if (!auth.ok) throw new Error(`Protected UAT authentication failed ${auth.status}`);
-const session = await auth.json();
-if (!session.access_token) throw new Error("Protected UAT authentication returned no session");
-async function rpc(name, body, authorization = null) {
-  const response = await fetch(`${process.env.SUPABASE_URL}/rest/v1/rpc/${name}`, { method: "POST", headers: { ...headers, ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}) }, body: JSON.stringify(body) });
-  if (!response.ok) throw new Error(`${name} failed ${response.status}`);
-  return response.json();
-}
-const publicState = await rpc("get_tv_display_state_v3", { p_display_token: process.env.TV_DISPLAY_TOKEN });
-const branding = await rpc("get_tv_tournament_branding_v1", { p_tournament_id: process.env.TV_TOURNAMENT_ID }, session.access_token);
-if (!publicState || !branding) throw new Error("TV Stage A returned empty state");
-const fingerprint = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-writeFileSync(process.env.OUTPUT_PATH, `${JSON.stringify({ schemaVersion: 1, kind: "vinpoker-tv-stage-a-production-uat", releaseSha: process.env.RELEASE_SHA, deployedSha: process.env.DEPLOYED_SHA, publicRead: "PASS", authenticatedRead: "PASS", publicResultFingerprint: fingerprint(publicState), authenticatedResultFingerprint: fingerprint(branding), containsPrivateIds: false }, null, 2)}\n`);
+const release = process.env.RELEASE_SHA;
+if (!/^[0-9a-f]{40}$/.test(release) || process.env.DEPLOYED_SHA !== release) throw new Error("Deployment provenance mismatch");
+if (!/^[0-9a-f-]{36}$/i.test(process.env.TV_TOURNAMENT_ID)) throw new Error("Invalid tournament ID");
+if (process.env.BROWSER_UAT_ACK !== `BROWSER_TV_READ_PASS_${release}`) throw new Error("Missing exact browser UAT acknowledgment");
+
+// No paired TV displays exist in this project. Probe the actual tournament TV
+// branding path and the anonymous display RPC ACL. The browser acknowledgment
+// covers real rendering; this role probe does not impersonate a browser login.
+const sql = String.raw`BEGIN;
+SELECT EXISTS (SELECT 1 FROM public.tournaments WHERE id = :'tournament_id'::uuid AND deleted_at IS NULL) AS sample_ok \gset
+SET ROLE authenticated;
+SELECT (public.get_tv_tournament_branding_v1(:'tournament_id'::uuid) IS NOT NULL) AS branding_ok \gset
+RESET ROLE;
+SET ROLE anon;
+SELECT (public.get_tv_display_state_v3(repeat('x', 32))->>'status' = 'invalid') AS display_ok \gset
+RESET ROLE;
+\echo :sample_ok|:branding_ok|:display_ok
+ROLLBACK;
+`;
+const pgEnv = {
+  ...process.env,
+  PGHOST: "aws-1-ap-southeast-2.pooler.supabase.com",
+  PGPORT: "5432",
+  PGUSER: "postgres.orlesggcjamwuknxwcpk",
+  PGDATABASE: "postgres",
+  PGPASSWORD: process.env.SUPABASE_DB_PASSWORD,
+  PGSSLMODE: "require",
+  PGAPPNAME: `tv-stage-a-${process.env.GITHUB_RUN_ID ?? "local"}`,
+};
+const image = "postgres:17.6-bookworm";
+const docker = spawnSync("docker", ["run", "--rm", "-i", "--network", "host",
+  ...["PGHOST", "PGPORT", "PGUSER", "PGDATABASE", "PGPASSWORD", "PGSSLMODE", "PGAPPNAME"].flatMap((name) => ["--env", name]),
+  image, "psql", "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-v", `tournament_id=${process.env.TV_TOURNAMENT_ID}`],
+{ input: sql, encoding: "utf8", env: pgEnv, timeout: 60_000 });
+if (docker.status !== 0 || docker.stdout.trim() !== "t|t|t") throw new Error("TV Stage A database role contract failed; raw output withheld");
+writeFileSync(process.env.OUTPUT_PATH, `${JSON.stringify({
+  schemaVersion: 2,
+  kind: "vinpoker-tv-stage-a-production-uat",
+  releaseSha: release,
+  deployedSha: release,
+  authenticatedBrandingRead: "PASS",
+  anonymousDisplayContract: "PASS",
+  browserUatAcknowledged: true,
+  containsPrivateIds: false,
+}, null, 2)}\n`);
 
