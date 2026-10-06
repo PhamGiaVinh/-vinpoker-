@@ -52,11 +52,12 @@ export function loadRelease(root = ROOT) {
 export function classifyTarget(history, entries, targetVersion) {
   if (!ORDER.includes(targetVersion)) throw new Error("Target is outside protected release order");
   const rows = new Map();
+  const checkedVersions = new Set([...ORDER, ...entries.flatMap((entry) => (entry.requiredReceipts ?? []).map((receipt) => receipt.version))]);
   for (const row of history) {
     const version = String(row.version);
     if (rows.has(version)) throw new Error(`Ambiguous live receipt ${version}`);
-    if (!Array.isArray(row.statements) || row.statements.length !== 1 || typeof row.statements[0] !== "string") throw new Error(`Malformed live receipt ${version}`);
-    rows.set(version, { name: String(row.name), hash: normalizedHash(row.statements[0]) });
+    if (checkedVersions.has(version) && (!Array.isArray(row.statements) || row.statements.length !== 1 || typeof row.statements[0] !== "string")) throw new Error(`Malformed live receipt ${version}`);
+    rows.set(version, { name: String(row.name), hash: checkedVersions.has(version) ? normalizedHash(row.statements[0]) : null });
   }
   for (const entry of entries) {
     const receipt = rows.get(entry.newVersion);
