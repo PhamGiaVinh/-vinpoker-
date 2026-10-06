@@ -51,6 +51,32 @@ const REASON: Record<string, string> = {
 interface BankDenom { denomination_id: string; value: number; color: string | null; on_hand_count: number; version: number }
 interface LedgerRow { id: string; denomination_id: string; direction: string; count: number; balance_after: number; reason: string | null; created_at: string }
 interface SyncRow { denomination_id: string; total: number; in_play: number; on_hand: number }
+interface PendingAdjustment {
+  clubId: string;
+  tournamentId: string | null;
+  denominationId: string;
+  direction: "thu" | "xuat";
+  count: number;
+  oldVersion: number;
+  requestId: string;
+}
+
+const pendingKey = (clubId: string) => `vinpoker:chip-bank-pending:${clubId}`;
+
+function readPending(clubId: string | null): PendingAdjustment | null {
+  if (!clubId) return null;
+  try {
+    const raw = sessionStorage.getItem(pendingKey(clubId));
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== "object") return null;
+    const command = value as PendingAdjustment;
+    return command.clubId === clubId && typeof command.requestId === "string" &&
+      typeof command.denominationId === "string" && Number.isSafeInteger(command.count) &&
+      command.count > 0 && Number.isSafeInteger(command.oldVersion) &&
+      (command.direction === "thu" || command.direction === "xuat") ? command : null;
+  } catch { return null; }
+}
 
 async function callRpc(fn: string, args: Record<string, unknown>): Promise<Record<string, unknown> | null> {
   try {
@@ -89,7 +115,9 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
   const [syncOpen, setSyncOpen] = useState(false);
   const [syncTotals, setSyncTotals] = useState<Record<string, string>>({});
   const [syncResult, setSyncResult] = useState<{ rows: SyncRow[]; tours: { name: string | null }[] } | null>(null);
+  const [pendingAdjustment, setPendingAdjustment] = useState<PendingAdjustment | null>(() => readPending(clubId));
   const requestSequence = useRef(0);
+  const adjustmentInFlight = useRef(false);
   const activeClub = useRef(clubId);
   activeClub.current = clubId;
 
@@ -128,24 +156,56 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
     setSyncTotals({});
     setSyncResult(null);
     setSyncOpen(false);
+    setPendingAdjustment(readPending(clubId));
   }, [clubId]);
 
   const valueOf = (id: string) => bank.find((d) => d.denomination_id === id)?.value ?? 0;
   const hasDeficit = useMemo(() => bank.some((d) => d.on_hand_count < 0), [bank]);
 
   const submit = async () => {
+    if (adjustmentInFlight.current) return;
     const n = parseChipCountInput(count);
     const d = bank.find((x) => x.denomination_id === denomId);
-    if (loadError || loading || !d || n === null) { toast.error("Chọn mệnh giá và nhập số chip nguyên dương hợp lệ."); return; }
+    if (!pendingAdjustment && (loadError || loading || !d || n === null)) {
+      toast.error("Chọn mệnh giá và nhập số chip nguyên dương hợp lệ."); return;
+    }
+    const command = pendingAdjustment ?? {
+      clubId: clubId!, tournamentId: tournamentId || null, denominationId: denomId,
+      direction: dir, count: n!, oldVersion: d!.version, requestId: crypto.randomUUID(),
+    };
+    if (command.clubId !== clubId) return;
+    if (!pendingAdjustment) {
+      try { sessionStorage.setItem(pendingKey(command.clubId), JSON.stringify(command)); }
+      catch { toast.error("Không lưu được mã thử lại an toàn; chưa gửi lệnh chip."); return; }
+      setPendingAdjustment(command);
+    }
+    adjustmentInFlight.current = true;
     setBusy(true);
-    const r = await callRpc("chip_ops_bank_adjust", {
-      p_club_id: clubId, p_denomination_id: denomId, p_direction: dir, p_count: n,
-      p_tournament_id: tournamentId || null, p_old_version: d.version, p_idempotency_key: crypto.randomUUID(),
-    });
-    if (clubId !== activeClub.current) { setBusy(false); return; }
-    if (r?.status === "ok") { toast.success(dir === "thu" ? "Đã thu chip vào két." : "Đã xuất chip khỏi két."); setCount(""); void reload(); }
-    else if (r && !r.error) toast.error("Máy chủ chưa xác nhận xuất/thu chip. Hãy tải lại trước khi thử tiếp.");
-    setBusy(false);
+    try {
+      const { data, error } = await sb.rpc("chip_ops_bank_adjust", {
+        p_club_id: command.clubId, p_denomination_id: command.denominationId,
+        p_direction: command.direction, p_count: command.count,
+        p_tournament_id: command.tournamentId, p_old_version: command.oldVersion,
+        p_idempotency_key: command.requestId,
+      });
+      if (clubId !== activeClub.current) return;
+      if (data?.status === "ok") {
+        sessionStorage.removeItem(pendingKey(command.clubId));
+        setPendingAdjustment(null);
+        setCount("");
+        toast.success(command.direction === "thu" ? "Đã thu chip vào két." : "Đã xuất chip khỏi két.");
+        void reload();
+      } else if (!error && typeof data?.error === "string") {
+        sessionStorage.removeItem(pendingKey(command.clubId));
+        setPendingAdjustment(null);
+        toast.error(ERR[data.error] ?? data.error);
+        void reload();
+      } else {
+        toast.error("Chưa xác nhận lệnh chip. Bấm thử lại để gửi đúng mã lệnh cũ; không tạo lệnh mới.");
+      }
+    } catch {
+      if (clubId === activeClub.current) toast.error("Mất kết nối; chưa rõ lệnh chip đã ghi hay chưa. Hãy thử lại cùng lệnh.");
+    } finally { adjustmentInFlight.current = false; setBusy(false); }
   };
 
   const toggleCoupling = async (enabled: boolean) => {
@@ -192,6 +252,11 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
         <Card className="border-destructive/50"><CardContent className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm text-destructive">
           Không tải được dữ liệu két chip. Số tồn và nhật ký cũ không được xem là số hiện tại.
           <Button variant="outline" size="sm" onClick={reload} disabled={loading}>Thử lại</Button>
+        </CardContent></Card>
+      )}
+      {pendingAdjustment && (
+        <Card className="border-warning/50"><CardContent className="py-3 text-sm text-warning">
+          Có lệnh {pendingAdjustment.direction === "thu" ? "Thu" : "Xuất"} {fmt(pendingAdjustment.count)} chip chưa rõ kết quả. Chỉ thử lại lệnh cũ; không đổi mệnh giá hoặc số chip.
         </CardContent></Card>
       )}
       {/* auto-coupling (Model A) */}
@@ -250,14 +315,14 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
         <CardContent className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <div className="flex-1">
             <Label className="text-xs">Mệnh giá</Label>
-            <Select value={denomId} onValueChange={setDenomId}>
+            <Select value={pendingAdjustment?.denominationId ?? denomId} onValueChange={setDenomId} disabled={!!pendingAdjustment || loading || loadError}>
               <SelectTrigger><SelectValue placeholder="Chọn mệnh giá" /></SelectTrigger>
               <SelectContent>{bank.map((d) => <SelectItem key={d.denomination_id} value={d.denomination_id}>T{fmt(d.value)} · tồn {fmt(d.on_hand_count)}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div>
             <Label className="text-xs">Chiều</Label>
-            <Select value={dir} onValueChange={(v) => setDir(v as "thu" | "xuat")}>
+            <Select value={pendingAdjustment?.direction ?? dir} onValueChange={(v) => setDir(v as "thu" | "xuat")} disabled={!!pendingAdjustment || loading || loadError}>
               <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="thu">Thu vào</SelectItem>
@@ -267,11 +332,11 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
           </div>
           <div>
             <Label className="text-xs">Số chip</Label>
-            <Input type="number" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value)} placeholder="0" className="w-32" />
+            <Input type="number" inputMode="numeric" value={pendingAdjustment?.count ?? count} onChange={(e) => setCount(e.target.value)} placeholder="0" className="w-32" disabled={!!pendingAdjustment || loading || loadError} />
           </div>
-          <Button onClick={submit} disabled={busy || loading || loadError || !denomId || !count}>
+          <Button onClick={submit} disabled={busy || (!pendingAdjustment && (loading || loadError || !denomId || !count))}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : dir === "thu" ? <ArrowDown className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
-            {dir === "thu" ? "Thu" : "Xuất"}
+            {pendingAdjustment ? "Thử lại lệnh cũ" : dir === "thu" ? "Thu" : "Xuất"}
           </Button>
         </CardContent>
       </Card>
