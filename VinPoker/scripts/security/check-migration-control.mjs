@@ -47,7 +47,7 @@ export function findMigrationControlProblems({ manifest, rows, manifestText = nu
     problems.push("unsupported migration control manifest schema");
     return problems;
   }
-  if (manifestText !== null && manifestText !== canonicalManifestText(manifest)) {
+  if (manifestText !== null && normalizeSql(manifestText) !== canonicalManifestText(manifest)) {
     problems.push("manifest serialization is not deterministic canonical JSON");
   }
 
