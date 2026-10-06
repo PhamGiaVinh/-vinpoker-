@@ -69,6 +69,12 @@ test("plan and apply verify the prior-stage live contract before any mutation", 
   const mutation = runner.indexOf('if (mode === "apply")', priorStageCheck);
   assert.ok(guard >= 0 && priorStageCheck > guard && mutation > priorStageCheck);
 });
+test("postcheck and exact-receipt reconciliation do not rerun old-state preflight or migration SQL", () => {
+  const runner = readFileSync("scripts/ops/protected-nine-release-gate.mjs", "utf8");
+  assert.match(runner, /if \(state === "pending" && \(mode === "plan" \|\| mode === "apply"\)\)/);
+  assert.match(runner, /if \(state === "pending"\) \{\s+const result = await request\("\/database\/query", token, \{ method: "POST", body: JSON\.stringify\(\{ query: buildAtomicMigrationQuery\(entry\) \}\) \}\);/);
+  assert.match(runner, /else if \(state !== "already-applied-exact"\)/);
+});
 test("atomic query owns a separate lock and inserts one immutable receipt", () => {
   for (const entry of entries) {
     const query = buildAtomicMigrationQuery(entry);
@@ -86,5 +92,5 @@ test("workflow does not print credential values", () => {
   const workflow = readFileSync("../.github/workflows/protected-nine-exact-apply.yml", "utf8");
   assert.doesNotMatch(workflow, /echo[^\n]*(SUPABASE_ACCESS_TOKEN|SUPABASEACCESSTOKEN)/);
   assert.match(workflow, /environment: dealer-swing-production-critical/);
-  assert.equal((workflow.match(/set -euo pipefail\n\s+node scripts\/ops\/protected-nine-release-gate\.mjs (?:plan|apply|postcheck)/g) ?? []).length, 4);
+  assert.equal((workflow.match(/set -euo pipefail\r?\n\s+node scripts\/ops\/protected-nine-release-gate\.mjs (?:plan|apply|postcheck)/g) ?? []).length, 4);
 });

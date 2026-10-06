@@ -17,7 +17,7 @@ export function normalizedHash(source) {
 }
 
 export function verifyObjectContractSource(source) {
-  if (createHash("sha256").update(source, "utf8").digest("hex") !== OBJECT_CONTRACT_SHA256) throw new Error("Protected-nine object contract hash drift");
+  if (createHash("sha256").update(source.replace(/\r\n/g, "\n"), "utf8").digest("hex") !== OBJECT_CONTRACT_SHA256) throw new Error("Protected-nine object contract hash drift");
 }
 
 export function loadRelease(root = ROOT) {
@@ -126,14 +126,19 @@ async function execute() {
   if ((mode === "plan" || mode === "apply") && state === "pending" && entryIndex > 0) {
     await verifyLiveObjectContract(entries, objectContract, entryIndex - 1, token);
   }
-  for (const query of entry.postcheck.preflightQueries ?? []) {
-    const result = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query }) });
-    if (!Array.isArray(result) || result.length !== 1 || result[0]?.ok !== true) throw new Error(`Preflight failed ${entry.newVersion}`);
+  if (state === "pending" && (mode === "plan" || mode === "apply")) {
+    for (const query of entry.postcheck.preflightQueries ?? []) {
+      const result = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query }) });
+      if (!Array.isArray(result) || result.length !== 1 || result[0]?.ok !== true) throw new Error(`Preflight failed ${entry.newVersion}`);
+    }
   }
   if (mode === "apply") {
-    if (state !== "pending") throw new Error(`Target is not pending: ${state}`);
-    const result = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query: buildAtomicMigrationQuery(entry) }) });
-    if (result === null) throw new Error("Apply acknowledgement was empty");
+    if (state === "pending") {
+      const result = await request("/database/query", token, { method: "POST", body: JSON.stringify({ query: buildAtomicMigrationQuery(entry) }) });
+      if (result === null) throw new Error("Apply acknowledgement was empty");
+    } else if (state !== "already-applied-exact") {
+      throw new Error(`Target is not pending or exact: ${state}`);
+    }
   }
   if (mode === "postcheck") {
     if (state !== "already-applied-exact") throw new Error("Exact receipt is not present");
