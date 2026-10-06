@@ -8,7 +8,7 @@ import { catalogSnapshotSql, contractHash, deriveObjectScope } from "./protected
 export const PROJECT_REF = "orlesggcjamwuknxwcpk";
 export const ORDER = Array.from({ length: 10 }, (_, index) => `202701280000${String(index + 1).padStart(2, "0")}`);
 export const CONFIRM_PREFIX = "APPLY_PROTECTED_NINE";
-export const OBJECT_CONTRACT_SHA256 = "20d227469425cf66f55530721e777f733d28a4af60d2cf46b055388507d50bdc";
+export const OBJECT_CONTRACT_SHA256 = "c1a20b9a200e308e94c43a68dd5f1442913f79f8e831613c461c59e12e8a38e5";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const RECEIPT_TAG = "$protected_nine_receipt$";
 const LEGACY_SWING_REVOCATION_QUERY = `SELECT (count(*)=5 AND bool_and(
