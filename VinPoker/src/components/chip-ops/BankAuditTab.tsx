@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -12,9 +12,24 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { toast } from "sonner";
 import { ChipDisc } from "./ChipDisc";
 import { ArrowDown, ArrowUp, Loader2, Vault, Zap, RefreshCw, Info } from "lucide-react";
+import { parseChipCountInput } from "./bankInput";
 
-// chip_ops_* bank objects are applied live but not in generated types → loose client.
-const sb = supabase as any;
+// chip_ops_* bank objects are applied live but not in generated types.
+const sb = supabase as unknown as {
+  rpc: (fn: string, args: Record<string, unknown>) => Promise<{
+    data: Record<string, unknown> | null;
+    error: { code?: string } | null;
+  }>;
+  from: (table: string) => {
+    select: (columns: string) => {
+      eq: (column: string, value: string) => {
+        order: (column: string, options: { ascending: boolean }) => {
+          limit: (count: number) => Promise<{ data: LedgerRow[] | null; error: unknown }>;
+        };
+      };
+    };
+  };
+};
 const fmt = (n: number) => (n ?? 0).toLocaleString("vi-VN");
 const ERR: Record<string, string> = {
   Forbidden: "Bạn không có quyền.",
@@ -36,13 +51,47 @@ const REASON: Record<string, string> = {
 interface BankDenom { denomination_id: string; value: number; color: string | null; on_hand_count: number; version: number }
 interface LedgerRow { id: string; denomination_id: string; direction: string; count: number; balance_after: number; reason: string | null; created_at: string }
 interface SyncRow { denomination_id: string; total: number; in_play: number; on_hand: number }
+interface PendingAdjustment {
+  clubId: string;
+  tournamentId: string | null;
+  denominationId: string;
+  direction: "thu" | "xuat";
+  count: number;
+  oldVersion: number;
+  requestId: string;
+}
 
-async function callRpc(fn: string, args: Record<string, unknown>): Promise<any | null> {
+const pendingKey = (clubId: string) => `vinpoker:chip-bank-pending:${clubId}`;
+
+function readPending(clubId: string | null): PendingAdjustment | null {
+  if (!clubId) return null;
+  try {
+    const raw = sessionStorage.getItem(pendingKey(clubId));
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== "object") return null;
+    const command = value as PendingAdjustment;
+    return command.clubId === clubId && typeof command.requestId === "string" &&
+      typeof command.denominationId === "string" && Number.isSafeInteger(command.count) &&
+      command.count > 0 && Number.isSafeInteger(command.oldVersion) &&
+      (command.direction === "thu" || command.direction === "xuat") ? command : null;
+  } catch { return null; }
+}
+
+async function callRpc(fn: string, args: Record<string, unknown>): Promise<Record<string, unknown> | null> {
   try {
     const { data, error } = await sb.rpc(fn, args);
-    if (error) { toast.error("Tính năng két chưa bật trên máy chủ."); return null; }
-    if (data && data.error) { toast.error(ERR[data.error] ?? data.error); return null; }
-    return data ?? {};
+    if (error) {
+      toast.error(error.code === "PGRST202" ? "Máy chủ chưa có chức năng két chip." : "Không kết nối được dữ liệu két chip. Vui lòng thử lại.");
+      return null;
+    }
+    if (data?.error) {
+      const code = typeof data.error === "string" ? data.error : "INVALID_INPUT";
+      toast.error(ERR[code] ?? code);
+      return null;
+    }
+    if (data == null) { toast.error("Máy chủ không xác nhận thao tác két chip."); return null; }
+    return data;
   } catch { toast.error("Có lỗi xảy ra, thử lại."); return null; }
 }
 
@@ -58,6 +107,7 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
   const [coupling, setCoupling] = useState(false);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [denomId, setDenomId] = useState("");
   const [dir, setDir] = useState<"thu" | "xuat">("thu");
@@ -65,57 +115,130 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
   const [syncOpen, setSyncOpen] = useState(false);
   const [syncTotals, setSyncTotals] = useState<Record<string, string>>({});
   const [syncResult, setSyncResult] = useState<{ rows: SyncRow[]; tours: { name: string | null }[] } | null>(null);
+  const [pendingAdjustment, setPendingAdjustment] = useState<PendingAdjustment | null>(() => readPending(clubId));
+  const requestSequence = useRef(0);
+  const adjustmentInFlight = useRef(false);
+  const activeClub = useRef(clubId);
+  activeClub.current = clubId;
 
   const reload = useCallback(async () => {
-    if (!clubId) return;
+    const request = ++requestSequence.current;
+    if (!clubId) { setBank([]); setLedger([]); setCoupling(false); setLoadError(false); setLoading(false); return; }
     setLoading(true);
-    const b = await callRpc("get_chip_bank", { p_club_id: clubId });
-    setBank(b && !b.error ? (b.denominations as BankDenom[]) : []);
-    setCoupling(!!(b && !b.error && b.coupling_enabled));
-    const { data: lg } = await sb.from("chip_bank_ledger")
-      .select("id,denomination_id,direction,count,balance_after,reason,created_at")
-      .eq("club_id", clubId).order("created_at", { ascending: false }).limit(50);
-    setLedger((lg ?? []) as LedgerRow[]);
-    setLoading(false);
+    try {
+      const b = await callRpc("get_chip_bank", { p_club_id: clubId });
+      if (request !== requestSequence.current || clubId !== activeClub.current) return;
+      if (!b || !Array.isArray(b.denominations)) { setLoadError(true); return; }
+      const { data: lg, error } = await sb.from("chip_bank_ledger")
+        .select("id,denomination_id,direction,count,balance_after,reason,created_at")
+        .eq("club_id", clubId).order("created_at", { ascending: false }).limit(50);
+      if (request !== requestSequence.current || clubId !== activeClub.current) return;
+      if (error) { toast.error("Không tải được nhật ký két chip."); setLoadError(true); return; }
+      setBank(b.denominations as BankDenom[]);
+      setCoupling(!!b.coupling_enabled);
+      setLedger((lg ?? []) as LedgerRow[]);
+      setLoadError(false);
+    } catch {
+      if (request === requestSequence.current && clubId === activeClub.current) { toast.error("Không tải được dữ liệu két chip."); setLoadError(true); }
+    } finally {
+      if (request === requestSequence.current && clubId === activeClub.current) setLoading(false);
+    }
   }, [clubId]);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => {
+    void reload();
+    return () => { requestSequence.current += 1; };
+  }, [reload]);
+
+  useEffect(() => {
+    setDenomId("");
+    setCount("");
+    setSyncTotals({});
+    setSyncResult(null);
+    setSyncOpen(false);
+    setPendingAdjustment(readPending(clubId));
+  }, [clubId]);
 
   const valueOf = (id: string) => bank.find((d) => d.denomination_id === id)?.value ?? 0;
   const hasDeficit = useMemo(() => bank.some((d) => d.on_hand_count < 0), [bank]);
 
   const submit = async () => {
-    const n = Number(count);
+    if (adjustmentInFlight.current) return;
+    const n = parseChipCountInput(count);
     const d = bank.find((x) => x.denomination_id === denomId);
-    if (!d || !Number.isFinite(n) || n <= 0) { toast.error("Chọn mệnh giá và nhập số chip > 0."); return; }
+    if (!pendingAdjustment && (loadError || loading || !d || n === null)) {
+      toast.error("Chọn mệnh giá và nhập số chip nguyên dương hợp lệ."); return;
+    }
+    const command = pendingAdjustment ?? {
+      clubId: clubId!, tournamentId: tournamentId || null, denominationId: denomId,
+      direction: dir, count: n!, oldVersion: d!.version, requestId: crypto.randomUUID(),
+    };
+    if (command.clubId !== clubId) return;
+    if (!pendingAdjustment) {
+      try { sessionStorage.setItem(pendingKey(command.clubId), JSON.stringify(command)); }
+      catch { toast.error("Không lưu được mã thử lại an toàn; chưa gửi lệnh chip."); return; }
+      setPendingAdjustment(command);
+    }
+    adjustmentInFlight.current = true;
     setBusy(true);
-    const r = await callRpc("chip_ops_bank_adjust", {
-      p_club_id: clubId, p_denomination_id: denomId, p_direction: dir, p_count: n,
-      p_tournament_id: tournamentId || null, p_old_version: d.version, p_idempotency_key: crypto.randomUUID(),
-    });
-    if (r?.status === "ok") { toast.success(dir === "thu" ? "Đã thu chip vào két." : "Đã xuất chip khỏi két."); setCount(""); reload(); }
-    setBusy(false);
+    try {
+      const { data, error } = await sb.rpc("chip_ops_bank_adjust", {
+        p_club_id: command.clubId, p_denomination_id: command.denominationId,
+        p_direction: command.direction, p_count: command.count,
+        p_tournament_id: command.tournamentId, p_old_version: command.oldVersion,
+        p_idempotency_key: command.requestId,
+      });
+      if (clubId !== activeClub.current) return;
+      if (data?.status === "ok") {
+        sessionStorage.removeItem(pendingKey(command.clubId));
+        setPendingAdjustment(null);
+        setCount("");
+        toast.success(command.direction === "thu" ? "Đã thu chip vào két." : "Đã xuất chip khỏi két.");
+        void reload();
+      } else if (!error && typeof data?.error === "string") {
+        sessionStorage.removeItem(pendingKey(command.clubId));
+        setPendingAdjustment(null);
+        toast.error(ERR[data.error] ?? data.error);
+        void reload();
+      } else {
+        toast.error("Chưa xác nhận lệnh chip. Bấm thử lại để gửi đúng mã lệnh cũ; không tạo lệnh mới.");
+      }
+    } catch {
+      if (clubId === activeClub.current) toast.error("Mất kết nối; chưa rõ lệnh chip đã ghi hay chưa. Hãy thử lại cùng lệnh.");
+    } finally { adjustmentInFlight.current = false; setBusy(false); }
   };
 
   const toggleCoupling = async (enabled: boolean) => {
+    if (loadError || loading) return;
     setBusy(true);
     const r = await callRpc("chip_ops_set_bank_coupling", { p_club_id: clubId, p_enabled: enabled });
+    if (clubId !== activeClub.current) { setBusy(false); return; }
     if (r?.status === "ok") { setCoupling(enabled); toast.success(enabled ? "Đã bật két tự động." : "Đã tắt két tự động."); }
+    else if (r && !r.error) toast.error("Máy chủ chưa xác nhận thay đổi két tự động.");
     setBusy(false);
   };
 
   const runSync = async () => {
-    const totals = bank
-      .map((d) => ({ denomination_id: d.denomination_id, total: Number(syncTotals[d.denomination_id]) }))
-      .filter((x) => Number.isFinite(x.total) && x.total >= 0);
+    if (loadError || loading) return;
+    const entered = bank.filter((d) => (syncTotals[d.denomination_id] ?? "").trim() !== "");
+    if (entered.some((d) => parseChipCountInput(syncTotals[d.denomination_id], true) === null)) {
+      toast.error("Tổng sở hữu phải là số chip nguyên không âm; không thể bỏ qua mệnh giá nhập sai.");
+      return;
+    }
+    const totals = entered.map((d) => ({
+      denomination_id: d.denomination_id,
+      total: parseChipCountInput(syncTotals[d.denomination_id], true)!,
+    }));
     if (totals.length === 0) { toast.error("Nhập tổng số chip sở hữu cho ít nhất một mệnh giá."); return; }
     setBusy(true);
     const r = await callRpc("chip_ops_bank_sync", { p_club_id: clubId, p_totals: totals });
+    if (clubId !== activeClub.current) { setBusy(false); return; }
     if (r?.status === "ok") {
       setSyncResult({ rows: (r.denominations ?? []) as SyncRow[], tours: (r.tournaments_counted ?? []) as { name: string | null }[] });
       toast.success("Đã đồng bộ kho két.");
-      reload();
+      void reload();
     }
+    else if (r && !r.error) toast.error("Máy chủ chưa xác nhận đồng bộ két chip. Hãy tải lại trước khi thử tiếp.");
     setBusy(false);
   };
 
@@ -125,6 +248,17 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
 
   return (
     <div className="space-y-4">
+      {loadError && (
+        <Card className="border-destructive/50"><CardContent className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm text-destructive">
+          Không tải được dữ liệu két chip. Số tồn và nhật ký cũ không được xem là số hiện tại.
+          <Button variant="outline" size="sm" onClick={reload} disabled={loading}>Thử lại</Button>
+        </CardContent></Card>
+      )}
+      {pendingAdjustment && (
+        <Card className="border-warning/50"><CardContent className="py-3 text-sm text-warning">
+          Có lệnh {pendingAdjustment.direction === "thu" ? "Thu" : "Xuất"} {fmt(pendingAdjustment.count)} chip chưa rõ kết quả. Chỉ thử lại lệnh cũ; không đổi mệnh giá hoặc số chip.
+        </CardContent></Card>
+      )}
       {/* auto-coupling (Model A) */}
       <Card className="border-border">
         <CardContent className="space-y-3 py-4">
@@ -137,10 +271,10 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={busy} onClick={() => { setSyncResult(null); setSyncOpen(true); }}>
+              <Button variant="outline" size="sm" disabled={busy || loading || loadError} onClick={() => { setSyncResult(null); setSyncOpen(true); }}>
                 <RefreshCw className="h-4 w-4" /> Đồng bộ kho két
               </Button>
-              <Switch checked={coupling} disabled={busy} onCheckedChange={toggleCoupling} aria-label="Bật két tự động" />
+              <Switch checked={coupling} disabled={busy || loading || loadError} onCheckedChange={toggleCoupling} aria-label="Bật két tự động" />
             </div>
           </div>
           {coupling && (
@@ -157,7 +291,9 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
       <Card className="border-border">
         <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base text-foreground"><Vault className="h-4 w-4 text-primary" /> Tồn kho két chip (CLB)</CardTitle></CardHeader>
         <CardContent>
-          {loading ? <Skeleton className="h-20 w-full" /> : bank.length === 0 ? (
+          {loading ? <Skeleton className="h-20 w-full" /> : loadError ? (
+            <p className="text-sm text-destructive">Không thể xác nhận tồn kho. Hãy thử tải lại trước khi thao tác.</p>
+          ) : bank.length === 0 ? (
             <p className="text-sm text-muted-foreground">Chưa có mệnh giá trong CLB (hoặc tính năng két chưa bật trên máy chủ). Tạo bộ chip ở tab <b className="text-foreground">Setup stack</b> trước.</p>
           ) : (
             <div className="flex flex-wrap gap-5">
@@ -170,7 +306,7 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
               ))}
             </div>
           )}
-          {hasDeficit && <p className="mt-3 text-xs text-destructive">Có mệnh giá đang <b>ghi nợ</b> (két âm) — nạp thêm chip hoặc đồng bộ lại kho két.</p>}
+          {!loading && !loadError && hasDeficit && <p className="mt-3 text-xs text-destructive">Có mệnh giá đang <b>ghi nợ</b> (két âm) — nạp thêm chip hoặc đồng bộ lại kho két.</p>}
         </CardContent>
       </Card>
 
@@ -179,14 +315,14 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
         <CardContent className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <div className="flex-1">
             <Label className="text-xs">Mệnh giá</Label>
-            <Select value={denomId} onValueChange={setDenomId}>
+            <Select value={pendingAdjustment?.denominationId ?? denomId} onValueChange={setDenomId} disabled={!!pendingAdjustment || loading || loadError}>
               <SelectTrigger><SelectValue placeholder="Chọn mệnh giá" /></SelectTrigger>
               <SelectContent>{bank.map((d) => <SelectItem key={d.denomination_id} value={d.denomination_id}>T{fmt(d.value)} · tồn {fmt(d.on_hand_count)}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div>
             <Label className="text-xs">Chiều</Label>
-            <Select value={dir} onValueChange={(v) => setDir(v as "thu" | "xuat")}>
+            <Select value={pendingAdjustment?.direction ?? dir} onValueChange={(v) => setDir(v as "thu" | "xuat")} disabled={!!pendingAdjustment || loading || loadError}>
               <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="thu">Thu vào</SelectItem>
@@ -196,11 +332,11 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
           </div>
           <div>
             <Label className="text-xs">Số chip</Label>
-            <Input type="number" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value)} placeholder="0" className="w-32" />
+            <Input type="number" inputMode="numeric" value={pendingAdjustment?.count ?? count} onChange={(e) => setCount(e.target.value)} placeholder="0" className="w-32" disabled={!!pendingAdjustment || loading || loadError} />
           </div>
-          <Button onClick={submit} disabled={busy || !denomId || !count}>
+          <Button onClick={submit} disabled={busy || (!pendingAdjustment && (loading || loadError || !denomId || !count))}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : dir === "thu" ? <ArrowDown className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
-            {dir === "thu" ? "Thu" : "Xuất"}
+            {pendingAdjustment ? "Thử lại lệnh cũ" : dir === "thu" ? "Thu" : "Xuất"}
           </Button>
         </CardContent>
       </Card>
@@ -208,7 +344,9 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
       <Card className="border-border">
         <CardHeader className="pb-3"><CardTitle className="text-base text-foreground">Nhật ký xuất / thu</CardTitle></CardHeader>
         <CardContent>
-          {ledger.length === 0 ? (
+          {loading || loadError ? (
+            <p className="text-sm text-muted-foreground">Nhật ký chưa được xác nhận. Hãy tải lại dữ liệu két chip.</p>
+          ) : ledger.length === 0 ? (
             <p className="text-sm text-muted-foreground">Chưa có sự kiện nào.</p>
           ) : (
             <Table>
@@ -269,7 +407,7 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setSyncOpen(false)}>Đóng</Button>
-            <Button disabled={busy} onClick={runSync}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Đồng bộ</Button>
+            <Button disabled={busy || loading || loadError} onClick={runSync}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Đồng bộ</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
