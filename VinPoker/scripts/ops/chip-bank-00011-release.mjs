@@ -9,7 +9,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const PROJECT_REF = "orlesggcjamwuknxwcpk";
 const VERSION = "20270128000011";
 const NAME = "chip_ops_bank_adjust_integrity_v1";
-const MANIFEST_SHA256 = "5077b3597a78a54799760ed7c2da12d5fa7fb84ce7ac59bed05d9d941361ce41";
+const MANIFEST_SHA256 = "82cba744239c8046d3f8b796efeb840ed2f234d74db2094105b8bb2667789bb1";
 const RECEIPT_TAG = "$chip_bank_00011_receipt$";
 const FUNCTION = "public.chip_ops_bank_adjust(uuid,uuid,text,bigint,uuid,integer,text)";
 
