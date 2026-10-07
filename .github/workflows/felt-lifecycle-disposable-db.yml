@@ -1,0 +1,38 @@
+name: Felt lifecycle close guards disposable PostgreSQL
+
+on:
+  pull_request:
+    paths:
+      - "VinPoker/supabase/migrations/20270128000012_felt_lifecycle_close_guards_v1.sql"
+      - "VinPoker/tests/feltLifecycle/**"
+      - ".github/workflows/felt-lifecycle-disposable-db.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  close-guards:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: felt_lifecycle
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d felt_lifecycle"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run lifecycle close guards in PostgreSQL 17
+        working-directory: VinPoker
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGDATABASE: felt_lifecycle
+        run: psql -v ON_ERROR_STOP=1 -f tests/feltLifecycle/disposableDb.integration.sql

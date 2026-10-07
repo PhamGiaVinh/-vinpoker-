@@ -19,9 +19,10 @@ describe("Dealer Swing Floor V3 inventory convergence", () => {
     expect(panelSource).toContain("Bàn giải phải được mở trong Floor");
   });
 
-  it("blocks legacy bulk and tour close paths while Floor V3 owns sessions", () => {
+  it("blocks the legacy bulk path and requires server close readiness for tours", () => {
     expect(panelSource).toContain("không thể dùng đường đóng bàn legacy");
     expect(panelSource).toContain("Đóng hàng loạt đang khóa để tránh bỏ qua phiên bàn V3");
-    expect(panelSource).toContain("Hãy đóng từng bàn giải trong Floor trước khi lưu trữ Swing");
+    expect(panelSource).toContain("getDealerTourCloseReadiness");
+    expect(panelSource).toContain("archive_and_close_dealer_tour");
   });
 });

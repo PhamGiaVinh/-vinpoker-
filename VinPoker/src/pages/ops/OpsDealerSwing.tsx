@@ -30,6 +30,7 @@ import { useShiftPlanner } from "@/hooks/useShiftPlanner";
 import type { AvailabilityRequest } from "@/types/shiftPlanner";
 import { summarizeDealerCheckoutBatch } from "@/lib/dealerCheckoutResults";
 import { classifyManualSwingOutcome } from "@/lib/dealerSwingOutcome";
+import { describeCloseBlockers, getDealerTourCloseReadiness, type CloseReadiness } from "@/lib/feltLifecycleReadiness";
 
 /**
  * Dealer Swing (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads).
@@ -194,6 +195,9 @@ function DealerSwingClubView({
   const [tourList, setTourList] = useState<{ id: string; clubId: string; name: string }[] | null>(null);
   const [tourToClose, setTourToClose] = useState<string | null>(null);
   const [dongTour, setDongTour] = useState("");
+  const [tourCloseReadiness, setTourCloseReadiness] = useState<CloseReadiness | null>(null);
+  const [tourCloseReadinessError, setTourCloseReadinessError] = useState<string | null>(null);
+  const [tourCloseReadinessLoading, setTourCloseReadinessLoading] = useState(false);
   const [checkout, setCheckout] = useState<Set<string>>(new Set());
   const [histTable, setHistTable] = useState<TableVM | null>(null);      // "Lịch sử bàn này"
   const [histRows, setHistRows] = useState<any[] | null>(null);          // null = đang tải
@@ -430,8 +434,46 @@ function DealerSwingClubView({
     setTourList((data ?? []).map((t: any) => ({ id: t.id, clubId: t.club_id, name: t.tour_name ?? "Tour" })));
   };
 
+  useEffect(() => {
+    const tour = tourList?.find((item) => item.id === tourToClose);
+    if (!tour) {
+      setTourCloseReadiness(null);
+      setTourCloseReadinessError(null);
+      return;
+    }
+    let cancelled = false;
+    setTourCloseReadinessLoading(true);
+    setTourCloseReadiness(null);
+    getDealerTourCloseReadiness(tour.id, tour.clubId)
+      .then((readiness) => {
+        if (!cancelled) {
+          setTourCloseReadiness(readiness);
+          setTourCloseReadinessError(readiness.ok ? null : readiness.error ?? "Không thể kiểm tra.");
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setTourCloseReadinessError(error instanceof Error ? error.message : "Không thể kiểm tra.");
+      })
+      .finally(() => { if (!cancelled) setTourCloseReadinessLoading(false); });
+    return () => { cancelled = true; };
+  }, [tourToClose, tourList]);
+
   // Đóng tour → RPC archive_and_close_dealer_tour (mirror closeTour desktop; lưu trữ + trả bàn)
   const doCloseTour = (tour: { id: string; clubId: string; name: string }) => runAction(async () => {
+    let readiness: CloseReadiness;
+    try {
+      readiness = await getDealerTourCloseReadiness(tour.id, tour.clubId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không kiểm tra được tour.");
+      return;
+    }
+    setTourCloseReadiness(readiness);
+    if (!readiness.ok || !readiness.ready) {
+      toast.warning(readiness.ok
+        ? `Chưa thể đóng tour: ${describeCloseBlockers(readiness.blockers)}`
+        : `Không kiểm tra được quyền đóng tour: ${readiness.error ?? "lỗi không rõ"}`);
+      return;
+    }
     const { data, error } = await (supabase.rpc as any)("archive_and_close_dealer_tour", { p_tour_id: tour.id, p_club_id: tour.clubId });
     if (error) { toast.error(`Đóng tour thất bại: ${error.message}`); return; }
     const r = data as any;
@@ -923,9 +965,20 @@ function DealerSwingClubView({
               if (!t) return null;
               return (
                 <>
+                  <div className="mt-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[12px] text-[#d8cbd3]" role="status">
+                    {tourCloseReadinessLoading ? "Đang kiểm tra phiên bàn và hand trên server…" :
+                      tourCloseReadinessError ? `Không kiểm tra được: ${tourCloseReadinessError}` :
+                      tourCloseReadiness?.alreadyClosed ? "Tour đã được đóng." :
+                      tourCloseReadiness?.ready ? "Các bàn đã an toàn để đóng tour." :
+                      tourCloseReadiness?.blockers.length
+                        ? `Cần xử lý trong Floor: ${describeCloseBlockers(tourCloseReadiness.blockers)}`
+                        : "Chưa có kết quả kiểm tra từ server."}
+                  </div>
                   <input value={dongTour} onChange={(e) => setDongTour(e.target.value.toUpperCase())} placeholder="gõ  DONG TOUR  để mở khoá"
                     className="ios-fill mt-2.5 w-full rounded-xl px-3 py-2.5 text-center text-[14px] font-semibold tracking-normal text-[#f2ece6] outline-none placeholder:text-[#7c7079]" />
-                  <button disabled={dongTour.trim() !== "DONG TOUR" || busy} onClick={() => doCloseTour(t)}
+                  <button disabled={dongTour.trim() !== "DONG TOUR" || busy || tourCloseReadinessLoading
+                    || !tourCloseReadiness?.ok || !tourCloseReadiness.ready || tourCloseReadiness.alreadyClosed}
+                    onClick={() => doCloseTour(t)}
                     className={cn("ios-press mt-2.5 w-full rounded-2xl py-3 text-[15px] font-bold", dongTour.trim() === "DONG TOUR" ? "bg-rose-500/90 text-white" : "bg-white/5 text-[#5f545c]")}>
                     Đóng tour {t.name} {dongTour.trim() !== "DONG TOUR" && "(đang khoá)"}
                   </button>
