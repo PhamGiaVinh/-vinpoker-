@@ -78,7 +78,14 @@ export function postcheckSql() {
     'receipt_sha256', (SELECT encode(extensions.digest(convert_to(replace(statements[1], E'\\r\\n', E'\\n'), 'UTF8'), 'sha256'), 'hex')
       FROM supabase_migrations.schema_migrations WHERE version = '${version}' LIMIT 1),
     'tour_guard', to_regprocedure('floor_private.felt_guard_tour_archive_v1()') IS NOT NULL,
+    'trigger_count', (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgenabled <> 'D'
+      AND ((tgrelid = 'public.dealer_swing_archives'::regclass AND tgname = 'trg_felt_guard_tour_archive_v1')
+        OR (tgrelid = 'public.game_tables'::regclass AND tgname = 'trg_felt_guard_table_deactivation_v1')
+        OR (tgrelid = 'public.tournament_close_report'::regclass AND tgname = 'trg_felt_guard_close_report_v1'))),
+    'dealer_readiness', to_regprocedure('public.get_dealer_tour_close_readiness_v1(uuid,uuid)') IS NOT NULL,
     'tournament_readiness', to_regprocedure('public.get_tournament_close_readiness_v1(uuid)') IS NOT NULL,
+    'dealer_anon_execute', has_function_privilege('anon','public.get_dealer_tour_close_readiness_v1(uuid,uuid)','EXECUTE'),
+    'dealer_authenticated_execute', has_function_privilege('authenticated','public.get_dealer_tour_close_readiness_v1(uuid,uuid)','EXECUTE'),
     'anon_execute', has_function_privilege('anon','public.get_tournament_close_readiness_v1(uuid)','EXECUTE'),
     'authenticated_execute', has_function_privilege('authenticated','public.get_tournament_close_readiness_v1(uuid)','EXECUTE')
   )::text;`;
@@ -86,7 +93,9 @@ export function postcheckSql() {
 
 export function classifyPostcheck(row) {
   if (Number(row.receipt_count) !== 1 || row.receipt_sha256 !== expectedSha256 ||
-      row.tour_guard !== true || row.tournament_readiness !== true ||
+      row.tour_guard !== true || Number(row.trigger_count) !== 3 ||
+      row.dealer_readiness !== true || row.tournament_readiness !== true ||
+      row.dealer_anon_execute !== false || row.dealer_authenticated_execute !== true ||
       row.anon_execute !== false || row.authenticated_execute !== true) {
     throw new Error("Postcheck failed; inspect live state without retrying");
   }

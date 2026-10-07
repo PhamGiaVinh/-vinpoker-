@@ -27,9 +27,12 @@ test("preflight and postcheck reject ledger drift", () => {
   assert.throws(() => classifyPreflight({ ...good, voice_duplicate_equal: false }));
   const post = { receipt_count: 1,
     receipt_sha256: "3185b1c3c367d8ccf814023b31d3bfaeb52059fe5149db145e63385fc7e9b612",
-    tour_guard: true, tournament_readiness: true, anon_execute: false, authenticated_execute: true };
+    tour_guard: true, trigger_count: 3, dealer_readiness: true, tournament_readiness: true,
+    dealer_anon_execute: false, dealer_authenticated_execute: true,
+    anon_execute: false, authenticated_execute: true };
   assert.equal(classifyPostcheck(post), "pass");
   assert.throws(() => classifyPostcheck({ ...post, receipt_sha256: "wrong" }));
+  assert.throws(() => classifyPostcheck({ ...post, trigger_count: 2 }));
 });
 
 test("connection preflight does not infer a project from generic credentials", () => {
