@@ -1,0 +1,12 @@
+{
+  "projectRef": "orlesggcjamwuknxwcpk",
+  "version": "20270128000011",
+  "name": "chip_ops_bank_adjust_integrity_v1",
+  "filename": "20270128000011_chip_ops_bank_adjust_integrity_v1.sql",
+  "normalizedSqlSha256": "d44de531d9da5272c29a1097460c56894fe8df88d5ca7d4c3ff208f794b885df",
+  "previousBodySha256": "c42675d1ef018ef928730963156d1935457faae8c6a1a1c846a0189d6f6ae523",
+  "requiredReceipt": {
+    "version": "20270128000010",
+    "name": "multi_day_after_end_play_guard_child_binding_v1"
+  }
+}

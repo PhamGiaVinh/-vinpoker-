@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
+import { loadRelease, buildAtomicQuery, classifyPostcheck, postcheckSql } from "../../scripts/ops/chip-bank-00011-release.mjs";
 
 const root = process.cwd();
 const archived = readFileSync(resolve(root,
@@ -57,6 +58,11 @@ test("bank adjustment enforces payload-safe retries, club identity and CAS in Po
       reason text, idempotency_key text, actor uuid, details jsonb NOT NULL DEFAULT '{}');
     CREATE UNIQUE INDEX uq_cbl_idempotency ON public.chip_bank_ledger(idempotency_key)
       WHERE idempotency_key IS NOT NULL;
+    CREATE SCHEMA supabase_migrations;
+    CREATE TABLE supabase_migrations.schema_migrations(
+      version text PRIMARY KEY, name text NOT NULL, statements text[] NOT NULL);
+    INSERT INTO supabase_migrations.schema_migrations(version,name,statements)
+    VALUES ('20270128000010','multi_day_after_end_play_guard_child_binding_v1',ARRAY['fixture']);
     INSERT INTO public.clubs VALUES
       ('00000000-0000-0000-0000-000000000001'),
       ('00000000-0000-0000-0000-000000000002');
@@ -67,8 +73,11 @@ test("bank adjustment enforces payload-safe retries, club identity and CAS in Po
       ('00000000-0000-0000-0000-000000000022','00000000-0000-0000-0000-000000000002',NULL);
   `);
   psql(priorFunction);
-  // This executes the exact forward migration, including its live-body precondition.
-  psql(migration);
+  // Exercise the production release shape: forward SQL and receipt commit together.
+  const release = loadRelease();
+  assert.equal(release.sql, migration.replace(/\r\n?/g, "\n"));
+  psql(buildAtomicQuery(release));
+  assert.equal(classifyPostcheck(JSON.parse(psql(postcheckSql())), release), "postcheck-passed");
 
   const result = psql(`
     SET request.jwt.claim.sub = '00000000-0000-0000-0000-000000000031';
