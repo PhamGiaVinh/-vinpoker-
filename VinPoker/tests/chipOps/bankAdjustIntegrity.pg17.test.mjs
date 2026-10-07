@@ -72,6 +72,7 @@ test("bank adjustment enforces payload-safe retries, club identity and CAS in Po
 
   const result = psql(`
     SET request.jwt.claim.sub = '00000000-0000-0000-0000-000000000031';
+    SET ROLE authenticated;
     SELECT public.chip_ops_bank_adjust('00000000-0000-0000-0000-000000000001',
       '00000000-0000-0000-0000-000000000011','thu',10,
       '00000000-0000-0000-0000-000000000021',0,'key-1');
@@ -93,10 +94,17 @@ test("bank adjustment enforces payload-safe retries, club identity and CAS in Po
     SELECT public.chip_ops_bank_adjust('00000000-0000-0000-0000-000000000001',
       '00000000-0000-0000-0000-000000000011','xuat',4,
       '00000000-0000-0000-0000-000000000021',1,'key-2');
+    SELECT public.chip_ops_bank_adjust('00000000-0000-0000-0000-000000000001',
+      '00000000-0000-0000-0000-000000000011','thu',1,
+      '00000000-0000-0000-0000-000000000021',NULL,'key-null-version');
+    SELECT public.chip_ops_bank_adjust('00000000-0000-0000-0000-000000000001',
+      '00000000-0000-0000-0000-000000000011','thu',1,
+      '00000000-0000-0000-0000-000000000021',2,NULL);
     SET request.jwt.claim.sub = '00000000-0000-0000-0000-000000000032';
     SELECT public.chip_ops_bank_adjust('00000000-0000-0000-0000-000000000001',
       '00000000-0000-0000-0000-000000000011','thu',10,
       '00000000-0000-0000-0000-000000000021',0,'key-1');
+    RESET ROLE;
     SELECT on_hand_count || ':' || version FROM public.chip_bank;
     SELECT count(*) FROM public.chip_bank_ledger;
     SELECT has_function_privilege('anon',
@@ -109,6 +117,8 @@ test("bank adjustment enforces payload-safe retries, club identity and CAS in Po
   assert.equal(JSON.parse(result[4]).error, "BANK_NEGATIVE");
   assert.equal(JSON.parse(result[5]).error, "race_lost");
   assert.equal(JSON.parse(result[6]).balance_after, 6);
-  assert.equal(JSON.parse(result[7]).error, "IDEMPOTENCY_CONFLICT");
-  assert.deepEqual(result.slice(8), ["6:2", "2", "f"]);
+  assert.equal(JSON.parse(result[7]).error, "INVALID_INPUT");
+  assert.equal(JSON.parse(result[8]).error, "INVALID_INPUT");
+  assert.equal(JSON.parse(result[9]).error, "IDEMPOTENCY_CONFLICT");
+  assert.deepEqual(result.slice(10), ["6:2", "2", "f"]);
 });
