@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "VinPoker/supabase/migrations/20270128000012_felt_lifecycle_close_guards_v1.sql"
+      - "VinPoker/scripts/ops/felt-00012-release.mjs"
+      - "VinPoker/scripts/ops/felt-00012-release.test.mjs"
       - "VinPoker/tests/feltLifecycle/**"
       - ".github/workflows/felt-lifecycle-disposable-db.yml"
 
@@ -28,6 +30,12 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify exact 00012 release runner
+        working-directory: VinPoker
+        run: node --test scripts/ops/felt-00012-release.test.mjs
       - name: Run lifecycle close guards in PostgreSQL 17
         working-directory: VinPoker
         env:
