@@ -74,6 +74,7 @@ import { DealerSwingTableViews } from "./dealer-swing/DealerSwingTableViews";
 import { FeatureTablePoolBox } from "./dealer-swing/FeatureTablePoolBox";
 import { StaffingOptimizerCard } from "./dealer-swing/StaffingOptimizerCard";
 import CloseTourDialog, { type CloseTourPreview } from "./dealer-swing/CloseTourDialog";
+import { describeCloseBlockers, getDealerTourCloseReadiness, type CloseReadiness } from "@/lib/feltLifecycleReadiness";
 import { FEATURES } from "@/lib/featureFlags";
 import { createFloorTableControlV3Client, type FloorTableControlV3Rpc } from "@/lib/floorTableControlV3";
 import { isDealerTableAvailable } from "@/lib/dealerTableInventory";
@@ -470,6 +471,9 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   const [newTourEndTime, setNewTourEndTime] = useState("");
   const [deleteTour, setDeleteTour] = useState<{ id: string; name: string } | null>(null);
   const [closeTourOpen, setCloseTourOpen] = useState(false);
+  const [closeTourReadiness, setCloseTourReadiness] = useState<CloseReadiness | null>(null);
+  const [closeTourReadinessError, setCloseTourReadinessError] = useState<string | null>(null);
+  const [closeTourReadinessLoading, setCloseTourReadinessLoading] = useState(false);
   const [closingTour, setClosingTour] = useState(false);
   const [deletingTour, setDeletingTour] = useState(false);
 
@@ -1244,16 +1248,21 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   // the migration is applied live). NEVER raw-updates from the client.
   const closeTour = async () => {
     if (!selectedTour) return;
-    if (FEATURES.floorTableControlV3) {
-      toast.warning("Floor V3 đang quản lý phiên bàn. Hãy đóng từng bàn giải trong Floor trước khi lưu trữ Swing.");
-      setCloseTourOpen(false);
-      return;
-    }
     const tour = (tours ?? []).find((t) => t.id === selectedTour);
     const clubId = (tour as any)?.club_id ?? clubFilter ?? filteredClubIds[0];
     if (!clubId) { toast.error("Thiếu thông tin club."); return; }
     setClosingTour(true);
     try {
+      const readiness = await getDealerTourCloseReadiness(selectedTour, clubId);
+      setCloseTourReadiness(readiness);
+      if (!readiness.ok) {
+        toast.error(`Không kiểm tra được quyền đóng tour: ${readiness.error ?? "lỗi không rõ"}`);
+        return;
+      }
+      if (!readiness.ready) {
+        toast.warning(`Chưa thể đóng tour: ${describeCloseBlockers(readiness.blockers)}`);
+        return;
+      }
       const { data, error } = await (supabase.rpc as any)("archive_and_close_dealer_tour", {
         p_tour_id: selectedTour,
         p_club_id: clubId,
@@ -1307,6 +1316,35 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       setClosingTour(false);
     }
   };
+
+  useEffect(() => {
+    if (!closeTourOpen || !selectedTour) {
+      setCloseTourReadiness(null);
+      setCloseTourReadinessError(null);
+      return;
+    }
+    const tour = (tours ?? []).find((item) => item.id === selectedTour);
+    const clubId = (tour as any)?.club_id ?? clubFilter ?? filteredClubIds[0];
+    if (!clubId) {
+      setCloseTourReadinessError("Thiếu thông tin club.");
+      return;
+    }
+    let cancelled = false;
+    setCloseTourReadinessLoading(true);
+    setCloseTourReadiness(null);
+    getDealerTourCloseReadiness(selectedTour, clubId)
+      .then((value) => {
+        if (!cancelled) {
+          setCloseTourReadiness(value);
+          setCloseTourReadinessError(value.ok ? null : value.error ?? "Không thể kiểm tra.");
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setCloseTourReadinessError(error instanceof Error ? error.message : "Không thể kiểm tra.");
+      })
+      .finally(() => { if (!cancelled) setCloseTourReadinessLoading(false); });
+    return () => { cancelled = true; };
+  }, [closeTourOpen, selectedTour, tours, clubFilter, filteredClubIds]);
 
   // "Đóng bàn" — open the confirm with a FRESH scoped list (P0#2: re-read so a table
   // opened after the dialog was shown can't sneak in). Scope: selectedTour null = all
@@ -3042,6 +3080,9 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
         open={closeTourOpen}
         onOpenChange={setCloseTourOpen}
         preview={closeTourPreview}
+        readiness={closeTourReadiness}
+        readinessError={closeTourReadinessError}
+        readinessLoading={closeTourReadinessLoading}
         onConfirm={closeTour}
         busy={closingTour}
       />

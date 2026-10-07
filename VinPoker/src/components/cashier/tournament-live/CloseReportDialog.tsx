@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Lock, CheckCircle2, AlertTriangle, Info } from "lucide-react";
 import { toast } from "sonner";
 import { useCloseReport } from "@/hooks/useCloseReport";
+import { describeCloseBlockers } from "@/lib/feltLifecycleReadiness";
 
 interface Props {
   open: boolean;
@@ -53,7 +54,7 @@ function Row({ label, sub, amount, accent }: { label: string; sub?: string; amou
 }
 
 export default function CloseReportDialog({ open, onOpenChange, tournamentId, tournamentName, onClosed }: Props) {
-  const { report, loading, error, alreadyClosed, reload, closeTournament } = useCloseReport(tournamentId);
+  const { report, loading, error, alreadyClosed, readiness, reload, closeTournament } = useCloseReport(tournamentId);
   const [step, setStep] = useState<1 | 2>(1);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
@@ -63,7 +64,7 @@ export default function CloseReportDialog({ open, onOpenChange, tournamentId, to
   }, [open, reload]);
 
   const phraseOk = typed.trim().toUpperCase() === CONFIRM_PHRASE;
-  const canConfirm = phraseOk && !busy && !alreadyClosed && !!report;
+  const canConfirm = phraseOk && !busy && !alreadyClosed && !!report && readiness?.ok === true && readiness.ready;
 
   const handleConfirm = async () => {
     setBusy(true);
@@ -108,6 +109,11 @@ export default function CloseReportDialog({ open, onOpenChange, tournamentId, to
                 <CheckCircle2 className="w-4 h-4 text-primary" /> Giải này đã được chốt.
               </div>
             )}
+            {!alreadyClosed && readiness && !readiness.ready && (
+              <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning" role="status">
+                Chưa thể chốt giải. Hãy xử lý trong Floor/Tracker: {describeCloseBlockers(readiness.blockers)}
+              </div>
+            )}
 
             <div className="grid grid-cols-3 gap-2">
               <Cell label="Tổng entry" value={report.entryCount} hint={`${report.bySource.online} on · ${report.bySource.offline} off · ${report.bySource.reentry} re`} />
@@ -119,7 +125,9 @@ export default function CloseReportDialog({ open, onOpenChange, tournamentId, to
               <div className="rounded-lg border border-border p-3">
                 <div className="text-[11px] font-medium text-muted-foreground mb-1">TIỀN VÀO</div>
                 <Row label="Buy-in" sub="pass-through" amount={fmt(report.buyInTotal)} />
-                <Row label="Doanh thu club" sub="rake + phí DV" amount={fmt(report.clubRevenue)} accent />
+                <Row label={report.clubRevenue < 0 ? "Chênh thu − buy-in" : "Doanh thu club"}
+                  sub={report.clubRevenue < 0 ? "dữ liệu thu chưa đủ" : "rake + phí DV"}
+                  amount={fmt(report.clubRevenue)} accent />
                 <Row label="Tiền mặt vào" amount={fmt(report.cashInTotal)} />
               </div>
               <div className="rounded-lg border border-border p-3">
@@ -176,7 +184,8 @@ export default function CloseReportDialog({ open, onOpenChange, tournamentId, to
           ) : step === 1 ? (
             <>
               <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy} className="min-h-[40px]">Huỷ</Button>
-              <Button variant="outline" onClick={() => setStep(2)} disabled={!report || loading} className="min-h-[40px]">Tiếp tục</Button>
+              <Button variant="outline" onClick={() => setStep(2)}
+                disabled={!report || loading || !readiness?.ready} className="min-h-[40px]">Tiếp tục</Button>
             </>
           ) : (
             <>

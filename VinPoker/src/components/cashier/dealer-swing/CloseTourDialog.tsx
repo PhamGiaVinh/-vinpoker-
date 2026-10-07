@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Archive, AlertTriangle } from "lucide-react";
+import { describeCloseBlockers, type CloseReadiness } from "@/lib/feltLifecycleReadiness";
 
 export interface CloseTourPreview {
   tourName: string;
@@ -29,6 +30,9 @@ interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   preview: CloseTourPreview | null;
+  readiness: CloseReadiness | null;
+  readinessError?: string | null;
+  readinessLoading?: boolean;
   /** Undefined until the server RPC is wired (PR3) → button disabled "Sắp có". */
   onConfirm?: () => Promise<void> | void;
   busy?: boolean;
@@ -45,7 +49,9 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-export default function CloseTourDialog({ open, onOpenChange, preview, onConfirm, busy }: Props) {
+export default function CloseTourDialog({
+  open, onOpenChange, preview, readiness, readinessError, readinessLoading, onConfirm, busy,
+}: Props) {
   const [step, setStep] = useState<1 | 2>(1);
   const [typed, setTyped] = useState("");
 
@@ -57,7 +63,8 @@ export default function CloseTourDialog({ open, onOpenChange, preview, onConfirm
 
   const totalDealers = preview.assignedDealers + preview.onBreakDealers;
   const phraseOk = typed.trim().toUpperCase() === CONFIRM_PHRASE;
-  const canConfirm = phraseOk && !!onConfirm && !busy;
+  const canConfirm = phraseOk && !!onConfirm && !busy && readiness?.ok === true
+    && readiness.ready && !readiness.alreadyClosed && !readinessLoading;
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!busy) onOpenChange(o); }}>
@@ -80,6 +87,14 @@ export default function CloseTourDialog({ open, onOpenChange, preview, onConfirm
             <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
               <div className="text-muted-foreground">Bản lưu trữ Swing</div>
               <div className="font-mono text-[11px] mt-0.5 break-all">{preview.archiveFilename}</div>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs" role="status">
+              {readinessLoading ? "Đang kiểm tra phiên bàn và hand trên server…" :
+                readinessError ? `Không kiểm tra được: ${readinessError}` :
+                readiness?.alreadyClosed ? "Tour đã được đóng." :
+                readiness?.ready ? "Các bàn đã an toàn để đóng tour." :
+                readiness?.blockers.length ? `Cần xử lý trong Floor: ${describeCloseBlockers(readiness.blockers)}` :
+                "Chưa có kết quả kiểm tra từ server."}
             </div>
             <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
@@ -116,6 +131,7 @@ export default function CloseTourDialog({ open, onOpenChange, preview, onConfirm
               <Button
                 variant="outline"
                 onClick={() => setStep(2)}
+                disabled={!readiness?.ok || !readiness.ready || readiness.alreadyClosed || !!readinessError || readinessLoading}
                 className="min-h-[40px] border-destructive text-destructive hover:bg-destructive/10"
               >
                 Tiếp tục

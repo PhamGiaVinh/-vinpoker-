@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   computeCloseReport,
@@ -6,6 +6,10 @@ import {
   type CloseReportTotals,
   type CloseReportSource,
 } from "@/lib/closeReport";
+import {
+  describeCloseBlockers, getTournamentCloseReadiness,
+  type TournamentCloseReadiness, withServerCloseTotals,
+} from "@/lib/feltLifecycleReadiness";
 
 // Read-layer + finalize for the operator Close Report (Chốt giải).
 // The reconciliation math lives in the pure ./lib/closeReport; this hook only
@@ -37,13 +41,17 @@ export function useCloseReport(tournamentId: string | null | undefined) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [alreadyClosed, setAlreadyClosed] = useState(false);
+  const [readiness, setReadiness] = useState<TournamentCloseReadiness | null>(null);
+  const requestSeq = useRef(0);
 
   const reload = useCallback(async () => {
     if (!tournamentId) return;
+    const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
+    setReadiness(null);
     try {
-      const [regsRes, elimsRes, closedRes] = await Promise.all([
+      const [regsRes, elimsRes, serverReadiness] = await Promise.all([
         supabase
           .from("tournament_registrations")
           .select("buy_in, total_pay, reference_code, status")
@@ -53,16 +61,12 @@ export function useCloseReport(tournamentId: string | null | undefined) {
           .from("tournament_eliminations")
           .select("position, prize")
           .eq("tournament_id", tournamentId),
-        supabase
-          .from("tournament_close_report")
-          .select("id")
-          .eq("tournament_id", tournamentId)
-          .maybeSingle(),
+        getTournamentCloseReadiness(tournamentId),
       ]);
 
       if (regsRes.error) throw regsRes.error;
       if (elimsRes.error) throw elimsRes.error;
-      if (closedRes.error) throw closedRes.error;
+      if (!serverReadiness.ok) throw new Error(serverReadiness.error ?? "readiness_failed");
 
       const input: CloseReportInput = {
         entries: (regsRes.data ?? []).map((r) => {
@@ -85,13 +89,20 @@ export function useCloseReport(tournamentId: string | null | undefined) {
         })),
       };
 
-      setReport(computeCloseReport(input));
-      setAlreadyClosed(!!closedRes?.data);
+      const computed = computeCloseReport(input);
+      if (seq !== requestSeq.current) return;
+      // The server's close_tournament RPC owns these amounts. The old client
+      // projection clamped negative revenue and could disagree with its report.
+      setReport(withServerCloseTotals(computed, serverReadiness));
+      setReadiness(serverReadiness);
+      setAlreadyClosed(serverReadiness.alreadyClosed);
     } catch (caught) {
+      if (seq !== requestSeq.current) return;
       setError(caught instanceof Error ? caught.message : "load_failed");
       setReport(null);
+      setReadiness(null);
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
   }, [tournamentId]);
 
@@ -102,6 +113,20 @@ export function useCloseReport(tournamentId: string | null | undefined) {
   const closeTournament = useCallback(
     async (reason?: string): Promise<CloseTournamentResult> => {
       if (!tournamentId) return { ok: false, error: "no_tournament" };
+      requestSeq.current += 1;
+      setLoading(false);
+      let current: TournamentCloseReadiness;
+      try {
+        current = await getTournamentCloseReadiness(tournamentId);
+      } catch (caught) {
+        return { ok: false, error: caught instanceof Error ? caught.message : "readiness_failed" };
+      }
+      setReadiness(current);
+      if (!current.ok) return { ok: false, error: current.error ?? "readiness_failed" };
+      if (current.alreadyClosed) return { ok: false, error: "Giải đã được chốt trước đó." };
+      if (!current.ready) {
+        return { ok: false, error: `Còn việc cần xử lý: ${describeCloseBlockers(current.blockers)}` };
+      }
       const { data, error: rpcErr } = await supabase.rpc("close_tournament", {
         p_tournament_id: tournamentId,
         p_reason: reason ?? null,
@@ -113,10 +138,11 @@ export function useCloseReport(tournamentId: string | null | undefined) {
         return { ok: false, error: res?.error ?? rpcErr?.message ?? "close_failed" };
       }
       setAlreadyClosed(true);
+      setReadiness({ ...current, alreadyClosed: true });
       return { ok: true, reconciled: res.reconciled, clubRevenue: res.club_revenue };
     },
     [tournamentId],
   );
 
-  return { report, loading, error, alreadyClosed, reload, closeTournament };
+  return { report, loading, error, alreadyClosed, readiness, reload, closeTournament };
 }

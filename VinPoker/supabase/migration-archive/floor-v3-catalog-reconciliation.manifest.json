@@ -6946,6 +6946,12 @@
       "filename": "20270128000011_chip_ops_bank_adjust_integrity_v1.sql",
       "sha256": "3acc80133400d82e04ae8c277e31ba89b4463dfffead9e098bd4b23a7e7bc7f7",
       "domain": "chip-ops"
+    },
+    {
+      "version": "20270128000012",
+      "filename": "20270128000012_felt_lifecycle_close_guards_v1.sql",
+      "sha256": "3185b1c3c367d8ccf814023b31d3bfaeb52059fe5149db145e63385fc7e9b612",
+      "domain": "floor-dealer-swing-tracker"
     }
   ],
   "floorActiveAllowlist": [
