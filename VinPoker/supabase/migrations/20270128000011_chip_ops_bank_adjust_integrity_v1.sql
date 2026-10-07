@@ -56,6 +56,11 @@ BEGIN
     RETURN jsonb_build_object('error', 'DENOM_NOT_IN_CLUB');
   END IF;
 
+  -- Serialize callers of one global idempotency key before reading its ledger row.
+  -- Otherwise a concurrent retry can read an uncommitted ledger miss, wait on
+  -- the bank row, then incorrectly report race_lost after the first call commits.
+  PERFORM pg_catalog.pg_advisory_xact_lock(280011, pg_catalog.hashtext(p_idempotency_key));
+
   -- A committed retry must return the prior receipt, never apply a second balance change.
   -- The global unique key is not authority to replay another actor's or payload's result.
   SELECT * INTO v_prior FROM public.chip_bank_ledger
