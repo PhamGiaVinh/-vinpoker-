@@ -6940,6 +6940,12 @@
       "filename": "20270128000010_multi_day_after_end_play_guard_child_binding_v1.sql",
       "sha256": "be254e8c94434c055893be227ac4bcb84f2e2b4881236e066872437c47eeb584",
       "domain": "multi-day"
+    },
+    {
+      "version": "20270128000011",
+      "filename": "20270128000011_chip_ops_bank_adjust_integrity_v1.sql",
+      "sha256": "3acc80133400d82e04ae8c277e31ba89b4463dfffead9e098bd4b23a7e7bc7f7",
+      "domain": "chip-ops"
     }
   ],
   "floorActiveAllowlist": [

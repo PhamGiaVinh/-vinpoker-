@@ -190,6 +190,11 @@ test("canonical serialization is deterministic", () => {
     rows,
     manifestText: canonicalManifestText(manifest),
   }), []);
+  assert.deepEqual(findMigrationControlProblems({
+    manifest,
+    rows,
+    manifestText: canonicalManifestText(manifest).replace(/\n/g, "\r\n"),
+  }), []);
   assert.ok(findMigrationControlProblems({
     manifest,
     rows,

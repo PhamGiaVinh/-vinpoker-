@@ -1,0 +1,50 @@
+name: Chip bank adjustment PostgreSQL 17
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/chip-bank-adjust-disposable-db.yml"
+      - "VinPoker/tests/chipOps/bankAdjustIntegrity.pg17.test.mjs"
+      - "VinPoker/scripts/ops/chip-bank-00011-manifest.json"
+      - "VinPoker/scripts/ops/chip-bank-00011-release.mjs"
+      - "VinPoker/scripts/ops/chip-bank-00011-release.test.mjs"
+      - "VinPoker/supabase/migrations/20270128000011_chip_ops_bank_adjust_integrity_v1.sql"
+      - "VinPoker/supabase/migration-archive/historical-never-replay/20261019000000_chip_ops_ledger_bank.sql"
+
+permissions:
+  contents: read
+
+jobs:
+  bank-adjust-postgres-17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+      - name: Exercise migration and actor/payload/CAS boundary
+        working-directory: VinPoker
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGDATABASE: postgres
+          PGPASSWORD: ""
+        run: node --test scripts/ops/chip-bank-00011-release.test.mjs tests/chipOps/bankAdjustIntegrity.pg17.test.mjs
