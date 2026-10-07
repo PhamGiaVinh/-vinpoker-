@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "kind": "live-duplicate-migration-receipt",
+  "projectRef": "orlesggcjamwuknxwcpk",
+  "liveVersion": "20270115000019",
+  "liveName": "tracker_voice_floor_owner_authority",
+  "canonicalSourceVersion": "20270115000020",
+  "canonicalSourceFile": "migrations/20270115000020_tracker_voice_floor_owner_authority.sql",
+  "normalizedSqlSha256": "be67d23b2e24bfb6edb4b4ac427dd8d3d984729bebf08af0d2e81b5997e01c8a",
+  "evidence": "Read-only live ledger comparison on 2026-10-07 found versions 00019 and 00020 have byte-identical SQL after CRLF-to-LF normalization; the normalized body matches canonical source 00020. The live receipts differ only in line endings.",
+  "releaseImplication": "Do not add a second executable copy of this SQL as migration 00019. The 00020 precondition intentionally fails if its authority change has already run. Do not delete or repair either live receipt. Supabase CLI db push remains blocked until a separately reviewed reconciliation procedure accounts for this live-only duplicate."
+}
