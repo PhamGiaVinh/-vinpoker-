@@ -3052,11 +3052,13 @@ if (tier2Count > 0) {
                     .eq("current_state", "on_break");
                 }
 
-                const { data: frAssign, error: frAssignErr } = await admin.rpc("assign_dealer_to_table", {
+                const { data: frAssign, error: frAssignErr } = await admin.rpc("worker_assign_dealer_to_session_v1", {
                   p_attendance_id: replacementDealer.id,
                   p_table_id: assignment.table_id,
+                  p_table_session_id: assignment.table_session_id,
                   p_swing_due_at: frSwingDueAt,
                   p_club_id: cid,
+                  p_idempotency_key: `replacement_${assignment.id}_${assignment.table_session_id}_${assignment.version}`,
                 });
                 const frOutcome = typeof frAssign === "string" ? frAssign : (frAssign as any)?.outcome;
 

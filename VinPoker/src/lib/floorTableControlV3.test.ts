@@ -59,6 +59,14 @@ function clientFrom(handler: ReturnType<typeof vi.fn>, enabled = true, redrawSea
 }
 
 describe("floorTableControlV3 browser boundary", () => {
+  it("accepts an orphan session as explicit repair data rather than dropping the whole room", async () => {
+    const rpc = vi.fn().mockResolvedValue({ error: null, data: [{ ...inventoryRow,
+      availability_status: "repair_required", table_session_id: "orphan-session", session_type: "tournament",
+      tournament_id: "tour-a", control_mode: "manual", control_epoch: 1, revision: 1,
+    }] });
+    const result = await clientFrom(rpc).getClubTableInventory("club-a");
+    expect(result).toEqual({ ok: true, data: [expect.objectContaining({ availabilityStatus: "repair_required", tournamentTableId: null })] });
+  });
   it("sends exact session, epoch and revision when requesting a mode change", async () => {
     const rpc = vi.fn().mockResolvedValue({ error: null, data: { ok: true, outcome: "pending" } });
     await clientFrom(rpc).requestTableControlMode({ tournamentTableId: "table-a", tableSessionId: "session-a", controlMode: "manual", expectedRevision: 4, expectedEpoch: 2, requestId: "request-a" });

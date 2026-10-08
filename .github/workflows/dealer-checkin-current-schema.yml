@@ -10,6 +10,8 @@ on:
       - 'VinPoker/supabase/migrations/20270128000016_chip_color_up_serialized_integrity_v1.sql'
       - 'VinPoker/tests/chipOps/colorUpCurrentSchema.pg17.sql'
       - 'VinPoker/tests/chipOps/colorUpIntegrity.pg17.test.mjs'
+      - 'VinPoker/supabase/migrations/20270128000017_dealer_operational_inventory_exact_session_v1.sql'
+      - 'VinPoker/tests/dealerSwing/operationalInventory*'
 permissions: { actions: read, contents: read }
 jobs:
   runtime:
@@ -60,3 +62,9 @@ jobs:
         run: |
           createdb vinpoker_chip_concurrency
           PGDATABASE=vinpoker_chip_concurrency node --test tests/chipOps/colorUpIntegrity.pg17.test.mjs
+      - name: Exact-session dealer inventory and true-overlap assignment
+        working-directory: VinPoker
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000017_dealer_operational_inventory_exact_session_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/operationalInventory.pg17.sql
+          node tests/dealerSwing/operationalInventory.concurrent.mjs

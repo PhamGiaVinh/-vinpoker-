@@ -74,6 +74,7 @@ export type {
 // ─── Shared utilities (not extracted) ─────────────────────────────────────────
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getDealerOperationalTables } from "./dealerOperationalTables.ts";
 
 export type SupabaseAdmin = any;
 
@@ -100,10 +101,5 @@ export async function getTableIdsForClub(
   admin: SupabaseAdmin,
   clubId: string
 ): Promise<string[]> {
-  const { data } = await admin
-    .from("game_tables")
-    .select("id")
-    .eq("club_id", clubId)
-    .eq("status", "active");
-  return (data ?? []).map((t: { id: string }) => t.id);
+  return (await getDealerOperationalTables(admin, clubId)).map(table => table.id);
 }

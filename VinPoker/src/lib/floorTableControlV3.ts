@@ -61,6 +61,7 @@ export type FloorTableControlV3Result<T> =
 export type FloorTableInventoryAvailability =
   | "available"
   | "in_use"
+  | "repair_required"
   | "maintenance"
   | "disabled"
   | "retired"
@@ -261,7 +262,7 @@ function parseInventoryItem(value: unknown): FloorTableControlV3Result<FloorTabl
     || tableName === undefined
     || ![null, "available", "maintenance", "disabled", "retired"].includes(operationalStatus)
     || typeof availabilityStatus !== "string"
-    || !["available", "in_use", "maintenance", "disabled", "retired", "preflight_required"].includes(availabilityStatus)
+    || !["available", "in_use", "repair_required", "maintenance", "disabled", "retired", "preflight_required"].includes(availabilityStatus)
     || tableSessionId === undefined
     || ![null, "tournament", "cash", "vip"].includes(sessionType)
     || ![null, "manual", "tracker"].includes(controlMode)
@@ -277,7 +278,7 @@ function parseInventoryItem(value: unknown): FloorTableControlV3Result<FloorTabl
 
   if (
     (availabilityStatus === "in_use" && (!tableSessionId || !sessionType || controlEpoch == null || revision == null))
-    || (sessionType === "tournament" && (!tournamentId || !tournamentTableId))
+    || (availabilityStatus !== "repair_required" && sessionType === "tournament" && (!tournamentId || !tournamentTableId))
     || (tableNumber === null && (operationalStatus === "available" || availabilityStatus !== (operationalStatus ?? "preflight_required") || !tableName?.trim()
       || tableSessionId || tournamentTableId || sessionType || controlMode || controlEpoch != null || revision != null
       || tournamentId || tournamentTableStatus || activeDealerAssignmentId))

@@ -1945,6 +1945,12 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
           <Button size="sm" variant="ghost" className="ml-auto text-xs h-6" onClick={refetchTables}>Thử lại</Button>
         </div>
       )}
+      {(tables ?? []).some(table => table.availability_status === "repair_required") && (
+        <div role="alert" className="bg-destructive/10 border border-destructive/30 text-destructive text-xs p-3 rounded">
+          Cần sửa dữ liệu phiên bàn: {(tables ?? []).filter(table => table.availability_status === "repair_required").map(table => table.table_name).join(", ")}.
+          Các bàn này không được tự gán dealer; lịch sử được giữ nguyên để đối chiếu.
+        </div>
+      )}
       {dealersError && (
         <div className="bg-destructive/10 border border-destructive/30 text-destructive text-xs p-3 rounded flex items-center gap-2">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />

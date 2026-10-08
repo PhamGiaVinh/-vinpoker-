@@ -6976,6 +6976,12 @@
       "filename": "20270128000016_chip_color_up_serialized_integrity_v1.sql",
       "sha256": "346994494c42859baddac354603ecaf3741428115ae819d56a50508e45e77d43",
       "domain": "chip-ops"
+    },
+    {
+      "version": "20270128000017",
+      "filename": "20270128000017_dealer_operational_inventory_exact_session_v1.sql",
+      "sha256": "c8d1718f5ac578bd94eea4a913089fa5d23d042369c147c96ce7624a2ba4d88d",
+      "domain": "dealer-swing"
     }
   ],
   "floorActiveAllowlist": [
