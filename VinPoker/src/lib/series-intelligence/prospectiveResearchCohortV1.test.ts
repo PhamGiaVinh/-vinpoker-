@@ -196,7 +196,7 @@ describe("engine-origin snapshot builder", () => {
   ] as const)("fails closed for %s", async (_label, event, expected) => {
     const result = await buildProspectiveEngineSnapshotV1({ event, history: HISTORY, horizon: "T-7", capturedAt: event === EVENT ? TARGET : "2026-08-25T11:59:00.000Z" });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe(expected);
+    if (result.ok === false) expect(result.code).toBe(expected);
   });
 
   it("does not use a target outcome as a feature", async () => {

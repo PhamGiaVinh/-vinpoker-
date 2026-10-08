@@ -514,7 +514,7 @@ function capabilityReadiness(
 function priorityGaps(fields: readonly PublicSourceFieldCoverage[], evidence: readonly PublicEvidenceStateCoverage[]): readonly PublicCoveragePriorityGap[] {
   const missing = (field: string): boolean => (fieldCoverageByKey(fields, "event", field)?.missingClaims ?? 0) > 0;
   const evidenceUnverified = evidence.some((row) => row.status === "unverified" && row.claimCount > 0);
-  return [
+  const gaps: PublicCoveragePriorityGap[] = [
     {
       priority: "P0",
       categoryKey: "evidence_verification",
@@ -542,7 +542,8 @@ function priorityGaps(fields: readonly PublicSourceFieldCoverage[], evidence: re
       fieldKeys: [],
       reasonCodes: ["separate_market_releases_required_before_cross_market_evaluation"],
     },
-  ].map((gap) => deepFreeze({
+  ];
+  return gaps.map((gap) => deepFreeze({
     ...gap,
     fieldKeys: [...gap.fieldKeys].sort(compareCanonicalStrings),
     reasonCodes: [...gap.reasonCodes].sort(compareCanonicalStrings),
