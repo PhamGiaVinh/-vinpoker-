@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { chipOpsRpcErrorMessage } from "@/lib/chipOpsErrors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -30,10 +31,10 @@ const ERR: Record<string, string> = {
 async function callRpc(fn: string, args: Record<string, unknown>): Promise<any | null> {
   try {
     const { data, error } = await sb.rpc(fn, args);
-    if (error) { toast.error("Tính năng color-up chưa bật trên máy chủ."); return null; }
+    if (error) { toast.error(chipOpsRpcErrorMessage(error)); return null; }
     if (data && data.error) { toast.error(ERR[data.error] ?? data.error); return null; }
     return data ?? {};
-  } catch { toast.error("Có lỗi xảy ra, thử lại."); return null; }
+  } catch (error) { toast.error(chipOpsRpcErrorMessage(error)); return null; }
 }
 
 interface Denom { denomination_id: string; value: number; color: string | null; current_count: number }

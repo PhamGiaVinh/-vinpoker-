@@ -63,6 +63,7 @@ import {
   unresolvedCheckoutAttendanceIds,
 } from "@/lib/dealerCheckoutResults";
 import { useDealerSwingHealth } from "@/hooks/useDealerSwingHealth";
+import { dealerTableCoverage } from "@/lib/dealerTableCoverage";
 import SwingTableActions from "./dealer-swing/SwingTableActions";
 import StatusFilterChips, { type StatusFilterValue } from "./dealer-swing/StatusFilterChips";
 import SwingTableCard, { type ConfirmSwingRequest } from "./dealer-swing/SwingTableCard";
@@ -540,7 +541,8 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   const tableAssignmentMap = useMemo(() => {
     const map: Record<string, DealerAssignment | null> = {};
     for (const t of tables ?? []) {
-      const a = (assignments ?? []).find((a) => a.table_id === t.id && a.status === "assigned");
+      const a = (assignments ?? []).find((a) => a.table_id === t.id && a.status === "assigned" && !a.released_at
+        && !!t.table_session_id && a.table_session_id === t.table_session_id);
       map[t.id] = a ?? null;
     }
     return map;
@@ -555,9 +557,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
     // (status='assigned' on a closed/inactive table — left by a close-table
     // race) must not inflate this, so "bàn có dealer" can never exceed "bàn
     // đang mở" (no more nonsensical 15/13).
-    const assignedTables = (assignments ?? []).filter(
-      (a) => a.status === "assigned" && !a.released_at && activeTableIds.has(a.table_id),
-    ).length;
+    const assignedTables = dealerTableCoverage(tables ?? [], assignments ?? []).assignedTables;
     // Diagnostic: assignments still 'assigned' but pointing at a non-active
     // table — these are ghosts (operator/admin signal only).
     const ghostAssignments = (assignments ?? []).filter(
@@ -4280,11 +4280,7 @@ function CommandCenter({
   };
 
   // ── Computed metrics ────────────────────────────────────────────
-  const activeTablesCount = tables?.length ?? 0;
-  const assignedTablesCount = useMemo(
-    () => assignments.filter((a) => a.status === "assigned").length,
-    [assignments],
-  );
+  const { activeTables: activeTablesCount, assignedTables: assignedTablesCount } = dealerTableCoverage(tables ?? [], assignments);
 
   // Exceptions count for health badge
   const exceptionsCount = useMemo(() => {
@@ -4295,7 +4291,7 @@ function CommandCenter({
     }
     // Empty tables
     for (const t of tables ?? []) {
-      if (!tableAssignmentMap[t.id]) count++;
+      if (t.status === "active" && !tableAssignmentMap[t.id]) count++;
     }
     // Break due — use live computed minutes
     for (const d of dealers ?? []) {

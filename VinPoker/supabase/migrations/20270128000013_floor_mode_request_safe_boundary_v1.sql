@@ -76,7 +76,7 @@ BEGIN
     RETURN receipt.result;
   END IF;
   IF s.id IS NULL OR s.closed_at IS NOT NULL OR t.status IS DISTINCT FROM 'active' OR t.table_session_id IS DISTINCT FROM s.id
-    OR s.tournament_id IS DISTINCT FROM c.id OR s.club_id IS DISTINCT FROM c.club_id OR s.game_table_id IS DISTINCT FROM t.game_table_id THEN
+    OR t.tournament_id IS DISTINCT FROM c.id OR s.tournament_id IS DISTINCT FROM c.id OR s.club_id IS DISTINCT FROM c.club_id OR s.game_table_id IS DISTINCT FROM t.game_table_id THEN
     RETURN jsonb_build_object('ok',false,'error','table_session_mismatch'); END IF;
   IF c.status IN ('completed','cancelled') THEN RETURN jsonb_build_object('ok',false,'error','tournament_not_open'); END IF;
   IF s.revision<>p_expected_revision OR s.control_epoch<>p_expected_epoch THEN RETURN jsonb_build_object('ok',false,'error','STALE_STATE'); END IF;

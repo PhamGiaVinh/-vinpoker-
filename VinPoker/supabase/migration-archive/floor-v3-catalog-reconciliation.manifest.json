@@ -6952,6 +6952,12 @@
       "filename": "20270128000012_felt_lifecycle_close_guards_v1.sql",
       "sha256": "3185b1c3c367d8ccf814023b31d3bfaeb52059fe5149db145e63385fc7e9b612",
       "domain": "floor-dealer-swing-tracker"
+    },
+    {
+      "version": "20270128000013",
+      "filename": "20270128000013_floor_mode_request_safe_boundary_v1.sql",
+      "sha256": "b456870fe8458bb84667cfae2ffcd7f4afb2ae0da831f99bc662ee69927a0917",
+      "domain": "floor"
     }
   ],
   "floorActiveAllowlist": [

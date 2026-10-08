@@ -247,7 +247,9 @@ export function FloorTableMapPanelV3({
     let disposed = false;
     const refresh = async () => {
       if (document.visibilityState !== "visible" || !navigator.onLine) return;
-      const result = await v3.getTableControlModeRequest({ tournamentTableId: selectedTableId, tableSessionId: selectedTableSessionId });
+      let result;
+      try { result = await v3.getTableControlModeRequest({ tournamentTableId: selectedTableId, tableSessionId: selectedTableSessionId }); }
+      catch { if (!disposed) setModeRequestError("Không kết nối được máy chủ. Hãy tải lại trước khi đổi chế độ."); return; }
       if (disposed) return;
       if (!result.ok) { setModeRequestError("Không xác minh được yêu cầu đổi chế độ. Hãy tải lại trước khi thao tác."); return; }
       const request = result.data.request;
