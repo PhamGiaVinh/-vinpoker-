@@ -1027,7 +1027,7 @@ describe("TrackerVoicePanel", () => {
     const handleDockAction = vi.fn();
     renderPanel({ ...hookFixture(), ...state, handleDockAction } as StandaloneHandInput);
     for (const name of ["Fold", "Check", "Call", "Bet", "Raise", "All-in"]) {
-      const button = screen.getByRole("button", { name, exact: true });
+      const button = screen.getByRole("button", { name });
       expect(button).toBeDisabled();
       fireEvent.click(button);
     }

@@ -6958,6 +6958,12 @@
       "filename": "20270128000013_floor_mode_request_safe_boundary_v1.sql",
       "sha256": "b51c368af39a77998bde295d8577a048af0df3895811885f59c2d117c34b151d",
       "domain": "floor"
+    },
+    {
+      "version": "20270128000015",
+      "filename": "20270128000015_floor_restore_bust_integrity_v1.sql",
+      "sha256": "28690f87cf7fb636d0fbc06754a1bfa899e31d8e4a779ebb9990d6511d7d4782",
+      "domain": "floor"
     }
   ],
   "floorActiveAllowlist": [

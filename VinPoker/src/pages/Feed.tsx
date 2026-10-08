@@ -333,10 +333,10 @@ function PostCard({ post, onLike, likePending, currentUserId }: { post: FeedPost
   }, [post.id]);
 
   const submitComment = async () => {
-    const t = text.trim();
-    if (!t) return;
+    const commentText = text.trim();
+    if (!commentText) return;
     setPosting(true);
-    const { error } = await supabase.from("feed_post_comments").insert({ post_id: post.id, user_id: currentUserId, content: t });
+    const { error } = await supabase.from("feed_post_comments").insert({ post_id: post.id, user_id: currentUserId, content: commentText });
     setPosting(false);
     if (error) { toast.error(t("feed.comment.failed")); return; }
     setText("");
