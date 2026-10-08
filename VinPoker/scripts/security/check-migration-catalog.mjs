@@ -221,6 +221,9 @@ export function findMigrationCatalogProblems(
         const remoteVersions = new Set(
           reconciliation.remoteLedgerVersions.map((entry) => entry.version),
         );
+        if (remoteVersions.size !== reconciliation.remoteLedgerVersions.length) {
+          invalidFiles.push("duplicate remote ledger version in reconciliation evidence");
+        }
         const floorFiles = new Set(
           reconciliation.floorActiveAllowlist.map((entry) => entry.filename),
         );
@@ -264,9 +267,29 @@ export function findMigrationCatalogProblems(
             invalidFiles.push(`remote history receipt is not active at ledger version ${receipt.receiptFilename}`);
           } else if (!isCommentOnly(row.source)) {
             invalidFiles.push(`remote history receipt is not comment-only ${receipt.receiptFilename}`);
+          } else if (createHash("sha256").update(row.source.replace(/\r\n/g, "\n"), "utf8").digest("hex") !== receipt.receiptSha256) {
+            invalidFiles.push(`remote history receipt hash drift ${receipt.receiptFilename}`);
           }
           if (!remoteVersions.has(receipt.remoteVersion)) {
             invalidFiles.push(`remote history receipt lacks remote ledger evidence ${receipt.remoteVersion}`);
+          }
+          const ledger = reconciliation.remoteLedgerVersions.find((entry) => entry.version === receipt.remoteVersion);
+          if (ledger && ledger.name !== receipt.remoteName) {
+            invalidFiles.push(`remote history receipt name mismatch ${receipt.remoteVersion}`);
+          }
+          if (receipt.normalizedLiveSqlSha256 && (
+            receipt.normalizedLiveSqlSha256 !== ledger?.normalizedSqlSha256 ||
+            receipt.normalizedLiveSqlSha256 !== receipt.recoveredSource?.sha256
+          )) {
+            invalidFiles.push(`remote history receipt live/source hash mismatch ${receipt.remoteVersion}`);
+          }
+          if (receipt.recoveredSource) {
+            const preservedPath = resolve(dirname(migrationDirectory), "..", receipt.recoveredSource.path);
+            const preservedHash = existsSync(preservedPath) && createHash("sha256")
+              .update(readFileSync(preservedPath, "utf8").replace(/\r\n/g, "\n"), "utf8").digest("hex");
+            if (preservedHash !== receipt.recoveredSource.sha256) {
+              invalidFiles.push(`remote history preserved source missing or hash drift ${receipt.remoteVersion}`);
+            }
           }
         }
         const head = reconciliation.registeredProductionHead;

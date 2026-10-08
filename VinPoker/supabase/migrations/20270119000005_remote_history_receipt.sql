@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270119000005
+-- Remote ledger name: satellite_source_cutoff_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: a0ea26139eb0cb439ae92f0f48d7b6925a7ecb292116cc24ef4eb6691aef7d96
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20270119000005_satellite_source_cutoff_v1.sql

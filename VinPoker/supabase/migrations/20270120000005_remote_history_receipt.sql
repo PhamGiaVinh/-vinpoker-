@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270120000005
+-- Remote ledger name: multiday_overlay_funding_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: ad2d41f8c8fcdcdd6782c0bb084b7ee2193cd624510f707b28a5e776db7f5c44
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20270120000005_multiday_overlay_funding_v1.sql

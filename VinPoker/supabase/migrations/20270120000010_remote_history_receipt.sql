@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270120000010
+-- Remote ledger name: multiday_distinct_itm_day2_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: 62b3e89174bd0dad0ed2295f9a8a191053b1f55cc5dbeaa989b3e62729a80a38
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20270120000010_multiday_distinct_itm_day2_v1.sql

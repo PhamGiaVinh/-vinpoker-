@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270117000002
+-- Remote ledger name: satellite_ticket_issue_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: d567c37d137a35592aa880c37721d4af2d836893f1882ef9f0599be36cfb95e4
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20270117000002_satellite_ticket_issue_v1.sql

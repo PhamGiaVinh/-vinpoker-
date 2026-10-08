@@ -1,0 +1,9 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270115000019
+-- Remote ledger name: tracker_voice_floor_owner_authority
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: be67d23b2e24bfb6edb4b4ac427dd8d3d984729bebf08af0d2e81b5997e01c8a
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Duplicate Voice lineage: migration-archive/live-duplicate-20270115000019.manifest.json
+-- Canonical source: migrations/20270115000020_tracker_voice_floor_owner_authority.sql
