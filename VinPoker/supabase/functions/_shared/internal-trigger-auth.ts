@@ -52,14 +52,17 @@ export function authorizeInternalTrigger(
   return { ok: true };
 }
 
-/** Legacy cron callers supply the actual service credential, not any Bearer string. */
-export function authorizeServiceRoleRequest(
+/** Swing cron uses a provisioned internal secret or the actual service credential. */
+export function authorizeSwingWorkerRequest(
   request: Request,
   expectedKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+  internalSecret = Deno.env.get("PROCESS_SWING_INTERNAL_SECRET"),
 ): InternalAuthResult {
-  if (!expectedKey) return { ok: false, status: 503, code: "internal_auth_not_configured" };
+  if (!expectedKey && !internalSecret) return { ok: false, status: 503, code: "internal_auth_not_configured" };
   const header = request.headers.get("authorization") ?? "";
-  if (!header.startsWith("Bearer ") || !constantTimeEqual(header.slice(7).trim(), expectedKey)) {
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (!token || !((expectedKey && constantTimeEqual(token, expectedKey)) ||
+    (internalSecret && constantTimeEqual(token, internalSecret)))) {
     return { ok: false, status: 401, code: "internal_auth_denied" };
   }
   return { ok: true };

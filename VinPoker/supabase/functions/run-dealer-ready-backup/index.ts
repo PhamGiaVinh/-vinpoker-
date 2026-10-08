@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { authorizeServiceRoleRequest, isUuid } from "../_shared/internal-trigger-auth.ts";
+import { authorizeSwingWorkerRequest, isUuid } from "../_shared/internal-trigger-auth.ts";
 import { getDealerOperationalTables } from "../_shared/dealerOperationalTables.ts";
 
 const corsHeaders = {
@@ -30,7 +30,7 @@ const json = (data: unknown, status = 200) =>
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-  const authorization = authorizeServiceRoleRequest(req);
+  const authorization = authorizeSwingWorkerRequest(req);
   if (!authorization.ok) return json({ error: authorization.code }, authorization.status);
 
   const startTime = Date.now();

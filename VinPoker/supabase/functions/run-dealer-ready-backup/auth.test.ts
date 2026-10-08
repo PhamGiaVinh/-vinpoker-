@@ -4,11 +4,13 @@ Deno.test("backup HTTP handler rejects untrusted requests before privileged clie
   const oldServe = Deno.serve;
   const oldKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const oldUrl = Deno.env.get("SUPABASE_URL");
+  const oldInternal = Deno.env.get("PROCESS_SWING_INTERNAL_SECRET");
   let handler: (req: Request) => Promise<Response>;
   // Capture the real deployed handler without binding a port or creating a backend client.
   Object.defineProperty(Deno, "serve", { configurable: true, value: (fn: typeof handler) => { handler = fn; } });
   Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "backup-handler-test-fixture");
   Deno.env.set("SUPABASE_URL", "");
+  Deno.env.delete("PROCESS_SWING_INTERNAL_SECRET");
   try {
     await import("./index.ts");
     for (const token of ["anything", "public-anon-fixture", "browser-user-fixture"]) {
@@ -29,5 +31,7 @@ Deno.test("backup HTTP handler rejects untrusted requests before privileged clie
     else Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", oldKey);
     if (oldUrl === undefined) Deno.env.delete("SUPABASE_URL");
     else Deno.env.set("SUPABASE_URL", oldUrl);
+    if (oldInternal === undefined) Deno.env.delete("PROCESS_SWING_INTERNAL_SECRET");
+    else Deno.env.set("PROCESS_SWING_INTERNAL_SECRET", oldInternal);
   }
 });
