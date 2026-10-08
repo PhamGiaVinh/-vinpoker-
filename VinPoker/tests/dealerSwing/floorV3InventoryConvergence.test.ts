@@ -25,4 +25,14 @@ describe("Dealer Swing Floor V3 inventory convergence", () => {
     expect(panelSource).toContain("getDealerTourCloseReadiness");
     expect(panelSource).toContain("archive_and_close_dealer_tour");
   });
+
+  it("stops Auto-Swing with an explicit OFF write and never invokes the toggle path", () => {
+    const handler = panelSource.match(/const\s+handleStopSwing\s*=\s*async\s*\(\)\s*=>\s*\{([\s\S]*?)\n\s*\};/)?.[1];
+    expect(handler).toBeDefined();
+    expect(handler).toContain("auto_swing_enabled: false");
+    expect(handler).toContain("onAutoSwingDisabled()");
+    expect(handler).not.toContain("onToggleAutoSwing()");
+    expect(handler).not.toContain("massAssign");
+    expect(handler).not.toContain("autoSwingAll");
+  });
 });
