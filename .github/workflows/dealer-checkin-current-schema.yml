@@ -52,12 +52,14 @@ jobs:
         working-directory: VinPoker
         run: |
           node scripts/ops/restore-schema-test-baseline.mjs
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000013_floor_mode_request_safe_boundary_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000014_dealer_checkin_club_shift_receipt_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/checkin.pg17.sql
           node tests/dealerSwing/checkin.concurrent.mjs
       - name: Chip integrity on exact current schema
         working-directory: VinPoker
         run: |
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000015_floor_restore_bust_integrity_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000016_chip_color_up_serialized_integrity_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/chipOps/colorUpCurrentSchema.pg17.sql
       - name: Chip concurrency in isolated minimal fixture (not schema parity evidence)
