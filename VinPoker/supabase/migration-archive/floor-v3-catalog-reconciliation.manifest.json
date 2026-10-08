@@ -7613,6 +7613,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000021",
+      "filename": "20270128000021_dealer_ready_private_trigger_v1.sql",
+      "sha256": "bda701820882229c6b2a5241dd2f65067755f20f4405980ccc9850717d8be4c6",
+      "domain": "dealer-swing"
+    },
+    {
       "version": "20270128000020",
       "filename": "20270128000020_dealer_ready_backup_private_cron_v1.sql",
       "sha256": "550555b385f59b77cde479546d88f1a9e41abf4f8170991af110d26cfb419b4d",

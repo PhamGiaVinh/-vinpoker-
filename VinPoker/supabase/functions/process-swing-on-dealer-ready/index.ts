@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   authorizeInternalTrigger,
+  authorizeSwingWorkerRequest,
   getIdempotencyKey,
   parseDealerReadyPayload,
 } from "../_shared/internal-trigger-auth.ts";
@@ -27,7 +28,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204 });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
-  const auth = authorizeInternalTrigger(req);
+  // Existing header callers remain supported; the DB trigger uses the matched Vault worker bearer.
+  const auth = req.headers.has("authorization")
+    ? authorizeSwingWorkerRequest(req) : authorizeInternalTrigger(req);
   if (!auth.ok) return json({ error: auth.code }, auth.status);
 
   const idempotencyKey = getIdempotencyKey(req);

@@ -23,6 +23,8 @@ on:
       - 'VinPoker/supabase/functions/_shared/__tests__/backupServiceAuth.test.ts'
       - 'VinPoker/supabase/migrations/20270128000020_dealer_ready_backup_private_cron_v1.sql'
       - 'VinPoker/tests/dealerSwing/backupCron*.sql'
+      - 'VinPoker/supabase/migrations/20270128000021_dealer_ready_private_trigger_v1.sql'
+      - 'VinPoker/tests/dealerSwing/readyTrigger*.sql'
 permissions: { actions: read, contents: read }
 jobs:
   runtime:
@@ -104,3 +106,6 @@ jobs:
           PGDATABASE=vinpoker_ops_backup_cron psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/backupCron.fixture.pg17.sql
           PGDATABASE=vinpoker_ops_backup_cron psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000020_dealer_ready_backup_private_cron_v1.sql
           PGDATABASE=vinpoker_ops_backup_cron psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/backupCron.pg17.sql
+          PGDATABASE=vinpoker_ops_backup_cron psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/readyTrigger.fixture.pg17.sql
+          PGDATABASE=vinpoker_ops_backup_cron psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000021_dealer_ready_private_trigger_v1.sql
+          PGDATABASE=vinpoker_ops_backup_cron psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/readyTrigger.pg17.sql

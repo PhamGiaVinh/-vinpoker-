@@ -3,19 +3,30 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 Deno.test("ready trigger honors OFF, verified inventory and exact-session commit", async () => {
   const oldServe = Deno.serve;
   const oldFetch = globalThis.fetch;
-  const names = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "DEALER_TRIGGER_INTERNAL_SECRET"];
+  const names = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "DEALER_TRIGGER_INTERNAL_SECRET", "PROCESS_SWING_INTERNAL_SECRET"];
   const previous = names.map((name) => Deno.env.get(name));
   let handler: (req: Request) => Promise<Response>;
   Object.defineProperty(Deno, "serve", { configurable: true, value: (fn: typeof handler) => { handler = fn; } });
   Deno.env.set(names[0], "https://backend.invalid");
   Deno.env.set(names[1], "ready-service-fixture");
   Deno.env.set(names[2], "ready-internal-fixture");
+  Deno.env.set(names[3], "ready-worker-fixture");
   const club = "00000000-0000-4000-8000-000000000001";
   const attendance = "00000000-0000-4000-8000-000000000002";
   const table = "00000000-0000-4000-8000-000000000003";
   const session = "00000000-0000-4000-8000-000000000004";
   try {
     await import("./index.ts");
+    globalThis.fetch = () => { throw new Error("unauthenticated request reached privileged backend"); };
+    for (const token of ["anon-fixture", "browser-fixture", "", "ready-worker-fixture-wrong"]) {
+      const denied = await handler!(new Request("https://worker.invalid", { method: "POST",
+        headers: { authorization: `Bearer ${token}`, "x-idempotency-key": "denied_fixture" },
+        body: JSON.stringify({ club_id: club, attendance_id: attendance }),
+      }));
+      assertEquals(denied.status, 401);
+      await denied.json();
+    }
+    for (const credential of ["header", "worker", "service"]) {
     for (const scenario of ["off", "settings_error", "no_table", "planner_error", "planner_on", "unknown", "success"]) {
       let mutations = 0;
       globalThis.fetch = (input, init) => {
@@ -48,12 +59,16 @@ Deno.test("ready trigger honors OFF, verified inventory and exact-session commit
         throw new Error(`unexpected fixture route ${route}`);
       };
       const response = await handler!(new Request("https://worker.invalid", { method: "POST",
-        headers: { "x-vinpoker-internal-secret": "ready-internal-fixture", "x-idempotency-key": `ready_${scenario}` },
+        headers: { ...(credential === "header"
+          ? { "x-vinpoker-internal-secret": "ready-internal-fixture" }
+          : { authorization: `Bearer ${credential === "worker" ? "ready-worker-fixture" : "ready-service-fixture"}` }),
+          "x-idempotency-key": `ready_${credential}_${scenario}` },
         body: JSON.stringify({ club_id: club, attendance_id: attendance }),
       }));
       assertEquals(response.status, scenario.endsWith("_error") ? 503 : scenario === "unknown" ? 500 : 200, scenario);
       assertEquals(mutations, ["unknown", "success"].includes(scenario) ? 1 : 0, scenario);
       await response.json();
+    }
     }
   } finally {
     globalThis.fetch = oldFetch;
