@@ -6834,6 +6834,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000014",
+      "filename": "20270128000014_dealer_checkin_club_shift_receipt_v1.sql",
+      "sha256": "e42980cb86ce1234e3a69cf399ae042b548eabc040e3b14d9b6eeff0064fa054",
+      "domain": "dealer-swing"
+    },
+    {
       "version": "20260925115949",
       "filename": "20260925115949_public_table_history_verified_results.sql",
       "sha256": "9429ab4fcaf2b38f9bb425023fdb20e74f94da6465878bff3a676eeb50793bc7",
