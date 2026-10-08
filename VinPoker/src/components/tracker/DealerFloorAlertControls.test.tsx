@@ -1,10 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const mockRpc = vi.hoisted(() => vi.fn());
 const handRevision = vi.hoisted(() => ({ value: 7 }));
 
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {
-  rpc: vi.fn(),
+  rpc: mockRpc,
   from: vi.fn(() => {
     const query = {
       eq: () => query,
@@ -20,7 +21,7 @@ import { DealerFloorAlertControls } from "./DealerFloorAlertControls";
 const props = { tournamentId: "tournament", tournamentTableId: "table", handId: "hand", enabled: true };
 
 beforeEach(() => {
-  vi.mocked(supabase.rpc).mockReset();
+  mockRpc.mockReset();
   handRevision.value = 7;
   window.sessionStorage.clear();
 });
@@ -34,7 +35,7 @@ describe("Dealer Floor operational alert", () => {
   });
 
   it("sends from manual mode without Voice and requires a matching receipt", async () => {
-    vi.mocked(supabase.rpc).mockImplementation((async (_name, args: { p_request_id: string }) => ({
+    mockRpc.mockImplementation((async (_name, args: { p_request_id: string }) => ({
       data: { ok: true, alert_id: "alert-1", request_id: args.p_request_id }, error: null,
     })) as never);
     render(<DealerFloorAlertControls {...props} />);
@@ -48,7 +49,7 @@ describe("Dealer Floor operational alert", () => {
   });
 
   it("supports a table-level request before any hand starts", async () => {
-    vi.mocked(supabase.rpc).mockImplementation((async (_name, args: { p_request_id: string }) => ({
+    mockRpc.mockImplementation((async (_name, args: { p_request_id: string }) => ({
       data: { ok: true, alert_id: "alert-1", request_id: args.p_request_id }, error: null,
     })) as never);
     render(<DealerFloorAlertControls {...props} handId={null} />);
@@ -60,7 +61,7 @@ describe("Dealer Floor operational alert", () => {
   });
 
   it("reports the whole hand without forcing the operator to select an action", async () => {
-    vi.mocked(supabase.rpc).mockImplementation((async (_name, args: { p_request_id: string }) => ({
+    mockRpc.mockImplementation((async (_name, args: { p_request_id: string }) => ({
       data: { ok: true, alert_id: "alert-1", request_id: args.p_request_id }, error: null,
     })) as never);
     render(<DealerFloorAlertControls {...props} />);
@@ -74,7 +75,7 @@ describe("Dealer Floor operational alert", () => {
   });
 
   it("requires an active hand before reporting a wrong hand", async () => {
-    vi.mocked(supabase.rpc).mockImplementation((async (_name, args: { p_request_id: string }) => ({
+    mockRpc.mockImplementation((async (_name, args: { p_request_id: string }) => ({
       data: { ok: true, alert_id: "alert-1", request_id: args.p_request_id, correction_pending: true }, error: null,
     })) as never);
     render(<DealerFloorAlertControls {...props} handId={null} />);
@@ -83,7 +84,7 @@ describe("Dealer Floor operational alert", () => {
   });
 
   it("reloads the source revision and asks for review after a stale report", async () => {
-    vi.mocked(supabase.rpc)
+    mockRpc
       .mockImplementationOnce(async () => {
         handRevision.value = 8;
         return { data: { ok: false, error: "stale_source_revision" }, error: null } as never;
@@ -102,7 +103,7 @@ describe("Dealer Floor operational alert", () => {
     await waitFor(() => expect(reportButton.hasAttribute("disabled")).toBe(false));
     fireEvent.click(reportButton);
     await screen.findByText(/Đã gửi Floor/);
-    expect(vi.mocked(supabase.rpc).mock.calls[1][1]).toEqual(expect.objectContaining({
+    expect(mockRpc.mock.calls[1][1]).toEqual(expect.objectContaining({
       p_expected_source_revision: 8,
     }));
   });
@@ -120,46 +121,46 @@ describe("Dealer Floor operational alert", () => {
   });
 
   it("keeps the same request after an uncertain response and reload", async () => {
-    vi.mocked(supabase.rpc).mockRejectedValueOnce(new Error("network lost"));
+    mockRpc.mockRejectedValueOnce(new Error("network lost"));
     const { unmount } = render(<DealerFloorAlertControls {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Vấn đề hiển thị" }));
     await screen.findByText(/Chưa biết máy chủ đã nhận chưa/);
-    const firstCall = vi.mocked(supabase.rpc).mock.calls[0][1] as { p_request_id: string };
+    const firstCall = mockRpc.mock.calls[0][1] as { p_request_id: string };
     expect(window.sessionStorage.length).toBe(1);
     unmount();
 
-    vi.mocked(supabase.rpc).mockImplementation((async (_name, args: { p_request_id: string }) => ({
+    mockRpc.mockImplementation((async (_name, args: { p_request_id: string }) => ({
       data: { ok: true, alert_id: "alert-1", request_id: args.p_request_id }, error: null,
     })) as never);
     render(<DealerFloorAlertControls {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra lại yêu cầu đang chờ" }));
     await waitFor(() => expect(screen.getByText(/Đã gửi Floor/)).toBeTruthy());
-    const retry = vi.mocked(supabase.rpc).mock.calls[1][1] as { p_request_id: string; p_kind: string };
+    const retry = mockRpc.mock.calls[1][1] as { p_request_id: string; p_kind: string };
     expect(retry.p_request_id).toBe(firstCall.p_request_id);
     expect(retry.p_kind).toBe("display_issue");
     expect(window.sessionStorage.length).toBe(0);
   });
 
   it("retries a whole-hand report with the same request and revision after response loss", async () => {
-    vi.mocked(supabase.rpc).mockRejectedValueOnce(new Error("response lost"));
+    mockRpc.mockRejectedValueOnce(new Error("response lost"));
     const { unmount } = render(<DealerFloorAlertControls {...props} />);
     const reportButton = screen.getByRole("button", { name: "Báo sai hand" });
     await waitFor(() => expect(reportButton.hasAttribute("disabled")).toBe(false));
     fireEvent.click(reportButton);
     await screen.findByText(/Chưa biết máy chủ đã nhận chưa/);
-    const first = vi.mocked(supabase.rpc).mock.calls[0][1] as {
+    const first = mockRpc.mock.calls[0][1] as {
       p_request_id: string;
       p_expected_source_revision: number;
     };
     unmount();
 
-    vi.mocked(supabase.rpc).mockImplementationOnce((async (_name, args: { p_request_id: string }) => ({
+    mockRpc.mockImplementationOnce((async (_name, args: { p_request_id: string }) => ({
       data: { ok: true, duplicate: true, alert_id: "alert-1", request_id: args.p_request_id }, error: null,
     })) as never);
     render(<DealerFloorAlertControls {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra lại yêu cầu đang chờ" }));
     await screen.findByText(/Đã gửi Floor/);
-    const retry = vi.mocked(supabase.rpc).mock.calls[1][1] as {
+    const retry = mockRpc.mock.calls[1][1] as {
       p_request_id: string;
       p_expected_source_revision: number;
     };
@@ -170,13 +171,13 @@ describe("Dealer Floor operational alert", () => {
   });
 
   it.each(["tracker_lock_not_owned", "actor_not_allowed"])("retains an uncertain request after %s before retry", async (reason) => {
-    vi.mocked(supabase.rpc).mockRejectedValueOnce(new Error("network lost"));
+    mockRpc.mockRejectedValueOnce(new Error("network lost"));
     render(<DealerFloorAlertControls {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Gọi Floor" }));
     await screen.findByText(/Chưa biết máy chủ đã nhận chưa/);
-    const firstCall = vi.mocked(supabase.rpc).mock.calls[0][1] as { p_request_id: string };
+    const firstCall = mockRpc.mock.calls[0][1] as { p_request_id: string };
 
-    vi.mocked(supabase.rpc).mockResolvedValueOnce({
+    mockRpc.mockResolvedValueOnce({
       data: { ok: false, error: reason }, error: null,
     } as never);
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra lại yêu cầu đang chờ" }));
