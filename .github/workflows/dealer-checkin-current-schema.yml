@@ -18,6 +18,8 @@ on:
       - 'VinPoker/supabase/functions/run-dealer-ready-backup/**'
       - 'VinPoker/supabase/functions/_shared/internal-trigger-auth.ts'
       - 'VinPoker/supabase/functions/_shared/__tests__/backupServiceAuth.test.ts'
+      - 'VinPoker/supabase/migrations/20270128000020_dealer_ready_backup_private_cron_v1.sql'
+      - 'VinPoker/tests/dealerSwing/backupCron*.sql'
 permissions: { actions: read, contents: read }
 jobs:
   runtime:
@@ -44,6 +46,9 @@ jobs:
         with: { node-version: 22 }
       - uses: denoland/setup-deno@v2
         with: { deno-version: v2.x }
+      - name: Install locked Node types required by the existing Supabase import graph
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
       - name: Backup worker rejects unauthenticated privileged execution
         working-directory: VinPoker
         run: |
@@ -86,3 +91,10 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000019_dealer_manual_assignment_receipt_read_v1.sql
           node tests/dealerSwing/operationalInventory.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/massOpenSessions.pg17.sql
+      - name: Private backup cron contract with isolated network doubles (not live scheduler proof)
+        working-directory: VinPoker
+        run: |
+          createdb vinpoker_ops_backup_cron
+          PGDATABASE=vinpoker_ops_backup_cron psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/backupCron.fixture.pg17.sql
+          PGDATABASE=vinpoker_ops_backup_cron psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000020_dealer_ready_backup_private_cron_v1.sql
+          PGDATABASE=vinpoker_ops_backup_cron psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/backupCron.pg17.sql

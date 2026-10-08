@@ -1,13 +1,60 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   canonicalManifestText,
   findMigrationControlProblems,
   normalizedSqlSha256,
+  runMigrationControlCheck,
 } from "../../scripts/security/check-migration-control.mjs";
 
 const sha = (source) => normalizedSqlSha256(source);
+
+test("control excludes only independently validated comment-only lineage receipts", () => {
+  const root = mkdtempSync(join(tmpdir(), "vinpoker-control-receipt-"));
+  const supabase = join(root, "supabase");
+  const migrations = join(supabase, "migrations");
+  const pending = join(supabase, "pending-migrations");
+  const archive = join(supabase, "migration-archive");
+  const control = join(supabase, "migration-control");
+  for (const path of [migrations, pending, archive, control]) mkdirSync(path, { recursive: true });
+  const source = "select 1;\n";
+  const receiptSource = "-- observed duplicate Voice metadata, not schema proof\n";
+  const receiptFile = "20270115000019_remote_history_receipt.sql";
+  const canonicalFile = "20270115000020_tracker_voice_floor_owner_authority.sql";
+  const reconciliationPath = join(archive, "floor-v3-catalog-reconciliation.manifest.json");
+  const manifestPath = join(control, "manifest.json");
+  const { manifest } = fixture({ receipts: [{ version: "20270115000019",
+    semanticName: "tracker_voice_floor_owner_authority", normalizedSqlSha256: sha(source) }] });
+  try {
+    writeFileSync(manifestPath, canonicalManifestText(manifest));
+    writeFileSync(join(migrations, canonicalFile), source);
+    writeFileSync(join(migrations, receiptFile), receiptSource);
+    writeFileSync(join(archive, "tracker-voice-release-chain.manifest.json"), JSON.stringify({
+      schemaVersion: 1, kind: "tracker-voice-release-chain", phase: "SOURCE_ONLY", sourceOnly: true,
+      chain: [{ version: "20270115000020", filename: canonicalFile, sha256: sha(source) }],
+    }));
+    writeFileSync(reconciliationPath, JSON.stringify({
+      schemaVersion: 1, kind: "floor-v3-catalog-reconciliation", registeredProductionHead: "20270115000020",
+      remoteLedgerVersions: [{ version: "20270115000019", name: "tracker_voice_floor_owner_authority", normalizedSqlSha256: sha(source) }],
+      remoteHistoryReceipts: [{ remoteVersion: "20270115000019", remoteName: "tracker_voice_floor_owner_authority",
+        receiptFilename: receiptFile, receiptSha256: sha(receiptSource), normalizedLiveSqlSha256: sha(source),
+        recoveredSource: { path: `supabase/migrations/${canonicalFile}`, sha256: sha(source) } }],
+      historicalSources: [], pendingSources: [], floorActiveAllowlist: [],
+    }));
+    assert.equal(runMigrationControlCheck({ manifestPath, directories: [migrations, pending] }), 0);
+    writeFileSync(join(migrations, receiptFile), `${receiptSource}select 2;\n`);
+    assert.equal(runMigrationControlCheck({ manifestPath, directories: [migrations, pending] }), 1);
+    writeFileSync(join(migrations, receiptFile), receiptSource);
+    rmSync(reconciliationPath);
+    assert.equal(runMigrationControlCheck({ manifestPath, directories: [migrations, pending] }), 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function fixture({ reservations = [], receipts = [], rows = [] } = {}) {
   const manifest = {

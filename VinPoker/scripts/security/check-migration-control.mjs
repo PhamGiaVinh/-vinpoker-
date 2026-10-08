@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findMigrationCatalogProblems } from "./check-migration-catalog.mjs";
 
 const MIGRATION_PATTERN = /^(\d{14})_(.+)\.sql$/u;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
@@ -171,11 +172,30 @@ export function findMigrationControlProblems({ manifest, rows, manifestText = nu
 export function runMigrationControlCheck({ manifestPath, directories }) {
   const manifestText = readFileSync(manifestPath, "utf8");
   const manifest = JSON.parse(manifestText);
-  const problems = findMigrationControlProblems({
+  const reconciliationPath = resolve(dirname(manifestPath), "../migration-archive/floor-v3-catalog-reconciliation.manifest.json");
+  const voicePath = resolve(dirname(manifestPath), "../migration-archive/tracker-voice-release-chain.manifest.json");
+  const rows = readMigrationRows(directories);
+  const receiptPaths = new Set();
+  const reconciliationProblems = [];
+  if (existsSync(reconciliationPath)) {
+    const catalogProblems = findMigrationCatalogProblems(directories[0], reconciliationPath, voicePath);
+    reconciliationProblems.push(...catalogProblems.map((problem) => `receipt catalog invalid: ${problem}`));
+    if (catalogProblems.length === 0) {
+      const reconciliation = JSON.parse(readFileSync(reconciliationPath, "utf8"));
+      for (const receipt of reconciliation.remoteHistoryReceipts) {
+        receiptPaths.add(resolve(directories[0], receipt.receiptFilename));
+      }
+    }
+  } else if (rows.some((row) => row.semanticName === "remote_history_receipt")) {
+    reconciliationProblems.push("remote history receipts require validated catalog evidence");
+  }
+  // Verified comment-only lineage is metadata, not executable SQL with a new semantic identity.
+  // Catalog checks above validate bytes, live names and preserved source before excluding it.
+  const problems = [...reconciliationProblems, ...findMigrationControlProblems({
     manifest,
-    rows: readMigrationRows(directories),
+    rows: rows.filter((row) => !receiptPaths.has(resolve(row.path))),
     manifestText,
-  });
+  })];
   if (problems.length > 0) {
     for (const problem of problems) console.error(`MIGRATION_CONTROL_FAIL ${problem}`);
     return 1;
