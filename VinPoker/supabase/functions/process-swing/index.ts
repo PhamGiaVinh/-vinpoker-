@@ -1676,7 +1676,7 @@ Deno.serve(async (req: Request) => {
         // available dealer remain empty) and after Pass 0e (freed dealers are
         // already 'available'). Reserves the soonest-free on_break dealer +
         // countdown Telegram, and executes reservations whose dealer's break has
-        // ended (13-min rest gate). All via the reservation RPCs — never raw
+        // ended (15-min rest gate). All via the reservation RPCs — never raw
         // updates. NEVER opens a new table; never pulls a dealer off break early.
         if (!dryRun && clubEnabled(AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS, String(cid))) {
           try {
@@ -1703,7 +1703,10 @@ Deno.serve(async (req: Request) => {
               console.log(`[passS2] club=${cid} executed=${s2.executed} reserved=${s2.reserved} cancelled=${s2.cancelled}`);
             }
           } catch (s2Err) {
+            recordDispatchSafetyOutcome(cid, assessCoreQueryFailure("passS2_reservation", s2Err));
+            clubsSkippedError++;
             console.error("[passS2] error:", s2Err instanceof Error ? s2Err.message : s2Err);
+            continue;
           }
         }
 

@@ -27,6 +27,9 @@ on:
       - 'VinPoker/tests/dealerSwing/readyTrigger*.sql'
       - 'VinPoker/supabase/migrations/20270128000022_dealer_assignment_off_commit_fence_v1.sql'
       - 'VinPoker/tests/dealerSwing/offCommit*'
+      - 'VinPoker/tests/dealerSwing/emptyReservation*'
+      - 'VinPoker/supabase/migrations/20270128000023_dealer_empty_reservation_exact_session_v2.sql'
+      - 'VinPoker/supabase/functions/process-swing/passes/passS2-empty-table-preassign*'
       - 'VinPoker/supabase/functions/_shared/dealerMutationIntent.ts'
       - 'VinPoker/supabase/functions/_shared/__tests__/dealerMutationIntent.test.ts'
       - 'VinPoker/supabase/functions/assign-dealer/**'
@@ -71,6 +74,7 @@ jobs:
           deno test --allow-env supabase/functions/run-dealer-ready-backup/auth.test.ts supabase/functions/_shared/__tests__/backupServiceAuth.test.ts supabase/functions/process-swing-on-dealer-ready/runtime.test.ts
           deno test supabase/functions/process-swing/executionSafety.test.ts
           deno test supabase/functions/_shared/__tests__/dealerMutationIntent.test.ts
+          deno test --allow-env supabase/functions/process-swing/passes/passS2-empty-table-preassign.test.ts
       - name: Download exact owner-authorized current schema (not a pre-release replay baseline)
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
@@ -110,6 +114,10 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/massOpenSessions.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000022_dealer_assignment_off_commit_fence_v1.sql
           node tests/dealerSwing/offCommit.currentSchema.mjs
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000023_dealer_empty_reservation_exact_session_v2.sql
+          node tests/dealerSwing/emptyReservation.currentSchema.mjs
+          createdb -T "$PGDATABASE" vinpoker_ops_reservation_identity
+          PGDATABASE=vinpoker_ops_reservation_identity node tests/dealerSwing/emptyReservation.concurrent.mjs
       - name: OFF-at-commit true-overlap with isolated acquisition fixture (not live worker proof)
         working-directory: VinPoker
         run: |

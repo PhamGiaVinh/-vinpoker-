@@ -7,17 +7,18 @@
 // per-club AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS env flag, default OFF).
 //
 // All reservation mutations go through the SECURITY DEFINER RPCs from migration
-// 20260830000000 — never a raw UPDATE of reservation rows:
-//   reserve_empty_table_for_dealer / execute_empty_table_reservation /
+// 20270128000023 — never a raw UPDATE of reservation rows:
+//   reserve_empty_table_for_dealer_v2 / execute_empty_table_reservation_v2 /
 //   cancel_empty_table_reservation
 //
 // Invariants: never opens a new table; never pulls a dealer off break early
-// (execute waits for current_state='available' + the 13-min rest gate); the
+// (execute waits for current_state='available' + the 15-min rest gate); the
 // reserved dealer stays on_break until they naturally free up.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { buildRotationSupply } from "../../_shared/pickNextDealer.ts";
 import { sendTelegramNotification, mention } from "../../_shared/telegram.ts";
+import { getDealerOperationalTables } from "../../_shared/dealerOperationalTables.ts";
 
 export type SupabaseAdmin = any;
 
@@ -67,28 +68,43 @@ export async function runEmptyTablePreAssign(
   };
 
   // ── 1. EXECUTE / CANCEL existing reservations ──────────────────────────────
-  const { data: reservations } = await admin
+  const tables = await getDealerOperationalTables(admin, clubId);
+  const sessions = new Map(tables.map(t => [t.id, t.table_session_id]));
+  const cancel = async (id: string, reason: string) => {
+    const { data, error } = await admin.rpc("cancel_empty_table_reservation", { p_reservation_id: id, p_reason: reason });
+    if (error) throw error;
+    if (data?.ok !== true || !["ok", "not_reserved"].includes(data?.outcome)) throw new Error("reservation_cancel_unverified");
+    if (data.outcome === "ok") res.cancelled++;
+  };
+  const { data: reservations, error: reservationError } = await admin
     .from("dealer_assignments")
-    .select("id, table_id, attendance_id, pre_assigned_at, game_tables(table_name), dealers(full_name, telegram_username)")
+    .select("id, table_id, table_session_id, attendance_id, pre_assigned_at, game_tables(table_name), dealers(full_name, telegram_username)")
     .eq("club_id", clubId)
     .eq("status", "reserved")
     .is("released_at", null);
+  if (reservationError) throw reservationError;
+  if (!Array.isArray(reservations)) throw new Error("reservation_snapshot_unverified");
 
   for (const r of reservations ?? []) {
+    // Never bind a legacy/null or replaced incarnation to the newly opened table.
+    if (!r.table_session_id || sessions.get(r.table_id) !== r.table_session_id) {
+      await cancel(r.id, "table_session_changed");
+      continue;
+    }
     const tableName = (r as any).game_tables?.table_name ?? r.table_id;
     const dealer = (r as any).dealers ?? { full_name: "Dealer" };
     const ment = mention({ full_name: dealer.full_name, telegram_username: dealer.telegram_username ?? null });
 
-    const { data: att } = await admin
+    const { data: att, error: attendanceError } = await admin
       .from("dealer_attendance")
       .select("current_state, status, last_released_at")
       .eq("id", r.attendance_id)
       .maybeSingle();
+    if (attendanceError) throw attendanceError;
 
     // Dealer gone / checked out → cancel the reservation.
     if (!att || att.status !== "checked_in" || att.current_state === "checked_out") {
-      await admin.rpc("cancel_empty_table_reservation", { p_reservation_id: r.id, p_reason: "dealer_gone" });
-      res.cancelled++;
+      await cancel(r.id, "dealer_gone");
       slog("reservation_cancelled", { reservation_id: r.id, reason: "dealer_gone" });
       continue;
     }
@@ -98,8 +114,7 @@ export async function runEmptyTablePreAssign(
       const ageMin = r.pre_assigned_at
         ? (Date.now() - new Date(r.pre_assigned_at).getTime()) / 60000 : 0;
       if (ageMin > RESERVATION_STALE_MINUTES) {
-        await admin.rpc("cancel_empty_table_reservation", { p_reservation_id: r.id, p_reason: "stale_never_freed" });
-        res.cancelled++;
+        await cancel(r.id, "stale_never_freed");
         slog("reservation_cancelled", { reservation_id: r.id, reason: "stale", age_min: Math.round(ageMin) });
       }
       continue;
@@ -109,7 +124,7 @@ export async function runEmptyTablePreAssign(
     // the execute RPC would no-op, and the dealer is busy on a real table.
     if (att.current_state !== "available") continue;
 
-    // available → enforce the 13-min execute rest gate (never short rest).
+    // available → enforce the 15-min execute rest gate (also checked by server).
     const restElapsed = att.last_released_at
       ? (Date.now() - new Date(att.last_released_at).getTime()) / 60000 : 999;
     if (restElapsed < EXECUTE_MIN_REST_MINUTES) {
@@ -122,41 +137,40 @@ export async function runEmptyTablePreAssign(
     // manual "Gán" / "Gán loạt" opens. (Owner 2026-07-06: "warmup chỉ dành cho mở bàn";
     // before this, a reserved dealer re-seating a post-swing empty table flashed WARMUP.)
     const swingDueAt = new Date(Date.now() + durMin * 60_000).toISOString();
-    const { data: ex } = await admin.rpc("execute_empty_table_reservation", {
+    const { data: ex, error: executeError } = await admin.rpc("execute_empty_table_reservation_v2", {
       p_reservation_id: r.id,
+      p_table_session_id: r.table_session_id,
       p_swing_due_at: swingDueAt,
     });
+    if (executeError) throw executeError;
     const outcome = (ex as any)?.outcome;
     if (outcome === "ok") {
       res.executed++;
       slog("reservation_executed", { reservation_id: r.id, table_id: r.table_id, attendance_id: r.attendance_id });
       tg(`✅ ${ment} đã vào ${tableName} (mở bàn trống).`);
-    } else if (["table_occupied", "dealer_busy", "table_not_active", "conflict_active_assignment", "reservation_not_found"].includes(outcome)) {
+    } else if (["table_occupied", "dealer_busy", "table_not_active", "table_session_changed", "table_repair_required", "table_club_mismatch", "conflict_active_assignment", "reservation_not_found"].includes(outcome)) {
       // Stale reservation (table got staffed / dealer taken elsewhere) → cancel.
-      await admin.rpc("cancel_empty_table_reservation", { p_reservation_id: r.id, p_reason: outcome });
-      res.cancelled++;
+      await cancel(r.id, outcome);
       slog("reservation_cancelled", { reservation_id: r.id, reason: outcome });
-    }
+    } else if (outcome === "reservation_identity_changed") throw new Error("reservation_identity_changed");
+    else if (!["dealer_not_ready", "dealer_rest_required"].includes(outcome)) throw new Error("reservation_execute_unverified");
     // dealer_not_ready → leave for a later tick (shouldn't happen: we checked available).
   }
 
   // ── 2. RESERVE empty active tables with a soon-free on_break dealer ─────────
   // (Step-1 fill already staffed any table with an immediately-available dealer;
   //  this targets tables still empty because nobody is free RIGHT NOW.)
-  const { data: tables } = await admin
-    .from("game_tables")
-    .select("id, table_name, current_blind_level")
-    .eq("club_id", clubId)
-    .eq("status", "active");
   if (!tables?.length) return res;
 
   const tableIds = tables.map((t: any) => t.id);
-  const { data: occ } = await admin
+  const { data: occ, error: occupiedError } = await admin
     .from("dealer_assignments")
     .select("table_id")
     .in("status", ["assigned", "on_break", "reserved"])
     .is("released_at", null)
     .in("table_id", tableIds);
+  if (occupiedError) throw occupiedError;
+  if (!Array.isArray(occ)) throw new Error("reservation_occupancy_unverified");
   const occupied = new Set((occ ?? []).map((a: any) => a.table_id));
 
   const emptyTables = tables
@@ -191,12 +205,14 @@ export async function runEmptyTablePreAssign(
     const cand = candidates[ci];
     ci++; // consume this candidate regardless of outcome (avoid re-trying same dealer)
     const predictedArrival = new Date(cand.eligible_at_ms ?? Date.now()).toISOString();
-    const { data: rv } = await admin.rpc("reserve_empty_table_for_dealer", {
+    const { data: rv, error: reserveError } = await admin.rpc("reserve_empty_table_for_dealer_v2", {
       p_table_id: table.id,
+      p_table_session_id: table.table_session_id,
       p_attendance_id: cand.id,
       p_predicted_arrival: predictedArrival,
       p_club_id: clubId,
     });
+    if (reserveError) throw reserveError;
     const outcome = (rv as any)?.outcome;
     if (outcome === "ok" || outcome === "already_reserved") {
       if (outcome === "ok") {
@@ -205,9 +221,9 @@ export async function runEmptyTablePreAssign(
         slog("reservation_created", { table_id: table.id, attendance_id: cand.id, mins_left: minsLeft });
         tg(`📋 Mở bàn ${table.table_name}: ${mention({ full_name: cand.full_name, telegram_username: cand.telegram_username ?? null })} vào sau ~${minsLeft} phút (đang nghỉ).`);
       }
-    } else {
+    } else if (["table_club_mismatch", "table_session_changed", "table_repair_required", "dealer_not_found", "dealer_not_on_break", "table_occupied", "dealer_busy", "race_lost"].includes(outcome)) {
       slog("reservation_skipped", { table_id: table.id, attendance_id: cand.id, outcome });
-    }
+    } else throw new Error("reservation_create_unverified");
   }
 
   return res;
