@@ -6,6 +6,7 @@ import {
 import { authenticateUser } from "../_shared/staking-common.ts";
 import { mapWithConcurrency } from "../_shared/mapWithConcurrency.ts";
 import { requiresStaleCheckoutCleanup } from "../_shared/checkoutSafety.ts";
+import { checkoutReplacementTarget } from "../_shared/checkoutReplacement.ts";
 
 const CHECKOUT_BATCH_CONCURRENCY = 3;
 
@@ -387,7 +388,7 @@ async function processOneCheckout(
         .is("released_at", null)) as unknown as { data: Array<{ id: string; table_id: string | null; table_session_id: string | null; status: string }> | null };
 
   if (activeAss && activeAss.length > 0) {
-    const activeTable = activeAss.find((a) => a.status === "assigned");
+    const activeTable = checkoutReplacementTarget(activeAss);
     needsReplacementTableId = activeTable?.table_id ?? null;
     replacementSessionId = activeTable?.table_session_id ?? null;
     replacementAssignmentId = activeTable?.id ?? null;
