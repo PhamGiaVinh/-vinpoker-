@@ -20,7 +20,7 @@ const messages: Record<string, string> = {
 
 export function RestoreBustDialog({ tournamentId, target, onClose, onRestored }: {
   tournamentId: string;
-  target: { entryId: string; name: string } | null;
+  target: { entryId: string; name: string; destination?: { tableId: string; seatNumber: number } } | null;
   onClose: () => void;
   onRestored: () => void;
 }) {
@@ -59,6 +59,7 @@ export function RestoreBustDialog({ tournamentId, target, onClose, onRestored }:
         setVerifiedScope(scope);
         const prior = attempts.current.get(scope);
         if (prior) { setTableId(prior.toTournamentTableId); setSeat(String(prior.toSeatNumber)); }
+        else if (target.destination) { setTableId(target.destination.tableId); setSeat(String(target.destination.seatNumber)); }
         const entry = entries.data.find((row) => row.entryId === target.entryId);
         if (!entry) setError(messages.restore_stack_evidence_missing);
         else setStack(entry.currentStack);

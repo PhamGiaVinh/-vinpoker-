@@ -34,6 +34,7 @@ import {
 import type { Tournament } from "@/types/tournament";
 import { OpenTableDialog } from "./OpenTableDialog";
 import { FloorRedrawDialogV1 } from "./FloorRedrawDialogV1";
+import { RestoreBustDialog } from "./RestoreBustDialog";
 import { FEATURES } from "@/lib/featureFlags";
 
 type Mutation = () => Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }>;
@@ -103,6 +104,7 @@ export function FloorTableMapPanelV3({
   const [tables, setTables] = useState<FloorTournamentTableRoster[]>([]);
   const [seatableEntries, setSeatableEntries] = useState<FloorSeatableEntry[]>([]);
   const [restorableEntries, setRestorableEntries] = useState<FloorRestorableEntry[]>([]);
+  const [restoreTarget, setRestoreTarget] = useState<{ entryId: string; name: string; destination: { tableId: string; seatNumber: number } } | null>(null);
   const [pendingMoves, setPendingMoves] = useState<FloorPendingTrackerMove[]>([]);
   const [secondaryLoadError, setSecondaryLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -468,6 +470,9 @@ export function FloorTableMapPanelV3({
       </p>
 
       <OpenTableDialog open={openTable} onOpenChange={setOpenTable} tournamentId={tournament.id} onDone={() => void load()} />
+      <RestoreBustDialog tournamentId={tournament.id} target={restoreTarget}
+        onClose={() => setRestoreTarget(null)}
+        onRestored={() => { setEntrySelection(null); toast.success("Đã khôi phục người chơi vào ghế."); void load(); }} />
       {FEATURES.floorRedrawSeatLockV1 && (
         <FloorRedrawDialogV1
           open={redrawOpen}
@@ -620,14 +625,11 @@ export function FloorTableMapPanelV3({
                           data-ops-action="floor.players.restore"
                           className="min-h-12 w-full"
                           disabled={busy}
-                          onClick={() => void run("Đã khôi phục người chơi vào ghế.", () => v3.restoreBustedPlayer({
+                          onClick={() => setRestoreTarget({
                             entryId: entrySelection.entryId,
-                            toTournamentTableId: selectedTable.tournamentTableId,
-                            toSeatNumber: selectedSeatNumber,
-                            expectedRevision: selectedTable.sessionRevision,
-                            expectedControlEpoch: selectedTable.controlEpoch,
-                            requestId: crypto.randomUUID(),
-                          })).then((ok) => { if (ok) setEntrySelection(null); })}
+                            name: restorableEntries.find((entry) => entry.entryId === entrySelection.entryId)?.displayName ?? "Người chơi",
+                            destination: { tableId: selectedTable.tournamentTableId, seatNumber: selectedSeatNumber },
+                          })}
                         >
                           <RotateCcw className="mr-2 h-4 w-4" /> Khôi phục vào ghế này
                         </Button>

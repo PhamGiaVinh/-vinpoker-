@@ -33,6 +33,16 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("mistaken-bust restore", () => {
+  it("verifies the Floor-selected destination before restoring without a second selection", async () => {
+    const onRestored = vi.fn();
+    render(<RestoreBustDialog tournamentId="tour-a" target={{ ...target, destination: { tableId: "tt-a", seatNumber: 1 } }}
+      onRestored={onRestored} onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Xác nhận hoàn tác bust" })).not.toBeDisabled());
+    expect(screen.getByLabelText("Ghế khôi phục")).toHaveValue("1");
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận hoàn tác bust" }));
+    await waitFor(() => expect(onRestored).toHaveBeenCalledOnce());
+    expect(state.restore).toHaveBeenCalledWith(expect.objectContaining({ toTournamentTableId: "tt-a", toSeatNumber: 1, expectedRevision: 7 }));
+  });
   it("shows evidenced stack, excludes locked seats and submits exact session fences", async () => {
     const view = mount(); await choose();
     expect(screen.queryByRole("option", { name: "Ghế 2" })).toBeNull();
