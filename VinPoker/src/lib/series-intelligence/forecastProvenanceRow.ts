@@ -2,7 +2,7 @@ import type { ForecastProvenance } from "./forecastProvenance";
 import { isEngineProvenance } from "./forecastProvenance";
 import type { ForecastSnapshotInsert } from "./captureTypes";
 
-export type ForecastProvenanceSnapshotColumns = Pick<
+export type ForecastProvenanceSnapshotColumns = Required<Pick<
   ForecastSnapshotInsert,
   | "forecast_issued_at"
   | "as_of_ts"
@@ -23,7 +23,7 @@ export type ForecastProvenanceSnapshotColumns = Pick<
   | "input_content_hash"
   | "forecast_instance_id"
   | "derived_from_input_hash"
->;
+>>;
 
 /** Flatten the pure B2 union into the exact nullable snapshot columns. */
 export function toForecastProvenanceSnapshotColumns(
