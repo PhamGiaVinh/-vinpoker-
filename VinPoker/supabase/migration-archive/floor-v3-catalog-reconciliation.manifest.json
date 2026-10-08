@@ -6982,6 +6982,12 @@
       "filename": "20270128000017_dealer_operational_inventory_exact_session_v1.sql",
       "sha256": "c8d1718f5ac578bd94eea4a913089fa5d23d042369c147c96ce7624a2ba4d88d",
       "domain": "dealer-swing"
+    },
+    {
+      "version": "20270128000018",
+      "filename": "20270128000018_dealer_mass_open_canonical_sessions_v1.sql",
+      "sha256": "b4c767f8f2e47fced5a52108c0101c84384fc447509036bfa1d4fc28f2993c7a",
+      "domain": "dealer-swing"
     }
   ],
   "floorActiveAllowlist": [
