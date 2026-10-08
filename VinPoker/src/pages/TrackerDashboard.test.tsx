@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,6 +14,8 @@ type QueryBuilder = {
 
 const state = vi.hoisted(() => ({
   userId: "tracker-a",
+  rolesLoading: false,
+  rolesError: null as string | null,
   clubs: [{ id: "club-a", name: "Club A" }] as Array<{ id: string; name: string }>,
   scopeRequest: null as ((userId: string) => Promise<{ data: string[] | null; error: unknown | null }>) | null,
   rpc: vi.fn(),
@@ -22,6 +24,7 @@ const state = vi.hoisted(() => ({
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     user: { id: state.userId }, loading: false, isAdmin: false,
+    rolesLoading: state.rolesLoading, rolesError: state.rolesError,
   }),
 }));
 vi.mock("@/integrations/supabase/client", () => ({
@@ -62,6 +65,8 @@ function renderTracker() {
 describe("TrackerDashboard club read state", () => {
   beforeEach(() => {
     state.userId = "tracker-a";
+    state.rolesLoading = false;
+    state.rolesError = null;
     state.clubs = [{ id: "club-a", name: "Club A" }];
     state.scopeRequest = null;
     state.rpc.mockReset();
@@ -106,6 +111,21 @@ describe("TrackerDashboard club read state", () => {
 
     expect(await screen.findByText("Quyền CLB đã được xác nhận nhưng thông tin CLB không khớp. Cần kiểm tra dữ liệu.")).toBeInTheDocument();
     expect(screen.queryByTestId("tracker-live-panel")).not.toBeInTheDocument();
+  });
+
+  it("does not declare missing permission while auth roles are loading or failed", async () => {
+    state.rolesLoading = true;
+    state.rpc.mockResolvedValue({ data: [], error: null });
+    const view = renderTracker();
+    await waitFor(() => expect(state.rpc).toHaveBeenCalled());
+    expect(screen.queryByText("Bạn chưa được phân công CLB nào")).not.toBeInTheDocument();
+    state.rolesLoading = false;
+    state.rolesError = "Không tải được quyền tài khoản";
+    view.rerender(<MemoryRouter initialEntries={["/tracker"]}><Routes>
+      <Route path="/tracker" element={<TrackerDashboard />} />
+    </Routes></MemoryRouter>);
+    expect(await screen.findByText(state.rolesError)).toBeInTheDocument();
+    expect(screen.queryByText("Bạn chưa được phân công CLB nào")).not.toBeInTheDocument();
   });
 
 });

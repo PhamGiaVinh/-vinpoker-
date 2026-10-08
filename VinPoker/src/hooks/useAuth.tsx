@@ -87,13 +87,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         supabase.from("dealers").select("id").eq("user_id", userId).is("deleted_at", null).limit(1),
       ]);
       if (!isCurrentRequest()) return;
-      if (roleResult.error || ownerResult.error || dealerResult.error) {
-        throw roleResult.error ?? ownerResult.error ?? dealerResult.error;
-      }
+      if (roleResult.error) throw roleResult.error;
 
       setRoles((roleResult.data ?? []).map((row) => row.role as AppRole));
-      setIsClubOwner((ownerResult.data ?? []).length > 0);
-      setIsDealer((dealerResult.data ?? []).length > 0);
+      setIsClubOwner(!ownerResult.error && (ownerResult.data ?? []).length > 0);
+      setIsDealer(!dealerResult.error && (dealerResult.data ?? []).length > 0);
+      if (ownerResult.error || dealerResult.error) {
+        setRolesError("Chưa xác minh được đầy đủ quyền CLB. Hãy thử tải lại khi kết nối ổn định.");
+      }
       setRolesLoading(false);
 
       // Membership-based navigation affordances are additive and remain fail-closed.
@@ -137,6 +138,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setRolesLoading(true);
         void fetchRoles(nextUserId, generation);
         setTimeout(() => {
+          if (disposed || roleGeneration.current !== generation) return;
           void linkUser(nextUserId);
           // Persist OneSignal external_id mapping (idempotent)
           supabase
@@ -147,7 +149,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }, 0);
       } else {
         setRolesLoading(false);
-        setTimeout(() => logoutUser(), 0);
+        setTimeout(() => {
+          if (!disposed && roleGeneration.current === generation) void logoutUser();
+        }, 0);
       }
     };
 
@@ -179,6 +183,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       disposed = true;
       roleGeneration.current += 1;
+      activeUserId.current = undefined;
       subscription.unsubscribe();
     };
   }, [clearRoles, fetchRoles]);

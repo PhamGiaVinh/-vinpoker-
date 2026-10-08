@@ -46,7 +46,7 @@ async function readWithRetry<T>(
 }
 
 export default function TrackerDashboard() {
-  const { user, loading, isAdmin } = useAuth();
+  const { user, loading, isAdmin, rolesLoading, rolesError } = useAuth();
   const userId = user?.id ?? null;
   const nav = useNavigate();
   const [clubs, setClubs] = useState<ClubRow[] | null>(null);
@@ -120,23 +120,27 @@ export default function TrackerDashboard() {
     return () => { clubRequestId.current += 1; };
   }, [userId, reloadKey, loadClubs]);
 
-  if (loading || !user) {
+  const effectiveClubsError = clubsError || (clubs?.length === 0 && !isAdmin && !rolesLoading ? rolesError : null);
+  if (loading || !user || (clubs?.length === 0 && rolesLoading)) {
     return <div className="container mx-auto p-6"><Skeleton className="h-96 rounded-xl" /></div>;
   }
   if (clubsForUserId !== userId) {
     return <div className="container mx-auto p-6"><Skeleton className="h-96 rounded-xl" /></div>;
   }
-  if (clubsError) {
+  if (effectiveClubsError) {
     return (
       <div className="container mx-auto p-6">
         <Card className="p-8 text-center space-y-3">
           <AlertTriangle className="w-10 h-10 mx-auto text-destructive" />
           <div className="text-lg font-bold">Không tải được danh sách CLB</div>
-          <p className="text-sm text-muted-foreground">{clubsError}</p>
+          <p className="text-sm text-muted-foreground">{effectiveClubsError}</p>
           <Button
             size="sm"
             variant="outline"
-            onClick={() => { setClubsError(null); setClubs(null); setReloadKey((k) => k + 1); }}
+            onClick={() => {
+              if (!clubsError && rolesError) { window.location.reload(); return; }
+              setClubsError(null); setClubs(null); setReloadKey((k) => k + 1);
+            }}
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1" /> Thử lại
           </Button>

@@ -1,8 +1,8 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-type QueryResponse = { data: unknown[]; error: null };
+type QueryResponse = { data: unknown[]; error: { message: string } | null };
 type QueryBuilder = {
   select: () => QueryBuilder;
   update: () => QueryBuilder;
@@ -20,6 +20,7 @@ const auth = vi.hoisted(() => ({
   getSession: vi.fn(),
   queryReads: [] as Array<{ table: string; userId: string }>,
   resolveQuery: null as ((table: string, userId: string) => Promise<QueryResponse>) | null,
+  synchronousInitialSession: null as { user: { id: string } } | null,
 }));
 
 vi.mock("@/integrations/supabase/client", () => ({
@@ -29,6 +30,7 @@ vi.mock("@/integrations/supabase/client", () => ({
       signOut: vi.fn().mockResolvedValue({ error: null }),
       onAuthStateChange: (listener: typeof auth.listener) => {
         auth.listener = listener;
+        if (auth.synchronousInitialSession) listener?.("INITIAL_SESSION", auth.synchronousInitialSession);
         return { data: { subscription: { unsubscribe: vi.fn() } } };
       },
     },
@@ -88,6 +90,7 @@ describe("AuthProvider role loading", () => {
     auth.listener = null;
     auth.queryReads = [];
     auth.resolveQuery = null;
+    auth.synchronousInitialSession = null;
     auth.getSession.mockReset();
   });
 
@@ -120,5 +123,26 @@ describe("AuthProvider role loading", () => {
     oldRoleRead.resolve({ data: [{ role: "super_admin" }], error: null });
 
     await waitFor(() => expect(screen.getByText("anonymous|no-role")).toBeInTheDocument());
+  });
+
+  it("loads the current roles after an effect is restarted in StrictMode", async () => {
+    const session = { user: { id: "owner-a" } };
+    auth.synchronousInitialSession = session;
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    render(<StrictMode><AuthProvider><Probe /></AuthProvider></StrictMode>);
+    expect(await screen.findByText("owner-a|cashier")).toBeInTheDocument();
+  });
+
+  it("preserves server-confirmed cashier roles when dealer metadata is unavailable", async () => {
+    auth.resolveQuery = (table) => Promise.resolve(table === "dealers"
+      ? { data: [], error: { message: "503 Service Unavailable" } }
+      : { data: table === "user_roles" ? [{ role: "cashier" }] : [], error: null });
+    auth.getSession.mockResolvedValue({ data: { session: { user: { id: "cashier-a" } } }, error: null });
+    function CashierProbe() {
+      const { isCashier, rolesError } = useAuth();
+      return <p>{`${isCashier ? "cashier-confirmed" : "cashier-unconfirmed"}|${rolesError ?? "ready"}`}</p>;
+    }
+    render(<AuthProvider><CashierProbe /></AuthProvider>);
+    expect(await screen.findByText(/cashier-confirmed\|Chưa xác minh/)).toBeInTheDocument();
   });
 });

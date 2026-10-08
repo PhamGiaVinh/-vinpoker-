@@ -43,7 +43,7 @@ type ClubRow = { id: string; name: string };
 type SectionKey = "overview" | "staking" | "members" | "reports" | "tournament_registrations" | "offline_buyin" | "reentry" | "sepay_settlement";
 
 export default function CashierDashboard() {
-  const { user, loading, isAdmin } = useAuth();
+  const { user, loading, isAdmin, rolesLoading, rolesError } = useAuth();
   const userId = user?.id ?? null;
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -133,20 +133,24 @@ export default function CashierDashboard() {
     const p = new URLSearchParams(params); p.set("tab", s); setParams(p, { replace: true });
   };
 
-  if (loading || !user) {
+  const effectiveClubsError = clubsError || (clubs?.length === 0 && !isAdmin && !rolesLoading ? rolesError : null);
+  if (loading || !user || (clubs?.length === 0 && rolesLoading)) {
     return <div className="container mx-auto p-6"><Skeleton className="h-96 rounded-xl" /></div>;
   }
   if (clubsForUserId !== userId) {
     return <div className="container mx-auto p-6"><Skeleton className="h-96 rounded-xl" /></div>;
   }
-  if (clubsError) {
+  if (effectiveClubsError) {
     return (
       <div className="container mx-auto p-6">
         <Card className="p-8 text-center space-y-3" role="alert">
           <AlertTriangle className="w-10 h-10 mx-auto text-warning" />
           <div className="text-lg font-bold">Chưa xác minh được quyền CLB</div>
-          <p className="text-sm text-muted-foreground">{clubsError}</p>
-          <Button className="mx-auto" variant="outline" onClick={() => user && void loadClubs(user.id)}>
+          <p className="text-sm text-muted-foreground">{effectiveClubsError}</p>
+          <Button className="mx-auto" variant="outline" onClick={() => {
+            if (!clubsError && rolesError) { window.location.reload(); return; }
+            if (user) void loadClubs(user.id);
+          }}>
             <RefreshCw className="mr-2 h-4 w-4" /> Thử tải lại
           </Button>
         </Card>
