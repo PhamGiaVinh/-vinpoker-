@@ -32,14 +32,20 @@ export function useDealerSwingHealth(clubIds: string[], pollMs = 30_000) {
     refetchIntervalInBackground: false,
     retry: false,
     queryFn: async (): Promise<ClubSwingHealth[]> => {
-      // RPC is not in the generated Database types until applied + regenerated → cast.
-      const { data: d, error } = await (supabase as { rpc: (n: string, a: unknown) => Promise<{ data: unknown; error: unknown }> })
-        .rpc("get_dealer_swing_health", { p_club_ids: scope });
+      const { data: d, error } = await supabase.rpc("get_dealer_swing_health", { p_club_ids: scope });
       if (error) throw error;
-      if (!Array.isArray(d) || d.some((row) => !row || !scope.includes(row.club_id) || typeof row.lock?.held !== "boolean")) {
+      const valid = (value: unknown): value is ClubSwingHealth => {
+        if (!value || typeof value !== "object") return false;
+        const row = value as Partial<ClubSwingHealth>;
+        return typeof row.club_id === "string" && scope.includes(row.club_id)
+          && typeof row.lock?.held === "boolean" && typeof row.overdue_now === "number"
+          && typeof row.pre_announce?.pending === "number" && typeof row.pre_announce?.processing === "number"
+          && typeof row.pre_announce?.failed_recent === "number";
+      };
+      if (!Array.isArray(d) || !d.every(valid)) {
         throw new Error("Invalid dealer swing health response");
       }
-      return d as ClubSwingHealth[];
+      return d;
     },
   });
   return { data: scope.length ? query.data ?? null : [], unavailable: query.isError, refetch: query.refetch };

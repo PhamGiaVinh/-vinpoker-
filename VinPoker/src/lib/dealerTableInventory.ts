@@ -56,7 +56,7 @@ export function projectDealerOperationalTable(
   };
 }
 
-export function isDealerTableAvailable(table: { availability_status?: DealerOperationalTable["availability_status"]; status: string }): boolean {
+export function isDealerTableAvailable(table: { availability_status?: string | null; status: string }): boolean {
   return table.availability_status === "available" && table.status === "inactive";
 }
 
