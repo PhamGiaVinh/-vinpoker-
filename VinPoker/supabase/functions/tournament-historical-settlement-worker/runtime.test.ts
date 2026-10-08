@@ -1,0 +1,56 @@
+import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
+
+Deno.test('history worker rejects unknown claims and reports lease-loss honestly through actual handler',async()=>{
+ const oldServe=Deno.serve, oldFetch=globalThis.fetch;
+ const names=['SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','TRACKER_HISTORY_COMPLETION_WORKER_ENABLED'];
+ const previous=names.map(name=>Deno.env.get(name));
+ let handler: (req: Request)=>Promise<Response>;
+ Object.defineProperty(Deno,'serve',{configurable:true,value:(fn: typeof handler)=>{handler=fn;}});
+ Deno.env.set(names[0],'https://backend.invalid'); Deno.env.set(names[1],'history-service-fixture');
+ Deno.env.set(names[2],'true');
+ const hand='00000000-0000-4000-8000-000000000001',lease='00000000-0000-4000-8000-000000000002';
+ const snapshot={hand:{id:hand,tournament_id:'00000000-0000-4000-8000-000000000003',hand_number:1,
+  table_id:'00000000-0000-4000-8000-000000000004',button_seat:2,community_cards:['2c','3d','4h','5s','9c'],
+  pot_size:15,side_pots:[],status:'completed',is_voided:false,source_revision:1,
+  tracker_level_id:'level-test',tracker_level_number:1,tracker_small_blind:1,tracker_big_blind:2,tracker_bba:0,tracker_is_break:false},
+  players:[
+   {hand_id:hand,player_id:'button',entry_number:1,seat_number:2,starting_stack:100,ending_stack:102,hole_cards:['As','Kd'],is_eliminated:false},
+   {hand_id:hand,player_id:'left',entry_number:1,seat_number:3,starting_stack:100,ending_stack:103,hole_cards:['Ah','Jd'],is_eliminated:false},
+   {hand_id:hand,player_id:'loser',entry_number:1,seat_number:4,starting_stack:100,ending_stack:95,hole_cards:['Qs','Qc'],is_eliminated:false}],
+  actions:['button','left','loser'].map((player,i)=>({id:`action-${i}`,hand_id:hand,player_id:player,entry_number:1,street:'preflop',action_type:'all_in',action_amount:5,action_order:i+1})),
+  sourceRevision:1,sourceChainHash:'a'.repeat(64)};
+ const call=()=>handler!(new Request('https://worker.invalid',{method:'POST',headers:{authorization:'Bearer history-service-fixture'},body:JSON.stringify({limit:1})}));
+ try {
+  await import('./index.ts');
+  for(const scenario of ['empty','null','object','bad_revision','bad_lease','finish_lost','needs_attention','valid_commit','empty_commit','rejected_commit']) {
+   let finishCalls=0;
+   globalThis.fetch=(input,init)=>{
+    const url=new URL(input instanceof Request?input.url:String(input)); assertEquals(url.origin,'https://backend.invalid');
+    const route=url.pathname.split('/').at(-1);
+    let data: unknown;
+    if(route==='claim_tracker_historical_display_jobs') data=scenario==='empty'?[]:scenario==='null'?null:scenario==='object'?{}:
+     [{hand_id:hand,source_revision:scenario==='bad_revision'?0:1,lease_token:scenario==='bad_lease'?'invalid':lease}];
+    else if(route==='get_tracker_historical_display_snapshot') data=scenario.includes('commit')?snapshot:{};
+    else if(route==='tournament_settlement_outcomes') data=[];
+    else if(route==='finish_tracker_historical_display_job') {finishCalls++; data=scenario!=='finish_lost';}
+    else if(route==='commit_tracker_historical_display_outcome_v2') {
+     const args=JSON.parse(String((init as {body?: unknown}|undefined)?.body));
+     assertEquals(args.p_lease_token,lease); assertEquals(args.p_expected_source_revision,1);
+     data=scenario==='empty_commit'?null:{ok:scenario==='valid_commit',settlement_revision:1,outcome_hash:args.p_outcome_hash};
+    }
+    else throw new Error(`unexpected backend route ${route}`);
+    return Promise.resolve(new Response(JSON.stringify(data),{status:200,headers:{'content-type':'application/json'}}));
+   };
+   const response=await call(); const body=await response.json();
+   assertEquals(response.status,['empty','needs_attention','valid_commit','empty_commit','rejected_commit'].includes(scenario)?200:503,scenario);
+   assertEquals(body.completed??0,scenario==='valid_commit'?1:0,scenario);
+   assertEquals(finishCalls,['needs_attention','finish_lost','empty_commit','rejected_commit'].includes(scenario)?1:0,scenario);
+   if(['empty_commit','rejected_commit'].includes(scenario)) assertEquals(body.retried,1);
+   if(scenario==='finish_lost') {assertEquals(body.ok,false);assertEquals(body.unresolved,1);}
+   if(scenario==='needs_attention') assertEquals(body.needs_attention,1);
+  }
+ } finally {
+  globalThis.fetch=oldFetch; Object.defineProperty(Deno,'serve',{configurable:true,value:oldServe});
+  names.forEach((name,i)=>previous[i]===undefined?Deno.env.delete(name):Deno.env.set(name,previous[i]!));
+ }
+});

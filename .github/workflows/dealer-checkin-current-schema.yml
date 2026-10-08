@@ -30,6 +30,7 @@ on:
       - 'VinPoker/tests/dealerSwing/emptyReservation*'
       - 'VinPoker/supabase/migrations/20270128000023_dealer_empty_reservation_exact_session_v2.sql'
       - 'VinPoker/supabase/functions/process-swing/passes/passS2-empty-table-preassign*'
+      - 'VinPoker/supabase/functions/tournament-historical-settlement-worker/**'
       - 'VinPoker/supabase/functions/_shared/dealerMutationIntent.ts'
       - 'VinPoker/supabase/functions/_shared/__tests__/dealerMutationIntent.test.ts'
       - 'VinPoker/supabase/functions/assign-dealer/**'
@@ -75,6 +76,8 @@ jobs:
           deno test supabase/functions/process-swing/executionSafety.test.ts
           deno test supabase/functions/_shared/__tests__/dealerMutationIntent.test.ts
           deno test --allow-env supabase/functions/process-swing/passes/passS2-empty-table-preassign.test.ts
+          deno check supabase/functions/tournament-historical-settlement-worker/index.ts
+          deno test --allow-env supabase/functions/tournament-historical-settlement-worker/runtime.test.ts
       - name: Download exact owner-authorized current schema (not a pre-release replay baseline)
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
