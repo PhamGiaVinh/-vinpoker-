@@ -6970,6 +6970,12 @@
       "filename": "20270128000015_floor_restore_bust_integrity_v1.sql",
       "sha256": "9134ab822cec4d003995fd5238c16403c8bce8f49e63bf14ca006de527186e79",
       "domain": "floor"
+    },
+    {
+      "version": "20270128000016",
+      "filename": "20270128000016_chip_color_up_serialized_integrity_v1.sql",
+      "sha256": "346994494c42859baddac354603ecaf3741428115ae819d56a50508e45e77d43",
+      "domain": "chip-ops"
     }
   ],
   "floorActiveAllowlist": [

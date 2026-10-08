@@ -1,4 +1,4 @@
-name: Dealer check-in current schema runtime
+name: Operations current schema runtime
 on:
   pull_request:
     paths:
@@ -7,6 +7,9 @@ on:
       - 'VinPoker/supabase/migrations/20270128000014_dealer_checkin_club_shift_receipt_v1.sql'
       - 'VinPoker/tests/dealerSwing/checkin*'
       - 'VinPoker/src/components/cashier/DealerSwingTab.tsx'
+      - 'VinPoker/supabase/migrations/20270128000016_chip_color_up_serialized_integrity_v1.sql'
+      - 'VinPoker/tests/chipOps/colorUpCurrentSchema.pg17.sql'
+      - 'VinPoker/tests/chipOps/colorUpIntegrity.pg17.test.mjs'
 permissions: { actions: read, contents: read }
 jobs:
   runtime:
@@ -47,3 +50,13 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000014_dealer_checkin_club_shift_receipt_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/checkin.pg17.sql
           node tests/dealerSwing/checkin.concurrent.mjs
+      - name: Chip integrity on exact current schema
+        working-directory: VinPoker
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000016_chip_color_up_serialized_integrity_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/chipOps/colorUpCurrentSchema.pg17.sql
+      - name: Chip concurrency in isolated minimal fixture (not schema parity evidence)
+        working-directory: VinPoker
+        run: |
+          createdb vinpoker_chip_concurrency
+          PGDATABASE=vinpoker_chip_concurrency node --test tests/chipOps/colorUpIntegrity.pg17.test.mjs
