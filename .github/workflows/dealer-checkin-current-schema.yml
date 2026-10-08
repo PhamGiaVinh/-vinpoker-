@@ -1,0 +1,49 @@
+name: Dealer check-in current schema runtime
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/dealer-checkin-current-schema.yml'
+      - 'VinPoker/scripts/ops/restore-schema-test-baseline.mjs'
+      - 'VinPoker/supabase/migrations/20270128000014_dealer_checkin_club_shift_receipt_v1.sql'
+      - 'VinPoker/tests/dealerSwing/checkin*'
+      - 'VinPoker/src/components/cashier/DealerSwingTab.tsx'
+permissions: { actions: read, contents: read }
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_HOST_AUTH_METHOD: trust, POSTGRES_DB: vinpoker_ops_checkin }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGDATABASE: vinpoker_ops_checkin
+      SCHEMA_ARTIFACT_DIR: /tmp/vinpoker-current-schema
+      SCHEMA_ARTIFACT_SHA256: d23cfa75a7381453ba0d6216346f6460c816a3b1525ef5d47984c3a995ddc56a
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: 22 }
+      - name: Download exact owner-authorized current schema (not a pre-release replay baseline)
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37820347781" --jq .conclusion)" = success
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37820347781" --jq .head_sha)" = 0463831bb9f8f142d585fd51c1b0633963b2161f
+          artifact_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37820347781/artifacts" --jq '[.artifacts[] | select(.name=="live-public-schema" and .expired==false)] | if length==1 then .[0].id else error("exact schema artifact missing") end')"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/schema.zip"
+          unzip -q "$RUNNER_TEMP/schema.zip" -d "$SCHEMA_ARTIFACT_DIR"
+          node VinPoker/scripts/deploy/validate-live-public-schema-artifact.mjs --artifact-directory "$SCHEMA_ARTIFACT_DIR"
+      - name: Restore current schema and apply exact new migration
+        working-directory: VinPoker
+        run: |
+          node scripts/ops/restore-schema-test-baseline.mjs
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000014_dealer_checkin_club_shift_receipt_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/checkin.pg17.sql
+          node tests/dealerSwing/checkin.concurrent.mjs
