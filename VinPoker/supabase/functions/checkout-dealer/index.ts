@@ -369,6 +369,8 @@ async function processOneCheckout(
   // so the table is no longer considered "occupied" by fillEmptyTables.
   // Set needs_replacement=true so process-swing prioritizes refilling it.
   let needsReplacementTableId: string | null = null;
+  let replacementSessionId: string | null = null;
+  let replacementAssignmentId: string | null = null;
   // Release ALL active dealer_assignments for this attendance — not just
   // status='assigned'. A dealer can hold an on_break / pre_assigned row that, if
   // left with released_at IS NULL, becomes an orphan poisoning pickNextDealer
@@ -379,14 +381,16 @@ async function processOneCheckout(
   // owner-gated control. Route through the RPC once it is live.)
       const { data: activeAss } = (await admin
         .from("dealer_assignments")
-        .select("id, table_id, status")
+        .select("id, table_id, table_session_id, status")
         .eq("attendance_id", attendanceId)
         .in("status", ["assigned", "on_break", "pre_assigned"])
-        .is("released_at", null)) as unknown as { data: Array<{ id: string; table_id: string | null; status: string }> | null };
+        .is("released_at", null)) as unknown as { data: Array<{ id: string; table_id: string | null; table_session_id: string | null; status: string }> | null };
 
   if (activeAss && activeAss.length > 0) {
     const activeTable = activeAss.find((a) => a.status === "assigned");
     needsReplacementTableId = activeTable?.table_id ?? null;
+    replacementSessionId = activeTable?.table_session_id ?? null;
+    replacementAssignmentId = activeTable?.id ?? null;
     await admin
       .from("dealer_assignments")
       .update({
@@ -403,16 +407,12 @@ async function processOneCheckout(
   // If a dealer is available, assign immediately. If not, cron will
   // handle it through fillEmptyTables on the next cycle.
   let autoAssigned: { dealer_name: string } | null = null;
-  if (needsReplacementTableId && botToken) {
+  if (needsReplacementTableId && replacementSessionId && replacementAssignmentId) {
     try {
-      // minInterSwingRestMinutes: 0 — checkout is an emergency replacement;
-      // the dealer is leaving the shift entirely, so the replacement should
-      // be picked immediately without cooldown. The replacement's
-      // last_released_at will be set when they finish their swing (via
-      // perform_swing), so subsequent picks WILL respect the cooldown.
+      // Checkout does not waive the replacement dealer's existing rest policy.
+      // Notification availability must not decide whether an eligible table is staffed.
       const dealer = await pickNextDealer(admin, clubId, {
         currentTableId: needsReplacementTableId,
-        minInterSwingRestMinutes: 0,
       });
       if (dealer) {
         // Compute swing_due_at from swing_config (table_type-aware fallback chain)
@@ -448,11 +448,14 @@ async function processOneCheckout(
         ).toISOString();
 
         const { data: assignResult, error: assignErr } = (await admin.rpc(
-          "assign_dealer_to_table",
+          "worker_assign_dealer_to_session_v1",
           {
+            p_club_id: clubId,
             p_attendance_id: dealer.id,
             p_table_id: needsReplacementTableId,
+            p_table_session_id: replacementSessionId,
             p_swing_due_at: replacementSwingDueAt,
+            p_idempotency_key: `checkout_replace_${replacementAssignmentId}_${replacementSessionId}_${dealer.id}`,
           }
         )) as unknown as { data: TxResultRow | string | null; error: { message: string } | null };
         if (assignErr) {
