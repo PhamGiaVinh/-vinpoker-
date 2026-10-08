@@ -202,5 +202,5 @@ export async function getDecisionEventState(eventId: string): Promise<DecisionPa
   const { data, error } = await d2bClient.rpc(D2B_RPC.getEventState, { p_event_id: eventId });
   if (error) return { ok: false, ...classifyRpcError(error) };
   const parsed = parseDecisionEventStateResponse(data);
-  return parsed.ok ? parsed : { ...parsed, retryable: false };
+  return parsed.ok === true ? parsed : { ...parsed, retryable: false };
 }

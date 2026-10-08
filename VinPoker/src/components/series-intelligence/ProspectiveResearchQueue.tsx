@@ -115,7 +115,7 @@ export function ProspectiveResearchQueue({ hook, nativeEvents }: { hook: UseSeri
       codeSha: getBuildGitSha() ?? undefined,
       options: { calendarFeatures: FEATURES.seriesCalendarFeatures, censoring: FEATURES.seriesCensoring },
     });
-    if (!result.ok) {
+    if (result.ok === false) {
       setResults((current) => ({ ...current, [`${row.eventId}:${row.horizon}`]: result.reason }));
       return false;
     }
@@ -140,8 +140,8 @@ export function ProspectiveResearchQueue({ hook, nativeEvents }: { hook: UseSeri
     for (const event of pastEvents) {
       const idempotencyKey = buildNativePromotionIdempotencyKey(operationId, event.eventId);
       let result = await promoteNativeEventActual({ eventId: event.eventId, idempotencyKey });
-      if (!result.ok && result.retryable) result = await promoteNativeEventActual({ eventId: event.eventId, idempotencyKey });
-      setResults((current) => ({ ...current, [`native:${event.eventId}`]: result.ok ? "Đã yêu cầu đồng bộ" : `Bị chặn: ${result.error}` }));
+      if (result.ok === false && result.retryable) result = await promoteNativeEventActual({ eventId: event.eventId, idempotencyKey });
+      setResults((current) => ({ ...current, [`native:${event.eventId}`]: result.ok === true ? "Đã yêu cầu đồng bộ" : `Bị chặn: ${result.error}` }));
     }
     setRunning(false);
   };

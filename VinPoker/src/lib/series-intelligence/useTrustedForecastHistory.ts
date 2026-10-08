@@ -52,7 +52,7 @@ export function useTrustedForecastHistory(input: {
       const statesByEventId: Record<string, DecisionEventStateResponse | null> = {};
       const failures: string[] = [];
       for (const item of responses) {
-        if (item.response.ok) statesByEventId[item.eventId] = item.response.value;
+        if (item.response.ok === true) statesByEventId[item.eventId] = item.response.value;
         else {
           statesByEventId[item.eventId] = null;
           failures.push(`${item.eventId}:${item.response.error}`);

@@ -56,7 +56,7 @@ export function useSeriesClubLivePulseV1({
     setError(null);
     void load(clubId).then((result) => {
       if (requestRef.current !== requestId) return;
-      if (result.ok) {
+      if (result.ok === true) {
         setPulse(result.value);
         setState("ready");
         setError(null);
