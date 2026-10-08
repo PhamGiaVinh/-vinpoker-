@@ -23,7 +23,7 @@ jobs:
       PGPORT: 5432
       PGUSER: postgres
       PGDATABASE: vinpoker_ops_checkin
-      SCHEMA_ARTIFACT_DIR: '${{ runner.temp }}/current-schema'
+      SCHEMA_ARTIFACT_DIR: /tmp/vinpoker-current-schema
       SCHEMA_ARTIFACT_SHA256: d23cfa75a7381453ba0d6216346f6460c816a3b1525ef5d47984c3a995ddc56a
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
