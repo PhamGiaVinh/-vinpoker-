@@ -14,6 +14,7 @@ on:
       - 'VinPoker/tests/dealerSwing/operationalInventory*'
       - 'VinPoker/supabase/migrations/20270128000018_dealer_mass_open_canonical_sessions_v1.sql'
       - 'VinPoker/tests/dealerSwing/massOpenSessions.pg17.sql'
+      - 'VinPoker/supabase/migrations/20270128000019_dealer_manual_assignment_receipt_read_v1.sql'
 permissions: { actions: read, contents: read }
 jobs:
   runtime:
@@ -71,4 +72,5 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/operationalInventory.pg17.sql
           node tests/dealerSwing/operationalInventory.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000018_dealer_mass_open_canonical_sessions_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000019_dealer_manual_assignment_receipt_read_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/massOpenSessions.pg17.sql

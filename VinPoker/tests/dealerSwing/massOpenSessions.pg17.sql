@@ -39,7 +39,10 @@ SET LOCAL request.jwt.claim.role='service_role';
 SELECT pg_temp.assert_true((SELECT count(*)=2 FROM public.get_dealer_operational_tables_v1('e1800000-0000-4000-8000-000000000002')),'worker sees newly opened canonical table');
 SELECT pg_temp.assert_true((SELECT public.worker_assign_dealer_to_session_v1('e1800000-0000-4000-8000-000000000002',id,table_session_id,'e1800000-0000-4000-8000-000000000041',now()+interval '45 minutes','mass-open-test-assign')->>'outcome'='ok'
  FROM public.get_dealer_operational_tables_v1('e1800000-0000-4000-8000-000000000002') WHERE id='e1800000-0000-4000-8000-000000000011'),'worker commits exact-session assignment');
+SELECT pg_temp.assert_true((SELECT public.worker_read_initial_assignment_receipt_v1('mass-open-test-assign','e1800000-0000-4000-8000-000000000002',id,table_session_id,'e1800000-0000-4000-8000-000000000031')->>'outcome'='ok' FROM public.get_dealer_operational_tables_v1('e1800000-0000-4000-8000-000000000002') WHERE id='e1800000-0000-4000-8000-000000000011'),'unknown outcome reconciles stored commit');
+SELECT pg_temp.assert_true(public.worker_read_initial_assignment_receipt_v1('mass-open-test-assign','e1800000-0000-4000-8000-000000000002','e1800000-0000-4000-8000-000000000011','e1800000-0000-4000-8000-000000000098','e1800000-0000-4000-8000-000000000031')->>'outcome'='idempotency_mismatch','old request cannot cross session');
 RESET ROLE;
+SELECT pg_temp.assert_true(NOT has_function_privilege('authenticated','public.worker_read_initial_assignment_receipt_v1(text,uuid,uuid,uuid,uuid)','EXECUTE'),'browser cannot read internal receipts');
 SELECT pg_temp.assert_true((SELECT count(*)=1 FROM public.dealer_assignments a JOIN public.table_sessions s ON s.id=a.table_session_id WHERE a.table_id='e1800000-0000-4000-8000-000000000011' AND s.closed_at IS NULL AND a.released_at IS NULL),'one committed assignment for opened incarnation');
 SELECT pg_temp.assert_true(NOT EXISTS(SELECT 1 FROM public.table_sessions WHERE game_table_id='e1800000-0000-4000-8000-000000000012'),'rejected tournament does not open a session');
 ROLLBACK;

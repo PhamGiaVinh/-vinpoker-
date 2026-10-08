@@ -350,6 +350,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   const [autoSwingEnabled, setAutoSwingEnabled] = useState(false);
   const [activeView, setActiveView] = useState<"roster" | "tables" | "dealers" | "payroll">("tables");
   const [modalTable, setModalTable] = useState<string | null>(null);
+  const manualAssignRequests = useRef(new Map<string, string>());
   const [changePredictedTableId, setChangePredictedTableId] = useState<string | null>(null);
   const [correctWrongTableId, setCorrectWrongTableId] = useState<string | null>(null);
   const [roomReconcileOpen, setRoomReconcileOpen] = useState(false);
@@ -952,16 +953,29 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   // Confirm assignment
   const confirmAssign = async (forceDealerId?: string) => {
     if (!modalTable) return;
+    const assignmentTable = tables.find((table) => table.id === modalTable);
+    if (!user?.id || !forceDealerId || !assignmentTable?.table_session_id) {
+      toast.error("Chọn dealer và xác minh lại phiên bàn trước khi gán.");
+      return;
+    }
     if (isSubmitting.current) return;
     isSubmitting.current = true;
     setAssigning(true);
     try {
+      const requestScope = JSON.stringify([user.id, assignmentTable.club_id, modalTable, assignmentTable.table_session_id, forceDealerId]);
+      const storageKey = `vinpoker:manual-assign:${requestScope}`;
+      const stored = sessionStorage.getItem(storageKey);
+      const requestId = manualAssignRequests.current.get(requestScope)
+        ?? (stored && /^[0-9a-f-]{36}$/i.test(stored) ? stored : crypto.randomUUID());
+      manualAssignRequests.current.set(requestScope, requestId);
+      sessionStorage.setItem(storageKey, requestId);
       const { data, error } = await supabase.functions.invoke("assign-dealer", {
         body: {
           table_id: modalTable,
+          table_session_id: assignmentTable.table_session_id,
           force_dealer_id: forceDealerId || undefined,
           requested_by: user?.id,
-          idempotency_key: crypto.randomUUID(),
+          idempotency_key: requestId,
           shift_id: selectedTour ?? undefined,
         },
       });
@@ -984,16 +998,15 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
         return;
       }
       if ((data as any)?.error) { toast.error((data as any).error); return; }
+      if ((data as any)?.status !== "success" || !(data as any)?.assignment?.id) {
+        toast.warning("Chưa xác minh được kết quả gán. Thử lại cùng dealer để tra kết quả cũ.");
+        return;
+      }
+      manualAssignRequests.current.delete(requestScope);
+      sessionStorage.removeItem(storageKey);
       toast.success("Đã gán dealer");
       if (modalTable) triggerSwingAnimation(modalTable);
-      // Telegram notification
-      const table = (tables ?? []).find((t) => t.id === modalTable);
-      const tableName = table?.table_name ?? "";
-      const dealerName = forceDealerId
-        ? (dealers ?? []).find((d) => d.dealer_id === forceDealerId)?.dealers?.full_name ?? ""
-        : (suggestions ?? [])[0]?.dealer_name ?? "";
-      const tourName = getTourName();
-      sendTelegram(`🔵 ${dealerName} được assign vào ${tableName}${tourName ? ` (Tour: ${tourName})` : ""}`);
+      // Assignment notifications belong to the server commit path, not receipt replay.
       setModalTable(null);
       refetchAssignments();
       refetchDealers();

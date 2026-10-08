@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
     const uid = authResult.uid;
 
     const body = await req.json().catch(() => ({}));
-    const { table_id, force_dealer_id, requested_by, idempotency_key, return_suggestions_only, shift_id } = body ?? {};
+    const { table_id, table_session_id, force_dealer_id, requested_by, idempotency_key, return_suggestions_only, shift_id } = body ?? {};
     if (!table_id) return json({ error: "table_id required" }, 400);
 
     console.log(`[assign-dealer] table=${table_id} force=${force_dealer_id} shift=${shift_id} idemp=${idempotency_key}`);
@@ -51,6 +51,26 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (te || !table) return json({ error: "Table not found" }, 404);
 
+    const { data: isControl, error: controlError } = await admin.rpc("is_club_dealer_control", { _user_id: uid, _club_id: table.club_id });
+    if (controlError) return json({ error: "DEALER_AUTHORITY_UNVERIFIED" }, 503);
+    if (!isControl) return json({ error: "Forbidden — not a dealer controller" }, 403);
+    let manualKey: string | undefined;
+    if (force_dealer_id && !return_suggestions_only) {
+      if (!table_session_id || typeof idempotency_key !== "string" || !/^[0-9a-f-]{36}$/i.test(idempotency_key)) {
+        return json({ error: "EXACT_SESSION_AND_REQUEST_ID_REQUIRED" }, 400);
+      }
+      manualKey = `open_manual_${uid}_${idempotency_key}`;
+      const { data: receipt, error: receiptError } = await admin.rpc("worker_read_initial_assignment_receipt_v1", {
+        p_request_key: manualKey, p_club_id: table.club_id, p_table_id: table_id,
+        p_table_session_id: table_session_id, p_dealer_id: force_dealer_id,
+      });
+      if (receiptError) return json({ error: "ASSIGNMENT_RECEIPT_UNVERIFIED" }, 503);
+      if (receipt) {
+        if (receipt.outcome !== "ok" || !receipt.assignment_id) return json({ error: "IDEMPOTENCY_CONFLICT" }, 409);
+        return json({ assignment: { id: receipt.assignment_id, status: "success" }, status: "success", idempotent_replay: true });
+      }
+    }
+
     // Manual assignment is an open-table operation. A replacement/swing must go
     // through the dedicated atomic swing RPC, never through this wrapper.
     const { data: activeAssignment } = await admin
@@ -64,8 +84,6 @@ Deno.serve(async (req) => {
       return json({ error: "Table already has an active dealer", assignment_id: activeAssignment.id }, 409);
     }
 
-    const { data: isControl } = await admin.rpc("is_club_dealer_control", { _user_id: uid, _club_id: table.club_id });
-    if (!isControl) return json({ error: "Forbidden — not a dealer controller" }, 403);
 
     const { data: config } = await admin
       .from("swing_config")
@@ -111,16 +129,6 @@ Deno.serve(async (req) => {
 
       const attendance = attendanceRows[0];
 
-      const { data: lockAcquired } = await admin.rpc("select_dealer_for_update", {
-        p_attendance_id: attendance.id,
-      });
-      if (!lockAcquired) {
-        return json({
-          error: "DEALER_BUSY: Dealer này vừa được phân công bởi người dùng khác. Vui lòng thử lại.",
-          dealer_id: force_dealer_id,
-        }, 409);
-      }
-
       // ═══════════════════════════════════════════════════════════════════
       // SINGLE SOURCE OF TRUTH: Call assign_dealer_to_table RPC
       // All release + insert logic lives in the RPC (atomic transaction).
@@ -134,23 +142,20 @@ Deno.serve(async (req) => {
       const assignedNow = Date.now();
       const swingDueAt = new Date(assignedNow + (OPEN_TABLE_GRACE_MINUTES + swingDuration) * 60 * 1000).toISOString();
       const { data: rpcResult, error: rpcErr } = await admin.rpc(
-        "assign_dealer_to_table",
+        "worker_assign_dealer_to_session_v1",
         {
           p_attendance_id: attendance.id,
           p_table_id: table_id,
-          p_assigned_at: new Date(assignedNow).toISOString(),
+          p_table_session_id: table_session_id,
           p_swing_due_at: swingDueAt,
           p_club_id: table.club_id,
           // "open_manual_" marker (2026-07-07): tells the floor card this row was a
           // manual open carrying the 5-min grace → show WARMUP. Deterministic wrap of
           // the client's idempotency key so client retries still replay-dedupe in the
           // RPC (same client key → same wrapped key).
-          p_idempotency_key: idempotency_key
-            ? `open_manual_${idempotency_key}`
-            : `open_manual_${table_id}_${assignedNow}`,
+          p_idempotency_key: manualKey,
           // Never replace an existing dealer from the manual-open endpoint.
           // A true swing uses its own atomic executor and policy checks.
-          p_force_replace: false,
         }
       );
 

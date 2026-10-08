@@ -6988,6 +6988,12 @@
       "filename": "20270128000018_dealer_mass_open_canonical_sessions_v1.sql",
       "sha256": "f61a0201dab612ebdba46739e2ed9f39c6d9d27b80f33442b2be0334f2325eb9",
       "domain": "dealer-swing"
+    },
+    {
+      "version": "20270128000019",
+      "filename": "20270128000019_dealer_manual_assignment_receipt_read_v1.sql",
+      "sha256": "7037d878228e68fe6493a47132df03dfc0c49e4988467166326984664d6a3835",
+      "domain": "dealer-swing"
     }
   ],
   "floorActiveAllowlist": [
