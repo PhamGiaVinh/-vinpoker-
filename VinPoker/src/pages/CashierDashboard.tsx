@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -43,13 +43,17 @@ type ClubRow = { id: string; name: string };
 type SectionKey = "overview" | "staking" | "members" | "reports" | "tournament_registrations" | "offline_buyin" | "reentry" | "sepay_settlement";
 
 export default function CashierDashboard() {
-  const { user, loading, isAdmin, isCashier } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
+  const userId = user?.id ?? null;
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const section = (params.get("tab") as SectionKey) || "overview";
 
   const [clubs, setClubs] = useState<ClubRow[] | null>(null);
+  const [clubsError, setClubsError] = useState<string | null>(null);
+  const [clubsForUserId, setClubsForUserId] = useState<string | null>(null);
   const [isClubOwner, setIsClubOwner] = useState(false);
+  const clubRequestId = useRef(0);
 
   useEffect(() => {
     if (loading) return;
@@ -58,24 +62,72 @@ export default function CashierDashboard() {
     // Final guard happens once `clubs` loads — empty + not admin → "chưa được phân công" screen.
   }, [loading, user, nav]);
 
-  // load assigned clubs (RPC unions club_cashiers + clubs.owner_id)
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
-      const { data: ids } = await supabase.rpc("cashier_club_ids", { _user_id: user.id });
-      const idArr = (ids ?? []).map((r: any) => (typeof r === "string" ? r : r.cashier_club_ids ?? r));
-      if (!idArr.length) { setClubs([]); return; }
-      const { data: cs } = await supabase
-        .from("clubs").select("id,name").in("id", idArr);
-      setClubs((cs ?? []) as ClubRow[]);
+  // A failed scope read is not proof that the user has no assigned clubs.
+  // Keep the empty state for a successful, authoritative empty result only.
+  const loadClubs = useCallback(async (userId: string) => {
+    const requestId = ++clubRequestId.current;
+    const isCurrentRequest = () => clubRequestId.current === requestId;
+    setClubs(null);
+    setClubsError(null);
+    setClubsForUserId(null);
+    setIsClubOwner(false);
 
-      // Club-owner check — used as the UAT override for the flag-gated registrations tab
-      // (owner-approved rollout 2026-06-13: admins/owners see the tab while the flag is off).
-      const { data: owned } = await supabase
-        .from("clubs").select("id").eq("owner_id", user.id).limit(1);
-      setIsClubOwner((owned ?? []).length > 0);
-    })();
-  }, [user]);
+    try {
+      const { data: ids, error: scopeError } = await supabase.rpc("cashier_club_ids", { _user_id: userId });
+      if (!isCurrentRequest()) return;
+      if (scopeError) {
+        setClubsError("Không tải được quyền truy cập CLB. Kiểm tra kết nối rồi thử lại.");
+        setClubsForUserId(userId);
+        return;
+      }
+
+      const idArr = [...new Set(ids ?? [])];
+      if (!idArr.length) {
+        setClubs([]);
+        setClubsForUserId(userId);
+        return;
+      }
+
+      const { data: clubRows, error: clubError } = await supabase
+        .from("clubs").select("id,name").in("id", idArr);
+      if (!isCurrentRequest()) return;
+      if (clubError || !clubRows?.length) {
+        setClubsError("Đã xác nhận quyền CLB nhưng không tải được danh sách. Vui lòng thử lại.");
+        setClubsForUserId(userId);
+        return;
+      }
+      setClubs(clubRows as ClubRow[]);
+      setClubsForUserId(userId);
+
+      // This lookup only controls owner-only UAT affordances; it never grants data access.
+      try {
+        const { data: owned, error: ownerError } = await supabase
+          .from("clubs").select("id").eq("owner_id", userId).limit(1);
+        if (isCurrentRequest() && !ownerError) setIsClubOwner((owned ?? []).length > 0);
+      } catch {
+        // Keep owner-only affordances hidden when this secondary read is unavailable.
+      }
+    } catch {
+      if (isCurrentRequest()) {
+        setClubsError("Không kết nối được để xác minh quyền CLB. Kiểm tra mạng rồi thử lại.");
+        setClubsForUserId(userId);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!userId) {
+      clubRequestId.current += 1;
+      setClubs(null);
+      setClubsError(null);
+      setClubsForUserId(null);
+      setIsClubOwner(false);
+      return;
+    }
+
+    void loadClubs(userId);
+    return () => { clubRequestId.current += 1; };
+  }, [userId, loadClubs]);
 
   const setSection = (s: SectionKey) => {
     const p = new URLSearchParams(params); p.set("tab", s); setParams(p, { replace: true });
@@ -83,6 +135,23 @@ export default function CashierDashboard() {
 
   if (loading || !user) {
     return <div className="container mx-auto p-6"><Skeleton className="h-96 rounded-xl" /></div>;
+  }
+  if (clubsForUserId !== userId) {
+    return <div className="container mx-auto p-6"><Skeleton className="h-96 rounded-xl" /></div>;
+  }
+  if (clubsError) {
+    return (
+      <div className="container mx-auto p-6">
+        <Card className="p-8 text-center space-y-3" role="alert">
+          <AlertTriangle className="w-10 h-10 mx-auto text-warning" />
+          <div className="text-lg font-bold">Chưa xác minh được quyền CLB</div>
+          <p className="text-sm text-muted-foreground">{clubsError}</p>
+          <Button className="mx-auto" variant="outline" onClick={() => user && void loadClubs(user.id)}>
+            <RefreshCw className="mr-2 h-4 w-4" /> Thử tải lại
+          </Button>
+        </Card>
+      </div>
+    );
   }
   if (clubs === null) {
     return <div className="container mx-auto p-6"><Skeleton className="h-96 rounded-xl" /></div>;
