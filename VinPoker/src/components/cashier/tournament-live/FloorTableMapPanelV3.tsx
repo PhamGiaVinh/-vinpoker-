@@ -545,7 +545,7 @@ export function FloorTableMapPanelV3({
                     {modeRequest && <div role="status" className="space-y-2 text-sm">
                       <p>Đang chờ chuyển sang {modeRequest.targetMode === "tracker" ? "Live Tracker" : "Manual"}.</p>
                       <p>{modeRequest.blockers.map((reason) => ({ active_hand: "Ván đang chơi", pending_move: "Chuyển ghế đang chờ", correction_pending: "Báo sai hand chưa giải quyết", correction_session_unknown: "Báo sai hand cũ thiếu phiên bàn — cần kiểm tra dữ liệu" })[reason] ?? reason).join(" · ")}</p>
-                      <Button disabled={busy || !!modeRequestError} variant="outline" onClick={() => void run("Đã hủy yêu cầu đổi chế độ.", async () => {
+                      <Button data-ops-action="floor.tables.cancel_pending_control_mode" disabled={busy || !!modeRequestError} variant="outline" onClick={() => void run("Đã hủy yêu cầu đổi chế độ.", async () => {
                         const result = await v3.cancelTableControlModeRequest({ tournamentTableId: selectedTable.tournamentTableId, tableSessionId: selectedTable.tableSessionId, modeRequestId: modeRequest.id });
                         if (result.ok) setModeRequest(null);
                         return result;
