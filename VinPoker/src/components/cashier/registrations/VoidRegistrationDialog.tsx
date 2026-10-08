@@ -15,10 +15,9 @@ const REASON_PRESETS = [
 ] as const;
 
 /**
- * Void a CONFIRMED registration: frees the seat, cancels the entry + receipt, and
- * reverses the revenue (rake auto-drops). The cash refund is handed back manually
- * at the counter — this dialog only shows the amount that was paid. Reason is
- * mandatory and stored in tournament_registrations.cancellation_reason for audit.
+ * Request a refund using the existing live Cashier workflow. This step does not
+ * pay money, release seats, cancel entries or reverse revenue. Floor clearance
+ * and audited payment remain separate operations; the server verifies paid history.
  */
 export function VoidRegistrationDialog({
   open, onOpenChange, playerName, referenceCode, refundAmount, seatLabel, busy, onConfirm,
@@ -40,22 +39,22 @@ export function VoidRegistrationDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!busy) { onOpenChange(v); if (!v) setReason(""); } }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Huỷ & hoàn (void)</DialogTitle>
+          <DialogTitle>Yêu cầu hoàn tiền</DialogTitle>
           <DialogDescription>
             Huỷ đăng ký đã xác nhận <span className="font-mono font-semibold">{referenceCode}</span> của{" "}
-            <span className="font-medium">{playerName}</span>. Ghế sẽ được giải phóng và doanh thu (rake) tự trừ.
+            <span className="font-medium">{playerName}</span>. Chỉ ghi nhận yêu cầu; Floor xác minh ghế và Cashier ghi chi thực tế trước khi hoàn tất.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
           <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm space-y-1">
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Hoàn lại cho khách (tiền mặt)</span>
+              <span className="text-muted-foreground">Số tiền đề nghị hoàn</span>
               <span className="font-mono font-bold text-destructive">{formatVND(refundAmount)}</span>
             </div>
             {seatLabel && (
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Ghế giải phóng</span>
+                <span className="text-muted-foreground">Ghế cần Floor xác minh</span>
                 <span className="font-medium">{seatLabel}</span>
               </div>
             )}
@@ -80,8 +79,8 @@ export function VoidRegistrationDialog({
 
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>Quay lại</Button>
-          <Button variant="destructive" disabled={busy || !trimmed} onClick={() => onConfirm(trimmed)}>
-            {busy ? "Đang huỷ…" : "Huỷ & hoàn"}
+          <Button variant="destructive" disabled={busy || trimmed.length < 8} onClick={() => onConfirm(trimmed)}>
+            {busy ? "Đang gửi…" : "Gửi yêu cầu hoàn tiền"}
           </Button>
         </DialogFooter>
       </DialogContent>

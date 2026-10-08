@@ -50,9 +50,13 @@ const maskPhone = (p?: string | null) => {
   return s.slice(0, 3) + "****" + s.slice(-3);
 };
 
-// Maps void_registration RPC error codes to cashier-facing Vietnamese.
+// Server-authoritative refund request failures; never imply money has been paid.
 function mapVoidErr(res: any, raw?: string): string {
   switch (res?.error ?? raw) {
+    case "invalid_request": return "Lý do hoàn tiền cần ít nhất 8 ký tự.";
+    case "refund_window_closed": return "Đã hết thời điểm cho phép hoàn hoặc giải đã có kết quả/payout.";
+    case "verified_payment_history_required": return "Chưa đối chiếu đủ lịch sử khoản thu. Không thể yêu cầu hoàn.";
+    case "registration_club_mismatch": return "Đăng ký và giải không cùng CLB. Cần kiểm tra dữ liệu.";
     case "unauthorized": return "Phiên đăng nhập hết hạn — đăng nhập lại.";
     case "actor_not_allowed": return "Tài khoản của bạn không có quyền huỷ cho CLB này.";
     case "registration_not_found": return "Không tìm thấy đăng ký.";
@@ -213,12 +217,11 @@ export function RegistrationQueuePanel({
     load();
   };
 
-  // Void a CONFIRMED registration: cascades seat/entry/receipt + reverses revenue
-  // via the void_registration RPC (actor bound to auth.uid() server-side).
+  // Request only: Floor clearance and actual Cashier payment remain separate server steps.
   const voidReg = async (reason: string) => {
     if (!voidTarget) return;
     setVoidBusy(true);
-    const { data, error } = await supabase.rpc("void_registration", {
+    const { data, error } = await supabase.rpc("cashier_request_refund_v1", {
       p_registration_id: voidTarget.id,
       p_reason: reason,
     });
@@ -226,7 +229,7 @@ export function RegistrationQueuePanel({
     const res = data as any;
     if (error || !res?.ok) { toast.error(mapVoidErr(res, error?.message)); return; }
     setVoidTarget(null);
-    toast.success(`Đã huỷ & hoàn ${formatVND(res.refund_amount ?? voidTarget.total_pay)} — ghế đã giải phóng`);
+    toast.success("Đã ghi nhận yêu cầu hoàn. Floor xác minh ghế; Cashier ghi chi thực tế trước khi hoàn tất.");
     load();
   };
 
@@ -320,7 +323,7 @@ export function RegistrationQueuePanel({
                   {FEATURES.registrationExtensions && r.queueStatus !== "waiting" && (
                     <Button size="sm" variant="outline" className="flex-1 h-9 text-destructive border-destructive/40"
                       onClick={() => setVoidTarget(r)}>
-                      <Undo2 className="w-3.5 h-3.5 mr-1" /> Huỷ & hoàn
+                      <Undo2 className="w-3.5 h-3.5 mr-1" /> Yêu cầu hoàn tiền
                     </Button>
                   )}
                 </div>
