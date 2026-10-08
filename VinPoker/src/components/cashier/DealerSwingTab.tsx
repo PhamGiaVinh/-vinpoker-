@@ -990,7 +990,11 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
         }
         // 409 = table already has an active dealer (cron may have auto-assigned)
         if (status === 409) {
-          toast.info("Bàn đã có dealer — tự động cập nhật...");
+          if (detail === "IDEMPOTENCY_CONFLICT") {
+            toast.error("Yêu cầu gán không khớp kết quả đã lưu. Không gán lại tự động; cần kiểm tra phiên bàn và dealer.");
+          } else {
+            toast.info(`${detail} — đang tải lại trạng thái bàn.`);
+          }
           refetchAssignments();
           return;
         }
