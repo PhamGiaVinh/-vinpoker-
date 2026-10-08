@@ -35,8 +35,12 @@ describe("FloorTableMapPanel loading state", () => {
             id: "tournament-1",
             club_id: "club-1",
             name: "Giải TEST",
-            status: "running",
-          } as Tournament}
+            status: "live", description: null, swing_duration_minutes: 30, warn_at_minutes: 25,
+            crit_at_minutes: 35, created_at: "2026-10-09T00:00:00Z", updated_at: "2026-10-09T00:00:00Z",
+            current_level: null, current_blinds: null, current_level_id: null, clock_started_at: null,
+            clock_paused_at: null, pause_accumulated: null, players_remaining: null, average_stack: null,
+            prize_pool: null, itm_places: null,
+          } satisfies Tournament}
           refreshTrigger={0}
         />
       </SupabaseClientProvider>,

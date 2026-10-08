@@ -28,7 +28,7 @@ describe("blind draft in tournament setup", () => {
   it("keeps the reviewed levels local until the existing multi-day create request", async () => {
     const created = vi.fn();
     render(<NewTournamentDialog clubs={[{ id: "club", name: "Club" }]} defaultClubId="club" multiClub={false} onCreated={created} lockMode="multi" />);
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Tạo Multi-day" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^(Create Multi-day|Tạo Multi-day)$/ })); });
     const dialog = screen.getByRole("dialog");
     fireEvent.change(dialog.querySelector('input:not([type])') ?? dialog.querySelector('input[type="text"]')!, { target: { value: "Main Event" } });
     const dates = dialog.querySelectorAll('input[type="datetime-local"]');
@@ -39,7 +39,7 @@ describe("blind draft in tournament setup", () => {
     fireEvent.change(screen.getByRole("spinbutton", { name: "Row 1 big_blind" }), { target: { value: "600" } });
     fireEvent.click(screen.getByRole("button", { name: "Use reviewed draft" }));
     expect(h.rpc).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Create", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(created).toHaveBeenCalledOnce());
     expect(h.rpc).toHaveBeenCalledWith("create_tournament_event_with_flights", expect.objectContaining({
       p_levels: expect.arrayContaining([expect.objectContaining({ level_number: 1, big_blind: 600 })]),
@@ -55,7 +55,7 @@ describe("blind draft in tournament setup", () => {
 
   it("invalidates a reviewed draft when starting stack changes", async () => {
     render(<NewTournamentDialog clubs={[]} defaultClubId="club" multiClub={false} onCreated={vi.fn()} lockMode="multi" />);
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Tạo Multi-day" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^(Create Multi-day|Tạo Multi-day)$/ })); });
     fireEvent.click(screen.getByRole("button", { name: "Generate draft" }));
     fireEvent.click(screen.getByRole("button", { name: "Use reviewed draft" }));
     expect(screen.getByText(/Reviewed draft/)).toBeTruthy();
