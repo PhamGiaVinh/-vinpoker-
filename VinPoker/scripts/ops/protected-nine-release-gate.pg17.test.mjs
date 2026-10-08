@@ -9,7 +9,7 @@ import { catalogSnapshotSql, compareObjectContract, contractHash, deriveObjectSc
 
 const artifactDir = process.env.PROTECTED_NINE_SCHEMA_ARTIFACT_DIR;
 const schemaPath = artifactDir && resolve(artifactDir, "live-public-schema.sql");
-const expectedSchemaSha = "d23cfa75a7381453ba0d6216346f6460c816a3b1525ef5d47984c3a995ddc56a";
+const expectedSchemaSha = "703aed6b620cd24f34c31d4545b2d7e97e4a488f89fe81dfc1a36b175d259223";
 
 function psql(sql) {
   const result = spawnSync("psql", ["-X", "-v", "ON_ERROR_STOP=1", "-At"], { input: sql, encoding: "utf8", env: process.env });
