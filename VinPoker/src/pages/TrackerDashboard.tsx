@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,55 +9,138 @@ import { AlertTriangle, History, Radio, RefreshCw } from "lucide-react";
 import TournamentLivePanel from "@/components/cashier/TournamentLivePanel";
 
 type ClubRow = { id: string; name: string };
+type TrackerReadResult<T> = { data: T | null; error: unknown | null };
+
+function isTransientReadError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const detail = error as { status?: unknown; message?: unknown };
+  return (typeof detail.status === "number" && (detail.status === 0 || detail.status >= 500)) ||
+    (error instanceof TypeError && typeof detail.message === "string" && /failed to fetch|network|timeout/i.test(detail.message)) ||
+    (typeof detail.message === "string" && /failed to fetch|network|timeout|temporar/i.test(detail.message));
+}
+
+function trackerReadErrorMessage(error: unknown): string {
+  if (error instanceof TypeError || (error && typeof error === "object" &&
+      "message" in error && typeof error.message === "string" && /failed to fetch|network|timeout/i.test(error.message))) {
+    return "Không kết nối được máy chủ. Kiểm tra mạng rồi thử tải lại.";
+  }
+  return "Máy chủ chưa xác minh được danh sách CLB. Vui lòng thử lại.";
+}
+
+async function readWithRetry<T>(
+  read: () => PromiseLike<TrackerReadResult<T>>,
+  isCurrentRequest: () => boolean,
+): Promise<TrackerReadResult<T>> {
+  let result: TrackerReadResult<T> = { data: null, error: null };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (!isCurrentRequest()) return result;
+    try {
+      result = await read();
+    } catch (error) {
+      result = { data: null, error };
+    }
+    if (!result.error || !isTransientReadError(result.error) || attempt === 2) return result;
+    await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+  }
+  return result;
+}
 
 export default function TrackerDashboard() {
-  const { user, loading, isAdmin } = useAuth();
+  const { user, loading, isAdmin, rolesLoading, rolesError } = useAuth();
+  const userId = user?.id ?? null;
   const nav = useNavigate();
   const [clubs, setClubs] = useState<ClubRow[] | null>(null);
   const [clubsError, setClubsError] = useState<string | null>(null);
+  const [clubsForUserId, setClubsForUserId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [historyTournamentId, setHistoryTournamentId] = useState<string | null>(null);
+  const clubRequestId = useRef(0);
 
   useEffect(() => {
     if (loading) return;
-    if (!user) { nav("/auth"); return; }
-  }, [loading, user, nav]);
+    if (!userId) { nav("/auth"); return; }
+  }, [loading, userId, nav]);
+
+  const loadClubs = useCallback(async (requestedUserId: string) => {
+    const requestId = ++clubRequestId.current;
+    const isCurrentRequest = () => clubRequestId.current === requestId;
+    setClubs(null);
+    setClubsError(null);
+    setClubsForUserId(null);
+
+    const scope = await readWithRetry(
+      () => supabase.rpc("tracker_club_ids", { _user_id: requestedUserId }),
+      isCurrentRequest,
+    );
+    if (!isCurrentRequest()) return;
+    if (scope.error) {
+      setClubsError(trackerReadErrorMessage(scope.error));
+      setClubsForUserId(requestedUserId);
+      return;
+    }
+
+    const idArr = (scope.data ?? []).filter((clubId): clubId is string => typeof clubId === "string");
+    if (!idArr.length) {
+      setClubsError(null);
+      setClubs([]);
+      setClubsForUserId(requestedUserId);
+      return;
+    }
+
+    const clubResult = await readWithRetry(
+      () => supabase.from("clubs").select("id, name").in("id", idArr),
+      isCurrentRequest,
+    );
+    if (!isCurrentRequest()) return;
+    const resolvedIds = new Set((clubResult.data ?? []).map((club) => club.id));
+    const missingClubId = idArr.some((clubId) => !resolvedIds.has(clubId));
+    if (clubResult.error || !clubResult.data?.length || missingClubId) {
+      setClubsError(clubResult.error
+        ? trackerReadErrorMessage(clubResult.error)
+        : "Quyền CLB đã được xác nhận nhưng thông tin CLB không khớp. Cần kiểm tra dữ liệu.");
+      setClubsForUserId(requestedUserId);
+      return;
+    }
+
+    setClubsError(null);
+    setClubs(clubResult.data as ClubRow[]);
+    setClubsForUserId(requestedUserId);
+  }, []);
 
   useEffect(() => {
-    if (!user) return;
-    (async () => {
-      const { data: ids, error: idsError } = await supabase.rpc("tracker_club_ids", { _user_id: user.id });
-      if (idsError) {
-        // A transient RPC failure must not masquerade as "no clubs assigned".
-        setClubsError(idsError.message);
-        return;
-      }
-      const idArr = (ids ?? []).filter((clubId): clubId is string => typeof clubId === "string");
-      if (!idArr.length) { setClubsError(null); setClubs([]); return; }
-      const { data: cs, error: clubsErr } = await supabase.from("clubs").select("id, name").in("id", idArr);
-      if (clubsErr) {
-        setClubsError(clubsErr.message);
-        return;
-      }
+    if (!userId) {
+      clubRequestId.current += 1;
+      setClubs(null);
       setClubsError(null);
-      setClubs((cs ?? []) as ClubRow[]);
-    })();
-  }, [user, reloadKey]);
+      setClubsForUserId(null);
+      return;
+    }
 
-  if (loading || !user) {
+    void loadClubs(userId);
+    return () => { clubRequestId.current += 1; };
+  }, [userId, reloadKey, loadClubs]);
+
+  const effectiveClubsError = clubsError || (clubs?.length === 0 && !isAdmin && !rolesLoading ? rolesError : null);
+  if (loading || !user || (clubs?.length === 0 && rolesLoading)) {
     return <div className="container mx-auto p-6"><Skeleton className="h-96 rounded-xl" /></div>;
   }
-  if (clubsError) {
+  if (clubsForUserId !== userId) {
+    return <div className="container mx-auto p-6"><Skeleton className="h-96 rounded-xl" /></div>;
+  }
+  if (effectiveClubsError) {
     return (
       <div className="container mx-auto p-6">
         <Card className="p-8 text-center space-y-3">
           <AlertTriangle className="w-10 h-10 mx-auto text-destructive" />
           <div className="text-lg font-bold">Không tải được danh sách CLB</div>
-          <p className="text-xs text-muted-foreground break-all">{clubsError}</p>
+          <p className="text-sm text-muted-foreground">{effectiveClubsError}</p>
           <Button
             size="sm"
             variant="outline"
-            onClick={() => { setClubsError(null); setClubs(null); setReloadKey((k) => k + 1); }}
+            onClick={() => {
+              if (!clubsError && rolesError) { window.location.reload(); return; }
+              setClubsError(null); setClubs(null); setReloadKey((k) => k + 1);
+            }}
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1" /> Thử lại
           </Button>

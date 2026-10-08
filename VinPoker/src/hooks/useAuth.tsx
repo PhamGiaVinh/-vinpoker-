@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { linkUser, logoutUser } from "@/lib/onesignal";
@@ -21,6 +21,9 @@ interface AuthContextValue {
   user: User | null;
   roles: AppRole[];
   loading: boolean;
+  authError: string | null;
+  rolesLoading: boolean;
+  rolesError: string | null;
   signOut: () => Promise<void>;
   isAdmin: boolean;
   isClubAdmin: boolean;
@@ -54,70 +57,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isFnbMember, setIsFnbMember] = useState(false);
   const [isAccountantMember, setIsAccountantMember] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [rolesLoading, setRolesLoading] = useState(true);
+  const [rolesError, setRolesError] = useState<string | null>(null);
+  const roleGeneration = useRef(0);
+  const activeUserId = useRef<string | null | undefined>(undefined);
 
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
-      setSession(sess);
-      setUser(sess?.user ?? null);
-      if (sess?.user) {
-        setTimeout(() => fetchRoles(sess.user.id), 0);
-        setTimeout(() => {
-          linkUser(sess.user.id);
-          // Persist OneSignal external_id mapping (idempotent)
-          supabase
-            .from("profiles")
-            .update({ onesignal_external_user_id: sess.user.id })
-            .eq("user_id", sess.user.id)
-            .then(() => {});
-        }, 0);
-      } else {
-        setRoles([]);
-        setIsClubOwner(false);
-        setIsDealer(false);
-        setIsChipMaster(false);
-        setIsMarketingMember(false);
-        setIsFnbMember(false);
-        setIsAccountantMember(false);
-        setTimeout(() => logoutUser(), 0);
-      }
-    });
-
-    supabase.auth.getSession().then(({ data: { session: sess } }) => {
-      setSession(sess);
-      setUser(sess?.user ?? null);
-      if (sess?.user) { fetchRoles(sess.user.id); linkUser(sess.user.id); }
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchRoles = async (userId: string) => {
-    const [{ data: roleRows }, { data: ownedClubs }, { data: dealerRows }] = await Promise.all([
-      supabase.from("user_roles").select("role").eq("user_id", userId),
-      supabase.from("clubs").select("id").eq("owner_id", userId).limit(1),
-      // A user "is a dealer" if linked to a dealers row. Self-read is permitted by
-      // the dealers_select_control policy (USING ... OR auth.uid() = user_id).
-      supabase.from("dealers").select("id").eq("user_id", userId).is("deleted_at", null).limit(1),
-    ]);
-    setRoles((roleRows ?? []).map((r: any) => r.role as AppRole));
-    setIsClubOwner((ownedClubs ?? []).length > 0);
-    setIsDealer((dealerRows ?? []).length > 0);
-    // Chip-Master is additive + flag-gated + guarded (returns false without querying while
-    // FEATURES.chipOps is off / on any error) so it never blocks or breaks auth init.
-    deriveIsChipMaster(userId).then(setIsChipMaster).catch(() => setIsChipMaster(false));
-    // Marketing membership — same guarded pattern (false without querying while
-    // FEATURES.marketingModule is off / on any error). See lib/marketer.ts.
-    deriveIsMarketing(userId).then(setIsMarketingMember).catch(() => setIsMarketingMember(false));
-    // F&B membership — same guarded pattern (false without querying while FEATURES.fnbModule is
-    // off / on any error). See lib/fnbStaff.ts.
-    deriveIsFnb(userId).then(setIsFnbMember).catch(() => setIsFnbMember(false));
-    // Accountant membership — same guarded pattern (false on any error). See lib/accountant.ts.
-    deriveIsAccountant(userId).then(setIsAccountantMember).catch(() => setIsAccountantMember(false));
-  };
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const clearRoles = useCallback(() => {
     setRoles([]);
     setIsClubOwner(false);
     setIsDealer(false);
@@ -125,11 +71,138 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsMarketingMember(false);
     setIsFnbMember(false);
     setIsAccountantMember(false);
+    setRolesError(null);
+  }, []);
+
+  const fetchRoles = useCallback(async (userId: string, generation: number) => {
+    const isCurrentRequest = () => roleGeneration.current === generation;
+    setRolesLoading(true);
+    setRolesError(null);
+    try {
+      const [roleResult, ownerResult, dealerResult] = await Promise.all([
+        supabase.from("user_roles").select("role").eq("user_id", userId),
+        supabase.from("clubs").select("id").eq("owner_id", userId).limit(1),
+        // A user "is a dealer" if linked to a dealers row. Self-read is permitted by
+        // the dealers_select_control policy (USING ... OR auth.uid() = user_id).
+        supabase.from("dealers").select("id").eq("user_id", userId).is("deleted_at", null).limit(1),
+      ]);
+      if (!isCurrentRequest()) return;
+      if (roleResult.error) throw roleResult.error;
+
+      setRoles((roleResult.data ?? []).map((row) => row.role as AppRole));
+      setIsClubOwner(!ownerResult.error && (ownerResult.data ?? []).length > 0);
+      setIsDealer(!dealerResult.error && (dealerResult.data ?? []).length > 0);
+      if (ownerResult.error || dealerResult.error) {
+        setRolesError("Chưa xác minh được đầy đủ quyền CLB. Hãy thử tải lại khi kết nối ổn định.");
+      }
+      setRolesLoading(false);
+
+      // Membership-based navigation affordances are additive and remain fail-closed.
+      deriveIsChipMaster(userId).then((value) => { if (isCurrentRequest()) setIsChipMaster(value); }).catch(() => {
+        if (isCurrentRequest()) setIsChipMaster(false);
+      });
+      deriveIsMarketing(userId).then((value) => { if (isCurrentRequest()) setIsMarketingMember(value); }).catch(() => {
+        if (isCurrentRequest()) setIsMarketingMember(false);
+      });
+      deriveIsFnb(userId).then((value) => { if (isCurrentRequest()) setIsFnbMember(value); }).catch(() => {
+        if (isCurrentRequest()) setIsFnbMember(false);
+      });
+      deriveIsAccountant(userId).then((value) => { if (isCurrentRequest()) setIsAccountantMember(value); }).catch(() => {
+        if (isCurrentRequest()) setIsAccountantMember(false);
+      });
+    } catch {
+      if (!isCurrentRequest()) return;
+      clearRoles();
+      setRolesError("Không tải được quyền tài khoản. Hãy thử lại khi kết nối ổn định.");
+      setRolesLoading(false);
+    }
+  }, [clearRoles]);
+
+  useEffect(() => {
+    let authEventCount = 0;
+    let disposed = false;
+
+    const applySession = (sess: Session | null) => {
+      if (disposed) return;
+      setSession(sess);
+      setUser(sess?.user ?? null);
+      setLoading(false);
+      setAuthError(null);
+      const nextUserId = sess?.user.id ?? null;
+      if (activeUserId.current === nextUserId) return;
+
+      activeUserId.current = nextUserId;
+      const generation = ++roleGeneration.current;
+      clearRoles();
+      if (nextUserId) {
+        setRolesLoading(true);
+        void fetchRoles(nextUserId, generation);
+        setTimeout(() => {
+          if (disposed || roleGeneration.current !== generation) return;
+          void linkUser(nextUserId);
+          // Persist OneSignal external_id mapping (idempotent)
+          supabase
+            .from("profiles")
+            .update({ onesignal_external_user_id: nextUserId })
+            .eq("user_id", nextUserId)
+            .then(() => {});
+        }, 0);
+      } else {
+        setRolesLoading(false);
+        setTimeout(() => {
+          if (!disposed && roleGeneration.current === generation) void logoutUser();
+        }, 0);
+      }
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
+      authEventCount += 1;
+      applySession(sess);
+    });
+
+    supabase.auth.getSession().then(({ data: { session: sess }, error }) => {
+      if (disposed) return;
+      if (error && authEventCount === 0) {
+        setAuthError("Không xác minh được phiên đăng nhập. Kiểm tra kết nối rồi thử lại.");
+        setRolesLoading(false);
+        setLoading(false);
+        return;
+      }
+      if (authEventCount === 0) applySession(sess);
+      else setLoading(false);
+    }).catch(() => {
+      if (!disposed) {
+        if (authEventCount === 0) {
+          setAuthError("Không xác minh được phiên đăng nhập. Kiểm tra kết nối rồi thử lại.");
+          setRolesLoading(false);
+        }
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      disposed = true;
+      roleGeneration.current += 1;
+      activeUserId.current = undefined;
+      subscription.unsubscribe();
+    };
+  }, [clearRoles, fetchRoles]);
+
+  const signOut = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    roleGeneration.current += 1;
+    activeUserId.current = null;
+    setSession(null);
+    setUser(null);
+    setAuthError(null);
+    clearRoles();
+    setRolesLoading(false);
   };
 
   return (
     <AuthContext.Provider value={{
-      session, user, roles, loading, signOut,
+      session, user, roles, loading, authError, rolesLoading, rolesError, signOut,
       isAdmin: roles.includes("super_admin"),
       isClubAdmin: roles.includes("club_admin") || roles.includes("super_admin"),
       isClubOwner,

@@ -2309,6 +2309,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
               massAssignBusy={massAssignBusy}
               autoSwingEnabled={autoSwingEnabled}
               onToggleAutoSwing={toggleAutoSwing}
+              onAutoSwingDisabled={() => setAutoSwingEnabled(false)}
               clubFilter={clubFilter}
               clubs={clubs}
               onOpenSwingConfig={() => setSwingConfigOpen(true)}
@@ -4202,6 +4203,7 @@ function CommandCenter({
   auditLogs, onAutoSwing, onMassAssign,
   onExportShift, onExportPayroll, swingAllBusy, massAssignBusy,
   autoSwingEnabled, onToggleAutoSwing,
+  onAutoSwingDisabled,
   clubFilter, clubs, onOpenSwingConfig,
   onOpenSpecialDates, dealers, swingMetrics, tables,
   assignments, tableAssignmentMap, timelineByTableId, nextDealerMap,
@@ -4217,6 +4219,7 @@ function CommandCenter({
   massAssignBusy: boolean;
   autoSwingEnabled: boolean;
   onToggleAutoSwing: () => void;
+  onAutoSwingDisabled: () => void;
   clubFilter: string | null;
   clubs: ClubRow[];
   onOpenSwingConfig: () => void;
@@ -4261,14 +4264,19 @@ function CommandCenter({
     const cid = clubFilter;
     if (!cid) return;
     setStopSaving(true);
-    const { error } = await supabase
-      .from("club_settings")
-      .upsert({ club_id: cid, auto_swing_enabled: false }, { onConflict: "club_id" });
-    setStopSaving(false);
-    setStopConfirmOpen(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Đã tắt Auto-Swing");
-    onToggleAutoSwing();
+    try {
+      const { error } = await supabase
+        .from("club_settings")
+        .upsert({ club_id: cid, auto_swing_enabled: false }, { onConflict: "club_id" });
+      if (error) { toast.error(error.message); return; }
+      onAutoSwingDisabled();
+      setStopConfirmOpen(false);
+      toast.success("Đã tắt Auto-Swing");
+    } catch {
+      toast.error("Không xác minh được trạng thái Swing. Hãy tải lại trước khi thao tác tiếp.");
+    } finally {
+      setStopSaving(false);
+    }
   };
 
   // ── Computed metrics ────────────────────────────────────────────
