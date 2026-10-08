@@ -15,6 +15,9 @@ on:
       - 'VinPoker/supabase/migrations/20270128000018_dealer_mass_open_canonical_sessions_v1.sql'
       - 'VinPoker/tests/dealerSwing/massOpenSessions.pg17.sql'
       - 'VinPoker/supabase/migrations/20270128000019_dealer_manual_assignment_receipt_read_v1.sql'
+      - 'VinPoker/supabase/functions/run-dealer-ready-backup/**'
+      - 'VinPoker/supabase/functions/_shared/internal-trigger-auth.ts'
+      - 'VinPoker/supabase/functions/_shared/__tests__/backupServiceAuth.test.ts'
 permissions: { actions: read, contents: read }
 jobs:
   runtime:
@@ -39,6 +42,13 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with: { node-version: 22 }
+      - uses: denoland/setup-deno@v2
+        with: { deno-version: v2.x }
+      - name: Backup worker rejects unauthenticated privileged execution
+        working-directory: VinPoker
+        run: |
+          deno check supabase/functions/run-dealer-ready-backup/index.ts
+          deno test --allow-env supabase/functions/run-dealer-ready-backup/auth.test.ts supabase/functions/_shared/__tests__/backupServiceAuth.test.ts
       - name: Download exact owner-authorized current schema (not a pre-release replay baseline)
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |

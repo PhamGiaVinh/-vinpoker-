@@ -52,6 +52,19 @@ export function authorizeInternalTrigger(
   return { ok: true };
 }
 
+/** Legacy cron callers supply the actual service credential, not any Bearer string. */
+export function authorizeServiceRoleRequest(
+  request: Request,
+  expectedKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+): InternalAuthResult {
+  if (!expectedKey) return { ok: false, status: 503, code: "internal_auth_not_configured" };
+  const header = request.headers.get("authorization") ?? "";
+  if (!header.startsWith("Bearer ") || !constantTimeEqual(header.slice(7).trim(), expectedKey)) {
+    return { ok: false, status: 401, code: "internal_auth_denied" };
+  }
+  return { ok: true };
+}
+
 export function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_PATTERN.test(value);
 }
