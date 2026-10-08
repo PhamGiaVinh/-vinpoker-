@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { AlertTriangle, ArrowRightLeft, Loader2, LockKeyhole, Plus, RadioTower, RefreshCw, RotateCcw, Shuffle, UnlockKeyhole, UserRoundMinus, UserRoundX, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
@@ -94,6 +95,8 @@ export function FloorTableMapPanelV3({
   refreshTrigger: number;
 }) {
   const supabase = useSupabaseClient();
+  const { user } = useAuth();
+  const modeAttempts = useRef(new Map<string, Parameters<ReturnType<typeof createFloorTableControlV3Client>["requestTableControlMode"]>[0]>());
   const v3 = useMemo(() => createFloorTableControlV3Client(
     ((name, args) => (supabase.rpc as unknown as FloorTableControlV3Rpc)(name, args)),
   ), [supabase]);
@@ -514,14 +517,18 @@ export function FloorTableMapPanelV3({
                       className="min-h-12 w-full"
                       disabled={busy || !!modeRequestError || !!modeRequest || nextMode === selectedTable.controlMode}
                       onClick={() => void run((data) => data.outcome === "pending" ? "Đã lưu yêu cầu. Bàn sẽ đổi chế độ khi đủ điều kiện." : "Đã đổi chế độ bàn.", async () => {
-                        const result = await v3.requestTableControlMode({
+                        const attemptScope = JSON.stringify([user?.id, selectedTable.tableSessionId, nextMode]);
+                        const intent = modeAttempts.current.get(attemptScope) ?? {
                           tournamentTableId: selectedTable.tournamentTableId,
                           tableSessionId: selectedTable.tableSessionId,
                           controlMode: nextMode,
                           expectedRevision: selectedTable.sessionRevision,
                           expectedEpoch: selectedTable.controlEpoch,
                           requestId: crypto.randomUUID(),
-                        });
+                        };
+                        modeAttempts.current.set(attemptScope, intent);
+                        const result = await v3.requestTableControlMode(intent);
+                        if (result.ok === true) modeAttempts.current.delete(attemptScope);
                         if (result.ok && result.data.outcome !== "pending") setModeOpen(false);
                         return result;
                       })}
@@ -532,7 +539,7 @@ export function FloorTableMapPanelV3({
                     {modeRequestError && <p role="alert" className="text-sm text-destructive">{modeRequestError}</p>}
                     {modeRequest && <div role="status" className="space-y-2 text-sm">
                       <p>Đang chờ chuyển sang {modeRequest.targetMode === "tracker" ? "Live Tracker" : "Manual"}.</p>
-                      <p>{modeRequest.blockers.map((reason) => ({ active_hand: "Ván đang chơi", pending_move: "Chuyển ghế đang chờ", correction_pending: "Báo sai hand chưa giải quyết" })[reason] ?? reason).join(" · ")}</p>
+                      <p>{modeRequest.blockers.map((reason) => ({ active_hand: "Ván đang chơi", pending_move: "Chuyển ghế đang chờ", correction_pending: "Báo sai hand chưa giải quyết", correction_session_unknown: "Báo sai hand cũ thiếu phiên bàn — cần kiểm tra dữ liệu" })[reason] ?? reason).join(" · ")}</p>
                       <Button disabled={busy || !!modeRequestError} variant="outline" onClick={() => void run("Đã hủy yêu cầu đổi chế độ.", async () => {
                         const result = await v3.cancelTableControlModeRequest({ tournamentTableId: selectedTable.tournamentTableId, tableSessionId: selectedTable.tableSessionId, modeRequestId: modeRequest.id });
                         if (result.ok) setModeRequest(null);

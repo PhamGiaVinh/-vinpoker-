@@ -37,10 +37,14 @@ BEGIN
   END IF;
   IF floor_private.floor_table_v3_has_active_hand(t.tournament_id,t.id,s.id) THEN b:=b||'"active_hand"'::jsonb; END IF;
   IF EXISTS(SELECT 1 FROM public.floor_pending_tracker_moves m WHERE m.status='pending' AND (m.source_table_session_id=s.id OR m.destination_table_session_id=s.id)) THEN b:=b||'"pending_move"'::jsonb; END IF;
-  IF EXISTS(SELECT 1 FROM public.tracker_voice_configs c WHERE c.tournament_table_id=t.id AND c.correction_state='correction_pending')
+  IF EXISTS(SELECT 1 FROM public.tracker_voice_configs c WHERE c.tournament_table_id=t.id AND c.table_session_id=s.id AND c.correction_state='correction_pending')
     OR EXISTS(SELECT 1 FROM public.tracker_floor_alerts a JOIN public.tournament_hands h ON h.id=a.hand_id
-      WHERE (h.table_session_id=s.id OR h.tournament_table_id=t.id) AND a.correction_required IS TRUE AND a.status IN ('open','acknowledged','in_progress'))
+      WHERE h.table_session_id=s.id AND a.correction_required IS TRUE AND a.status IN ('open','acknowledged','in_progress'))
     THEN b:=b||'"correction_pending"'::jsonb; END IF;
+  IF EXISTS(SELECT 1 FROM public.tracker_voice_configs c WHERE c.tournament_table_id=t.id AND c.table_session_id IS NULL AND c.correction_state='correction_pending')
+    OR EXISTS(SELECT 1 FROM public.tracker_floor_alerts a JOIN public.tournament_hands h ON h.id=a.hand_id
+      WHERE h.table_session_id IS NULL AND h.tournament_table_id=t.id AND a.correction_required IS TRUE AND a.status IN ('open','acknowledged','in_progress'))
+    THEN b:=b||'"correction_session_unknown"'::jsonb; END IF;
   IF jsonb_array_length(b)>0 THEN
     UPDATE floor_private.table_mode_requests_v1 SET blockers=b WHERE id=r.id;
     RETURN jsonb_build_object('ok',true,'outcome','pending','request_id',r.id,'blockers',b);
