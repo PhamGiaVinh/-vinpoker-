@@ -66,7 +66,7 @@ function setup(options: { pendingNetworkFailure?: boolean } = {}) {
     }],
   } });
   fixture.client.breakTournamentTable.mockResolvedValue({ ok: true, data: { ok: true, break_pending: true } });
-  render(<FloorTableMapPanelV3 tournament={{ id: "tour-1" } as Tournament} refreshTrigger={0} />);
+  render(<FloorTableMapPanelV3 actorId="owner-a" tournament={{ id: "tour-1" } as Tournament} refreshTrigger={0} />);
 }
 
 describe("Floor roster mobile actions", () => {

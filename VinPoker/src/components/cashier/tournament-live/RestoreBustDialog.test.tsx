@@ -17,7 +17,7 @@ const table: FloorTournamentTableRoster = {
 };
 function mount() {
   const onRestored = vi.fn(); const onClose = vi.fn();
-  const view = render(<RestoreBustDialog tournamentId="tour-a" target={target} onRestored={onRestored} onClose={onClose} />);
+  const view = render(<RestoreBustDialog actorId="owner-a" tournamentId="tour-a" target={target} onRestored={onRestored} onClose={onClose} />);
   return { ...view, onRestored, onClose };
 }
 async function choose() {
@@ -35,7 +35,7 @@ afterEach(cleanup);
 describe("mistaken-bust restore", () => {
   it("verifies the Floor-selected destination before restoring without a second selection", async () => {
     const onRestored = vi.fn();
-    render(<RestoreBustDialog tournamentId="tour-a" target={{ ...target, destination: { tableId: "tt-a", seatNumber: 1 } }}
+    render(<RestoreBustDialog actorId="owner-a" tournamentId="tour-a" target={{ ...target, destination: { tableId: "tt-a", seatNumber: 1 } }}
       onRestored={onRestored} onClose={vi.fn()} />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Xác nhận hoàn tác bust" })).not.toBeDisabled());
     expect(screen.getByLabelText("Ghế khôi phục")).toHaveValue("1");

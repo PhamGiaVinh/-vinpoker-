@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
 import { AlertTriangle, ArrowRightLeft, Loader2, LockKeyhole, Plus, RadioTower, RefreshCw, RotateCcw, Shuffle, UnlockKeyhole, UserRoundMinus, UserRoundX, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
@@ -91,12 +90,13 @@ function v3ErrorMessage(error: string): string {
 export function FloorTableMapPanelV3({
   tournament,
   refreshTrigger,
+  actorId,
 }: {
   tournament: Tournament;
   refreshTrigger: number;
+  actorId: string | null;
 }) {
   const supabase = useSupabaseClient();
-  const { user } = useAuth();
   const modeAttempts = useRef(new Map<string, Parameters<ReturnType<typeof createFloorTableControlV3Client>["requestTableControlMode"]>[0]>());
   const v3 = useMemo(() => createFloorTableControlV3Client(
     ((name, args) => (supabase.rpc as unknown as FloorTableControlV3Rpc)(name, args)),
@@ -470,7 +470,7 @@ export function FloorTableMapPanelV3({
       </p>
 
       <OpenTableDialog open={openTable} onOpenChange={setOpenTable} tournamentId={tournament.id} onDone={() => void load()} />
-      <RestoreBustDialog tournamentId={tournament.id} target={restoreTarget}
+      <RestoreBustDialog actorId={actorId} tournamentId={tournament.id} target={restoreTarget}
         onClose={() => setRestoreTarget(null)}
         onRestored={() => { setEntrySelection(null); toast.success("Đã khôi phục người chơi vào ghế."); void load(); }} />
       {FEATURES.floorRedrawSeatLockV1 && (
@@ -522,7 +522,7 @@ export function FloorTableMapPanelV3({
                       className="min-h-12 w-full"
                       disabled={busy || !!modeRequestError || !!modeRequest || nextMode === selectedTable.controlMode}
                       onClick={() => void run((data) => data.outcome === "pending" ? "Đã lưu yêu cầu. Bàn sẽ đổi chế độ khi đủ điều kiện." : "Đã đổi chế độ bàn.", async () => {
-                        const attemptScope = JSON.stringify([user?.id, selectedTable.tableSessionId, nextMode]);
+                        const attemptScope = JSON.stringify([actorId, selectedTable.tableSessionId, nextMode]);
                         const intent = modeAttempts.current.get(attemptScope) ?? {
                           tournamentTableId: selectedTable.tournamentTableId,
                           tableSessionId: selectedTable.tableSessionId,

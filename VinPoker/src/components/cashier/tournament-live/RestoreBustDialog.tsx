@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { createFloorTableControlV3Client, type FloorTableControlV3Rpc, type FloorTournamentTableRoster } from "@/lib/floorTableControlV3";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,19 +19,19 @@ const messages: Record<string, string> = {
   actor_not_allowed: "Tài khoản không có quyền hoàn tác bust ở CLB này.",
 };
 
-export function RestoreBustDialog({ tournamentId, target, onClose, onRestored }: {
+export function RestoreBustDialog({ tournamentId, target, onClose, onRestored, actorId }: {
   tournamentId: string;
   target: { entryId: string; name: string; destination?: { tableId: string; seatNumber: number } } | null;
   onClose: () => void;
   onRestored: () => void;
+  actorId: string | null;
 }) {
   const supabase = useSupabaseClient();
-  const { user } = useAuth();
   const client = useMemo(() => createFloorTableControlV3Client(
     ((name, args) => (supabase.rpc as unknown as FloorTableControlV3Rpc)(name, args)),
   ), [supabase]);
   const attempts = useRef(new Map<string, RestoreIntent>());
-  const scope = `${user?.id ?? ""}:${tournamentId}:${target?.entryId ?? ""}`;
+  const scope = `${actorId ?? ""}:${tournamentId}:${target?.entryId ?? ""}`;
   const currentScope = useRef(scope);
   currentScope.current = scope;
   const [tables, setTables] = useState<FloorTournamentTableRoster[]>([]);
@@ -49,7 +48,7 @@ export function RestoreBustDialog({ tournamentId, target, onClose, onRestored }:
     let disposed = false;
     setTables([]); setStack(null); setTableId(""); setSeat(""); setError(null); setVerifiedScope("");
     setUnresolved(attempts.current.has(scope));
-    if (!target || !user) return;
+    if (!target || !actorId) return;
     setLoading(true);
     void Promise.all([client.getTournamentTableRoster(tournamentId), client.getRestorableEntries(tournamentId)])
       .then(([roster, entries]) => {
@@ -68,13 +67,13 @@ export function RestoreBustDialog({ tournamentId, target, onClose, onRestored }:
       }).catch(() => { if (!disposed) setError("Không kết nối được server. Hãy đóng và mở lại để thử."); })
       .finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
-  }, [client, target, tournamentId, user?.id]);
+  }, [client, target, tournamentId, actorId]);
   const table = tables.find((row) => row.tournamentTableId === tableId);
   const emptySeats = table ? Array.from({ length: table.maxSeats }, (_, i) => i + 1)
     .filter((n) => !table.seats.some((s) => s.seatNumber === n) && !table.seatLocks.some((s) => s.seatNumber === n)) : [];
   async function restore() {
     const prior = attempts.current.get(scope);
-    if (pending.current || !target || !user || (!prior && (verifiedScope !== scope || !table || stack === null || !emptySeats.includes(Number(seat))))) return;
+    if (pending.current || !target || !actorId || (!prior && (verifiedScope !== scope || !table || stack === null || !emptySeats.includes(Number(seat))))) return;
     const capturedScope = scope;
     const key = scope;
     const intent = prior ?? {

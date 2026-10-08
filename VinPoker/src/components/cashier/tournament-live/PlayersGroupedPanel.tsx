@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -79,6 +80,7 @@ export function PlayersGroupedPanel({
   refreshTrigger: number;
 }) {
   const tid = tournament.id;
+  const { user } = useAuth();
   const [seats, setSeats] = useState<SeatRow[] | null>(null);
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [entryBySeat, setEntryBySeat] = useState<Record<string, string>>({});
@@ -376,7 +378,7 @@ export function PlayersGroupedPanel({
         )
       )}
 
-      <RestoreBustDialog tournamentId={tid} target={restoreTarget} onClose={() => setRestoreTarget(null)} onRestored={() => { void load(); }} />
+      <RestoreBustDialog actorId={user?.id ?? null} tournamentId={tid} target={restoreTarget} onClose={() => setRestoreTarget(null)} onRestored={() => { void load(); }} />
       <PlayerActionSheet
         open={selected !== null}
         onOpenChange={(v) => { if (!v) setSelected(null); }}
