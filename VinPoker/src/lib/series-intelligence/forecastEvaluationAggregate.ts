@@ -21,7 +21,7 @@ function sampleGate(n: number): ForecastEvaluationSampleGate {
   return "evaluation_summary_available";
 }
 
-function groupKey(evaluation: SeriesForecastEvaluationV1): string {
+function groupKey(evaluation: Pick<SeriesForecastEvaluationV1, "targetMetric" | "horizon" | "engineId" | "engineVersion" | "band">): string {
   return JSON.stringify([
     evaluation.targetMetric,
     evaluation.horizon,
