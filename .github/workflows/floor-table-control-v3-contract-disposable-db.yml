@@ -97,17 +97,6 @@ jobs:
           src/hooks/useDealerManagement.test.tsx
           src/hooks/useTournamentRedrawTv.test.ts
           src/components/cashier/tournament-live/FloorRedrawDialogV1.test.tsx
-      - name: Typecheck the full application
-        working-directory: VinPoker
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
-        run: ./node_modules/.bin/tsc -b --pretty false
-      - name: Build the web bundle after typecheck
-        working-directory: VinPoker
-        env:
-          VITE_SUPABASE_URL: https://example.invalid
-          VITE_SUPABASE_PUBLISHABLE_KEY: CI_PLACEHOLDER_ONLY
-        run: npm run build
       - name: Run disposable PostgreSQL server contract
         working-directory: VinPoker
         env:
@@ -130,3 +119,14 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/criticalConsistency.disposable.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/tableModeRequest.disposable.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/restoreBustIntegrity.disposable.sql
+      - name: Typecheck the full application
+        working-directory: VinPoker
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: ./node_modules/.bin/tsc -b --pretty false
+      - name: Build the web bundle after typecheck
+        working-directory: VinPoker
+        env:
+          VITE_SUPABASE_URL: https://example.invalid
+          VITE_SUPABASE_PUBLISHABLE_KEY: CI_PLACEHOLDER_ONLY
+        run: npm run build
