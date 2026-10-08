@@ -70,7 +70,7 @@ jobs:
         run: |
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000017_dealer_operational_inventory_exact_session_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/operationalInventory.pg17.sql
-          node tests/dealerSwing/operationalInventory.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000018_dealer_mass_open_canonical_sessions_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000019_dealer_manual_assignment_receipt_read_v1.sql
+          node tests/dealerSwing/operationalInventory.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/massOpenSessions.pg17.sql

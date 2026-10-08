@@ -51,6 +51,12 @@ assert.equal(JSON.parse((await first).split(/\r?\n/).find(line=>line.startsWith(
 assert.equal(JSON.parse(await second).outcome,"table_occupied");
 assert.equal(sql(`SELECT count(*) FROM public.dealer_assignments WHERE table_session_id='${session}' AND released_at IS NULL;`),"1");
 assert.equal(sql(`SELECT current_state FROM public.dealer_attendance WHERE id='${secondAttendance}';`),"available");
+// A second Edge request can compute a different due time before seeing the first
+// receipt. The canonical writer conflicts, then the service wrapper reconciles.
+assert.equal(JSON.parse(sql(`${worker} ${call(firstAttendance,"parallel-first").replace("10:30:00Z","10:30:01Z")}`)).outcome,"idempotency_mismatch");
+const reconciled=JSON.parse(sql(`${worker} SELECT public.worker_read_initial_assignment_receipt_v1('parallel-first','${club}','${table}','${session}','e1700000-0000-4000-8000-000000000032');`));
+assert.equal(reconciled.outcome,"ok");
+assert.equal(sql(`SELECT count(*) FROM public.dealer_assignments WHERE id='${reconciled.assignment_id}';`),"1");
 // Fixture lifecycle writer, not proof of the complete Floor-close journey. Its
 // committed session replacement must invalidate an already queued old-session fill.
 const replacement="e1700000-0000-4000-8000-000000000025";

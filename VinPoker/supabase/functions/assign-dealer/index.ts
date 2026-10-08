@@ -164,6 +164,20 @@ Deno.serve(async (req) => {
         return json({ error: rpcErr.message }, 500);
       }
 
+      // Concurrent same-key requests may both miss the initial lookup and compute
+      // slightly different due times. Reconcile the winner; never issue a new key.
+      if (rpcResult?.outcome === "idempotency_mismatch") {
+        const { data: committed, error: reconcileError } = await admin.rpc("worker_read_initial_assignment_receipt_v1", {
+          p_request_key: manualKey, p_club_id: table.club_id, p_table_id: table_id,
+          p_table_session_id: table_session_id, p_dealer_id: force_dealer_id,
+        });
+        if (reconcileError) return json({ error: "ASSIGNMENT_RECEIPT_UNVERIFIED" }, 503);
+        if (committed?.outcome === "ok" && committed.assignment_id) {
+          return json({ assignment: { id: committed.assignment_id, status: "success" }, status: "success", idempotent_replay: true });
+        }
+        return json({ error: "IDEMPOTENCY_CONFLICT" }, 409);
+      }
+
       const outcome = typeof rpcResult === "string" ? rpcResult : rpcResult?.outcome;
 
       if (outcome === "conflict") {
