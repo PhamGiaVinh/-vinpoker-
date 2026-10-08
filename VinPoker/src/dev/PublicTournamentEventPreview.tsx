@@ -35,7 +35,7 @@ export default function PublicTournamentEventPreview() {
     : "exact";
   const requestedTab = params.get("tab") as PreviewTab | null;
   const allTabIds = [...primaryTabs, ...moreTabs].map((item) => item.id);
-  const tab: PreviewTab = allTabIds.includes(requestedTab ?? "") ? requestedTab! : "overview";
+  const tab: PreviewTab = requestedTab && allTabIds.includes(requestedTab) ? requestedTab : "overview";
   const snapshot = useMemo(() => makePublicTournamentFixture(phase, quality), [phase, quality]);
 
   return (

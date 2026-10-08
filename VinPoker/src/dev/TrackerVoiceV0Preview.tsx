@@ -186,11 +186,12 @@ function downloadArtifact(name: string, content: string, type: string) {
 }
 
 function csvValue(value: unknown): string {
-  return `"${String(value ?? "").replaceAll("\"", "\"\"")}"`;
+  return `"${String(value ?? "").split("\"").join("\"\"")}"`;
 }
 
 function snapshotCommand(snapshot: TrackerVoiceDiagnosticSnapshot | null): string | null {
-  const kind = snapshot?.proposal?.command?.kind;
+  const parsed = snapshot?.proposal?.command;
+  const kind = parsed && "kind" in parsed ? parsed.kind : null;
   if (!kind) return null;
   if (kind === "bet_to") return "bet";
   if (kind === "raise_to") return "raise";
@@ -339,11 +340,13 @@ export default function TrackerVoiceV0Preview() {
     if (snapshot.proposalProviderEventId !== providerEventId) return;
     processedFinalRef.current = providerEventId;
     const command = snapshotCommand(snapshot);
-    const amount = snapshot?.proposal?.command?.amount?.value ?? null;
-    const amountAmbiguous = snapshot?.proposal?.command?.amount?.ambiguous ?? null;
-    const spokenSeatNumber = snapshot?.proposal?.command?.spokenSeatNumber ?? null;
+    const parsedCommand = snapshot?.proposal?.command;
+    const action = parsedCommand && "kind" in parsedCommand ? parsedCommand : null;
+    const amount = action?.amount?.value ?? null;
+    const amountAmbiguous = action?.amount?.ambiguous ?? null;
+    const spokenSeatNumber = action?.spokenSeatNumber ?? null;
     const proposalOk = snapshot?.proposal?.ok ?? null;
-    const proposalCode = snapshot?.proposal && !snapshot.proposal.ok ? snapshot.proposal.code : null;
+    const proposalCode = snapshot?.proposal?.ok === false ? snapshot.proposal.code : null;
     setMeasurements((current) => [...current, {
       providerEventId,
       transcript: snapshot.finalTranscript,

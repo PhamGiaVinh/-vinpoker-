@@ -94,6 +94,7 @@ jobs:
           ./node_modules/.bin/vitest run
           src/lib/floorTableControlV3.test.ts
           src/components/cashier/tournament-live/RestoreBustDialog.test.tsx
+          src/hooks/useDealerManagement.test.tsx
           src/hooks/useTournamentRedrawTv.test.ts
           src/components/cashier/tournament-live/FloorRedrawDialogV1.test.tsx
       - name: Typecheck the full application
