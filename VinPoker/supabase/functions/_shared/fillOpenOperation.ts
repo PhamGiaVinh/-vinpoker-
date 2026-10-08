@@ -5,6 +5,7 @@ import {
 } from "./featureTableGate.ts";
 import { OPEN_TABLE_GRACE_MINUTES, bulkOpenStaggerMs } from "./openTableGrace.ts";
 import { SWING_POLICY } from "./swingPolicy.ts";
+import { getDealerOperationalTables } from "./dealerOperationalTables.ts";
 
 export type SupabaseAdmin = any;
 
@@ -239,6 +240,8 @@ export async function fillOpenOperation(
     game_type: target.game_tables.game_type,
     tour_tier: target.game_tables.tour_tier,
   }));
+  const operationalTables = await getDealerOperationalTables(admin, op.club_id);
+  const sessions = new Map(operationalTables.map((table) => [table.id, table.table_session_id]));
 
   // All expensive eligibility queries are built once. Feature/final pools are
   // fetched in one batch, then every table is ranked from this immutable snapshot.
@@ -274,6 +277,11 @@ export async function fillOpenOperation(
 
   for (const [index, table] of tables.entries()) {
     if (Date.now() >= deadline) break;
+    const exactSession = sessions.get(table.id);
+    if (!exactSession) {
+      outcomes.push({ table_id: table.id, code: "failed" });
+      continue;
+    }
 
     const attempted = new Set<string>();
     let finalCode: OpenOperationTableOutcome["code"] = "no_eligible_dealer";
@@ -300,15 +308,17 @@ export async function fillOpenOperation(
         + SWING_POLICY.bulkOpen.minFirstStintMinutes * 60_000;
       const tableSwingDueAt = new Date(Math.max(baseDueMs, minimumDueMs)).toISOString();
 
-      const { data, error } = await admin.rpc("assign_dealer_to_table", {
+      const { data, error } = await admin.rpc("worker_assign_dealer_to_session_v1", {
+        p_club_id: op.club_id,
         p_table_id: table.id,
+        p_table_session_id: exactSession,
         p_attendance_id: candidate.id,
         p_swing_due_at: tableSwingDueAt,
-        p_idempotency_key: `open_operation_${operationId}_${table.id}`,
+        p_idempotency_key: `open_operation_${operationId}_${exactSession}_${candidate.id}`,
       });
 
       if (error) {
-        const classified = operationFailure(error, "assign_dealer_to_table");
+        const classified = operationFailure(error, "worker_assign_dealer_to_session_v1");
         if (classified.message.startsWith("OPEN_OPERATION_DEPENDENCY_UNAVAILABLE")) throw classified;
         finalCode = "conflict";
         continue;
