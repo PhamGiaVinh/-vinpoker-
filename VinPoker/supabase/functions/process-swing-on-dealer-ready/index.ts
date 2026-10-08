@@ -4,6 +4,7 @@ import {
   getIdempotencyKey,
   parseDealerReadyPayload,
 } from "../_shared/internal-trigger-auth.ts";
+import { getDealerOperationalTables } from "../_shared/dealerOperationalTables.ts";
 
 interface PickResult {
   outcome: "swung" | "no_table" | "skipped" | "race_lost" | "error";
@@ -49,6 +50,12 @@ Deno.serve(async (req) => {
   const startTime = Date.now();
 
   try {
+    const { data: clubSettings, error: settingsError } = await admin.from("club_settings")
+      .select("auto_swing_enabled").eq("club_id", payload.clubId).maybeSingle();
+    if (settingsError) return json({ error: "auto_swing_state_unverified" }, 503);
+    if (clubSettings?.auto_swing_enabled !== true) return json({ skipped: "auto_swing_off" });
+    const operationalTables = await getDealerOperationalTables(admin, payload.clubId);
+    if (operationalTables.length === 0) return json({ skipped: "no_operational_table" });
     const { data: verifyResult, error: verifyError } = await admin.rpc(
       "atomic_dealer_ready_check",
       {
@@ -76,12 +83,13 @@ Deno.serve(async (req) => {
     }
 
     const restDeficit = Math.max(0, restThreshold - restMin);
-    const { data: swingConfig } = await admin
+    const { data: swingConfig, error: plannerError } = await admin
       .from("swing_config")
       .select("rotation_planner_enabled")
       .eq("club_id", payload.clubId)
       .eq("table_type", "tournament")
       .maybeSingle();
+    if (plannerError) return json({ error: "rotation_planner_state_unverified" }, 503);
 
     if (swingConfig?.rotation_planner_enabled === true) {
       await logMetric(admin, payload.clubId, startTime, "success", 0, 0, "deferred_to_planner");
@@ -92,6 +100,7 @@ Deno.serve(async (req) => {
       .from("dealer_assignments")
       .select("id, version, table_id, table_session_id")
       .eq("club_id", payload.clubId)
+      .in("table_id", operationalTables.map((table) => table.id))
       .eq("status", "assigned")
       .lt("swing_due_at", new Date().toISOString())
       .order("swing_due_at", { ascending: true })
@@ -139,6 +148,10 @@ Deno.serve(async (req) => {
       duration_ms: Date.now() - startTime,
     };
     const processedCount = result.outcome === "swung" ? 1 : 0;
+    if (!["swung", "no_table", "skipped", "race_lost"].includes(result.outcome)) {
+      await logMetric(admin, payload.clubId, startTime, "failure", 1, 0, "non_success_outcome");
+      return json({ error: "non_success_outcome" }, 500);
+    }
     await logMetric(admin, payload.clubId, startTime, "success", 0, processedCount, `event:${idempotencyKey}`);
     return json(result);
   } catch {
