@@ -45,6 +45,7 @@ const TOURNAMENT: TvTournamentRow = {
   prize_pool: 87_300_000,
   starting_stack: 30_000,
   guarantee_amount: null,
+  satellite_payout: null,
   buy_in: 1_000_000,
   rake_amount: 100_000,
   club: { name: "VinPoker Club", cover_url: null, tv_logo_url: null, tv_brand_name: null, tv_bg_url: null },

@@ -469,12 +469,13 @@ function TournamentLiveViewContent({
           spectator && FEATURES.liveViewerPulseV2 ? handPlayersHasSnapshot() : Promise.resolve(false),
         ]);
         hasIdentitySnapshot = identitySnapshot;
-        const { data: players } = await supabase
-          .from("hand_players")
-          .select(hasIdentitySnapshot
-            ? "player_id, seat_number, starting_stack, ending_stack, hole_cards, player_name, avatar_url"
-            : "player_id, seat_number, starting_stack, ending_stack, hole_cards")
-          .eq("hand_id", hand.id);
+        const { data: players } = hasIdentitySnapshot
+          ? await supabase.from("hand_players")
+              .select("player_id, seat_number, starting_stack, ending_stack, hole_cards, player_name, avatar_url")
+              .eq("hand_id", hand.id)
+          : await supabase.from("hand_players")
+              .select("player_id, seat_number, starting_stack, ending_stack, hole_cards")
+              .eq("hand_id", hand.id);
         actionData = actions as LiveHandActionRow[] | null;
         handPlayers = players as LiveHandPlayerRow[] | null;
       }

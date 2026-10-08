@@ -239,8 +239,9 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
       //   ONLINE only. rakeActual = Σ GREATEST(0, total_pay − buy_in) is carried for RECONCILIATION only
       //   (uses total_pay − buy_in, not platform_fixed_fee, which is 0 for online entries).
       {
-        let tq = supabase.from("tournaments")
-          .select(`id, club_id, rake_amount, free_rake_enabled, free_rake_used, created_at${svcOn ? ", service_fee_amount" : ""}`)
+        let tq = (svcOn
+          ? supabase.from("tournaments").select("id, club_id, rake_amount, free_rake_enabled, free_rake_used, created_at, service_fee_amount")
+          : supabase.from("tournaments").select("id, club_id, rake_amount, free_rake_enabled, free_rake_used, created_at"))
           .gte("created_at", fromTs).lte("created_at", toTs).limit(5000);
         if (restrictIds) tq = tq.in("club_id", restrictIds);
         const { data: tours, error: te } = await tq;

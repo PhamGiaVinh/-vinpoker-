@@ -729,7 +729,7 @@ function HistoryTab({ clubIds }: { clubIds: string[] }) {
 
 function MembersPanel({ clubIds, clubs }: { clubIds: string[]; clubs: ClubRow[] }) {
   const [params, setParams] = useSearchParams();
-  const allowed = PROFILE_REVIEW_ENABLED
+  const allowed: readonly ("lookup" | "sync" | "qr" | "verify" | "reissue")[] = PROFILE_REVIEW_ENABLED
     ? (["lookup", "sync", "qr", "verify", "reissue"] as const)
     : (["lookup", "sync", "qr", "reissue"] as const);
   const sub = (params.get("sub") as typeof allowed[number]) || "lookup";
