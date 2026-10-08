@@ -119,3 +119,29 @@ test("issuance and color-up overlap on the same tournament lock and consume one 
   assert.equal(undo.error,"INVENTORY_NEGATIVE");
   assert.equal(sql(`SELECT status FROM public.color_up_operation WHERE id='${result.color_up_operation_id}'`),"confirmed");
 });
+
+test("two overlapping color-ups cannot consume the same denomination twice", async () => {
+  const issuance=JSON.parse(sql(`SET request.jwt.claim.sub='${uid}'; SELECT public.chip_ops_set_issuance('${club}',3);`));
+  assert.equal(issuance.status,"ok");
+  const first=concurrentSql(`BEGIN; SET request.jwt.claim.sub='${uid}';
+    SELECT public.chip_ops_color_up('${tour}','${low}','${high}',1,4,'double-color-first');
+    SELECT pg_sleep(1.5) /* double_color_barrier */; COMMIT;`);
+  let holding=false;
+  for(let attempt=0;attempt<60;attempt++) {
+    if(sql("SELECT count(*) FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND query LIKE '%double_color_barrier%' AND wait_event='PgSleep'")==="1") { holding=true; break; }
+    await new Promise(resolve=>setTimeout(resolve,25));
+  }
+  assert.equal(holding,true,"first color-up must hold the uncommitted inventory fence");
+  const second=concurrentSql(`SET request.jwt.claim.sub='${uid}'; SELECT public.chip_ops_color_up('${tour}','${low}','${high}',1,5,'double-color-second') /* double_color_waiter */;`);
+  let blocked=false;
+  for(let attempt=0;attempt<40;attempt++) {
+    if(sql("SELECT count(*) FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND query LIKE '%double_color_waiter%' AND wait_event_type='Lock'")==="1") { blocked=true; break; }
+    await new Promise(resolve=>setTimeout(resolve,25));
+  }
+  assert.equal(blocked,true,"second session must actually overlap and wait for the first");
+  const winner=JSON.parse((await first).split(/\r?\n/).find(line=>line.startsWith('{')));
+  assert.equal(winner.status,"ok");
+  assert.equal(JSON.parse(await second).error,"NOTHING_TO_REMOVE");
+  assert.equal(sql("SELECT count(*) FROM public.color_up_operation WHERE idempotency_key IN ('double-color-first','double-color-second')"),"1");
+  assert.equal(sql(`SET request.jwt.claim.sub='${uid}'; SELECT current_count FROM public.chip_ops_current_denom_counts('${tour}') WHERE denomination_id='${low}'`),"0");
+});
