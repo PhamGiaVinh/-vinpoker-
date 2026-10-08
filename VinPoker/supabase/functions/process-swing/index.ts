@@ -68,6 +68,7 @@ import {
   assessShortageAlertFailure,
   assessSwingExecutionFailure,
   ensureLockOwnership,
+  fetchAutoSwingSettings,
   LockOwnershipLost,
   mergeDispatchOutcome,
   type DispatchSafetyOutcome,
@@ -293,14 +294,7 @@ async function fetchAllClubConfigs(
     return configMap;
   }
 
-  const { data: settingsData } = await admin
-    .from("club_settings")
-    .select("club_id, auto_swing_enabled");
-
-  const settingsMap = new Map<string, boolean>();
-  for (const s of settingsData ?? []) {
-    settingsMap.set(s.club_id, s.auto_swing_enabled ?? false);
-  }
+  const settingsMap = await fetchAutoSwingSettings(admin);
 
   for (const row of swingData ?? []) {
     configMap.set(row.club_id, {
@@ -311,7 +305,7 @@ async function fetchAllClubConfigs(
       crit_at_minutes: row.crit_at_minutes ?? 2,
       auto_adjust_duration: row.auto_adjust_duration ?? false,
       min_duration: Math.max(30, row.min_duration ?? 30),
-      auto_swing_enabled: settingsMap.get(row.club_id) ?? true,
+      auto_swing_enabled: settingsMap.get(row.club_id) === true,
       base_duration_minutes: row.base_duration_minutes ?? row.swing_duration_minutes ?? 40,
       target_ratio: row.target_ratio ?? 1.43,
       max_duration_minutes: row.max_duration_minutes ?? 60,

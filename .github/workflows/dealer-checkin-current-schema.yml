@@ -17,6 +17,8 @@ on:
       - 'VinPoker/supabase/migrations/20270128000019_dealer_manual_assignment_receipt_read_v1.sql'
       - 'VinPoker/supabase/functions/run-dealer-ready-backup/**'
       - 'VinPoker/supabase/functions/process-swing-on-dealer-ready/**'
+      - 'VinPoker/supabase/functions/process-swing/index.ts'
+      - 'VinPoker/supabase/functions/process-swing/executionSafety*'
       - 'VinPoker/supabase/functions/_shared/internal-trigger-auth.ts'
       - 'VinPoker/supabase/functions/_shared/__tests__/backupServiceAuth.test.ts'
       - 'VinPoker/supabase/migrations/20270128000020_dealer_ready_backup_private_cron_v1.sql'
@@ -55,7 +57,9 @@ jobs:
         run: |
           deno check supabase/functions/run-dealer-ready-backup/index.ts
           deno check supabase/functions/process-swing-on-dealer-ready/index.ts
+          deno check supabase/functions/process-swing/index.ts
           deno test --allow-env supabase/functions/run-dealer-ready-backup/auth.test.ts supabase/functions/_shared/__tests__/backupServiceAuth.test.ts supabase/functions/process-swing-on-dealer-ready/runtime.test.ts
+          deno test supabase/functions/process-swing/executionSafety.test.ts
       - name: Download exact owner-authorized current schema (not a pre-release replay baseline)
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
