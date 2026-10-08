@@ -22,6 +22,7 @@ function assignment(overrides: Partial<DealerAssignment> = {}): DealerAssignment
   return {
     id: "assignment-1",
     attendance_id: "attendance-1",
+    table_session_id: "session-1",
     table_id: "table-1",
     assigned_at: "2026-08-28T11:00:00.000Z",
     released_at: null,

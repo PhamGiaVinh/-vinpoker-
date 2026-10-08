@@ -57,7 +57,7 @@ function isOptionalString(value: unknown): value is string | undefined {
 }
 
 function isOptionalCount(value: unknown): value is number | undefined {
-  return value === undefined || (Number.isInteger(value) && value >= 0);
+  return value === undefined || (typeof value === "number" && Number.isInteger(value) && value >= 0);
 }
 
 function isTableSnapshot(value: unknown): value is DealerPhoneCloseSnapshot["tables"][number] {
@@ -92,5 +92,5 @@ export function parseDealerPhoneCloseResponse(value: unknown): DealerPhoneCloseR
     return null;
   }
 
-  return value as DealerPhoneCloseResponse;
+  return value as unknown as DealerPhoneCloseResponse;
 }

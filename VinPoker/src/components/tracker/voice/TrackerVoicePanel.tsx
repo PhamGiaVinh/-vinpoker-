@@ -580,9 +580,9 @@ export function TrackerVoicePanel({
       setFinishAttempt(null);
       setValidationError(null);
       setProposalProviderEventId(finalEvent.providerEventId);
-      if (!finishProposal.ok || !finishProposal.expectedStateVersion || !attemptRuntime || !hook.tournamentTableId || !hook.handId) {
+      if (finishProposal.ok === false || !finishProposal.expectedStateVersion || !attemptRuntime || !hook.tournamentTableId || !hook.handId) {
         setValidationState("error");
-        setValidationError(finishProposal.ok
+        setValidationError(finishProposal.ok === true
           ? "Không xác minh được bàn canonical cho Voice Finish."
           : finishProposal.message);
         return;
@@ -640,8 +640,13 @@ export function TrackerVoicePanel({
       setFinishAttempt(null);
       setValidationError(null);
       setProposalProviderEventId(null);
-      if (!privateProposal.ok || !attemptRuntime) {
+      if (privateProposal.ok === false) {
         setProposal(privateProposal);
+        setValidationState("idle");
+        return;
+      }
+      if (!attemptRuntime) {
+        setProposal({ ok: false, command: null, code: "no_active_hand", message: "Không xác minh được phiên bàn hiện tại." });
         setValidationState("idle");
         return;
       }
@@ -670,7 +675,7 @@ export function TrackerVoicePanel({
       setValidationState("validated");
       return;
     }
-    const nextProposal: VoiceProposal = !route.ok
+    const nextProposal: VoiceProposal = route.ok === false
       ? {
           ok: false,
           command: null,
@@ -685,7 +690,7 @@ export function TrackerVoicePanel({
         ? resolveVoiceBoardProposal(route.command, hook.allInRunout
           ? { ...localContext, workflowState: "runout_reveal" }
           : localContext)
-        : resolveVoiceProposal({
+        : route.intentDomain === "action" ? resolveVoiceProposal({
             kind: route.command.kind,
             transcript: finalEvent.transcript.trim(),
             normalizedTranscript: route.command.normalizedTranscript,
@@ -694,7 +699,7 @@ export function TrackerVoicePanel({
             riskTier: route.command.riskTier,
             repairs: route.command.repairs,
             requiresConfirmation: route.command.requiresConfirmation,
-          }, localContext);
+          }, localContext) : { ok: false, command: null, code: "command_not_supported", message: "Lệnh không thuộc bước action hiện tại." };
     const receivedAt = finalReceivedAtRef.current.get(finalEvent.providerEventId);
     setProposalLatencyMs(receivedAt === undefined ? null : Math.max(0, performance.now() - receivedAt));
     setFinalTranscript(finalEvent.transcript);
@@ -1532,13 +1537,13 @@ export function TrackerVoicePanel({
     setValidationState("idle");
   };
 
-  const proposalLabel = proposal?.ok
-    ? "intentDomain" in proposal && proposal.intentDomain === "board"
+  const proposalLabel = proposal?.ok === true
+    ? "intentDomain" in proposal
       ? `${proposal.expectedStreet.toUpperCase()} · ${proposal.command.newCards.join(" ")}`
       : "controlAction" in proposal
       ? proposal.controlAction === "call_floor" ? "Gọi Floor" : "Báo sai action"
       : `${proposal.actor.playerName} · ${proposal.canonicalAction}${proposal.betToTotal ? ` tới ${proposal.betToTotal.toLocaleString("vi-VN")}` : ""}`
-    : proposal?.message ?? (mode === "assist" ? "Đọc action, Board hoặc bài tẩy all-in." : "Nói một lệnh để tạo đề xuất Shadow.");
+    : proposal?.ok === false ? proposal.message : (mode === "assist" ? "Đọc action, Board hoặc bài tẩy all-in." : "Nói một lệnh để tạo đề xuất Shadow.");
 
   const providerKind = providerRef.current?.kind ??
     (import.meta.env.VITE_TRACKER_VOICE_PROVIDER === "mock"

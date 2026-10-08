@@ -124,7 +124,8 @@ export function parsePayrollStatementOnlinePreview(value: unknown): PayrollState
     !isText(view.statement_id) || !isText(view.statement_hash) || typeof view.draft !== "boolean" ||
     !isText(view.brand_name) || !isText(view.club_name) || !isText(view.period_label) ||
     !isText(view.gross_amount) || !isText(view.deduction_amount) || !isText(view.net_amount) || !isText(view.finalized_label) ||
-    !["full_name", "department", "job_title", "bank_account_number", "bank_name", "hire_date", "employment_type"].every((key) => isText(dealer[key]))
+    !isText(dealer.full_name) || !isText(dealer.department) || !isText(dealer.job_title) ||
+    !isText(dealer.bank_account_number) || !isText(dealer.bank_name) || !isText(dealer.hire_date) || !isText(dealer.employment_type)
   ) return null;
 
   const metrics = parseRows(view.metrics, ["label", "value"]);

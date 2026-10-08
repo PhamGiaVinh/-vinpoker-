@@ -61,7 +61,7 @@ describe("Floor redraw Continue flow", () => {
           sessionClosedAt: null,
           activeDealerAssignmentId: null,
           seatLocks: [],
-          seats: [{ seatNumber: 1, entryId: "entry-1", playerId: "player-1", displayName: "Player One", entryNo: 1, chipCount: 30000, isActive: true }],
+          seats: [{ seatNumber: 1, entryId: "entry-1", playerId: "player-1", displayName: "Player One", entryNo: 1, chipCount: 30000, isActive: true, integrityStatus: "valid" }],
         }]}
         client={client as never}
         onApplied={onApplied}

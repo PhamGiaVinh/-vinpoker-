@@ -42,10 +42,12 @@ export function useDealerSwingHealth(clubIds: string[], pollMs = 30_000) {
           && typeof row.pre_announce?.pending === "number" && typeof row.pre_announce?.processing === "number"
           && typeof row.pre_announce?.failed_recent === "number";
       };
-      if (!Array.isArray(d) || !d.every(valid)) {
+      if (!Array.isArray(d)) {
         throw new Error("Invalid dealer swing health response");
       }
-      return d;
+      const rows: unknown[] = d;
+      if (!rows.every(valid)) throw new Error("Invalid dealer swing health response");
+      return rows;
     },
   });
   return { data: scope.length ? query.data ?? null : [], unavailable: query.isError, refetch: query.refetch };
