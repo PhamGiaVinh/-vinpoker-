@@ -15,6 +15,7 @@ import {
 } from "../_shared/telegram.ts";
 import { OPEN_TABLE_GRACE_MINUTES } from "../_shared/openTableGrace.ts";
 import { authenticateUser } from "../_shared/staking-common.ts";
+import { manualDealerIntentHeaders } from "../_shared/dealerMutationIntent.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -25,11 +26,10 @@ Deno.serve(async (req) => {
   try {
     const url = Deno.env.get("SUPABASE_URL")!;
     const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const admin = createClient(url, service);
-
     const authResult = await authenticateUser(req);
     if (authResult instanceof Response) return authResult;
     const uid = authResult.uid;
+    const admin = createClient(url, service, { global: { headers: manualDealerIntentHeaders(uid) } });
 
     const body = await req.json().catch(() => ({}));
     const { table_id, table_session_id, force_dealer_id, requested_by, idempotency_key, return_suggestions_only, shift_id } = body ?? {};

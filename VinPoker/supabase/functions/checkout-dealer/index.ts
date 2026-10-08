@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { manualDealerIntentHeaders } from "../_shared/dealerMutationIntent.ts";
 import { corsHeaders, jsonResponse, pickNextDealer } from "../_shared/dealer-utils.ts";
 import {
   sendTelegramNotification, getClubTelegramChatId, mention, notifyDealerDM,
@@ -541,11 +542,10 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
-    const admin = createClient(supabaseUrl, serviceKey);
-
     const authResult = await authenticateUser(req);
     if (authResult instanceof Response) return authResult;
     const uid = authResult.uid;
+    const admin = createClient(supabaseUrl, serviceKey, { global: { headers: manualDealerIntentHeaders(uid) } });
 
     const body = await req.json();
     const mode = body.mode === "stale_cleanup" ? "stale_cleanup" : "normal";

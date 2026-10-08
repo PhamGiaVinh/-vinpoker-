@@ -75,6 +75,7 @@ import {
   type ProcessSwingDispatchState,
 } from "./executionSafety.ts";
 import { runDealerShortageAlert } from "./shortageAlert.ts";
+import { manualDealerIntentHeaders } from "../_shared/dealerMutationIntent.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -622,7 +623,7 @@ Deno.serve(async (req: Request) => {
   };
 
   try {
-    const admin: any = createClient(
+    let admin: any = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
@@ -688,6 +689,18 @@ Deno.serve(async (req: Request) => {
       manualTrigger === true,
     );
     if (authResult instanceof Response) return authResult;
+
+    if (authResult.internal && manualTrigger === true) {
+      return new Response(JSON.stringify({ error: "manual_trigger_requires_authenticated_actor" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (authResult.uid) {
+      admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+        global: { headers: manualDealerIntentHeaders(authResult.uid) },
+      });
+      dispatchAdmin = admin;
+    }
 
     if (!authResult.internal && requestedClubIdsValue !== undefined) {
       return new Response(JSON.stringify({ error: "club_ids is restricted to internal callers" }), {

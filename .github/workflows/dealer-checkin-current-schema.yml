@@ -25,6 +25,13 @@ on:
       - 'VinPoker/tests/dealerSwing/backupCron*.sql'
       - 'VinPoker/supabase/migrations/20270128000021_dealer_ready_private_trigger_v1.sql'
       - 'VinPoker/tests/dealerSwing/readyTrigger*.sql'
+      - 'VinPoker/supabase/migrations/20270128000022_dealer_assignment_off_commit_fence_v1.sql'
+      - 'VinPoker/tests/dealerSwing/offCommit*'
+      - 'VinPoker/supabase/functions/_shared/dealerMutationIntent.ts'
+      - 'VinPoker/supabase/functions/_shared/__tests__/dealerMutationIntent.test.ts'
+      - 'VinPoker/supabase/functions/assign-dealer/**'
+      - 'VinPoker/supabase/functions/mass-assign/**'
+      - 'VinPoker/supabase/functions/checkout-dealer/**'
 permissions: { actions: read, contents: read }
 jobs:
   runtime:
@@ -60,8 +67,10 @@ jobs:
           deno check supabase/functions/run-dealer-ready-backup/index.ts
           deno check supabase/functions/process-swing-on-dealer-ready/index.ts
           deno check supabase/functions/process-swing/index.ts
+          deno check supabase/functions/assign-dealer/index.ts supabase/functions/mass-assign/index.ts supabase/functions/checkout-dealer/index.ts
           deno test --allow-env supabase/functions/run-dealer-ready-backup/auth.test.ts supabase/functions/_shared/__tests__/backupServiceAuth.test.ts supabase/functions/process-swing-on-dealer-ready/runtime.test.ts
           deno test supabase/functions/process-swing/executionSafety.test.ts
+          deno test supabase/functions/_shared/__tests__/dealerMutationIntent.test.ts
       - name: Download exact owner-authorized current schema (not a pre-release replay baseline)
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
@@ -99,6 +108,16 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000019_dealer_manual_assignment_receipt_read_v1.sql
           node tests/dealerSwing/operationalInventory.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/massOpenSessions.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000022_dealer_assignment_off_commit_fence_v1.sql
+          node tests/dealerSwing/offCommit.currentSchema.mjs
+      - name: OFF-at-commit true-overlap with isolated acquisition fixture (not live worker proof)
+        working-directory: VinPoker
+        run: |
+          createdb vinpoker_ops_off_fence
+          PGDATABASE=vinpoker_ops_off_fence psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/offCommit.fixture.pg17.sql
+          PGDATABASE=vinpoker_ops_off_fence psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000022_dealer_assignment_off_commit_fence_v1.sql
+          PGDATABASE=vinpoker_ops_off_fence psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/offCommit.pg17.sql
+          PGDATABASE=vinpoker_ops_off_fence node tests/dealerSwing/offCommit.concurrent.mjs
       - name: Private backup cron contract with isolated network doubles (not live scheduler proof)
         working-directory: VinPoker
         run: |

@@ -7613,6 +7613,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000022",
+      "filename": "20270128000022_dealer_assignment_off_commit_fence_v1.sql",
+      "sha256": "ca353676d90e993440ee6a6de17c33eeef01ad8207d4076e07d576ebff786fe0",
+      "domain": "dealer-swing"
+    },
+    {
       "version": "20270128000021",
       "filename": "20270128000021_dealer_ready_private_trigger_v1.sql",
       "sha256": "bda701820882229c6b2a5241dd2f65067755f20f4405980ccc9850717d8be4c6",
