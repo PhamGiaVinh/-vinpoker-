@@ -40,6 +40,7 @@ export type FloorTableControlV3RpcName =
   | "floor_free_sit_player_v1"
   | "floor_restore_busted_player_to_seat_v3"
   | "floor_restore_busted_player_to_seat_v4"
+  | "floor_restore_busted_player_to_seat_v5"
   | "floor_plan_tournament_redraw_v1"
   | "floor_apply_tournament_redraw_v1"
   | "floor_continue_tournament_redraw_v1"
@@ -979,9 +980,10 @@ export function createFloorTableControlV3Client(
         p_reason: args.reason ?? "floor_free_sit",
       }).then(mutationFromResponse),
 
-    restoreBustedPlayer: (args: { entryId: string; toTournamentTableId: string; toSeatNumber: number; expectedRevision: number; expectedControlEpoch: number; requestId: string }) =>
-      (redrawSeatLockEnabled ? callRedrawSeatLock : call)(redrawSeatLockEnabled ? "floor_restore_busted_player_to_seat_v4" : "floor_restore_busted_player_to_seat_v3", {
+    restoreBustedPlayer: (args: { entryId: string; toTournamentTableId: string; toSeatNumber: number; expectedRevision: number; expectedControlEpoch: number; expectedTableSessionId: string; requestId: string }) =>
+      call("floor_restore_busted_player_to_seat_v5", {
         p_entry_id: args.entryId,
+        p_expected_table_session_id: args.expectedTableSessionId,
         p_to_tournament_table_id: args.toTournamentTableId,
         p_to_seat_number: args.toSeatNumber,
         p_expected_revision: args.expectedRevision,

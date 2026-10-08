@@ -27,13 +27,14 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.get_floor_restorable_entries_v3(uuid) FROM PUBLIC,anon,service_role;
 GRANT EXECUTE ON FUNCTION public.get_floor_restorable_entries_v3(uuid) TO authenticated;
-CREATE OR REPLACE FUNCTION public.floor_restore_busted_player_to_seat_v3(
+CREATE OR REPLACE FUNCTION floor_private.restore_busted_player_to_seat(
   p_entry_id uuid,
   p_to_tournament_table_id uuid,
   p_to_seat_number integer,
   p_expected_revision bigint,
   p_expected_control_epoch bigint,
-  p_request_id uuid
+  p_request_id uuid,
+  p_expected_table_session_id uuid
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -79,6 +80,9 @@ BEGIN
     'expected_revision', p_expected_revision,
     'expected_control_epoch', p_expected_control_epoch
   )::text;
+  IF p_expected_table_session_id IS NOT NULL THEN
+    v_fingerprint := (v_fingerprint::jsonb || pg_catalog.jsonb_build_object('expected_table_session_id',p_expected_table_session_id))::text;
+  END IF;
   PERFORM floor_private.floor_table_v3_lock_receipt(v_actor, 'floor_restore_busted_player_to_seat_v3', p_request_id);
   SELECT * INTO v_receipt
   FROM floor_private.floor_table_v3_existing_receipt(
@@ -149,7 +153,8 @@ BEGIN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'game_table_scope_mismatch');
   END IF;
   SELECT * INTO v_destination_session FROM public.table_sessions session_row
-  WHERE session_row.game_table_id = v_game_table_id AND session_row.closed_at IS NULL FOR UPDATE;
+  WHERE session_row.game_table_id = v_game_table_id AND session_row.closed_at IS NULL
+    AND (p_expected_table_session_id IS NULL OR session_row.id=p_expected_table_session_id) FOR UPDATE;
   SELECT * INTO v_destination_table FROM public.tournament_tables tt
   WHERE tt.id = p_to_tournament_table_id
     AND tt.table_session_id = v_destination_session.id
@@ -159,6 +164,12 @@ BEGIN
      OR v_destination_table.id IS NULL
      OR v_destination_session.tournament_id IS DISTINCT FROM v_tournament.id THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'table_session_mismatch');
+  END IF;
+  -- Legacy signatures cannot distinguish two incarnations with matching counters.
+  -- Fail closed on reused physical tables; v5 carries an explicit session fence.
+  IF p_expected_table_session_id IS NULL AND EXISTS(SELECT 1 FROM public.table_sessions prior
+    WHERE prior.game_table_id=v_game_table_id AND prior.id<>v_destination_session.id) THEN
+    RETURN pg_catalog.jsonb_build_object('ok',false,'error','exact_session_required');
   END IF;
   SELECT * INTO v_entry
   FROM public.tournament_entries entry_row
@@ -256,6 +267,10 @@ BEGIN
     IF NOT FOUND THEN
       RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'entry_state_changed';
     END IF;
+    INSERT INTO public.tournament_chip_counts(tournament_id,player_id,entry_number,chip_count,updated_at)
+    VALUES(v_tournament.id,v_entry.player_id,v_entry.entry_no,v_stack,pg_catalog.now())
+    ON CONFLICT(tournament_id,player_id,entry_number) DO UPDATE
+    SET chip_count=EXCLUDED.chip_count,updated_at=EXCLUDED.updated_at;
   EXCEPTION WHEN unique_violation THEN
     RETURN pg_catalog.jsonb_build_object('ok', false, 'error', 'seat_occupied');
   END;
@@ -280,6 +295,22 @@ BEGIN
   RETURN v_result;
 END;
 $$;
+REVOKE ALL ON FUNCTION floor_private.restore_busted_player_to_seat(uuid,uuid,integer,bigint,bigint,uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
+CREATE OR REPLACE FUNCTION public.floor_restore_busted_player_to_seat_v3(
+  p_entry_id uuid,p_to_tournament_table_id uuid,p_to_seat_number integer,
+  p_expected_revision bigint,p_expected_control_epoch bigint,p_request_id uuid)
+RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path='' AS $$
+  SELECT floor_private.restore_busted_player_to_seat(p_entry_id,p_to_tournament_table_id,p_to_seat_number,
+    p_expected_revision,p_expected_control_epoch,p_request_id,NULL);
+$$;
+CREATE OR REPLACE FUNCTION public.floor_restore_busted_player_to_seat_v5(
+  p_entry_id uuid,p_to_tournament_table_id uuid,p_to_seat_number integer,
+  p_expected_revision bigint,p_expected_control_epoch bigint,p_request_id uuid,p_expected_table_session_id uuid)
+RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path='' AS $$
+  SELECT CASE WHEN p_expected_table_session_id IS NULL THEN pg_catalog.jsonb_build_object('ok',false,'error','invalid_request')
+    ELSE floor_private.restore_busted_player_to_seat(p_entry_id,p_to_tournament_table_id,p_to_seat_number,
+      p_expected_revision,p_expected_control_epoch,p_request_id,p_expected_table_session_id) END;
+$$;
 CREATE OR REPLACE FUNCTION public.floor_restore_busted_player_to_seat_v4(
   p_entry_id uuid,p_to_tournament_table_id uuid,p_to_seat_number integer,
   p_expected_revision bigint,p_expected_control_epoch bigint,p_request_id uuid)
@@ -288,7 +319,9 @@ RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path='' AS $$
     p_expected_revision,p_expected_control_epoch,p_request_id);
 $$;
 REVOKE ALL ON FUNCTION public.floor_restore_busted_player_to_seat_v3(uuid,uuid,integer,bigint,bigint,uuid),
-  public.floor_restore_busted_player_to_seat_v4(uuid,uuid,integer,bigint,bigint,uuid) FROM PUBLIC,anon,service_role;
+  public.floor_restore_busted_player_to_seat_v4(uuid,uuid,integer,bigint,bigint,uuid),
+  public.floor_restore_busted_player_to_seat_v5(uuid,uuid,integer,bigint,bigint,uuid,uuid) FROM PUBLIC,anon,service_role;
 GRANT EXECUTE ON FUNCTION public.floor_restore_busted_player_to_seat_v3(uuid,uuid,integer,bigint,bigint,uuid),
-  public.floor_restore_busted_player_to_seat_v4(uuid,uuid,integer,bigint,bigint,uuid) TO authenticated;
+  public.floor_restore_busted_player_to_seat_v4(uuid,uuid,integer,bigint,bigint,uuid),
+  public.floor_restore_busted_player_to_seat_v5(uuid,uuid,integer,bigint,bigint,uuid,uuid) TO authenticated;
 COMMIT;

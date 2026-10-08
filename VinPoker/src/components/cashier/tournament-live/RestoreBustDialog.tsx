@@ -15,6 +15,8 @@ const messages: Record<string, string> = {
   seat_occupied: "Ghế đã có người. Hãy tải lại danh sách bàn.",
   table_has_active_hand: "Bàn đang chơi hand. Hãy chờ hand kết thúc.",
   STALE_STATE: "Phiên bàn đã thay đổi. Đóng cửa sổ và tải lại trước khi chọn ghế.",
+  table_session_mismatch: "Phiên bàn đã đóng hoặc bị thay thế. Không chuyển yêu cầu cũ sang phiên mới.",
+  exact_session_required: "Cần tải lại phiên bàn trước khi khôi phục.",
   actor_not_allowed: "Tài khoản không có quyền hoàn tác bust ở CLB này.",
 };
 
@@ -78,6 +80,7 @@ export function RestoreBustDialog({ tournamentId, target, onClose, onRestored }:
     const intent = prior ?? {
       entryId: target.entryId, toTournamentTableId: table.tournamentTableId, toSeatNumber: Number(seat),
       expectedRevision: table.sessionRevision, expectedControlEpoch: table.controlEpoch, requestId: crypto.randomUUID(),
+      expectedTableSessionId: table.tableSessionId,
     };
     attempts.current.set(key, intent); setUnresolved(true);
     pending.current = true; setBusy(true); setError(null);

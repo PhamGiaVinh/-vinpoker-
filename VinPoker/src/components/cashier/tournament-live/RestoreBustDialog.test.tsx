@@ -49,7 +49,7 @@ describe("mistaken-bust restore", () => {
     fireEvent.click(screen.getByRole("button", { name: "Xác nhận hoàn tác bust" }));
     await waitFor(() => expect(view.onRestored).toHaveBeenCalledOnce());
     expect(state.restore).toHaveBeenCalledWith(expect.objectContaining({ entryId: "entry-a", toTournamentTableId: "tt-a",
-      toSeatNumber: 1, expectedRevision: 7, expectedControlEpoch: 2, requestId: expect.any(String) }));
+      toSeatNumber: 1, expectedRevision: 7, expectedControlEpoch: 2, expectedTableSessionId: "session-a", requestId: expect.any(String) }));
   });
   it("replays the identical intent after response loss without duplicate automatic calls", async () => {
     state.restore.mockRejectedValueOnce(new Error("response lost"));
