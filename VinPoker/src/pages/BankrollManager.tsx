@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { archiveBankrollEntries, restoreBankrollEntry, type BankrollArchiveRpc } from "@/lib/bankrollArchiveApi";
 import { useQuery } from "@tanstack/react-query";
 import { SyncingBadge } from "@/components/SyncingBadge";
 import { toast } from "sonner";
@@ -170,12 +171,10 @@ export default function BankrollManager() {
   const clearAllData = async () => {
     if (!user) return;
     if (!confirm(t("bankroll.clearConfirm"))) return;
-    const { data: count, error } = await supabase.rpc("soft_delete_all_bankroll_entries", {
-      p_reason: "user_requested_bulk",
-    });
-    if (error) return toast.error(error.message);
-    toast.success(t("bankroll.movedToTrashCount", { count: Number(count) || 0 }));
-    load();
+    try {
+      const count = await archiveBankrollEntries(supabase.rpc.bind(supabase) as unknown as BankrollArchiveRpc);
+      toast.success(t("bankroll.movedToTrashCount", { count })); load();
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Không xác nhận được thao tác lưu trữ."); }
   };
 
 
@@ -247,25 +246,20 @@ export default function BankrollManager() {
 
   const handleDelete = async (id: string) => {
     if (!confirm(t("bankroll.deleteConfirm"))) return;
-    const { error } = await supabase.rpc("soft_delete_bankroll_entry", {
-      p_entry_id: id,
-      p_reason: "user_requested",
-    });
-    if (error) return toast.error(error.message);
-    toast.success(t("bankroll.movedToTrash"));
-    load();
+    try {
+      await archiveBankrollEntries(supabase.rpc.bind(supabase) as unknown as BankrollArchiveRpc, id);
+      toast.success(t("bankroll.movedToTrash")); load();
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Không xác nhận được thao tác lưu trữ."); }
   };
 
   const restoreEntry = async (id: string) => {
     setRestoreLoading(id);
-    const { data: restored, error } = await supabase.rpc("restore_bankroll_entry", {
-      p_entry_id: id,
-    });
-    setRestoreLoading(null);
-    if (error) return toast.error(error.message);
-    if (restored !== true) return toast.error(t("bankroll.restoreExpired"));
-    toast.success(t("bankroll.restored"));
-    load();
+    try {
+      const restored = await restoreBankrollEntry(supabase.rpc.bind(supabase) as unknown as BankrollArchiveRpc, id);
+      if (!restored) return toast.error(t("bankroll.restoreExpired"));
+      toast.success(t("bankroll.restored")); load();
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Không xác nhận được thao tác khôi phục."); }
+    finally { setRestoreLoading(null); }
   };
 
   const exportCSV = () => {
