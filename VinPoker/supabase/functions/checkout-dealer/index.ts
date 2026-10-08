@@ -384,7 +384,7 @@ async function processOneCheckout(
         .from("dealer_assignments")
         .select("id, table_id, table_session_id, status")
         .eq("attendance_id", attendanceId)
-        .in("status", ["assigned", "on_break", "pre_assigned"])
+        .in("status", ["assigned", "on_break", "pre_assigned", "reserved"])
         .is("released_at", null)) as unknown as { data: Array<{ id: string; table_id: string | null; table_session_id: string | null; status: string }> | null };
 
   if (activeAss && activeAss.length > 0) {
@@ -400,7 +400,7 @@ async function processOneCheckout(
         needs_replacement: true,
       })
       .eq("attendance_id", attendanceId)
-      .in("status", ["assigned", "on_break", "pre_assigned"])
+      .in("status", ["assigned", "on_break", "pre_assigned", "reserved"])
       .is("released_at", null);
   }
 
