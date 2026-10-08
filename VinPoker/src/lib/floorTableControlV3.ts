@@ -25,6 +25,9 @@ export type FloorTableControlV3RpcName =
   | "floor_assign_entry_to_seat_v4"
   | "floor_set_table_seat_lock_v1"
   | "floor_set_table_control_mode_v3"
+  | "floor_request_table_control_mode_v4"
+  | "floor_get_table_control_mode_request_v1"
+  | "floor_cancel_table_control_mode_request_v1"
   | "move_player_seat_v2"
   | "move_player_seat_v3"
   | "close_tournament_table_v3"
@@ -134,6 +137,7 @@ export type FloorBreakPlan = {
   sourceTableNumber: number;
   expectedRevision: number;
   moves: FloorBreakPlanMove[];
+  blockers: { playerName: string; sourceSeatNumber: number; reason: "missing_entry" | "no_destination" }[];
 };
 
 export type FloorSeatLock = {
@@ -659,7 +663,16 @@ function parseBreakPlan(value: unknown): FloorTableControlV3Result<FloorBreakPla
     return { ok: false, error: "V3_BREAK_PLAN_MALFORMED" };
   }
   const moves: FloorBreakPlanMove[] = [];
+  const blockers: FloorBreakPlan["blockers"] = [];
   for (const move of value.moves) {
+    if (isRecord(move) && complete === false
+      && typeof move.player_name === "string" && !!move.player_name.trim()
+      && typeof move.source_seat_number === "number" && Number.isSafeInteger(move.source_seat_number)
+      && (move.entry_id === null || move.destination_tournament_table_id === null)) {
+      blockers.push({ playerName: move.player_name, sourceSeatNumber: move.source_seat_number,
+        reason: move.entry_id === null ? "missing_entry" : "no_destination" });
+      continue;
+    }
     if (!isRecord(move)
       || typeof move.entry_id !== "string" || !move.entry_id
       || typeof move.player_name !== "string" || !move.player_name.trim()
@@ -680,7 +693,7 @@ function parseBreakPlan(value: unknown): FloorTableControlV3Result<FloorBreakPla
       transferMode: move.transfer_mode,
     });
   }
-  return { ok: true, data: { planHash, complete, sourceTournamentTableId, sourceTableNumber, expectedRevision, moves } };
+  return { ok: true, data: { planHash, complete, sourceTournamentTableId, sourceTableNumber, expectedRevision, moves, blockers } };
 }
 
 export function createFloorTableControlV3Client(
@@ -852,6 +865,24 @@ export function createFloorTableControlV3Client(
         p_control_mode: args.controlMode,
         p_expected_revision: args.expectedRevision,
         p_request_id: args.requestId,
+      }).then(mutationFromResponse),
+
+    requestTableControlMode: (args: { tournamentTableId: string; tableSessionId: string; controlMode: "manual" | "tracker"; expectedRevision: number; expectedEpoch: number; requestId: string }) =>
+      call("floor_request_table_control_mode_v4", {
+        p_tournament_table_id: args.tournamentTableId, p_table_session_id: args.tableSessionId,
+        p_control_mode: args.controlMode, p_expected_revision: args.expectedRevision,
+        p_expected_epoch: args.expectedEpoch, p_request_id: args.requestId,
+      }).then(mutationFromResponse),
+
+    getTableControlModeRequest: (args: { tournamentTableId: string; tableSessionId: string }) =>
+      call("floor_get_table_control_mode_request_v1", {
+        p_tournament_table_id: args.tournamentTableId, p_table_session_id: args.tableSessionId,
+      }).then(mutationFromResponse),
+
+    cancelTableControlModeRequest: (args: { tournamentTableId: string; tableSessionId: string; modeRequestId: string }) =>
+      call("floor_cancel_table_control_mode_request_v1", {
+        p_tournament_table_id: args.tournamentTableId, p_table_session_id: args.tableSessionId,
+        p_mode_request_id: args.modeRequestId,
       }).then(mutationFromResponse),
 
     movePlayerSeat: (args: { entryId: string; toTournamentTableId: string; toSeatNumber: number; expectedSourceRevision: number; expectedDestinationRevision: number; requestId: string }) =>
