@@ -10,6 +10,12 @@ DO $$
 DECLARE s public.table_sessions%ROWTYPE; result jsonb; replay jsonb; rid uuid:=gen_random_uuid();
 BEGIN
   SELECT * INTO s FROM public.table_sessions WHERE id='00000000-0000-0000-0000-000000000670';
+  UPDATE public.tournament_entries SET registration_id='00000000-0000-0000-0000-000000000939'
+    WHERE id='00000000-0000-0000-0000-000000000831';
+  PERFORM public.floor_table_v3_assert((SELECT current_stack=(SELECT chip_count FROM public.tournament_seats
+    WHERE entry_id='00000000-0000-0000-0000-000000000831' AND status='busted' ORDER BY assigned_at DESC NULLS LAST,id DESC LIMIT 1)
+    FROM public.get_floor_restorable_entries_v3(s.tournament_id) WHERE entry_id='00000000-0000-0000-0000-000000000831'),
+    'confirmation stack comes from the busted seat, not the zeroed entry');
   INSERT INTO public.tournament_close_report(tournament_id) VALUES(s.tournament_id);
   result:=public.floor_restore_busted_player_to_seat_v4(
     '00000000-0000-0000-0000-000000000831','00000000-0000-0000-0000-000000000770',3,s.revision,s.control_epoch,gen_random_uuid());

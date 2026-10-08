@@ -2,6 +2,31 @@
 -- Rollback: forward restore reviewed pre-apply function snapshots and revoke writers
 -- until their integrity postchecks pass. Never delete receipts or rewrite chip history.
 BEGIN;
+CREATE OR REPLACE FUNCTION public.get_floor_restorable_entries_v3(p_tournament_id uuid)
+RETURNS TABLE(entry_id uuid,player_id uuid,entry_no integer,display_name text,current_stack integer)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+DECLARE v_actor uuid:=auth.uid(); v_club uuid;
+BEGIN
+  SELECT club_id INTO v_club FROM public.tournaments WHERE id=p_tournament_id;
+  IF NOT FOUND OR v_actor IS NULL OR NOT floor_private.floor_table_v3_actor_is_tournament_operator(v_actor,v_club) THEN
+    RAISE EXCEPTION USING ERRCODE='42501',MESSAGE='floor_table_v3_roster_access_denied';
+  END IF;
+  RETURN QUERY SELECT e.id,e.player_id,e.entry_no,
+    COALESCE(NULLIF(p.display_name,''),e.player_id::text),b.chip_count
+  FROM public.tournament_entries e
+  LEFT JOIN public.profiles p ON p.user_id=e.player_id
+  JOIN LATERAL(SELECT s.chip_count FROM public.tournament_seats s
+    WHERE s.tournament_id=e.tournament_id AND s.entry_id=e.id AND s.player_id=e.player_id
+      AND s.entry_number=e.entry_no AND s.status='busted'
+    ORDER BY s.assigned_at DESC NULLS LAST,s.id DESC LIMIT 1) b ON true
+  WHERE e.tournament_id=p_tournament_id AND e.status='busted' AND e.registration_id IS NOT NULL
+    AND b.chip_count>=0
+    AND NOT EXISTS(SELECT 1 FROM public.tournament_seats a WHERE a.tournament_id=e.tournament_id AND a.entry_id=e.id AND a.is_active)
+  ORDER BY e.entry_no,e.id;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.get_floor_restorable_entries_v3(uuid) FROM PUBLIC,anon,service_role;
+GRANT EXECUTE ON FUNCTION public.get_floor_restorable_entries_v3(uuid) TO authenticated;
 CREATE OR REPLACE FUNCTION public.floor_restore_busted_player_to_seat_v3(
   p_entry_id uuid,
   p_to_tournament_table_id uuid,
