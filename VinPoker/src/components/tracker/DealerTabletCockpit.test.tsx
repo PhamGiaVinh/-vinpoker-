@@ -54,7 +54,7 @@ describe("Dealer tablet modes", () => {
       tournamentId: "tournament",
       tournamentTableId: "table",
       currentStreet: "preflop",
-      engineActor: { player_id: "player-1", seat_number: 1 },
+      engineActor: { player_id: "player-1", seat_number: 1, toCall: 10, minRaiseTo: 20, legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true } },
       playerName: () => "Test 1",
       actions: [{ action_order: 1, street: "preflop", player_id: "player-1", display_name: "Test 1", seat_number: 1, action_type: "call", amount: 10 }],
       canUndo: false,

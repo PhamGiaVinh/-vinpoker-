@@ -386,7 +386,13 @@ export async function buildProspectiveEngineSnapshotV1(input: {
     return { ok: false, code: "provenance_failed", reason: error instanceof Error ? error.message : "Could not build forecast provenance." };
   }
   const provenanceColumns = toForecastProvenanceSnapshotColumns(provenance);
-  const insert = freezeDeep({
+  if (provenance.kind !== "engine" ||
+      (provenance.completeness !== "complete" && provenance.completeness !== "missing_code_sha") ||
+      provenanceColumns.forecast_issued_at == null || provenanceColumns.as_of_ts == null ||
+      provenanceColumns.target_event_ts == null || provenance.derivedFromInputHash !== null) {
+    return { ok: false, code: "provenance_failed", reason: "Prospective capture requires complete engine timing and non-derived provenance." };
+  }
+  const insert: ProspectiveForecastSnapshotInsert = freezeDeep({
     event_id: input.event.event_id,
     horizon: input.horizon,
     days_before: Math.max(0, Math.floor((target.ms - captured.ms) / MS_PER_DAY)),
@@ -399,6 +405,12 @@ export async function buildProspectiveEngineSnapshotV1(input: {
     source_label: "engine" as const,
     notes: "Prospective capture V1; owner review required; post-event fields excluded.",
     ...provenanceColumns,
+    forecast_issued_at: provenanceColumns.forecast_issued_at,
+    as_of_ts: provenanceColumns.as_of_ts,
+    target_event_ts: provenanceColumns.target_event_ts,
+    provenance_kind: provenance.kind,
+    provenance_completeness: provenance.completeness,
+    derived_from_input_hash: null,
   });
   return freezeDeep({ ok: true, forecast: freezeDeep(forecast), provenance, insert });
 }
