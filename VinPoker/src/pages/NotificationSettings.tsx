@@ -48,6 +48,8 @@ export default function NotificationSettings() {
   const [prefs, setPrefs] = useState<Prefs>({});
   const [pushPrefs, setPushPrefs] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+  const [emailAvailable, setEmailAvailable] = useState(false);
+  const [preferenceError, setPreferenceError] = useState<string | null>(null);
 
   // Web Push state
   const [pushPerm, setPushPerm] = useState<"granted" | "denied" | "default">("default");
@@ -95,23 +97,36 @@ export default function NotificationSettings() {
     }
   };
   useEffect(() => {
-    if (!user) return;
+    let disposed = false;
+    setEmailAvailable(false); setPrefs({}); setPushPrefs({}); setEnabled(false); setPreferenceError(null);
+    if (!user) { setLoading(false); return; }
+    setLoading(true);
     (async () => {
-      const { data } = await supabase
+      try {
+      const { data, error } = await supabase
         .from("profiles")
-        .select("email_notifications_enabled, email_prefs, push_prefs")
+        .select("*")
         .eq("user_id", user.id)
         .maybeSingle();
+      if (disposed) return;
+      if (error) { setPreferenceError("Không tải được tùy chọn thông báo. Hãy tải lại trang."); return; }
       if (data) {
-        setEnabled(data.email_notifications_enabled ?? true);
-        setPrefs((data.email_prefs as Prefs) ?? {});
+        const emailEnabled = "email_notifications_enabled" in data ? data.email_notifications_enabled : null;
+        const emailPrefs = "email_prefs" in data ? data.email_prefs : null;
+        setEmailAvailable("email_notifications_enabled" in data && "email_prefs" in data);
+        setEnabled(typeof emailEnabled === "boolean" ? emailEnabled : false);
+        setPrefs(emailPrefs && typeof emailPrefs === "object" && !Array.isArray(emailPrefs) ? emailPrefs as Prefs : {});
         setPushPrefs(((data as any).push_prefs as Record<string, boolean>) ?? {});
       }
-      setLoading(false);
+      } catch {
+        if (!disposed) setPreferenceError("Không kết nối được để tải tùy chọn thông báo.");
+      } finally { if (!disposed) setLoading(false); }
     })();
-  }, [user]);
+    return () => { disposed = true; };
+  }, [user?.id]);
 
   const togglePushPref = async (key: string, val: boolean) => {
+    if (!user || loading || preferenceError) return;
     const next = { ...pushPrefs, [key]: val };
     setPushPrefs(next);
     if (!user) return;
@@ -120,7 +135,7 @@ export default function NotificationSettings() {
   };
 
   const save = async (next: { enabled?: boolean; prefs?: Prefs }) => {
-    if (!user) return;
+    if (!user || !emailAvailable || preferenceError) return;
     const payload: any = {};
     if (next.enabled !== undefined) payload.email_notifications_enabled = next.enabled;
     if (next.prefs) payload.email_prefs = next.prefs;
@@ -142,6 +157,7 @@ export default function NotificationSettings() {
   return (
     <div className="container mx-auto p-4 max-w-2xl space-y-4">
       <h1 className="text-2xl font-bold">{t("notifSettings.title")}</h1>
+      {preferenceError && <p role="alert" className="text-sm text-destructive">{preferenceError}</p>}
 
       {/* Web Push section */}
       <Card className="p-4 space-y-3">
@@ -209,6 +225,7 @@ export default function NotificationSettings() {
             </div>
             <Switch
               checked={pushPrefs[c.key] !== false}
+              disabled={!!preferenceError}
               onCheckedChange={(v) => togglePushPref(c.key, v)}
             />
           </div>
@@ -216,6 +233,7 @@ export default function NotificationSettings() {
       </Card>
 
       <h2 className="text-xl font-bold pt-2">Email</h2>
+      {!emailAvailable && <p className="text-sm text-muted-foreground">Tùy chọn email chưa có backend trong môi trường này. Không thay đổi thiết lập email.</p>}
       <Card className="p-4 flex items-center justify-between">
         <div>
           <Label className="text-base font-semibold">{t("notifSettings.emailMasterLabel")}</Label>
@@ -223,6 +241,7 @@ export default function NotificationSettings() {
         </div>
         <Switch
           checked={enabled}
+          disabled={!emailAvailable || !!preferenceError}
           onCheckedChange={(v) => {
             setEnabled(v);
             save({ enabled: v });
