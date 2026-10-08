@@ -396,7 +396,7 @@ export async function buildProspectiveEngineSnapshotV1(input: {
     confidence_tier: forecast.confidence,
     candidate_gtd: input.event.gtd,
     overlay_risk_pct: null,
-    source_label: "engine",
+    source_label: "engine" as const,
     notes: "Prospective capture V1; owner review required; post-event fields excluded.",
     ...provenanceColumns,
   });

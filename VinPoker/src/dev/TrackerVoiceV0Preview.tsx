@@ -341,7 +341,7 @@ export default function TrackerVoiceV0Preview() {
     processedFinalRef.current = providerEventId;
     const command = snapshotCommand(snapshot);
     const parsedCommand = snapshot?.proposal?.command;
-    const action = parsedCommand && "kind" in parsedCommand ? parsedCommand : null;
+    const action = parsedCommand && "amount" in parsedCommand ? parsedCommand : null;
     const amount = action?.amount?.value ?? null;
     const amountAmbiguous = action?.amount?.ambiguous ?? null;
     const spokenSeatNumber = action?.spokenSeatNumber ?? null;

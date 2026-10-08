@@ -56,7 +56,7 @@ describe("Dealer tablet modes", () => {
       currentStreet: "preflop",
       engineActor: { player_id: "player-1", seat_number: 1 },
       playerName: () => "Test 1",
-      actions: [{ action_order: 1 }],
+      actions: [{ action_order: 1, street: "preflop", player_id: "player-1", display_name: "Test 1", seat_number: 1, action_type: "call", amount: 10 }],
       canUndo: false,
     } as StandaloneHandInput;
     render(<DealerTabletLayout {...props} hook={activeHook} trackerAllowed floorAlertsEnabled />);

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { storyMusicOptionalClient } from "@/lib/storyMusicOptionalClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -22,6 +23,7 @@ export function StoryMusicManager() {
   const { t } = useTranslation();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [name, setName] = useState("");
   const [artist, setArtist] = useState("");
@@ -33,9 +35,12 @@ export function StoryMusicManager() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from("feed_story_music").select("*").order("created_at", { ascending: false });
-    setTracks((data ?? []) as Track[]);
-    setLoading(false);
+    try {
+      const { data, error } = await storyMusicOptionalClient.from("feed_story_music").select("*").order("created_at", { ascending: false });
+      if (error) { setLibraryError("Thư viện nhạc chưa sẵn sàng hoặc không tải được. Không thể upload lúc này."); setTracks([]); return; }
+      setLibraryError(null); setTracks(data ?? []);
+    } catch { setLibraryError("Không kết nối được thư viện nhạc."); setTracks([]); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { load(); return () => { audioRef.current?.pause(); }; }, []);
@@ -49,6 +54,7 @@ export function StoryMusicManager() {
   });
 
   const upload = async () => {
+    if (loading || libraryError) { toast.error(libraryError ?? "Đang xác minh thư viện nhạc."); return; }
     if (!file) { toast.error(t("storyMusicMgr.chooseMp3")); return; }
     if (!name.trim()) { toast.error(t("storyMusicMgr.enterTrackName")); return; }
     if (file.size > 20 * 1024 * 1024) { toast.error(t("storyMusicMgr.fileTooLarge")); return; }
@@ -61,7 +67,7 @@ export function StoryMusicManager() {
       if (upErr) throw upErr;
       const { data } = supabase.storage.from("feed-story-music").getPublicUrl(path);
       const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from("feed_story_music").insert({
+      const { error } = await storyMusicOptionalClient.from("feed_story_music").insert({
         name: name.trim(),
         artist: artist.trim() || null,
         genre: genre.trim() || null,
@@ -82,7 +88,7 @@ export function StoryMusicManager() {
 
   const remove = async (track: Track) => {
     if (!confirm(t("storyMusicMgr.confirmDelete", { name: track.name }))) return;
-    const { error } = await supabase.from("feed_story_music").delete().eq("id", track.id);
+    const { error } = await storyMusicOptionalClient.from("feed_story_music").delete().eq("id", track.id);
     if (error) { toast.error(error.message); return; }
     // best-effort: remove storage file when it lives in feed-story-music bucket
     try {
@@ -119,7 +125,7 @@ export function StoryMusicManager() {
         </div>
         <div className="flex gap-2">
           <input ref={fileRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav" onChange={e => setFile(e.target.files?.[0] ?? null)} className="text-sm flex-1" />
-          <Button onClick={upload} disabled={uploading || !file}>
+          <Button onClick={upload} disabled={uploading || loading || !!libraryError || !file}>
             {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : t("storyMusicMgr.addButton")}
           </Button>
         </div>
@@ -128,6 +134,8 @@ export function StoryMusicManager() {
       <div className="text-sm font-semibold">{t("storyMusicMgr.libraryTitle", { count: tracks.length })}</div>
       {loading ? (
         <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+      ) : libraryError ? (
+        <p role="alert" className="text-sm text-destructive">{libraryError}</p>
       ) : tracks.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("storyMusicMgr.noMusic")}</p>
       ) : tracks.map(track => (
