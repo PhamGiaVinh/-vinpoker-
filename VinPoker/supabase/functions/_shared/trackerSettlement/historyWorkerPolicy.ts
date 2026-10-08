@@ -1,5 +1,17 @@
 export const TRACKER_HISTORY_WORKER_MAX_BATCH = 20;
 
+/** Explicit canary scope. An invalid scope must never fall back to claiming the whole queue. */
+export function parseHistoryWorkerHandIds(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length < 1 || value.length > TRACKER_HISTORY_WORKER_MAX_BATCH
+    || value.some(id => typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) {
+    throw new Error("invalid_hand_scope");
+  }
+  const ids = value.map(id => id.toLowerCase());
+  if (new Set(ids).size !== ids.length) throw new Error("invalid_hand_scope");
+  return ids;
+}
+
 const DETERMINISTIC_CODES = new Set([
   "invalid_historical_hand",
   "invalid_historical_source",

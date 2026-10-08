@@ -31,6 +31,11 @@ on:
       - 'VinPoker/supabase/migrations/20270128000023_dealer_empty_reservation_exact_session_v2.sql'
       - 'VinPoker/supabase/functions/process-swing/passes/passS2-empty-table-preassign*'
       - 'VinPoker/supabase/functions/tournament-historical-settlement-worker/**'
+      - 'VinPoker/supabase/functions/tournament-historical-settlement-dispatcher/**'
+      - 'VinPoker/supabase/functions/_shared/trackerSettlement/historyWorkerPolicy.ts'
+      - 'VinPoker/tests/trackerSettlement/scopedClaim*'
+      - 'VinPoker/tests/trackerSettlement/historyWorkerPolicy.test.ts'
+      - 'VinPoker/supabase/migrations/20270128000024_tracker_history_scoped_canary_claim_v1.sql'
       - 'VinPoker/supabase/functions/_shared/dealerMutationIntent.ts'
       - 'VinPoker/supabase/functions/_shared/__tests__/dealerMutationIntent.test.ts'
       - 'VinPoker/supabase/functions/assign-dealer/**'
@@ -77,7 +82,9 @@ jobs:
           deno test supabase/functions/_shared/__tests__/dealerMutationIntent.test.ts
           deno test --allow-env supabase/functions/process-swing/passes/passS2-empty-table-preassign.test.ts
           deno check supabase/functions/tournament-historical-settlement-worker/index.ts
-          deno test --allow-env supabase/functions/tournament-historical-settlement-worker/runtime.test.ts
+          deno check supabase/functions/tournament-historical-settlement-dispatcher/index.ts
+          deno test --allow-env supabase/functions/tournament-historical-settlement-worker/runtime.test.ts supabase/functions/tournament-historical-settlement-dispatcher/runtime.test.ts
+          node node_modules/vitest/vitest.mjs run tests/trackerSettlement/historyWorkerPolicy.test.ts
       - name: Download exact owner-authorized current schema (not a pre-release replay baseline)
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
@@ -121,6 +128,8 @@ jobs:
           node tests/dealerSwing/emptyReservation.currentSchema.mjs
           createdb -T "$PGDATABASE" vinpoker_ops_reservation_identity
           PGDATABASE=vinpoker_ops_reservation_identity node tests/dealerSwing/emptyReservation.concurrent.mjs
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000024_tracker_history_scoped_canary_claim_v1.sql
+          node tests/trackerSettlement/scopedClaim.currentSchema.mjs
       - name: OFF-at-commit true-overlap with isolated acquisition fixture (not live worker proof)
         working-directory: VinPoker
         run: |

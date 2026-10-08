@@ -9,6 +9,7 @@ import { isUuid } from "../_shared/internal-trigger-auth.ts";
 import {
   historicalWorkerFailureStatus,
   TRACKER_HISTORY_WORKER_MAX_BATCH,
+  parseHistoryWorkerHandIds,
 } from "../_shared/trackerSettlement/historyWorkerPolicy.ts";
 import {
   normalizeSettlementSourceRpcResult,
@@ -39,19 +40,31 @@ Deno.serve(async (req) => {
     return jsonResp(req, { ok: false, message: "Unauthorized" }, 401);
   }
   try {
-    const body = await req.json().catch(() => ({})) as { limit?: unknown };
+    let parsed: unknown;
+    try { parsed = await req.json(); }
+    catch { return jsonResp(req, { ok: false, code: "invalid_worker_request" }, 400); }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return jsonResp(req, { ok: false, code: "invalid_worker_request" }, 400);
+    }
+    const body = parsed as { limit?: unknown; hand_ids?: unknown };
+    let handIds: string[] | undefined;
+    try { handIds = parseHistoryWorkerHandIds(body.hand_ids); }
+    catch { return jsonResp(req, { ok: false, code: "invalid_hand_scope" }, 400); }
     const limit = body.limit === undefined ? TRACKER_HISTORY_WORKER_MAX_BATCH : Number(body.limit);
     if (!Number.isInteger(limit) || limit < 1 || limit > TRACKER_HISTORY_WORKER_MAX_BATCH) {
       return jsonResp(req, { ok: false, code: "invalid_batch_limit" }, 400);
     }
     const service = createClient(url, serviceKey);
-    const { data: claimed, error: claimError } = await service.rpc("claim_tracker_historical_display_jobs", {
+    const { data: claimed, error: claimError } = await service.rpc(handIds
+      ? "claim_tracker_historical_display_jobs_scoped_v1" : "claim_tracker_historical_display_jobs", {
       p_limit: limit,
+      ...(handIds ? { p_hand_ids: handIds } : {}),
     });
     if (claimError) throw claimError;
     if (!Array.isArray(claimed) || claimed.length > limit || claimed.some(job =>
       !job || !isUuid(job.hand_id) || !isUuid(job.lease_token)
-      || !Number.isSafeInteger(job.source_revision) || job.source_revision < 1)) {
+      || !Number.isSafeInteger(job.source_revision) || job.source_revision < 1
+      || (handIds && !handIds.includes(job.hand_id.toLowerCase())))) {
       throw new Error("historical_claim_unverified");
     }
     const jobs = claimed as ClaimedJob[];

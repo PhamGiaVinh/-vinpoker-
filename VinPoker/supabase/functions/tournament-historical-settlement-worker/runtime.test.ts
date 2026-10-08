@@ -19,31 +19,42 @@ Deno.test('history worker rejects unknown claims and reports lease-loss honestly
    {hand_id:hand,player_id:'loser',entry_number:1,seat_number:4,starting_stack:100,ending_stack:95,hole_cards:['Qs','Qc'],is_eliminated:false}],
   actions:['button','left','loser'].map((player,i)=>({id:`action-${i}`,hand_id:hand,player_id:player,entry_number:1,street:'preflop',action_type:'all_in',action_amount:5,action_order:i+1})),
   sourceRevision:1,sourceChainHash:'a'.repeat(64)};
- const call=()=>handler!(new Request('https://worker.invalid',{method:'POST',headers:{authorization:'Bearer history-service-fixture'},body:JSON.stringify({limit:1})}));
+ const call=(extra: Record<string,unknown>={})=>handler!(new Request('https://worker.invalid',{method:'POST',headers:{authorization:'Bearer history-service-fixture'},body:JSON.stringify({limit:1,...extra})}));
  try {
   await import('./index.ts');
-  for(const scenario of ['empty','null','object','bad_revision','bad_lease','finish_lost','needs_attention','valid_commit','empty_commit','rejected_commit']) {
+  globalThis.fetch=()=>{throw new Error('invalid hand scope reached backend');};
+  for(const body of ['{"hand_ids":[','[]','123','null']) {
+   const response=await handler!(new Request('https://worker.invalid',{method:'POST',headers:{authorization:'Bearer history-service-fixture'},body}));
+   assertEquals(response.status,400); await response.json();
+  }
+  for(const scope of [[],null,['bad'],[hand,hand]]) {
+   const response=await call({hand_ids:scope}); assertEquals(response.status,400); await response.json();
+  }
+  for(const scenario of ['empty','null','object','bad_revision','bad_lease','finish_lost','needs_attention','valid_commit','empty_commit','rejected_commit','scoped_commit','outside_scope']) {
    let finishCalls=0;
    globalThis.fetch=(input,init)=>{
     const url=new URL(input instanceof Request?input.url:String(input)); assertEquals(url.origin,'https://backend.invalid');
     const route=url.pathname.split('/').at(-1);
     let data: unknown;
-    if(route==='claim_tracker_historical_display_jobs') data=scenario==='empty'?[]:scenario==='null'?null:scenario==='object'?{}:
-     [{hand_id:hand,source_revision:scenario==='bad_revision'?0:1,lease_token:scenario==='bad_lease'?'invalid':lease}];
+    if(route==='claim_tracker_historical_display_jobs'||route==='claim_tracker_historical_display_jobs_scoped_v1') {
+     if(route.endsWith('scoped_v1')) assertEquals(JSON.parse(String((init as {body?:unknown})?.body)).p_hand_ids,[hand]);
+     data=scenario==='empty'?[]:scenario==='null'?null:scenario==='object'?{}:
+      [{hand_id:scenario==='outside_scope'?lease:hand,source_revision:scenario==='bad_revision'?0:1,lease_token:scenario==='bad_lease'?'invalid':lease}];
+    }
     else if(route==='get_tracker_historical_display_snapshot') data=scenario.includes('commit')?snapshot:{};
     else if(route==='tournament_settlement_outcomes') data=[];
     else if(route==='finish_tracker_historical_display_job') {finishCalls++; data=scenario!=='finish_lost';}
     else if(route==='commit_tracker_historical_display_outcome_v2') {
      const args=JSON.parse(String((init as {body?: unknown}|undefined)?.body));
      assertEquals(args.p_lease_token,lease); assertEquals(args.p_expected_source_revision,1);
-     data=scenario==='empty_commit'?null:{ok:scenario==='valid_commit',settlement_revision:1,outcome_hash:args.p_outcome_hash};
+     data=scenario==='empty_commit'?null:{ok:['valid_commit','scoped_commit'].includes(scenario),settlement_revision:1,outcome_hash:args.p_outcome_hash};
     }
     else throw new Error(`unexpected backend route ${route}`);
     return Promise.resolve(new Response(JSON.stringify(data),{status:200,headers:{'content-type':'application/json'}}));
    };
-   const response=await call(); const body=await response.json();
-   assertEquals(response.status,['empty','needs_attention','valid_commit','empty_commit','rejected_commit'].includes(scenario)?200:503,scenario);
-   assertEquals(body.completed??0,scenario==='valid_commit'?1:0,scenario);
+   const response=await call(['scoped_commit','outside_scope'].includes(scenario)?{hand_ids:[hand]}:{}); const body=await response.json();
+   assertEquals(response.status,['empty','needs_attention','valid_commit','empty_commit','rejected_commit','scoped_commit'].includes(scenario)?200:503,scenario);
+   assertEquals(body.completed??0,['valid_commit','scoped_commit'].includes(scenario)?1:0,scenario);
    assertEquals(finishCalls,['needs_attention','finish_lost','empty_commit','rejected_commit'].includes(scenario)?1:0,scenario);
    if(['empty_commit','rejected_commit'].includes(scenario)) assertEquals(body.retried,1);
    if(scenario==='finish_lost') {assertEquals(body.ok,false);assertEquals(body.unresolved,1);}

@@ -7613,6 +7613,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000024",
+      "filename": "20270128000024_tracker_history_scoped_canary_claim_v1.sql",
+      "sha256": "1ce1e654ab13d1a1a29c18202bbb8bb34647c56f8970744283996ef59c727ec1",
+      "domain": "tracker-history"
+    },
+    {
       "version": "20270128000023",
       "filename": "20270128000023_dealer_empty_reservation_exact_session_v2.sql",
       "sha256": "77592c44d07482b42dc267bfa1ae7aa097f1e84f5ee4f21d402b6cd2421b6d55",
