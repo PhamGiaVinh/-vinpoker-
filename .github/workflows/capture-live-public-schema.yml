@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       target_sha:
-        description: "Exact 40-character main SHA recorded with this protected schema capture"
+        description: "Exact 40-character workflow SHA (main for live capture)"
         required: true
         type: string
       owner_ack:
-        description: "Type CAPTURE_SCHEMA_ONLY to confirm this read-only live schema capture"
+        description: "CAPTURE_SCHEMA_ONLY for live main capture; RECOVER_REVIEWED_SCHEMA_ONLY for immutable TEST baseline recovery"
         required: true
         type: string
 
@@ -146,3 +146,60 @@ jobs:
         run: |
           rm -rf "${RUNNER_TEMP}/live-public-schema"
           rm -f "${RUNNER_TEMP}/live-public-schema.raw.sql"
+
+  recover-reviewed-baseline:
+    name: Recover immutable pre-release TEST schema (no live database access)
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      inputs.owner_ack == 'RECOVER_REVIEWED_SCHEMA_ONLY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: dealer-swing-production-critical
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Verify exact workflow revision and original capture provenance
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$TARGET_SHA" = "$GITHUB_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37229283609" --jq .conclusion)" = success
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37229283609" --jq .head_sha)" = d64df388d42b51cb851e8d23361d4fe568988eb7
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: 22 }
+      - name: Recover bytes privately and validate exact original sanitized checksum
+        env:
+          BASELINE_01: ${{ secrets.VINPOKER_BASELINE_RECOVERY_01 }}
+          BASELINE_02: ${{ secrets.VINPOKER_BASELINE_RECOVERY_02 }}
+          BASELINE_03: ${{ secrets.VINPOKER_BASELINE_RECOVERY_03 }}
+          BASELINE_04: ${{ secrets.VINPOKER_BASELINE_RECOVERY_04 }}
+          BASELINE_05: ${{ secrets.VINPOKER_BASELINE_RECOVERY_05 }}
+          BASELINE_06: ${{ secrets.VINPOKER_BASELINE_RECOVERY_06 }}
+          BASELINE_07: ${{ secrets.VINPOKER_BASELINE_RECOVERY_07 }}
+          BASELINE_08: ${{ secrets.VINPOKER_BASELINE_RECOVERY_08 }}
+          BASELINE_09: ${{ secrets.VINPOKER_BASELINE_RECOVERY_09 }}
+          BASELINE_10: ${{ secrets.VINPOKER_BASELINE_RECOVERY_10 }}
+          BASELINE_11: ${{ secrets.VINPOKER_BASELINE_RECOVERY_11 }}
+          BASELINE_12: ${{ secrets.VINPOKER_BASELINE_RECOVERY_12 }}
+          BASELINE_13: ${{ secrets.VINPOKER_BASELINE_RECOVERY_13 }}
+          BASELINE_14: ${{ secrets.VINPOKER_BASELINE_RECOVERY_14 }}
+          BASELINE_15: ${{ secrets.VINPOKER_BASELINE_RECOVERY_15 }}
+          BASELINE_16: ${{ secrets.VINPOKER_BASELINE_RECOVERY_16 }}
+          BASELINE_17: ${{ secrets.VINPOKER_BASELINE_RECOVERY_17 }}
+        run: node VinPoker/scripts/deploy/recover-reviewed-schema-artifact.mjs
+      - name: Retain original immutable baseline for replay tests
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reviewed-pre-release-schema
+          path: ${{ runner.temp }}/reviewed-pre-release-schema
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload metadata-only recovery provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reviewed-pre-release-schema-provenance
+          path: ${{ runner.temp }}/reviewed-pre-release-schema.provenance.json
+          if-no-files-found: error
+          retention-days: 90
