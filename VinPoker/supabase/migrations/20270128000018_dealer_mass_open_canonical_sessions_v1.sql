@@ -209,7 +209,9 @@ BEGIN
   ORDER BY table_row.id;
 
   UPDATE public.game_tables AS table_row
-  SET status = CASE WHEN target.target_state = 'already_staffed' THEN table_row.status ELSE 'active' END,
+  -- Every target has passed canonical session validation. Keep the legacy operation
+  -- observer aligned even when Floor left this compatibility marker inactive.
+  SET status = 'active',
       shift_id = CASE WHEN target.target_state = 'already_staffed' THEN table_row.shift_id ELSE p_shift_id END,
       table_type = CASE WHEN target.target_state = 'already_staffed' THEN table_row.table_type ELSE p_table_type END,
       opened_at = now(),
@@ -240,4 +242,3 @@ $$;
 REVOKE ALL ON FUNCTION public.operator_open_dealer_tables(uuid,uuid,uuid,uuid[],text) FROM PUBLIC,anon,service_role;
 GRANT EXECUTE ON FUNCTION public.operator_open_dealer_tables(uuid,uuid,uuid,uuid[],text) TO authenticated;
 COMMIT;
-
