@@ -47,6 +47,9 @@ on:
       - 'VinPoker/supabase/migrations/20270128000031_tournament_participation_current_scope_v1.sql'
       - 'VinPoker/supabase/migrations/20270128000032_tournament_seat_display_preservation_v1.sql'
       - 'VinPoker/supabase/migrations/20270128000033_tournament_seat_move_tuple_v1.sql'
+      - 'VinPoker/supabase/migrations/20270128000035_tournament_seat_assign_integrity_v1.sql'
+      - 'VinPoker/tests/floorProduction/assignParticipation.pg17.sql'
+      - 'VinPoker/tests/floorProduction/assignIntegrityRollback.currentSchema.mjs'
       - 'VinPoker/tests/floorProduction/participationTv.concurrent.mjs'
       - 'VinPoker/tests/floorProduction/participationParser.currentSchema.mjs'
       - 'VinPoker/src/lib/tournamentParticipation.ts'
@@ -177,9 +180,14 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000033_tournament_seat_move_tuple_v1.sql
           node tests/floorProduction/seatMoveTupleRollback.currentSchema.mjs
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000034_floor_move_wrapper_receipt_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000035_tournament_seat_assign_integrity_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/assignParticipation.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v free_sit_roundtrip=true -f tests/floorProduction/assignParticipation.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v seed_chip_projection=true -v projection_stack=20001 -f tests/floorProduction/assignParticipation.pg17.sql
+          node tests/floorProduction/assignIntegrityRollback.currentSchema.mjs
           node tests/floorProduction/participationParser.currentSchema.mjs
           node tests/floorProduction/moveWrapperReceiptRollback.currentSchema.mjs
-          MOVE_WRAPPER_RECEIPT_CASE=1 node tests/floorProduction/trackerRosterIntent.concurrent.mjs
+          MOVE_WRAPPER_RECEIPT_CASE=1 ASSIGN_PARTICIPATION_CASE=1 node tests/floorProduction/trackerRosterIntent.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -v WRAPPER_RECEIPT_CASE=1 -v CLOSED_SESSION_READ_CASE=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -v CLOSED_SESSION_READ_CASE=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
