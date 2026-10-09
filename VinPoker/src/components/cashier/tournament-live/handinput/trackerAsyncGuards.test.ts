@@ -7,10 +7,24 @@ import {
   isConfirmedActionWrite,
   isConfirmedCompletedHandReadback,
   resolveTableHandIdentity,
+  isConfirmedRosterWrite,
 } from "./trackerAsyncGuards";
 import { createSingleFlightGuard } from "@/lib/singleFlight";
 
 describe("tracker async guards", () => {
+  it("validates exact roster receipt before applying chip state", () => {
+    const context = { tableId: "logical-b", sessionId: "session-b", epoch: 2, seatNumber: 3, chipCount: 20000 };
+    const valid = { ok: true, tournament_table_id: "logical-b", table_session_id: "session-b", control_epoch: 2,
+      seat: { id: "seat", entry_id: "entry", player_id: "player", entry_number: 1, seat_number: 3, chip_count: 20000 } };
+    expect(isConfirmedRosterWrite(valid, context)).toBe(true);
+    for (const invalid of [null, { ...valid, ok: false }, { ...valid, table_session_id: "session-a" },
+      { ...valid, control_epoch: 1 }, { ...valid, tournament_table_id: "logical-a" },
+      { ...valid, seat: { ...valid.seat, chip_count: -1 } },
+      { ...valid, seat: { ...valid.seat, seat_number: 4 } },
+      { ...valid, seat: { ...valid.seat, entry_id: null } }]) {
+      expect(isConfirmedRosterWrite(invalid, context)).toBe(false);
+    }
+  });
   it("keeps only the latest table load eligible to commit and invalidates on unmount", () => {
     const guard = createTableLoadGuard();
     const tableA = guard.begin("table-a");

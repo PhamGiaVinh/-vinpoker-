@@ -69,6 +69,7 @@ import {
   createTableLoadGuard,
   isConfirmedActionWrite,
   isConfirmedCompletedHandReadback,
+  isConfirmedRosterWrite,
   resolveTableHandIdentity,
   type TableLoadToken,
 } from "./trackerAsyncGuards";
@@ -279,6 +280,21 @@ export function useStandaloneHandInput(tournamentId: string) {
   const actionScopeRef = useRef("");
   const blockedActionScopeRef = useRef<string | null>(null);
   const claimedHandLockRef = useRef<string | null>(null);
+  const rosterIntentRef = useRef(new Map<string, { fingerprint: string; requestId: string }>());
+  const rosterScopeRef = useRef("");
+  const rosterGenerationRef = useRef(0);
+  const rosterMountedRef = useRef(true);
+  const rosterFlightRef = useRef(createSingleFlightGuard());
+  const rosterContext = availableTables.find((table) => table.id === tableId);
+  const rosterScope = `${user?.id}:${tournamentId}:${rosterContext?.tournamentTableId}:${rosterContext?.tableSessionId}:${rosterContext?.controlEpoch}`;
+  if (rosterScopeRef.current !== rosterScope) {
+    rosterScopeRef.current = rosterScope;
+    rosterGenerationRef.current += 1;
+  }
+  useEffect(() => {
+    rosterMountedRef.current = true;
+    return () => { rosterMountedRef.current = false; rosterGenerationRef.current += 1; };
+  }, []);
 
   // ----- URL params -------------------------------------------------------
   // `table` is authoritative (drives the resume-on-return flow). hand/street/actor
@@ -746,18 +762,84 @@ export function useStandaloneHandInput(tournamentId: string) {
         toast.error("Phiên làm việc đã hết hạn");
         return { ok: false };
       }
-      if (!tableId) return { ok: false };
-      const { data, error } = await supabase.rpc("set_tracker_table_roster_seat" as any, {
+      const context = availableTables.find((table) => table.id === tableId);
+      if (!user?.id || !context?.tournamentTableId || !context.tableSessionId || !Number.isInteger(context.controlEpoch)) {
+        toast.error("Chưa xác minh được phiên bàn. Hãy tải lại trước khi setup ghế.");
+        return { ok: false, error: "roster_context_required" };
+      }
+      const scope = rosterScopeRef.current;
+      const generation = rosterGenerationRef.current;
+      const payload = {
         p_tournament_id: tournamentId,
-        p_table_id: tableId,
+        p_tournament_table_id: context.tournamentTableId,
+        p_table_session_id: context.tableSessionId,
+        p_expected_epoch: context.controlEpoch,
         p_seat_number: args.seatNumber,
         p_player_name: args.playerName,
         p_chip_count: args.chipCount,
         p_existing_player_id: args.existingPlayerId ?? null,
         p_touch_avatar: args.touchAvatar ?? false,
         p_avatar_url: args.avatarUrl ?? null,
-        p_actor_user_id: user?.id ?? null,
-      });
+      };
+      const fingerprint = JSON.stringify(payload);
+      // Keep unresolved intent reachable after epoch changes in the same session.
+      const storageKey = `vinpoker:roster-pending:${user.id}:${tournamentId}:${context.tournamentTableId}:${context.tableSessionId}:${args.seatNumber}`;
+      let intent = rosterIntentRef.current.get(storageKey);
+      if (!intent) {
+        try {
+          const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? "null");
+          if (typeof saved?.fingerprint === "string" && typeof saved?.requestId === "string") intent = saved;
+        } catch { /* In-memory fence remains; no credentials are stored. */ }
+      }
+      if (intent && intent.fingerprint !== fingerprint) {
+        let previous: typeof payload | null = null;
+        try { previous = JSON.parse(intent.fingerprint); } catch { /* Invalid local cache cannot authorize a write. */ }
+        if (previous?.p_tournament_id === tournamentId
+          && previous.p_tournament_table_id === context.tournamentTableId
+          && previous.p_table_session_id === context.tableSessionId
+          && previous.p_seat_number === args.seatNumber
+          && typeof previous.p_expected_epoch === "number"
+          && previous.p_expected_epoch !== context.controlEpoch) {
+          if (!rosterFlightRef.current.begin()) return { ok: false, error: "roster_write_in_flight" };
+          const prior = await Promise.resolve(supabase.rpc("set_tracker_table_roster_seat_v2" as any,
+            { ...previous, p_request_id: intent.requestId }))
+            .then(result => result, error => ({ data: null, error }))
+            .finally(() => rosterFlightRef.current.finish());
+          if (!rosterMountedRef.current || generation !== rosterGenerationRef.current) {
+            return { ok: false, error: "stale_roster_context" };
+          }
+          const receipt = prior.data as { ok?: boolean; error?: string } | null;
+          const confirmed = !prior.error && isConfirmedRosterWrite(receipt, {
+            tableId: previous.p_tournament_table_id, sessionId: previous.p_table_session_id,
+            epoch: previous.p_expected_epoch, seatNumber: previous.p_seat_number, chipCount: previous.p_chip_count,
+          });
+          const rejected = !prior.error && receipt?.ok === false
+            && ["STALE_STATE", "table_session_mismatch"].includes(receipt.error ?? "");
+          if (confirmed || rejected) {
+            rosterIntentRef.current.delete(storageKey);
+            try { sessionStorage.removeItem(storageKey); } catch { /* Receipt remains server-owned. */ }
+            toast.info(confirmed ? "Lần lưu trước đã được xác nhận. Tải lại bàn trước khi sửa tiếp."
+              : "Lần lưu cũ không được áp dụng. Kiểm tra lại dữ liệu và thử lại.");
+            return { ok: false, error: "previous_intent_resolved" };
+          }
+        }
+        toast.error("Lần lưu ghế trước chưa rõ kết quả. Hãy thử lại đúng dữ liệu cũ trước khi sửa.");
+        return { ok: false, error: "unknown_previous_intent" };
+      }
+      intent ??= { fingerprint, requestId: crypto.randomUUID() };
+      if (!rosterFlightRef.current.begin()) return { ok: false, error: "roster_write_in_flight" };
+      rosterIntentRef.current.set(storageKey, intent);
+      try { sessionStorage.setItem(storageKey, JSON.stringify(intent)); } catch { /* Server receipt remains authoritative. */ }
+      const clearIntent = () => {
+        rosterIntentRef.current.delete(storageKey);
+        try { sessionStorage.removeItem(storageKey); } catch { /* No business state is stored here. */ }
+      };
+      const { data, error } = await Promise.resolve(supabase.rpc("set_tracker_table_roster_seat_v2" as any, {
+        ...payload, p_request_id: intent.requestId,
+      })).then((result) => result, (error) => ({ data: null, error }))
+        .finally(() => rosterFlightRef.current.finish());
+      if (!rosterMountedRef.current || generation !== rosterGenerationRef.current
+        || scope !== rosterScopeRef.current) return { ok: false, error: "stale_roster_context" };
       if (error) {
         // 42883 = function not applied yet → degrade (two-tier gate).
         if ((error as any).code === "42883") {
@@ -768,8 +850,9 @@ export function useStandaloneHandInput(tournamentId: string) {
         toast.error(error.message || "Lỗi setup ghế");
         return { ok: false, error: error.message };
       }
-      const res = data as { ok: boolean; error?: string; seat?: any } | null;
+      const res = data as { ok: boolean; error?: string; seat?: any; table_session_id?: string } | null;
       if (!res?.ok) {
+        if (res?.ok === false && res.error !== "IDEMPOTENCY_CONFLICT") clearIntent();
         const map: Record<string, string> = {
           actor_not_allowed: "Phiên đăng nhập không hợp lệ — hãy tải lại trang.",
           actor_not_authorized: "Bạn không có quyền setup bàn này (cần tracker/floor/owner của club).",
@@ -782,11 +865,21 @@ export function useStandaloneHandInput(tournamentId: string) {
           bad_chip_count: "Số chip không hợp lệ.",
           bad_seat_number: "Số ghế không hợp lệ.",
           tournament_not_found: "Không tìm thấy giải.",
+          table_session_mismatch: "Phiên bàn đã đóng hoặc thay đổi. Hãy tải lại bàn.",
+          STALE_STATE: "Chế độ bàn đã thay đổi. Hãy tải lại trước khi sửa ghế.",
+          seat_locked: "Ghế đang khóa; hãy mở khóa trước khi xếp người.",
+          pending_move: "Bàn hoặc ghế đang chờ chuyển người; hãy giải quyết trước.",
         };
         toast.error(map[res?.error ?? ""] ?? res?.error ?? "Lỗi setup ghế");
         return { ok: false, error: res?.error };
       }
       const seat = res.seat;
+      if (!isConfirmedRosterWrite(res, { tableId: context.tournamentTableId, sessionId: context.tableSessionId,
+        epoch: context.controlEpoch!, seatNumber: args.seatNumber, chipCount: args.chipCount })) {
+        toast.error("Chưa xác minh được kết quả lưu ghế. Thử lại đúng dữ liệu để kiểm tra receipt.");
+        return { ok: false, error: "unknown_roster_result" };
+      }
+      clearIntent();
       setPlayers((prev) => {
         const merged: PlayerState = {
           player_id: seat.player_id,
@@ -811,7 +904,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       });
       return { ok: true };
     },
-    [tournamentId, tableId, isReadOnly, user]
+    [tournamentId, tableId, isReadOnly, user, availableTables]
   );
 
   // B1 — mid-hand DISPLAY-ONLY edit (name + avatar). Separate narrow RPC that never

@@ -42,6 +42,8 @@ on:
       - 'VinPoker/tests/floorProduction/openSessionNames.pg17.sql'
       - 'VinPoker/supabase/migrations/20270128000029_floor_deferred_break_intent_v1.sql'
       - 'VinPoker/tests/floorProduction/deferredMoveIntent*'
+      - 'VinPoker/supabase/migrations/20270128000030_tracker_roster_intent_fence_v1.sql'
+      - 'VinPoker/tests/floorProduction/trackerRoster*'
       - 'VinPoker/supabase/migrations/20270128000027_tracker_equal_blinds_contract_v1.sql'
       - 'VinPoker/tests/floorProduction/equalBlinds.pg17.sql'
       - 'VinPoker/src/lib/tournament/readBlindLineage.ts'
@@ -154,8 +156,10 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000027_tracker_equal_blinds_contract_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/equalBlinds.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000028_tracker_roster_exact_session_v1.sql
-          psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000029_floor_deferred_break_intent_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000030_tracker_roster_intent_fence_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -v LATE_PHYSICAL_REQUEST_CASE=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
+          node tests/floorProduction/trackerRosterIntent.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -v REAL_FINISH_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql

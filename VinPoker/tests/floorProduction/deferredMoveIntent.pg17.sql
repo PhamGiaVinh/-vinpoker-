@@ -56,11 +56,13 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
  PERFORM set_config('request.headers','{"x-vinpoker-dealer-intent":"manual","x-vinpoker-dealer-actor":"f7290000-0000-4000-8000-000000000001"}',true);
  INSERT INTO public.dealer_assignments(table_id,table_session_id,attendance_id,dealer_id,club_id,status,assigned_at)
  VALUES('f7290000-0000-4000-8000-000000000011',ss,'f7290000-0000-4000-8000-000000000041','f7290000-0000-4000-8000-000000000031','f7290000-0000-4000-8000-000000000002','assigned',now());
- r:=public.set_tracker_table_roster_seat('f7290000-0000-4000-8000-000000000003',st,1,'Source TEST',20000,NULL,false,NULL,'f7290000-0000-4000-8000-000000000001');
+ SELECT control_epoch INTO ep FROM public.table_sessions WHERE id=ss;
+ r:=public.set_tracker_table_roster_seat_v2('f7290000-0000-4000-8000-000000000003',st,ss,ep,gen_random_uuid(),1,'Source TEST',20000);
  PERFORM pg_temp.assert_true((r->>'ok')::boolean,'source roster');
  SELECT entry_id INTO e FROM public.tournament_seats WHERE tournament_table_id=st AND is_active;
  FOR i IN 1..2 LOOP
-  r:=public.set_tracker_table_roster_seat('f7290000-0000-4000-8000-000000000003',dt,i,'Destination TEST '||i,20000,NULL,false,NULL,'f7290000-0000-4000-8000-000000000001');
+  SELECT control_epoch INTO ep FROM public.table_sessions WHERE id=ds;
+  r:=public.set_tracker_table_roster_seat_v2('f7290000-0000-4000-8000-000000000003',dt,ds,ep,gen_random_uuid(),i,'Destination TEST '||i,20000);
   PERFORM pg_temp.assert_true((r->>'ok')::boolean,'destination roster');
  END LOOP;
  UPDATE public.table_sessions SET control_mode='tracker' WHERE id=ds RETURNING control_epoch INTO ep;

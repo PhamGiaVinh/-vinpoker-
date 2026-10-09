@@ -33,7 +33,7 @@ for(const canonical of [false,true]) for(const breakFirst of [true,false]){
  const st=sql(`SELECT id FROM public.tournament_tables WHERE tournament_id='${tour}' AND table_number=81;`);
  const ss=sql(`SELECT table_session_id FROM public.tournament_tables WHERE id='${st}';`);
  sql(`SELECT set_config('request.jwt.claim.sub','${actor}',false);
- SELECT public.set_tracker_table_roster_seat('${tour}','${st}',2,'Source second TEST',20000,NULL,false,NULL,'${actor}');
+ SELECT public.set_tracker_table_roster_seat_v2('${tour}','${st}',(SELECT table_session_id FROM public.tournament_tables WHERE id='${st}'),(SELECT s.control_epoch FROM public.table_sessions s JOIN public.tournament_tables t ON t.table_session_id=s.id WHERE t.id='${st}'),gen_random_uuid(),2,'Source second TEST',20000);
  UPDATE public.table_sessions SET control_mode='tracker' WHERE id='${ss}';`);
  const producer=`SELECT set_config('request.jwt.claim.sub','${actor}',true);
  SELECT public.floor_break_table_v5('${st}',s.revision,gen_random_uuid(),'fill_lowest_table',public.floor_plan_break_table_v1('${st}',s.revision,'fill_lowest_table')->>'plan_hash') FROM public.table_sessions s WHERE s.id='${ss}';`;
