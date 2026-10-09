@@ -30,6 +30,9 @@ SELECT set_config('test.stale_stack_first_arrival','true',true);
 \if :{?CLOSED_SESSION_READ_CASE}
 SELECT set_config('test.closed_session_read','true',true);
 \endif
+\if :{?MOVE_NAME_CASE}
+SELECT set_config('test.move_name','true',true);
+\endif
 DO $$ DECLARE opened jsonb; old_table uuid; old_session uuid; current_table uuid; current_session uuid; result jsonb; epoch bigint; token text; BEGIN
  opened:=public.floor_open_tournament_table_v3('f7280000-0000-4000-8000-000000000003','f7280000-0000-4000-8000-000000000011','manual','f7280000-0000-4000-8000-000000000051');
  PERFORM pg_temp.assert_true((opened->>'ok')::boolean,'first session opens');
@@ -105,6 +108,112 @@ DO $$ DECLARE opened jsonb; old_table uuid; old_session uuid; current_table uuid
   RETURN;
  END IF;
  PERFORM pg_temp.assert_true((SELECT count(*)=2 AND bool_and(entry_id IS NOT NULL AND tournament_table_id=current_table AND table_session_id=current_session) FROM public.tournament_seats WHERE tournament_id='f7280000-0000-4000-8000-000000000003' AND is_active),'canonical seats belong exclusively to reopened session');
+ IF current_setting('test.move_name',true)='true' THEN
+  -- Real Floor move must not discard the only name of a manual participant.
+  -- Subtransaction restores this fixture before other lifecycle assertions.
+  BEGIN
+   DECLARE moving_entry uuid; moving_player uuid; moving_revision bigint; move_result jsonb;
+    second_entry uuid; display_result jsonb; destination jsonb; plan jsonb;
+   BEGIN
+    SELECT entry_id,player_id INTO moving_entry,moving_player FROM public.tournament_seats
+     WHERE table_session_id=current_session AND seat_number=1 AND is_active;
+    UPDATE public.tournament_seats SET avatar_url='https://example.test/a.png'
+     WHERE entry_id=moving_entry AND is_active;
+    SELECT revision INTO moving_revision FROM public.table_sessions WHERE id=current_session;
+    PERFORM set_config('role','authenticated',true);
+    move_result:=public.move_player_seat_v2(moving_entry,current_table,3,
+     moving_revision,moving_revision,'f7280000-0000-4000-8000-000000000081');
+    PERFORM set_config('role','none',true);
+    PERFORM pg_temp.assert_true(move_result->>'ok'='true','named manual entry moves through authenticated public writer');
+    PERFORM pg_temp.assert_true((SELECT player_name='A TEST' AND chip_count=20000
+     AND avatar_url='https://example.test/a.png'
+     FROM public.tournament_seats WHERE id=(move_result->>'seat_id')::uuid),
+     'move preserves canonical entry display name and chip evidence');
+    PERFORM set_config('role','authenticated',true);
+    result:=public.move_player_seat_v2(moving_entry,current_table,3,
+     moving_revision,moving_revision,'f7280000-0000-4000-8000-000000000081');
+    PERFORM set_config('role','none',true);
+    PERFORM pg_temp.assert_true(result=move_result,'named move replay returns original receipt after revision advances');
+    result:=public.move_player_seat_v2(moving_entry,current_table,4,
+     moving_revision,moving_revision,'f7280000-0000-4000-8000-000000000081');
+    PERFORM pg_temp.assert_true(result->>'error'='IDEMPOTENCY_CONFLICT','named move key cannot change destination');
+    -- Simulate the already-live blank destination, without changing history.
+    UPDATE public.tournament_seats SET player_name='' WHERE id=(move_result->>'seat_id')::uuid;
+    result:=public.get_tournament_participation_v1('f7280000-0000-4000-8000-000000000003');
+    PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(result->'seats') q
+     WHERE q->>'entry_id'=moving_entry::text AND q->>'player_name'='A TEST')
+     AND EXISTS(SELECT 1 FROM jsonb_array_elements(result->'entries') q
+     WHERE q->>'id'=moving_entry::text AND q->>'player_name'='A TEST'),
+     'participation readers recover exact-entry name of already-blank seat');
+    SELECT seats INTO display_result FROM public.get_floor_tournament_table_roster_v5('f7280000-0000-4000-8000-000000000003')
+     WHERE table_session_id=current_session;
+    PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(display_result) q
+     WHERE q->>'entry_id'=moving_entry::text AND q->>'display_name'='A TEST'),
+     'Floor V5 reads historical display evidence without rewriting stored seat');
+    SELECT seats INTO display_result FROM public.get_floor_tournament_table_roster_v3('f7280000-0000-4000-8000-000000000003')
+     WHERE table_session_id=current_session;
+    PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(display_result) q
+     WHERE q->>'entry_id'=moving_entry::text AND q->>'display_name'='A TEST'),'compatibility Floor V3 recovers same name');
+    result:=public.get_tracker_roster_snapshot_v1('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch);
+    PERFORM pg_temp.assert_true(result->'seats'->2->'seat'->>'player_name'='A TEST','Tracker snapshot recovers name with original token contract');
+    PERFORM pg_temp.assert_true((SELECT player_name='' FROM public.tournament_seats WHERE id=(move_result->>'seat_id')::uuid),
+     'read fallbacks never repair existing seat data');
+    PERFORM pg_temp.assert_true(floor_private.tournament_entry_display_v1(moving_entry,
+     'f7280000-0000-4000-8000-000000000099','f7280000-0000-4000-8000-000000000003',1) IS NULL,
+     'wrong-player tuple cannot recover a canonical participant name');
+    PERFORM pg_temp.assert_true(floor_private.tournament_entry_display_v1(moving_entry,moving_player,
+     'f7280000-0000-4000-8000-000000000099',1) IS NULL,'wrong tournament tuple cannot recover display history');
+    INSERT INTO public.tournament_entries(tournament_id,player_id,entry_no,source,status,current_stack)
+     VALUES('f7280000-0000-4000-8000-000000000003',moving_player,2,'manual','registered',20000)
+     RETURNING id INTO second_entry;
+    PERFORM pg_temp.assert_true(floor_private.tournament_entry_display_v1(second_entry,moving_player,
+     'f7280000-0000-4000-8000-000000000003',2)->>'player_name' IS NULL,
+     'another entry generation never inherits prior generation display evidence');
+    PERFORM pg_temp.assert_true(NOT has_function_privilege('authenticated','floor_private.tournament_entry_display_v1(uuid,uuid,uuid,integer)','EXECUTE')
+     AND NOT has_function_privilege('anon','floor_private.tournament_entry_display_v1(uuid,uuid,uuid,integer)','EXECUTE')
+     AND NOT has_function_privilege('service_role','floor_private.tournament_entry_display_v1(uuid,uuid,uuid,integer)','EXECUTE'),
+     'private display helper does not expose entry metadata through direct RPC');
+    -- An explicit avatar clear must not resurrect an older historical image.
+    token:=public.get_tracker_roster_snapshot_v1('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch)->'seats'->2->>'token';
+    PERFORM set_config('role','authenticated',true);
+    result:=public.set_tracker_table_roster_seat_v2('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch,
+     gen_random_uuid(),3,'A TEST',20000,moving_player,true,NULL,token);
+    PERFORM set_config('role','none',true);
+    PERFORM pg_temp.assert_true(result->>'ok'='true','public explicit avatar clear commits');
+    -- Deterministic tied timestamps: UUID ordering must not choose an older
+    -- nonblank avatar after the current source is deactivated by the writer.
+    INSERT INTO public.tournament_seats(id,tournament_id,player_id,entry_number,entry_id,
+     tournament_table_id,table_session_id,seat_number,chip_count,is_active,status,player_name,avatar_url,created_at)
+    SELECT 'ffffffff-ffff-4fff-8fff-fffffffffff1',tournament_id,player_id,entry_number,entry_id,
+     tournament_table_id,table_session_id,9,chip_count,false,'moved',player_name,'https://example.test/older.png',created_at
+    FROM public.tournament_seats WHERE id=(move_result->>'seat_id')::uuid;
+    SELECT revision INTO moving_revision FROM public.table_sessions WHERE id=current_session;
+    PERFORM set_config('role','authenticated',true);
+    move_result:=public.move_player_seat_v2(moving_entry,current_table,4,moving_revision,moving_revision,gen_random_uuid());
+    PERFORM set_config('role','none',true);
+    PERFORM pg_temp.assert_true(move_result->>'ok'='true','cleared-avatar entry moves through public writer');
+    PERFORM pg_temp.assert_true((SELECT avatar_url IS NULL AND player_name='A TEST' AND chip_count=20000
+     FROM public.tournament_seats WHERE id=(move_result->>'seat_id')::uuid),'ordinary move retains explicit avatar clear');
+    -- Immediate break uses the same insertion seam and name-aware plan reader.
+    INSERT INTO public.game_tables(id,club_id,table_name,table_number,table_type,status,operational_status)
+     VALUES('f7280000-0000-4000-8000-000000000012','f7280000-0000-4000-8000-000000000002','Named break destination TEST',73,'tournament','inactive','available');
+    destination:=public.floor_open_tournament_table_v3('f7280000-0000-4000-8000-000000000003',
+     'f7280000-0000-4000-8000-000000000012','manual',gen_random_uuid());
+    PERFORM pg_temp.assert_true(destination->>'ok'='true','immediate named break destination opens');
+    SELECT revision INTO moving_revision FROM public.table_sessions WHERE id=current_session;
+    plan:=public.floor_plan_break_table_v1(current_table,moving_revision,'fill_lowest_table');
+    PERFORM pg_temp.assert_true(plan->>'ok'='true' AND plan->>'complete'='true','immediate named break plan complete');
+    result:=public.floor_break_table_v5(current_table,moving_revision,gen_random_uuid(),'fill_lowest_table',plan->>'plan_hash');
+    PERFORM pg_temp.assert_true(result->>'ok'='true','immediate named break commits');
+    PERFORM pg_temp.assert_true((SELECT player_name='A TEST' AND avatar_url IS NULL
+     AND chip_count=20000 FROM public.tournament_seats WHERE entry_id=moving_entry AND is_active),
+     'immediate break retains name and explicit avatar clear');
+    PERFORM pg_temp.assert_true((SELECT closed_at IS NOT NULL FROM public.table_sessions WHERE id=current_session),
+     'metadata preservation does not change explicit break closure');
+    RAISE no_data_found;
+   EXCEPTION WHEN no_data_found THEN NULL; END;
+  END;
+ END IF;
  IF current_setting('test.closed_session_read',true)='true' THEN
   -- Attack each stack projection independently before the lifecycle anomaly.
   BEGIN

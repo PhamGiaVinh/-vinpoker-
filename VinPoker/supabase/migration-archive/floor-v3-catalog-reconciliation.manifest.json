@@ -7613,6 +7613,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000032",
+      "filename": "20270128000032_tournament_seat_display_preservation_v1.sql",
+      "sha256": "43c5720e052341fd281f72a9d6d68876e800b3ef31f05b5083bf03d43a2694b5",
+      "domain": "tournament-seat-display"
+    },
+    {
       "version": "20270128000031",
       "filename": "20270128000031_tournament_participation_current_scope_v1.sql",
       "sha256": "493cea04355059ea2d023ac97c539cb79b1ba60a4fc3e4875f105417b65d150d",
