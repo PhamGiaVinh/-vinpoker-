@@ -6,6 +6,23 @@ import { FEATURES } from "@/lib/featureFlags";
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
 describe("Hand #4 resume workflow contracts", () => {
+  it("reads persisted hand identity by logical incarnation without changing the physical UI selection", () => {
+    const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
+    const load = source.slice(source.indexOf("const handleTableChange ="), source.indexOf("const handlePickTable ="));
+    expect(load).toContain("setTableId(newTableId)");
+    expect(load).toContain("const handTableId = tbl?.tournamentTableId ?? newTableId");
+    expect(load.match(/\.eq\("table_id", handTableId\)/g)).toHaveLength(2);
+    expect(load).toContain("buildNextHandNumberRequest(tournamentId, handTableId)");
+    expect(source).toContain("buildNextHandNumberRequest(tournamentId, targetHandTableId)");
+    const resumeStart = source.indexOf("const handleContinueOrphan =");
+    const resumeEnd = source.indexOf("// A5 resilience: an orphan hand");
+    expect(resumeStart).toBeGreaterThan(0);
+    expect(resumeEnd).toBeGreaterThan(resumeStart);
+    const resume = source.slice(resumeStart, resumeEnd);
+    expect(resume).toContain('.eq("table_id", tournamentTableId ?? tableId)');
+    const submit = source.slice(source.indexOf("const handleSubmitHand ="), source.indexOf("const handleVoid ="));
+    expect(submit).toContain('.eq("table_id", tournamentTableId ?? tableId)');
+  });
   it("distinguishes manual ending-stack edits from engine settlement", () => {
     const source = read("src/components/cashier/tournament-live/handinput/useStandaloneHandInput.ts");
     const auto = source.slice(source.indexOf("const handleAutoSettle ="), source.indexOf("const handleConfirmShowdownResult ="));

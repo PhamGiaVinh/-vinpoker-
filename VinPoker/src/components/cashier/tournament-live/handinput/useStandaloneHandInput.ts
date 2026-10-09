@@ -707,15 +707,16 @@ export function useStandaloneHandInput(tournamentId: string) {
     // clearBettingState's doc for why any other restore would be wrong.
     setPlayers((prev) => clearBettingState(prev, opts?.restoreStacks === true));
     const targetTableId = opts?.tableId ?? tableId;
+    const targetHandTableId = availableTables.find((table) => table.id === targetTableId)?.tournamentTableId ?? targetTableId;
     const loadToken = opts?.loadToken ?? tableLoadGuardRef.current.capture(targetTableId);
     if (targetTableId && opts?.loadNextHandNumber !== false) {
       supabase
-        .rpc("get_next_hand_number", buildNextHandNumberRequest(tournamentId, targetTableId))
+        .rpc("get_next_hand_number", buildNextHandNumberRequest(tournamentId, targetHandTableId))
         .then(({ data }) => {
           if (data && tableLoadGuardRef.current.isCurrent(loadToken)) setHandNumber(data);
         });
     }
-  }, [tableId, tournamentId]);
+  }, [availableTables, tableId, tournamentId]);
 
   // A3: apply the server-confirmed stack from ChipQuickEditPanel. It becomes the base
   // for the NEXT hand too (this only ever runs between hands), so both starting_stack
@@ -922,6 +923,9 @@ export function useStandaloneHandInput(tournamentId: string) {
       if (!isCurrentLoad()) return;
       const loadedMaxSeats = tbl?.maxSeats ?? (tableMeta as any)?.max_seats ?? 9;
       const loadedSessionId = tbl?.tableSessionId ?? (tableMeta as any)?.table_session_id ?? null;
+      // Hands FK-reference the tournament-table incarnation, never the reusable
+      // physical table used by the table picker. Keep the UI selection separate.
+      const handTableId = tbl?.tournamentTableId ?? newTableId;
       setMaxSeats(loadedMaxSeats);
 
       // trackerSeatSetup: pull the per-seat avatar_url under the flag. If the migration
@@ -1033,7 +1037,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         ? await supabase.from("tournament_hands")
           .select("id, button_seat, status, is_voided")
           .eq("tournament_id", tournamentId)
-          .eq("table_id", newTableId)
+          .eq("table_id", handTableId)
           .filter("table_session_id", "eq", loadedSessionId)
           .order("hand_number", { ascending: false })
           .limit(1).maybeSingle()
@@ -1069,7 +1073,7 @@ export function useStandaloneHandInput(tournamentId: string) {
             .from("tournament_hands")
             .select("id, hand_number")
             .eq("tournament_id", tournamentId)
-            .eq("table_id", newTableId)
+            .eq("table_id", handTableId)
             .eq("status", "in_progress")
             .limit(1)
             .maybeSingle();
@@ -1079,7 +1083,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         loadNextHandNumber: async () => {
           const { data, error: nextNumberError } = await supabase.rpc(
             "get_next_hand_number",
-            buildNextHandNumberRequest(tournamentId, newTableId),
+            buildNextHandNumberRequest(tournamentId, handTableId),
           );
           if (nextNumberError || data == null) {
             throw nextNumberError ?? new Error("Could not load the next hand number");
@@ -1622,7 +1626,7 @@ export function useStandaloneHandInput(tournamentId: string) {
           .select("id, hand_number, table_id, button_seat, community_cards")
           .eq("id", targetOrphan.id)
           .eq("tournament_id", tournamentId)
-          .eq("table_id", tableId)
+          .eq("table_id", tournamentTableId ?? tableId)
           .eq("status", "in_progress")
           .single(),
         supabase
@@ -2936,7 +2940,7 @@ export function useStandaloneHandInput(tournamentId: string) {
           .select("id, status, pot_size")
           .eq("id", submittedHandId)
           .eq("tournament_id", tournamentId)
-          .eq("table_id", tableId)
+          .eq("table_id", tournamentTableId ?? tableId)
           .eq("hand_number", Number(handNumber))
           .maybeSingle()
         : { data: null };
