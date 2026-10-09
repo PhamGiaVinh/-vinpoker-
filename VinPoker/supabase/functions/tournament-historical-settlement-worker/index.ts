@@ -6,6 +6,7 @@ import {
 } from "../_shared/trackerSettlement/historicalDisplayVerification.ts";
 import { canonicalJsonV1 } from "../_shared/trackerSettlement/outcomeV1.ts";
 import { isUuid } from "../_shared/internal-trigger-auth.ts";
+import { authorizeHistoryWorker, HISTORY_CANARY_SECRET_ENV } from "../_shared/trackerSettlement/historyWorkerAuth.ts";
 import {
   historicalWorkerFailureStatus,
   TRACKER_HISTORY_WORKER_MAX_BATCH,
@@ -36,7 +37,8 @@ Deno.serve(async (req) => {
   }
   const url = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!url || !serviceKey || req.headers.get("Authorization") !== `Bearer ${serviceKey}`) {
+  const authority = authorizeHistoryWorker(req, serviceKey, Deno.env.get(HISTORY_CANARY_SECRET_ENV));
+  if (!url || !serviceKey || !authority.ok) {
     return jsonResp(req, { ok: false, message: "Unauthorized" }, 401);
   }
   try {
@@ -50,6 +52,9 @@ Deno.serve(async (req) => {
     let handIds: string[] | undefined;
     try { handIds = parseHistoryWorkerHandIds(body.hand_ids); }
     catch { return jsonResp(req, { ok: false, code: "invalid_hand_scope" }, 400); }
+    if (authority.scopedOnly && !handIds) {
+      return jsonResp(req, { ok: false, code: "hand_scope_required" }, 400);
+    }
     const limit = body.limit === undefined ? TRACKER_HISTORY_WORKER_MAX_BATCH : Number(body.limit);
     if (!Number.isInteger(limit) || limit < 1 || limit > TRACKER_HISTORY_WORKER_MAX_BATCH) {
       return jsonResp(req, { ok: false, code: "invalid_batch_limit" }, 400);
