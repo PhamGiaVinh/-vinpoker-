@@ -9,6 +9,15 @@ SELECT set_config('request.headers','{}',true);
 SET LOCAL ROLE service_role;
 DO $$ BEGIN
   BEGIN
+    INSERT INTO public.dealer_assignments(table_id,table_session_id,attendance_id,dealer_id,club_id,status,assigned_at)
+    VALUES('e1700000-0000-4000-8000-000000000011','e1700000-0000-4000-8000-000000000021','e1700000-0000-4000-8000-000000000041','e1700000-0000-4000-8000-000000000039','e1700000-0000-4000-8000-000000000002','assigned',now());
+    RAISE EXCEPTION 'TEST_WRONG_DEALER_WAS_ACCEPTED';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM<>'DEALER_REST_ATTENDANCE_UNVERIFIED' THEN RAISE; END IF;
+  END;
+END $$;
+DO $$ BEGIN
+  BEGIN
     PERFORM public.worker_assign_dealer_to_session_v1('e1700000-0000-4000-8000-000000000002','e1700000-0000-4000-8000-000000000011','e1700000-0000-4000-8000-000000000021','e1700000-0000-4000-8000-000000000041',now()+interval '30 minutes','rest-history-short-key');
     RAISE EXCEPTION 'TEST_AUTO_SHORT_REST_WAS_NOT_BLOCKED';
   EXCEPTION WHEN raise_exception THEN
@@ -67,3 +76,22 @@ DO $$ DECLARE r jsonb; due timestamptz:=now()+interval '30 minutes'; BEGIN
 END $$;
 RESET ROLE;
 SELECT pg_temp.assert_true(NOT has_function_privilege('service_role','floor_private.guard_dealer_automatic_rest_history()','EXECUTE'),'internal trigger not a callable API');
+-- Actual canonical Swing must clean a genuinely rested orphan break without
+-- restarting the rest clock at housekeeping time; NULL denormalized dealer is valid.
+INSERT INTO public.dealers(id,club_id,full_name,status)
+VALUES('e1700000-0000-4000-8000-000000000051','e1700000-0000-4000-8000-000000000002','Rested incoming TEST','active');
+INSERT INTO public.dealer_attendance(id,dealer_id,shift_id,shift_date,status,check_in_time,current_state,last_released_at)
+VALUES('e1700000-0000-4000-8000-000000000061','e1700000-0000-4000-8000-000000000051','e1700000-0000-4000-8000-000000000030',current_date,'checked_in',now()-interval '2 hours','available',NULL);
+INSERT INTO public.dealer_assignments(id,table_id,attendance_id,dealer_id,club_id,status,assigned_at,updated_at)
+VALUES('e1700000-0000-4000-8000-000000000071','e1700000-0000-4000-8000-000000000012','e1700000-0000-4000-8000-000000000061',NULL,'e1700000-0000-4000-8000-000000000002','on_break',now()-interval '60 minutes',now()-interval '20 minutes');
+INSERT INTO public.dealer_breaks(assignment_id,break_start,break_end,expected_duration_minutes,reason)
+VALUES('e1700000-0000-4000-8000-000000000071',now()-interval '20 minutes',now()-interval '5 minutes',15,'auto_break_on_swing');
+SET LOCAL ROLE service_role;
+DO $$ DECLARE r jsonb; a uuid; v integer; BEGIN
+  SELECT id,version INTO a,v FROM public.dealer_assignments
+  WHERE attendance_id='e1700000-0000-4000-8000-000000000041' AND status='assigned' AND released_at IS NULL;
+  r:=public.worker_perform_swing('e1700000-0000-4000-8000-000000000011','e1700000-0000-4000-8000-000000000021',a,30,true,15,60,v,'e1700000-0000-4000-8000-000000000061',0);
+  PERFORM pg_temp.assert_true(r->>'outcome'='ok','canonical Swing accepts actually rested stale on_break cleanup');
+END $$;
+RESET ROLE;
+SELECT pg_temp.assert_true((SELECT release_reason='rest_history_verified_break_cleanup_v1' FROM public.dealer_assignments WHERE id='e1700000-0000-4000-8000-000000000071'),'housekeeping receives explicit lifecycle proof marker');

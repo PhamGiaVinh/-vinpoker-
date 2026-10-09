@@ -8,6 +8,20 @@ CREATE OR REPLACE FUNCTION floor_private.guard_dealer_automatic_rest_history()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $function$
 DECLARE v_acquiring boolean; v_headers jsonb; v_marker timestamptz; v_actual timestamptz; v_active boolean; v_dealer uuid;
 BEGIN
+  IF TG_OP='UPDATE' THEN
+    -- Tag only the observed on-break -> completed housekeeping transition,
+    -- with an audited break that started no earlier than that lifecycle state.
+    -- A former break on a resumed assignment must never shorten a later rest.
+    IF OLD.status='on_break' AND OLD.released_at IS NULL
+      AND NEW.status='completed' AND NEW.released_at IS NOT NULL
+      AND EXISTS(SELECT 1 FROM public.dealer_breaks b WHERE b.assignment_id=OLD.id
+        AND b.break_start>=COALESCE(OLD.updated_at,OLD.assigned_at)
+        AND b.break_start<=NEW.released_at) THEN
+      NEW.release_reason:='rest_history_verified_break_cleanup_v1';
+    ELSIF NEW.status='assigned' OR (NEW.status='completed' AND OLD.status<>'on_break') THEN
+      IF NEW.release_reason='rest_history_verified_break_cleanup_v1' THEN NEW.release_reason:=NULL; END IF;
+    END IF;
+  END IF;
   IF NEW.status IS DISTINCT FROM 'assigned' OR NEW.released_at IS NOT NULL THEN RETURN NEW; END IF;
   IF TG_OP='INSERT' THEN v_acquiring:=true;
   ELSE
@@ -33,7 +47,9 @@ BEGIN
   -- A legacy release writer may have left last_released_at stale or NULL.
   -- A canonical break record proves when work stopped. Later cleanup of an
   -- on_break assignment is housekeeping, not a new end of work/rest clock.
-  SELECT max(COALESCE(b.work_ended_at,a.released_at)) FILTER(WHERE a.status='completed' AND a.released_at IS NOT NULL),
+  SELECT max(CASE WHEN a.release_reason='rest_history_verified_break_cleanup_v1'
+    THEN COALESCE(b.work_ended_at,a.released_at) ELSE a.released_at END)
+    FILTER(WHERE a.status='completed' AND a.released_at IS NOT NULL),
     COALESCE(bool_or(a.released_at IS NULL AND a.status IN ('assigned','on_break','in_transition')),false)
     INTO v_actual,v_active FROM public.dealer_assignments a
     LEFT JOIN LATERAL (
