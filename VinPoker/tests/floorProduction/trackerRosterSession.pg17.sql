@@ -454,7 +454,20 @@ DO $$ DECLARE opened jsonb; old_table uuid; old_session uuid; current_table uuid
     'historical seat rows do not increase entry or re-entry counts');
   UPDATE public.tournament_seats SET entry_id=NULL
     WHERE table_session_id=current_session AND seat_number=1 AND is_active;
+  IF current_setting('test.null_alias_anomaly',true)='true' THEN
+    UPDATE public.tournament_seats SET table_id=NULL
+      WHERE table_session_id=current_session AND seat_number=1 AND is_active;
+    PERFORM set_config('role','authenticated',true);
+  END IF;
   result:=public.get_tournament_participation_v1('f7280000-0000-4000-8000-000000000003');
+  IF current_setting('test.null_alias_anomaly',true)='true' THEN
+    PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(result->'seats') q
+      WHERE q->>'table_id' IS NULL AND q->>'participation_status'='anomaly'
+        AND q->>'anomaly_reason'='missing_entry'),
+      'authenticated public projection preserves NULL alias as invalid occupancy');
+    RAISE NOTICE 'NULL_ALIAS_PUBLIC_PROJECTION=%',result;
+    PERFORM set_config('role','none',true);
+  END IF;
   PERFORM pg_temp.assert_true(result->'counts'->>'seated'='0' AND EXISTS(
     SELECT 1 FROM jsonb_array_elements(result->'seats') q
     WHERE q->>'table_session_id'=current_session::text AND q->>'anomaly_reason'='missing_entry'),

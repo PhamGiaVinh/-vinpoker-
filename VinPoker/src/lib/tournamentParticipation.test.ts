@@ -35,4 +35,23 @@ describe("canonical participation boundary", () => {
     Object.assign(p.seats[0], { table_session_id: "session", anomaly_reason: "closed_session" });
     expect(() => parseTournamentParticipation(p, "tour")).toThrow();
   });
+  it("keeps NULL-alias anomalies visible alongside valid seats without inventing identity", () => {
+    const p = projection();
+    const invalid = { ...p.seats[0], seat_id: "legacy", table_id: null, entry_id: null,
+      participation_status: "anomaly", anomaly_reason: "missing_entry" };
+    const parsed = parseTournamentParticipation({ ...p, seats: [...p.seats, invalid] }, "tour");
+    expect(parsed.seats.filter((s) => s.participation_status === "seated")).toHaveLength(1);
+    expect(parsed.seats.find((s) => s.seat_id === "legacy")).toMatchObject({
+      table_id: null, entry_id: null, participation_status: "anomaly", anomaly_reason: "missing_entry",
+    });
+  });
+  it("still rejects valid seats with NULL alias and malformed or unexplained anomalies", () => {
+    const p = projection();
+    Object.assign(p.seats[0], { table_id: null });
+    expect(() => parseTournamentParticipation(p, "tour")).toThrow("invalid_participation_seat");
+    Object.assign(p.seats[0], { participation_status: "anomaly" });
+    expect(() => parseTournamentParticipation(p, "tour")).toThrow("invalid_participation_seat");
+    Object.assign(p.seats[0], { anomaly_reason: "missing_entry", table_id: 42 });
+    expect(() => parseTournamentParticipation(p, "tour")).toThrow("invalid_participation_seat");
+  });
 });

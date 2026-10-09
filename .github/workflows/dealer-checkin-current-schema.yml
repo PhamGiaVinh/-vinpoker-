@@ -48,6 +48,9 @@ on:
       - 'VinPoker/supabase/migrations/20270128000032_tournament_seat_display_preservation_v1.sql'
       - 'VinPoker/supabase/migrations/20270128000033_tournament_seat_move_tuple_v1.sql'
       - 'VinPoker/tests/floorProduction/participationTv.concurrent.mjs'
+      - 'VinPoker/tests/floorProduction/participationParser.currentSchema.mjs'
+      - 'VinPoker/src/lib/tournamentParticipation.ts'
+      - 'VinPoker/src/lib/tournamentParticipation.test.ts'
       - 'VinPoker/supabase/migrations/20270128000027_tracker_equal_blinds_contract_v1.sql'
       - 'VinPoker/tests/floorProduction/equalBlinds.pg17.sql'
       - 'VinPoker/src/lib/tournament/readBlindLineage.ts'
@@ -107,6 +110,7 @@ jobs:
           deno test --allow-read supabase/functions/_shared/trackerSettlement/historyWorkerAuth.test.ts supabase/functions/_shared/trackerSettlement/historyWorkerHandler.test.ts
           node node_modules/vitest/vitest.mjs run tests/trackerSettlement/historyWorkerPolicy.test.ts
           node node_modules/vitest/vitest.mjs run tests/handinput/readHandBlindLevel.test.ts tests/trackerSettlement/historicalDisplayVerification.test.ts
+          node node_modules/vitest/vitest.mjs run src/lib/tournamentParticipation.test.ts
       - name: Download exact owner-authorized current schema (not a pre-release replay baseline)
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
@@ -173,6 +177,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000033_tournament_seat_move_tuple_v1.sql
           node tests/floorProduction/seatMoveTupleRollback.currentSchema.mjs
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000034_floor_move_wrapper_receipt_v1.sql
+          node tests/floorProduction/participationParser.currentSchema.mjs
           node tests/floorProduction/moveWrapperReceiptRollback.currentSchema.mjs
           MOVE_WRAPPER_RECEIPT_CASE=1 node tests/floorProduction/trackerRosterIntent.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -v WRAPPER_RECEIPT_CASE=1 -v CLOSED_SESSION_READ_CASE=1 -f tests/floorProduction/trackerRosterSession.pg17.sql

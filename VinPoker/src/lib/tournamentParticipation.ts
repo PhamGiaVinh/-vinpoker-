@@ -4,7 +4,7 @@ export interface ParticipationSeat {
   player_id: string;
   player_name: string;
   entry_number: number;
-  table_id: string;
+  table_id: string | null;
   tournament_table_id: string | null;
   table_session_id: string | null;
   table_name: string;
@@ -77,12 +77,12 @@ export function parseTournamentParticipation(value: unknown, tournamentId: strin
     || !Array.isArray(value.seats) || !Array.isArray(value.entries)) throw new Error("invalid_participation_response");
   const counts = parseCounts(value.counts);
   for (const s of value.seats) {
-    if (!record(s) || ![s.seat_id, s.player_id, s.table_id].every(text)
-      || ![s.entry_id, s.tournament_table_id, s.table_session_id, s.anomaly_reason].every(nullableText)
+    if (!record(s) || ![s.seat_id, s.player_id].every(text)
+      || ![s.table_id, s.entry_id, s.tournament_table_id, s.table_session_id, s.anomaly_reason].every(nullableText)
       || ![s.entry_number, s.seat_number, s.chip_count].every(integer) || s.is_active !== true
       || !nullableText(s.player_name) || !nullableText(s.table_name)
       || !["seated", "anomaly"].includes(String(s.participation_status))
-      || (s.participation_status === "seated" && (!s.entry_id || !s.tournament_table_id || !s.table_session_id || s.anomaly_reason !== null))
+      || (s.participation_status === "seated" && (!s.table_id || !s.entry_id || !s.tournament_table_id || !s.table_session_id || s.anomaly_reason !== null))
       || (s.participation_status === "anomaly" && !s.anomaly_reason)) throw new Error("invalid_participation_seat");
   }
   for (const e of value.entries) {
