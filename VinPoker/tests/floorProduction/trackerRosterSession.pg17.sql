@@ -209,6 +209,35 @@ DO $$ DECLARE opened jsonb; old_table uuid; old_session uuid; current_table uuid
     destination:=public.floor_open_tournament_table_v3('f7280000-0000-4000-8000-000000000003',
      'f7280000-0000-4000-8000-000000000012','manual',gen_random_uuid());
     PERFORM pg_temp.assert_true(destination->>'ok'='true','immediate named break destination opens');
+    -- Reproduce the live known source: exact entry/session, missing legacy
+    -- logical alias. Only the verified new destination is written by move.
+    UPDATE public.tournament_seats SET table_id=NULL
+     WHERE entry_id=moving_entry AND is_active;
+    SELECT revision INTO moving_revision FROM public.table_sessions WHERE id=current_session;
+    PERFORM set_config('role','authenticated',true);
+    move_result:=public.move_player_seat_v2(moving_entry,(destination->>'tournament_table_id')::uuid,1,
+     moving_revision,1,gen_random_uuid());
+    PERFORM set_config('role','none',true);
+    PERFORM pg_temp.assert_true(move_result->>'ok'='true','evidenced alias-null source moves to another exact session');
+    result:=public.get_tournament_participation_v1('f7280000-0000-4000-8000-000000000003');
+    PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(result->'seats') q
+     WHERE q->>'seat_id'=move_result->>'seat_id' AND q->>'participation_status'='seated'
+      AND q->>'table_id'=destination->>'tournament_table_id'
+      AND q->>'table_session_id'=destination->>'table_session_id'),
+     'cross-table move repairs only new destination tuple via canonical writer');
+    PERFORM pg_temp.assert_true((SELECT chip_count=20000 AND avatar_url IS NULL AND player_name='A TEST'
+     FROM public.tournament_seats WHERE id=(move_result->>'seat_id')::uuid),
+     'cross-table move preserves stack/name/explicit avatar clear');
+    result:=public.move_player_seat_v2(moving_entry,gen_random_uuid(),1,2,1,gen_random_uuid());
+    PERFORM pg_temp.assert_true(result->>'ok'='false','unrelated nonexistent destination denied');
+    PERFORM pg_temp.assert_true((SELECT count(*)=1 AND bool_and(table_session_id=(destination->>'table_session_id')::uuid)
+     FROM public.tournament_seats WHERE entry_id=moving_entry AND is_active),
+     'denied destination does not mutate current source');
+    SELECT revision INTO moving_revision FROM public.table_sessions WHERE id=current_session;
+    PERFORM set_config('role','authenticated',true);
+    move_result:=public.move_player_seat_v2(moving_entry,current_table,4,2,moving_revision,gen_random_uuid());
+    PERFORM set_config('role','none',true);
+    PERFORM pg_temp.assert_true(move_result->>'ok'='true','cross-table roundtrip returns to original session');
     SELECT revision INTO moving_revision FROM public.table_sessions WHERE id=current_session;
     plan:=public.floor_plan_break_table_v1(current_table,moving_revision,'fill_lowest_table');
     PERFORM pg_temp.assert_true(plan->>'ok'='true' AND plan->>'complete'='true','immediate named break plan complete');
