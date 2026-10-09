@@ -36,6 +36,7 @@ export interface TvDisplayTournament {
 }
 
 export interface TvDisplayStatePayload {
+  participation_counts?: { total_entries: number };
   status: TvDisplayStatus;
   display?: TvDisplayConfig;
   tournament?: TvDisplayTournament | null;
@@ -87,7 +88,8 @@ export function mapDisplayStateToTvData(
     },
     levels: payload.levels ?? [],
     // Same clamp as PR B: walk-ins may not exist in tournament_registrations.
-    totalEntries: Math.max(payload.entries?.total_confirmed ?? 0, t.players_remaining ?? 0),
+    totalEntries: payload.participation_counts ? payload.participation_counts.total_entries
+      : Math.max(payload.entries?.total_confirmed ?? 0, t.players_remaining ?? 0),
     totalBuyIns: payload.entries ? payload.entries.total_buy_ins : null,
     reEntries: payload.re_entries ?? null,
     prizes: payload.prizes ?? [],

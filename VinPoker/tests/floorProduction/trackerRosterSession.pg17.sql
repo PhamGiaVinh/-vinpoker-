@@ -17,11 +17,18 @@ SELECT pg_temp.assert_true(NOT has_function_privilege('service_role','floor_priv
 SELECT pg_temp.assert_true(NOT has_function_privilege('anon','public.set_tracker_table_roster_seat_v2(uuid,uuid,uuid,bigint,uuid,integer,text,integer,uuid,boolean,text,text)','EXECUTE'),'anonymous writer denied');
 SELECT pg_temp.assert_true(NOT has_function_privilege('anon','public.get_tracker_roster_snapshot_v1(uuid,uuid,uuid,bigint)','EXECUTE'),'anonymous snapshot denied');
 SELECT pg_temp.assert_true(NOT has_function_privilege('authenticated','floor_private.tracker_roster_seat_token_v1(uuid,integer)','EXECUTE'),'browser cannot read private token outside authorized snapshot');
+\if :{?CLOSED_SESSION_READ_CASE}
+SELECT pg_temp.assert_true(NOT has_function_privilege('authenticated','floor_private.tournament_participation_v1(uuid)','EXECUTE'),'browser cannot bypass participation authorization');
+SELECT pg_temp.assert_true(NOT has_function_privilege('anon','public.get_tournament_participation_v1(uuid)','EXECUTE'),'anonymous cannot read operational participation');
+\endif
 \if :{?LATE_PHYSICAL_REQUEST_CASE}
 SELECT set_config('test.late_physical_request','true',true);
 \endif
 \if :{?STALE_STACK_FIRST_ARRIVAL_CASE}
 SELECT set_config('test.stale_stack_first_arrival','true',true);
+\endif
+\if :{?CLOSED_SESSION_READ_CASE}
+SELECT set_config('test.closed_session_read','true',true);
 \endif
 DO $$ DECLARE opened jsonb; old_table uuid; old_session uuid; current_table uuid; current_session uuid; result jsonb; epoch bigint; token text; BEGIN
  opened:=public.floor_open_tournament_table_v3('f7280000-0000-4000-8000-000000000003','f7280000-0000-4000-8000-000000000011','manual','f7280000-0000-4000-8000-000000000051');
@@ -98,6 +105,153 @@ DO $$ DECLARE opened jsonb; old_table uuid; old_session uuid; current_table uuid
   RETURN;
  END IF;
  PERFORM pg_temp.assert_true((SELECT count(*)=2 AND bool_and(entry_id IS NOT NULL AND tournament_table_id=current_table AND table_session_id=current_session) FROM public.tournament_seats WHERE tournament_id='f7280000-0000-4000-8000-000000000003' AND is_active),'canonical seats belong exclusively to reopened session');
+ IF current_setting('test.closed_session_read',true)='true' THEN
+  -- Attack each stack projection independently before the lifecycle anomaly.
+  BEGIN
+   DELETE FROM public.tournament_chip_counts cc USING public.tournament_seats q
+    WHERE q.table_session_id=current_session AND q.seat_number=1 AND q.is_active
+      AND cc.tournament_id=q.tournament_id AND cc.player_id=q.player_id AND cc.entry_number=q.entry_number;
+   result:=public.get_tournament_participation_v1('f7280000-0000-4000-8000-000000000003');
+   PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(result->'seats') q
+    WHERE q->>'seat_number'='1' AND q->>'anomaly_reason'='stack_projection_mismatch'
+      AND q->'projected_stack'='null'::jsonb),
+    'missing chip projection stays visible-invalid with missing evidence');
+   -- Roll back only this disposable attack; no source evidence is repaired.
+   RAISE no_data_found;
+  EXCEPTION WHEN no_data_found THEN NULL; END;
+  UPDATE public.tournament_entries SET current_stack=25000 WHERE id=(
+    SELECT entry_id FROM public.tournament_seats WHERE table_session_id=current_session AND seat_number=1 AND is_active);
+  result:=public.get_tournament_participation_v1('f7280000-0000-4000-8000-000000000003');
+  PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(result->'seats') q
+    WHERE q->>'table_session_id'=current_session::text AND q->>'seat_number'='1'
+      AND q->>'participation_status'='anomaly' AND q->>'anomaly_reason'='stack_projection_mismatch'),
+    'entry-seat stack mismatch must not remain actionable seated');
+  UPDATE public.tournament_entries SET current_stack=20000 WHERE id=(
+    SELECT entry_id FROM public.tournament_seats WHERE table_session_id=current_session AND seat_number=1 AND is_active);
+  UPDATE public.tournament_chip_counts cc SET chip_count=30000 FROM public.tournament_seats q
+    WHERE q.table_session_id=current_session AND q.seat_number=1 AND q.is_active
+      AND cc.tournament_id=q.tournament_id AND cc.player_id=q.player_id AND cc.entry_number=q.entry_number;
+  result:=public.get_tournament_participation_v1('f7280000-0000-4000-8000-000000000003');
+  PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(result->'seats') q
+    WHERE q->>'seat_number'='1' AND q->>'anomaly_reason'='stack_projection_mismatch'),
+    'chip projection mismatch must not remain actionable seated');
+  UPDATE public.tournament_chip_counts cc SET chip_count=20000 FROM public.tournament_seats q
+    WHERE q.table_session_id=current_session AND q.seat_number=1 AND q.is_active
+      AND cc.tournament_id=q.tournament_id AND cc.player_id=q.player_id AND cc.entry_number=q.entry_number;
+  result:=public.get_tournament_participation_v1('f7280000-0000-4000-8000-000000000003');
+  PERFORM pg_temp.assert_true(result->'counts'->>'seated'='2'
+    AND result->'counts'->>'seated_stack'='40000' AND result->'counts'->>'live_entry_stack'='40000',
+    'restored consistent projections return valid seating without chip loss');
+  -- Disposable legacy anomaly: retain canonical entry/chips, but one active
+  -- seat belongs to an earlier closed incarnation. Never run on live data.
+  UPDATE public.tournament_seats SET tournament_table_id=old_table,
+    table_id=old_table,table_session_id=old_session
+  WHERE tournament_id='f7280000-0000-4000-8000-000000000003'
+    AND table_session_id=current_session AND seat_number=2 AND is_active;
+  PERFORM pg_temp.assert_true((SELECT count(*)=2 AND sum(chip_count)=40000
+    FROM public.tournament_seats
+    WHERE tournament_id='f7280000-0000-4000-8000-000000000003' AND is_active),
+    'read classification must preserve legacy seat rows and chip evidence');
+  PERFORM pg_temp.assert_true(EXISTS(
+    SELECT 1 FROM jsonb_array_elements(public.get_seats_for_draw(
+      'f7280000-0000-4000-8000-000000000003')) exposed
+    JOIN public.tournament_seats seat ON seat.id=(exposed->>'seat_id')::uuid
+    WHERE seat.table_session_id=current_session AND seat.seat_number=1
+  ),'valid current-session player remains visible');
+  PERFORM pg_temp.assert_true(NOT EXISTS(
+    SELECT 1 FROM jsonb_array_elements(public.get_seats_for_draw(
+      'f7280000-0000-4000-8000-000000000003')) exposed
+    JOIN public.tournament_seats seat ON seat.id=(exposed->>'seat_id')::uuid
+    JOIN public.table_sessions session ON session.id=seat.table_session_id
+    WHERE session.closed_at IS NOT NULL
+  ),'ordinary playing roster cannot expose closed-session seats as active');
+  PERFORM set_config('role','authenticated',true);
+  result:=public.get_tournament_participation_v1('f7280000-0000-4000-8000-000000000003');
+  PERFORM set_config('role','none',true);
+  PERFORM pg_temp.assert_true(result->'counts'->>'seated'='1'
+    AND result->'counts'->>'anomaly_seats'='1'
+    AND result->'counts'->>'total_entries'='2'
+    AND result->'counts'->>'remaining'='2'
+    AND result->'counts'->>'live_entry_stack'='40000'
+    AND result->'counts'->>'seated_stack'='20000',
+    'entry participation is conserved while current seating excludes anomaly');
+  PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(result->'seats') q
+    WHERE q->>'table_session_id'=old_session::text
+      AND q->>'participation_status'='anomaly' AND q->>'anomaly_reason'='closed_session'),
+    'closed-session seat remains visible-invalid with explicit reason');
+  PERFORM set_config('role','authenticated',true);
+  result:=public.get_tournament_participation_counts_v1('f7280000-0000-4000-8000-000000000003');
+  PERFORM set_config('role','none',true);
+  PERFORM pg_temp.assert_true(result->'counts'->>'total_entries'='2'
+    AND result->>'average_stack'='20000' AND NOT(result ? 'seats') AND NOT(result ? 'entries'),
+    'authenticated TV gets canonical aggregates without private rows');
+  INSERT INTO public.tv_displays(id,club_id,display_token,assigned_tournament_id,status)
+  VALUES('f7280000-0000-4000-8000-000000000071','f7280000-0000-4000-8000-000000000002',
+    'fixture-only-participation-display-token-not-live',
+    'f7280000-0000-4000-8000-000000000003','paired');
+  PERFORM set_config('role','anon',true);
+  result:=public.get_tv_display_state_v4('fixture-only-participation-display-token-not-live',false);
+  PERFORM pg_temp.assert_true(result->>'status'='paired'
+    AND result->'entries'->>'total_confirmed'='2'
+    AND result->>'re_entries'='0'
+    AND result->'tournament'->>'players_remaining'='2'
+    AND NOT(result ? 'seats') AND NOT(result ? 'entries_private'),
+    'anonymous paired display gets only assigned tournament aggregates');
+  PERFORM pg_temp.assert_true(public.get_tv_display_state_v4('invalid',false)->>'status'='invalid',
+    'invalid display capability rejected');
+  result:=public.get_tv_display_state_v4('fixture-only-participation-display-token-not-live',true);
+  PERFORM pg_temp.assert_true(result->>'status'='paired'
+    AND result->'entries'->>'total_confirmed'='2'
+    AND result->'display' ? 'club_layout',
+    'branding-enabled paired reader preserves branding and canonical aggregates');
+  BEGIN
+    PERFORM public.get_tournament_participation_counts_v1('f7280000-0000-4000-8000-000000000003');
+    RAISE EXCEPTION 'anonymous direct counts accepted';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  PERFORM set_config('role','none',true);
+  INSERT INTO public.tournaments(id,club_id,name,status,live_status,current_level)
+    VALUES('f7280000-0000-4000-8000-000000000005','f7280000-0000-4000-8000-000000000002',
+      'Separate flight TEST','live','playing',1);
+  UPDATE public.tv_displays SET assigned_tournament_id='f7280000-0000-4000-8000-000000000005'
+    WHERE id='f7280000-0000-4000-8000-000000000071';
+  PERFORM set_config('role','anon',true);
+  result:=public.get_tv_display_state_v4('fixture-only-participation-display-token-not-live',false);
+  PERFORM pg_temp.assert_true(result->'tournament'->>'id'='f7280000-0000-4000-8000-000000000005'
+    AND result->'entries'->>'total_confirmed'='0'
+    AND result->'tournament'->>'players_remaining'='0',
+    'display reassignment does not retain prior flight participation');
+  PERFORM set_config('role','none',true);
+  UPDATE public.tv_displays SET status='revoked' WHERE id='f7280000-0000-4000-8000-000000000071';
+  PERFORM set_config('role','anon',true);
+  result:=public.get_tv_display_state_v4('fixture-only-participation-display-token-not-live',true);
+  PERFORM pg_temp.assert_true(result->>'status'='revoked' AND NOT(result ? 'participation_counts'),
+    'revoked token cannot retrieve participation');
+  PERFORM set_config('role','none',true);
+  -- Historical seating must not mint an entry or count as a re-entry.
+  INSERT INTO public.tournament_seats(tournament_id,player_id,entry_number,table_id,
+    seat_number,chip_count,is_active,status,entry_id,tournament_table_id,table_session_id)
+  SELECT tournament_id,player_id,entry_number,old_table,3,chip_count,false,'moved',
+    entry_id,old_table,old_session FROM public.tournament_seats
+  WHERE table_session_id=current_session AND seat_number=1 AND is_active;
+  result:=public.get_tournament_participation_v1('f7280000-0000-4000-8000-000000000003');
+  PERFORM pg_temp.assert_true(result->'counts'->>'total_entries'='2'
+    AND result->'counts'->>'re_entries'='0' AND jsonb_array_length(result->'seats')=2,
+    'historical seat rows do not increase entry or re-entry counts');
+  UPDATE public.tournament_seats SET entry_id=NULL
+    WHERE table_session_id=current_session AND seat_number=1 AND is_active;
+  result:=public.get_tournament_participation_v1('f7280000-0000-4000-8000-000000000003');
+  PERFORM pg_temp.assert_true(result->'counts'->>'seated'='0' AND EXISTS(
+    SELECT 1 FROM jsonb_array_elements(result->'seats') q
+    WHERE q->>'table_session_id'=current_session::text AND q->>'anomaly_reason'='missing_entry'),
+    'missing-entry occupancy is visible-invalid, not empty or valid');
+  PERFORM set_config('request.jwt.claim.sub','f7280000-0000-4000-8000-000000000099',true);
+  BEGIN
+    PERFORM public.get_tournament_participation_v1('f7280000-0000-4000-8000-000000000003');
+    RAISE EXCEPTION 'outsider read was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  PERFORM set_config('request.jwt.claim.sub','f7280000-0000-4000-8000-000000000001',true);
+  RETURN;
+ END IF;
  UPDATE public.table_sessions SET control_mode='tracker' WHERE id=current_session RETURNING control_epoch INTO epoch;
  -- Exercise the actual writer, not a hand INSERT with a convenient logical ID.
  result:=public.start_tracker_hand_v3('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch,1,now(),'f7280000-0000-4000-8000-000000000001',1);

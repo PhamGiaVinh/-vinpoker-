@@ -7613,6 +7613,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000031",
+      "filename": "20270128000031_tournament_participation_current_scope_v1.sql",
+      "sha256": "493cea04355059ea2d023ac97c539cb79b1ba60a4fc3e4875f105417b65d150d",
+      "domain": "tournament-participation"
+    },
+    {
       "version": "20270128000030",
       "filename": "20270128000030_tracker_roster_intent_fence_v1.sql",
       "sha256": "0484566b13c0992c90c2006c2f5bd8bda0bfa462544d0e891da48dfa5ca255c8",

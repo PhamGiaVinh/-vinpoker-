@@ -70,11 +70,11 @@ export interface TvDataSources {
   clock: ClockRpcPayload;
   tournament: TvTournamentRow;
   levels: TvLevelRow[];
-  /** COUNT of confirmed registrations. */
+  /** Canonical participation entry count, independent of registration receipts. */
   totalEntries: number;
   /** SUM(buy_in) of confirmed registrations; null when the read failed. */
   totalBuyIns: number | null;
-  /** COUNT of tournament_seats rows with entry_number > 1; null when unavailable. */
+  /** Canonical re-entry generation count; null when unavailable. */
   reEntries: number | null;
   prizes: TvPrizeRow[];
   /** Drift-corrected remaining seconds to display (clockAnchor.displayedRemaining). */

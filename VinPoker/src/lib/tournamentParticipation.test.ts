@@ -1,0 +1,38 @@
+import { describe, expect, it } from "vitest";
+import { parseTournamentParticipation, parseParticipationSummary } from "./tournamentParticipation";
+
+const projection = () => ({ tournament_id: "tour", seats: [{ seat_id: "seat", entry_id: "entry", player_id: "player", player_name: null,
+  entry_number: 1, table_id: "table", tournament_table_id: "table", table_session_id: "session", table_name: null,
+  seat_number: 1, chip_count: 20000, is_active: true, participation_status: "seated", anomaly_reason: null }], entries: [],
+  counts: { total_entries: 1, re_entries: 0, remaining: 1, seated: 1, waiting: 0, busted: 0, anomaly_entries: 0,
+    anomaly_seats: 0, live_entry_stack: 20000, seated_stack: 20000, waiting_stack: 0 } });
+
+describe("canonical participation boundary", () => {
+  it("validates summary scope and refuses missing or negative aggregates", () => {
+    const value = { tournament_id: "tour", counts: projection().counts, average_stack: 20000 };
+    expect(parseParticipationSummary(value, "tour").counts.total_entries).toBe(1);
+    expect(() => parseParticipationSummary(value, "other")).toThrow();
+    expect(() => parseParticipationSummary({ ...value, average_stack: null }, "tour")).toThrow();
+    expect(() => parseParticipationSummary({ ...value, counts: { ...value.counts, remaining: -1 } }, "tour")).toThrow();
+  });
+  it("accepts exact scope and normalizes optional display names", () => {
+    expect(parseTournamentParticipation(projection(), "tour").seats[0].player_name).toBe("");
+  });
+  it("rejects another tournament and missing counts rather than showing empty", () => {
+    expect(() => parseTournamentParticipation(projection(), "other")).toThrow();
+    expect(() => parseTournamentParticipation({ ...projection(), counts: {} }, "tour")).toThrow();
+  });
+  it("preserves invalid occupancy and reason without treating it as actionable", () => {
+    const p = projection();
+    p.seats[0].participation_status = "anomaly";
+    Object.assign(p.seats[0], { anomaly_reason: "closed_session" });
+    expect(parseTournamentParticipation(p, "tour").seats[0].participation_status).toBe("anomaly");
+  });
+  it("refuses a nominally valid seat without exact session or with an anomaly", () => {
+    const p = projection();
+    Object.assign(p.seats[0], { table_session_id: null });
+    expect(() => parseTournamentParticipation(p, "tour")).toThrow();
+    Object.assign(p.seats[0], { table_session_id: "session", anomaly_reason: "closed_session" });
+    expect(() => parseTournamentParticipation(p, "tour")).toThrow();
+  });
+});
