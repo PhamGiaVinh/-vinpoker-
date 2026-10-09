@@ -36,7 +36,7 @@ export async function readHandBlindLevel(handId: string): Promise<RecordedBlindL
   if (![row.tracker_level_number, row.tracker_small_blind,
     row.tracker_big_blind, row.tracker_bba].every(Number.isInteger)
     || row.tracker_level_number < 1 || row.tracker_small_blind <= 0
-    || row.tracker_big_blind <= row.tracker_small_blind || row.tracker_bba < 0) {
+    || row.tracker_big_blind < row.tracker_small_blind || row.tracker_bba < 0) {
     throw new Error("tracker_hand_blind_snapshot_invalid");
   }
   return {

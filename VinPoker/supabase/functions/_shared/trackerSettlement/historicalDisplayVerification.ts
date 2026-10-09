@@ -165,7 +165,7 @@ export async function verifyHistoricalDisplaySettlement(
   }
   if (!hand.tracker_level_id || !Number.isSafeInteger(hand.tracker_level_number)
     || !Number.isSafeInteger(hand.tracker_small_blind) || (hand.tracker_small_blind ?? 0) <= 0
-    || !Number.isSafeInteger(hand.tracker_big_blind) || (hand.tracker_big_blind ?? 0) <= (hand.tracker_small_blind ?? 0)
+    || !Number.isSafeInteger(hand.tracker_big_blind) || (hand.tracker_big_blind ?? 0) < (hand.tracker_small_blind ?? 0)
     || !Number.isSafeInteger(hand.tracker_bba) || (hand.tracker_bba ?? -1) < 0
     || hand.tracker_is_break === true) {
     fail("historical_blind_snapshot_missing");

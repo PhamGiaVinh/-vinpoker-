@@ -147,7 +147,7 @@ describe("historical display settlement verification", () => {
 
   it("keeps a fold win verified without inventing showdown ranks", async () => {
     const input = validInput();
-    input.hand = hand({ community_cards: [], pot_size: 200 });
+    input.hand = hand({ community_cards: [], pot_size: 200, tracker_big_blind: 100 });
     input.players = [
       { hand_id: "hand-8", player_id: "A", entry_number: 1, seat_number: 1, starting_stack: 1_000, ending_stack: 1_100, hole_cards: [], is_eliminated: false },
       { hand_id: "hand-8", player_id: "B", entry_number: 1, seat_number: 2, starting_stack: 1_000, ending_stack: 900, hole_cards: [], is_eliminated: false },
@@ -168,6 +168,12 @@ describe("historical display settlement verification", () => {
     await expect(verifyHistoricalDisplaySettlement(input)).rejects.toMatchObject<Partial<HistoricalDisplayVerificationError>>({
       code: "historical_blind_snapshot_missing",
     });
+  });
+
+  it.each([{ tracker_small_blind: 0 }, { tracker_big_blind: 99 }, { tracker_bba: -1 }])("rejects invalid blind evidence %j", async (invalid) => {
+    const input = validInput();
+    input.hand = hand(invalid);
+    await expect(verifyHistoricalDisplaySettlement(input)).rejects.toMatchObject({ code: "historical_blind_snapshot_missing" });
   });
 
   it("keeps Hand #9's frozen 200k BB and advances corrected display revisions", async () => {
