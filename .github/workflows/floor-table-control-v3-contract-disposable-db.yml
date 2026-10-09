@@ -66,7 +66,8 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17
+        # Same Docker Official Image digest; avoid Docker Hub's shared-runner pull quota.
+        image: public.ecr.aws/docker/library/postgres@sha256:3cec7eb015ba8adb28139fa5c83b8489cdf0e666e53dfdf20f598ae0cc8739e3
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: floor_table_control_v3_contract
@@ -95,6 +96,7 @@ jobs:
         run: >-
           ./node_modules/.bin/vitest run
           src/lib/floorTableControlV3.test.ts
+          tests/floorFreeSitV1/rosterActions.interaction.test.tsx
           src/components/cashier/tournament-live/RestoreBustDialog.test.tsx
           src/hooks/useDealerManagement.test.tsx
           src/components/chip-ops/ColorUpTab.test.tsx

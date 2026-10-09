@@ -11,6 +11,9 @@ const fixture = vi.hoisted(() => ({
     getSeatableEntries: vi.fn(),
     getRestorableEntries: vi.fn(),
     getPendingTrackerMoves: vi.fn(),
+    getTableControlModeRequest: vi.fn(),
+    requestTableControlMode: vi.fn(),
+    cancelTableControlModeRequest: vi.fn(),
     movePlayerSeat: vi.fn(),
     queueTrackerMove: vi.fn(),
     cancelPendingTrackerMove: vi.fn(),
@@ -54,6 +57,9 @@ function setup(options: { pendingNetworkFailure?: boolean } = {}) {
   }] });
   fixture.client.getSeatableEntries.mockResolvedValue({ ok: true, data: [] });
   fixture.client.getRestorableEntries.mockResolvedValue({ ok: true, data: [] });
+  fixture.client.getTableControlModeRequest.mockResolvedValue({ ok: true, data: { request: null } });
+  fixture.client.requestTableControlMode.mockResolvedValue({ ok: true, data: { outcome: "applied" } });
+  fixture.client.cancelTableControlModeRequest.mockResolvedValue({ ok: true, data: {} });
   if (options.pendingNetworkFailure) fixture.client.getPendingTrackerMoves.mockRejectedValue(new Error("offline"));
   else fixture.client.getPendingTrackerMoves.mockResolvedValue({ ok: true, data: [] });
   fixture.client.planBreakTable.mockResolvedValue({ ok: true, data: {
@@ -66,10 +72,87 @@ function setup(options: { pendingNetworkFailure?: boolean } = {}) {
     }],
   } });
   fixture.client.breakTournamentTable.mockResolvedValue({ ok: true, data: { ok: true, break_pending: true } });
-  render(<FloorTableMapPanelV3 actorId="owner-a" tournament={{ id: "tour-1" } as Tournament} refreshTrigger={0} />);
+  return render(<FloorTableMapPanelV3 actorId="owner-a" tournament={{ id: "tour-1" } as Tournament} refreshTrigger={0} />);
 }
 
 describe("Floor roster mobile actions", () => {
+  it.each(["session", "actor"])("does not reuse another %s's unknown-outcome intent", async (scope) => {
+    const view = setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+    fireEvent.click(screen.getByRole("button", { name: /Manual Floor.*Đổi chế độ/ }));
+    fireEvent.click(screen.getByTestId("floor-v3-mode-tracker"));
+    fixture.client.requestTableControlMode.mockRejectedValueOnce(new Error("response lost"));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu chế độ" }));
+    await screen.findByText(/Mất kết nối khi thao tác/);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Lưu chế độ" })).not.toBeDisabled());
+    const original = fixture.client.requestTableControlMode.mock.calls[0][0];
+    if (scope === "session") {
+      const roster = await fixture.client.getTournamentTableRoster.mock.results[0].value;
+      fixture.client.getTournamentTableRoster.mockResolvedValue({ ...roster,
+        data: roster.data.map((table: { tournamentTableId: string }) => table.tournamentTableId === "table-1"
+          ? { ...table, tableSessionId: "session-reopened", sessionRevision: 9, controlEpoch: 3 } : table),
+      });
+    }
+    view.rerender(<FloorTableMapPanelV3 actorId={scope === "actor" ? "owner-b" : "owner-a"}
+      tournament={{ id: "tour-1" } as Tournament} refreshTrigger={1} />);
+    if (scope === "session") {
+      await screen.findByText(/Revision 9 · epoch 3/);
+      fireEvent.click(screen.getByRole("button", { name: /Manual Floor.*Đổi chế độ/ }));
+      fireEvent.click(screen.getByTestId("floor-v3-mode-tracker"));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Lưu chế độ" }));
+    await waitFor(() => expect(fixture.client.requestTableControlMode).toHaveBeenCalledTimes(2));
+    const retry = fixture.client.requestTableControlMode.mock.calls[1][0];
+    expect(retry.requestId).not.toBe(original.requestId);
+    if (scope === "session") expect(retry).toMatchObject({ tableSessionId: "session-reopened", expectedRevision: 9, expectedEpoch: 3 });
+  });
+
+  it.each(["network", "malformed", "backend"])("retains the exact retry intent after an ambiguous %s failure", async (failure) => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+    fireEvent.click(screen.getByRole("button", { name: /Manual Floor.*Đổi chế độ/ }));
+    fireEvent.click(screen.getByTestId("floor-v3-mode-tracker"));
+    const initialRoster = await fixture.client.getTournamentTableRoster.mock.results[0].value;
+    fixture.client.getTournamentTableRoster.mockResolvedValue({ ...initialRoster,
+      data: initialRoster.data.map((table: { tournamentTableId: string }) => table.tournamentTableId === "table-1"
+        ? { ...table, sessionRevision: 8, controlEpoch: 2 } : table),
+    });
+    if (failure === "network") fixture.client.requestTableControlMode.mockRejectedValueOnce(new Error("response lost"));
+    else fixture.client.requestTableControlMode.mockResolvedValueOnce({ ok: false,
+      error: failure === "malformed" ? "V3_MUTATION_RESPONSE_MALFORMED" : "Failed to fetch" });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu chế độ" }));
+    await screen.findByText(/Revision 8 · epoch 2/);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Lưu chế độ" })).not.toBeDisabled());
+    const firstIntent = fixture.client.requestTableControlMode.mock.calls[0][0];
+    fireEvent.click(screen.getByRole("button", { name: "Lưu chế độ" }));
+    await waitFor(() => expect(fixture.client.requestTableControlMode).toHaveBeenCalledTimes(2));
+    expect(fixture.client.requestTableControlMode.mock.calls[1][0]).toEqual(firstIntent);
+  });
+
+  it("uses fresh fences for an explicit retry after a definitive stale rejection", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+    fireEvent.click(screen.getByRole("button", { name: /Manual Floor.*Đổi chế độ/ }));
+    fireEvent.click(screen.getByTestId("floor-v3-mode-tracker"));
+    const initialRoster = await fixture.client.getTournamentTableRoster.mock.results[0].value;
+    fixture.client.getTournamentTableRoster.mockResolvedValue({
+      ...initialRoster,
+      data: initialRoster.data.map((table: { tournamentTableId: string }) => table.tournamentTableId === "table-1"
+        ? { ...table, sessionRevision: 8, controlEpoch: 2 } : table),
+    });
+    fixture.client.requestTableControlMode.mockResolvedValueOnce({ ok: false, error: "STALE_STATE" });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu chế độ" }));
+    await screen.findByText("Dữ liệu bàn vừa thay đổi. Hãy tải lại trước khi thao tác lại.");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Lưu chế độ" })).not.toBeDisabled());
+    expect(screen.getByText(/Revision 8 · epoch 2/)).toBeTruthy();
+    const firstIntent = fixture.client.requestTableControlMode.mock.calls[0][0];
+    fireEvent.click(screen.getByRole("button", { name: "Lưu chế độ" }));
+    await waitFor(() => expect(fixture.client.requestTableControlMode).toHaveBeenCalledTimes(2));
+    const secondIntent = fixture.client.requestTableControlMode.mock.calls[1][0];
+    expect(secondIntent).toMatchObject({ expectedRevision: 8, expectedEpoch: 2, tableSessionId: "session-1", controlMode: "tracker" });
+    expect(secondIntent.requestId).not.toBe(firstIntent.requestId);
+  });
+
   it("reveals destination controls only after Move is selected", async () => {
     setup();
     fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
