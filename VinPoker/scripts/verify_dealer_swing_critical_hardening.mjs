@@ -46,9 +46,26 @@ requireText(
 );
 requireText(
   "supabase/functions/assign-dealer/index.ts",
-  "p_force_replace: false",
-  "manual assignment cannot replace a dealer during a race",
+  '"worker_assign_dealer_to_session_v1"',
+  "manual assignment uses the exact-session server writer",
 );
+requireText(
+  "supabase/functions/assign-dealer/index.ts",
+  "p_table_session_id: table_session_id",
+  "manual assignment binds its exact table session",
+);
+forbidText(
+  "supabase/functions/assign-dealer/index.ts",
+  '"assign_dealer_to_table"',
+  "manual assignment cannot bypass the exact-session writer",
+);
+const assignmentFence = "supabase/migrations/20270128000022_dealer_assignment_off_commit_fence_v1.sql";
+requireText(assignmentFence, "AND s.club_id=p_club_id AND s.closed_at IS NULL FOR UPDATE;",
+  "assignment server locks the exact open club session");
+requireText(assignmentFence, "a.status IN ('assigned','on_break','pre_assigned','reserved')",
+  "assignment server treats every unreleased acquisition state as occupied");
+requireText(assignmentFence, "RETURN jsonb_build_object('outcome','table_occupied'); END IF;",
+  "manual assignment cannot replace a dealer during a race");
 requireText(
   "supabase/functions/process-swing/index.ts",
   "PROCESS_SWING_INTERNAL_SECRET",

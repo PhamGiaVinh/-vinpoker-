@@ -285,12 +285,27 @@ for (const snippet of [
     throw new Error(`schema capture workflow is missing required control: ${snippet}`);
   }
 }
-const captureSecretReferences = [...new Set(
-  [...schemaCaptureWorkflow.matchAll(/secrets\.([A-Z0-9_]+)/g)].map((match) => match[1]),
+const recoveryJobBoundary = "\n  recover-reviewed-baseline:";
+const captureOnlyWorkflow = schemaCaptureWorkflow.split(recoveryJobBoundary)[0];
+const recoveryOnlyWorkflow = schemaCaptureWorkflow.includes(recoveryJobBoundary)
+  ? schemaCaptureWorkflow.split(recoveryJobBoundary).slice(1).join(recoveryJobBoundary) : "";
+const secretReferences = (source) => [...new Set(
+  [...source.matchAll(/secrets\.([A-Z0-9_]+)/g)].map((match) => match[1]),
 )].sort();
+const captureSecretReferences = secretReferences(captureOnlyWorkflow);
 const expectedCaptureSecrets = ["SUPABASEACCESSTOKEN", "SUPABASE_DB_PASSWORD", "SUPABASE_PROJECT_REF"].sort();
 if (captureSecretReferences.join(",") !== expectedCaptureSecrets.join(",")) {
   throw new Error("schema capture workflow has an unexpected credential scope");
+}
+if (recoveryOnlyWorkflow) {
+  const expectedRecoverySecrets = Array.from({ length: 17 }, (_, index) =>
+    `VINPOKER_BASELINE_RECOVERY_${String(index + 1).padStart(2, "0")}`).sort();
+  if (secretReferences(recoveryOnlyWorkflow).join(",") !== expectedRecoverySecrets.join(",")
+      || !recoveryOnlyWorkflow.includes("inputs.owner_ack == 'RECOVER_REVIEWED_SCHEMA_ONLY'")
+      || !recoveryOnlyWorkflow.includes("environment: dealer-swing-production-critical")
+      || /supabase\s+(?:link|db|functions)|secrets\.SUPABASE/i.test(recoveryOnlyWorkflow)) {
+    throw new Error("immutable baseline recovery has an unexpected credential or live-access scope");
+  }
 }
 
 for (const [pattern, label] of [
