@@ -533,7 +533,10 @@ export function FloorTableMapPanelV3({
                         };
                         modeAttempts.current.set(attemptScope, intent);
                         const result = await v3.requestTableControlMode(intent);
-                        if (result.ok === true) modeAttempts.current.delete(attemptScope);
+                        // STALE_STATE is a definitive rejection before the server creates
+                        // a mode request or receipt. A new explicit attempt uses fresh fences;
+                        // ambiguous failures retain the original intent for receipt replay.
+                        if (result.ok === true || result.error === "STALE_STATE") modeAttempts.current.delete(attemptScope);
                         if (result.ok && result.data.outcome !== "pending") setModeOpen(false);
                         return result;
                       })}
