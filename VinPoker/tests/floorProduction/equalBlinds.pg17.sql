@@ -36,8 +36,13 @@ DO $$ DECLARE opened jsonb; table_id uuid; session_id uuid; hand_id uuid; legacy
  EXCEPTION WHEN raise_exception THEN
    IF SQLERRM<>'blind_snapshot_already_present' THEN RAISE; END IF;
  END;
+ -- Current-schema lineage automatically binds a session even when omitted.
+ -- A manual-session historical hand genuinely has no frozen Tracker snapshot.
+ UPDATE public.table_sessions SET control_mode='manual' WHERE id=session_id;
  INSERT INTO public.tournament_hands(tournament_id,table_id,hand_number,status,button_seat)
  VALUES('f7270000-0000-4000-8000-000000000003',table_id,3,'completed',1) RETURNING id,source_revision INTO legacy_id,revision_before;
+ PERFORM pg_temp.assert_true((SELECT tracker_small_blind IS NULL AND tracker_big_blind IS NULL FROM public.tournament_hands WHERE id=legacy_id),'legacy fixture actually lacks frozen blind evidence');
+ UPDATE public.table_sessions SET control_mode='tracker' WHERE id=session_id;
  repaired:=public.correct_tracker_historical_hand_blinds(legacy_id,'f7270000-0000-4000-8000-000000000001',revision_before,
    'f7270000-0000-4000-8000-000000000004',1,100,100,0,'Equal blind regression','equal-blind-legacy-repair','{"test":true}');
  PERFORM pg_temp.assert_true((repaired->>'ok')::boolean AND (repaired->>'source_revision')::bigint>revision_before,'legacy missing snapshot repaired and source revision advanced');
