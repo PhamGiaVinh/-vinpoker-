@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
         || !text(body.blind_level_id) || text(body.correction_reason).length < 8
         || !Number.isSafeInteger(body.blind_level_number) || (body.blind_level_number ?? 0) < 1
         || !Number.isSafeInteger(body.blind_small_blind) || (body.blind_small_blind ?? 0) <= 0
-        || !Number.isSafeInteger(body.blind_big_blind) || (body.blind_big_blind ?? 0) <= (body.blind_small_blind ?? 0)
+        || !Number.isSafeInteger(body.blind_big_blind) || (body.blind_big_blind ?? 0) < (body.blind_small_blind ?? 0)
         || !Number.isSafeInteger(body.blind_ante) || (body.blind_ante ?? -1) < 0
         || text(body.idempotency_key).length < 12
         || !body.correction_evidence || typeof body.correction_evidence !== "object"

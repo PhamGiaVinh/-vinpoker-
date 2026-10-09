@@ -40,6 +40,12 @@ on:
       - 'VinPoker/tests/dealerSwing/restHistory*'
       - 'VinPoker/supabase/migrations/20270128000026_floor_open_session_name_integrity_v1.sql'
       - 'VinPoker/tests/floorProduction/openSessionNames.pg17.sql'
+      - 'VinPoker/supabase/migrations/20270128000027_tracker_equal_blinds_contract_v1.sql'
+      - 'VinPoker/tests/floorProduction/equalBlinds.pg17.sql'
+      - 'VinPoker/src/lib/tournament/readBlindLineage.ts'
+      - 'VinPoker/tests/handinput/readHandBlindLevel.test.ts'
+      - 'VinPoker/supabase/functions/_shared/trackerSettlement/historicalDisplayVerification.ts'
+      - 'VinPoker/tests/trackerSettlement/historicalDisplayVerification.test.ts'
       - 'VinPoker/supabase/functions/_shared/trackerSettlement/historyWorkerAuth*'
       - 'VinPoker/supabase/functions/_shared/trackerSettlement/historyWorkerHandler.test.ts'
       - 'VinPoker/supabase/functions/_shared/dealerMutationIntent.ts'
@@ -92,6 +98,7 @@ jobs:
           deno test --allow-env supabase/functions/tournament-historical-settlement-worker/runtime.test.ts supabase/functions/tournament-historical-settlement-dispatcher/runtime.test.ts
           deno test --allow-read supabase/functions/_shared/trackerSettlement/historyWorkerAuth.test.ts supabase/functions/_shared/trackerSettlement/historyWorkerHandler.test.ts
           node node_modules/vitest/vitest.mjs run tests/trackerSettlement/historyWorkerPolicy.test.ts
+          node node_modules/vitest/vitest.mjs run tests/handinput/readHandBlindLevel.test.ts tests/trackerSettlement/historicalDisplayVerification.test.ts
       - name: Download exact owner-authorized current schema (not a pre-release replay baseline)
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
@@ -142,6 +149,8 @@ jobs:
           node tests/dealerSwing/restHistory.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000026_floor_open_session_name_integrity_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/openSessionNames.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000027_tracker_equal_blinds_contract_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/equalBlinds.pg17.sql
       - name: OFF-at-commit true-overlap with isolated acquisition fixture (not live worker proof)
         working-directory: VinPoker
         run: |
