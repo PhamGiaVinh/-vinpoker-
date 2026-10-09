@@ -33,6 +33,18 @@ DO $$ BEGIN
 END $$;
 RESET ROLE;
 SELECT pg_temp.assert_true(NOT EXISTS(SELECT 1 FROM public.dealer_assignments WHERE attendance_id='e1700000-0000-4000-8000-000000000041' AND released_at IS NULL),'failed commit left no assignment');
+UPDATE public.dealer_assignments SET released_at=now()-interval '14 minutes 59 seconds'
+WHERE attendance_id='e1700000-0000-4000-8000-000000000041' AND status='completed';
+SET LOCAL ROLE service_role;
+DO $$ BEGIN
+  BEGIN
+    PERFORM public.worker_assign_dealer_to_session_v1('e1700000-0000-4000-8000-000000000002','e1700000-0000-4000-8000-000000000011','e1700000-0000-4000-8000-000000000021','e1700000-0000-4000-8000-000000000041',now()+interval '30 minutes','rest-history-14m59s-key');
+    RAISE EXCEPTION 'TEST_14M59S_WAS_NOT_BLOCKED';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM<>'DEALER_REST_REQUIRED' THEN RAISE; END IF;
+  END;
+END $$;
+RESET ROLE;
 DO $$ DECLARE a uuid; stamp timestamptz; BEGIN
   SELECT id,rest_history_work_started_at INTO a,stamp FROM public.dealer_assignments
   WHERE attendance_id='e1700000-0000-4000-8000-000000000041' AND status='completed' LIMIT 1;
@@ -74,7 +86,7 @@ SET LOCAL ROLE service_role;
 SELECT pg_temp.assert_true(public.worker_assign_dealer_to_session_v1('e1700000-0000-4000-8000-000000000002','e1700000-0000-4000-8000-000000000011','e1700000-0000-4000-8000-000000000021','e1700000-0000-4000-8000-000000000041',now()+interval '30 minutes','rest-history-manual-key')->>'outcome'='ok','authorized manual intent retains existing behavior');
 RESET ROLE;
 UPDATE public.dealer_assignments SET status='completed',released_at=now()-interval '20 minutes' WHERE attendance_id='e1700000-0000-4000-8000-000000000041' AND status='assigned';
-UPDATE public.dealer_assignments SET released_at=now()-interval '20 minutes' WHERE attendance_id='e1700000-0000-4000-8000-000000000041' AND status='completed';
+UPDATE public.dealer_assignments SET released_at=now()-interval '15 minutes' WHERE attendance_id='e1700000-0000-4000-8000-000000000041' AND status='completed';
 UPDATE public.dealer_attendance SET current_state='available',last_released_at=NULL WHERE id='e1700000-0000-4000-8000-000000000041';
 SELECT set_config('request.headers','{}',true);
 SET LOCAL ROLE service_role;
