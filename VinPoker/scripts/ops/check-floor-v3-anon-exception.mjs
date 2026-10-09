@@ -7,7 +7,6 @@ export function validateAnonExceptionRows(input, expectedSha256) {
   if (!/^[0-9a-f]{64}$/.test(expectedSha256)) return false;
   const expectedRows = [
     "public.fn_dispatch_push()\t" + expectedSha256,
-    "public.notify_dealer_ready_v2()\t" + expectedSha256,
   ].sort().join("\n");
   const actualRows = input.trimEnd().split("\n").sort().join("\n");
   return actualRows === expectedRows;

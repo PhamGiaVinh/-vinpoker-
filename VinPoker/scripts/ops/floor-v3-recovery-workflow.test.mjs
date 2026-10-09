@@ -104,10 +104,9 @@ test("only encrypted ciphertext is uploaded and restore is isolated with egress 
   assert.doesNotMatch(restore, /SUPABASE_DB_PASSWORD|supabase link|supabase db push/);
 });
 
-test("encrypted-backup exception accepts only the two exact synthetic fingerprints", () => {
+test("encrypted-backup exception accepts only the remaining exact pinned fingerprint", () => {
   const validRows = [
     `public.fn_dispatch_push()\t${verifiedAnonFingerprint}`,
-    `public.notify_dealer_ready_v2()\t${verifiedAnonFingerprint}`,
   ].join("\n");
   assert.equal(validateAnonExceptionRows(validRows, verifiedAnonFingerprint), true);
   const validCli = spawnSync(process.execPath, [resolve(scriptDirectory, "check-floor-v3-anon-exception.mjs"), verifiedAnonFingerprint], {
@@ -119,7 +118,9 @@ test("encrypted-backup exception accepts only the two exact synthetic fingerprin
   for (const invalidRows of [
     `${validRows}\npublic.unapproved()\t${verifiedAnonFingerprint}`,
     validRows.replace(verifiedAnonFingerprint, "f".repeat(64)),
-    validRows.replace("public.notify_dealer_ready_v2()", "public.notify_dealer_ready_v2(integer)"),
+    `${validRows}\npublic.notify_dealer_ready_v2()\t${verifiedAnonFingerprint}`,
+    validRows.replace("public.fn_dispatch_push()", "public.fn_dispatch_push(integer)"),
+    "",
     validRows.replace("public.fn_dispatch_push()", "public.fn_dispatch_push()\npublic.fn_dispatch_push()"),
   ]) {
     assert.equal(validateAnonExceptionRows(invalidRows, verifiedAnonFingerprint), false);
