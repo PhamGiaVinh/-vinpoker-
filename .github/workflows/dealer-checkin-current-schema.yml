@@ -151,6 +151,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/openSessionNames.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000027_tracker_equal_blinds_contract_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/equalBlinds.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000028_tracker_roster_exact_session_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
       - name: OFF-at-commit true-overlap with isolated acquisition fixture (not live worker proof)
         working-directory: VinPoker
         run: |
