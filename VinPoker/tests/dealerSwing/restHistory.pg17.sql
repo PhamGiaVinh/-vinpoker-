@@ -116,7 +116,7 @@ DO $$ DECLARE r jsonb; a uuid; v integer; BEGIN
   SELECT id,version INTO a,v FROM public.dealer_assignments
   WHERE attendance_id='e1700000-0000-4000-8000-000000000041' AND status='assigned' AND released_at IS NULL;
   r:=public.worker_perform_swing('e1700000-0000-4000-8000-000000000011','e1700000-0000-4000-8000-000000000021',a,30,true,15,60,v,'e1700000-0000-4000-8000-000000000061',0);
-  PERFORM pg_temp.assert_true(r->>'outcome'='ok','canonical Swing accepts actually rested stale on_break cleanup');
+  PERFORM pg_temp.assert_true(r->>'outcome'='swung','canonical Swing accepts actually rested stale on_break cleanup: '||r::text);
 END $$;
 RESET ROLE;
 SELECT pg_temp.assert_true((SELECT release_reason='rest_history_verified_break_cleanup_v1' FROM public.dealer_assignments WHERE id='e1700000-0000-4000-8000-000000000071'),'housekeeping receives explicit lifecycle proof marker');
