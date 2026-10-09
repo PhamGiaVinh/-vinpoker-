@@ -11,6 +11,17 @@ CREATE OR REPLACE FUNCTION floor_private.guard_dealer_automatic_rest_history()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $function$
 DECLARE v_acquiring boolean; v_headers jsonb; v_marker timestamptz; v_actual timestamptz; v_active boolean; v_dealer uuid;
 BEGIN
+  -- Caller payload never owns the proof clock or may manufacture its marker.
+  IF TG_OP='INSERT' THEN
+    NEW.rest_history_work_started_at:=NULL;
+    IF NEW.release_reason='rest_history_verified_break_cleanup_v1' THEN NEW.release_reason:=NULL; END IF;
+  ELSE
+    NEW.rest_history_work_started_at:=OLD.rest_history_work_started_at;
+    IF NEW.release_reason='rest_history_verified_break_cleanup_v1'
+      AND OLD.release_reason IS DISTINCT FROM 'rest_history_verified_break_cleanup_v1' THEN
+      NEW.release_reason:=OLD.release_reason;
+    END IF;
+  END IF;
   IF TG_OP='UPDATE' THEN
     -- Tag only the observed on-break -> completed housekeeping transition,
     -- with an audited break that started no earlier than that lifecycle state.
