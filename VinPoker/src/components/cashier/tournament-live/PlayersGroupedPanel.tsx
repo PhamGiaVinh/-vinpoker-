@@ -82,12 +82,13 @@ export function PlayersGroupedPanel({
   const tid = tournament.id;
   const { user } = useAuth();
   const { t } = useTranslation();
-  const scope = `${user?.id ?? "anonymous"}:${tid}`;
+  const scope = `${user?.id ?? "anonymous"}:${tournament.club_id}:${tid}`;
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
   const requestSeq = useRef(0);
   const [loadedScope, setLoadedScope] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [authorityError, setAuthorityError] = useState<string | null>(null);
   const [anomalySeats, setAnomalySeats] = useState<ParticipationSeat[]>([]);
   const [anomalyEntries, setAnomalyEntries] = useState<ParticipationEntry[]>([]);
   const [seats, setSeats] = useState<SeatRow[] | null>(null);
@@ -110,6 +111,7 @@ export function PlayersGroupedPanel({
 
   useEffect(() => {
     let alive = true;
+    setCanMove(false);
     (async () => {
       const { data: scope, error } = await supabase.rpc("get_my_floor_operator_scope");
       if (!alive) return;
@@ -128,13 +130,23 @@ export function PlayersGroupedPanel({
     setLoading(true);
     try {
       const [participationRes, tablesRes] = await Promise.all([
-        (supabase.rpc as unknown as (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>)(
+        (supabase.rpc as unknown as (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string; code?: string } | null }>)(
           "get_tournament_participation_v1", { p_tournament_id: tid }),
         floorClient.getTournamentTableInventory(tid),
       ]);
       if (seq !== requestSeq.current || scopeRef.current !== scope) return;
-      if (participationRes.error) throw new Error(participationRes.error.message);
-      if (tablesRes.ok === false) throw new Error(tablesRes.error);
+      if (participationRes.error) {
+        // Keep last-good rows for transient failures, never for revoked access.
+        if (["42501", "PGRST301", "PGRST302", "PGRST303"].includes(participationRes.error.code ?? "")) {
+          setLoadedScope(null);
+          setSeats(null);
+          setEntries([]);
+          setAnomalySeats([]);
+          setAnomalyEntries([]);
+          setEntryBySeat({});
+        }
+        throw new Error(participationRes.error.message);
+      }
       const projection = parseTournamentParticipation(participationRes.data, tid);
       setSeats(projection.seats.filter((s) => s.participation_status === "seated").sort((a, b) => b.chip_count - a.chip_count));
       setAnomalySeats(projection.seats.filter((s) => s.participation_status === "anomaly"));
@@ -152,7 +164,15 @@ export function PlayersGroupedPanel({
         finished_place: e.finished_place ?? null,
         status: e.participation_status === "waiting" ? "registered" : "busted",
       })));
-      setTableControls(tablesRes.data);
+      // Viewing participation does not require mutation authority. An unavailable
+      // table context must disable actions, not discard an authorized read.
+      if (tablesRes.ok === false) {
+        setTableControls(null);
+        setAuthorityError(tablesRes.error);
+      } else {
+        setTableControls(tablesRes.data);
+        setAuthorityError(null);
+      }
       setLoadedScope(scope);
       setLoadError(null);
     } catch (error) {
@@ -160,6 +180,7 @@ export function PlayersGroupedPanel({
       // A player action must not infer Manual mode when the table policy is
       // unavailable or legacy identifiers map to multiple tables.
       setTableControls(null);
+      setAuthorityError(null);
       setLoadError(error instanceof Error ? error.message : t("participation.loadError"));
     } finally {
       if (seq === requestSeq.current && scopeRef.current === scope) setLoading(false);
@@ -170,6 +191,7 @@ export function PlayersGroupedPanel({
     setSelected(null); setMoveTarget(null); setEditTarget(null); setInfoTarget(null);
     setManualBustTarget(null); setRestoreTarget(null); setReceipt(null);
     setLoadError(null);
+    setAuthorityError(null);
     void load();
     return () => { requestSeq.current += 1; };
   }, [load, refreshTrigger]);
@@ -186,6 +208,7 @@ export function PlayersGroupedPanel({
   );
 
   const scopeReady = loadedScope === scope;
+  const operationsReady = scopeReady && !loading && !loadError && !authorityError;
   const counts = { playing: seats?.length ?? 0, waiting: waiting.length, bust: bust.length,
     anomaly: anomalySeats.length + anomalyEntries.length };
 
@@ -212,7 +235,7 @@ export function PlayersGroupedPanel({
     : undefined;
 
   const bustSeat = async (target: SeatRow | null) => {
-    if (!target || scopeRef.current !== scope || !scopeReady || loading || loadError) return;
+    if (!target || scopeRef.current !== scope || !operationsReady) return;
     setBusting(true);
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
@@ -247,7 +270,7 @@ export function PlayersGroupedPanel({
   };
 
   const requestBust = async (target: SeatRow | null, manualConfirmed = false) => {
-    if (!target || scopeRef.current !== scope || !scopeReady || loading || loadError) return;
+    if (!target || scopeRef.current !== scope || !operationsReady) return;
     const inventory = await floorClient.getTournamentTableInventory(tid);
     if (scopeRef.current !== scope) return;
     if (inventory.ok === false) {
@@ -300,6 +323,9 @@ export function PlayersGroupedPanel({
       {loadError && <div role="alert" className="text-sm text-destructive">
         {t("participation.loadError")}{scopeReady && ` ${t("participation.stale")}`}
       </div>}
+      {scopeReady && authorityError && <div role="alert" className="text-sm text-warning">
+        Không xác minh được trạng thái bàn. Vẫn có thể xem danh sách; thao tác tạm khóa. Hãy tải lại.
+      </div>}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {([
           ["playing", "Đang chơi", counts.playing, "text-primary border-primary/45 bg-primary/10"],
@@ -337,7 +363,7 @@ export function PlayersGroupedPanel({
             {visiblePlaying.map((s, idx) => (
               <button
                 key={s.seat_id}
-                disabled={loading || !!loadError}
+                disabled={!operationsReady}
                 onClick={() => setSelected(s)}
                 className="flex w-full items-center gap-3 rounded-lg border border-border bg-card p-2 text-left transition-colors hover:border-primary/50"
               >
@@ -395,7 +421,7 @@ export function PlayersGroupedPanel({
                   <div className="truncate text-sm font-medium line-through decoration-muted-foreground/40">{e.player_name || e.player_id.slice(0, 8)}</div>
                   <div className="text-xs text-destructive">Đã loại</div>
                 </div>
-                {canMove && !loadError && !loading && <Button variant="outline" className="min-h-11 shrink-0" onClick={() => setRestoreTarget({ entryId: e.id, name: e.player_name || e.player_id })}>
+                {canMove && operationsReady && <Button variant="outline" className="min-h-11 shrink-0" onClick={() => setRestoreTarget({ entryId: e.id, name: e.player_name || e.player_id })}>
                   Hoàn tác bust nhầm
                 </Button>}
               </div>
@@ -414,7 +440,7 @@ export function PlayersGroupedPanel({
         onOpenChange={(v) => { if (!v) setSelected(null); }}
         seat={selected as ActionSeat | null}
         entryId={selected ? entryBySeat[selected.seat_id] : undefined}
-        canMove={canMove && scopeReady && !loading && !loadError}
+        canMove={canMove && operationsReady}
         busting={busting}
         onMove={() => { if (selected) setMoveTarget(selected); }}
         onEditChips={() => { if (selected) setEditTarget(selected); }}
@@ -429,7 +455,7 @@ export function PlayersGroupedPanel({
         onOpenChange={(v) => { if (!v) setInfoTarget(null); }}
         seat={infoTarget as ActionSeat | null}
         ticketNumber={infoTarget ? entryBySeat[infoTarget.seat_id] : undefined}
-        canMove={canMove && scopeReady && !loading && !loadError}
+        canMove={canMove && operationsReady}
         busting={busting}
         onMove={() => { if (infoTarget) setMoveTarget(infoTarget); }}
         onReceipt={() => openReceipt(infoTarget)}
