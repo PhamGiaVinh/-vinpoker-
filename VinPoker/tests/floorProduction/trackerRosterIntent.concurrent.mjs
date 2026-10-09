@@ -55,3 +55,32 @@ for(const replay of [true,false]){
  }
 }
 console.log('TRACKER_ROSTER_INTENT_TRUE_OVERLAP_PASS');
+
+if(process.env.MOVE_WRAPPER_RECEIPT_CASE==='1')for(const replay of [true,false]){
+ const prefix=randomUUID().slice(0,8);
+ let fixture=readFileSync('tests/floorProduction/trackerRosterSession.pg17.sql','utf8').split('-- Only public RPC calls')[0];
+ const marker=" PERFORM set_config('role','authenticated',true);";
+ assert.ok(fixture.includes(marker));
+ fixture=fixture.replaceAll('f7280000',prefix).replace(marker,' RETURN;\n'+marker)+'\nCOMMIT;\n';
+ sql(fixture);
+ const tour=`${prefix}-0000-4000-8000-000000000003`,actor=`${prefix}-0000-4000-8000-000000000001`;
+ const tt=sql(`SELECT id FROM public.tournament_tables WHERE tournament_id='${tour}' AND status='active';`);
+ const session=sql(`SELECT table_session_id FROM public.tournament_tables WHERE id='${tt}';`);
+ sql(`BEGIN;SELECT set_config('request.jwt.claim.sub','${actor}',true);SET LOCAL ROLE authenticated;
+ SELECT public.set_tracker_table_roster_seat_v2('${tour}','${tt}','${session}',1,'${randomUUID()}',1,'Move concurrent TEST',20000);COMMIT;`);
+ const entry=sql(`SELECT entry_id FROM public.tournament_seats WHERE table_session_id='${session}' AND is_active;`);
+ const revision=sql(`SELECT revision FROM public.table_sessions WHERE id='${session}';`),key=randomUUID();
+ const call=seat=>`SELECT set_config('request.jwt.claim.sub','${actor}',true);SET LOCAL ROLE authenticated;
+ SELECT public.move_player_seat_v3('${entry}','${tt}',${seat},${revision},${revision},'${key}');`;
+ const a=tx(`move_a_${prefix}`,call(3),true);
+ await barrier(`move_a_${prefix}`,"state='idle in transaction'");
+ const b=tx(`move_b_${prefix}`,call(replay?3:4),false);
+ await barrier(`move_b_${prefix}`,"wait_event_type='Lock'");a.commit();
+ const [first,second]=await Promise.all([a.result,b.result]);
+ assert.equal(first.code,0,first.error);assert.match(first.out,/"ok": true/);
+ assert.equal(second.code,0,second.error);
+ if(replay)assert.equal(second.out,first.out);else assert.match(second.out,/IDEMPOTENCY_CONFLICT/);
+ assert.equal(sql(`SELECT count(*)||':'||sum(chip_count)||':'||min(seat_number) FROM public.tournament_seats WHERE entry_id='${entry}' AND is_active;`),'1:20000:3');
+ assert.equal(sql(`SELECT count(*) FROM public.table_operation_receipts WHERE actor_id='${actor}' AND operation_type='move_player_seat_v2';`),'1');
+}
+if(process.env.MOVE_WRAPPER_RECEIPT_CASE==='1')console.log('MOVE_WRAPPER_RECEIPT_TRUE_OVERLAP_PASS');
