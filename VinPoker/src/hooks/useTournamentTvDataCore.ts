@@ -11,6 +11,7 @@ import {
 } from "@/lib/tv/mapTvData";
 import type { TvData } from "@/types/tv";
 import { FEATURES } from "@/lib/featureFlags";
+import { parseParticipationSummary } from "@/lib/tournamentParticipation";
 
 export type TvDataState = "loading" | "auth_required" | "not_found" | "error" | "ready";
 export type TvRealtimeStatus = "connecting" | "online" | "offline";
@@ -35,8 +36,8 @@ const ZERO_REPOLL_MAX = 10;
 /**
  * Live data source for the TV clock (PR B). Read-only composition of existing
  * reads — get_tournament_clock RPC, tournaments row, tournament_levels,
- * confirmed tournament_registrations aggregate, tournament_prizes, and the
- * entry_number>1 re-entry approximation — mapped into the frozen TvData
+ * confirmed buy-ins, tournament_prizes, and canonical participation counts
+ * (not seat-history approximations) — mapped into the frozen TvData
  * contract from PR A.
  *
  * The TV never advances levels itself: the countdown is derived from a
@@ -53,9 +54,13 @@ export function useTournamentTvDataCore(
   const supabase = useSupabaseClient();
   const authLoading = options.authLoading;
   const hasUser = !!options.userId;
+  const scopeKey = `${options.userId ?? "anonymous"}:${tournamentId ?? ""}`;
+  const scopeRef = useRef(scopeKey);
+  scopeRef.current = scopeKey;
 
   const [state, setState] = useState<TvDataState>("loading");
   const [raw, setRaw] = useState<RawTvData | null>(null);
+  const [rawScope, setRawScope] = useState<string | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState<TvRealtimeStatus>("connecting");
 
   const anchorRef = useRef<ClockAnchor | null>(null);
@@ -66,7 +71,7 @@ export function useTournamentTvDataCore(
   const nowMs = useLiveClock(); // 1s shared tick → re-render; display math uses performance.now()
 
   const loadAll = useCallback(async () => {
-    if (!enabled || !tournamentId) return;
+    if (!enabled || !tournamentId || scopeRef.current !== scopeKey) return;
     if (!UUID_RE.test(tournamentId)) {
       // Malformed link — a uuid-typed eq() would error; report it as a bad
       // link instead of an endlessly retrying error state.
@@ -80,7 +85,7 @@ export function useTournamentTvDataCore(
       .select("name, status, players_remaining, average_stack, prize_pool, starting_stack, guarantee_amount, buy_in, rake_amount, club:clubs(name, cover_url, tv_logo_url, tv_brand_name, tv_bg_url)")
       .eq("id", tournamentId)
       .maybeSingle();
-    if (seq !== requestSeqRef.current) return;
+    if (seq !== requestSeqRef.current || scopeRef.current !== scopeKey) return;
     if (tournamentError) {
       setState("error");
       return;
@@ -97,7 +102,7 @@ export function useTournamentTvDataCore(
       return;
     }
 
-    const [clockRes, levelsRes, regsRes, seatsRes, prizesRes, satRes, brandingRes] = await Promise.all([
+    const [clockRes, levelsRes, regsRes, participationRes, prizesRes, satRes, brandingRes] = await Promise.all([
       supabase.rpc("get_tournament_clock", { p_tournament_id: tournamentId }),
       supabase
         .from("tournament_levels")
@@ -109,11 +114,8 @@ export function useTournamentTvDataCore(
         .select("buy_in")
         .eq("tournament_id", tournamentId)
         .eq("status", "confirmed"),
-      supabase
-        .from("tournament_seats")
-        .select("entry_number")
-        .eq("tournament_id", tournamentId)
-        .gt("entry_number", 1),
+      (supabase.rpc as unknown as (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>)(
+        "get_tournament_participation_counts_v1", { p_tournament_id: tournamentId }),
       supabase
         .from("tournament_prizes")
         .select("position, amount")
@@ -129,7 +131,15 @@ export function useTournamentTvDataCore(
         ? (supabase.rpc as any)("get_tv_tournament_branding_v1", { p_tournament_id: tournamentId })
         : Promise.resolve({ data: null, error: null }),
     ]);
-    if (seq !== requestSeqRef.current) return;
+    if (seq !== requestSeqRef.current || scopeRef.current !== scopeKey) return;
+    let participation: ReturnType<typeof parseParticipationSummary>;
+    try {
+      if (participationRes.error) throw participationRes.error;
+      participation = parseParticipationSummary(participationRes.data, tournamentId);
+    } catch {
+      setState("error");
+      return;
+    }
 
     const clock = clockRes.data as unknown as ClockRpcPayload | null;
     if (clockRes.error || !clock || clock.error) {
@@ -148,6 +158,8 @@ export function useTournamentTvDataCore(
     };
 
     const row = tournament as unknown as TvTournamentRow;
+    row.players_remaining = participation.counts.remaining;
+    row.average_stack = participation.averageStack;
     if (FEATURES.tvLayoutEditorV1 && row.club) {
       const branding = brandingRes.data as {
         logo_url: string | null; brand_name: string | null;
@@ -166,21 +178,18 @@ export function useTournamentTvDataCore(
       ? null
       : ((satRes.data as { satellite_payout?: unknown } | null)?.satellite_payout ?? null);
     const regs = regsRes.error ? null : (regsRes.data ?? []);
-    // Walk-in entries may not exist in tournament_registrations, so the
-    // confirmed-registration count can undercount; never show fewer total
-    // entries than players still seated.
-    const totalEntries = Math.max(regs ? regs.length : 0, row.players_remaining ?? 0);
     setRaw({
       clock,
       tournament: row,
       levels: levelsRes.error ? [] : ((levelsRes.data ?? []) as TvLevelRow[]),
-      totalEntries,
+      totalEntries: participation.counts.total_entries,
       totalBuyIns: regs ? regs.reduce((sum, r) => sum + Number(r.buy_in ?? 0), 0) : null,
-      reEntries: seatsRes.error ? null : (seatsRes.data ?? []).length,
+      reEntries: participation.counts.re_entries,
       prizes: prizesRes.error ? [] : ((prizesRes.data ?? []) as TvPrizeRow[]),
     });
+    setRawScope(scopeKey);
     setState("ready");
-  }, [enabled, hasUser, supabase, tournamentId]);
+  }, [enabled, hasUser, supabase, tournamentId, scopeKey]);
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current != null) {
@@ -209,6 +218,7 @@ export function useTournamentTvDataCore(
     setRaw(null);
     anchorRef.current = null;
     void loadAll();
+    return () => { requestSeqRef.current += 1; };
   }, [enabled, tournamentId, authLoading, loadAll]);
 
   // Realtime re-anchor + conditional polling fallback (TournamentLiveView pattern).
@@ -287,9 +297,9 @@ export function useTournamentTvDataCore(
   }, [enabled, state, display, nowMs, loadAll]);
 
   const data: TvData | null = useMemo(() => {
-    if (!raw) return null;
+    if (!raw || rawScope !== scopeKey) return null;
     return mapTvData({ ...raw, displayRemainingSeconds: display });
-  }, [raw, display]);
+  }, [raw, display, rawScope, scopeKey]);
 
-  return { state, data, realtimeStatus, refetch: loadAll };
+  return { state: state === "ready" && rawScope !== scopeKey ? "loading" as const : state, data, realtimeStatus, refetch: loadAll };
 }

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -18,6 +19,7 @@ import { ManualFloorBustConfirmDialog } from "./ManualFloorBustConfirmDialog";
 import { parseFloorTableControlMode } from "@/lib/floorTableControlMode";
 import { floorOpsErrorMessage } from "@/lib/floorOpsErrors";
 import { RestoreBustDialog } from "./RestoreBustDialog";
+import { parseTournamentParticipation, type ParticipationSeat, type ParticipationEntry } from "@/lib/tournamentParticipation";
 
 interface SeatRow {
   seat_id: string;
@@ -41,16 +43,6 @@ interface EntryRow {
   status: string;
 }
 
-interface TournamentEntryResult {
-  id: string;
-  player_id: string;
-  player_name?: string | null;
-  current_stack: number | null;
-  seat_number: number | null;
-  finished_place: number | null;
-  status: string;
-}
-
 interface TableControlRow {
   id: string;
   table_id: string;
@@ -63,13 +55,13 @@ function responseError(data: unknown): string | null {
     : null;
 }
 
-type GroupKey = "playing" | "waiting" | "bust";
+type GroupKey = "playing" | "waiting" | "bust" | "anomaly";
 
 /**
  * Kholdem-style 3-group players panel: Đang chơi / Chờ xếp / Bust, each with a
- * count badge + search + sort-by-chips. "Đang chơi" reuses the proven get_seats
- * path (works for any tournament); "Chờ xếp"/"Bust" read tournament_entries
- * (registered / busted). Tap a playing row → action sheet (Chuyển / Sửa chip /
+ * count badge + search + sort-by-chips. All groups use the canonical server
+ * participation projection; invalid occupancy stays visible without actions.
+ * Tap a valid playing row → action sheet (Chuyển / Sửa chip /
  * Phiếu / Loại). All actions reuse existing backend.
  */
 export function PlayersGroupedPanel({
@@ -83,6 +75,15 @@ export function PlayersGroupedPanel({
 }) {
   const tid = tournament.id;
   const { user } = useAuth();
+  const { t } = useTranslation();
+  const scope = `${user?.id ?? "anonymous"}:${tid}`;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const requestSeq = useRef(0);
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [anomalySeats, setAnomalySeats] = useState<ParticipationSeat[]>([]);
+  const [anomalyEntries, setAnomalyEntries] = useState<ParticipationEntry[]>([]);
   const [seats, setSeats] = useState<SeatRow[] | null>(null);
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [entryBySeat, setEntryBySeat] = useState<Record<string, string>>({});
@@ -113,54 +114,62 @@ export function PlayersGroupedPanel({
       )));
     })();
     return () => { alive = false; };
-  }, [tournament.club_id]);
+  }, [tournament.club_id, user?.id]);
 
   const load = useCallback(async () => {
+    if (scopeRef.current !== scope || !user?.id) return;
+    const seq = ++requestSeq.current;
     setLoading(true);
     try {
-      const [seatsRes, linksRes, entriesRes, tablesRes] = await Promise.all([
-        supabase.functions.invoke("tournament-live-draw", { body: { tournament_id: tid, action: "get_seats" } }),
-        supabase.from("tournament_seats").select("id, entry_id").eq("tournament_id", tid),
-        supabase
-          .from("tournament_entries")
-          .select("id, player_id, current_stack, seat_number, finished_place, status")
-          .eq("tournament_id", tid),
+      const [participationRes, tablesRes] = await Promise.all([
+        (supabase.rpc as unknown as (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>)(
+          "get_tournament_participation_v1", { p_tournament_id: tid }),
         supabase
           .from("tournament_tables")
           .select("id, table_id, floor_control_mode")
           .eq("tournament_id", tid),
       ]);
-      if (seatsRes.error) throw seatsRes.error;
-      if (linksRes.error) throw linksRes.error;
-      if (entriesRes.error) throw entriesRes.error;
+      if (seq !== requestSeq.current || scopeRef.current !== scope) return;
+      if (participationRes.error) throw new Error(participationRes.error.message);
       if (tablesRes.error) throw tablesRes.error;
-      const loaded: SeatRow[] = (seatsRes.data?.data ?? []) as SeatRow[];
-      setSeats(loaded.filter((s) => s.is_active).sort((a, b) => b.chip_count - a.chip_count));
+      const projection = parseTournamentParticipation(participationRes.data, tid);
+      setSeats(projection.seats.filter((s) => s.participation_status === "seated").sort((a, b) => b.chip_count - a.chip_count));
+      setAnomalySeats(projection.seats.filter((s) => s.participation_status === "anomaly"));
+      setAnomalyEntries(projection.entries.filter((e) => e.participation_status === "anomaly"
+        && !projection.seats.some((s) => s.entry_id === e.id)));
       const m: Record<string, string> = {};
-      for (const r of (linksRes.data ?? []) as { id: string; entry_id: string | null }[]) if (r.entry_id) m[r.id] = r.entry_id;
+      for (const r of projection.seats) if (r.entry_id) m[r.seat_id] = r.entry_id;
       setEntryBySeat(m);
-      const allEntries = (entriesRes.data ?? []) as TournamentEntryResult[];
-      setEntries(allEntries.map((e) => ({
+      setEntries(projection.entries.filter((e) => e.participation_status === "waiting" || e.participation_status === "busted").map((e) => ({
         id: e.id,
         player_id: e.player_id,
         player_name: e.player_name ?? "",
         current_stack: e.current_stack ?? 0,
         seat_number: e.seat_number ?? null,
         finished_place: e.finished_place ?? null,
-        status: e.status,
+        status: e.participation_status === "waiting" ? "registered" : "busted",
       })));
       setTableControls((tablesRes.data ?? []) as TableControlRow[]);
+      setLoadedScope(scope);
+      setLoadError(null);
     } catch (error) {
+      if (seq !== requestSeq.current || scopeRef.current !== scope) return;
       // A player action must not infer Manual mode when the table policy is
       // unavailable or legacy identifiers map to multiple tables.
       setTableControls(null);
-      toast.error(error instanceof Error ? error.message : "Không tải được chế độ kiểm soát chip của bàn.");
+      setLoadError(error instanceof Error ? error.message : t("participation.loadError"));
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current && scopeRef.current === scope) setLoading(false);
     }
-  }, [tid]);
+  }, [tid, scope, user?.id, t]);
 
-  useEffect(() => { load(); }, [load, refreshTrigger]);
+  useEffect(() => {
+    setSelected(null); setMoveTarget(null); setEditTarget(null); setInfoTarget(null);
+    setManualBustTarget(null); setRestoreTarget(null); setReceipt(null);
+    setLoadError(null);
+    void load();
+    return () => { requestSeq.current += 1; };
+  }, [load, refreshTrigger]);
 
   const waiting = useMemo(
     () => entries.filter((e) => e.status === "registered"),
@@ -173,7 +182,9 @@ export function PlayersGroupedPanel({
     [entries],
   );
 
-  const counts = { playing: seats?.length ?? 0, waiting: waiting.length, bust: bust.length };
+  const scopeReady = loadedScope === scope;
+  const counts = { playing: seats?.length ?? 0, waiting: waiting.length, bust: bust.length,
+    anomaly: anomalySeats.length + anomalyEntries.length };
 
   const filterText = useCallback(
     (s: string) => !query || s.toLowerCase().includes(query.toLowerCase()),
@@ -201,7 +212,7 @@ export function PlayersGroupedPanel({
     : undefined;
 
   const bustSeat = async (target: SeatRow | null) => {
-    if (!target) return;
+    if (!target || scopeRef.current !== scope || !scopeReady || loading || loadError) return;
     setBusting(true);
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
@@ -221,6 +232,7 @@ export function PlayersGroupedPanel({
           }],
         },
       });
+      if (scopeRef.current !== scope) return;
       const edgeError = responseError(data);
       if (error || edgeError) { toast.error(floorOpsErrorMessage(edgeError || error?.message, "Loại thất bại")); return; }
       toast.success(`Đã loại ${target.player_name || "người chơi"}`);
@@ -235,11 +247,12 @@ export function PlayersGroupedPanel({
   };
 
   const requestBust = async (target: SeatRow | null, manualConfirmed = false) => {
-    if (!target) return;
+    if (!target || scopeRef.current !== scope || !scopeReady || loading || loadError) return;
     const { data, error } = await supabase
       .from("tournament_tables")
       .select("id, table_id, floor_control_mode")
       .eq("tournament_id", tid);
+    if (scopeRef.current !== scope) return;
     if (error) {
       toast.error("Không xác minh được chế độ bàn. Hãy tải lại trước khi loại.");
       return;
@@ -290,18 +303,22 @@ export function PlayersGroupedPanel({
         </Button>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      {loadError && <div role="alert" className="text-sm text-destructive">
+        {t("participation.loadError")}{scopeReady && ` ${t("participation.stale")}`}
+      </div>}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {([
           ["playing", "Đang chơi", counts.playing, "text-primary border-primary/45 bg-primary/10"],
           ["waiting", "Chờ xếp", counts.waiting, "text-warning border-warning/45 bg-warning/10"],
           ["bust", "Bust", counts.bust, "text-destructive border-destructive/45 bg-destructive/10"],
+          ["anomaly", t("participation.repairRequired"), counts.anomaly, "text-warning border-warning/45 bg-warning/10"],
         ] as [GroupKey, string, number, string][]).map(([k, label, n, active]) => (
           <button
             key={k}
             onClick={() => setGroup(k)}
             className={`rounded-lg border px-2 py-2 text-sm ${group === k ? active : "border-border bg-card text-muted-foreground"}`}
           >
-            {label} <span className="ml-1 rounded-full bg-background/40 px-1.5 text-xs">{n}</span>
+            {label} <span className="ml-1 rounded-full bg-background/40 px-1.5 text-xs">{scopeReady ? n : "…"}</span>
           </button>
         ))}
       </div>
@@ -316,7 +333,7 @@ export function PlayersGroupedPanel({
         />
       </div>
 
-      {seats === null ? (
+      {!scopeReady && loadError ? <Empty text={t("participation.loadError")} /> : !scopeReady || seats === null ? (
         <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14" />)}</div>
       ) : group === "playing" ? (
         visiblePlaying.length === 0 ? (
@@ -326,6 +343,7 @@ export function PlayersGroupedPanel({
             {visiblePlaying.map((s, idx) => (
               <button
                 key={s.seat_id}
+                disabled={loading || !!loadError}
                 onClick={() => setSelected(s)}
                 className="flex w-full items-center gap-3 rounded-lg border border-border bg-card p-2 text-left transition-colors hover:border-primary/50"
               >
@@ -358,6 +376,18 @@ export function PlayersGroupedPanel({
             ))}
           </div>
         )
+      ) : group === "anomaly" ? (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">{t("participation.repairHint")}</p>
+          {anomalySeats.filter((s) => filterText(s.player_name || s.player_id)).map((s) => <div key={s.seat_id} className="rounded-lg border border-warning/45 p-3 text-sm">
+            <div>{s.player_name || s.player_id} · {s.table_name || s.table_id} · {s.seat_number}</div>
+            <div className="text-muted-foreground">{t(s.anomaly_reason === "stack_projection_mismatch" ? "stack_projection_mismatch" : `participation.reasons.${s.anomaly_reason}`, { defaultValue: s.anomaly_reason ?? "" })} · {formatStack(s.chip_count)}</div>
+          </div>)}
+          {anomalyEntries.filter((e) => filterText(e.player_name || e.player_id)).map((e) => <div key={e.id} className="rounded-lg border border-warning/45 p-3 text-sm">
+            <div>{e.player_name || e.player_id} · R#{e.entry_no}</div>
+            <div className="text-muted-foreground">{t(e.anomaly_reason === "stack_projection_mismatch" ? "stack_projection_mismatch" : `participation.reasons.${e.anomaly_reason}`, { defaultValue: e.anomaly_reason ?? "" })} · {formatStack(e.current_stack)}</div>
+          </div>)}
+        </div>
       ) : (
         bust.filter((e) => filterText(e.player_name || e.player_id)).length === 0 ? (
           <Empty text="Chưa có người bị loại." />
@@ -371,7 +401,7 @@ export function PlayersGroupedPanel({
                   <div className="truncate text-sm font-medium line-through decoration-muted-foreground/40">{e.player_name || e.player_id.slice(0, 8)}</div>
                   <div className="text-xs text-destructive">Đã loại</div>
                 </div>
-                {canMove && <Button variant="outline" className="min-h-11 shrink-0" onClick={() => setRestoreTarget({ entryId: e.id, name: e.player_name || e.player_id })}>
+                {canMove && !loadError && !loading && <Button variant="outline" className="min-h-11 shrink-0" onClick={() => setRestoreTarget({ entryId: e.id, name: e.player_name || e.player_id })}>
                   Hoàn tác bust nhầm
                 </Button>}
               </div>
@@ -390,7 +420,7 @@ export function PlayersGroupedPanel({
         onOpenChange={(v) => { if (!v) setSelected(null); }}
         seat={selected as ActionSeat | null}
         entryId={selected ? entryBySeat[selected.seat_id] : undefined}
-        canMove={canMove}
+        canMove={canMove && scopeReady && !loading && !loadError}
         busting={busting}
         onMove={() => { if (selected) setMoveTarget(selected); }}
         onEditChips={() => { if (selected) setEditTarget(selected); }}
@@ -405,7 +435,7 @@ export function PlayersGroupedPanel({
         onOpenChange={(v) => { if (!v) setInfoTarget(null); }}
         seat={infoTarget as ActionSeat | null}
         ticketNumber={infoTarget ? entryBySeat[infoTarget.seat_id] : undefined}
-        canMove={canMove}
+        canMove={canMove && scopeReady && !loading && !loadError}
         busting={busting}
         onMove={() => { if (infoTarget) setMoveTarget(infoTarget); }}
         onReceipt={() => openReceipt(infoTarget)}

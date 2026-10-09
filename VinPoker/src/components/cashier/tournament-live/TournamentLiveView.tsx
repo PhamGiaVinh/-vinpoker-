@@ -12,6 +12,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { displayCard } from "@/components/shared/CardSlotPicker";
 import { getSeatPositions } from "@/lib/tournament/button";
 import { useAuth } from "@/hooks/useAuth";
+import { parseTournamentParticipation, parseParticipationSummary } from "@/lib/tournamentParticipation";
 import { TdAiAssistantPanel } from "@/components/td-ai/TdAiAssistantPanel";
 import { TrackerVisualStyles } from "./PokerVisuals";
 import { useTrackerRunoutSounds } from "@/lib/tracker-poker/useTrackerRunoutSounds";
@@ -71,6 +72,7 @@ import { resolveReplayCandidates, type ReplayTarget, type ReplayTargetState } fr
 import { deriveReplayHeaderMetadata } from "./viewer-hub/replayMetadata";
 import { PublicSnapshotCoordinator } from "./viewer-hub/publicSnapshotCoordinator";
 import { parsePublicTableCurrentResponse } from "./viewer-hub/publicTableHistory";
+import { loadPublicCurrentTable } from "./viewer-hub/loadPublicCurrentTable";
 import { TableHistoryPanel } from "./viewer-hub/TableHistoryPanel";
 
 const SOUND_KINDS = new Set<string>([
@@ -177,7 +179,7 @@ function TournamentLiveViewContent({
   onReplayTargetChange?: (target: ReplayTarget) => void;
 }) {
   const { t, i18n } = useTranslation();
-  const { isStaffOps, isClubAdmin } = useAuth();
+  const { user, isStaffOps, isClubAdmin } = useAuth();
   const [historyReplayTarget, setHistoryReplayTarget] = useState<ReplayTarget | null>(null);
   const requestedReplayTarget = useMemo<ReplayTarget | null>(() => {
     if (initialReplayTarget) return initialReplayTarget;
@@ -270,6 +272,9 @@ function TournamentLiveViewContent({
   >(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const requestSeqRef = useRef(0);
+  const readScope = `${user?.id ?? "anonymous"}:${tournamentId}:${liveTableScope ?? ""}:${spectator}`;
+  const readScopeRef = useRef(readScope);
+  readScopeRef.current = readScope;
   const initialLoadedRef = useRef(false);
   const pollingRef = useRef<number | null>(null);
   const zeroRefetchDoneRef = useRef(false);
@@ -314,35 +319,25 @@ function TournamentLiveViewContent({
   }, []);
 
   const loadAllData = useCallback(async () => {
+    if (readScopeRef.current !== readScope) return;
     const seq = ++requestSeqRef.current;
-    const usePublicCurrentHand = spectator && FEATURES.publicSpectatorRealtimeV2
-      && FEATURES.publicSpectatorLastHandHistory && !!liveTableScope;
+    const currentRequest = () => seq === requestSeqRef.current && readScopeRef.current === readScope;
+    const usePublicCurrentHand = spectator && FEATURES.publicSpectatorRealtimeV2;
 
     const [currentHandRes, seatsRes, handsRes, clockRes, tournamentRes] = await Promise.all([
       usePublicCurrentHand
-        ? supabase.rpc("get_public_tournament_table_live_or_last_hand_v2" as never, {
-            p_tournament_id: tournamentId,
-            p_tournament_table_id: liveTableScope,
-          } as never)
+        ? loadPublicCurrentTable((name, args) => (supabase.rpc as any)(name, args), tournamentId, liveTableScope, FEATURES.publicSpectatorLastHandHistory)
         : Promise.resolve({ data: null, error: null }),
-      usePublicCurrentHand ? Promise.resolve({ data: [], error: null }) : supabase
-        .from("tournament_seats")
-        // trackerSeatSetup: pull the per-seat avatar too. Flag is flipped ON only AFTER
-        // its migration lands (runbook), so the column exists when this is selected;
-        // OFF → the current column list, byte-identical.
-        .select(
-          FEATURES.trackerSeatSetup
-            ? "player_id, seat_number, chip_count, is_active, player_name, table_id, avatar_url"
-            : "player_id, seat_number, chip_count, is_active, player_name, table_id"
-        )
-        .eq("tournament_id", tournamentId)
-        .order("seat_number"),
+      usePublicCurrentHand ? Promise.resolve({ data: null, error: null }) : (supabase.rpc as any)(
+        "get_tournament_participation_v1", { p_tournament_id: tournamentId }),
       usePublicCurrentHand ? Promise.resolve({ data: [], error: null }) : loadLatestLiveHand(tournamentId, liveTableScope),
       supabase.rpc("get_tournament_clock", { p_tournament_id: tournamentId }),
-      supabase.from("tournaments").select("players_remaining, average_stack").eq("id", tournamentId).single(),
+      usePublicCurrentHand
+        ? supabase.from("tournaments").select("players_remaining, average_stack").eq("id", tournamentId).single()
+        : (supabase.rpc as any)("get_tournament_participation_counts_v1", { p_tournament_id: tournamentId }),
     ]);
 
-    if (seq !== requestSeqRef.current) return; // stale request after tournament switch
+    if (!currentRequest()) return;
 
     // Two-tier error handling: clock RPC errors are non-fatal (clock may be unconfigured).
     const coreError = currentHandRes.error || seatsRes.error || handsRes.error || tournamentRes.error;
@@ -373,7 +368,21 @@ function TournamentLiveViewContent({
     const sourceHands: HandSource[] = usePublicCurrentHand && currentState && currentState !== "waiting" && currentState !== "inactive" && currentState !== "closed" && currentHand
       ? [currentHand]
       : (handsRes.data ?? []) as HandSource[];
-    const seatRows = seatsRes.data ?? [];
+    let seatRows: any[] = [];
+    let participationSummary: ReturnType<typeof parseParticipationSummary> | null = null;
+    if (!usePublicCurrentHand) {
+      try {
+        const projection = parseTournamentParticipation(seatsRes.data, tournamentId);
+        participationSummary = parseParticipationSummary(tournamentRes.data, tournamentId);
+        seatRows = projection.seats.filter((seat) => seat.participation_status === "seated");
+      } catch (error) {
+        if (!initialLoadedRef.current) {
+          setFatalError(error instanceof Error ? error.message : "invalid_participation_response");
+          setLoading(false);
+        } else setSoftErrorAt(new Date());
+        return;
+      }
+    }
     let seatInfos: SeatInfo[] = seatRows.map((s: any) => ({
       player_id: s.player_id,
       display_name: s.player_name || s.player_id.slice(0, 6),
@@ -383,7 +392,7 @@ function TournamentLiveViewContent({
       table_id: s.table_id ?? null,
       position: "",
       // trackerSeatSetup: operator-set per-seat avatar (undefined when flag off).
-      avatar_url: (s as any).avatar_url ?? null,
+      avatar_url: FEATURES.trackerSeatSetup ? (s as any).avatar_url ?? null : null,
     }));
 
     // Avatars for everyone seated (display_name keeps the operator-entered player_name).
@@ -396,7 +405,7 @@ function TournamentLiveViewContent({
         .select("user_id, avatar_url")
         .in("user_id", seatPlayerIds);
 
-      if (seq !== requestSeqRef.current) return;
+      if (!currentRequest()) return;
 
       const avatarMap = new Map<string, string | null>();
       (seatProfiles || []).forEach((p: any) => avatarMap.set(p.user_id, p.avatar_url ?? null));
@@ -480,13 +489,13 @@ function TournamentLiveViewContent({
         handPlayers = players as LiveHandPlayerRow[] | null;
       }
 
-      if (seq !== requestSeqRef.current) return;
+      if (!currentRequest()) return;
       const liveHandPlayers = (handPlayers ?? []) as LiveHandPlayerRow[];
       const liveHandActions = (actionData ?? []) as LiveHandActionRow[];
 
       if (spectator && FEATURES.liveViewerPulseV2 && !FEATURES.publicSpectatorRealtimeV2 && handPlayers?.length) {
         const historicalDisplay = await fetchHandPlayerDisplay(tournamentId, handPlayers.map((player: any) => player.player_id), { includeProfiles: true });
-        if (seq !== requestSeqRef.current) return;
+        if (!currentRequest()) return;
         const rosterByPlayer = new Map(seatRows.map((row: any) => [row.player_id, row]));
         const currentByPlayer = new Map(seatInfos.map((row) => [row.player_id, row]));
         for (const hp of handPlayers as any[]) {
@@ -707,7 +716,7 @@ function TournamentLiveViewContent({
           "get_public_tournament_settlement" as never,
           { p_hand_id: hand.id } as never,
         );
-        if (seq !== requestSeqRef.current) return;
+        if (!currentRequest()) return;
         const publicSettlement = settlementError ? null : parseReplayPublicSettlement(settlementData);
         const seatByPlayer = new Map(seatInfos.map((seat) => [seat.player_id, seat]));
         nextLiveCompletedHand = {
@@ -757,6 +766,7 @@ function TournamentLiveViewContent({
       liveHandBlindRef.current = { handId: nextHandId, bigBlind: nextHandBigBlind };
     }
 
+    if (!currentRequest()) return;
     setSeats(seatInfos);
     setHandNumber(nextHandNumber);
     setHandId(nextHandId);
@@ -792,7 +802,10 @@ function TournamentLiveViewContent({
       if ((c.remaining_seconds || 0) > 0) zeroRefetchDoneRef.current = false;
     }
 
-    if (tournamentRes.data) {
+    if (participationSummary) {
+      setPlayersRemaining(participationSummary.counts.remaining);
+      setAverageStack(participationSummary.averageStack);
+    } else if (tournamentRes.data) {
       const tournament = tournamentRes.data as any;
       setPlayersRemaining(tournament.players_remaining || 0);
       setAverageStack(tournament.average_stack || 0);
@@ -803,7 +816,7 @@ function TournamentLiveViewContent({
     setSoftErrorAt(null);
     setLastUpdatedAt(new Date());
     setLoading(false);
-  }, [tournamentId, spectator, liveTableScope]);
+  }, [tournamentId, spectator, liveTableScope, readScope]);
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current != null) {
@@ -882,6 +895,7 @@ function TournamentLiveViewContent({
     setLiveBaseline(null);
     setLoading(true);
     loadAllData();
+    return () => { requestSeqRef.current += 1; };
   }, [tournamentId, loadAllData]);
 
   useEffect(() => {

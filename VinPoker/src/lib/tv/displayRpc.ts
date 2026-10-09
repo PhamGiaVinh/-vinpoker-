@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { FEATURES } from "@/lib/featureFlags";
+import { parseParticipationSummary } from "@/lib/tournamentParticipation";
 
 // The tv_* RPCs went live with migration 20260818000001, which postdates the
 // generated src/integrations/supabase/types.ts — call them through one local
@@ -27,9 +28,22 @@ export async function rpcTvPairBegin(): Promise<{ data: TvPairBeginResult | null
 export async function rpcGetTvDisplayState(
   displayToken: string,
 ): Promise<{ data: unknown; error: string | null }> {
-  const functionName = FEATURES.tvLayoutEditorV1
-    ? "get_tv_display_state_v3"
-    : "get_tv_display_state";
-  const { data, error } = await rpc(functionName, { p_display_token: displayToken });
+  const { data, error } = await rpc("get_tv_display_state_v4", {
+    p_display_token: displayToken, p_include_branding: FEATURES.tvLayoutEditorV1,
+  });
+  if (!error && data && typeof data === "object") {
+    const payload = data as Record<string, any>;
+    if (payload.status === "paired" && payload.tournament) {
+      try {
+        const summary = parseParticipationSummary({ tournament_id: payload.tournament.id,
+          counts: payload.participation_counts, average_stack: payload.tournament.average_stack }, payload.tournament.id);
+        if (payload.entries?.total_confirmed !== summary.counts.total_entries
+          || payload.re_entries !== summary.counts.re_entries
+          || payload.tournament.players_remaining !== summary.counts.remaining) throw new Error("inconsistent_tv_participation");
+      } catch (failure) {
+        return { data: null, error: failure instanceof Error ? failure.message : "invalid_tv_participation" };
+      }
+    }
+  }
   return { data, error: error?.message ?? null };
 }
