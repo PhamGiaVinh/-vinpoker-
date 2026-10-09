@@ -7613,6 +7613,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000028",
+      "filename": "20270128000028_tracker_roster_exact_session_v1.sql",
+      "sha256": "e6bd5d09d663a59304c7b0627d77e43cbad894839e29fdb42484d5c36ac9a1b3",
+      "domain": "tracker-roster-session"
+    },
+    {
       "version": "20270128000027",
       "filename": "20270128000027_tracker_equal_blinds_contract_v1.sql",
       "sha256": "4ca0e916ee0f9741eb029684d0e0a2f6d3dd562953513f33dc5da931dc8134e8",
