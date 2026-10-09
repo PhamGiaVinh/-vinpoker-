@@ -7613,6 +7613,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000025",
+      "filename": "20270128000025_dealer_automatic_rest_history_fence_v1.sql",
+      "sha256": "7973fcd4c7cb5337ea4d0f14a32891c0dcaea166715d1d1747a84b4e18944cde",
+      "domain": "dealer-swing"
+    },
+    {
       "version": "20270128000024",
       "filename": "20270128000024_tracker_history_scoped_canary_claim_v1.sql",
       "sha256": "1ce1e654ab13d1a1a29c18202bbb8bb34647c56f8970744283996ef59c727ec1",

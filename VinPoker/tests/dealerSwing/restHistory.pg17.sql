@@ -24,6 +24,17 @@ DO $$ BEGIN
 END $$;
 RESET ROLE;
 SELECT pg_temp.assert_true(NOT EXISTS(SELECT 1 FROM public.dealer_assignments WHERE attendance_id='e1700000-0000-4000-8000-000000000041' AND released_at IS NULL),'failed commit left no assignment');
+SET LOCAL ROLE service_role;
+DO $$ BEGIN
+  BEGIN
+    UPDATE public.dealer_assignments SET status='assigned',released_at=NULL
+    WHERE attendance_id='e1700000-0000-4000-8000-000000000041' AND status='completed';
+    RAISE EXCEPTION 'TEST_RELEASED_ASSIGNMENT_REUSED';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM<>'DEALER_REST_RELEASED_ASSIGNMENT_REUSE' THEN RAISE; END IF;
+  END;
+END $$;
+RESET ROLE;
 UPDATE public.dealer_attendance SET current_state='on_break',last_released_at=NULL WHERE id='e1700000-0000-4000-8000-000000000041';
 SET LOCAL ROLE service_role;
 SELECT pg_temp.assert_true(public.reserve_empty_table_for_dealer_v2('e1700000-0000-4000-8000-000000000011','e1700000-0000-4000-8000-000000000021','e1700000-0000-4000-8000-000000000041',now()+interval '20 minutes','e1700000-0000-4000-8000-000000000002')->>'outcome'='ok','planning reservation does not pull resting dealer');
