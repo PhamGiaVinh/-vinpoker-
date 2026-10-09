@@ -195,6 +195,7 @@ jobs:
           node tests/floorProduction/moveWrapperReceiptRollback.currentSchema.mjs
           MOVE_WRAPPER_RECEIPT_CASE=1 ASSIGN_PARTICIPATION_CASE=1 node tests/floorProduction/trackerRosterIntent.concurrent.mjs
           ASSIGN_PARTICIPATION_CASE=1 MANUAL_ASSIGN_CASE=1 node tests/floorProduction/trackerRosterIntent.concurrent.mjs
+          MANUAL_FREE_SIT_OVERLAP=1 node tests/floorProduction/trackerRosterIntent.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -v WRAPPER_RECEIPT_CASE=1 -v CLOSED_SESSION_READ_CASE=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -v CLOSED_SESSION_READ_CASE=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
