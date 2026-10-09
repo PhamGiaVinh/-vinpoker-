@@ -151,6 +151,9 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
  RAISE NOTICE 'queue result: %', (SELECT jsonb_build_object('status',status,'reason',resolution_reason) FROM public.floor_pending_tracker_moves WHERE entry_id=e);
  PERFORM pg_temp.assert_true((SELECT status='applied' FROM public.floor_pending_tracker_moves WHERE entry_id=e),'queued move applies');
  IF current_setting('test.move_name',true)='true' THEN
+ PERFORM pg_temp.assert_true((SELECT table_id=dt AND tournament_table_id=dt AND table_session_id=ds
+  FROM public.tournament_seats WHERE entry_id=e AND is_active),
+  'deferred move retains exact destination participation tuple');
  PERFORM pg_temp.assert_true((SELECT player_name='Source TEST' AND chip_count=20000 AND avatar_url IS NULL
   FROM public.tournament_seats WHERE entry_id=e AND is_active),
   'deferred move preserves exact-entry name and avatar clear at the real hand boundary');
