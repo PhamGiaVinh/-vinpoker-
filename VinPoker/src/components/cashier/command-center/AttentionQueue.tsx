@@ -3,6 +3,7 @@ import { useAttentionQueue, type AttentionItem as AttentionItemData } from "@/ho
 import type { DealerAssignment, DealerAttendance, NextDealerPrediction } from "@/hooks/useDealerSwing";
 import type { RotationTableSlots } from "@/hooks/useRotationSchedule";
 import { cn } from "@/lib/utils";
+import { dealerTableCoverage } from "@/lib/dealerTableCoverage";
 import AttentionItem from "./AttentionItem";
 
 interface Props {
@@ -33,6 +34,7 @@ export default function AttentionQueue({
     timelineByTableId, nextDealerMap, scheduleByTableId, nowMs,
   });
   const [expanded, setExpanded] = useState(false);
+  const { activeTables, assignedTables } = dealerTableCoverage(tables ?? [], assignments);
 
   const renderItem = (item: AttentionItemData) => (
     <AttentionItem
@@ -48,8 +50,6 @@ export default function AttentionQueue({
   // ══════════════════════ LANE MODE (full-width top) ══════════════════════
   if (horizontal) {
     if (totalCount === 0) {
-      const activeTables = tables?.length ?? 0;
-      const assignedTables = assignments.filter((a) => a.status === "assigned").length;
       const otZero = !assignments.some((a) => a.status === "assigned" && a.overtime_started_at);
       return (
         <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 px-4 py-3 shadow-card">
@@ -97,8 +97,6 @@ export default function AttentionQueue({
 
   // ══════════════════════ COMPACT MODE (legacy right-rail) ══════════════════════
   if (totalCount === 0) {
-    const activeTables = tables?.length ?? 0;
-    const assignedTables = assignments.filter((a) => a.status === "assigned").length;
     const otZero = !assignments.some((a) => a.status === "assigned" && a.overtime_started_at);
     return (
       <div className="border border-success/30 bg-success/10 rounded-sm px-3 py-2.5">
