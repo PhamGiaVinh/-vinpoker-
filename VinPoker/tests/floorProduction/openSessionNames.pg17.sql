@@ -9,8 +9,8 @@ INSERT INTO public.clubs(id,owner_id,name,region) VALUES
 INSERT INTO public.tournaments(id,club_id,name,status,live_status) VALUES
  ('f7260000-0000-4000-8000-000000000003','f7260000-0000-4000-8000-000000000002','Floor open TEST','live','playing');
 INSERT INTO public.game_tables(id,club_id,table_name,table_number,table_type,status,operational_status) VALUES
- ('f7260000-0000-4000-8000-000000000011','f7260000-0000-4000-8000-000000000002','Bàn 1',1,'tournament','inactive','available'),
- ('f7260000-0000-4000-8000-000000000012','f7260000-0000-4000-8000-000000000002','Bàn 2',2,'tournament','inactive','available');
+ ('f7260000-0000-4000-8000-000000000011','f7260000-0000-4000-8000-000000000002','Session A TEST',71,'tournament','inactive','available'),
+ ('f7260000-0000-4000-8000-000000000012','f7260000-0000-4000-8000-000000000002','Session B TEST',72,'tournament','inactive','available');
 -- Retain a legacy empty-name row: the migration must not rewrite it.
 INSERT INTO public.tournament_tables(id,tournament_id,table_name,table_number,status) VALUES
  ('f7260000-0000-4000-8000-000000000090','f7260000-0000-4000-8000-000000000003','',90,'closed');
