@@ -163,10 +163,16 @@ export function FloorTableMapPanelV3({
       .filter((seat) => !occupied.has(seat) && !locked.has(seat) && !reserved.has(seat));
   }, [moveDestination, pendingMoves]);
 
+  const readScope = `${actorId ?? ""}:${tournament.id}`;
+  const currentReadScope = useRef(readScope);
+  currentReadScope.current = readScope;
+  const readSequence = useRef(0);
   const load = useCallback(async (silent = false) => {
+    const sequence = ++readSequence.current;
+    const isCurrent = () => currentReadScope.current === readScope && readSequence.current === sequence;
     if (!v3.enabled) {
       setLoading(false);
-      return;
+      return false;
     }
     if (!silent) setLoading(true);
     try {
@@ -176,6 +182,7 @@ export function FloorTableMapPanelV3({
         v3.getRestorableEntries(tournament.id),
         v3.getPendingTrackerMoves(tournament.id),
       ]);
+      if (!isCurrent()) return false;
       const failed = (error: string) => ({ ok: false as const, error });
       const roster = settled[0].status === "fulfilled" ? settled[0].value : failed("V3_ROSTER_NETWORK_FAILED");
       const entries = settled[1].status === "fulfilled" ? settled[1].value : failed("V3_SEATABLE_NETWORK_FAILED");
@@ -197,7 +204,9 @@ export function FloorTableMapPanelV3({
       setSecondaryLoadError(secondaryFailures.length > 0
         ? "Danh sách bàn vẫn hiển thị, nhưng một số thao tác phụ chưa tải được. Hãy thử lại."
         : null);
+      return roster.ok;
     } catch {
+      if (!isCurrent()) return false;
       if (!silent) {
         setTables([]);
         setSeatableEntries([]);
@@ -207,10 +216,11 @@ export function FloorTableMapPanelV3({
       const message = "Không thể kết nối để tải dữ liệu bàn. Hãy kiểm tra mạng và thử lại.";
       setLoadError(message);
       if (!silent) toast.error(message);
+      return false;
     } finally {
-      if (!silent) setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [tournament.id, v3]);
+  }, [readScope, tournament.id, v3]);
 
   useEffect(() => { void load(); }, [load, refreshTrigger]);
 
@@ -248,8 +258,9 @@ export function FloorTableMapPanelV3({
   const selectedTableControlMode = selectedTable?.controlMode ?? null;
 
   useEffect(() => {
-    if (!selectedTableSessionId || !selectedTableId || !modeOpen) { setModeRequest(null); setModeRequestError(null); return; }
+    if (!selectedTableSessionId || !selectedTableId) { setModeRequest(null); setModeRequestError(null); return; }
     let disposed = false;
+    let observedPending = false;
     const refresh = async () => {
       if (document.visibilityState !== "visible" || !navigator.onLine) return;
       let result;
@@ -258,12 +269,23 @@ export function FloorTableMapPanelV3({
       if (disposed) return;
       if (!result.ok) { setModeRequestError("Không xác minh được yêu cầu đổi chế độ. Hãy tải lại trước khi thao tác."); return; }
       const request = result.data.request;
-      if (request === null) { setModeRequest(null); setModeRequestError(null); return; }
+      if (request === null) {
+        setModeRequest(null);
+        setModeRequestError(null);
+        if (observedPending) {
+          // A terminal request does not tell us the resulting mode or stacks.
+          // Read the canonical roster rather than keeping the pre-hand snapshot.
+          const refreshed = await load(true);
+          if (!disposed && refreshed) observedPending = false;
+        }
+        return;
+      }
       if (!request || typeof request !== "object" || !("id" in request) || !("target_mode" in request) || !("blockers" in request)
         || typeof request.id !== "string" || (request.target_mode !== "manual" && request.target_mode !== "tracker")
         || !Array.isArray(request.blockers) || !request.blockers.every((item) => typeof item === "string")) {
         setModeRequestError("Không đọc được yêu cầu đổi chế độ."); return;
       }
+      observedPending = true;
       setModeRequest({ id: request.id, targetMode: request.target_mode, blockers: request.blockers });
       setModeRequestError(null);
       void load(true);
@@ -271,7 +293,7 @@ export function FloorTableMapPanelV3({
     void refresh();
     const timer = window.setInterval(() => void refresh(), 4000);
     return () => { disposed = true; window.clearInterval(timer); };
-  }, [load, modeOpen, selectedTableId, selectedTableSessionId, v3]);
+  }, [load, selectedTableId, selectedTableSessionId, v3]);
 
   useEffect(() => {
     if (!selectedTableControlMode) return;
@@ -480,7 +502,7 @@ export function FloorTableMapPanelV3({
           tournamentId={tournament.id}
           tables={tables}
           client={v3}
-          onApplied={load}
+          onApplied={async () => { await load(); }}
         />
       )}
 

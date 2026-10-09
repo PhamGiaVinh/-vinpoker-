@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { vi, describe, expect, it } from "vitest";
 import { FloorTableMapPanelV3 } from "@/components/cashier/tournament-live/FloorTableMapPanelV3";
 import type { Tournament } from "@/types/tournament";
@@ -76,6 +76,100 @@ function setup(options: { pendingNetworkFailure?: boolean } = {}) {
 }
 
 describe("Floor roster mobile actions", () => {
+  it("ignores an earlier actor's delayed roster after the account changes", async () => {
+    const view = setup();
+    try {
+      fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+      await screen.findByText(/Revision 3 · epoch 1/);
+      const initial = await fixture.client.getTournamentTableRoster.mock.results[0].value;
+      let finishOld!: (value: typeof initial) => void;
+      fixture.client.getTournamentTableRoster.mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }));
+      view.rerender(<FloorTableMapPanelV3 actorId="owner-a" tournament={{ id: "tour-1" } as Tournament} refreshTrigger={1} />);
+      fixture.client.getTournamentTableRoster.mockResolvedValue({ ...initial, data: initial.data.map(
+        (table: { tournamentTableId: string }) => table.tournamentTableId === "table-1"
+          ? { ...table, sessionRevision: 11, controlEpoch: 4 } : table,
+      ) });
+      view.rerender(<FloorTableMapPanelV3 actorId="owner-b" tournament={{ id: "tour-1" } as Tournament} refreshTrigger={1} />);
+      await screen.findByText(/Revision 11 · epoch 4/);
+      await act(async () => { finishOld(initial); });
+      expect(screen.getByText(/Revision 11 · epoch 4/)).toBeTruthy();
+      expect(screen.queryByText(/Revision 3 · epoch 1/)).toBeNull();
+    } finally { view.unmount(); }
+  });
+
+  it("does not reload roster on repeated null mode polls without an observed pending request", async () => {
+    let poll: (() => void) | undefined;
+    const interval = vi.spyOn(window, "setInterval").mockImplementation((callback, delay) => {
+      if (delay === 4000 && typeof callback === "function") poll = callback as () => void;
+      return 123;
+    });
+    const view = setup();
+    try {
+      fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+      await waitFor(() => expect(fixture.client.getTableControlModeRequest).toHaveBeenCalledTimes(1));
+      await act(async () => { poll!(); });
+      await act(async () => { poll!(); });
+      expect(fixture.client.getTournamentTableRoster).toHaveBeenCalledTimes(1);
+    } finally { view.unmount(); interval.mockRestore(); }
+  });
+
+  it("does not overwrite a newer roster with a delayed earlier refresh", async () => {
+    const view = setup();
+    try {
+      fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+      await screen.findByText(/Revision 3 · epoch 1/);
+      const initial = await fixture.client.getTournamentTableRoster.mock.results[0].value;
+      let finishOld!: (value: typeof initial) => void;
+      fixture.client.getTournamentTableRoster.mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }));
+      view.rerender(<FloorTableMapPanelV3 actorId="owner-a" tournament={{ id: "tour-1" } as Tournament} refreshTrigger={1} />);
+      fixture.client.getTournamentTableRoster.mockResolvedValue({ ...initial, data: initial.data.map(
+        (table: { tournamentTableId: string }) => table.tournamentTableId === "table-1"
+          ? { ...table, sessionRevision: 9, controlEpoch: 3 } : table,
+      ) });
+      view.rerender(<FloorTableMapPanelV3 actorId="owner-a" tournament={{ id: "tour-1" } as Tournament} refreshTrigger={2} />);
+      await screen.findByText(/Revision 9 · epoch 3/);
+      await act(async () => { finishOld(initial); });
+      expect(screen.getByText(/Revision 9 · epoch 3/)).toBeTruthy();
+      expect(screen.queryByText(/Revision 3 · epoch 1/)).toBeNull();
+    } finally { view.unmount(); }
+  });
+
+  it.each(["open", "closed", "refresh-error"])("refreshes canonical roster at the hand boundary with picker %s", async (state) => {
+    let poll: (() => void) | undefined;
+    const interval = vi.spyOn(window, "setInterval").mockImplementation((callback, delay) => {
+      if (delay === 4000 && typeof callback === "function") poll = callback as () => void;
+      return 123;
+    });
+    const view = setup();
+    try {
+      fixture.client.getTableControlModeRequest.mockResolvedValue({ ok: true, data: {
+        request: { id: "mode-request-1", target_mode: "tracker", blockers: ["active_hand"] },
+      } });
+      fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+      fireEvent.click(screen.getByRole("button", { name: /Manual Floor.*Đổi chế độ/ }));
+      await waitFor(() => expect(fixture.client.getTournamentTableRoster).toHaveBeenCalledTimes(2));
+      if (state === "closed") fireEvent.click(screen.getByRole("button", { name: /Manual Floor.*Đổi chế độ/ }));
+      const initial = await fixture.client.getTournamentTableRoster.mock.results[0].value;
+      fixture.client.getTournamentTableRoster.mockResolvedValue({ ...initial, data: initial.data.map(
+        (table: { tournamentTableId: string }) => table.tournamentTableId === "table-1"
+          ? { ...table, controlMode: "tracker", sessionRevision: 4, controlEpoch: 2 } : table,
+      ) });
+      fixture.client.getTableControlModeRequest.mockResolvedValue({ ok: true, data: { request: null } });
+      if (state === "refresh-error") fixture.client.getTournamentTableRoster.mockRejectedValueOnce(new Error("offline"));
+      expect(poll).toBeDefined();
+      await act(async () => { poll!(); });
+      if (state === "refresh-error") {
+        await screen.findByText(/Không tải được danh sách bàn/);
+        await act(async () => { poll!(); });
+      }
+      await screen.findByText(/Revision 4 · epoch 2/);
+      expect(screen.getByRole("button", { name: /Live Tracker.*Đổi chế độ/ })).toBeTruthy();
+    } finally {
+      view.unmount();
+      interval.mockRestore();
+    }
+  });
+
   it.each(["session", "actor"])("does not reuse another %s's unknown-outcome intent", async (scope) => {
     const view = setup();
     fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
