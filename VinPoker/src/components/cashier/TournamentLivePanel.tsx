@@ -384,7 +384,7 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full", onS
             ) },
             { value: "hand_history", icon: History, label: t("tournamentLive.handHistory.title"), render: () => <HandHistoryPanel tournamentId={selectedTournament.id} /> },
             { value: "leaderboard", icon: Trophy, label: t("tournamentLive.leaderboard.title"), render: () => <LeaderboardPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
-            { value: "players", icon: Users, label: "Người chơi", render: () => <PlayersGroupedPanel tournament={selectedTournament} refreshTrigger={refreshTrigger} /> },
+            { value: "players", icon: Users, label: "Người chơi", render: () => <PlayersGroupedPanel tournament={selectedTournament} refreshTrigger={refreshTrigger} onTournamentChanged={() => { void loadTournaments(); }} /> },
             { value: "blinds", icon: List, label: t("tournamentLive.tabs.blinds"), render: () => <BlindEditorPanel tournamentId={selectedTournament.id} tournamentStatus={selectedTournament.status} /> },
             { value: "prizes", icon: Settings, label: t("tournamentLive.tabs.prizes"), render: () => <PrizesTab tournamentId={selectedTournament.id} clubId={selectedTournament.club_id} /> },
             { value: "tv_displays", icon: Tv, label: t("tournamentLive.tvDisplays.tab"), render: () => (

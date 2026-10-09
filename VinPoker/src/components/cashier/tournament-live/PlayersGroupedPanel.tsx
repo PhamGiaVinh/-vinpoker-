@@ -75,9 +75,11 @@ type GroupKey = "playing" | "waiting" | "bust";
 export function PlayersGroupedPanel({
   tournament,
   refreshTrigger,
+  onTournamentChanged,
 }: {
   tournament: Tournament;
   refreshTrigger: number;
+  onTournamentChanged?: () => void;
 }) {
   const tid = tournament.id;
   const { user } = useAuth();
@@ -378,7 +380,11 @@ export function PlayersGroupedPanel({
         )
       )}
 
-      <RestoreBustDialog actorId={user?.id ?? null} tournamentId={tid} target={restoreTarget} onClose={() => setRestoreTarget(null)} onRestored={() => { void load(); }} />
+      <RestoreBustDialog actorId={user?.id ?? null} tournamentId={tid} target={restoreTarget} onClose={() => setRestoreTarget(null)} onRestored={() => {
+        void load();
+        // Refresh server-owned tournament totals even when Realtime is delayed.
+        onTournamentChanged?.();
+      }} />
       <PlayerActionSheet
         open={selected !== null}
         onOpenChange={(v) => { if (!v) setSelected(null); }}
