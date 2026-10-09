@@ -84,3 +84,33 @@ if(process.env.MOVE_WRAPPER_RECEIPT_CASE==='1')for(const replay of [true,false])
  assert.equal(sql(`SELECT count(*) FROM public.table_operation_receipts WHERE actor_id='${actor}' AND operation_type='move_player_seat_v2';`),'1');
 }
 if(process.env.MOVE_WRAPPER_RECEIPT_CASE==='1')console.log('MOVE_WRAPPER_RECEIPT_TRUE_OVERLAP_PASS');
+
+if(process.env.ASSIGN_PARTICIPATION_CASE==='1')for(const variant of ['replay','conflict','new-key']){
+ const prefix=randomUUID().slice(0,8);
+ const tour=`${prefix}-0000-4000-8000-000000000003`,actor=`${prefix}-0000-4000-8000-000000000001`;
+ const entry=`${prefix}-0000-4000-8000-000000000031`;
+ let fixture=readFileSync('tests/floorProduction/assignParticipation.pg17.sql','utf8').split('DO $$ DECLARE opened')[0];
+ assert.ok(fixture.includes('INSERT INTO public.tournament_entries'));
+ fixture=fixture.replaceAll('f7350000',prefix).replaceAll('ASSIGN-PARTICIPATION-TEST',`ASSIGN-PARTICIPATION-${prefix}`);
+ sql(fixture+`SET LOCAL ROLE authenticated;
+ SELECT public.floor_open_tournament_table_v3('${tour}','${prefix}-0000-4000-8000-000000000011','manual','${randomUUID()}');COMMIT;`);
+ const tt=sql(`SELECT id FROM public.tournament_tables WHERE tournament_id='${tour}' AND status='active';`);
+ const session=sql(`SELECT table_session_id FROM public.tournament_tables WHERE id='${tt}';`);
+ const rev=sql(`SELECT revision FROM public.table_sessions WHERE id='${session}';`),key=randomUUID();
+ const call=(seat,k)=>`SELECT set_config('request.jwt.claim.sub','${actor}',true);SET LOCAL ROLE authenticated;
+ SELECT public.floor_assign_entry_to_seat_v4('${entry}','${tt}',${seat},${rev},'${k}');`;
+ const a=tx(`assign_a_${prefix}`,call(1,key),true);
+ await barrier(`assign_a_${prefix}`,"state='idle in transaction'");
+ const b=tx(`assign_b_${prefix}`,call(variant==='conflict'?2:1,variant==='new-key'?randomUUID():key),false);
+ await barrier(`assign_b_${prefix}`,"wait_event_type='Lock'");a.commit();
+ const [first,second]=await Promise.all([a.result,b.result]);
+ assert.equal(first.code,0,first.error);assert.match(first.out,/"ok": true/);
+ assert.equal(second.code,0,second.error);
+ if(variant==='replay')assert.equal(second.out,first.out);
+ else assert.match(second.out,variant==='conflict'?/IDEMPOTENCY_CONFLICT/:/STALE_STATE/);
+ assert.equal(sql(`SELECT count(*)||':'||sum(chip_count)||':'||min(seat_number) FROM public.tournament_seats WHERE entry_id='${entry}' AND is_active;`),'1:20000:1');
+ assert.equal(sql(`SELECT count(*)||':'||sum(chip_count) FROM public.tournament_chip_counts WHERE tournament_id='${tour}';`),'1:20000');
+ assert.equal(sql(`SELECT count(*) FROM public.table_operation_receipts WHERE actor_id='${actor}' AND operation_type='floor_assign_entry_to_seat';`),'1');
+ assert.equal(sql(`SELECT revision FROM public.table_sessions WHERE id='${session}';`),String(Number(rev)+1));
+}
+if(process.env.ASSIGN_PARTICIPATION_CASE==='1')console.log('ASSIGN_PARTICIPATION_TRUE_OVERLAP_PASS');

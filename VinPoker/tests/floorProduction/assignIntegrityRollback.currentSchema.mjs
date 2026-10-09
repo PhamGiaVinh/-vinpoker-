@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+assert.equal(process.env.PGHOST,'127.0.0.1');
+assert.ok(process.env.PGDATABASE?.startsWith('vinpoker_ops_'));
+const migration=readFileSync('supabase/migrations/20270128000035_tournament_seat_assign_integrity_v1.sql','utf8').replaceAll('\r','');
+const write=migration.match(/new_write:=\$write\$([\s\S]*?)\$write\$/)?.[1];
+const branch=migration.match(/b:=replace\(b,old_branch,\$branch\$([\s\S]*?)\$branch\$/)?.[1];
+assert.ok(write);assert.ok(branch);
+const apply=migration.replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');
+const inverse=`DO $restore$
+DECLARE f regprocedure; b text;
+BEGIN
+ f:='public.floor_assign_entry_to_seat(uuid,uuid,integer,bigint,uuid)'::regprocedure;
+ IF (SELECT md5(replace(prosrc,chr(13),'')) FROM pg_proc WHERE oid=f)<>'2306d56c6245305f5893bfd6d04c05a1' THEN RAISE EXCEPTION 'assign_post_digest_drift'; END IF;
+ b:=replace(pg_get_functiondef(f),chr(13),'');
+ b:=replace(b,$write$${write}$write$,E'  BEGIN\n    UPDATE public.table_sessions\n');
+ b:=replace(b,E'      assigned_at, table_id\n',E'      assigned_at\n');
+ b:=replace(b,E'      pg_catalog.now(), v_tournament_table.id\n',E'      pg_catalog.now()\n');
+ EXECUTE b;
+ IF (SELECT md5(replace(prosrc,chr(13),'')) FROM pg_proc WHERE oid=f)<>'e8bea18704dce78f0a83b1f1a703e72b' THEN RAISE EXCEPTION 'assign_restore_digest_drift'; END IF;
+ f:='public.floor_assign_entry_to_seat_v4(uuid,uuid,integer,bigint,uuid)'::regprocedure;
+ IF (SELECT md5(replace(prosrc,chr(13),'')) FROM pg_proc WHERE oid=f)<>'35e56a39df27f05be48dcd12eb078494' THEN RAISE EXCEPTION 'assign_wrapper_post_digest_drift'; END IF;
+ b:=replace(pg_get_functiondef(f),chr(13),'');
+ EXECUTE replace(b,$branch$${branch}$branch$,'  IF FOUND THEN RETURN v_receipt.result; END IF;');
+ IF (SELECT md5(replace(prosrc,chr(13),'')) FROM pg_proc WHERE oid=f)<>'05d32501622fd990793a65bfb8515e1f' THEN RAISE EXCEPTION 'assign_wrapper_restore_digest_drift'; END IF;
+END $restore$;`;
+const result=spawnSync('psql',['-X','-v','ON_ERROR_STOP=1'],{encoding:'utf8',input:`BEGIN;\n${inverse}\n${apply}\nROLLBACK;`});
+assert.equal(result.status,0,result.stderr);
+console.log('ASSIGN_INTEGRITY_RESTORE_AND_ATOMIC_REAPPLY_PASS');
