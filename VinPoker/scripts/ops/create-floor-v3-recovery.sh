@@ -89,7 +89,7 @@ server_version="$(docker run --rm --network host --env PGHOST --env PGPORT --env
   exit 1
 }
 
-# Permit only the two exact live trigger functions and exact project anon-key
+# Permit only the remaining exact live trigger function and project anon-key
 # fingerprint verified via Supabase project key inventory on 2026-09-25.
 # Any other token-shaped literal or signature drift fails before pg_dump.
 docker run --rm --network host \
@@ -242,7 +242,7 @@ row_count_receipt_tables=public.tournaments,public.tournament_tables,public.tour
 dump_format=single_pg_dump_custom_archive_with_shared_exported_snapshot
 roles=pg_dumpall_roles_only_without_passwords; captured separately from MVCC snapshot
 credential_exception_project_ref=$project_ref
-credential_exception_functions=public.fn_dispatch_push(),public.notify_dealer_ready_v2()
+credential_exception_functions=public.fn_dispatch_push()
 credential_exception_token_sha256=$verified_anon_key_sha256
 credential_exception_fingerprint=SHA-256 over exact UTF-8 JWT literal extracted from each live function definition
 credential_exception_scope=encrypted recovery archive only
@@ -263,7 +263,7 @@ echo "SNAPSHOT_EXPORT_FINISHED_AT=$snapshot_finished_at"
 echo "DATABASE_SERVER_VERSION=$server_version"
 echo "PG_DUMP_CLIENT_VERSION=$client_version"
 echo "INCLUDED_SCHEMAS=$schema_list"
-echo "CREDENTIAL_EXCEPTION_FUNCTIONS=public.fn_dispatch_push(),public.notify_dealer_ready_v2()"
+echo "CREDENTIAL_EXCEPTION_FUNCTIONS=public.fn_dispatch_push()"
 echo "CREDENTIAL_EXCEPTION_SHA256=$verified_anon_key_sha256"
 echo "CREDENTIAL_EXCEPTION_SCOPE=encrypted_recovery_archive_only"
 echo "TABLE_COUNT_RECEIPT=Floor/Tracker tables and migration history"
@@ -278,7 +278,7 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     printf 'snapshot_finished_at=%s\n' "$snapshot_finished_at"
     printf 'server_version=%s\n' "$server_version"
     printf 'schema_list=%s\n' "$schema_list"
-    printf 'credential_exception_functions=public.fn_dispatch_push(),public.notify_dealer_ready_v2()\n'
+    printf 'credential_exception_functions=public.fn_dispatch_push()\n'
     printf 'credential_exception_sha256=%s\n' "$verified_anon_key_sha256"
     printf 'credential_exception_scope=encrypted_recovery_archive_only\n'
     printf 'ciphertext_sha256=%s\n' "$ciphertext_sha256"

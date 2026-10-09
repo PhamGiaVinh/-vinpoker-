@@ -79,7 +79,7 @@ grep -q '^dump_format=single_pg_dump_custom_archive_with_shared_exported_snapsho
   exit 1
 }
 grep -Fxq 'credential_exception_project_ref=orlesggcjamwuknxwcpk' "$payload_root/metadata.txt"
-grep -Fxq 'credential_exception_functions=public.fn_dispatch_push(),public.notify_dealer_ready_v2()' "$payload_root/metadata.txt"
+grep -Fxq 'credential_exception_functions=public.fn_dispatch_push()' "$payload_root/metadata.txt"
 grep -Fxq "credential_exception_token_sha256=$verified_anon_key_sha256" "$payload_root/metadata.txt"
 grep -Fxq 'credential_exception_scope=encrypted recovery archive only' "$payload_root/metadata.txt"
 grep -Eq 'TABLE DATA public tournaments[[:space:]]' "$payload_root/archive-list.txt"
