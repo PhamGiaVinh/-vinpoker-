@@ -12,7 +12,9 @@ BEGIN
   IF (SELECT md5(prosrc) FROM pg_proc WHERE oid='floor_private.snapshot_tracker_hand_blinds()'::regprocedure)
        IS DISTINCT FROM '9c997255e24a4cd71ec526dbb40a0367'
      OR (SELECT md5(prosrc) FROM pg_proc WHERE oid='public.set_tracker_table_roster_seat(uuid,uuid,integer,text,integer,uuid,boolean,text,uuid)'::regprocedure)
-       IS DISTINCT FROM 'bf574736f82899d92fb7e9f3b95e5673' THEN
+       IS DISTINCT FROM 'bf574736f82899d92fb7e9f3b95e5673'
+     OR (SELECT md5(prosrc) FROM pg_proc WHERE oid='public.start_tracker_hand_v3(uuid,uuid,uuid,bigint,integer,timestamptz,uuid,integer)'::regprocedure)
+       IS DISTINCT FROM 'c935e07d1c53c2e587b1e664902aefc4' THEN
     RAISE EXCEPTION 'tracker_roster_session_definition_drift';
   END IF;
   definition := replace(pg_get_functiondef('floor_private.snapshot_tracker_hand_blinds()'::regprocedure), E'\r\n', E'\n');
@@ -44,6 +46,13 @@ BEGIN
         AND session_row.game_table_id = COALESCE(tt.game_table_id, tt.table_id))
   ORDER BY (tt.id = p_table_id) DESC, tt.id');
   EXECUTE definition;
+
+  -- hand.table_id is FK-bound to tournament_tables, not game_tables.
+  -- Keep the physical ID exclusively in the already-validated session context.
+  definition := replace(pg_get_functiondef('public.start_tracker_hand_v3(uuid,uuid,uuid,bigint,integer,timestamptz,uuid,integer)'::regprocedure), E'\r\n', E'\n');
+  needle := 'p_tournament_id, v_game_table_id, v_table.id, v_session.id,';
+  IF strpos(definition, needle)=0 THEN RAISE EXCEPTION 'tracker_hand_table_writer_patch_missing'; END IF;
+  EXECUTE replace(definition, needle, 'p_tournament_id, v_table.id, v_table.id, v_session.id,');
 END;
 $migration$;
 COMMIT;

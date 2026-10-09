@@ -34,7 +34,7 @@ DO $$ DECLARE opened jsonb; old_table uuid; current_table uuid; current_session 
  -- Exercise the actual writer, not a hand INSERT with a convenient logical ID.
  result:=public.start_tracker_hand_v3('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch,1,now(),'f7280000-0000-4000-8000-000000000001',1);
  PERFORM pg_temp.assert_true(result->>'status'='success','public V3 start accepts canonical roster');
- PERFORM pg_temp.assert_true((SELECT table_id='f7280000-0000-4000-8000-000000000011' AND tournament_table_id=current_table AND table_session_id=current_session AND tracker_small_blind=100 AND tracker_big_blind=100 AND tracker_sb_position=1 AND tracker_bb_position=2 FROM public.tournament_hands WHERE id=(result->>'hand_id')::uuid),'physical hand ID resolves exact-session blind lineage');
+ PERFORM pg_temp.assert_true((SELECT table_id=current_table AND tournament_table_id=current_table AND table_session_id=current_session AND tracker_small_blind=100 AND tracker_big_blind=100 AND tracker_sb_position=1 AND tracker_bb_position=2 FROM public.tournament_hands WHERE id=(result->>'hand_id')::uuid),'hand uses logical FK and exact-session blind lineage');
  PERFORM pg_temp.assert_true((SELECT count(*)=2 AND sum(starting_stack)=40000 FROM public.hand_players WHERE hand_id=(result->>'hand_id')::uuid),'same roster and chip sum frozen');
  result:=public.set_tracker_table_roster_seat('f7280000-0000-4000-8000-000000000003',current_table,3,'During hand TEST',20000,NULL,false,NULL,'f7280000-0000-4000-8000-000000000001');
  PERFORM pg_temp.assert_true(result->>'error'='hand_in_progress','roster remains locked while hand active');
