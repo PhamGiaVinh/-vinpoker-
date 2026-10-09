@@ -13,6 +13,12 @@ const CREDENTIAL_LIKE_JWT_LITERAL =
   /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b/u;
 const DIRECT_PRODUCTION_FUNCTION_TARGET =
   /https:\/\/orlesggcjamwuknxwcpk\.supabase\.co\/functions\/v1\//u;
+// Owner approved 2026-10-09: only these exact reviewed private Dealer Ready bodies.
+// Hash pins the endpoint, Vault authentication, ACL and SQL; a changed body needs new review.
+const REVIEWED_DEALER_READY_NETWORK_MIGRATIONS = new Map([
+  ["20270128000020_dealer_ready_backup_private_cron_v1.sql", "550555b385f59b77cde479546d88f1a9e41abf4f8170991af110d26cfb419b4d"],
+  ["20270128000021_dealer_ready_private_trigger_v1.sql", "bda701820882229c6b2a5241dd2f65067755f20f4405980ccc9850717d8be4c6"],
+]);
 const MANAGED_REALTIME_OWNERSHIP_DDL =
   /\b(?:ALTER\s+TABLE\s+realtime\.[A-Za-z_][A-Za-z0-9_]*\s+(?:ENABLE|DISABLE|FORCE|NO\s+FORCE)\s+ROW\s+LEVEL\s+SECURITY|(?:CREATE|DROP|ALTER)\s+POLICY\b[\s\S]{0,512}?\bON\s+realtime\.[A-Za-z_][A-Za-z0-9_]*)/iu;
 const SAFE_BOOTSTRAP_MIGRATIONS = new Set([
@@ -172,7 +178,13 @@ export function findMigrationCatalogProblems(
       );
     }
     const sourceWithoutLineComments = source.replace(/--[^\r\n]*/gu, "");
-    if (DIRECT_PRODUCTION_FUNCTION_TARGET.test(sourceWithoutLineComments)) {
+    const approvedNetworkHash = REVIEWED_DEALER_READY_NETWORK_MIGRATIONS.get(entry.name);
+    const exactReviewedNetworkBody = approvedNetworkHash !== undefined
+      && createHash("sha256").update(source.replace(/\r\n?/gu, "\n"), "utf8").digest("hex") === approvedNetworkHash;
+    if (approvedNetworkHash !== undefined && !exactReviewedNetworkBody) {
+      invalidFiles.push(`reviewed Dealer Ready network migration hash drift ${entry.name}`);
+    }
+    if (DIRECT_PRODUCTION_FUNCTION_TARGET.test(sourceWithoutLineComments) && !exactReviewedNetworkBody) {
       invalidFiles.push(
         `direct production function target in active migration ${entry.name}`,
       );
