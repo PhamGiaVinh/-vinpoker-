@@ -2,6 +2,9 @@
 -- Current-schema TEST only. Public producers and actual terminal-hand trigger.
 -- Direct void transition below tests the DB consumer, not the full finish RPC.
 BEGIN;
+\if :{?MOVE_NAME_CASE}
+SELECT set_config('test.move_name','true',true);
+\endif
 \if :{?TRACKER_BREAK_CASE}
 SELECT set_config('test.tracker_break_case','true',true);
 \else
@@ -60,6 +63,25 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
  r:=public.set_tracker_table_roster_seat_v2('f7290000-0000-4000-8000-000000000003',st,ss,ep,gen_random_uuid(),1,'Source TEST',20000);
  PERFORM pg_temp.assert_true((r->>'ok')::boolean,'source roster');
  SELECT entry_id INTO e FROM public.tournament_seats WHERE tournament_table_id=st AND is_active;
+ IF current_setting('test.move_name',true)='true' THEN
+  -- Leave an older nonblank image in exact-entry history, then clear the
+  -- current seat through the authenticated roster API before queuing.
+  token:=public.get_tracker_roster_snapshot_v1('f7290000-0000-4000-8000-000000000003',st,ss,ep)->'seats'->0->>'token';
+  PERFORM set_config('role','authenticated',true);
+  r:=public.set_tracker_table_roster_seat_v2('f7290000-0000-4000-8000-000000000003',st,ss,ep,gen_random_uuid(),1,'Source TEST',20000,
+   (SELECT player_id FROM public.tournament_seats WHERE entry_id=e AND is_active),true,'https://example.test/storage/v1/object/public/tournament-photos/f7290000-0000-4000-8000-000000000003/seat-avatars/deferred.png',token);
+  PERFORM set_config('role','none',true);
+  PERFORM pg_temp.assert_true(r->>'ok'='true','public source avatar replacement commits: '||r::text);
+  SELECT revision INTO sr FROM public.table_sessions WHERE id=ss;
+  r:=public.move_player_seat_v2(e,st,4,sr,sr,gen_random_uuid());
+  PERFORM pg_temp.assert_true(r->>'ok'='true','source moves leaving historical avatar evidence');
+  token:=public.get_tracker_roster_snapshot_v1('f7290000-0000-4000-8000-000000000003',st,ss,ep)->'seats'->3->>'token';
+  PERFORM set_config('role','authenticated',true);
+  r:=public.set_tracker_table_roster_seat_v2('f7290000-0000-4000-8000-000000000003',st,ss,ep,gen_random_uuid(),4,'Source TEST',20000,
+   (SELECT player_id FROM public.tournament_seats WHERE entry_id=e AND is_active),true,NULL,token);
+  PERFORM set_config('role','none',true);
+  PERFORM pg_temp.assert_true(r->>'ok'='true','public source avatar clear commits');
+ END IF;
  FOR i IN 1..2 LOOP
   SELECT control_epoch INTO ep FROM public.table_sessions WHERE id=ds;
   r:=public.set_tracker_table_roster_seat_v2('f7290000-0000-4000-8000-000000000003',dt,ds,ep,gen_random_uuid(),i,'Destination TEST '||i,20000);
@@ -128,6 +150,11 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
  ELSE
  RAISE NOTICE 'queue result: %', (SELECT jsonb_build_object('status',status,'reason',resolution_reason) FROM public.floor_pending_tracker_moves WHERE entry_id=e);
  PERFORM pg_temp.assert_true((SELECT status='applied' FROM public.floor_pending_tracker_moves WHERE entry_id=e),'queued move applies');
+ IF current_setting('test.move_name',true)='true' THEN
+ PERFORM pg_temp.assert_true((SELECT player_name='Source TEST' AND chip_count=20000 AND avatar_url IS NULL
+  FROM public.tournament_seats WHERE entry_id=e AND is_active),
+  'deferred move preserves exact-entry name and avatar clear at the real hand boundary');
+ END IF;
  IF current_setting('test.tracker_break_case')='true' THEN
   PERFORM pg_temp.assert_true((SELECT closed_at IS NOT NULL FROM public.table_sessions WHERE id=ss),'explicit Tracker break closes its source after move');
  ELSE

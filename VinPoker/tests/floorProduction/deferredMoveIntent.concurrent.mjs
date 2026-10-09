@@ -25,8 +25,10 @@ async function barrier(name,condition){
 for(const canonical of [false,true]) for(const breakFirst of [true,false]){
  const prefix=randomUUID().slice(0,8);
  let fixture=readFileSync('tests/floorProduction/deferredMoveIntent.pg17.sql','utf8');
- const marker=' SELECT revision INTO sr FROM public.table_sessions WHERE id=ss;';
- assert.ok(fixture.includes(marker));
+ // Unique stop after both rosters and active destination hand are prepared;
+ // source revision also appears in optional metadata tests above this point.
+ const marker=' SELECT revision INTO dr FROM public.table_sessions WHERE id=ds;';
+ assert.equal(fixture.split(marker).length,2,'fixture stop must be unique');
  fixture=fixture.replaceAll('f7290000',prefix).replace(marker,' RETURN;\n'+marker).replace('ROLLBACK;','COMMIT;');
  sql(fixture);
  const tour=`${prefix}-0000-4000-8000-000000000003`,actor=`${prefix}-0000-4000-8000-000000000001`;
