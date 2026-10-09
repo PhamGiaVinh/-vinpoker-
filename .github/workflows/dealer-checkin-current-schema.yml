@@ -162,6 +162,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -v CANCEL_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -v STALE_EPOCH_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
           node tests/floorProduction/deferredMoveIntent.concurrent.mjs
+          psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -v BAD_RECEIPT_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
       - name: OFF-at-commit true-overlap with isolated acquisition fixture (not live worker proof)
         working-directory: VinPoker
         run: |

@@ -22,6 +22,11 @@ SELECT set_config('test.stale_epoch_case','true',true);
 \else
 SELECT set_config('test.stale_epoch_case','false',true);
 \endif
+\if :{?BAD_RECEIPT_CASE}
+SELECT set_config('test.bad_receipt_case','true',true);
+\else
+SELECT set_config('test.bad_receipt_case','false',true);
+\endif
 CREATE FUNCTION pg_temp.assert_true(ok boolean,message text) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN IF ok IS NOT TRUE THEN RAISE EXCEPTION 'deferred_move_intent: %',message; END IF; END $$;
 INSERT INTO auth.users(id) VALUES('f7290000-0000-4000-8000-000000000001');
@@ -91,6 +96,9 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
   PERFORM pg_temp.assert_true((r->>'ok')::boolean,'queued move cancels through public RPC');
  ELSIF current_setting('test.stale_epoch_case')='true' THEN
   UPDATE public.table_sessions SET control_epoch=control_epoch+1 WHERE id=ss;
+ ELSIF current_setting('test.bad_receipt_case')='true' THEN
+  UPDATE public.table_operation_receipts SET result=jsonb_set(result,'{table_session_id}',to_jsonb(gen_random_uuid()::text))
+  WHERE actor_id='f7290000-0000-4000-8000-000000000001' AND operation_type='floor_break_table_v5';
  END IF;
  IF current_setting('test.real_finish_case')='true' THEN
   r:=public.record_hand('f7290000-0000-4000-8000-000000000003',dt,1,now(),
@@ -107,7 +115,7 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
  IF current_setting('test.cancel_case')='true' THEN
   PERFORM pg_temp.assert_true((SELECT status='cancelled' FROM public.floor_pending_tracker_moves WHERE id=e),'cancel remains terminal');
   PERFORM pg_temp.assert_true((SELECT closed_at IS NULL FROM public.table_sessions WHERE id=ss),'cancel does not close source');
- ELSIF current_setting('test.stale_epoch_case')='true' THEN
+ ELSIF current_setting('test.stale_epoch_case')='true' OR current_setting('test.bad_receipt_case')='true' THEN
   PERFORM pg_temp.assert_true((SELECT status='stale' AND resolution_reason='control_mode_changed' FROM public.floor_pending_tracker_moves WHERE entry_id=e),'stale epoch rejects move');
   PERFORM pg_temp.assert_true((SELECT closed_at IS NULL FROM public.table_sessions WHERE id=ss),'stale epoch does not close source');
  ELSE
@@ -121,7 +129,7 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
  END IF;
  END IF;
  PERFORM pg_temp.assert_true((SELECT (released_at IS NOT NULL)=
-   (current_setting('test.tracker_break_case')='true' AND current_setting('test.cancel_case')='false' AND current_setting('test.stale_epoch_case')='false')
+   (current_setting('test.tracker_break_case')='true' AND current_setting('test.cancel_case')='false' AND current_setting('test.stale_epoch_case')='false' AND current_setting('test.bad_receipt_case')='false')
    FROM public.dealer_assignments WHERE table_session_id=ss),'dealer released only by completed explicit break');
  PERFORM pg_temp.assert_true((SELECT sum(chip_count)=60000 FROM public.tournament_seats WHERE tournament_id='f7290000-0000-4000-8000-000000000003' AND is_active),'moves preserve all active chips');
 END $$;
