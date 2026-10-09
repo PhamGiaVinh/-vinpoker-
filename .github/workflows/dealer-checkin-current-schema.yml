@@ -42,6 +42,7 @@ on:
       - 'VinPoker/tests/floorProduction/openSessionNames.pg17.sql'
       - 'VinPoker/supabase/migrations/20270128000029_floor_deferred_break_intent_v1.sql'
       - 'VinPoker/tests/floorProduction/deferredMoveIntent*'
+      - 'VinPoker/tests/floorProduction/tableModeRequest.concurrent.mjs'
       - 'VinPoker/supabase/migrations/20270128000030_tracker_roster_intent_fence_v1.sql'
       - 'VinPoker/tests/floorProduction/trackerRoster*'
       - 'VinPoker/supabase/migrations/20270128000031_tournament_participation_current_scope_v1.sql'
@@ -206,6 +207,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -v CANCEL_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -v STALE_EPOCH_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
           node tests/floorProduction/deferredMoveIntent.concurrent.mjs
+          node tests/floorProduction/tableModeRequest.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -v BAD_RECEIPT_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
       - name: OFF-at-commit true-overlap with isolated acquisition fixture (not live worker proof)
         working-directory: VinPoker
