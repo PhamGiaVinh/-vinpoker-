@@ -14,7 +14,11 @@ describe("Hand #4 resume workflow contracts", () => {
     expect(load.match(/\.eq\("table_id", handTableId\)/g)).toHaveLength(2);
     expect(load).toContain("buildNextHandNumberRequest(tournamentId, handTableId)");
     expect(source).toContain("buildNextHandNumberRequest(tournamentId, targetHandTableId)");
-    const resume = source.slice(source.indexOf("const handleContinueOrphan ="), source.indexOf("const handleAutoResume ="));
+    const resumeStart = source.indexOf("const handleContinueOrphan =");
+    const resumeEnd = source.indexOf("// A5 resilience: an orphan hand");
+    expect(resumeStart).toBeGreaterThan(0);
+    expect(resumeEnd).toBeGreaterThan(resumeStart);
+    const resume = source.slice(resumeStart, resumeEnd);
     expect(resume).toContain('.eq("table_id", tournamentTableId ?? tableId)');
     const submit = source.slice(source.indexOf("const handleSubmitHand ="), source.indexOf("const handleVoid ="));
     expect(submit).toContain('.eq("table_id", tournamentTableId ?? tableId)');
