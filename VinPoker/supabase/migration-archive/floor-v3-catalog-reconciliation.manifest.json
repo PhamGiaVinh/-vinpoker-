@@ -7613,6 +7613,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000026",
+      "filename": "20270128000026_floor_open_session_name_integrity_v1.sql",
+      "sha256": "9195a9b61d1151375157c81015c2bbacc7917e732ea7f17f09f7713cdbf3ce8e",
+      "domain": "floor-table-control"
+    },
+    {
       "version": "20270128000025",
       "filename": "20270128000025_dealer_automatic_rest_history_fence_v1.sql",
       "sha256": "ce93618b571de95d92637d2d82fed24ab5169d5db0a9595ee169ae81d5afda0b",
