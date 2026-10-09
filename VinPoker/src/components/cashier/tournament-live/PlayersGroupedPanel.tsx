@@ -16,7 +16,7 @@ import { PlayerInfoSheet } from "./PlayerInfoSheet";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 import { ManualFloorBustConfirmDialog } from "./ManualFloorBustConfirmDialog";
-import { parseFloorTableControlMode } from "@/lib/floorTableControlMode";
+import { createFloorTableControlV3Client, type FloorTableControlV3Rpc, type FloorTournamentInventoryItem } from "@/lib/floorTableControlV3";
 import { floorOpsErrorMessage } from "@/lib/floorOpsErrors";
 import { RestoreBustDialog } from "./RestoreBustDialog";
 import { parseTournamentParticipation, type ParticipationSeat, type ParticipationEntry } from "@/lib/tournamentParticipation";
@@ -27,6 +27,8 @@ interface SeatRow {
   player_name: string;
   entry_number: number;
   table_id: string;
+  tournament_table_id: string | null;
+  table_session_id: string | null;
   table_name: string;
   seat_number: number;
   chip_count: number;
@@ -43,10 +45,14 @@ interface EntryRow {
   status: string;
 }
 
-interface TableControlRow {
-  id: string;
-  table_id: string;
-  floor_control_mode: unknown;
+const floorClient = createFloorTableControlV3Client(async (name, args) =>
+  await (supabase.rpc as unknown as FloorTableControlV3Rpc)(name, args));
+
+function exactSessionMode(seat: SeatRow, inventory: FloorTournamentInventoryItem[]) {
+  if (!seat.tournament_table_id || !seat.table_session_id) return null;
+  const matches = inventory.filter((table) => table.tournamentTableId === seat.tournament_table_id
+    && table.tableSessionId === seat.table_session_id && table.availabilityStatus === "current_tournament");
+  return matches.length === 1 ? matches[0].controlMode : null;
 }
 
 function responseError(data: unknown): string | null {
@@ -87,7 +93,7 @@ export function PlayersGroupedPanel({
   const [seats, setSeats] = useState<SeatRow[] | null>(null);
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [entryBySeat, setEntryBySeat] = useState<Record<string, string>>({});
-  const [tableControls, setTableControls] = useState<TableControlRow[] | null>(null);
+  const [tableControls, setTableControls] = useState<FloorTournamentInventoryItem[] | null>(null);
   const [canMove, setCanMove] = useState(false);
   const [loading, setLoading] = useState(false);
   const [group, setGroup] = useState<GroupKey>("playing");
@@ -124,14 +130,11 @@ export function PlayersGroupedPanel({
       const [participationRes, tablesRes] = await Promise.all([
         (supabase.rpc as unknown as (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>)(
           "get_tournament_participation_v1", { p_tournament_id: tid }),
-        supabase
-          .from("tournament_tables")
-          .select("id, table_id, floor_control_mode")
-          .eq("tournament_id", tid),
+        floorClient.getTournamentTableInventory(tid),
       ]);
       if (seq !== requestSeq.current || scopeRef.current !== scope) return;
       if (participationRes.error) throw new Error(participationRes.error.message);
-      if (tablesRes.error) throw tablesRes.error;
+      if (tablesRes.ok === false) throw new Error(tablesRes.error);
       const projection = parseTournamentParticipation(participationRes.data, tid);
       setSeats(projection.seats.filter((s) => s.participation_status === "seated").sort((a, b) => b.chip_count - a.chip_count));
       setAnomalySeats(projection.seats.filter((s) => s.participation_status === "anomaly"));
@@ -149,7 +152,7 @@ export function PlayersGroupedPanel({
         finished_place: e.finished_place ?? null,
         status: e.participation_status === "waiting" ? "registered" : "busted",
       })));
-      setTableControls((tablesRes.data ?? []) as TableControlRow[]);
+      setTableControls(tablesRes.data);
       setLoadedScope(scope);
       setLoadError(null);
     } catch (error) {
@@ -198,10 +201,7 @@ export function PlayersGroupedPanel({
 
   const selectedControlMode = useMemo(() => {
     if (!selected || !tableControls) return null;
-    const matches = tableControls.filter(
-      (table) => table.id === selected.table_id || table.table_id === selected.table_id,
-    );
-    return matches.length === 1 ? parseFloorTableControlMode(matches[0].floor_control_mode) : null;
+    return exactSessionMode(selected, tableControls);
   }, [selected, tableControls]);
   const selectedChipEditDisabledReason = selected
     ? !selectedControlMode
@@ -248,20 +248,14 @@ export function PlayersGroupedPanel({
 
   const requestBust = async (target: SeatRow | null, manualConfirmed = false) => {
     if (!target || scopeRef.current !== scope || !scopeReady || loading || loadError) return;
-    const { data, error } = await supabase
-      .from("tournament_tables")
-      .select("id, table_id, floor_control_mode")
-      .eq("tournament_id", tid);
+    const inventory = await floorClient.getTournamentTableInventory(tid);
     if (scopeRef.current !== scope) return;
-    if (error) {
+    if (inventory.ok === false) {
       toast.error("Không xác minh được chế độ bàn. Hãy tải lại trước khi loại.");
       return;
     }
-    const tableMatches = ((data ?? []) as { id: string; table_id: string; floor_control_mode: unknown }[])
-      .filter((candidate) => candidate.id === target.table_id || candidate.table_id === target.table_id);
-    const table = tableMatches.length === 1 ? tableMatches[0] : null;
-    const mode = parseFloorTableControlMode(table?.floor_control_mode);
-    if (!table || !mode) {
+    const mode = exactSessionMode(target, inventory.data);
+    if (!mode) {
       toast.error("Không xác minh được chế độ bàn. Hãy tải lại trước khi loại.");
       return;
     }
