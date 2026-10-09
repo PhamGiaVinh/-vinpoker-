@@ -7613,6 +7613,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000034",
+      "filename": "20270128000034_floor_move_wrapper_receipt_v1.sql",
+      "sha256": "e8ca3398d34977fca7d4faec08ad144473829af6d747210ac69b3a534fb99082",
+      "domain": "floor-move-wrapper-receipt"
+    },
+    {
       "version": "20270128000033",
       "filename": "20270128000033_tournament_seat_move_tuple_v1.sql",
       "sha256": "7fa5d62f4188e596da9edd936716508b6d6d5355282b6754c77b7930f2489685",

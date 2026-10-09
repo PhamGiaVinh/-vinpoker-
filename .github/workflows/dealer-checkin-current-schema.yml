@@ -172,6 +172,10 @@ jobs:
           node tests/floorProduction/seatDisplayRollback.currentSchema.mjs
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000033_tournament_seat_move_tuple_v1.sql
           node tests/floorProduction/seatMoveTupleRollback.currentSchema.mjs
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000034_floor_move_wrapper_receipt_v1.sql
+          node tests/floorProduction/moveWrapperReceiptRollback.currentSchema.mjs
+          MOVE_WRAPPER_RECEIPT_CASE=1 node tests/floorProduction/trackerRosterIntent.concurrent.mjs
+          psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -v WRAPPER_RECEIPT_CASE=1 -v CLOSED_SESSION_READ_CASE=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -v CLOSED_SESSION_READ_CASE=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -v TRACKER_BREAK_CASE=1 -v REAL_FINISH_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql

@@ -33,6 +33,9 @@ SELECT set_config('test.closed_session_read','true',true);
 \if :{?MOVE_NAME_CASE}
 SELECT set_config('test.move_name','true',true);
 \endif
+\if :{?WRAPPER_RECEIPT_CASE}
+SELECT set_config('test.wrapper_receipt','true',true);
+\endif
 DO $$ DECLARE opened jsonb; old_table uuid; old_session uuid; current_table uuid; current_session uuid; result jsonb; epoch bigint; token text; BEGIN
  opened:=public.floor_open_tournament_table_v3('f7280000-0000-4000-8000-000000000003','f7280000-0000-4000-8000-000000000011','manual','f7280000-0000-4000-8000-000000000051');
  PERFORM pg_temp.assert_true((opened->>'ok')::boolean,'first session opens');
@@ -121,8 +124,13 @@ DO $$ DECLARE opened jsonb; old_table uuid; old_session uuid; current_table uuid
      WHERE entry_id=moving_entry AND is_active;
     SELECT revision INTO moving_revision FROM public.table_sessions WHERE id=current_session;
     PERFORM set_config('role','authenticated',true);
-    move_result:=public.move_player_seat_v2(moving_entry,current_table,3,
-     moving_revision,moving_revision,'f7280000-0000-4000-8000-000000000081');
+    IF current_setting('test.wrapper_receipt',true)='true' THEN
+     move_result:=public.move_player_seat_v3(moving_entry,current_table,3,
+      moving_revision,moving_revision,'f7280000-0000-4000-8000-000000000081');
+    ELSE
+     move_result:=public.move_player_seat_v2(moving_entry,current_table,3,
+      moving_revision,moving_revision,'f7280000-0000-4000-8000-000000000081');
+    END IF;
     PERFORM set_config('role','none',true);
     PERFORM pg_temp.assert_true(move_result->>'ok'='true','named manual entry moves through authenticated public writer');
     PERFORM pg_temp.assert_true((SELECT table_id=current_table
@@ -139,13 +147,67 @@ DO $$ DECLARE opened jsonb; old_table uuid; old_session uuid; current_table uuid
      FROM public.tournament_seats WHERE id=(move_result->>'seat_id')::uuid),
      'move preserves canonical entry display name and chip evidence');
     PERFORM set_config('role','authenticated',true);
-    result:=public.move_player_seat_v2(moving_entry,current_table,3,
-     moving_revision,moving_revision,'f7280000-0000-4000-8000-000000000081');
+    IF current_setting('test.wrapper_receipt',true)='true' THEN
+     result:=public.move_player_seat_v3(moving_entry,current_table,3,
+      moving_revision,moving_revision,'f7280000-0000-4000-8000-000000000081');
+    ELSE
+     result:=public.move_player_seat_v2(moving_entry,current_table,3,
+      moving_revision,moving_revision,'f7280000-0000-4000-8000-000000000081');
+    END IF;
     PERFORM set_config('role','none',true);
     PERFORM pg_temp.assert_true(result=move_result,'named move replay returns original receipt after revision advances');
-    result:=public.move_player_seat_v2(moving_entry,current_table,4,
-     moving_revision,moving_revision,'f7280000-0000-4000-8000-000000000081');
+    PERFORM set_config('role','authenticated',true);
+    IF current_setting('test.wrapper_receipt',true)='true' THEN
+     result:=public.move_player_seat_v3(moving_entry,current_table,4,
+      moving_revision,moving_revision,'f7280000-0000-4000-8000-000000000081');
+    ELSE
+     result:=public.move_player_seat_v2(moving_entry,current_table,4,
+      moving_revision,moving_revision,'f7280000-0000-4000-8000-000000000081');
+    END IF;
+    PERFORM set_config('role','none',true);
     PERFORM pg_temp.assert_true(result->>'error'='IDEMPOTENCY_CONFLICT','named move key cannot change destination');
+    IF current_setting('test.wrapper_receipt',true)='true' THEN
+     SELECT entry_id INTO second_entry FROM public.tournament_seats
+      WHERE table_session_id=current_session AND seat_number=2 AND is_active;
+     PERFORM set_config('role','authenticated',true);
+     result:=public.move_player_seat_v3(second_entry,current_table,3,moving_revision,moving_revision,
+      'f7280000-0000-4000-8000-000000000081');
+     PERFORM set_config('role','none',true);
+     PERFORM pg_temp.assert_true(result->>'error'='IDEMPOTENCY_CONFLICT','wrapper key binds entry identity');
+     PERFORM set_config('role','authenticated',true);
+     result:=public.move_player_seat_v3(moving_entry,current_table,3,moving_revision+1,moving_revision,
+      'f7280000-0000-4000-8000-000000000081');
+     PERFORM set_config('role','none',true);
+     PERFORM pg_temp.assert_true(result->>'error'='IDEMPOTENCY_CONFLICT','wrapper key binds expected revisions');
+     PERFORM set_config('role','authenticated',true);
+     result:=public.move_player_seat_v3(NULL,current_table,3,moving_revision,moving_revision,
+      'f7280000-0000-4000-8000-000000000081');
+     PERFORM set_config('role','none',true);
+     PERFORM pg_temp.assert_true(result->>'ok'='false','null entry cannot retrieve prior successful receipt');
+     INSERT INTO public.table_session_seat_locks(tournament_id,tournament_table_id,table_session_id,seat_number,reason,locked_by)
+      VALUES('f7280000-0000-4000-8000-000000000003',current_table,current_session,3,'Replay TEST lock',
+       'f7280000-0000-4000-8000-000000000001');
+     PERFORM set_config('role','authenticated',true);
+     result:=public.move_player_seat_v3(moving_entry,current_table,3,moving_revision,moving_revision,
+      'f7280000-0000-4000-8000-000000000081');
+     PERFORM set_config('role','none',true);
+     PERFORM pg_temp.assert_true(result=move_result,'valid replay survives later destination lock');
+     PERFORM set_config('role','authenticated',true);
+     result:=public.move_player_seat_v3(moving_entry,current_table,3,moving_revision,moving_revision,gen_random_uuid());
+     PERFORM set_config('role','none',true);
+     PERFORM pg_temp.assert_true(result->>'error'='seat_locked','new intent still enforces destination lock');
+     UPDATE public.table_session_seat_locks SET unlocked_at=now(),unlocked_by='f7280000-0000-4000-8000-000000000001'
+      WHERE table_session_id=current_session AND seat_number=3;
+     PERFORM set_config('request.jwt.claim.sub','f7280000-0000-4000-8000-000000000099',true);
+     PERFORM set_config('role','authenticated',true);
+     result:=public.move_player_seat_v3(moving_entry,current_table,3,moving_revision,moving_revision,
+      'f7280000-0000-4000-8000-000000000081');
+     PERFORM set_config('role','none',true);
+     PERFORM set_config('request.jwt.claim.sub','f7280000-0000-4000-8000-000000000001',true);
+     PERFORM pg_temp.assert_true(result->>'ok'='false','other actor cannot reuse owner receipt');
+     PERFORM pg_temp.assert_true((SELECT count(*)=1 AND bool_and(chip_count=20000 AND seat_number=3)
+      FROM public.tournament_seats WHERE entry_id=moving_entry AND is_active),'receipt checks do not mutate seat or stack');
+    END IF;
     -- Simulate the already-live blank destination, without changing history.
     UPDATE public.tournament_seats SET player_name='' WHERE id=(move_result->>'seat_id')::uuid;
     result:=public.get_tournament_participation_v1('f7280000-0000-4000-8000-000000000003');
