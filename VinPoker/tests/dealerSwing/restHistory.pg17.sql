@@ -82,8 +82,8 @@ INSERT INTO public.dealers(id,club_id,full_name,status)
 VALUES('e1700000-0000-4000-8000-000000000051','e1700000-0000-4000-8000-000000000002','Rested incoming TEST','active');
 INSERT INTO public.dealer_attendance(id,dealer_id,shift_id,shift_date,status,check_in_time,current_state,last_released_at)
 VALUES('e1700000-0000-4000-8000-000000000061','e1700000-0000-4000-8000-000000000051','e1700000-0000-4000-8000-000000000030',current_date,'checked_in',now()-interval '2 hours','available',NULL);
-INSERT INTO public.dealer_assignments(id,table_id,attendance_id,dealer_id,club_id,status,assigned_at,updated_at)
-VALUES('e1700000-0000-4000-8000-000000000071','e1700000-0000-4000-8000-000000000012','e1700000-0000-4000-8000-000000000061',NULL,'e1700000-0000-4000-8000-000000000002','on_break',now()-interval '60 minutes',now()-interval '20 minutes');
+INSERT INTO public.dealer_assignments(id,table_id,attendance_id,dealer_id,club_id,status,assigned_at,updated_at,rest_history_work_started_at)
+VALUES('e1700000-0000-4000-8000-000000000071','e1700000-0000-4000-8000-000000000012','e1700000-0000-4000-8000-000000000061',NULL,'e1700000-0000-4000-8000-000000000002','on_break',now()-interval '60 minutes',now()-interval '19 minutes 59 seconds',now()-interval '60 minutes');
 INSERT INTO public.dealer_breaks(assignment_id,break_start,break_end,expected_duration_minutes,reason)
 VALUES('e1700000-0000-4000-8000-000000000071',now()-interval '20 minutes',now()-interval '5 minutes',15,'auto_break_on_swing');
 SET LOCAL ROLE service_role;

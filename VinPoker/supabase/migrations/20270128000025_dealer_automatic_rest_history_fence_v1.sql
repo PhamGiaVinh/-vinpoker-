@@ -4,6 +4,9 @@
 -- ROLLBACK: keep auto Swing OFF; drop only guard_dealer_automatic_rest_history_v1.
 -- Preserve every assignment, receipt and ledger. Requires migrations 22 and 23.
 BEGIN;
+-- Immutable work-generation boundary; generic updated_at is NOT a lifecycle clock.
+-- Legacy NULL is deliberately unproven and falls back to the actual release.
+ALTER TABLE public.dealer_assignments ADD COLUMN IF NOT EXISTS rest_history_work_started_at timestamptz;
 CREATE OR REPLACE FUNCTION floor_private.guard_dealer_automatic_rest_history()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $function$
 DECLARE v_acquiring boolean; v_headers jsonb; v_marker timestamptz; v_actual timestamptz; v_active boolean; v_dealer uuid;
@@ -15,7 +18,8 @@ BEGIN
     IF OLD.status='on_break' AND OLD.released_at IS NULL
       AND NEW.status='completed' AND NEW.released_at IS NOT NULL
       AND EXISTS(SELECT 1 FROM public.dealer_breaks b WHERE b.assignment_id=OLD.id
-        AND b.break_start>=COALESCE(OLD.updated_at,OLD.assigned_at)
+        AND OLD.rest_history_work_started_at IS NOT NULL
+        AND b.break_start>=OLD.rest_history_work_started_at
         AND b.break_start<=NEW.released_at) THEN
       NEW.release_reason:='rest_history_verified_break_cleanup_v1';
     ELSIF NEW.status='assigned' OR (NEW.status='completed' AND OLD.status<>'on_break') THEN
@@ -31,6 +35,7 @@ BEGIN
     -- Filling a NULL denormalized dealer_id for the SAME attendance is not new work.
   END IF;
   IF NOT v_acquiring THEN RETURN NEW; END IF;
+  NEW.rest_history_work_started_at:=pg_catalog.now();
   -- Verify manual authority before deciding whether the existing manual override applies.
   PERFORM floor_private.assert_dealer_acquisition_intent(NEW.club_id);
   v_headers:=COALESCE(NULLIF(pg_catalog.current_setting('request.headers',true),''),'{}')::jsonb;
@@ -55,6 +60,7 @@ BEGIN
     LEFT JOIN LATERAL (
       SELECT max(db.break_start) AS work_ended_at FROM public.dealer_breaks db
       WHERE db.assignment_id=a.id AND db.break_start>=a.assigned_at
+        AND db.break_start>=a.rest_history_work_started_at
         AND db.break_start<=a.released_at
     ) b ON true
     WHERE a.attendance_id=NEW.attendance_id AND (a.dealer_id IS NULL OR a.dealer_id=v_dealer)
