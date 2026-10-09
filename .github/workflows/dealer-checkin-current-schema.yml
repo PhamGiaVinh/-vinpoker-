@@ -40,6 +40,8 @@ on:
       - 'VinPoker/tests/dealerSwing/restHistory*'
       - 'VinPoker/supabase/migrations/20270128000026_floor_open_session_name_integrity_v1.sql'
       - 'VinPoker/tests/floorProduction/openSessionNames.pg17.sql'
+      - 'VinPoker/supabase/migrations/20270128000029_floor_deferred_break_intent_v1.sql'
+      - 'VinPoker/tests/floorProduction/deferredMoveIntent*'
       - 'VinPoker/supabase/migrations/20270128000027_tracker_equal_blinds_contract_v1.sql'
       - 'VinPoker/tests/floorProduction/equalBlinds.pg17.sql'
       - 'VinPoker/src/lib/tournament/readBlindLineage.ts'
@@ -153,6 +155,14 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/equalBlinds.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000028_tracker_roster_exact_session_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000029_floor_deferred_break_intent_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -v REAL_FINISH_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -v CANCEL_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -v STALE_EPOCH_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
+          node tests/floorProduction/deferredMoveIntent.concurrent.mjs
+          psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -v BAD_RECEIPT_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
       - name: OFF-at-commit true-overlap with isolated acquisition fixture (not live worker proof)
         working-directory: VinPoker
         run: |

@@ -7613,6 +7613,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000029",
+      "filename": "20270128000029_floor_deferred_break_intent_v1.sql",
+      "sha256": "c056e7b0179e6bcb4f2d05f39a9f67fe5fea7ceb11e3bfb92120a0bf4be697ac",
+      "domain": "floor-deferred-break-intent"
+    },
+    {
       "version": "20270128000028",
       "filename": "20270128000028_tracker_roster_exact_session_v1.sql",
       "sha256": "06501440d7a3a66debf55e5b9eb5739ef64a27919726c285e676099aeabf77b2",
