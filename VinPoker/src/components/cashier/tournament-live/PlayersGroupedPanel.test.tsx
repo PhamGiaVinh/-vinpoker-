@@ -45,6 +45,82 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("participation operator panel", () => {
+  it.each(["42501", "PGRST301", "PGRST302", "PGRST303"])("clears previously readable rows for primary access error %s", async (code) => {
+    const view = render(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={0} />);
+    await screen.findByText("Current a");
+    state.read.mockResolvedValue({ data: null, error: { message: "Permission denied", code } });
+    view.rerender(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={1} />);
+    await screen.findByRole("alert");
+    expect(screen.queryByText("Current a")).toBeNull();
+  });
+  it("preserves same-scope last-good rows as stale on transient primary read failure", async () => {
+    const view = render(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={0} />);
+    await screen.findByText("Current a");
+    state.read.mockResolvedValue({ data: null, error: { message: "503", code: "PGRST002" } });
+    view.rerender(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={1} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("participation.stale");
+    expect(screen.getByText("Current a").closest("button")).toBeDisabled();
+  });
+  it("keeps authorized rows while rejecting malformed inventory as action authority", async () => {
+    state.inventory.mockResolvedValue({ data: [{ bad: true }], error: null });
+    render(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={0} />);
+    expect((await screen.findByText("Current a")).closest("button")).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("thao tác tạm khóa");
+  });
+  it("keeps viewer data without granting Floor authority when inventory is denied", async () => {
+    state.rpc.mockImplementation((name: string, args: { p_tournament_id: string }) => name === "get_my_floor_operator_scope"
+      ? Promise.resolve({ data: [], error: null }) : name === "get_floor_tournament_table_inventory_v1"
+        ? state.inventory(args.p_tournament_id) : state.read(args.p_tournament_id));
+    state.inventory.mockResolvedValue({ data: null, error: { message: "Permission denied", code: "42501" } });
+    render(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={0} />);
+    expect((await screen.findByText("Current a")).closest("button")).toBeDisabled();
+    expect(state.invoke).not.toHaveBeenCalled();
+    expect(state.from).not.toHaveBeenCalled();
+  });
+  it("refreshes readable participation while invalidating previously valid table authority", async () => {
+    const view = render(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={0} />);
+    expect((await screen.findByText("Current a")).closest("button")).toBeEnabled();
+    state.inventory.mockResolvedValue({ data: null, error: { message: "503" } });
+    state.read.mockResolvedValue({ data: { ...projection("a"), seats: projection("a").seats.map(s => ({ ...s, chip_count: 19000 })) }, error: null });
+    view.rerender(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={1} />);
+    await screen.findByRole("alert");
+    expect((screen.getByText("Current a")).closest("button")).toBeDisabled();
+    expect(screen.getByText("19.000")).toBeInTheDocument();
+    expect(state.invoke).not.toHaveBeenCalled();
+  });
+  it("never displays successful inventory as participation when the primary read is denied", async () => {
+    state.read.mockResolvedValue({ data: null, error: { message: "42501", code: "42501" } });
+    render(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={0} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("participation.loadError");
+    expect(screen.queryByText("Current a")).toBeNull();
+  });
+  it("does not reuse rows or authority for a different account with a failed read", async () => {
+    const view = render(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={0} />);
+    await screen.findByText("Current a");
+    state.user = { id: "other" };
+    state.read.mockResolvedValue({ data: null, error: { message: "503" } });
+    view.rerender(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={1} />);
+    await screen.findByRole("alert");
+    expect(screen.queryByText("Current a")).toBeNull();
+    expect(state.invoke).not.toHaveBeenCalled();
+  });
+  it("does not reuse rows for a changed club even when tournament ID is unchanged", async () => {
+    const view = render(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={0} />);
+    await screen.findByText("Current a");
+    state.read.mockResolvedValue({ data: null, error: { message: "503" } });
+    view.rerender(<PlayersGroupedPanel tournament={{ ...tour("a"), club_id: "other-club" }} refreshTrigger={1} />);
+    await screen.findByRole("alert");
+    expect(screen.queryByText("Current a")).toBeNull();
+  });
+  it.each(["503", "42501"])("keeps successful participation readable but disables actions when inventory returns %s", async (message) => {
+    state.inventory.mockResolvedValue({ data: null, error: { message } });
+    render(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={0} />);
+    const row = (await screen.findByText("Current a")).closest("button")!;
+    expect(row).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Không xác minh được trạng thái bàn");
+    expect(screen.getByRole("button", { name: /Đang chơi 1/ })).toBeInTheDocument();
+    expect(state.invoke).not.toHaveBeenCalled();
+  });
   it("rechecks canonical mode before bust rather than trusting displayed Manual", async () => {
     state.inventory.mockResolvedValueOnce({ data: [table()], error: null })
       .mockResolvedValueOnce({ data: [table({ control_mode: "tracker", control_epoch: 3 })], error: null });
@@ -86,7 +162,7 @@ describe("participation operator panel", () => {
   it("does not turn an inventory read failure into Manual authority", async () => {
     state.inventory.mockResolvedValue({ data: null, error: { message: "503" } });
     render(<PlayersGroupedPanel tournament={tour("a")} refreshTrigger={0} />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("participation.loadError");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không xác minh được trạng thái bàn");
     expect(screen.queryByRole("button", { name: /Sửa chip/ })).toBeNull();
   });
   it("does not permit chip editing from legacy Manual when the exact session is Tracker", async () => {
