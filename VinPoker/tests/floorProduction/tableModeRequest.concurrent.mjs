@@ -44,7 +44,7 @@ function fixture() {
   const session = sql(`SELECT table_session_id FROM public.tournament_tables WHERE id='${table}';`);
   assert.match(table, /^[0-9a-f-]{36}$/);
   assert.match(session, /^[0-9a-f-]{36}$/);
-  return {actor, tour, table, session};
+  return {actor, club, tour, physical, table, session};
 }
 function request(f, target, key, revision, epoch) {
   return `SELECT set_config('request.jwt.claim.sub','${f.actor}',true);
@@ -81,6 +81,23 @@ for (const sameKey of [true, false]) {
   assert.equal(sql(`SELECT count(*) FROM public.table_operation_receipts WHERE actor_id='${foreign.actor}' AND operation_type='floor_request_table_control_mode_v4';`), '0');
 }
 assert.equal(sql(`SELECT has_function_privilege('anon','public.floor_request_table_control_mode_v4(uuid,uuid,text,bigint,bigint,uuid)','EXECUTE');`), 'f');
+for (const cancelFirst of [true, false]) {
+  const f = fixture(), config = randomUUID();
+  sql(`INSERT INTO public.tracker_voice_configs(id,club_id,tournament_id,tournament_table_id,physical_table_id,table_session_id,correction_state)
+    VALUES('${config}','${f.club}','${f.tour}','${f.table}','${f.physical}','${f.session}','correction_pending');`);
+  const [revision, epoch] = sql(`SELECT revision||','||control_epoch FROM public.table_sessions WHERE id='${f.session}';`).split(',');
+  const queued = sql(`BEGIN; ${request(f, 'tracker', randomUUID(), revision, epoch)} COMMIT;`);
+  assert.match(queued, /"outcome": "pending"/);
+  assert.match(queued, /correction_pending/);
+  const pending = sql(`SELECT id FROM floor_private.table_mode_requests_v1 WHERE table_session_id='${f.session}' AND status='pending';`);
+  const cancel = `SELECT set_config('request.jwt.claim.sub','${f.actor}',true); SELECT public.floor_cancel_table_control_mode_request_v1('${f.table}','${f.session}','${pending}');`;
+  // Isolated blocker-resolution consumer, not proof of the correction RPC itself.
+  const clear = `UPDATE public.tracker_voice_configs SET correction_state='ready' WHERE id='${config}'; SET CONSTRAINTS ALL IMMEDIATE;`;
+  const [a, b] = await overlap(cancelFirst ? cancel : clear, cancelFirst ? clear : cancel);
+  assert.match((cancelFirst ? a : b).out, cancelFirst ? /"outcome": "cancelled"/ : /request_not_pending/);
+  assert.equal(sql(`SELECT status FROM floor_private.table_mode_requests_v1 WHERE id='${pending}';`), cancelFirst ? 'cancelled' : 'applied');
+  assert.equal(sql(`SELECT control_mode FROM public.table_sessions WHERE id='${f.session}';`), cancelFirst ? 'manual' : 'tracker');
+}
 for (const canonical of [false, true]) for (const cancelFirst of [true, false]) {
   const f = fixture();
   let hand = randomUUID();
@@ -126,4 +143,22 @@ for (const canonical of [false, true]) for (const cancelFirst of [true, false]) 
     assert.equal(sql(`SELECT chip_count FROM public.tournament_seats WHERE table_session_id='${f.session}' AND is_active AND seat_number=1;`), '20100');
   }
 }
-console.log('TABLE_MODE_REQUEST_TRUE_OVERLAP_PASS (request/replay/stale; cancel versus terminal consumer AND canonical record_hand, both orderings)');
+{
+  const f = fixture();
+  sql(`INSERT INTO public.tracker_voice_configs(club_id,tournament_id,tournament_table_id,physical_table_id,table_session_id,correction_state)
+    VALUES('${f.club}','${f.tour}','${f.table}','${f.physical}','${f.session}','correction_pending');`);
+  const [revision, epoch] = sql(`SELECT revision||','||control_epoch FROM public.table_sessions WHERE id='${f.session}';`).split(',');
+  assert.match(sql(`BEGIN; ${request(f, 'tracker', randomUUID(), revision, epoch)} COMMIT;`), /"outcome": "pending"/);
+  const closed = sql(`BEGIN; SELECT set_config('request.jwt.claim.sub','${f.actor}',true);
+    SELECT public.close_tournament_table_v4('${f.table}',${revision},gen_random_uuid()); COMMIT;`);
+  assert.match(closed, /"ok": true/);
+  assert.equal(sql(`SELECT status FROM floor_private.table_mode_requests_v1 WHERE table_session_id='${f.session}';`), 'expired');
+  assert.match(sql(`BEGIN; SELECT set_config('request.jwt.claim.sub','${f.actor}',true);
+    SELECT public.floor_open_tournament_table_v3('${f.tour}','${f.physical}','manual',gen_random_uuid()); COMMIT;`), /"ok": true/);
+  const reopened = sql(`SELECT table_session_id FROM public.tournament_tables WHERE tournament_id='${f.tour}' AND status='active';`);
+  assert.notEqual(reopened, f.session);
+  assert.equal(sql(`SELECT control_mode FROM public.table_sessions WHERE id='${reopened}';`), 'manual');
+  assert.equal(sql(`SELECT count(*) FROM floor_private.table_mode_requests_v1 WHERE table_session_id='${reopened}';`), '0');
+  assert.match(sql(`BEGIN; ${request(f, 'tracker', randomUUID(), revision, epoch)} COMMIT;`), /table_session_mismatch/);
+}
+console.log('TABLE_MODE_REQUEST_TRUE_OVERLAP_PASS (receipt/tenant/stale; cancel versus correction/terminal/canonical finish; close/reopen request expiry)');
