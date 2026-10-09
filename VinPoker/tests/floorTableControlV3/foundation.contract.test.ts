@@ -66,7 +66,7 @@ describe("Floor Table Control V3 additive foundation", () => {
   });
 
   it("uses a disposable PostgreSQL 17 suite with no production connection", () => {
-    expect(workflow).toContain("image: postgres:17");
+    expect(workflow).toContain("image: public.ecr.aws/docker/library/postgres@sha256:3cec7eb015ba8adb28139fa5c83b8489cdf0e666e53dfdf20f598ae0cc8739e3");
     expect(workflow).toContain("tests/floorTableControlV3/disposableDb.foundation.sql");
     expect(workflow).not.toMatch(/db push|functions deploy|vercel --prod|orlesggcjamwuknxwcpk/i);
     expect(disposable).toContain("FLOOR_TABLE_CONTROL_V3_FOUNDATION_DISPOSABLE_PASS");
