@@ -7613,6 +7613,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000036",
+      "filename": "20270128000036_floor_manual_entry_roundtrip_v1.sql",
+      "sha256": "306474110038315a5477b5e712067c831003b26cec60fc34375896c87baa05d5",
+      "domain": "floor-manual-entry-roundtrip"
+    },
+    {
       "version": "20270128000035",
       "filename": "20270128000035_tournament_seat_assign_integrity_v1.sql",
       "sha256": "18161246d73dc4e7aefb9d42665b5d168bd804b9b8ae63799b94d6e734ee6131",

@@ -90,6 +90,7 @@ if(process.env.ASSIGN_PARTICIPATION_CASE==='1')for(const variant of ['replay','c
  const tour=`${prefix}-0000-4000-8000-000000000003`,actor=`${prefix}-0000-4000-8000-000000000001`;
  const entry=`${prefix}-0000-4000-8000-000000000031`;
  let fixture=readFileSync('tests/floorProduction/assignParticipation.pg17.sql','utf8').split('DO $$ DECLARE opened')[0];
+ if(process.env.MANUAL_ASSIGN_CASE==='1')fixture=fixture.replace('\\set manual_entry false','\\set manual_entry true');
  assert.ok(fixture.includes('INSERT INTO public.tournament_entries'));
  fixture=fixture.replaceAll('f7350000',prefix).replaceAll('ASSIGN-PARTICIPATION-TEST',`ASSIGN-PARTICIPATION-${prefix}`);
  sql(fixture+`SET LOCAL ROLE authenticated;
@@ -114,3 +115,31 @@ if(process.env.ASSIGN_PARTICIPATION_CASE==='1')for(const variant of ['replay','c
  assert.equal(sql(`SELECT revision FROM public.table_sessions WHERE id='${session}';`),String(Number(rev)+1));
 }
 if(process.env.ASSIGN_PARTICIPATION_CASE==='1')console.log('ASSIGN_PARTICIPATION_TRUE_OVERLAP_PASS');
+
+if(process.env.MANUAL_FREE_SIT_OVERLAP==='1')for(const variant of ['replay','assign']){
+ const prefix=randomUUID().slice(0,8),actor=`${prefix}-0000-4000-8000-000000000001`;
+ const tour=`${prefix}-0000-4000-8000-000000000003`,entry=`${prefix}-0000-4000-8000-000000000031`;
+ let fixture=readFileSync('tests/floorProduction/assignParticipation.pg17.sql','utf8').split('DO $$ DECLARE opened')[0];
+ fixture=fixture.replaceAll('f7350000',prefix).replace('\\set manual_entry false','\\set manual_entry true');
+ sql(fixture+`SET LOCAL ROLE authenticated; SELECT public.floor_open_tournament_table_v3('${tour}','${prefix}-0000-4000-8000-000000000011','manual','${randomUUID()}');COMMIT;`);
+ const tt=sql(`SELECT id FROM public.tournament_tables WHERE tournament_id='${tour}' AND status='active';`);
+ const session=sql(`SELECT table_session_id FROM public.tournament_tables WHERE id='${tt}';`);
+ const actorSql=`SELECT set_config('request.jwt.claim.sub','${actor}',true);SET LOCAL ROLE authenticated;`;
+ let rev=sql(`SELECT revision FROM public.table_sessions WHERE id='${session}';`);
+ assert.match(sql(`BEGIN;${actorSql} SELECT public.floor_assign_entry_to_seat_v4('${entry}','${tt}',1,${rev},'${randomUUID()}');COMMIT;`),/"ok": true/);
+ rev=sql(`SELECT revision FROM public.table_sessions WHERE id='${session}';`);
+ const epoch=sql(`SELECT control_epoch FROM public.table_sessions WHERE id='${session}';`),key=randomUUID();
+ const release=`${actorSql} SELECT public.floor_free_sit_player_v1('${entry}',${rev},${epoch},20000,'${key}','overlap TEST');`;
+ const a=tx(`free_a_${prefix}`,release,true);
+ await barrier(`free_a_${prefix}`,"state='idle in transaction'");
+ const b=tx(`free_b_${prefix}`,variant==='replay'?release:`${actorSql} SELECT public.floor_assign_entry_to_seat_v4('${entry}','${tt}',2,${rev},'${randomUUID()}');`,false);
+ await barrier(`free_b_${prefix}`,"wait_event_type='Lock'");a.commit();
+ const [first,second]=await Promise.all([a.result,b.result]);
+ assert.equal(first.code,0,first.error);assert.match(first.out,/"ok": true/);
+ assert.equal(second.code,0,second.error);
+ if(variant==='replay')assert.equal(second.out,first.out);else assert.match(second.out,/STALE_STATE/);
+ assert.equal(sql(`SELECT count(*) FROM public.tournament_seats WHERE entry_id='${entry}' AND is_active;`),'0');
+ assert.equal(sql(`SELECT status||':'||current_stack FROM public.tournament_entries WHERE id='${entry}';`),'registered:20000');
+ assert.equal(sql(`SELECT revision FROM public.table_sessions WHERE id='${session}';`),String(Number(rev)+1));
+}
+if(process.env.MANUAL_FREE_SIT_OVERLAP==='1')console.log('MANUAL_FREE_SIT_ASSIGN_TRUE_OVERLAP_PASS');

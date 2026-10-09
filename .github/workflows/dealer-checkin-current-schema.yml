@@ -48,6 +48,8 @@ on:
       - 'VinPoker/supabase/migrations/20270128000032_tournament_seat_display_preservation_v1.sql'
       - 'VinPoker/supabase/migrations/20270128000033_tournament_seat_move_tuple_v1.sql'
       - 'VinPoker/supabase/migrations/20270128000035_tournament_seat_assign_integrity_v1.sql'
+      - 'VinPoker/supabase/migrations/20270128000036_floor_manual_entry_roundtrip_v1.sql'
+      - 'VinPoker/tests/floorProduction/manualEntryRollback.currentSchema.mjs'
       - 'VinPoker/tests/floorProduction/assignParticipation.pg17.sql'
       - 'VinPoker/tests/floorProduction/assignIntegrityRollback.currentSchema.mjs'
       - 'VinPoker/tests/floorProduction/participationTv.concurrent.mjs'
@@ -185,9 +187,15 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -v free_sit_roundtrip=true -f tests/floorProduction/assignParticipation.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v seed_chip_projection=true -v projection_stack=20001 -f tests/floorProduction/assignParticipation.pg17.sql
           node tests/floorProduction/assignIntegrityRollback.currentSchema.mjs
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000036_floor_manual_entry_roundtrip_v1.sql
+          node tests/floorProduction/manualEntryRollback.currentSchema.mjs
+          psql -X -v ON_ERROR_STOP=1 -v manual_entry=true -v free_sit_roundtrip=true -v locked_seat_case=true -f tests/floorProduction/assignParticipation.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v manual_entry=true -v free_sit_roundtrip=true -v locked_seat_case=true -v table_mode=tracker -f tests/floorProduction/assignParticipation.pg17.sql
           node tests/floorProduction/participationParser.currentSchema.mjs
           node tests/floorProduction/moveWrapperReceiptRollback.currentSchema.mjs
           MOVE_WRAPPER_RECEIPT_CASE=1 ASSIGN_PARTICIPATION_CASE=1 node tests/floorProduction/trackerRosterIntent.concurrent.mjs
+          ASSIGN_PARTICIPATION_CASE=1 MANUAL_ASSIGN_CASE=1 node tests/floorProduction/trackerRosterIntent.concurrent.mjs
+          MANUAL_FREE_SIT_OVERLAP=1 node tests/floorProduction/trackerRosterIntent.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -v WRAPPER_RECEIPT_CASE=1 -v CLOSED_SESSION_READ_CASE=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -v CLOSED_SESSION_READ_CASE=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v MOVE_NAME_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql

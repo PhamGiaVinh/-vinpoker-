@@ -104,7 +104,7 @@ export type FloorSeatableEntry = {
   entryNo: number;
   displayName: string;
   currentStack: number;
-  registrationId: string;
+  registrationId: string | null;
 };
 
 /**
@@ -380,11 +380,12 @@ function parseSeatableEntry(value: unknown): FloorTableControlV3Result<FloorSeat
     || typeof entryNo !== "number" || !Number.isSafeInteger(entryNo)
     || typeof displayName !== "string" || !displayName.trim()
     || typeof currentStack !== "number" || !Number.isSafeInteger(currentStack)
-    || typeof registrationId !== "string" || !registrationId
+    || (registrationId !== null && (typeof registrationId !== "string" || !registrationId))
   ) {
     return { ok: false, error: "V3_SEATABLE_ENTRY_MALFORMED" };
   }
-  return { ok: true, data: { entryId, playerId, entryNo, displayName, currentStack, registrationId } };
+  const validatedRegistrationId = typeof registrationId === "string" ? registrationId : null;
+  return { ok: true, data: { entryId, playerId, entryNo, displayName, currentStack, registrationId: validatedRegistrationId } };
 }
 
 function parseRosterSeat(value: unknown, requireIntegrityStatus: boolean): FloorTableControlV3Result<FloorTableRosterSeat> {
