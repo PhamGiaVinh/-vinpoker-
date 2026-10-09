@@ -1,5 +1,20 @@
 import { isValidationCode } from "./validationMessages";
 
+export function isConfirmedRosterWrite(data: unknown, expected: {
+  tableId: string; sessionId: string; epoch: number; seatNumber: number; chipCount: number;
+}): boolean {
+  if (!data || typeof data !== "object") return false;
+  const r = data as Record<string, unknown>;
+  if (!r.seat || typeof r.seat !== "object") return false;
+  const s = r.seat as Record<string, unknown>;
+  return r.ok === true && r.tournament_table_id === expected.tableId
+    && r.table_session_id === expected.sessionId && r.control_epoch === expected.epoch
+    && typeof s.id === "string" && typeof s.entry_id === "string" && typeof s.player_id === "string"
+    && Number.isInteger(s.entry_number) && Number(s.entry_number) > 0
+    && s.seat_number === expected.seatNumber && s.chip_count === expected.chipCount
+    && Number.isInteger(s.chip_count) && Number(s.chip_count) >= 0;
+}
+
 export interface TableLoadToken {
   readonly tableId: string;
   readonly generation: number;

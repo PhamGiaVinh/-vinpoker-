@@ -7613,6 +7613,12 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000030",
+      "filename": "20270128000030_tracker_roster_intent_fence_v1.sql",
+      "sha256": "0484566b13c0992c90c2006c2f5bd8bda0bfa462544d0e891da48dfa5ca255c8",
+      "domain": "tracker-roster-intent"
+    },
+    {
       "version": "20270128000029",
       "filename": "20270128000029_floor_deferred_break_intent_v1.sql",
       "sha256": "c056e7b0179e6bcb4f2d05f39a9f67fe5fea7ceb11e3bfb92120a0bf4be697ac",

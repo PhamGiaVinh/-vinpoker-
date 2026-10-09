@@ -40,7 +40,7 @@ INSERT INTO public.game_tables(id,club_id,table_name,table_number,table_type,sta
  ('f7290000-0000-4000-8000-000000000011','f7290000-0000-4000-8000-000000000002','Source TEST',81,'tournament','inactive','available'),
  ('f7290000-0000-4000-8000-000000000012','f7290000-0000-4000-8000-000000000002','Destination TEST',82,'tournament','inactive','available');
 SELECT set_config('request.jwt.claim.sub','f7290000-0000-4000-8000-000000000001',true);
-DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e uuid; h uuid; ep bigint; sr bigint; dr bigint; BEGIN
+DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e uuid; h uuid; ep bigint; sr bigint; dr bigint; token text; BEGIN
  s:=public.floor_open_tournament_table_v3('f7290000-0000-4000-8000-000000000003','f7290000-0000-4000-8000-000000000011','manual',gen_random_uuid());
  d:=public.floor_open_tournament_table_v3('f7290000-0000-4000-8000-000000000003','f7290000-0000-4000-8000-000000000012','manual',gen_random_uuid());
  PERFORM pg_temp.assert_true((s->>'ok')::boolean AND (d->>'ok')::boolean,'both sessions open');
@@ -56,11 +56,13 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
  PERFORM set_config('request.headers','{"x-vinpoker-dealer-intent":"manual","x-vinpoker-dealer-actor":"f7290000-0000-4000-8000-000000000001"}',true);
  INSERT INTO public.dealer_assignments(table_id,table_session_id,attendance_id,dealer_id,club_id,status,assigned_at)
  VALUES('f7290000-0000-4000-8000-000000000011',ss,'f7290000-0000-4000-8000-000000000041','f7290000-0000-4000-8000-000000000031','f7290000-0000-4000-8000-000000000002','assigned',now());
- r:=public.set_tracker_table_roster_seat('f7290000-0000-4000-8000-000000000003',st,1,'Source TEST',20000,NULL,false,NULL,'f7290000-0000-4000-8000-000000000001');
+ SELECT control_epoch INTO ep FROM public.table_sessions WHERE id=ss;
+ r:=public.set_tracker_table_roster_seat_v2('f7290000-0000-4000-8000-000000000003',st,ss,ep,gen_random_uuid(),1,'Source TEST',20000);
  PERFORM pg_temp.assert_true((r->>'ok')::boolean,'source roster');
  SELECT entry_id INTO e FROM public.tournament_seats WHERE tournament_table_id=st AND is_active;
  FOR i IN 1..2 LOOP
-  r:=public.set_tracker_table_roster_seat('f7290000-0000-4000-8000-000000000003',dt,i,'Destination TEST '||i,20000,NULL,false,NULL,'f7290000-0000-4000-8000-000000000001');
+  SELECT control_epoch INTO ep FROM public.table_sessions WHERE id=ds;
+  r:=public.set_tracker_table_roster_seat_v2('f7290000-0000-4000-8000-000000000003',dt,ds,ep,gen_random_uuid(),i,'Destination TEST '||i,20000);
   PERFORM pg_temp.assert_true((r->>'ok')::boolean,'destination roster');
  END LOOP;
  UPDATE public.table_sessions SET control_mode='tracker' WHERE id=ds RETURNING control_epoch INTO ep;
@@ -101,13 +103,18 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
   WHERE actor_id='f7290000-0000-4000-8000-000000000001' AND operation_type='floor_break_table_v5';
  END IF;
  IF current_setting('test.real_finish_case')='true' THEN
+  token:=public.get_tracker_roster_snapshot_v1('f7290000-0000-4000-8000-000000000003',dt,ds,ep)->'seats'->0->>'token';
   r:=public.record_hand('f7290000-0000-4000-8000-000000000003',dt,1,now(),
     (SELECT jsonb_agg(jsonb_build_object('player_id',hp.player_id,
       'entry_number',hp.entry_number,'seat_number',hp.seat_number,
-      'starting_stack',hp.starting_stack,'ending_stack',hp.starting_stack,
+      'starting_stack',hp.starting_stack,'ending_stack',hp.starting_stack+CASE hp.seat_number WHEN 1 THEN 100 WHEN 2 THEN -100 ELSE 0 END,
       'is_eliminated',false)) FROM public.hand_players hp WHERE hp.hand_id=h),
     '[]'::jsonb,'[]'::jsonb,'[]'::jsonb,0,'f7290000-0000-4000-8000-000000000001');
   PERFORM pg_temp.assert_true((r->>'ok')::boolean,'public record_hand finishes: '||r::text);
+  r:=public.set_tracker_table_roster_seat_v2('f7290000-0000-4000-8000-000000000003',dt,ds,ep,gen_random_uuid(),1,'Destination TEST 1',20000,
+   (SELECT player_id FROM public.tournament_seats WHERE table_session_id=ds AND seat_number=1 AND is_active),false,NULL,token);
+  PERFORM pg_temp.assert_true(r->>'error'='STALE_ROSTER_STATE','pre-hand roster token cannot overwrite completed-hand stack');
+  PERFORM pg_temp.assert_true((SELECT chip_count=20100 FROM public.tournament_seats WHERE table_session_id=ds AND seat_number=1 AND is_active),'hand ending stack survives delayed roster');
  ELSE
   UPDATE public.tournament_hands SET status='voided' WHERE id=h;
  END IF;
