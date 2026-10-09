@@ -159,6 +159,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000029_floor_deferred_break_intent_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000030_tracker_roster_intent_fence_v1.sql
           psql -X -v ON_ERROR_STOP=1 -v LATE_PHYSICAL_REQUEST_CASE=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v STALE_STACK_FIRST_ARRIVAL_CASE=1 -f tests/floorProduction/trackerRosterSession.pg17.sql
           node tests/floorProduction/trackerRosterIntent.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql

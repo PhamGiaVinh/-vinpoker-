@@ -31,9 +31,27 @@ for(const replay of [true,false]){
  await barrier(`roster_b_${prefix}`,"wait_event_type='Lock'");a.commit();
  const [first,second]=await Promise.all([a.result,b.result]);
  assert.equal(first.code,0,first.error);assert.equal(second.code,0,second.error);
- if(replay)assert.equal(second.out,first.out);else assert.match(second.out,/seat_conflict/);
+ if(replay)assert.equal(second.out,first.out);else assert.match(second.out,/STALE_ROSTER_STATE/);
  assert.equal(sql(`SELECT count(*)||':'||sum(chip_count) FROM public.tournament_seats WHERE tournament_id='${tour}' AND is_active;`),'1:20000');
  assert.equal(sql(`SELECT count(*) FROM public.tournament_entries WHERE tournament_id='${tour}';`),'1');
  assert.equal(sql(`SELECT count(*) FROM public.table_operation_receipts WHERE actor_id='${actor}' AND operation_type='set_tracker_table_roster_seat_v2';`),'1');
+ if(!replay){
+  const token=sql(`BEGIN;SELECT set_config('request.jwt.claim.sub','${actor}',true);SET LOCAL ROLE authenticated;
+   SELECT public.get_tracker_roster_snapshot_v1('${tour}','${tt}','${session}',1)->'seats'->0->>'token';COMMIT;`).split('\n').at(-1);
+  const player=sql(`SELECT player_id FROM public.tournament_seats WHERE table_session_id='${session}' AND is_active;`);
+  const update=(chips,k)=>`SELECT set_config('request.jwt.claim.sub','${actor}',true);SET LOCAL ROLE authenticated;
+   SELECT public.set_tracker_table_roster_seat_v2('${tour}','${tt}','${session}',1,'${k}',1,'Concurrent TEST',${chips},'${player}',false,NULL,'${token}');`;
+  const newer=tx(`stack_b_${prefix}`,update(25000,randomUUID()),true);
+  await barrier(`stack_b_${prefix}`,"state='idle in transaction'");
+  const delayed=tx(`stack_a_${prefix}`,update(20000,randomUUID()),false);
+  await barrier(`stack_a_${prefix}`,"wait_event_type='Lock'");newer.commit();
+  const [n,d]=await Promise.all([newer.result,delayed.result]);
+  assert.equal(n.code,0,n.error);assert.match(n.out,/"ok": true/);
+  assert.equal(d.code,0,d.error);assert.match(d.out,/STALE_ROSTER_STATE/);
+  assert.equal(sql(`SELECT s.chip_count||':'||e.current_stack||':'||cc.chip_count FROM public.tournament_seats s
+   JOIN public.tournament_entries e ON e.id=s.entry_id JOIN public.tournament_chip_counts cc
+   ON cc.tournament_id=s.tournament_id AND cc.player_id=s.player_id AND cc.entry_number=s.entry_number
+   WHERE s.table_session_id='${session}' AND s.is_active;`),'25000:25000:25000');
+ }
 }
 console.log('TRACKER_ROSTER_INTENT_TRUE_OVERLAP_PASS');

@@ -14,11 +14,16 @@ INSERT INTO public.game_tables(id,club_id,table_name,table_number,table_type,sta
 SELECT set_config('request.jwt.claim.sub','f7280000-0000-4000-8000-000000000001',true);
 SELECT pg_temp.assert_true(NOT has_function_privilege('authenticated','floor_private.set_tracker_roster_seat_core_v1(uuid,uuid,integer,text,integer,uuid,boolean,text,uuid)','EXECUTE'),'browser cannot call private core');
 SELECT pg_temp.assert_true(NOT has_function_privilege('service_role','floor_private.set_tracker_roster_seat_core_v1(uuid,uuid,integer,text,integer,uuid,boolean,text,uuid)','EXECUTE'),'service cannot bypass private core');
-SELECT pg_temp.assert_true(NOT has_function_privilege('anon','public.set_tracker_table_roster_seat_v2(uuid,uuid,uuid,bigint,uuid,integer,text,integer,uuid,boolean,text)','EXECUTE'),'anonymous writer denied');
+SELECT pg_temp.assert_true(NOT has_function_privilege('anon','public.set_tracker_table_roster_seat_v2(uuid,uuid,uuid,bigint,uuid,integer,text,integer,uuid,boolean,text,text)','EXECUTE'),'anonymous writer denied');
+SELECT pg_temp.assert_true(NOT has_function_privilege('anon','public.get_tracker_roster_snapshot_v1(uuid,uuid,uuid,bigint)','EXECUTE'),'anonymous snapshot denied');
+SELECT pg_temp.assert_true(NOT has_function_privilege('authenticated','floor_private.tracker_roster_seat_token_v1(uuid,integer)','EXECUTE'),'browser cannot read private token outside authorized snapshot');
 \if :{?LATE_PHYSICAL_REQUEST_CASE}
 SELECT set_config('test.late_physical_request','true',true);
 \endif
-DO $$ DECLARE opened jsonb; old_table uuid; old_session uuid; current_table uuid; current_session uuid; result jsonb; epoch bigint; BEGIN
+\if :{?STALE_STACK_FIRST_ARRIVAL_CASE}
+SELECT set_config('test.stale_stack_first_arrival','true',true);
+\endif
+DO $$ DECLARE opened jsonb; old_table uuid; old_session uuid; current_table uuid; current_session uuid; result jsonb; epoch bigint; token text; BEGIN
  opened:=public.floor_open_tournament_table_v3('f7280000-0000-4000-8000-000000000003','f7280000-0000-4000-8000-000000000011','manual','f7280000-0000-4000-8000-000000000051');
  PERFORM pg_temp.assert_true((opened->>'ok')::boolean,'first session opens');
  old_table:=(opened->>'tournament_table_id')::uuid;
@@ -52,6 +57,8 @@ DO $$ DECLARE opened jsonb; old_table uuid; old_session uuid; current_table uuid
  result:=public.set_tracker_table_roster_seat_v2('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch,'f7280000-0000-4000-8000-000000000067',99,'Over capacity TEST',20000);
  PERFORM pg_temp.assert_true(result->>'error'='bad_seat_number','capacity retained');
  PERFORM set_config('request.jwt.claim.sub','f7280000-0000-4000-8000-000000000099',true);
+ result:=public.get_tracker_roster_snapshot_v1('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch);
+ PERFORM pg_temp.assert_true(result->>'error'='actor_not_authorized','outsider snapshot denied');
  result:=public.set_tracker_table_roster_seat_v2('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch,'f7280000-0000-4000-8000-000000000068',1,'Outsider TEST',20000);
  PERFORM pg_temp.assert_true(result->>'error'='actor_not_authorized','outsider cannot write roster');
  PERFORM set_config('request.jwt.claim.sub','f7280000-0000-4000-8000-000000000001',true);
@@ -66,6 +73,30 @@ DO $$ DECLARE opened jsonb; old_table uuid; old_session uuid; current_table uuid
  PERFORM pg_temp.assert_true(result->>'error'='STALE_STATE','old epoch rejected');
  result:=public.set_tracker_table_roster_seat_v2('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch,'f7280000-0000-4000-8000-000000000062',2,'B TEST',20000);
  PERFORM pg_temp.assert_true((result->>'ok')::boolean,'exact current table routes correctly');
+ IF current_setting('test.stale_stack_first_arrival',true)='true' THEN
+  token:=public.get_tracker_roster_snapshot_v1('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch)->'seats'->0->>'token';
+  -- A prepared20k before B committed25k. A has never committed its request;
+  -- receipt replay alone cannot protect this delayed first arrival.
+  result:=public.set_tracker_table_roster_seat_v2('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch,gen_random_uuid(),1,'A TEST',25000,
+   (SELECT player_id FROM public.tournament_seats WHERE table_session_id=current_session AND seat_number=1 AND is_active),false,NULL,token);
+  PERFORM pg_temp.assert_true((result->>'ok')::boolean,'B stack update commits');
+  result:=public.set_tracker_table_roster_seat_v2('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch,gen_random_uuid(),1,'A TEST',20000,
+   (SELECT player_id FROM public.tournament_seats WHERE table_session_id=current_session AND seat_number=1 AND is_active),false,NULL,token);
+  PERFORM pg_temp.assert_true(NOT COALESCE((result->>'ok')::boolean,false),'delayed A first arrival cannot overwrite B stack');
+  PERFORM pg_temp.assert_true((SELECT chip_count=25000 FROM public.tournament_seats WHERE table_session_id=current_session AND seat_number=1 AND is_active),'B stack survives delayed A');
+  PERFORM pg_temp.assert_true((SELECT e.current_stack=25000 AND cc.chip_count=25000
+   FROM public.tournament_seats q JOIN public.tournament_entries e ON e.id=q.entry_id
+   JOIN public.tournament_chip_counts cc ON cc.tournament_id=q.tournament_id AND cc.player_id=q.player_id AND cc.entry_number=q.entry_number
+   WHERE q.table_session_id=current_session AND q.seat_number=1 AND q.is_active),'all B stack projections survive');
+  result:=public.set_tracker_table_roster_seat_v2('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch,
+   'f7280000-0000-4000-8000-000000000061',1,'A TEST',20000);
+  PERFORM pg_temp.assert_true(result->>'ok'='true' AND result->'seat'->>'chip_count'='20000','committed A receipt replay precedes stale CAS');
+  PERFORM pg_temp.assert_true((SELECT chip_count=25000 FROM public.tournament_seats WHERE table_session_id=current_session AND seat_number=1 AND is_active),'A receipt replay does not overwrite B');
+  result:=public.set_tracker_table_roster_seat_v2('f7280000-0000-4000-8000-000000000003',current_table,current_session,epoch,
+   'f7280000-0000-4000-8000-000000000061',1,'A TEST',20000,NULL,false,NULL,token);
+  PERFORM pg_temp.assert_true(result->>'error'='IDEMPOTENCY_CONFLICT','same request changed expected token conflicts');
+  RETURN;
+ END IF;
  PERFORM pg_temp.assert_true((SELECT count(*)=2 AND bool_and(entry_id IS NOT NULL AND tournament_table_id=current_table AND table_session_id=current_session) FROM public.tournament_seats WHERE tournament_id='f7280000-0000-4000-8000-000000000003' AND is_active),'canonical seats belong exclusively to reopened session');
  UPDATE public.table_sessions SET control_mode='tracker' WHERE id=current_session RETURNING control_epoch INTO epoch;
  -- Exercise the actual writer, not a hand INSERT with a convenient logical ID.

@@ -20,12 +20,43 @@ import { useStandaloneHandInput } from "./useStandaloneHandInput";
 const tables = ["a", "b"].map(id => ({ table_id: id, tournament_table_id: `logical-${id}`,
  table_session_id: `session-${id}`, control_epoch: 1, max_seats: 9, table_name: id, player_count: 0, has_live_hand: false }));
 const wrapper = ({ children }: { children: ReactNode }) => <MemoryRouter>{children}</MemoryRouter>;
+const snapshot = (args: any) => ({ data: { ok: true, tournament_table_id: args.p_tournament_table_id,
+ table_session_id: args.p_table_session_id, control_epoch: args.p_expected_epoch,
+ seats: Array.from({ length: 9 }, (_, i) => ({ seat_number: i + 1,
+  seat: i === 0 && mock.rpc.mock.calls.filter(([name]) => name === "set_tracker_table_roster_seat_v2").length >= 2
+   ? { player_id: "player", entry_number: 1, seat_number: 1, chip_count: 20000, player_name: "TEST" } : null,
+  token: "empty" })) }, error: null });
 afterEach(() => { cleanup(); vi.clearAllMocks(); sessionStorage.clear(); });
 describe("actual roster hook intent", () => {
+ it("does not merge an old confirmed receipt over a newer canonical stack", async () => {
+  let snapshots = 0;
+  mock.rpc.mockImplementation(async (name: string, args: any) => {
+   if (name === "get_tracker_hand_input_tables_v3") return { data: { ok: true, tables }, error: null };
+   if (name === "get_tracker_roster_snapshot_v1") {
+    const r = snapshot(args); snapshots++;
+    if (snapshots > 1) r.data.seats[0] = { seat_number: 1, token: "newer25k",
+     seat: { player_id: "player", entry_number: 1, seat_number: 1, chip_count: 25000, player_name: "TEST" } };
+    return r;
+   }
+   if (name === "set_tracker_table_roster_seat_v2") return { data: { ok: true, seat_token: "old20k",
+    tournament_table_id: args.p_tournament_table_id, table_session_id: args.p_table_session_id, control_epoch: args.p_expected_epoch,
+    seat: { id: "seat", entry_id: "entry", player_id: "player", entry_number: 1, seat_number: 1, chip_count: 20000 } }, error: null };
+   return { data: name === "get_next_hand_number" ? 1 : { ok: true, locks: [] }, error: null };
+  });
+  const h = renderHook(() => useStandaloneHandInput("tour"), { wrapper });
+  await waitFor(() => expect(h.result.current.availableTables).toHaveLength(2));
+  await act(async () => { await h.result.current.handleTableChange("a"); });
+  await act(async () => { expect(await h.result.current.handleSetRosterSeat({ seatNumber: 1, playerName: "TEST", chipCount: 20000 }))
+   .toEqual({ ok: true, error: "roster_refresh_required" }); });
+  expect(h.result.current.players).toHaveLength(0);
+  expect(mock.rpc.mock.calls.filter(([name]) => name === "set_tracker_table_roster_seat_v2")).toHaveLength(1);
+  expect(sessionStorage.length).toBe(0);
+ });
  it("drops old A completion after A→B→A and sends only one simultaneous write", async () => {
   let release!: (value: any) => void;
   let sent: any;
   mock.rpc.mockImplementation((name: string, args: any) => {
+   if (name === "get_tracker_roster_snapshot_v1") return Promise.resolve(snapshot(args));
    if (name === "get_tracker_hand_input_tables_v3") return Promise.resolve({ data: { ok: true, tables }, error: null });
    if (name === "set_tracker_table_roster_seat_v2") {
     sent = args;
@@ -45,7 +76,7 @@ describe("actual roster hook intent", () => {
   });
   await act(async () => { await h.result.current.handleTableChange("a"); });
   await act(async () => {
-   release({ data: { ok: true, tournament_table_id: sent.p_tournament_table_id,
+   release({ data: { ok: true, seat_token: "empty", tournament_table_id: sent.p_tournament_table_id,
     table_session_id: sent.p_table_session_id, control_epoch: sent.p_expected_epoch,
     seat: { id: "seat", entry_id: "entry", player_id: "player", entry_number: 1,
      seat_number: 1, chip_count: 20000 } }, error: null });
@@ -58,10 +89,11 @@ describe("actual roster hook intent", () => {
   let first = true;
   let epoch = 1;
   mock.rpc.mockImplementation(async (name: string, args: any) => {
+   if (name === "get_tracker_roster_snapshot_v1") return snapshot(args);
    if (name === "get_tracker_hand_input_tables_v3") return { data: { ok: true, tables: tables.map(t => ({ ...t, control_epoch: epoch })) }, error: null };
    if (name === "set_tracker_table_roster_seat_v2") {
     if (first) { first = false; return { data: null, error: { message: "response lost" } }; }
-    return { data: { ok: true, tournament_table_id: args.p_tournament_table_id,
+    return { data: { ok: true, seat_token: "empty", tournament_table_id: args.p_tournament_table_id,
      table_session_id: args.p_table_session_id, control_epoch: args.p_expected_epoch,
      seat: { id: "seat", entry_id: "entry", player_id: "player", entry_number: 1,
       seat_number: args.p_seat_number, chip_count: args.p_chip_count, player_name: args.p_player_name } }, error: null };

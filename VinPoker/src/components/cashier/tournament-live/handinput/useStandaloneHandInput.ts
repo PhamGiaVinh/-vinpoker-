@@ -281,6 +281,7 @@ export function useStandaloneHandInput(tournamentId: string) {
   const blockedActionScopeRef = useRef<string | null>(null);
   const claimedHandLockRef = useRef<string | null>(null);
   const rosterIntentRef = useRef(new Map<string, { fingerprint: string; requestId: string }>());
+  const rosterTokensRef = useRef(new Map<string, string>());
   const rosterScopeRef = useRef("");
   const rosterGenerationRef = useRef(0);
   const rosterMountedRef = useRef(true);
@@ -769,6 +770,12 @@ export function useStandaloneHandInput(tournamentId: string) {
       }
       const scope = rosterScopeRef.current;
       const generation = rosterGenerationRef.current;
+      const tokenKey = `${user.id}:${tournamentId}:${context.tableSessionId}:${context.controlEpoch}:${args.seatNumber}`;
+      const seatToken = rosterTokensRef.current.get(tokenKey);
+      if (!seatToken) {
+        toast.error("Chưa xác minh dữ liệu ghế. Hãy tải lại bàn trước khi sửa.");
+        return { ok: false, error: "roster_snapshot_required" };
+      }
       const payload = {
         p_tournament_id: tournamentId,
         p_tournament_table_id: context.tournamentTableId,
@@ -780,6 +787,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         p_existing_player_id: args.existingPlayerId ?? null,
         p_touch_avatar: args.touchAvatar ?? false,
         p_avatar_url: args.avatarUrl ?? null,
+        p_expected_seat_token: seatToken,
       };
       const fingerprint = JSON.stringify(payload);
       // Keep unresolved intent reachable after epoch changes in the same session.
@@ -799,7 +807,7 @@ export function useStandaloneHandInput(tournamentId: string) {
           && previous.p_table_session_id === context.tableSessionId
           && previous.p_seat_number === args.seatNumber
           && typeof previous.p_expected_epoch === "number"
-          && previous.p_expected_epoch !== context.controlEpoch) {
+          && (previous.p_expected_epoch !== context.controlEpoch || previous.p_expected_seat_token !== seatToken)) {
           if (!rosterFlightRef.current.begin()) return { ok: false, error: "roster_write_in_flight" };
           const prior = await Promise.resolve(supabase.rpc("set_tracker_table_roster_seat_v2" as any,
             { ...previous, p_request_id: intent.requestId }))
@@ -814,7 +822,7 @@ export function useStandaloneHandInput(tournamentId: string) {
             epoch: previous.p_expected_epoch, seatNumber: previous.p_seat_number, chipCount: previous.p_chip_count,
           });
           const rejected = !prior.error && receipt?.ok === false
-            && ["STALE_STATE", "table_session_mismatch"].includes(receipt.error ?? "");
+            && ["STALE_STATE", "STALE_ROSTER_STATE", "table_session_mismatch"].includes(receipt.error ?? "");
           if (confirmed || rejected) {
             rosterIntentRef.current.delete(storageKey);
             try { sessionStorage.removeItem(storageKey); } catch { /* Receipt remains server-owned. */ }
@@ -867,6 +875,7 @@ export function useStandaloneHandInput(tournamentId: string) {
           tournament_not_found: "Không tìm thấy giải.",
           table_session_mismatch: "Phiên bàn đã đóng hoặc thay đổi. Hãy tải lại bàn.",
           STALE_STATE: "Chế độ bàn đã thay đổi. Hãy tải lại trước khi sửa ghế.",
+          STALE_ROSTER_STATE: "Stack hoặc người ngồi đã thay đổi. Hãy tải lại bàn; dữ liệu cũ không được ghi đè.",
           seat_locked: "Ghế đang khóa; hãy mở khóa trước khi xếp người.",
           pending_move: "Bàn hoặc ghế đang chờ chuyển người; hãy giải quyết trước.",
         };
@@ -880,6 +889,26 @@ export function useStandaloneHandInput(tournamentId: string) {
         return { ok: false, error: "unknown_roster_result" };
       }
       clearIntent();
+      // A replayed committed receipt may describe a stack that another writer
+      // has since changed. Confirm current snapshot before applying it to UI.
+      const fresh = await Promise.resolve(supabase.rpc("get_tracker_roster_snapshot_v1" as any, {
+        p_tournament_id: tournamentId, p_tournament_table_id: context.tournamentTableId,
+        p_table_session_id: context.tableSessionId, p_expected_epoch: context.controlEpoch,
+      })).then(value => value, error => ({ data: null, error }));
+      if (!rosterMountedRef.current || generation !== rosterGenerationRef.current) {
+        return { ok: true, error: "stale_roster_context" };
+      }
+      const current = fresh.data as any;
+      const currentSeat = current?.seats?.find((item: any) => item.seat_number === args.seatNumber);
+      if (fresh.error || current?.ok !== true || current.table_session_id !== context.tableSessionId
+        || current.tournament_table_id !== context.tournamentTableId || current.control_epoch !== context.controlEpoch
+        || typeof (res as any).seat_token !== "string" || currentSeat?.token !== (res as any).seat_token
+        || currentSeat?.seat?.chip_count !== seat.chip_count || currentSeat?.seat?.player_id !== seat.player_id) {
+        rosterTokensRef.current.delete(tokenKey);
+        toast.info("Đã xác nhận lần lưu. Dữ liệu hiện tại cần tải lại; không ghi đè stack mới bằng receipt cũ.");
+        return { ok: true, error: "roster_refresh_required" };
+      }
+      rosterTokensRef.current.set(tokenKey, currentSeat.token);
       setPlayers((prev) => {
         const merged: PlayerState = {
           player_id: seat.player_id,
@@ -980,6 +1009,7 @@ export function useStandaloneHandInput(tournamentId: string) {
   // ----- Table select -----------------------------------------------------
   const handleTableChange = useCallback(
     async (newTableId: string) => {
+      rosterTokensRef.current.clear();
       const loadToken = tableLoadGuardRef.current.begin(newTableId);
       const isCurrentLoad = () => tableLoadGuardRef.current.isCurrent(loadToken);
       actionScopeRef.current = `${newTableId}:draft`;
@@ -1029,7 +1059,25 @@ export function useStandaloneHandInput(tournamentId: string) {
       const wantAvatar = FEATURES.trackerSeatSetup;
       let loadedSeats: any[] | null = null;
       let error: any = null;
-      if (wantAvatar) {
+      if (wantAvatar && loadedSessionId && tbl?.tournamentTableId && Number.isInteger(tbl.controlEpoch)) {
+        const r = await supabase.rpc("get_tracker_roster_snapshot_v1" as any, {
+          p_tournament_id: tournamentId, p_tournament_table_id: tbl.tournamentTableId,
+          p_table_session_id: loadedSessionId, p_expected_epoch: tbl.controlEpoch,
+        });
+        if (!isCurrentLoad()) return;
+        const snapshot = r.data as any;
+        if (r.error || snapshot?.ok !== true || snapshot.table_session_id !== loadedSessionId
+          || snapshot.tournament_table_id !== tbl.tournamentTableId || snapshot.control_epoch !== tbl.controlEpoch
+          || !Array.isArray(snapshot.seats) || snapshot.seats.length !== loadedMaxSeats
+          || snapshot.seats.some((item: any) => !Number.isInteger(item.seat_number) || typeof item.token !== "string")) {
+          error = r.error ?? new Error("Invalid roster snapshot");
+        } else {
+          rosterTokensRef.current.clear();
+          snapshot.seats.forEach((item: any) => rosterTokensRef.current.set(
+            `${user?.id}:${tournamentId}:${loadedSessionId}:${tbl.controlEpoch}:${item.seat_number}`, item.token));
+          loadedSeats = snapshot.seats.filter((item: any) => item.seat !== null).map((item: any) => item.seat);
+        }
+      } else if (wantAvatar) {
         let seatQuery = supabase
           .from("tournament_seats")
           .select(`${baseCols}, avatar_url`)
