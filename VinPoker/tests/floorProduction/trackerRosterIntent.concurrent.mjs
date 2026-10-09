@@ -90,6 +90,7 @@ if(process.env.ASSIGN_PARTICIPATION_CASE==='1')for(const variant of ['replay','c
  const tour=`${prefix}-0000-4000-8000-000000000003`,actor=`${prefix}-0000-4000-8000-000000000001`;
  const entry=`${prefix}-0000-4000-8000-000000000031`;
  let fixture=readFileSync('tests/floorProduction/assignParticipation.pg17.sql','utf8').split('DO $$ DECLARE opened')[0];
+ if(process.env.MANUAL_ASSIGN_CASE==='1')fixture=fixture.replace('\\set manual_entry false','\\set manual_entry true');
  assert.ok(fixture.includes('INSERT INTO public.tournament_entries'));
  fixture=fixture.replaceAll('f7350000',prefix).replaceAll('ASSIGN-PARTICIPATION-TEST',`ASSIGN-PARTICIPATION-${prefix}`);
  sql(fixture+`SET LOCAL ROLE authenticated;

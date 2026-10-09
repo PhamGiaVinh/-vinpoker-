@@ -1,6 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 import { createFloorTableControlV3Client, type FloorTableControlV3Rpc } from "./floorTableControlV3";
 
+describe("manual participation waiting contract", () => {
+  const manualWaiting = { entry_id: "entry-manual", player_id: "player-manual", entry_no: 1,
+    display_name: "Manual TEST", current_stack: 20000, registration_id: null };
+  it("accepts a server-authorized manual entry without inventing registration identity", async () => {
+    const rpc = vi.fn().mockResolvedValue({ error: null, data: [manualWaiting] });
+    expect(await clientFrom(rpc).getSeatableEntries("tour-a")).toEqual({ ok: true, data: [{
+      entryId: "entry-manual", playerId: "player-manual", entryNo: 1,
+      displayName: "Manual TEST", currentStack: 20000, registrationId: null,
+    }] });
+  });
+  it.each([undefined, "", 7])("rejects malformed optional registration %s", async (registration_id) => {
+    const rpc = vi.fn().mockResolvedValue({ error: null, data: [{ ...manualWaiting, registration_id }] });
+    expect(await clientFrom(rpc).getSeatableEntries("tour-a"))
+      .toEqual({ ok: false, error: "V3_SEATABLE_ENTRY_MALFORMED" });
+  });
+});
+
 const inventoryRow = {
   game_table_id: "table-5",
   table_number: 5,
