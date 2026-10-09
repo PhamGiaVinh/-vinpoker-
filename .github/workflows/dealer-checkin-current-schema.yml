@@ -38,6 +38,8 @@ on:
       - 'VinPoker/supabase/migrations/20270128000024_tracker_history_scoped_canary_claim_v1.sql'
       - 'VinPoker/supabase/migrations/20270128000025_dealer_automatic_rest_history_fence_v1.sql'
       - 'VinPoker/tests/dealerSwing/restHistory*'
+      - 'VinPoker/supabase/migrations/20270128000026_floor_open_session_name_integrity_v1.sql'
+      - 'VinPoker/tests/floorProduction/openSessionNames.pg17.sql'
       - 'VinPoker/supabase/functions/_shared/trackerSettlement/historyWorkerAuth*'
       - 'VinPoker/supabase/functions/_shared/trackerSettlement/historyWorkerHandler.test.ts'
       - 'VinPoker/supabase/functions/_shared/dealerMutationIntent.ts'
@@ -138,6 +140,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000025_dealer_automatic_rest_history_fence_v1.sql
           node tests/dealerSwing/restHistory.currentSchema.mjs
           node tests/dealerSwing/restHistory.concurrent.mjs
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000026_floor_open_session_name_integrity_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/openSessionNames.pg17.sql
       - name: OFF-at-commit true-overlap with isolated acquisition fixture (not live worker proof)
         working-directory: VinPoker
         run: |
