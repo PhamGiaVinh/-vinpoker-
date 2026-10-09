@@ -128,6 +128,15 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full", onS
     setLoading(false);
   }, [clubIds]);
 
+  const selectTournament = useCallback((id: string) => {
+    setSelectedTournamentId(id);
+    // The Floor landing can create a tour after this parent's snapshot loaded.
+    // Resolve it from the server rather than leaving selection on the old list.
+    if (!(tournaments ?? []).some((tour) => tour.id === id)) {
+      void loadTournaments();
+    }
+  }, [loadTournaments, tournaments]);
+
   useEffect(() => { loadTournaments(); }, [loadTournaments]);
 
   useEffect(() => {
@@ -209,7 +218,16 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full", onS
     // modes keep the legacy selection grid below. Clicking a tour calls onSelect → the
     // operational tabs (no redundant list-in-a-tab).
     if (mode === "floor") {
-      return <FloorTournamentsLanding clubIds={clubIds} clubs={clubs} onSelect={setSelectedTournamentId} />;
+      if (selectedTournamentId && loading) {
+        return <p role="status">Đang tải giải đã chọn…</p>;
+      }
+      if (selectedTournamentId && listError) {
+        return <div role="alert" className="space-y-2">
+          <p>Không tải được giải đã chọn. Thử lại để tiếp tục vận hành.</p>
+          <Button onClick={() => { void loadTournaments(); }}>Thử lại</Button>
+        </div>;
+      }
+      return <FloorTournamentsLanding clubIds={clubIds} clubs={clubs} onSelect={selectTournament} />;
     }
     if (listError && (!tournaments || tournaments.length === 0)) {
       return (
@@ -305,7 +323,7 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full", onS
                 <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Tất cả giải
               </Button>
             )}
-            <Select value={selectedTournamentId ?? ""} onValueChange={setSelectedTournamentId}>
+            <Select value={selectedTournamentId ?? ""} onValueChange={selectTournament}>
               <SelectTrigger className="w-[280px]">
                 <SelectValue placeholder={t("tournamentLive.selectTournament")} />
               </SelectTrigger>
