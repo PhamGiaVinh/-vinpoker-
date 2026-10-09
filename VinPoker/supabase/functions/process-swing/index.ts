@@ -76,6 +76,8 @@ import {
 } from "./executionSafety.ts";
 import { runDealerShortageAlert } from "./shortageAlert.ts";
 import { manualDealerIntentHeaders } from "../_shared/dealerMutationIntent.ts";
+import { getDealerOperationalTables, type DealerOperationalTable } from "../_shared/dealerOperationalTables.ts";
+import { isExactOperationalAssignment } from "./pass3SessionFence.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2796,31 +2798,22 @@ if (tier2Count > 0) {
           continue;
         }
 
+        let pass3OperationalTables: DealerOperationalTable[];
+        try {
+          pass3OperationalTables = dueAssignments.length ? await getDealerOperationalTables(admin, cid) : [];
+        } catch (error) {
+          recordDispatchSafetyOutcome(cid, assessCoreQueryFailure("pass3_operational_inventory", error));
+          clubsSkippedError++;
+          continue;
+        }
         for (const assignment of dueAssignments) {
-          // ── Orphan self-heal (root-cause fix) ─────────────────────────────────
-          // A due assignment whose table is no longer ACTIVE (closed/deactivated while occupied,
-          // or any orphan) must NOT be re-swung — re-seating would put a fresh dealer on a dead
-          // table every cron tick (the orphan that "changes occupant" + is invisible on the floor
-          // map). Release it + free the seated dealer (and any queued pre-assigned dealer) instead.
-          // Fail-safe: act ONLY when the table status is KNOWN and not 'active' (never on missing data).
-          if (assignment.game_tables?.status && assignment.game_tables.status !== "active") {
-            try {
-              await admin.from("dealer_assignments").update({
-                status: "completed",
-                released_at: new Date().toISOString(),
-                release_reason: "table_inactive_auto_release",
-              }).eq("id", assignment.id).eq("status", "assigned").is("released_at", null);
-              await admin.from("dealer_attendance").update({ current_state: "available" })
-                .eq("id", assignment.attendance_id).neq("current_state", "checked_out");
-              if (assignment.pre_assigned_attendance_id) {
-                await admin.from("dealer_attendance")
-                  .update({ current_state: "available", pre_assigned_table_id: null, pre_assigned_at: null })
-                  .eq("id", assignment.pre_assigned_attendance_id).eq("current_state", "pre_assigned");
-              }
-              console.warn(`[process-swing] orphan self-heal: released assignment ${assignment.id} on inactive table ${assignment.game_tables?.table_name ?? assignment.table_id} (no re-seat)`);
-            } catch (e) {
-              console.error(`[process-swing] orphan self-heal failed for ${assignment.id}:`, e instanceof Error ? e.message : e);
-            }
+          // A reusable physical status is not session truth. Absence/ambiguity
+          // must not release either attendance or assignment; canonical RPCs
+          // recheck exact session under their commit locks.
+          if (!isExactOperationalAssignment(pass3OperationalTables, assignment)) {
+            recordDispatchSafetyOutcome(cid, assessSwingExecutionFailure("pass3_session_unverified"));
+            metrics.failed++;
+            console.warn(`[process-swing] Pass3 assignment ${assignment.id}: exact session unverified; repair required`);
             continue;
           }
           metrics.total++;
