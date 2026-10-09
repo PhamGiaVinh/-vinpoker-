@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270119000001
+-- Remote ledger name: multiday_equal_tie_entitlement_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: 8454d7b6945edd331c4269512486c0f21db195bc4975df9a448992973906dfc8
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20270119000001_multiday_equal_tie_entitlement_v1.sql

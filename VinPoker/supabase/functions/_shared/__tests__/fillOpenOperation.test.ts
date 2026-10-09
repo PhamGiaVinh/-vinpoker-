@@ -74,6 +74,7 @@ async function exerciseBatch(
   total: number,
   candidateCount: number,
   candidateStatus: "ok" | "dependency_unavailable" | "query_failed" = "ok",
+  hasOperationalSessions = true,
 ) {
   const operationId = "40000000-0000-4000-8000-000000000001";
   const clubId = "50000000-0000-4000-8000-000000000001";
@@ -137,7 +138,16 @@ async function exerciseBatch(
   const admin = {
     from: (table: string) => new Query(table),
     rpc: async (name: string, args?: Record<string, unknown>) => {
-      if (name === "assign_dealer_to_table") {
+      if (name === "get_dealer_operational_tables_v1") {
+        return { data: (hasOperationalSessions ? targets : []).map((target) => ({
+          id: target.table_id,
+          table_session_id: target.table_id.replace("30000000", "60000000"),
+          tournament_id: null,
+          table_name: target.game_tables.table_name,
+          table_type: "cash",
+        })), error: null };
+      }
+      if (name === "worker_assign_dealer_to_session_v1") {
         assignmentCalls++;
         assignmentPayloads.push(args ?? {});
         return { data: { outcome: "ok" }, error: null };
@@ -191,8 +201,10 @@ Deno.test("fillOpenOperation stamps the durable open-table assignment marker", a
   const { assignmentPayloads } = await exerciseBatch(1, 1);
   assertEquals(
     assignmentPayloads[0]?.p_idempotency_key,
-    "open_operation_40000000-0000-4000-8000-000000000001_30000000-0000-4000-8000-000000000001",
+    "open_operation_40000000-0000-4000-8000-000000000001_60000000-0000-4000-8000-000000000001_10000000-0000-4000-8000-000000000001",
   );
+  assertEquals(assignmentPayloads[0]?.p_table_session_id, "60000000-0000-4000-8000-000000000001");
+  assertEquals(assignmentPayloads[0]?.p_club_id, "50000000-0000-4000-8000-000000000001");
 });
 
 Deno.test("fillOpenOperation completes the maximum 50-table batch", async () => {
@@ -202,6 +214,12 @@ Deno.test("fillOpenOperation completes the maximum 50-table batch", async () => 
   assertEquals(result.assigned, 50);
   assertEquals(result.remaining, 0);
   assertEquals(result.operation_status, "completed");
+});
+
+Deno.test("fillOpenOperation cannot staff a target absent from authoritative session inventory", async () => {
+  const { result, assignmentCalls } = await exerciseBatch(1, 1, "ok", false);
+  assertEquals(assignmentCalls, 0);
+  assertEquals(result.outcomes[0]?.code, "failed");
 });
 
 Deno.test("fillOpenOperation leaves a 25-of-30 batch waiting for continuation", async () => {

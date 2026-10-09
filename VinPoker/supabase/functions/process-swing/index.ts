@@ -68,12 +68,14 @@ import {
   assessShortageAlertFailure,
   assessSwingExecutionFailure,
   ensureLockOwnership,
+  fetchAutoSwingSettings,
   LockOwnershipLost,
   mergeDispatchOutcome,
   type DispatchSafetyOutcome,
   type ProcessSwingDispatchState,
 } from "./executionSafety.ts";
 import { runDealerShortageAlert } from "./shortageAlert.ts";
+import { manualDealerIntentHeaders } from "../_shared/dealerMutationIntent.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -293,14 +295,7 @@ async function fetchAllClubConfigs(
     return configMap;
   }
 
-  const { data: settingsData } = await admin
-    .from("club_settings")
-    .select("club_id, auto_swing_enabled");
-
-  const settingsMap = new Map<string, boolean>();
-  for (const s of settingsData ?? []) {
-    settingsMap.set(s.club_id, s.auto_swing_enabled ?? false);
-  }
+  const settingsMap = await fetchAutoSwingSettings(admin);
 
   for (const row of swingData ?? []) {
     configMap.set(row.club_id, {
@@ -311,7 +306,7 @@ async function fetchAllClubConfigs(
       crit_at_minutes: row.crit_at_minutes ?? 2,
       auto_adjust_duration: row.auto_adjust_duration ?? false,
       min_duration: Math.max(30, row.min_duration ?? 30),
-      auto_swing_enabled: settingsMap.get(row.club_id) ?? true,
+      auto_swing_enabled: settingsMap.get(row.club_id) === true,
       base_duration_minutes: row.base_duration_minutes ?? row.swing_duration_minutes ?? 40,
       target_ratio: row.target_ratio ?? 1.43,
       max_duration_minutes: row.max_duration_minutes ?? 60,
@@ -628,7 +623,7 @@ Deno.serve(async (req: Request) => {
   };
 
   try {
-    const admin: any = createClient(
+    let admin: any = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
@@ -694,6 +689,18 @@ Deno.serve(async (req: Request) => {
       manualTrigger === true,
     );
     if (authResult instanceof Response) return authResult;
+
+    if (authResult.internal && manualTrigger === true) {
+      return new Response(JSON.stringify({ error: "manual_trigger_requires_authenticated_actor" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (authResult.uid) {
+      admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+        global: { headers: manualDealerIntentHeaders(authResult.uid) },
+      });
+      dispatchAdmin = admin;
+    }
 
     if (!authResult.internal && requestedClubIdsValue !== undefined) {
       return new Response(JSON.stringify({ error: "club_ids is restricted to internal callers" }), {
@@ -1669,7 +1676,7 @@ Deno.serve(async (req: Request) => {
         // available dealer remain empty) and after Pass 0e (freed dealers are
         // already 'available'). Reserves the soonest-free on_break dealer +
         // countdown Telegram, and executes reservations whose dealer's break has
-        // ended (13-min rest gate). All via the reservation RPCs — never raw
+        // ended (15-min rest gate). All via the reservation RPCs — never raw
         // updates. NEVER opens a new table; never pulls a dealer off break early.
         if (!dryRun && clubEnabled(AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS, String(cid))) {
           try {
@@ -1696,7 +1703,10 @@ Deno.serve(async (req: Request) => {
               console.log(`[passS2] club=${cid} executed=${s2.executed} reserved=${s2.reserved} cancelled=${s2.cancelled}`);
             }
           } catch (s2Err) {
+            recordDispatchSafetyOutcome(cid, assessCoreQueryFailure("passS2_reservation", s2Err));
+            clubsSkippedError++;
             console.error("[passS2] error:", s2Err instanceof Error ? s2Err.message : s2Err);
+            continue;
           }
         }
 
@@ -3052,11 +3062,13 @@ if (tier2Count > 0) {
                     .eq("current_state", "on_break");
                 }
 
-                const { data: frAssign, error: frAssignErr } = await admin.rpc("assign_dealer_to_table", {
+                const { data: frAssign, error: frAssignErr } = await admin.rpc("worker_assign_dealer_to_session_v1", {
                   p_attendance_id: replacementDealer.id,
                   p_table_id: assignment.table_id,
+                  p_table_session_id: assignment.table_session_id,
                   p_swing_due_at: frSwingDueAt,
                   p_club_id: cid,
+                  p_idempotency_key: `replacement_${assignment.id}_${assignment.table_session_id}_${assignment.version}`,
                 });
                 const frOutcome = typeof frAssign === "string" ? frAssign : (frAssign as any)?.outcome;
 

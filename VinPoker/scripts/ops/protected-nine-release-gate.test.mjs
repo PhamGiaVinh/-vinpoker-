@@ -6,6 +6,13 @@ import { deriveObjectScope } from "./protected-nine-object-contract.mjs";
 
 const { entries, control } = loadRelease();
 const first = entries[0];
+test("Windows CRLF and LF produce the same intact atomic SQL transaction", () => {
+  for (const entry of entries) {
+    const lf = entry.sql.replace(/\r\n/g, "\n");
+    assert.equal(buildAtomicMigrationQuery({ ...entry, sql: lf.replace(/\n/g, "\r\n") }),
+      buildAtomicMigrationQuery({ ...entry, sql: lf }));
+  }
+});
 const envFor = (entry) => ({ SUPABASE_PROJECT_REF: PROJECT_REF, TARGET_MIGRATION: entry.filename, TARGET_NORMALIZED_SHA256: entry.normalizedSqlSha256, CONFIRM_PROTECTED_NINE: `APPLY_PROTECTED_NINE_${entry.newVersion}_${entry.normalizedSqlSha256}` });
 
 test("binds the complete migration-control release order and keeps production gates off", () => {

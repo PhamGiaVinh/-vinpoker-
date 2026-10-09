@@ -13,6 +13,12 @@ const CREDENTIAL_LIKE_JWT_LITERAL =
   /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b/u;
 const DIRECT_PRODUCTION_FUNCTION_TARGET =
   /https:\/\/orlesggcjamwuknxwcpk\.supabase\.co\/functions\/v1\//u;
+// Owner approved 2026-10-09: only these exact reviewed private Dealer Ready bodies.
+// Hash pins the endpoint, Vault authentication, ACL and SQL; a changed body needs new review.
+const REVIEWED_DEALER_READY_NETWORK_MIGRATIONS = new Map([
+  ["20270128000020_dealer_ready_backup_private_cron_v1.sql", "550555b385f59b77cde479546d88f1a9e41abf4f8170991af110d26cfb419b4d"],
+  ["20270128000021_dealer_ready_private_trigger_v1.sql", "bda701820882229c6b2a5241dd2f65067755f20f4405980ccc9850717d8be4c6"],
+]);
 const MANAGED_REALTIME_OWNERSHIP_DDL =
   /\b(?:ALTER\s+TABLE\s+realtime\.[A-Za-z_][A-Za-z0-9_]*\s+(?:ENABLE|DISABLE|FORCE|NO\s+FORCE)\s+ROW\s+LEVEL\s+SECURITY|(?:CREATE|DROP|ALTER)\s+POLICY\b[\s\S]{0,512}?\bON\s+realtime\.[A-Za-z_][A-Za-z0-9_]*)/iu;
 const SAFE_BOOTSTRAP_MIGRATIONS = new Set([
@@ -172,7 +178,13 @@ export function findMigrationCatalogProblems(
       );
     }
     const sourceWithoutLineComments = source.replace(/--[^\r\n]*/gu, "");
-    if (DIRECT_PRODUCTION_FUNCTION_TARGET.test(sourceWithoutLineComments)) {
+    const approvedNetworkHash = REVIEWED_DEALER_READY_NETWORK_MIGRATIONS.get(entry.name);
+    const exactReviewedNetworkBody = approvedNetworkHash !== undefined
+      && createHash("sha256").update(source.replace(/\r\n?/gu, "\n"), "utf8").digest("hex") === approvedNetworkHash;
+    if (approvedNetworkHash !== undefined && !exactReviewedNetworkBody) {
+      invalidFiles.push(`reviewed Dealer Ready network migration hash drift ${entry.name}`);
+    }
+    if (DIRECT_PRODUCTION_FUNCTION_TARGET.test(sourceWithoutLineComments) && !exactReviewedNetworkBody) {
       invalidFiles.push(
         `direct production function target in active migration ${entry.name}`,
       );
@@ -221,6 +233,9 @@ export function findMigrationCatalogProblems(
         const remoteVersions = new Set(
           reconciliation.remoteLedgerVersions.map((entry) => entry.version),
         );
+        if (remoteVersions.size !== reconciliation.remoteLedgerVersions.length) {
+          invalidFiles.push("duplicate remote ledger version in reconciliation evidence");
+        }
         const floorFiles = new Set(
           reconciliation.floorActiveAllowlist.map((entry) => entry.filename),
         );
@@ -264,9 +279,29 @@ export function findMigrationCatalogProblems(
             invalidFiles.push(`remote history receipt is not active at ledger version ${receipt.receiptFilename}`);
           } else if (!isCommentOnly(row.source)) {
             invalidFiles.push(`remote history receipt is not comment-only ${receipt.receiptFilename}`);
+          } else if (createHash("sha256").update(row.source.replace(/\r\n/g, "\n"), "utf8").digest("hex") !== receipt.receiptSha256) {
+            invalidFiles.push(`remote history receipt hash drift ${receipt.receiptFilename}`);
           }
           if (!remoteVersions.has(receipt.remoteVersion)) {
             invalidFiles.push(`remote history receipt lacks remote ledger evidence ${receipt.remoteVersion}`);
+          }
+          const ledger = reconciliation.remoteLedgerVersions.find((entry) => entry.version === receipt.remoteVersion);
+          if (ledger && ledger.name !== receipt.remoteName) {
+            invalidFiles.push(`remote history receipt name mismatch ${receipt.remoteVersion}`);
+          }
+          if (receipt.normalizedLiveSqlSha256 && (
+            receipt.normalizedLiveSqlSha256 !== ledger?.normalizedSqlSha256 ||
+            receipt.normalizedLiveSqlSha256 !== receipt.recoveredSource?.sha256
+          )) {
+            invalidFiles.push(`remote history receipt live/source hash mismatch ${receipt.remoteVersion}`);
+          }
+          if (receipt.recoveredSource) {
+            const preservedPath = resolve(dirname(migrationDirectory), "..", receipt.recoveredSource.path);
+            const preservedHash = existsSync(preservedPath) && createHash("sha256")
+              .update(readFileSync(preservedPath, "utf8").replace(/\r\n/g, "\n"), "utf8").digest("hex");
+            if (preservedHash !== receipt.recoveredSource.sha256) {
+              invalidFiles.push(`remote history preserved source missing or hash drift ${receipt.remoteVersion}`);
+            }
           }
         }
         const head = reconciliation.registeredProductionHead;

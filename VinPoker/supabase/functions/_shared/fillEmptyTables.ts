@@ -18,6 +18,7 @@ import { pickNextDealerWithStatus, type DealerCandidate } from "./pickNextDealer
 import { classifyPostgrestError } from "./postgrestError.ts";
 import { SWING_POLICY } from "./swingPolicy.ts";
 import { OPEN_TABLE_GRACE_MINUTES, bulkOpenStaggerMs } from "./openTableGrace.ts";
+import { getDealerOperationalTables } from "./dealerOperationalTables.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ export type SupabaseAdmin = any;
 
 interface GameTableRow {
   id: string;
+  table_session_id: string;
   table_name: string;
   table_type: string | null;
   shift_id: string | null;
@@ -53,6 +55,7 @@ interface GameTableRow {
 
 interface ActiveAssignmentRow {
   table_id: string | null;
+  table_session_id: string | null;
 }
 
 interface TournamentRow {
@@ -101,22 +104,6 @@ function markFillFailure(
   result.diagnostics.push({ stage, code, ...(tableId ? { table_id: tableId } : {}) });
 }
 
-export function isRunningDealerSessionTable(
-  table: Pick<GameTableRow, "id" | "shift_id" | "opened_at" | "dealer_open_operation_id">,
-  liveTournamentTableIds: { has(tableId: string): boolean },
-  shiftId: string | undefined,
-  durableMarkerAllowed = false,
-  nowMs = Date.now(),
-): boolean {
-  const markerIsCurrent = durableMarkerAllowed
-    && table.dealer_open_operation_id != null
-    && table.opened_at != null
-    && new Date(table.opened_at).getTime() >= nowMs - 24 * 60 * 60 * 1000;
-  return liveTournamentTableIds.has(table.id)
-    || (shiftId != null && table.shift_id === shiftId)
-    || markerIsCurrent;
-}
-
 // ─── fillEmptyTables ──────────────────────────────────────────────────────────
 
 export async function fillEmptyTables(
@@ -141,17 +128,12 @@ export async function fillEmptyTables(
     diagnostics: [],
   };
 
-  // Step 1: Fetch active tables for this club
-  const { data: tables, error: tableErr } = (await admin
-    .from("game_tables")
-    .select("id, table_name, table_type, shift_id, current_blind_level, opened_at, dealer_open_operation_id")
-    .eq("club_id", clubId)
-    .eq("status", "active")) as unknown as {
-      data: GameTableRow[] | null;
-      error: { message: string } | null;
-    };
-  if (tableErr || !tables) {
-    const status = classifyFillError(tableErr ?? new Error("empty table query response"));
+  // Step 1: Same authoritative active-session inventory as Floor, no legacy status fallback.
+  let tables: GameTableRow[];
+  try {
+    tables = await getDealerOperationalTables(admin, clubId);
+  } catch (error) {
+    const status = classifyFillError(error);
     markFillFailure(result, status, "active_tables", `active_tables_${status}`);
     return result;
   }
@@ -183,7 +165,8 @@ export async function fillEmptyTables(
   // soon-free dealer → treat it as NOT empty so Step-1 fill doesn't double-staff.
   const { data: activeAssignments, error: activeAssignmentsError } = (await admin
     .from("dealer_assignments")
-    .select("table_id")
+    .select("table_id, table_session_id")
+    .is("released_at", null)
     .in("status", ["assigned", "pre_assigned", "reserved"])
     .in(
       "table_id",
@@ -198,9 +181,9 @@ export async function fillEmptyTables(
     return result;
   }
 
-  const assignedTableIds = new Set(
-    (activeAssignments ?? []).flatMap((a) => a.table_id ? [a.table_id] : [])
-  );
+  const sessionsByTable = new Map(scopedTables.map(table => [table.id, table.table_session_id]));
+  const assignedTableIds = new Set((activeAssignments ?? []).flatMap(a =>
+    a.table_id && a.table_session_id === sessionsByTable.get(a.table_id) ? [a.table_id] : []));
 
   // Step 3: Pre-fetch tournament configs + table overrides (2 fixed queries, no N+1)
   const [tournamentsResult, tableOverridesResult] = (await Promise.all([
@@ -239,38 +222,10 @@ export async function fillEmptyTables(
     tableOverrideConfig.set(sc.scope_id, sc.swing_duration_minutes);
   }
 
-  // Step 4: Filter empty tables, then (AUTO-staff only) keep running-session tables.
-  // (Bug 2, 2026-07-06) The cron invokes process-swing with shift_id=null, so
-  // scopedTables above becomes EVERY active table — including a table left active
-  // from a prior day (tournament ended, never closed). Without this gate, auto-staff
-  // re-fills that leftover every tick and it shows up as a WARMUP table the owner
-  // never opened today. So the AUTO-staff path (availableOnly) only fills a table
-  // that belongs to the RUNNING session: a live tournament (tournamentConfig, built
-  // from tournaments WHERE status='live') OR the current active shift. Manual callers
-  // (mass-assign / assign-dealer, availableOnly=false) are UNAFFECTED — the operator
-  // explicitly chose that table.
-  let durableMarkerAllowed = false;
-  if (availableOnly && activeTables.some((table) => table.dealer_open_operation_id != null)) {
-    const { data: rollout, error: rolloutError } = await admin
-      .from("dealer_mass_open_rollout")
-      .select("enabled, all_clubs_enabled, allowed_club_ids")
-      .eq("id", true)
-      .maybeSingle();
-    if (rolloutError) {
-      const status = classifyFillError(rolloutError);
-      markFillFailure(result, status, "mass_open_rollout", `mass_open_rollout_${status}`);
-      return result;
-    }
-    durableMarkerAllowed = rollout?.enabled === true
-      && (rollout?.all_clubs_enabled === true
-        || (rollout?.allowed_club_ids ?? []).includes(clubId));
-  }
-
-  const isRunningSessionTable = (t: GameTableRow) =>
-    isRunningDealerSessionTable(t, tournamentConfig, shiftId, durableMarkerAllowed);
+  // Step 4: Server excludes ended tournaments and malformed incarnations. Cash/VIP
+  // Floor sessions do not require an unrelated legacy shift or mass-open marker.
   const notAssigned = scopedTables.filter((t: { id: string }) => !assignedTableIds.has(t.id));
-  const skippedNonSession = availableOnly ? notAssigned.filter((t) => !isRunningSessionTable(t)) : [];
-  const emptyTables = (availableOnly ? notAssigned.filter(isRunningSessionTable) : notAssigned)
+  const emptyTables = notAssigned
     .sort((a: GameTableRow, b: GameTableRow) =>
       (b.current_blind_level ?? 0) - (a.current_blind_level ?? 0)
     );
@@ -286,10 +241,6 @@ export async function fillEmptyTables(
     available_only: availableOnly,
     empty_table_count: emptyTables.length,
     empty_table_ids: emptyTables.map((t) => t.id),
-    // Bug 2 (2026-07-06): tables skipped by the running-session gate on the
-    // auto-staff path (leftover active tables with no live tournament / stale shift).
-    skipped_non_session_count: skippedNonSession.length,
-    skipped_non_session_ids: skippedNonSession.map((t) => t.id),
   });
 
   // Step 5: Assign dealers to each empty table with per-table swing_due_at
@@ -394,9 +345,11 @@ export async function fillEmptyTables(
         ) => Promise<{ data: AssignTableRpcResult | string | null; error: AssignTableRpcError | null }>;
       };
       const { data: rpcResult, error: rpcErr } = await rpcClient.rpc(
-        "assign_dealer_to_table",
+        "worker_assign_dealer_to_session_v1",
         {
           p_table_id: table.id,
+          p_table_session_id: table.table_session_id,
+          p_club_id: clubId,
           p_attendance_id: dealer.id,
           p_swing_due_at: tableSwingDueAt,
           // Explicit assignment-origin marker (2026-07-07). "open_manual_*" =
@@ -408,7 +361,7 @@ export async function fillEmptyTables(
           // (rest-deficit compensation, sync-window rounding, config-fallback
           // mismatches). The marker makes it exact. Key is deterministic per
           // table+due so the RPC's replay-dedupe still works across retry attempts.
-          p_idempotency_key: `${availableOnly ? "autostaff" : "open_manual"}_${table.id}_${tableSwingDueAt ?? now.toISOString()}`,
+          p_idempotency_key: `${availableOnly ? "autostaff" : "open_manual"}_${table.table_session_id}_${tableSwingDueAt ?? now.toISOString()}`,
         }
       );
 

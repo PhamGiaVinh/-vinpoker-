@@ -141,7 +141,7 @@ async function revision(
 }
 
 function expectCode(action: () => unknown | Promise<unknown>, code: string) {
-  return expect(action).rejects.toMatchObject<Partial<DecisionPacketValidationError>>({ code });
+  return expect(action).rejects.toMatchObject({ code });
 }
 
 describe("Decision Packet V1 content", () => {

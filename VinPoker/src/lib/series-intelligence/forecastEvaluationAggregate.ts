@@ -21,7 +21,7 @@ function sampleGate(n: number): ForecastEvaluationSampleGate {
   return "evaluation_summary_available";
 }
 
-function groupKey(evaluation: SeriesForecastEvaluationV1): string {
+function groupKey(evaluation: Pick<SeriesForecastEvaluationV1, "targetMetric" | "horizon" | "engineId" | "engineVersion" | "band">): string {
   return JSON.stringify([
     evaluation.targetMetric,
     evaluation.horizon,
@@ -36,14 +36,14 @@ function compare(a: string, b: string): number {
 }
 
 export function aggregateForecastEvaluationsV1(
-  evaluations: readonly SeriesForecastEvaluationV1[],
+  evaluations: readonly (Omit<SeriesForecastEvaluationV1, "lifecycle"> & { readonly lifecycle: "current" | "stale" })[],
 ): readonly ForecastEvaluationAggregateV1[] {
   const groups = new Map<string, SeriesForecastEvaluationV1[]>();
   for (const evaluation of evaluations) {
     if (evaluation.lifecycle !== "current") continue;
     const key = groupKey(evaluation);
     const group = groups.get(key) ?? [];
-    group.push(evaluation);
+    group.push({ ...evaluation, lifecycle: "current" });
     groups.set(key, group);
   }
 

@@ -63,6 +63,7 @@ import {
   unresolvedCheckoutAttendanceIds,
 } from "@/lib/dealerCheckoutResults";
 import { useDealerSwingHealth } from "@/hooks/useDealerSwingHealth";
+import { dealerTableCoverage } from "@/lib/dealerTableCoverage";
 import SwingTableActions from "./dealer-swing/SwingTableActions";
 import StatusFilterChips, { type StatusFilterValue } from "./dealer-swing/StatusFilterChips";
 import SwingTableCard, { type ConfirmSwingRequest } from "./dealer-swing/SwingTableCard";
@@ -104,7 +105,7 @@ import {
 } from "@/lib/dealerMassOpen";
 
 type ClubRow = { id: string; name: string };
-type Tour = { id: string; club_id: string; tour_name: string; start_time: string; end_time: string; tour_tier?: string };
+type Tour = { id: string; club_id: string; tour_name: string; start_time: string; end_time: string; tour_tier?: string; closed_at?: string | null; archived_at?: string | null };
 type DealerMassOpenRpcError = { code?: string; message: string };
 type DealerMassOpenRpcResult<T> = Promise<{ data: T | null; error: DealerMassOpenRpcError | null }>;
 const dealerMassOpenRpc = <T,>(name: string, args: Record<string, unknown>) => (
@@ -349,6 +350,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   const [autoSwingEnabled, setAutoSwingEnabled] = useState(false);
   const [activeView, setActiveView] = useState<"roster" | "tables" | "dealers" | "payroll">("tables");
   const [modalTable, setModalTable] = useState<string | null>(null);
+  const manualAssignRequests = useRef(new Map<string, string>());
   const [changePredictedTableId, setChangePredictedTableId] = useState<string | null>(null);
   const [correctWrongTableId, setCorrectWrongTableId] = useState<string | null>(null);
   const [roomReconcileOpen, setRoomReconcileOpen] = useState(false);
@@ -540,7 +542,8 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   const tableAssignmentMap = useMemo(() => {
     const map: Record<string, DealerAssignment | null> = {};
     for (const t of tables ?? []) {
-      const a = (assignments ?? []).find((a) => a.table_id === t.id && a.status === "assigned");
+      const a = (assignments ?? []).find((a) => a.table_id === t.id && a.status === "assigned" && !a.released_at
+        && !!t.table_session_id && a.table_session_id === t.table_session_id);
       map[t.id] = a ?? null;
     }
     return map;
@@ -555,9 +558,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
     // (status='assigned' on a closed/inactive table — left by a close-table
     // race) must not inflate this, so "bàn có dealer" can never exceed "bàn
     // đang mở" (no more nonsensical 15/13).
-    const assignedTables = (assignments ?? []).filter(
-      (a) => a.status === "assigned" && !a.released_at && activeTableIds.has(a.table_id),
-    ).length;
+    const assignedTables = dealerTableCoverage(tables ?? [], assignments ?? []).assignedTables;
     // Diagnostic: assignments still 'assigned' but pointing at a non-active
     // table — these are ghosts (operator/admin signal only).
     const ghostAssignments = (assignments ?? []).filter(
@@ -952,16 +953,29 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   // Confirm assignment
   const confirmAssign = async (forceDealerId?: string) => {
     if (!modalTable) return;
+    const assignmentTable = tables.find((table) => table.id === modalTable);
+    if (!user?.id || !forceDealerId || !assignmentTable?.table_session_id) {
+      toast.error("Chọn dealer và xác minh lại phiên bàn trước khi gán.");
+      return;
+    }
     if (isSubmitting.current) return;
     isSubmitting.current = true;
     setAssigning(true);
     try {
+      const requestScope = JSON.stringify([user.id, assignmentTable.club_id, modalTable, assignmentTable.table_session_id, forceDealerId]);
+      const storageKey = `vinpoker:manual-assign:${requestScope}`;
+      const stored = sessionStorage.getItem(storageKey);
+      const requestId = manualAssignRequests.current.get(requestScope)
+        ?? (stored && /^[0-9a-f-]{36}$/i.test(stored) ? stored : crypto.randomUUID());
+      manualAssignRequests.current.set(requestScope, requestId);
+      sessionStorage.setItem(storageKey, requestId);
       const { data, error } = await supabase.functions.invoke("assign-dealer", {
         body: {
           table_id: modalTable,
+          table_session_id: assignmentTable.table_session_id,
           force_dealer_id: forceDealerId || undefined,
           requested_by: user?.id,
-          idempotency_key: crypto.randomUUID(),
+          idempotency_key: requestId,
           shift_id: selectedTour ?? undefined,
         },
       });
@@ -976,7 +990,11 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
         }
         // 409 = table already has an active dealer (cron may have auto-assigned)
         if (status === 409) {
-          toast.info("Bàn đã có dealer — tự động cập nhật...");
+          if (detail === "IDEMPOTENCY_CONFLICT") {
+            toast.error("Yêu cầu gán không khớp kết quả đã lưu. Không gán lại tự động; cần kiểm tra phiên bàn và dealer.");
+          } else {
+            toast.info(`${detail} — đang tải lại trạng thái bàn.`);
+          }
           refetchAssignments();
           return;
         }
@@ -984,16 +1002,15 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
         return;
       }
       if ((data as any)?.error) { toast.error((data as any).error); return; }
+      if ((data as any)?.status !== "success" || !(data as any)?.assignment?.id) {
+        toast.warning("Chưa xác minh được kết quả gán. Thử lại cùng dealer để tra kết quả cũ.");
+        return;
+      }
+      manualAssignRequests.current.delete(requestScope);
+      sessionStorage.removeItem(storageKey);
       toast.success("Đã gán dealer");
       if (modalTable) triggerSwingAnimation(modalTable);
-      // Telegram notification
-      const table = (tables ?? []).find((t) => t.id === modalTable);
-      const tableName = table?.table_name ?? "";
-      const dealerName = forceDealerId
-        ? (dealers ?? []).find((d) => d.dealer_id === forceDealerId)?.dealers?.full_name ?? ""
-        : (suggestions ?? [])[0]?.dealer_name ?? "";
-      const tourName = getTourName();
-      sendTelegram(`🔵 ${dealerName} được assign vào ${tableName}${tourName ? ` (Tour: ${tourName})` : ""}`);
+      // Assignment notifications belong to the server commit path, not receipt replay.
       setModalTable(null);
       refetchAssignments();
       refetchDealers();
@@ -1480,192 +1497,85 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
     };
   }, [selectedTour, tours, tables, assignments, nowMs]);
 
-  // Load dealers for manual check-in — includes checked-out dealers (re-check-in) in separate section
+  // This is a candidate read, not an eligibility decision. The RPC validates shifts.
+  const checkinScope = useRef("");
+  checkinScope.current = [user?.id, activeClubId].join(":");
   const loadCheckinDealers = async () => {
-    const today = new Date().toISOString().split("T")[0];
-    const { data: activeDealers } = await supabase
-      .from("dealers")
+    const scope = checkinScope.current;
+    if (!activeClubId) { setCheckinDealers([]); return; }
+    const { data, error } = await supabase.from("dealers")
       .select("id, full_name, tier, club_id")
-      .in("club_id", filteredClubIds)
-      .eq("status", "active")
+      .eq("club_id", activeClubId).eq("status", "active").is("deleted_at", null)
       .order("full_name");
-    const dealerMap = new Map((activeDealers ?? []).map((d) => [d.id, d]));
-
-    // Also fetch checked-out dealers today — they might not be in the active dealers list
-    const { data: checkedOutToday } = await supabase
-      .from("dealer_attendance")
-      .select("dealer_id, dealers!inner(full_name, tier)")
-      .in("dealers.club_id", filteredClubIds)
-      .eq("status", "checked_out")
-      .eq("shift_date", today);
-    for (const co of checkedOutToday ?? []) {
-      if (!dealerMap.has(co.dealer_id)) {
-        const dd = (co as any).dealers;
-        dealerMap.set(co.dealer_id, { id: co.dealer_id, full_name: dd?.full_name ?? "?", tier: dd?.tier ?? "C", club_id: "" });
-      }
-    }
-
-    const dealerIds = [...dealerMap.keys()];
-    if (!dealerIds.length) { setCheckinDealers([]); return; }
-
-    // Exclude currently checked-in dealers
-    const { data: activeAtt } = await supabase
-      .from("dealer_attendance")
-      .select("dealer_id")
-      .in("dealer_id", dealerIds)
-      .eq("status", "checked_in")
-      .in("current_state", ["available", "assigned", "on_break", "pre_assigned"]);
-    const activeCheckedInIds = new Set((activeAtt ?? []).map((a) => a.dealer_id));
-    // Also exclude dealers with active table assignments
-    const { data: activeAssigns } = await supabase
-      .from("dealer_assignments")
-      .select("dealer_id")
-      .eq("status", "assigned")
-      .in("dealer_id", dealerIds);
-    for (const a of activeAssigns ?? []) activeCheckedInIds.add(a.dealer_id);
-
-    // Get today's attendance to classify: checked-out → re-check-in, no attendance → new check-in
-    const { data: todayAtt } = await supabase
-      .from("dealer_attendance")
-      .select("dealer_id, status")
-      .eq("shift_date", today)
-      .in("dealer_id", dealerIds);
-    const checkedOutIds = new Set(
-      (todayAtt ?? []).filter((a) => a.status === "checked_out").map((a) => a.dealer_id)
-    );
-    const withAttToday = new Set((todayAtt ?? []).map((a) => a.dealer_id));
-
-    const reCheckins: any[] = [];
-    const newCheckins: any[] = [];
-    for (const id of dealerIds) {
-      if (activeCheckedInIds.has(id)) continue;
-      const d = dealerMap.get(id)!;
-      if (checkedOutIds.has(id)) {
-        reCheckins.push({ ...d, wasCheckedOut: true });
-      } else if (!withAttToday.has(id)) {
-        newCheckins.push({ ...d, wasCheckedOut: false });
-      }
-      // skip if dealer has today attendance but not checked_out (e.g. stale checked_in)
-    }
-    setCheckinDealers([...reCheckins, ...newCheckins]);
+    if (scope !== checkinScope.current) return;
+    if (error) { setCheckinDealers([]); toast.error("Không tải được dealer; hãy thử lại."); return; }
+    setCheckinDealers((data ?? []).map((dealer) => ({ ...dealer, wasCheckedOut: false })));
   };
 
-  // Manual check-in multiple dealers
-  // INSERT new record instead of UPDATE — preserves history for payroll.
-  // Partial unique index idx_one_active_checkin_per_dealer prevents
-  // double active check-in (dealer_id, shift_date WHERE status='checked_in').
+  // One server intent for initial check-in and re-check-in; preserve unknown retries.
+  const checkinKeys = useRef(new Map<string, string>());
+  const [checkinShiftId, setCheckinShiftId] = useState("");
+  const eligibleCheckinShifts = (tours ?? []).filter((shift) =>
+    shift.club_id === activeClubId && !shift.closed_at && !shift.archived_at);
   const doCheckin = async () => {
-    if (!checkinDealerIds.length) return;
+    if (!activeClubId || !eligibleCheckinShifts.some((shift) => shift.id === checkinShiftId) || !checkinDealerIds.length || processing) return;
+    const scope = checkinScope.current;
     setProcessing("checkin");
-    const today = new Date().toISOString().split("T")[0];
-    const { data: shifts } = await supabase
-      .from("dealer_shifts")
-      .select("id")
-      .in("club_id", filteredClubIds)
-      .order("start_time")
-      .limit(1);
-    const shiftId = (shifts ?? [])[0]?.id;
-    let success = 0, fail = 0;
-
-    for (const dealerId of checkinDealerIds) {
-      // Idempotency: skip if dealer already actively checked in today
-      const { data: activeCheckin } = await supabase
-        .from("dealer_attendance")
-        .select("id, check_in_time")
-        .eq("dealer_id", dealerId)
-        .eq("shift_date", today)
-        .eq("status", "checked_in")
-        .maybeSingle();
-      if (activeCheckin) {
-        console.warn(`[doCheckin] Dealer ${dealerId} already checked in at ${activeCheckin.check_in_time} — skip`);
-        continue;
-      }
-      // INSERT new attendance record; the old checked_out record is preserved
-      const { error } = await supabase.from("dealer_attendance").insert({
-        dealer_id: dealerId,
-        shift_id: shiftId ?? null,
-        shift_date: today,
-        status: "checked_in",
-        current_state: "available",
-        check_in_time: new Date().toISOString(),
-      });
-      if (error) {
-        // 23505 = unique_violation from idx_one_active_checkin_per_dealer
-        if (error.code === "23505") {
-          console.warn(`[doCheckin] Dealer ${dealerId} checked in concurrently — skip`);
-          success++;
-          continue;
-        }
-        fail++;
-        continue;
-      }
-      success++;
-    }
-    setProcessing(null);
-    if (fail > 0) toast.warning(`Check-in: ${success} thành công, ${fail} thất bại`);
-    else toast.success(`Đã check-in ${success} dealer`);
-    setCheckinOpen(false);
-    setCheckinDealerIds([]);
-    refetchDealers();
-  };
-
-  // Quick re-check-in for checked-out dealers (from the "Đã check-out" section)
-  // INSERT new record instead of UPDATE — the old checked_out record is
-  // preserved so payroll (get_dealer_payroll) can compute hours from history.
-  const doReCheckin = async (dealerId: string) => {
-    setProcessing("checkin");
-    const today = new Date().toISOString().split("T")[0];
+    const failed: string[] = [];
+    const remaining: string[] = [];
+    let success = 0;
     try {
-      // Idempotency: skip if dealer already actively checked in today
-      const { data: activeCheckin } = await supabase
-        .from("dealer_attendance")
-        .select("id, check_in_time")
-        .eq("dealer_id", dealerId)
-        .eq("shift_date", today)
-        .eq("status", "checked_in")
-        .maybeSingle();
-      if (activeCheckin) {
-        console.warn(`[doReCheckin] Dealer ${dealerId} already active since ${activeCheckin.check_in_time} — skip`);
-        toast.info("Dealer đang trong ca rồi");
-        setProcessing(null);
-        return;
-      }
-      // Get the latest checked-out record to reuse its shift_id
-      const { data: lastCheckout } = await supabase
-        .from("dealer_attendance")
-        .select("shift_id")
-        .eq("dealer_id", dealerId)
-        .eq("shift_date", today)
-        .eq("status", "checked_out")
-        .order("check_out_time", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      // INSERT new attendance record
-      const { error } = await supabase.from("dealer_attendance").insert({
-        dealer_id: dealerId,
-        shift_id: lastCheckout?.shift_id ?? null,
-        shift_date: today,
-        status: "checked_in",
-        current_state: "available",
-        check_in_time: new Date().toISOString(),
-      });
-      if (error) {
-        if (error.code === "23505") {
-          console.warn(`[doReCheckin] Race condition — dealer ${dealerId} checked in concurrently`);
-          toast.info("Dealer đã check-in rồi");
-          setProcessing(null);
-          return;
+      for (const dealerId of checkinDealerIds) {
+        if (scope !== checkinScope.current) return;
+        const key = [user?.id, activeClubId, dealerId, checkinShiftId].join(":");
+        const requestId = checkinKeys.current.get(key) ?? crypto.randomUUID();
+        checkinKeys.current.set(key, requestId);
+        try {
+          const { data, error } = await dealerMassOpenRpc<{ ok: boolean; error?: string; outcome?: string }>(
+            "operator_check_in_dealer_v1", {
+              p_dealer_id: dealerId, p_club_id: activeClubId,
+              p_shift_id: checkinShiftId, p_request_id: requestId,
+            });
+          const dealerName = checkinDealers.find((dealer) => dealer.id === dealerId)?.full_name ?? dealerId;
+          if (error || !data || typeof data.ok !== "boolean") {
+            failed.push(`${dealerName}: chưa xác minh check-in, hãy thử lại (giữ mã yêu cầu)`);
+            remaining.push(dealerId);
+            continue;
+          }
+          checkinKeys.current.delete(key);
+          if (!data.ok) {
+            const reasons: Record<string, string> = {
+              previous_shift_open: "Ca trước chưa đóng; cần kiểm tra, không tự sửa giờ công",
+              ambiguous_active_attendance: "Có nhiều ca đang mở; cần sửa dữ liệu",
+              assignment_needs_repair: "Assignment cũ chưa kết thúc; cần sửa dữ liệu",
+              dealer_not_eligible: "Dealer không thuộc CLB hoặc không còn hoạt động",
+              shift_not_eligible: "Ca đã đóng hoặc không thuộc CLB",
+              actor_not_allowed: "Không có quyền quản lý dealer tại CLB",
+              IDEMPOTENCY_CONFLICT: "Mã yêu cầu đã dùng với thông tin khác",
+            };
+            failed.push(`${dealerName}: ${reasons[data.error ?? ""] ?? data.error ?? "Backend từ chối"}`);
+            remaining.push(dealerId);
+          } else success++;
+        } catch {
+          failed.push("Mất kết nối; chưa biết server đã check-in hay chưa. Thử lại giữ nguyên mã.");
+          remaining.push(dealerId);
         }
-        throw error;
       }
-      setProcessing(null);
-      toast.success("Đã check-in lại dealer");
+      if (scope !== checkinScope.current) return;
+      if (success) toast.success(`Đã xác minh check-in ${success} dealer`);
+      if (failed.length) toast.warning(failed.join("\n"), { duration: 12000 });
+      setCheckinDealerIds(remaining);
+      if (!remaining.length) setCheckinOpen(false);
       refetchDealers();
       refetchCheckedOut();
-    } catch (e: any) {
-      setProcessing(null);
-      toast.error(`Re-check-in thất bại: ${e.message}`);
-    }
+    } finally { setProcessing(null); }
+  };
+  const doReCheckin = async (dealerId: string) => {
+    // Require an explicit current club/shift, never inherit an old attendance's shift.
+    await loadCheckinDealers();
+    setCheckinDealerIds([dealerId]);
+    setCheckinShiftId("");
+    setCheckinOpen(true);
   };
 
   // ── Special Dates CRUD handlers (Bug 6) ─────────────────────────────────
@@ -2050,6 +1960,12 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
           <span>Lỗi tải bàn: {tablesError}</span>
           <Button size="sm" variant="ghost" className="ml-auto text-xs h-6" onClick={refetchTables}>Thử lại</Button>
+        </div>
+      )}
+      {(tables ?? []).some(table => table.availability_status === "repair_required") && (
+        <div role="alert" className="bg-destructive/10 border border-destructive/30 text-destructive text-xs p-3 rounded">
+          Cần sửa dữ liệu phiên bàn: {(tables ?? []).filter(table => table.availability_status === "repair_required").map(table => table.table_name).join(", ")}.
+          Các bàn này không được tự gán dealer; lịch sử được giữ nguyên để đối chiếu.
         </div>
       )}
       {dealersError && (
@@ -2529,9 +2445,17 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       <Dialog open={checkinOpen} onOpenChange={(o) => { setCheckinOpen(o); if (o) { loadCheckinDealers(); setCheckinDealerIds([]); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Check-in thủ công</DialogTitle></DialogHeader>
+          {!activeClubId ? <p role="alert">Chọn một CLB trước khi check-in.</p> : (
+            <Select value={checkinShiftId} onValueChange={setCheckinShiftId}>
+              <SelectTrigger aria-label="Ca check-in"><SelectValue placeholder="Chọn ca làm việc" /></SelectTrigger>
+              <SelectContent>{eligibleCheckinShifts.map((shift) => (
+                <SelectItem key={shift.id} value={shift.id}>{shift.tour_name} · {shift.start_time}–{shift.end_time}</SelectItem>
+              ))}</SelectContent>
+            </Select>
+          )}
           <div className="max-h-72 overflow-y-auto space-y-2 border border-border p-2 rounded">
             {checkinDealers.length === 0 ? (
-              <div className="text-xs text-muted-foreground text-center py-4">Tất cả dealer đã check‑in hôm nay.</div>
+              <div className="text-xs text-muted-foreground text-center py-4">Không có dealer phù hợp trong CLB đã chọn.</div>
             ) : (
               <>
                 {/* Section: Check-in lại (đã checkout) */}
@@ -2613,7 +2537,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={doCheckin} disabled={!checkinDealerIds.length || processing === "checkin"}>
+            <Button onClick={doCheckin} disabled={!activeClubId || !checkinShiftId || !checkinDealerIds.length || processing === "checkin"}>
               {processing === "checkin" ? <Loader2 className="w-3 h-3 animate-spin" /> : `Check-in (${checkinDealerIds.length})`}
             </Button>
           </DialogFooter>
@@ -4280,11 +4204,7 @@ function CommandCenter({
   };
 
   // ── Computed metrics ────────────────────────────────────────────
-  const activeTablesCount = tables?.length ?? 0;
-  const assignedTablesCount = useMemo(
-    () => assignments.filter((a) => a.status === "assigned").length,
-    [assignments],
-  );
+  const { activeTables: activeTablesCount, assignedTables: assignedTablesCount } = dealerTableCoverage(tables ?? [], assignments);
 
   // Exceptions count for health badge
   const exceptionsCount = useMemo(() => {
@@ -4295,7 +4215,7 @@ function CommandCenter({
     }
     // Empty tables
     for (const t of tables ?? []) {
-      if (!tableAssignmentMap[t.id]) count++;
+      if (t.status === "active" && !tableAssignmentMap[t.id]) count++;
     }
     // Break due — use live computed minutes
     for (const d of dealers ?? []) {

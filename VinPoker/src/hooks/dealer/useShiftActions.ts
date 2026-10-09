@@ -7,6 +7,7 @@ import { dealerDataSource } from "@/lib/dealerApp/dataSource";
 import { formatHm } from "@/lib/dealerApp/selectors";
 import type { DealerShiftView } from "@/types/dealerApp";
 import type { ShiftStatus } from "@/types/shiftPlanner";
+import type { TFunction } from "i18next";
 
 // dealer_* RPCs aren't in the generated types yet (same as useShiftPlanner) — use
 // an untyped client for the .rpc() calls. Reads still go through the typed hooks.
@@ -41,7 +42,7 @@ function patchShiftInCaches(qc: QueryClient, shiftId: string, patch: Partial<Dea
   });
 }
 
-function successToast(action: ShiftAction, late: boolean, t: (k: string, d?: string) => string) {
+function successToast(action: ShiftAction, late: boolean, t: TFunction) {
   if (action === "confirm") return t("dealer.toast.confirmed", "Đã xác nhận ca");
   if (action === "checkIn")
     return late

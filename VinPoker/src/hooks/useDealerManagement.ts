@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { FEATURES } from "@/lib/featureFlags";
+import { useAuth } from "@/hooks/useAuth";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,7 +45,12 @@ function usePollingQuery<T>(
   deps: unknown[],
   intervalMs: number
 ): { data: T[]; loading: boolean; error: string | null; refetch: () => void } {
+  const { user } = useAuth();
+  const scope = JSON.stringify([user?.id ?? null, ...deps]);
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
   const [data, setData] = useState<T[]>([]);
+  const [dataScope, setDataScope] = useState(scope);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -54,31 +60,38 @@ function usePollingQuery<T>(
 
   const fetch = useCallback(async () => {
     const gen = ++generationRef.current;
+    const requestedScope = currentScope.current;
     try {
       const rows = await queryFnRef.current();
-      if (gen === generationRef.current) {
+      if (gen === generationRef.current && requestedScope === currentScope.current) {
         setData(rows);
+        setDataScope(requestedScope);
         setError(null);
       }
     } catch (e: any) {
-      if (gen === generationRef.current) {
+      if (gen === generationRef.current && requestedScope === currentScope.current) {
         setError(e?.message ?? "Unknown error");
       }
     } finally {
-      if (gen === generationRef.current) setLoading(false);
+      if (gen === generationRef.current && requestedScope === currentScope.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    generationRef.current += 1;
+    setData([]); setLoading(true); setError(null);
     fetch();
-    timerRef.current = window.setInterval(fetch, intervalMs);
+    timerRef.current = window.setInterval(() => {
+      if (document.visibilityState === "visible" && navigator.onLine) void fetch();
+    }, intervalMs);
     return () => {
+      generationRef.current += 1;
       if (timerRef.current) clearInterval(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [...deps, user?.id]);
 
-  return { data, loading, error, refetch: fetch };
+  return { data: dataScope === scope ? data : [], loading, error, refetch: fetch };
 }
 
 // ── Exported hooks ────────────────────────────────────────────────────────────
@@ -92,17 +105,15 @@ export function useAllDealers(clubIds: string[]): {
   return usePollingQuery<DealerRecord>(
     async () => {
       if (!clubIds.length) return [];
-      const { data, error } = await supabase
-        .from("dealers")
-        .select(
-          "id, club_id, full_name, tier, status, employment_type, hourly_rate_vnd, base_rate_vnd, monthly_salary_vnd, standard_hours_per_shift, ot_multiplier, joined_date, notes, phone, telegram_user_id, telegram_username, shift_preference" +
-          (FEATURES.manualPayrollDeductions ? ", manual_bhxh_vnd, manual_tax_vnd" : "")
-        )
+      const query = FEATURES.manualPayrollDeductions
+        ? supabase.from("dealers").select("id, club_id, full_name, tier, status, employment_type, hourly_rate_vnd, base_rate_vnd, monthly_salary_vnd, standard_hours_per_shift, ot_multiplier, joined_date, notes, phone, telegram_user_id, telegram_username, shift_preference, manual_bhxh_vnd, manual_tax_vnd")
+        : supabase.from("dealers").select("id, club_id, full_name, tier, status, employment_type, hourly_rate_vnd, base_rate_vnd, monthly_salary_vnd, standard_hours_per_shift, ot_multiplier, joined_date, notes, phone, telegram_user_id, telegram_username, shift_preference");
+      const { data, error } = await query
         .in("club_id", clubIds)
         .is("deleted_at", null)
         .order("full_name");
       if (error) throw error;
-      return (data ?? []) as DealerRecord[];
+      return data ?? [];
     },
     [[...clubIds].sort().join(",")],
     30_000

@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270120000004
+-- Remote ledger name: multiday_payout_legacy_hold_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: 66f670e37b00ac215f663e928e49a24359445e816087da2f99fefa4ee0395e83
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20270120000004_multiday_payout_legacy_hold_v1.sql

@@ -30,6 +30,12 @@ const snap = (o: Partial<ForecastSnapshot> = {}): ForecastSnapshot => ({
   notes: null,
   created_at: "2026-06-20T00:00:00Z",
   created_by: null,
+  forecast_issued_at: null, as_of_ts: null, target_event_ts: null,
+  provenance_kind: null, provenance_completeness: null, forecast_identity_eligible: false,
+  engine_version: null, feature_schema_version: null, code_sha: null, model_config_hash: null,
+  trial_count: null, selection_protocol_id: null, predictor_id: null, calibration_pool_id: null,
+  target_input_hash: null, training_data_hash: null, input_content_hash: null, forecast_instance_id: null,
+  derived_from_input_hash: null,
   ...o,
 });
 
@@ -66,6 +72,7 @@ const reg = (o: Partial<RegistrationEvent> = {}): RegistrationEvent => ({
   bullet: 1,
   commitment_stage: "paid",
   entry_source: "direct",
+  source_entry_id: null,
   created_at: "2026-06-25T00:00:00Z",
   created_by: null,
   ...o,

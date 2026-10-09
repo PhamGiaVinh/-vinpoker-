@@ -36,7 +36,12 @@ function ageSecFromIso(iso: string | null, nowMs: number): number | null {
 }
 
 export default function DealerSwingInfraHealth({ health, clubs, unavailable, nowMs }: Props) {
-  if (unavailable || !health || health.length === 0) return null;
+  if (unavailable) return (
+    <div role="alert" className="mb-4 rounded-xl border border-border/60 bg-card/40 px-4 py-2.5 text-sm text-muted-foreground">
+      Hạ tầng swing: Không xác minh được. Kiểm tra kết nối rồi tải lại; chưa có dữ liệu để kết luận hệ thống ổn định.
+    </div>
+  );
+  if (!health || health.length === 0) return null;
   const nameOf = (id: string) => clubs.find((c) => c.id === id)?.name ?? "CLB";
   const multi = health.length > 1;
 

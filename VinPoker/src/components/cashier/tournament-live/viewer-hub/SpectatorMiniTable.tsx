@@ -29,7 +29,7 @@ export function SpectatorMiniTable({ table, appearance }: { table: PublicTableSn
       <span className="spectator-mini-pot tracker-num">{table.pot == null ? (stateLabel ?? 'POT —') : `POT ${formatViewerChipAndBB(table.pot, table.bigBlind)}`}</span>
       {!!table.board?.length && <span className="spectator-mini-board">{table.board.map((card, index) => <PokerCard key={`${index}:${card}`} card={card} size="sm" className="spectator-mini-card" />)}</span>}
       <TableBlinds level={table.levelNumber} sb={table.smallBlind} bb={table.bigBlind} ante={table.ante} />
-      {table.latestAction && table.trackerState === 'live' && <span className="spectator-mini-action">{latestActor?.name ?? t('tableAppearance.player')} · {table.latestAction.actionType.replaceAll('_', ' ')}{table.latestAction.amount != null && table.latestAction.amount > 0 ? ` ${amount(table.latestAction.amount)}` : ''}</span>}
+      {table.latestAction && table.trackerState === 'live' && <span className="spectator-mini-action">{latestActor?.name ?? t('tableAppearance.player')} · {table.latestAction.actionType.split('_').join(' ')}{table.latestAction.amount != null && table.latestAction.amount > 0 ? ` ${amount(table.latestAction.amount)}` : ''}</span>}
     </div>
     {Array.from({ length: 9 }, (_, index) => {
       const seatNumber = index + 1;
@@ -49,7 +49,7 @@ export function SpectatorMiniTable({ table, appearance }: { table: PublicTableSn
           {button}
         </div>
         <div className="spectator-mini-plate"><div className="spectator-mini-name">{player.name}</div><div className="spectator-mini-stack tracker-num">{amount(player.stack)}</div></div>
-        <span className="spectator-mini-status" data-action={action}>{action && table.trackerState === 'live' && !action.startsWith('post_') ? <>{action.replaceAll('_', '-').toUpperCase()}{!player.isFolded && (player.lastAction?.amount ?? 0) > 0 ? ` ${amount(player.lastAction!.amount)}` : ''}</> : ' '}</span>
+        <span className="spectator-mini-status" data-action={action}>{action && table.trackerState === 'live' && !action.startsWith('post_') ? <>{action.split('_').join('-').toUpperCase()}{!player.isFolded && (player.lastAction?.amount ?? 0) > 0 ? ` ${amount(player.lastAction!.amount)}` : ''}</> : ' '}</span>
       </div>;
     })}
   </div>;

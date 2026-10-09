@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270120000003
+-- Remote ledger name: multiday_final_seating_adjustment_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: 6379c45162a5416ccf44f52706e8f1999701e282cd04af8b1eb0f0146835955f
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20270120000003_multiday_final_seating_adjustment_v1.sql

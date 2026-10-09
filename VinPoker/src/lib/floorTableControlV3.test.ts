@@ -59,6 +59,47 @@ function clientFrom(handler: ReturnType<typeof vi.fn>, enabled = true, redrawSea
 }
 
 describe("floorTableControlV3 browser boundary", () => {
+  it("accepts an orphan session as explicit repair data rather than dropping the whole room", async () => {
+    const rpc = vi.fn().mockResolvedValue({ error: null, data: [{ ...inventoryRow,
+      availability_status: "repair_required", table_session_id: "orphan-session", session_type: "tournament",
+      tournament_id: "tour-a", control_mode: "manual", control_epoch: 1, revision: 1,
+    }] });
+    const result = await clientFrom(rpc).getClubTableInventory("club-a");
+    expect(result).toEqual({ ok: true, data: [expect.objectContaining({ availabilityStatus: "repair_required", tournamentTableId: null })] });
+  });
+  it("sends exact session, epoch and revision when requesting a mode change", async () => {
+    const rpc = vi.fn().mockResolvedValue({ error: null, data: { ok: true, outcome: "pending" } });
+    await clientFrom(rpc).requestTableControlMode({ tournamentTableId: "table-a", tableSessionId: "session-a", controlMode: "manual", expectedRevision: 4, expectedEpoch: 2, requestId: "request-a" });
+    expect(rpc).toHaveBeenCalledWith("floor_request_table_control_mode_v4", {
+      p_tournament_table_id: "table-a", p_table_session_id: "session-a", p_control_mode: "manual",
+      p_expected_revision: 4, p_expected_epoch: 2, p_request_id: "request-a",
+    });
+  });
+  it("shows valid incomplete break rows as blockers instead of malformed data", async () => {
+    const rpc = vi.fn().mockResolvedValue({ error: null, data: {
+      ok: true, complete: false, plan_hash: "hash", source_tournament_table_id: "table-a",
+      source_table_number: 1, expected_revision: 4,
+      moves: [
+        { entry_id: null, player_name: "Legacy", source_seat_number: 1, destination_tournament_table_id: null },
+        { entry_id: "entry-b", player_name: "Waiting", source_seat_number: 2, destination_tournament_table_id: null },
+      ],
+    } });
+    const result = await clientFrom(rpc, true, true).planBreakTable({ tournamentTableId: "table-a", expectedRevision: 4, drawMode: "fill_lowest_table" });
+    expect(result).toEqual({ ok: true, data: expect.objectContaining({ complete: false, moves: [], blockers: [
+      { playerName: "Legacy", sourceSeatNumber: 1, reason: "missing_entry" },
+      { playerName: "Waiting", sourceSeatNumber: 2, reason: "no_destination" },
+    ] }) });
+  });
+
+  it("rejects a complete break plan containing unresolved identities", async () => {
+    const rpc = vi.fn().mockResolvedValue({ error: null, data: {
+      ok: true, complete: true, plan_hash: "hash", source_tournament_table_id: "table-a",
+      source_table_number: 1, expected_revision: 4,
+      moves: [{ entry_id: null, player_name: "Legacy", source_seat_number: 1, destination_tournament_table_id: null }],
+    } });
+    await expect(clientFrom(rpc, true, true).planBreakTable({ tournamentTableId: "table-a", expectedRevision: 4, drawMode: "fill_lowest_table" }))
+      .resolves.toEqual({ ok: false, error: "V3_BREAK_PLAN_MALFORMED" });
+  });
   it("fails closed without any RPC while V3 is OFF", async () => {
     const rpc = vi.fn();
     const client = clientFrom(rpc, false);

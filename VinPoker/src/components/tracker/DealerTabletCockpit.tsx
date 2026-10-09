@@ -49,7 +49,7 @@ export function DealerTabletCockpit(props: CockpitProps) {
           || table.session_closed_at !== null || typeof table.table_session_id !== "string" || !table.table_session_id
           || !Number.isSafeInteger(table.control_epoch) || table.control_epoch < 1) { publish(false); return; }
         const authority = await client.validateTrackerContext({ tournamentId: hook.tournamentId, tournamentTableId: hook.tournamentTableId!, tableSessionId: table.table_session_id, controlEpoch: table.control_epoch });
-        publish(authority.ok && authority.data.ok === true);
+        publish(authority.ok && !!authority.data && typeof authority.data === "object" && "ok" in authority.data && authority.data.ok === true);
       } catch { publish(false); }
     };
     void refresh();

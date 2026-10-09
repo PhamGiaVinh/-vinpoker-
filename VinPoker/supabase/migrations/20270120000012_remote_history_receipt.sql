@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270120000012
+-- Remote ledger name: multiday_floor_owner_capabilities_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: c3c86297a15de7500fd2d4d74f4117b82cea5fbdfa511e082a5c0dc9744e86a2
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20270120000012_multiday_floor_owner_capabilities_v1.sql

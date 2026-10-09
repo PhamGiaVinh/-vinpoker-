@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270120000000
+-- Remote ledger name: multiday_end_flight_snapshot_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: 947129793980d7db018b0edc12158e4cdb59cb2621399bedfdc06386eccb4a48
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20270120000000_multiday_end_flight_snapshot_v1.sql

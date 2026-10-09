@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270126000001
+-- Remote ledger name: redraw_clock_hold_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: e97e4f65b5da9ec679db8ec3f38e7f4cb4832be150d9e1b16dd32f55f6b4ddf9
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20270126000001_redraw_clock_hold_v1.sql

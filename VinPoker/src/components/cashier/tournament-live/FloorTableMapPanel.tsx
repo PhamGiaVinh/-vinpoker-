@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -85,8 +86,9 @@ export function FloorTableMapPanel({
   tournament: Tournament;
   refreshTrigger: number;
 }) {
+  const { user } = useAuth();
   if (FEATURES.floorTableControlV3) {
-    return <FloorTableMapPanelV3 tournament={tournament} refreshTrigger={refreshTrigger} />;
+    return <FloorTableMapPanelV3 actorId={user?.id ?? null} tournament={tournament} refreshTrigger={refreshTrigger} />;
   }
   return <FloorTableMapPanelLegacy tournament={tournament} refreshTrigger={refreshTrigger} />;
 }

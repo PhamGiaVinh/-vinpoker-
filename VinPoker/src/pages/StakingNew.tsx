@@ -112,9 +112,9 @@ const StakingNew = () => {
   useEffect(() => {
     (async () => {
       const [{ data: tData }, { data: cData }] = await Promise.all([
-        supabase
-          .from("tournaments")
-          .select(`id, name, start_time, buy_in, rake_amount${FEATURES.tournamentServiceFee ? ", service_fee_amount" : ""}, free_rake_enabled, free_rake_slots, free_rake_used, club_id, minutes_per_level, late_reg_close_level`)
+        (FEATURES.tournamentServiceFee
+          ? supabase.from("tournaments").select("id, name, start_time, buy_in, rake_amount, service_fee_amount, free_rake_enabled, free_rake_slots, free_rake_used, club_id, minutes_per_level, late_reg_close_level")
+          : supabase.from("tournaments").select("id, name, start_time, buy_in, rake_amount, free_rake_enabled, free_rake_slots, free_rake_used, club_id, minutes_per_level, late_reg_close_level"))
           .gt("start_time", new Date().toISOString())
           .order("start_time", { ascending: true })
           .limit(80),

@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270120000011
+-- Remote ledger name: multiday_floor_min_cash_auth_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: 80fde1ddfe9dfd74506a379734de93dbc1826f9d2ed347010b13c5121e26772d
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20270120000011_multiday_floor_min_cash_auth_v1.sql

@@ -187,6 +187,11 @@ function fixtureForAction(actionId: string): string {
 }
 
 export const FLOOR_CASHIER_BUTTON_MANIFEST: readonly FloorCashierButtonManifestEntry[] = [
+  entry("floor.tables.cancel_pending_control_mode", "NON_MONEY_WRITE", {
+    backend: "floor_cancel_table_control_mode_request_v1 (exact session and request)",
+    invariant: "Only the authorized pending request is cancelled; current mode, seats and chips remain unchanged.",
+    disposition: "BLOCKED",
+  }),
   ...navigationActions.map((actionId) => entry(actionId, "READ", {
     backend: "none (local navigation or dialog state)",
     invariant: "No database row changes.",

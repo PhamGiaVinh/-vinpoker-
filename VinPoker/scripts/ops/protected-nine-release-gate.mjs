@@ -95,12 +95,13 @@ export function validateInvocation(env, entry, mode) {
 }
 
 export function buildAtomicMigrationQuery(entry) {
-  const scan = scanMigrationSource(entry.sql);
-  if (entry.sql.includes(RECEIPT_TAG)) throw new Error("Migration conflicts with receipt delimiter");
+  const sql = canonicalSqlText(entry.sql);
+  const scan = scanMigrationSource(sql);
+  if (sql.includes(RECEIPT_TAG)) throw new Error("Migration conflicts with receipt delimiter");
   const guard = `SET LOCAL lock_timeout = '5s';\nSET LOCAL statement_timeout = '120s';\nSELECT pg_advisory_xact_lock(280000, 9);\nDO $protected_nine_guard$ BEGIN IF EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '${entry.newVersion}' OR name = '${entry.semanticName}') THEN RAISE EXCEPTION 'migration ledger conflict'; END IF; END $protected_nine_guard$;\n`;
   const receipt = `\nINSERT INTO supabase_migrations.schema_migrations(version,name,statements) VALUES ('${entry.newVersion}','${entry.semanticName}',ARRAY[${RECEIPT_TAG}${canonicalSqlText(entry.sql)}${RECEIPT_TAG}]::text[]);\n`;
-  if (scan.mode === "outer-transaction") return `${entry.sql.slice(0, scan.insertAfterBegin)}\n${guard}${entry.sql.slice(scan.insertAfterBegin, scan.insertBeforeCommit)}${receipt}${entry.sql.slice(scan.insertBeforeCommit)}`;
-  return `BEGIN;\n${guard}${entry.sql}\n${receipt}COMMIT;`;
+  if (scan.mode === "outer-transaction") return `${sql.slice(0, scan.insertAfterBegin)}\n${guard}${sql.slice(scan.insertAfterBegin, scan.insertBeforeCommit)}${receipt}${sql.slice(scan.insertBeforeCommit)}`;
+  return `BEGIN;\n${guard}${sql}\n${receipt}COMMIT;`;
 }
 
 async function request(path, token, options = {}) {

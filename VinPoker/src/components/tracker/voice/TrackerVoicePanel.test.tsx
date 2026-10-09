@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
   MockRealtimeTranscriptionProvider,
@@ -9,6 +10,7 @@ import {
 import type { StandaloneHandInput } from "@/components/cashier/tournament-live/handinput/useStandaloneHandInput";
 import { ACTION_AUTO_COMMIT_MS, TrackerVoicePanel } from "./TrackerVoicePanel";
 import type { TrackerVoiceDiagnosticSnapshot } from "./TrackerVoicePanel";
+type VoicePanelProps = ComponentProps<typeof TrackerVoicePanel>;
 
 function hookFixture(): StandaloneHandInput {
   return {
@@ -81,7 +83,7 @@ const validatedReceipt: ValidatedVoiceEventReceipt = {
 const renderPanel = (
   hook = hookFixture(),
   provider = new MockRealtimeTranscriptionProvider(),
-  validateEventOverride = vi.fn(async () => validatedReceipt),
+  validateEventOverride = vi.fn(async (_input: Parameters<NonNullable<VoicePanelProps["validateEventOverride"]>>[0]) => validatedReceipt),
 ) => ({
   provider,
   validateEventOverride,
@@ -109,7 +111,7 @@ describe("TrackerVoicePanel", () => {
 
   it("turns only a final transcript into a Shadow proposal", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
-    const validateEventOverride = vi.fn(async () => validatedReceipt);
+    const validateEventOverride = vi.fn(async (_input: Parameters<NonNullable<VoicePanelProps["validateEventOverride"]>>[0]) => validatedReceipt);
     render(
       <TrackerVoicePanel
         hook={hookFixture()}
@@ -193,7 +195,7 @@ describe("TrackerVoicePanel", () => {
   it("keeps a Board transcript as a draft until the Dealer confirms one atomic receipt", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const applyVoiceBoardReceipt = vi.fn(() => true);
-    const commitBoardOverride = vi.fn(async () => ({
+    const commitBoardOverride = vi.fn(async (_input: Parameters<NonNullable<VoicePanelProps["commitBoardOverride"]>>[0]) => ({
       ok: true as const,
       voice_event_id: "voice-board-1",
       canonical_receipt_event_id: "board-receipt-1",
@@ -205,7 +207,7 @@ describe("TrackerVoicePanel", () => {
       state_version_before: "a".repeat(64),
       state_version_after: "b".repeat(64),
     }));
-    const validateEventOverride = vi.fn(async () => ({
+    const validateEventOverride = vi.fn(async (_input: Parameters<NonNullable<VoicePanelProps["validateEventOverride"]>>[0]) => ({
       ...validatedReceipt,
       execution_mode: "assist" as const,
       voice_event_id: "voice-board-1",
@@ -250,7 +252,7 @@ describe("TrackerVoicePanel", () => {
   it("auto-commits a validated Assist action after the visible 1.8-second countdown", async () => {
     expect(ACTION_AUTO_COMMIT_MS).toBe(1_800);
     const provider = new MockRealtimeTranscriptionProvider();
-    const handleVoiceAction = vi.fn(async () => true);
+    const handleVoiceAction = vi.fn(async (..._args: Parameters<NonNullable<StandaloneHandInput["handleVoiceAction"]>>) => true);
     render(
       <TrackerVoicePanel
         hook={{ ...hookFixture(), handleVoiceAction }}
@@ -272,7 +274,7 @@ describe("TrackerVoicePanel", () => {
 
   it("commits the pending action before accepting the next spoken poker action", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
-    const handleVoiceAction = vi.fn(async () => true);
+    const handleVoiceAction = vi.fn(async (..._args: Parameters<NonNullable<StandaloneHandInput["handleVoiceAction"]>>) => true);
     const validateEventOverride = vi.fn(async (input) => ({
       ...validatedReceipt,
       voice_event_id: `voice-${input.finalTranscript}`,
@@ -300,7 +302,7 @@ describe("TrackerVoicePanel", () => {
 
   it("cancels the pending hands-free action when Dealer says Báo sai", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
-    const handleVoiceAction = vi.fn(async () => true);
+    const handleVoiceAction = vi.fn(async (..._args: Parameters<NonNullable<StandaloneHandInput["handleVoiceAction"]>>) => true);
     render(
       <TrackerVoicePanel
         hook={{ ...hookFixture(), handleVoiceAction }}
@@ -323,7 +325,7 @@ describe("TrackerVoicePanel", () => {
 
   it("does not fast-commit the pending action for a seatless next command", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
-    const handleVoiceAction = vi.fn(async () => true);
+    const handleVoiceAction = vi.fn(async (..._args: Parameters<NonNullable<StandaloneHandInput["handleVoiceAction"]>>) => true);
     render(
       <TrackerVoicePanel
         hook={{ ...hookFixture(), handleVoiceAction }}
@@ -349,7 +351,7 @@ describe("TrackerVoicePanel", () => {
   it("auto-commits a validated Board through the existing atomic writer", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const applyVoiceBoardReceipt = vi.fn(() => true);
-    const commitBoardOverride = vi.fn(async () => ({
+    const commitBoardOverride = vi.fn(async (_input: Parameters<NonNullable<VoicePanelProps["commitBoardOverride"]>>[0]) => ({
       ok: true as const,
       voice_event_id: "voice-board-auto",
       canonical_receipt_event_id: "board-receipt-auto",
@@ -395,7 +397,7 @@ describe("TrackerVoicePanel", () => {
 
   it("offers a manual retry when hands-free Board commit fails", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
-    const commitBoardOverride = vi.fn(async () => {
+    const commitBoardOverride = vi.fn(async (_input: Parameters<NonNullable<VoicePanelProps["commitBoardOverride"]>>[0]) => {
       throw new Error("Board writer unavailable");
     });
     const hook = {
@@ -430,7 +432,7 @@ describe("TrackerVoicePanel", () => {
 
   it("keeps the canonical runout workflow after hole cards reveal moves the UI to flop entry", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
-    const validateEventOverride = vi.fn(async () => ({
+    const validateEventOverride = vi.fn(async (_input: Parameters<NonNullable<VoicePanelProps["validateEventOverride"]>>[0]) => ({
       ...validatedReceipt,
       execution_mode: "assist" as const,
       voice_event_id: "voice-runout-flop",
@@ -469,7 +471,7 @@ describe("TrackerVoicePanel", () => {
   it("keeps Hole Cards speech outside generic diagnostics until the Dealer confirms", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
     const applyVoiceHoleCardsReceipt = vi.fn(() => true);
-    const commitHoleCardsOverride = vi.fn(async () => ({
+    const commitHoleCardsOverride = vi.fn(async (_input: Parameters<NonNullable<VoicePanelProps["commitHoleCardsOverride"]>>[0]) => ({
       ok: true as const,
       voice_event_id: "voice-hole-8",
       canonical_receipt_event_id: "hole-receipt-8",
@@ -659,7 +661,7 @@ describe("TrackerVoicePanel", () => {
       active_hand: { ...runtimeFixture.active_hand },
     };
     const applyVoiceFinishReceipt = vi.fn(async () => true);
-    const prepareFinishOverride = vi.fn(async () => ({
+    const prepareFinishOverride = vi.fn(async (_input: Parameters<NonNullable<VoicePanelProps["prepareFinishOverride"]>>[0]) => ({
       ok: true as const,
       settlement_origin: "engine_showdown" as const,
       settlement_digest: "b".repeat(64),
@@ -671,7 +673,7 @@ describe("TrackerVoicePanel", () => {
         conservation_total: 20_000,
       },
     }));
-    const commitFinishOverride = vi.fn(async () => {
+    const commitFinishOverride = vi.fn(async (_input: Parameters<NonNullable<VoicePanelProps["commitFinishOverride"]>>[0]) => {
       runtime.active_hand = null;
       return {
         ok: true as const,
@@ -741,14 +743,14 @@ describe("TrackerVoicePanel", () => {
     await waitFor(() => expect(snapshots.some((snapshot) => (
       snapshot.finalProviderEventId === "final-fold"
       && snapshot.proposalProviderEventId === "final-fold"
-      && snapshot.proposal?.command?.kind === "fold"
+      && snapshot.proposal?.command && "kind" in snapshot.proposal.command && snapshot.proposal.command.kind === "fold"
     ))).toBe(true));
 
     act(() => provider.emit("seat number five call", { final: true, id: "final-seat-five" }));
     await waitFor(() => expect(snapshots.some((snapshot) => (
       snapshot.finalProviderEventId === "final-seat-five"
       && snapshot.proposalProviderEventId === "final-seat-five"
-      && snapshot.proposal?.command?.kind === "call"
+      && snapshot.proposal?.command && "kind" in snapshot.proposal.command && snapshot.proposal.command.kind === "call"
     ))).toBe(true));
 
     expect(snapshots.some((snapshot) => (
@@ -805,10 +807,10 @@ describe("TrackerVoicePanel", () => {
 
   it("commits a spoken fold as fold once through the canonical Assist hook", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
-    const handleVoiceAction = vi.fn(async () => true);
+    const handleVoiceAction = vi.fn(async (..._args: Parameters<NonNullable<StandaloneHandInput["handleVoiceAction"]>>) => true);
     const hook = { ...hookFixture(), handleVoiceAction };
     const receipt = { ...validatedReceipt, execution_mode: "assist" as const };
-    const validateEventOverride = vi.fn(async () => receipt);
+    const validateEventOverride = vi.fn(async (_input: Parameters<NonNullable<VoicePanelProps["validateEventOverride"]>>[0]) => receipt);
     renderPanel(hook, provider, validateEventOverride);
     fireEvent.click(screen.getByRole("button", { name: "assist" }));
     fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
@@ -907,7 +909,7 @@ describe("TrackerVoicePanel", () => {
 
   it("deduplicates duplicate provider completion callbacks", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
-    const validateEventOverride = vi.fn(async () => validatedReceipt);
+    const validateEventOverride = vi.fn(async (_input: Parameters<NonNullable<VoicePanelProps["validateEventOverride"]>>[0]) => validatedReceipt);
     renderPanel(hookFixture(), provider, validateEventOverride);
     fireEvent.click(screen.getByRole("button", { name: "Cho phép microphone" }));
     await screen.findByText("Microphone đã kết nối");
@@ -921,7 +923,7 @@ describe("TrackerVoicePanel", () => {
 
   it("buffers during correction and revalidates in Assist after Floor resolves", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
-    const handleVoiceAction = vi.fn(async () => true);
+    const handleVoiceAction = vi.fn(async (..._args: Parameters<NonNullable<StandaloneHandInput["handleVoiceAction"]>>) => true);
     const hook = { ...hookFixture(), handleVoiceAction };
     const validateEventOverride = vi.fn(async (input) => {
       if (input.finalTranscript.includes("sai")) {
@@ -963,8 +965,8 @@ describe("TrackerVoicePanel", () => {
 
   it("lets Dealer discard buffered speech without writing an action", async () => {
     const provider = new MockRealtimeTranscriptionProvider();
-    const handleVoiceAction = vi.fn(async () => true);
-    const validateEventOverride = vi.fn(async () => ({
+    const handleVoiceAction = vi.fn(async (..._args: Parameters<NonNullable<StandaloneHandInput["handleVoiceAction"]>>) => true);
+    const validateEventOverride = vi.fn(async (_input: Parameters<NonNullable<VoicePanelProps["validateEventOverride"]>>[0]) => ({
       ...validatedReceipt,
       execution_result: "alert_opened" as const,
       correction_pending: true,
@@ -998,7 +1000,7 @@ describe("TrackerVoicePanel", () => {
 
   it("keeps wrong-action reporting unavailable until server correction-pending is proven", () => {
     const validateEventOverride = vi.fn();
-    const handleVoiceAction = vi.fn(async () => true);
+    const handleVoiceAction = vi.fn(async (..._args: Parameters<NonNullable<StandaloneHandInput["handleVoiceAction"]>>) => true);
     renderPanel({ ...hookFixture(), handleVoiceAction }, new MockRealtimeTranscriptionProvider(), validateEventOverride);
 
     expect(screen.getByRole("button", { name: "Báo sai action (chưa khả dụng)" })).toBeDisabled();
@@ -1025,7 +1027,7 @@ describe("TrackerVoicePanel", () => {
     const handleDockAction = vi.fn();
     renderPanel({ ...hookFixture(), ...state, handleDockAction } as StandaloneHandInput);
     for (const name of ["Fold", "Check", "Call", "Bet", "Raise", "All-in"]) {
-      const button = screen.getByRole("button", { name, exact: true });
+      const button = screen.getByRole("button", { name });
       expect(button).toBeDisabled();
       fireEvent.click(button);
     }

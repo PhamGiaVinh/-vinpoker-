@@ -6,6 +6,228 @@
   "createdFrom": "38c45ec9d91b151941a2bb4e268c22e8a96ea332",
   "remoteLedgerVersions": [
     {
+      "version": "20260924065041",
+      "name": "tv_layout_editor_v1",
+      "normalizedSqlSha256": "7ba0c94cb68149f7bd9f55fa2140d71a1367a811db540b6dae07fff45a23524b",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20260924165219",
+      "name": "centerpoint_tournament_ops_release_v1",
+      "normalizedSqlSha256": "e5245838c2314b782ad7c40ab28e792103f081dd6eea6cd21960c114c8749740",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20260925092509",
+      "name": "satellite_funding_preview_math_v1",
+      "normalizedSqlSha256": "f57be07fce2a63e02736116104b7ff5fb474bf20332dbf1d0e0a94743ed0781e",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270115000019",
+      "name": "tracker_voice_floor_owner_authority",
+      "normalizedSqlSha256": "be67d23b2e24bfb6edb4b4ac427dd8d3d984729bebf08af0d2e81b5997e01c8a",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270117000001",
+      "name": "satellite_award_plan_v1",
+      "normalizedSqlSha256": "d8a795173dc62c14b4ad251396f0604f6d7ef77d13ad95b4acc6d5b6c4c263b5",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270117000002",
+      "name": "satellite_ticket_issue_v1",
+      "normalizedSqlSha256": "d567c37d137a35592aa880c37721d4af2d836893f1882ef9f0599be36cfb95e4",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270118000001",
+      "name": "tv_tournament_layout_v2",
+      "normalizedSqlSha256": "a69aed2e66881808ec84cf1591d220cf183bf13852dacd25b63bfd2cf705f104",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270118000002",
+      "name": "satellite_single_ticket_rank_v2",
+      "normalizedSqlSha256": "d8b2a8ff05a7104cd7765500c24e38c2541cfbc1585890cc6c4de3900e9f7441",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000000",
+      "name": "tv_layout_editor_multiblock_v3",
+      "normalizedSqlSha256": "0ee75093d74e9457b7a0ec450b8bfa046b3b1521347409dd628778b327c6c2cd",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000001",
+      "name": "multiday_equal_tie_entitlement_v1",
+      "normalizedSqlSha256": "8454d7b6945edd331c4269512486c0f21db195bc4975df9a448992973906dfc8",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000002",
+      "name": "satellite_registration_pool_row_v1",
+      "normalizedSqlSha256": "00a9e964902725cf2d4212581d396868c4cc149e9862dad19ec0823d0532635a",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000003",
+      "name": "satellite_source_funding_preview_v1",
+      "normalizedSqlSha256": "f3b452f9f18d814b21d1fa575f2b88faf994d995e5c82e047b76ee34125a48ce",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000004",
+      "name": "satellite_frozen_ticket_components_v1",
+      "normalizedSqlSha256": "a57ba0a40c68e7bbae6fc33c7ec269226ddd235be46ef5a6d916d74b72d738ca",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000005",
+      "name": "satellite_source_cutoff_v1",
+      "normalizedSqlSha256": "a0ea26139eb0cb439ae92f0f48d7b6925a7ecb292116cc24ef4eb6691aef7d96",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000006",
+      "name": "satellite_entry_cutoff_v1",
+      "normalizedSqlSha256": "cab753af6b02453bd624ade59e604d879062d107a0bbc6657a2629429706576d",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000007",
+      "name": "satellite_offline_source_guard_v1",
+      "normalizedSqlSha256": "04090287be5be7df42f10b278696dfd5940000f4fb9972e1cd56c734e62e11e7",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000008",
+      "name": "satellite_verified_award_lock_v1",
+      "normalizedSqlSha256": "0e4b800ec844fcba9b9855a741ea4a902ad6859415db577042a2a0f462e781a2",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000009",
+      "name": "satellite_source_rules_fixed_v1",
+      "normalizedSqlSha256": "f9e6a058f042f985e752dd8b19707bb744936f87f5a7ee131a6982650bc447ec",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000010",
+      "name": "satellite_locked_registration_evidence_v1",
+      "normalizedSqlSha256": "18088539f4fd2cfafd1ba926c0a78ccac7d742e47505887b3fb497a5d10d563e",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000011",
+      "name": "satellite_issue_and_secret_v1",
+      "normalizedSqlSha256": "007ba54be9eb7c0c929edd01f51c3fc9ce3cb3a23f880114916d1641632ab211",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000012",
+      "name": "satellite_unmatched_funding_guard_v1",
+      "normalizedSqlSha256": "3058871bf797777c72bba7178b1e637295a6357aca2644a4c24814f8a35cde1b",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000013",
+      "name": "satellite_atomic_redeem_v1",
+      "normalizedSqlSha256": "f9bce21b6b84de6a6a3d17b8d8a91ed34ea68254d71148767403397568791083",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270119000014",
+      "name": "satellite_redemption_reversal_v1",
+      "normalizedSqlSha256": "c8e048de495e6e4425628ba734829cb1ca22b7abfc81ca5c454180db941aca07",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270120000000",
+      "name": "multiday_end_flight_snapshot_v1",
+      "normalizedSqlSha256": "947129793980d7db018b0edc12158e4cdb59cb2621399bedfdc06386eccb4a48",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270120000001",
+      "name": "multiday_bag_revision_v1",
+      "normalizedSqlSha256": "554f7985d1fa8d22513a9fec351a9b24fc5479797e5c3f7abd5aa8eb1d0d636d",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270120000002",
+      "name": "multiday_qualification_v1",
+      "normalizedSqlSha256": "9830982fa5a4cf8e0c8b01c1dce7935dc6ac298c8342734e70cd76242fc594e0",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270120000003",
+      "name": "multiday_final_seating_adjustment_v1",
+      "normalizedSqlSha256": "6379c45162a5416ccf44f52706e8f1999701e282cd04af8b1eb0f0146835955f",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270120000004",
+      "name": "multiday_payout_legacy_hold_v1",
+      "normalizedSqlSha256": "66f670e37b00ac215f663e928e49a24359445e816087da2f99fefa4ee0395e83",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270120000005",
+      "name": "multiday_overlay_funding_v1",
+      "normalizedSqlSha256": "ad2d41f8c8fcdcdd6782c0bb084b7ee2193cd624510f707b28a5e776db7f5c44",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270120000006",
+      "name": "multiday_payout_snapshot_v1",
+      "normalizedSqlSha256": "b1af98b6c7267594e1a807867908945f171b14fc2b134cd7949bc47317a3d21f",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270120000007",
+      "name": "multiday_payout_source_proof_v1",
+      "normalizedSqlSha256": "399be8358c237d09432f20c793feb971cb0824424122e06ed2e7e6fe25608adc",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270120000008",
+      "name": "multiday_payout_postfinal_adjustment_v1",
+      "normalizedSqlSha256": "1718346d0a8a57ca736d4b1f51e4762e16b77d8a3d7d71e555b993d3f5465049",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270120000009",
+      "name": "multiday_floor_read_v1",
+      "normalizedSqlSha256": "6ef605f26725eb4f61ece083acdbc7c843355bd5a5c0afbb2b8270fcf11afa8e",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270120000010",
+      "name": "multiday_distinct_itm_day2_v1",
+      "normalizedSqlSha256": "62b3e89174bd0dad0ed2295f9a8a191053b1f55cc5dbeaa989b3e62729a80a38",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270120000011",
+      "name": "multiday_floor_min_cash_auth_v1",
+      "normalizedSqlSha256": "80fde1ddfe9dfd74506a379734de93dbc1826f9d2ed347010b13c5121e26772d",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270120000012",
+      "name": "multiday_floor_owner_capabilities_v1",
+      "normalizedSqlSha256": "c3c86297a15de7500fd2d4d74f4117b82cea5fbdfa511e082a5c0dc9744e86a2",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
+      "version": "20270126000001",
+      "name": "redraw_clock_hold_v1",
+      "normalizedSqlSha256": "e97e4f65b5da9ec679db8ec3f38e7f4cb4832be150d9e1b16dd32f55f6b4ddf9",
+      "evidence": "read-only live ledger 2026-10-09; statements joined LF and CRLF normalized"
+    },
+    {
       "version": "20260422080820",
       "name": "3a5b8632-fcad-4a7a-b145-52f9b7abd222"
     },
@@ -1343,6 +1565,563 @@
     }
   ],
   "remoteHistoryReceipts": [
+    {
+      "remoteVersion": "20260924065041",
+      "remoteName": "tv_layout_editor_v1",
+      "receiptFilename": "20260924065041_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20260924065041_remote_history_receipt.sql",
+      "receiptSha256": "6800fc0579ef28efeae760801975491517cfe3d3b299164c07b6a475103e1cf7",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "7ba0c94cb68149f7bd9f55fa2140d71a1367a811db540b6dae07fff45a23524b",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20260924065041_tv_layout_editor_v1.sql",
+        "path": "supabase/pending-migrations/20260924065041_tv_layout_editor_v1.sql",
+        "sha256": "7ba0c94cb68149f7bd9f55fa2140d71a1367a811db540b6dae07fff45a23524b"
+      }
+    },
+    {
+      "remoteVersion": "20260924165219",
+      "remoteName": "centerpoint_tournament_ops_release_v1",
+      "receiptFilename": "20260924165219_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20260924165219_remote_history_receipt.sql",
+      "receiptSha256": "83c53236e4ab98415f5567b95adbb5c873cb463811c0e9f7ecfa68c03712eabf",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "e5245838c2314b782ad7c40ab28e792103f081dd6eea6cd21960c114c8749740",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20260924165219_centerpoint_tournament_ops_release_v1.sql",
+        "path": "supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql",
+        "sha256": "e5245838c2314b782ad7c40ab28e792103f081dd6eea6cd21960c114c8749740"
+      }
+    },
+    {
+      "remoteVersion": "20260925092509",
+      "remoteName": "satellite_funding_preview_math_v1",
+      "receiptFilename": "20260925092509_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20260925092509_remote_history_receipt.sql",
+      "receiptSha256": "ad1ceb5d416f90e66906871face103f238daf3ebeedf53da6fd25c050652302f",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "f57be07fce2a63e02736116104b7ff5fb474bf20332dbf1d0e0a94743ed0781e",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20260925092509_satellite_funding_preview_math_v1.sql",
+        "path": "supabase/pending-migrations/20260925092509_satellite_funding_preview_math_v1.sql",
+        "sha256": "f57be07fce2a63e02736116104b7ff5fb474bf20332dbf1d0e0a94743ed0781e"
+      }
+    },
+    {
+      "remoteVersion": "20270115000019",
+      "remoteName": "tracker_voice_floor_owner_authority",
+      "receiptFilename": "20270115000019_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270115000019_remote_history_receipt.sql",
+      "receiptSha256": "c20486166a8b0d3408e15e95a615b470ff4874ce86d3ec09e112654ee72a5b88",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "be67d23b2e24bfb6edb4b4ac427dd8d3d984729bebf08af0d2e81b5997e01c8a",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270115000020_tracker_voice_floor_owner_authority.sql",
+        "path": "supabase/migrations/20270115000020_tracker_voice_floor_owner_authority.sql",
+        "sha256": "be67d23b2e24bfb6edb4b4ac427dd8d3d984729bebf08af0d2e81b5997e01c8a"
+      },
+      "lineageManifest": "supabase/migration-archive/live-duplicate-20270115000019.manifest.json",
+      "classification": "duplicate Voice receipt; never History executable source"
+    },
+    {
+      "remoteVersion": "20270117000001",
+      "remoteName": "satellite_award_plan_v1",
+      "receiptFilename": "20270117000001_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270117000001_remote_history_receipt.sql",
+      "receiptSha256": "3c61cc2aaba58aa42d4d9a68404fa090f6e2dc12165354e14eb361905b01649d",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "d8a795173dc62c14b4ad251396f0604f6d7ef77d13ad95b4acc6d5b6c4c263b5",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270117000001_satellite_award_plan_v1.sql",
+        "path": "supabase/pending-migrations/20270117000001_satellite_award_plan_v1.sql",
+        "sha256": "d8a795173dc62c14b4ad251396f0604f6d7ef77d13ad95b4acc6d5b6c4c263b5"
+      }
+    },
+    {
+      "remoteVersion": "20270117000002",
+      "remoteName": "satellite_ticket_issue_v1",
+      "receiptFilename": "20270117000002_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270117000002_remote_history_receipt.sql",
+      "receiptSha256": "7b5ecc8b95f83a53e4c8b2ab92d49267a7f93f099b777755fa022b9408dc5eb0",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "d567c37d137a35592aa880c37721d4af2d836893f1882ef9f0599be36cfb95e4",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270117000002_satellite_ticket_issue_v1.sql",
+        "path": "supabase/pending-migrations/20270117000002_satellite_ticket_issue_v1.sql",
+        "sha256": "d567c37d137a35592aa880c37721d4af2d836893f1882ef9f0599be36cfb95e4"
+      }
+    },
+    {
+      "remoteVersion": "20270118000001",
+      "remoteName": "tv_tournament_layout_v2",
+      "receiptFilename": "20270118000001_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270118000001_remote_history_receipt.sql",
+      "receiptSha256": "145e59f98c2fb1126bc487412c0bbbc517dbbd85104f6086df105c1f92196ea2",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "a69aed2e66881808ec84cf1591d220cf183bf13852dacd25b63bfd2cf705f104",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270118000001_tv_tournament_layout_v2.sql",
+        "path": "supabase/pending-migrations/20270118000001_tv_tournament_layout_v2.sql",
+        "sha256": "a69aed2e66881808ec84cf1591d220cf183bf13852dacd25b63bfd2cf705f104"
+      }
+    },
+    {
+      "remoteVersion": "20270118000002",
+      "remoteName": "satellite_single_ticket_rank_v2",
+      "receiptFilename": "20270118000002_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270118000002_remote_history_receipt.sql",
+      "receiptSha256": "d7a7c0600da02666db7cfafd343d07db0c700a69fe0d00c7275cf31008b1f5b6",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "d8b2a8ff05a7104cd7765500c24e38c2541cfbc1585890cc6c4de3900e9f7441",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270118000002_satellite_single_ticket_rank_v2.sql",
+        "path": "supabase/pending-migrations/20270118000002_satellite_single_ticket_rank_v2.sql",
+        "sha256": "d8b2a8ff05a7104cd7765500c24e38c2541cfbc1585890cc6c4de3900e9f7441"
+      }
+    },
+    {
+      "remoteVersion": "20270119000000",
+      "remoteName": "tv_layout_editor_multiblock_v3",
+      "receiptFilename": "20270119000000_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000000_remote_history_receipt.sql",
+      "receiptSha256": "b0f88c76af647b9714dc09302fd2c4ed9fa136fadb691cca2ec98fa2f4e16aab",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "0ee75093d74e9457b7a0ec450b8bfa046b3b1521347409dd628778b327c6c2cd",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000000_tv_layout_editor_multiblock_v3.sql",
+        "path": "supabase/pending-migrations/20270119000000_tv_layout_editor_multiblock_v3.sql",
+        "sha256": "0ee75093d74e9457b7a0ec450b8bfa046b3b1521347409dd628778b327c6c2cd"
+      }
+    },
+    {
+      "remoteVersion": "20270119000001",
+      "remoteName": "multiday_equal_tie_entitlement_v1",
+      "receiptFilename": "20270119000001_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000001_remote_history_receipt.sql",
+      "receiptSha256": "8e77da3d903a80b7199006fda161b63269ade9d67d8d7812f8eade05469e09be",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "8454d7b6945edd331c4269512486c0f21db195bc4975df9a448992973906dfc8",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000001_multiday_equal_tie_entitlement_v1.sql",
+        "path": "supabase/pending-migrations/20270119000001_multiday_equal_tie_entitlement_v1.sql",
+        "sha256": "8454d7b6945edd331c4269512486c0f21db195bc4975df9a448992973906dfc8"
+      }
+    },
+    {
+      "remoteVersion": "20270119000002",
+      "remoteName": "satellite_registration_pool_row_v1",
+      "receiptFilename": "20270119000002_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000002_remote_history_receipt.sql",
+      "receiptSha256": "71d287403f780a0d93abacc2124d49e384252a11c74df16493726f4ddda60f9f",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "00a9e964902725cf2d4212581d396868c4cc149e9862dad19ec0823d0532635a",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000002_satellite_registration_pool_row_v1.sql",
+        "path": "supabase/pending-migrations/20270119000002_satellite_registration_pool_row_v1.sql",
+        "sha256": "00a9e964902725cf2d4212581d396868c4cc149e9862dad19ec0823d0532635a"
+      }
+    },
+    {
+      "remoteVersion": "20270119000003",
+      "remoteName": "satellite_source_funding_preview_v1",
+      "receiptFilename": "20270119000003_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000003_remote_history_receipt.sql",
+      "receiptSha256": "93553441702d1e1f7a8f8db533a2354a826d7b812658884ebfc0b35b69ee24ce",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "f3b452f9f18d814b21d1fa575f2b88faf994d995e5c82e047b76ee34125a48ce",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000003_satellite_source_funding_preview_v1.sql",
+        "path": "supabase/pending-migrations/20270119000003_satellite_source_funding_preview_v1.sql",
+        "sha256": "f3b452f9f18d814b21d1fa575f2b88faf994d995e5c82e047b76ee34125a48ce"
+      }
+    },
+    {
+      "remoteVersion": "20270119000004",
+      "remoteName": "satellite_frozen_ticket_components_v1",
+      "receiptFilename": "20270119000004_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000004_remote_history_receipt.sql",
+      "receiptSha256": "9a10ad52a0ecb38ef78af6fe39b04a7353360384e4406b83424d27276f9af586",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "a57ba0a40c68e7bbae6fc33c7ec269226ddd235be46ef5a6d916d74b72d738ca",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000004_satellite_frozen_ticket_components_v1.sql",
+        "path": "supabase/pending-migrations/20270119000004_satellite_frozen_ticket_components_v1.sql",
+        "sha256": "a57ba0a40c68e7bbae6fc33c7ec269226ddd235be46ef5a6d916d74b72d738ca"
+      }
+    },
+    {
+      "remoteVersion": "20270119000005",
+      "remoteName": "satellite_source_cutoff_v1",
+      "receiptFilename": "20270119000005_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000005_remote_history_receipt.sql",
+      "receiptSha256": "4b887fdc1b55e40cc94ae34e752c9c82f4edbc399286cab38eb0906eb0f4de2d",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "a0ea26139eb0cb439ae92f0f48d7b6925a7ecb292116cc24ef4eb6691aef7d96",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000005_satellite_source_cutoff_v1.sql",
+        "path": "supabase/pending-migrations/20270119000005_satellite_source_cutoff_v1.sql",
+        "sha256": "a0ea26139eb0cb439ae92f0f48d7b6925a7ecb292116cc24ef4eb6691aef7d96"
+      }
+    },
+    {
+      "remoteVersion": "20270119000006",
+      "remoteName": "satellite_entry_cutoff_v1",
+      "receiptFilename": "20270119000006_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000006_remote_history_receipt.sql",
+      "receiptSha256": "78f5a87e9c68fdf4d12809528ba2abeaa0420b8edcd575e005618d4d0db73282",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "cab753af6b02453bd624ade59e604d879062d107a0bbc6657a2629429706576d",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000006_satellite_entry_cutoff_v1.sql",
+        "path": "supabase/pending-migrations/20270119000006_satellite_entry_cutoff_v1.sql",
+        "sha256": "cab753af6b02453bd624ade59e604d879062d107a0bbc6657a2629429706576d"
+      }
+    },
+    {
+      "remoteVersion": "20270119000007",
+      "remoteName": "satellite_offline_source_guard_v1",
+      "receiptFilename": "20270119000007_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000007_remote_history_receipt.sql",
+      "receiptSha256": "8178f4a518bf412ebba284acd92480f0ea4d16d8274c9d5ab0c29581c44447a6",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "04090287be5be7df42f10b278696dfd5940000f4fb9972e1cd56c734e62e11e7",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000007_satellite_offline_source_guard_v1.sql",
+        "path": "supabase/pending-migrations/20270119000007_satellite_offline_source_guard_v1.sql",
+        "sha256": "04090287be5be7df42f10b278696dfd5940000f4fb9972e1cd56c734e62e11e7"
+      }
+    },
+    {
+      "remoteVersion": "20270119000008",
+      "remoteName": "satellite_verified_award_lock_v1",
+      "receiptFilename": "20270119000008_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000008_remote_history_receipt.sql",
+      "receiptSha256": "15fb77db7f581852a0e0572f3b6242cdbca38e4295668c532b5f82cefb3ed05a",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "0e4b800ec844fcba9b9855a741ea4a902ad6859415db577042a2a0f462e781a2",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000008_satellite_verified_award_lock_v1.sql",
+        "path": "supabase/pending-migrations/20270119000008_satellite_verified_award_lock_v1.sql",
+        "sha256": "0e4b800ec844fcba9b9855a741ea4a902ad6859415db577042a2a0f462e781a2"
+      }
+    },
+    {
+      "remoteVersion": "20270119000009",
+      "remoteName": "satellite_source_rules_fixed_v1",
+      "receiptFilename": "20270119000009_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000009_remote_history_receipt.sql",
+      "receiptSha256": "cf158a7d6dd6312eccb4c5954c4777fa009f330437da8922fce160d812ea2efd",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "f9e6a058f042f985e752dd8b19707bb744936f87f5a7ee131a6982650bc447ec",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000009_satellite_source_rules_fixed_v1.sql",
+        "path": "supabase/pending-migrations/20270119000009_satellite_source_rules_fixed_v1.sql",
+        "sha256": "f9e6a058f042f985e752dd8b19707bb744936f87f5a7ee131a6982650bc447ec"
+      }
+    },
+    {
+      "remoteVersion": "20270119000010",
+      "remoteName": "satellite_locked_registration_evidence_v1",
+      "receiptFilename": "20270119000010_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000010_remote_history_receipt.sql",
+      "receiptSha256": "fb341d2b2737e65274135c0cf410d8e4577d46592fa9d7e5561c49b49a5a0c18",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "18088539f4fd2cfafd1ba926c0a78ccac7d742e47505887b3fb497a5d10d563e",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000010_satellite_locked_registration_evidence_v1.sql",
+        "path": "supabase/pending-migrations/20270119000010_satellite_locked_registration_evidence_v1.sql",
+        "sha256": "18088539f4fd2cfafd1ba926c0a78ccac7d742e47505887b3fb497a5d10d563e"
+      }
+    },
+    {
+      "remoteVersion": "20270119000011",
+      "remoteName": "satellite_issue_and_secret_v1",
+      "receiptFilename": "20270119000011_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000011_remote_history_receipt.sql",
+      "receiptSha256": "346c57d6b7c8ff4913e56acefd1daf056334807b20698bfee5e24d602cc03f76",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "007ba54be9eb7c0c929edd01f51c3fc9ce3cb3a23f880114916d1641632ab211",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000011_satellite_issue_and_secret_v1.sql",
+        "path": "supabase/pending-migrations/20270119000011_satellite_issue_and_secret_v1.sql",
+        "sha256": "007ba54be9eb7c0c929edd01f51c3fc9ce3cb3a23f880114916d1641632ab211"
+      }
+    },
+    {
+      "remoteVersion": "20270119000012",
+      "remoteName": "satellite_unmatched_funding_guard_v1",
+      "receiptFilename": "20270119000012_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000012_remote_history_receipt.sql",
+      "receiptSha256": "39932ecc3975cfdf501079ea90983dc64456b9c940ea9fc2f5d28be117510b31",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "3058871bf797777c72bba7178b1e637295a6357aca2644a4c24814f8a35cde1b",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000012_satellite_unmatched_funding_guard_v1.sql",
+        "path": "supabase/pending-migrations/20270119000012_satellite_unmatched_funding_guard_v1.sql",
+        "sha256": "3058871bf797777c72bba7178b1e637295a6357aca2644a4c24814f8a35cde1b"
+      }
+    },
+    {
+      "remoteVersion": "20270119000013",
+      "remoteName": "satellite_atomic_redeem_v1",
+      "receiptFilename": "20270119000013_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000013_remote_history_receipt.sql",
+      "receiptSha256": "b8add731f99d0911a57787aa0a7a4dd486cae78a04f8c7991478a162f9a85d2e",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "f9bce21b6b84de6a6a3d17b8d8a91ed34ea68254d71148767403397568791083",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000013_satellite_atomic_redeem_v1.sql",
+        "path": "supabase/pending-migrations/20270119000013_satellite_atomic_redeem_v1.sql",
+        "sha256": "f9bce21b6b84de6a6a3d17b8d8a91ed34ea68254d71148767403397568791083"
+      }
+    },
+    {
+      "remoteVersion": "20270119000014",
+      "remoteName": "satellite_redemption_reversal_v1",
+      "receiptFilename": "20270119000014_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270119000014_remote_history_receipt.sql",
+      "receiptSha256": "ca79e9a56cb12322fd7288461d220ad8969c546757f1db4a7811abf9d0fdcc7f",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "c8e048de495e6e4425628ba734829cb1ca22b7abfc81ca5c454180db941aca07",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270119000014_satellite_redemption_reversal_v1.sql",
+        "path": "supabase/pending-migrations/20270119000014_satellite_redemption_reversal_v1.sql",
+        "sha256": "c8e048de495e6e4425628ba734829cb1ca22b7abfc81ca5c454180db941aca07"
+      }
+    },
+    {
+      "remoteVersion": "20270120000000",
+      "remoteName": "multiday_end_flight_snapshot_v1",
+      "receiptFilename": "20270120000000_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270120000000_remote_history_receipt.sql",
+      "receiptSha256": "5aaf3aa74360a1fb48b4b748ef1b9f6b7dd3114007ffd3c4b02700bf242e5027",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "947129793980d7db018b0edc12158e4cdb59cb2621399bedfdc06386eccb4a48",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270120000000_multiday_end_flight_snapshot_v1.sql",
+        "path": "supabase/pending-migrations/20270120000000_multiday_end_flight_snapshot_v1.sql",
+        "sha256": "947129793980d7db018b0edc12158e4cdb59cb2621399bedfdc06386eccb4a48"
+      }
+    },
+    {
+      "remoteVersion": "20270120000001",
+      "remoteName": "multiday_bag_revision_v1",
+      "receiptFilename": "20270120000001_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270120000001_remote_history_receipt.sql",
+      "receiptSha256": "2105090a8028454096b27bd572079b92cd3b4e7cf5cc6ff1e7826835f5e9215b",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "554f7985d1fa8d22513a9fec351a9b24fc5479797e5c3f7abd5aa8eb1d0d636d",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270120000001_multiday_bag_revision_v1.sql",
+        "path": "supabase/pending-migrations/20270120000001_multiday_bag_revision_v1.sql",
+        "sha256": "554f7985d1fa8d22513a9fec351a9b24fc5479797e5c3f7abd5aa8eb1d0d636d"
+      }
+    },
+    {
+      "remoteVersion": "20270120000002",
+      "remoteName": "multiday_qualification_v1",
+      "receiptFilename": "20270120000002_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270120000002_remote_history_receipt.sql",
+      "receiptSha256": "f8be62ef7681a6980b3d42e2a02be11ef90f8efc01dd1028d34d5973f2c819ec",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "9830982fa5a4cf8e0c8b01c1dce7935dc6ac298c8342734e70cd76242fc594e0",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270120000002_multiday_qualification_v1.sql",
+        "path": "supabase/pending-migrations/20270120000002_multiday_qualification_v1.sql",
+        "sha256": "9830982fa5a4cf8e0c8b01c1dce7935dc6ac298c8342734e70cd76242fc594e0"
+      }
+    },
+    {
+      "remoteVersion": "20270120000003",
+      "remoteName": "multiday_final_seating_adjustment_v1",
+      "receiptFilename": "20270120000003_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270120000003_remote_history_receipt.sql",
+      "receiptSha256": "d02249d719ceb09d4c9e3470d7c365a63daa6480f3f00b14bc7b3988fce51c20",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "6379c45162a5416ccf44f52706e8f1999701e282cd04af8b1eb0f0146835955f",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270120000003_multiday_final_seating_adjustment_v1.sql",
+        "path": "supabase/pending-migrations/20270120000003_multiday_final_seating_adjustment_v1.sql",
+        "sha256": "6379c45162a5416ccf44f52706e8f1999701e282cd04af8b1eb0f0146835955f"
+      }
+    },
+    {
+      "remoteVersion": "20270120000004",
+      "remoteName": "multiday_payout_legacy_hold_v1",
+      "receiptFilename": "20270120000004_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270120000004_remote_history_receipt.sql",
+      "receiptSha256": "e63a531e4cd88026c698d40e6c8a4bf8fae90c241b414f22ff75ebe5bec3abb6",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "66f670e37b00ac215f663e928e49a24359445e816087da2f99fefa4ee0395e83",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270120000004_multiday_payout_legacy_hold_v1.sql",
+        "path": "supabase/pending-migrations/20270120000004_multiday_payout_legacy_hold_v1.sql",
+        "sha256": "66f670e37b00ac215f663e928e49a24359445e816087da2f99fefa4ee0395e83"
+      }
+    },
+    {
+      "remoteVersion": "20270120000005",
+      "remoteName": "multiday_overlay_funding_v1",
+      "receiptFilename": "20270120000005_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270120000005_remote_history_receipt.sql",
+      "receiptSha256": "47e5d34e52f4cf823fc01d8c9084ec5783895607f171e1d473bcaa30d9c660ef",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "ad2d41f8c8fcdcdd6782c0bb084b7ee2193cd624510f707b28a5e776db7f5c44",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270120000005_multiday_overlay_funding_v1.sql",
+        "path": "supabase/pending-migrations/20270120000005_multiday_overlay_funding_v1.sql",
+        "sha256": "ad2d41f8c8fcdcdd6782c0bb084b7ee2193cd624510f707b28a5e776db7f5c44"
+      }
+    },
+    {
+      "remoteVersion": "20270120000006",
+      "remoteName": "multiday_payout_snapshot_v1",
+      "receiptFilename": "20270120000006_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270120000006_remote_history_receipt.sql",
+      "receiptSha256": "5b069c97c256dc2d335e78d43c16f765325b98c6cddf63e6a21b89ca139ce739",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "b1af98b6c7267594e1a807867908945f171b14fc2b134cd7949bc47317a3d21f",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270120000006_multiday_payout_snapshot_v1.sql",
+        "path": "supabase/pending-migrations/20270120000006_multiday_payout_snapshot_v1.sql",
+        "sha256": "b1af98b6c7267594e1a807867908945f171b14fc2b134cd7949bc47317a3d21f"
+      }
+    },
+    {
+      "remoteVersion": "20270120000007",
+      "remoteName": "multiday_payout_source_proof_v1",
+      "receiptFilename": "20270120000007_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270120000007_remote_history_receipt.sql",
+      "receiptSha256": "cb789e34aad21ac456132544abbe323efbbc64f48f28802263de80482a0be7b3",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "399be8358c237d09432f20c793feb971cb0824424122e06ed2e7e6fe25608adc",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270120000007_multiday_payout_source_proof_v1.sql",
+        "path": "supabase/pending-migrations/20270120000007_multiday_payout_source_proof_v1.sql",
+        "sha256": "399be8358c237d09432f20c793feb971cb0824424122e06ed2e7e6fe25608adc"
+      }
+    },
+    {
+      "remoteVersion": "20270120000008",
+      "remoteName": "multiday_payout_postfinal_adjustment_v1",
+      "receiptFilename": "20270120000008_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270120000008_remote_history_receipt.sql",
+      "receiptSha256": "77d440db86af85c1c8e47c499140ea015a21ea0220a29329039640b7618a506b",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "1718346d0a8a57ca736d4b1f51e4762e16b77d8a3d7d71e555b993d3f5465049",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270120000008_multiday_payout_postfinal_adjustment_v1.sql",
+        "path": "supabase/pending-migrations/20270120000008_multiday_payout_postfinal_adjustment_v1.sql",
+        "sha256": "1718346d0a8a57ca736d4b1f51e4762e16b77d8a3d7d71e555b993d3f5465049"
+      }
+    },
+    {
+      "remoteVersion": "20270120000009",
+      "remoteName": "multiday_floor_read_v1",
+      "receiptFilename": "20270120000009_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270120000009_remote_history_receipt.sql",
+      "receiptSha256": "32b29a81162d9422a32fb72b3c19d900643607bf59903063dea4788781cef728",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "6ef605f26725eb4f61ece083acdbc7c843355bd5a5c0afbb2b8270fcf11afa8e",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270120000009_multiday_floor_read_v1.sql",
+        "path": "supabase/pending-migrations/20270120000009_multiday_floor_read_v1.sql",
+        "sha256": "6ef605f26725eb4f61ece083acdbc7c843355bd5a5c0afbb2b8270fcf11afa8e"
+      }
+    },
+    {
+      "remoteVersion": "20270120000010",
+      "remoteName": "multiday_distinct_itm_day2_v1",
+      "receiptFilename": "20270120000010_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270120000010_remote_history_receipt.sql",
+      "receiptSha256": "36c099d540de804e7f58b26357368f41dd2b42cc8663a8c696cf302fdfa48f1e",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "62b3e89174bd0dad0ed2295f9a8a191053b1f55cc5dbeaa989b3e62729a80a38",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270120000010_multiday_distinct_itm_day2_v1.sql",
+        "path": "supabase/pending-migrations/20270120000010_multiday_distinct_itm_day2_v1.sql",
+        "sha256": "62b3e89174bd0dad0ed2295f9a8a191053b1f55cc5dbeaa989b3e62729a80a38"
+      }
+    },
+    {
+      "remoteVersion": "20270120000011",
+      "remoteName": "multiday_floor_min_cash_auth_v1",
+      "receiptFilename": "20270120000011_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270120000011_remote_history_receipt.sql",
+      "receiptSha256": "cecb202f9eaa2c9e23a1237006c26ee1c652b5fff9e1a0139a371877e411a47e",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "80fde1ddfe9dfd74506a379734de93dbc1826f9d2ed347010b13c5121e26772d",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270120000011_multiday_floor_min_cash_auth_v1.sql",
+        "path": "supabase/pending-migrations/20270120000011_multiday_floor_min_cash_auth_v1.sql",
+        "sha256": "80fde1ddfe9dfd74506a379734de93dbc1826f9d2ed347010b13c5121e26772d"
+      }
+    },
+    {
+      "remoteVersion": "20270120000012",
+      "remoteName": "multiday_floor_owner_capabilities_v1",
+      "receiptFilename": "20270120000012_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270120000012_remote_history_receipt.sql",
+      "receiptSha256": "5afc2df09ae937975b066316f94b6a593dde323c1808f415b5c909dccf46a0ae",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "c3c86297a15de7500fd2d4d74f4117b82cea5fbdfa511e082a5c0dc9744e86a2",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270120000012_multiday_floor_owner_capabilities_v1.sql",
+        "path": "supabase/pending-migrations/20270120000012_multiday_floor_owner_capabilities_v1.sql",
+        "sha256": "c3c86297a15de7500fd2d4d74f4117b82cea5fbdfa511e082a5c0dc9744e86a2"
+      }
+    },
+    {
+      "remoteVersion": "20270126000001",
+      "remoteName": "redraw_clock_hold_v1",
+      "receiptFilename": "20270126000001_remote_history_receipt.sql",
+      "receiptPath": "supabase/migrations/20270126000001_remote_history_receipt.sql",
+      "receiptSha256": "7ecc491220b07df74f322686a8764a0098a49976e2368a7a6d15e0ef8dbe5dcd",
+      "remoteLedgerEvidence": "orlesggcjamwuknxwcpk read-only ledger inspected 2026-10-09",
+      "normalizedLiveSqlSha256": "e97e4f65b5da9ec679db8ec3f38e7f4cb4832be150d9e1b16dd32f55f6b4ddf9",
+      "sourceRecovered": "YES",
+      "recoveredSource": {
+        "filename": "20270126000001_redraw_clock_hold_v1.sql",
+        "path": "supabase/pending-migrations/20270126000001_redraw_clock_hold_v1.sql",
+        "sha256": "e97e4f65b5da9ec679db8ec3f38e7f4cb4832be150d9e1b16dd32f55f6b4ddf9"
+      }
+    },
     {
       "remoteVersion": "20260428144425",
       "remoteName": "53b3e896-323b-45b5-82e3-921bdaccaa91",
@@ -6834,6 +7613,42 @@
   ],
   "ownerGatedActiveAllowlist": [
     {
+      "version": "20270128000024",
+      "filename": "20270128000024_tracker_history_scoped_canary_claim_v1.sql",
+      "sha256": "1ce1e654ab13d1a1a29c18202bbb8bb34647c56f8970744283996ef59c727ec1",
+      "domain": "tracker-history"
+    },
+    {
+      "version": "20270128000023",
+      "filename": "20270128000023_dealer_empty_reservation_exact_session_v2.sql",
+      "sha256": "77592c44d07482b42dc267bfa1ae7aa097f1e84f5ee4f21d402b6cd2421b6d55",
+      "domain": "dealer-swing"
+    },
+    {
+      "version": "20270128000022",
+      "filename": "20270128000022_dealer_assignment_off_commit_fence_v1.sql",
+      "sha256": "ca353676d90e993440ee6a6de17c33eeef01ad8207d4076e07d576ebff786fe0",
+      "domain": "dealer-swing"
+    },
+    {
+      "version": "20270128000021",
+      "filename": "20270128000021_dealer_ready_private_trigger_v1.sql",
+      "sha256": "bda701820882229c6b2a5241dd2f65067755f20f4405980ccc9850717d8be4c6",
+      "domain": "dealer-swing"
+    },
+    {
+      "version": "20270128000020",
+      "filename": "20270128000020_dealer_ready_backup_private_cron_v1.sql",
+      "sha256": "550555b385f59b77cde479546d88f1a9e41abf4f8170991af110d26cfb419b4d",
+      "domain": "dealer-swing"
+    },
+    {
+      "version": "20270128000014",
+      "filename": "20270128000014_dealer_checkin_club_shift_receipt_v1.sql",
+      "sha256": "e42980cb86ce1234e3a69cf399ae042b548eabc040e3b14d9b6eeff0064fa054",
+      "domain": "dealer-swing"
+    },
+    {
       "version": "20260925115949",
       "filename": "20260925115949_public_table_history_verified_results.sql",
       "sha256": "9429ab4fcaf2b38f9bb425023fdb20e74f94da6465878bff3a676eeb50793bc7",
@@ -6952,6 +7767,42 @@
       "filename": "20270128000012_felt_lifecycle_close_guards_v1.sql",
       "sha256": "3185b1c3c367d8ccf814023b31d3bfaeb52059fe5149db145e63385fc7e9b612",
       "domain": "floor-dealer-swing-tracker"
+    },
+    {
+      "version": "20270128000013",
+      "filename": "20270128000013_floor_mode_request_safe_boundary_v1.sql",
+      "sha256": "b51c368af39a77998bde295d8577a048af0df3895811885f59c2d117c34b151d",
+      "domain": "floor"
+    },
+    {
+      "version": "20270128000015",
+      "filename": "20270128000015_floor_restore_bust_integrity_v1.sql",
+      "sha256": "9134ab822cec4d003995fd5238c16403c8bce8f49e63bf14ca006de527186e79",
+      "domain": "floor"
+    },
+    {
+      "version": "20270128000016",
+      "filename": "20270128000016_chip_color_up_serialized_integrity_v1.sql",
+      "sha256": "346994494c42859baddac354603ecaf3741428115ae819d56a50508e45e77d43",
+      "domain": "chip-ops"
+    },
+    {
+      "version": "20270128000017",
+      "filename": "20270128000017_dealer_operational_inventory_exact_session_v1.sql",
+      "sha256": "c8d1718f5ac578bd94eea4a913089fa5d23d042369c147c96ce7624a2ba4d88d",
+      "domain": "dealer-swing"
+    },
+    {
+      "version": "20270128000018",
+      "filename": "20270128000018_dealer_mass_open_canonical_sessions_v1.sql",
+      "sha256": "f61a0201dab612ebdba46739e2ed9f39c6d9d27b80f33442b2be0334f2325eb9",
+      "domain": "dealer-swing"
+    },
+    {
+      "version": "20270128000019",
+      "filename": "20270128000019_dealer_manual_assignment_receipt_read_v1.sql",
+      "sha256": "7037d878228e68fe6493a47132df03dfc0c49e4988467166326984664d6a3835",
+      "domain": "dealer-swing"
     }
   ],
   "floorActiveAllowlist": [
@@ -7047,7 +7898,7 @@
     "superseded": 31,
     "neverReplay": 221,
     "legacyUnappliedNotForReplay": 4,
-    "remoteHistoryReceipts": 29,
+    "remoteHistoryReceipts": 66,
     "pendingSources": 3,
     "unresolved": 1,
     "nonVersionedSources": 1

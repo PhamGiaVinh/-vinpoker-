@@ -3,9 +3,18 @@ import {
   historicalWorkerFailureStatus,
   isDeterministicHistoricalWorkerFailure,
   TRACKER_HISTORY_WORKER_MAX_BATCH,
+  parseHistoryWorkerHandIds,
 } from "../../supabase/functions/_shared/trackerSettlement/historyWorkerPolicy.ts";
 
 describe("historical display worker policy", () => {
+  it("never broadens an invalid canary scope to the whole queue", () => {
+    const id="ABCDEF00-0000-4000-8000-000000000001";
+    expect(parseHistoryWorkerHandIds(undefined)).toBeUndefined();
+    expect(parseHistoryWorkerHandIds([id])).toEqual([id.toLowerCase()]);
+    for(const value of [null,[],["bad"],[id,id.toLowerCase()],Array(21).fill(id)]) {
+      expect(()=>parseHistoryWorkerHandIds(value)).toThrow("invalid_hand_scope");
+    }
+  });
   it("keeps each invocation bounded", () => {
     expect(TRACKER_HISTORY_WORKER_MAX_BATCH).toBe(20);
   });

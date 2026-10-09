@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270119000008
+-- Remote ledger name: satellite_verified_award_lock_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: 0e4b800ec844fcba9b9855a741ea4a902ad6859415db577042a2a0f462e781a2
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20270119000008_satellite_verified_award_lock_v1.sql

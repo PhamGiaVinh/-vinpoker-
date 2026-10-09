@@ -36,7 +36,7 @@ describe("D2B private runtime boundary", () => {
       if (relative.includes("node_modules")) continue;
       if (relative.endsWith(".test.ts") || relative.endsWith(".test.tsx")) continue;
       const source = readFileSync(join(ROOT, relative), "utf8");
-      const normalized = relative.replaceAll("\\", "/");
+      const normalized = relative.split("\\").join("/");
       if (!normalized.endsWith("components/series-intelligence/DecisionRoomV1.tsx") && !normalized.endsWith("components/series-intelligence/ProspectiveResearchQueue.tsx") && !normalized.endsWith("lib/series-intelligence/decisionPacketRpc.ts") && !normalized.endsWith("lib/series-intelligence/useTrustedForecastHistory.ts")) {
         expect(source).not.toContain("decisionPacketRpc");
       }

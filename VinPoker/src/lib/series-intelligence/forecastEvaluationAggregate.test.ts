@@ -12,7 +12,7 @@ const PACKET = "44444444-4444-4444-8444-444444444444";
 const count = (value: number) => ({ availability: value === 0 ? "explicit_zero" as const : "present" as const, value });
 const money = (amountMinor: string) => ({ availability: amountMinor === "0" ? "explicit_zero" as const : "present" as const, amountMinor, currency: "VND", scale: 0 });
 
-async function makeEvaluation(index: number, pointEstimate: number, options: { horizon?: "T-21" | "T-7" | "T-1" | "T-0"; engineVersion?: string; bandSemantics?: "descriptive_range" | "scenario_band" | "probabilistic_quantiles" | "unknown"; stale?: boolean } = {}): Promise<SeriesForecastEvaluationV1> {
+async function makeEvaluation(index: number, pointEstimate: number, options: { horizon?: "T-21" | "T-7" | "T-1" | "T-0"; engineVersion?: string; bandSemantics?: "descriptive_range" | "scenario_band" | "probabilistic_quantiles" | "unknown"; stale?: boolean } = {}): Promise<Omit<SeriesForecastEvaluationV1, "lifecycle"> & { readonly lifecycle: "current" | "stale" }> {
   const revisionId = `50000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
   const content = await buildDecisionPacketContent({
     clubId: CLUB, eventId: EVENT, horizon: options.horizon ?? "T-7", targetMetric: "entries", asOfTs: "2026-08-01T03:00:00Z", sourceCutoff: "2026-08-01T02:00:00Z", targetEventTs: "2026-08-08T03:00:00Z", forecastSnapshotId: SNAPSHOT, forecastState: "forecast_identity_eligible", manualExpectation: null, publicEvidence: [], registrationSlice: null, campaignSlice: null, knownInformation: { registrationsObserved: index }, recommendedAction: null, ownerDecision: null, publicAction: null, decisionReason: null, alternatives: [], assumptions: [], uncertaintyNotes: null, supersedesPacketId: null, correctionReason: null,

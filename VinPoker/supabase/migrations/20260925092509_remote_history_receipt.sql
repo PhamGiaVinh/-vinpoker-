@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20260925092509
+-- Remote ledger name: satellite_funding_preview_math_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: f57be07fce2a63e02736116104b7ff5fb474bf20332dbf1d0e0a94743ed0781e
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20260925092509_satellite_funding_preview_math_v1.sql

@@ -66,7 +66,10 @@ jobs:
           test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37229283609" --jq .conclusion)" = success
           test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37229283609" --jq .head_branch)" = main
           test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37229283609" --jq .head_sha)" = d64df388d42b51cb851e8d23361d4fe568988eb7
-          artifact_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37229283609/artifacts" --jq '[.artifacts[] | select(.name=="live-public-schema" and .expired==false)] | if length==1 then .[0].id else error("exact schema artifact missing") end')"
+          # Verify the successful recovery job, not the unrelated failed capture validator.
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37828303515" --jq .head_sha)" = ead67fdfae4f82dda1a2e3cde75d1125e168d0cf
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37828303515/jobs" --jq '[.jobs[] | select(.name=="Recover immutable pre-release TEST schema (no live database access)")] | if length==1 then .[0].conclusion else error("recovery job missing") end')" = success
+          artifact_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37828303515/artifacts" --jq '[.artifacts[] | select(.name=="reviewed-pre-release-schema" and .expired==false)] | if length==1 then .[0].id else error("exact recovered schema artifact missing") end')"
           mkdir "$RUNNER_TEMP/protected-nine-schema"
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/protected-nine-schema.zip"
           unzip -q "$RUNNER_TEMP/protected-nine-schema.zip" -d "$RUNNER_TEMP/protected-nine-schema"

@@ -141,7 +141,7 @@ export function SeriesCandidateAuthoringPanel({
     setMessage(null);
     api.listSources(clubId).then((result) => {
       if (!active) return;
-      if (!result.ok) {
+      if (result.ok === false) {
         setState("error");
         setMessage(humanizeError(result.error));
         return;
@@ -168,7 +168,7 @@ export function SeriesCandidateAuthoringPanel({
     setMessage(null);
     api.getPreview(clubId, selectedTournamentId).then((result) => {
       if (!active) return;
-      if (!result.ok) {
+      if (result.ok === false) {
         setState("error");
         setMessage(humanizeError(result.error));
         return;
@@ -221,7 +221,7 @@ export function SeriesCandidateAuthoringPanel({
       flights,
       expectedDurationMinutes: duration,
     });
-    if (!result.ok) {
+    if (result.ok === false) {
       setState("error");
       setMessage(humanizeError(result.error));
       return;

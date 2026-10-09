@@ -1,11 +1,87 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { findMigrationCatalogProblems } from "../../scripts/security/check-migration-catalog.mjs";
+
+test("owner Dealer Ready exception pins complete bodies, not filenames or arbitrary endpoints", () => {
+  for (const name of ["20270128000020_dealer_ready_backup_private_cron_v1.sql", "20270128000021_dealer_ready_private_trigger_v1.sql"]) {
+    const source = readFileSync(new URL(`../../supabase/migrations/${name}`, import.meta.url), "utf8");
+    withCatalog([{ name, source }], directory => assert.deepEqual(findMigrationCatalogProblems(directory), []));
+    for (const changed of [source + "\nSELECT 1;\n", source.replace("orlesggcjamwuknxwcpk", "another-project"),
+      source.replace(/process-swing-on-dealer-ready|run-dealer-ready-backup/u, "unapproved-endpoint")]) {
+      withCatalog([{ name, source: changed }], directory => assert.ok(findMigrationCatalogProblems(directory)
+        .includes(`reviewed Dealer Ready network migration hash drift ${name}`)));
+    }
+    withCatalog([{ name: "20270128000099_unapproved_network.sql", source }], directory => {
+      if (name.includes("private_trigger")) assert.ok(findMigrationCatalogProblems(directory)
+        .includes("direct production function target in active migration 20270128000099_unapproved_network.sql"));
+    });
+  }
+});
+
+test("remote receipts require immutable comment bytes, live name and preserved exact source", () => {
+  const root = mkdtempSync(join(tmpdir(), "vinpoker-receipt-evidence-"));
+  const migrations = join(root, "supabase", "migrations");
+  const archive = join(root, "supabase", "migration-archive");
+  mkdirSync(migrations, { recursive: true });
+  mkdirSync(archive);
+  const version = "20270115000019";
+  const filename = `${version}_remote_history_receipt.sql`;
+  const receiptSource = "-- duplicate Voice receipt, not schema parity\n";
+  const sqlSource = "select 1;\n";
+  const hash = (source) => createHash("sha256").update(source).digest("hex");
+  const manifestPath = join(archive, "manifest.json");
+  const receipt = {
+    remoteVersion: version, remoteName: "tracker_voice_floor_owner_authority",
+    receiptFilename: filename, receiptSha256: hash(receiptSource),
+    normalizedLiveSqlSha256: hash(sqlSource),
+    recoveredSource: { path: "supabase/migration-archive/source.sql", sha256: hash(sqlSource) },
+  };
+  const manifest = {
+    schemaVersion: 1, kind: "floor-v3-catalog-reconciliation",
+    registeredProductionHead: "20270128000012",
+    remoteLedgerVersions: [{ version, name: receipt.remoteName, normalizedSqlSha256: hash(sqlSource) }],
+    remoteHistoryReceipts: [receipt], historicalSources: [], pendingSources: [], floorActiveAllowlist: [],
+  };
+  const inspect = () => {
+    writeFileSync(manifestPath, JSON.stringify(manifest), "utf8");
+    return findMigrationCatalogProblems(migrations, manifestPath);
+  };
+  try {
+    writeFileSync(join(migrations, filename), receiptSource, "utf8");
+    writeFileSync(join(archive, "source.sql"), sqlSource, "utf8");
+    assert.deepEqual(inspect(), []);
+    writeFileSync(join(migrations, filename), `${receiptSource}select 2;\n`, "utf8");
+    assert.ok(inspect().includes(`remote history receipt is not comment-only ${filename}`));
+    writeFileSync(join(migrations, filename), `${receiptSource}-- changed\n`, "utf8");
+    assert.ok(inspect().includes(`remote history receipt hash drift ${filename}`));
+    writeFileSync(join(migrations, filename), receiptSource, "utf8");
+    receipt.remoteName = "tracker_history_completion_queue";
+    assert.ok(inspect().includes(`remote history receipt name mismatch ${version}`));
+    receipt.remoteName = "tracker_voice_floor_owner_authority";
+    receipt.normalizedLiveSqlSha256 = "0".repeat(64);
+    assert.ok(inspect().includes(`remote history receipt live/source hash mismatch ${version}`));
+    receipt.normalizedLiveSqlSha256 = hash(sqlSource);
+    writeFileSync(join(archive, "source.sql"), "select 3;\n", "utf8");
+    assert.ok(inspect().includes(`remote history preserved source missing or hash drift ${version}`));
+    rmSync(join(archive, "source.sql"));
+    assert.ok(inspect().includes(`remote history preserved source missing or hash drift ${version}`));
+    manifest.remoteLedgerVersions.push({ ...manifest.remoteLedgerVersions[0] });
+    assert.ok(inspect().includes("duplicate remote ledger version in reconciliation evidence"));
+    manifest.remoteLedgerVersions.pop();
+    manifest.remoteHistoryReceipts.push({ ...receipt });
+    assert.ok(inspect().includes(`duplicate remote history receipt ${version}`));
+    manifest.remoteHistoryReceipts.pop();
+    rmSync(join(migrations, filename));
+    assert.ok(inspect().includes(`remote history receipt is not active at ledger version ${filename}`));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function withCatalog(files, callback) {
   const root = mkdtempSync(join(tmpdir(), "vinpoker-migration-catalog-"));

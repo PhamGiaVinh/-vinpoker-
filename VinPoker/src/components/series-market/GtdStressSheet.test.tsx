@@ -77,7 +77,7 @@ beforeAll(async () => {
         unavailableReason: "unavailable_historical_distribution" as const,
         calculationScale: null,
         requiredEntries: null,
-        quantileScenarios: Object.freeze([]),
+        quantileScenarios: Object.freeze([] as const),
       }),
     }),
   });

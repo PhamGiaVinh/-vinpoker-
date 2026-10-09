@@ -1,4 +1,5 @@
 import { handleOptions, jsonResp } from "../_shared/cors.ts";
+import { parseHistoryWorkerHandIds, TRACKER_HISTORY_WORKER_MAX_BATCH } from "../_shared/trackerSettlement/historyWorkerPolicy.ts";
 
 // Dark invocation seam for one future cron/owner-reviewed scheduler call.
 // No schedule is created here and the default environment keeps it disabled.
@@ -14,16 +15,25 @@ Deno.serve(async (req) => {
   if (!url || !serviceKey || req.headers.get("Authorization") !== `Bearer ${serviceKey}`) {
     return jsonResp(req, { ok: false, message: "Unauthorized" }, 401);
   }
-  const body = await req.json().catch(() => ({})) as { limit?: unknown };
-  const limit = body.limit === undefined ? 20 : Number(body.limit);
-  if (!Number.isInteger(limit) || limit < 1 || limit > 20) {
+  let parsed: unknown;
+  try { parsed = await req.json(); }
+  catch { return jsonResp(req, { ok: false, code: "invalid_worker_request" }, 400); }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return jsonResp(req, { ok: false, code: "invalid_worker_request" }, 400);
+  }
+  const body = parsed as { limit?: unknown; hand_ids?: unknown };
+  let handIds: string[] | undefined;
+  try { handIds = parseHistoryWorkerHandIds(body.hand_ids); }
+  catch { return jsonResp(req, { ok: false, code: "invalid_hand_scope" }, 400); }
+  const limit = body.limit === undefined ? TRACKER_HISTORY_WORKER_MAX_BATCH : Number(body.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > TRACKER_HISTORY_WORKER_MAX_BATCH) {
     return jsonResp(req, { ok: false, code: "invalid_batch_limit" }, 400);
   }
   try {
     const response = await fetch(`${url}/functions/v1/tournament-historical-settlement-worker`, {
       method: "POST",
       headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ limit }),
+      body: JSON.stringify({ limit, ...(handIds ? { hand_ids: handIds } : {}) }),
     });
     const result = await response.json().catch(() => ({ ok: false }));
     return jsonResp(req, result, response.status);

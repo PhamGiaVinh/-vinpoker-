@@ -24,6 +24,12 @@ const base: FloorTableInventoryItem = {
 };
 
 describe("Dealer shared table inventory projection", () => {
+  it("keeps repair-needed sessions visible but never available for automatic staffing", () => {
+    const projected = projectDealerOperationalTable("club-a", { ...base, availabilityStatus: "repair_required", tournamentTableId: null });
+    expect(projected.availability_status).toBe("repair_required");
+    expect(projected.status).not.toBe("active");
+    expect(isDealerTableAvailable(projected)).toBe(false);
+  });
   it("uses the Floor V3 active session as the open-table authority", () => {
     expect(projectDealerOperationalTable("club-a", base)).toMatchObject({
       id: "table-5",

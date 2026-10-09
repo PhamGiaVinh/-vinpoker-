@@ -191,11 +191,10 @@ export const TournamentRegistrationsTab = ({ clubIds }: { clubIds?: string[] } =
     load();
   };
 
-  // Void a CONFIRMED registration: cascades seat/entry/receipt + reverses revenue
-  // via the void_registration RPC (actor bound to auth.uid() server-side).
+  // Request only: Floor clearance and actual Cashier payment remain separate server steps.
   const voidReg = async (r: Row, reason: string) => {
     setBusy(r.id);
-    const { data, error } = await supabase.rpc("void_registration", {
+    const { data, error } = await supabase.rpc("cashier_request_refund_v1", {
       p_registration_id: r.id,
       p_reason: reason,
     });
@@ -203,7 +202,7 @@ export const TournamentRegistrationsTab = ({ clubIds }: { clubIds?: string[] } =
     const res = data as { ok?: boolean; error?: string; refund_amount?: number } | null;
     if (error || !res?.ok) { toast.error(mapVoidError(res?.error, error?.message)); return; }
     setVoidTarget(null);
-    toast.success(`Đã huỷ & hoàn ${formatVND(res.refund_amount ?? r.total_pay)} — ghế đã giải phóng`);
+    toast.success("Đã ghi nhận yêu cầu hoàn. Floor xác minh ghế; Cashier ghi chi thực tế trước khi hoàn tất.");
     load();
   };
 
@@ -275,7 +274,7 @@ export const TournamentRegistrationsTab = ({ clubIds }: { clubIds?: string[] } =
               {FEATURES.registrationExtensions && r.status === "confirmed" && (
                 <div className="flex md:flex-col gap-2 md:w-40">
                   <Button size="sm" variant="outline" className="flex-1 h-9 text-destructive border-destructive/40" disabled={busy === r.id} onClick={() => setVoidTarget(r)}>
-                    <Undo2 className="w-3.5 h-3.5 mr-1" /> Huỷ & hoàn
+                    <Undo2 className="w-3.5 h-3.5 mr-1" /> Yêu cầu hoàn tiền
                   </Button>
                 </div>
               )}
@@ -355,9 +354,13 @@ function mapError(code?: string): string {
   }
 }
 
-// Maps void_registration RPC error codes to cashier-facing Vietnamese.
+// Server-authoritative refund request failures; never imply money has been paid.
 function mapVoidError(code?: string, raw?: string): string {
   switch (code ?? raw) {
+    case "invalid_request": return "Lý do hoàn tiền cần ít nhất 8 ký tự.";
+    case "refund_window_closed": return "Đã hết thời điểm cho phép hoàn hoặc giải đã có kết quả/payout.";
+    case "verified_payment_history_required": return "Chưa đối chiếu đủ lịch sử khoản thu. Không thể yêu cầu hoàn.";
+    case "registration_club_mismatch": return "Đăng ký và giải không cùng CLB. Cần kiểm tra dữ liệu.";
     case "unauthorized": return "Phiên đăng nhập hết hạn — đăng nhập lại.";
     case "actor_not_allowed": return "Tài khoản của bạn không có quyền huỷ cho CLB này.";
     case "registration_not_found": return "Không tìm thấy đăng ký.";

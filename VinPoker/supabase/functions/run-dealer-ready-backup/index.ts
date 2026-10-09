@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { authorizeSwingWorkerRequest, isUuid } from "../_shared/internal-trigger-auth.ts";
+import { getDealerOperationalTables } from "../_shared/dealerOperationalTables.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,6 +29,9 @@ const json = (data: unknown, status = 200) =>
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  const authorization = authorizeSwingWorkerRequest(req);
+  if (!authorization.ok) return json({ error: authorization.code }, authorization.status);
 
   const startTime = Date.now();
   const errors: string[] = [];
@@ -35,11 +40,6 @@ Deno.serve(async (req) => {
   let outcome: BackupResult["outcome"] = "processed";
 
   try {
-    const auth = req.headers.get("Authorization") ?? "";
-    if (!auth.startsWith("Bearer ")) {
-      return json({ error: "Unauthorized" }, 401);
-    }
-
     const url = Deno.env.get("SUPABASE_URL")!;
     const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     if (!url || !service) {
@@ -48,6 +48,7 @@ Deno.serve(async (req) => {
 
     const admin: any = createClient(url, service);
     const clubId = (await req.json().catch(() => ({})))?.club_id ?? null;
+    if (clubId !== null && !isUuid(clubId)) return json({ error: "invalid_club_id" }, 400);
 
     // ═══ Step 1: Smart gate — skip if no available dealers ═══
     // NOTE: dealer_attendance has NO updated_at column.
@@ -101,6 +102,13 @@ Deno.serve(async (req) => {
         break;
       }
 
+      const { data: clubSettings, error: settingsError } = await admin.from("club_settings")
+        .select("auto_swing_enabled").eq("club_id", cid).maybeSingle();
+      if (settingsError) throw new Error("auto_swing_state_unverified");
+      if (clubSettings?.auto_swing_enabled !== true) continue;
+      const operationalTables = await getDealerOperationalTables(admin, cid);
+      if (operationalTables.length === 0) continue;
+
       // Try to acquire advisory lock for this club
       const lockAcquired = await tryAcquireLock(admin, cid);
       if (!lockAcquired) {
@@ -113,12 +121,13 @@ Deno.serve(async (req) => {
         // Under the scheduler, "dealer ready" never swings — instant
         // perform_swing would bypass the 3-minute announce guarantee and
         // R3/R4 fairness. The 30s planner tick owns this club's rotation.
-        const { data: backupSwingCfg } = await admin
+        const { data: backupSwingCfg, error: plannerError } = await admin
           .from("swing_config")
           .select("rotation_planner_enabled")
           .eq("club_id", cid)
           .eq("table_type", "tournament")
           .maybeSingle();
+        if (plannerError) throw new Error("rotation_planner_state_unverified");
         if (backupSwingCfg?.rotation_planner_enabled === true) {
           console.log(`[run-dealer-ready-backup] scheduler active for club ${cid} — deferring to planner tick`);
           consecutiveFailures = 0;
@@ -127,7 +136,10 @@ Deno.serve(async (req) => {
 
         const { data: readyDealers, error: readyErr } = await admin
           .from("dealer_attendance")
-          .select("id, dealer_id")
+          .select("id, dealer_id, dealers!inner(club_id)")
+          .eq("dealers.club_id", cid)
+          .is("check_out_time", null)
+          .eq("status", "checked_in")
           .eq("current_state", "available")
           .limit(20);
 
@@ -179,13 +191,19 @@ Deno.serve(async (req) => {
                 swing_due_at
               `)
               .eq("club_id", cid)
+              .in("table_id", operationalTables.map((table) => table.id))
               .eq("status", "assigned")
               .lt("swing_due_at", new Date().toISOString())
               .order("swing_due_at", { ascending: true })
               .limit(1)
               .maybeSingle();
 
-            if (overdueErr || !overdueTable) {
+            if (overdueErr) {
+              errors.push(`overdue ${cid}: query_failed`);
+              consecutiveFailures++;
+              continue;
+            }
+            if (!overdueTable) {
               continue;
             }
 
@@ -216,6 +234,10 @@ Deno.serve(async (req) => {
             if (swingResult?.outcome === "swung") {
               dealersProcessed++;
               console.log(`[run-dealer-ready-backup] ✅ club=${cid} table=${overdueTable.table_id} dealer=${dealer.id} rest_deficit=${restDeficit}min`);
+            } else if (!["race_lost", "skipped", "no_table", "no_dealer"].includes(swingResult?.outcome)) {
+              errors.push(`swing ${dealer.id}: non_success_outcome`);
+              consecutiveFailures++;
+              continue;
             }
 
             consecutiveFailures = 0;
@@ -243,13 +265,14 @@ Deno.serve(async (req) => {
       errors.length > 0 ? errors.slice(0, 3).join("; ") : undefined
     );
 
+    if (errors.length > 0) outcome = "error";
     return json({
       outcome,
       clubs_processed: clubsProcessed,
       dealers_processed: dealersProcessed,
       duration_ms: Date.now() - startTime,
       errors: errors.slice(0, 5),
-    } as BackupResult);
+    } as BackupResult, errors.length > 0 ? 500 : 200);
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("[run-dealer-ready-backup] unhandled error:", errorMsg);
@@ -272,12 +295,12 @@ async function tryAcquireLock(admin: any, clubId: string): Promise<boolean> {
     });
     if (error) {
       console.warn(`[run-dealer-ready-backup] lock RPC error for ${clubId}:`, error.message);
-      return true; // best-effort: if RPC doesn't exist, allow execution
+      throw new Error("backup_lock_unverified");
     }
     return data === true;
   } catch (err) {
     console.warn(`[run-dealer-ready-backup] lock exception for ${clubId}:`, err);
-    return true;
+    throw new Error("backup_lock_unverified");
   }
 }
 

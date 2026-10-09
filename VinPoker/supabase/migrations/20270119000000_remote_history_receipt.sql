@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20270119000000
+-- Remote ledger name: tv_layout_editor_multiblock_v3
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: 0ee75093d74e9457b7a0ec450b8bfa046b3b1521347409dd628778b327c6c2cd
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20270119000000_tv_layout_editor_multiblock_v3.sql

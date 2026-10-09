@@ -90,6 +90,7 @@ export default function OpsTables({ tournamentId }: { tournamentId?: string }) {
 }
 
 function OpsTablesV3({ tournamentId }: { tournamentId?: string }) {
+  const { user } = useOpsAuth();
   const {
     loading: clubsLoading,
     clubs,
@@ -188,7 +189,7 @@ function OpsTablesV3({ tournamentId }: { tournamentId?: string }) {
         </div>
       )}
       {selectedTournament ? (
-        <FloorTableMapPanelV3 tournament={selectedTournament} refreshTrigger={0} />
+        <FloorTableMapPanelV3 actorId={user?.id ?? null} tournament={selectedTournament} refreshTrigger={0} />
       ) : (
         <div className="ios-card flex flex-col items-center gap-2 py-12 text-center">
           <Trophy className="h-7 w-7 text-amber-300" />

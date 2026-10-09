@@ -10,7 +10,7 @@ function failingAdmin(code: string, message: string) {
     resolve: (value: unknown) => unknown,
     reject: (reason: unknown) => unknown,
   ) => Promise.resolve({ data: null, error: { code, message } }).then(resolve, reject);
-  return { from: () => query };
+  return { rpc: async () => ({ data: null, error: { code, message } }), from: () => query };
 }
 
 Deno.test("fillEmptyTables reports a missing operation column as dependency_unavailable", async () => {
@@ -49,17 +49,14 @@ Deno.test("fillEmptyTables does not convert an unknown query failure into an emp
 });
 
 Deno.test("fillEmptyTables treats no active tables as an empty successful workload", async () => {
-  let fromCalls = 0;
+  let rpcCalls = 0;
   const query: Record<string, unknown> = {};
   for (const method of ["select", "eq"]) query[method] = () => query;
   query.then = (resolve: (value: unknown) => unknown) =>
     Promise.resolve({ data: [], error: null }).then(resolve);
   const admin = {
-    from: () => {
-      fromCalls += 1;
-      if (fromCalls > 1) throw new Error("unexpected follow-up query");
-      return query;
-    },
+    rpc: async () => { rpcCalls += 1; return { data: [], error: null }; },
+    from: () => { throw new Error("empty inventory must not query the legacy table pool"); },
   };
 
   const result = await fillEmptyTables(
@@ -70,5 +67,5 @@ Deno.test("fillEmptyTables treats no active tables as an empty successful worklo
   );
   assertEquals(result.status, "ok");
   assertEquals(result.assignments, []);
-  assertEquals(fromCalls, 1);
+  assertEquals(rpcCalls, 1);
 });

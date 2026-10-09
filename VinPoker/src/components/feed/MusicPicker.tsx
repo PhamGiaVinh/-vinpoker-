@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
+import { storyMusicOptionalClient } from "@/lib/storyMusicOptionalClient";
 import { Music2, Play, Pause, Check, Search, X, Loader2, Cloud } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -44,6 +45,7 @@ export function MusicPicker({ open, onOpenChange, onSelect, selected }: Props) {
   const [search, setSearch] = useState("");
   const [playing, setPlaying] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // SoundCloud tab state
@@ -62,14 +64,19 @@ export function MusicPicker({ open, onOpenChange, onSelect, selected }: Props) {
     let mounted = true;
     (async () => {
       setLoading(true);
-      const { data } = await supabase
+      setTracks([]);
+      setLibraryError(null);
+      try {
+      const { data, error } = await storyMusicOptionalClient
         .from("feed_story_music")
         .select("id,name,artist,file_url,duration,genre,thumbnail_url")
         .order("created_at", { ascending: false });
       if (mounted) {
-        setTracks(((data ?? []) as any[]).map(t => ({ source: "library" as const, ...t })));
-        setLoading(false);
+        if (error) setLibraryError("Thư viện nhạc chưa sẵn sàng hoặc không tải được.");
+        else setTracks((data ?? []).map(track => ({ source: "library" as const, ...track })));
       }
+      } catch { if (mounted) setLibraryError("Không kết nối được thư viện nhạc."); }
+      finally { if (mounted) setLoading(false); }
     })();
     return () => { mounted = false; audioRef.current?.pause(); };
   }, [open]);
@@ -168,6 +175,8 @@ export function MusicPicker({ open, onOpenChange, onSelect, selected }: Props) {
             <div className="max-h-[45vh] overflow-y-auto -mx-2 px-2 space-y-1">
               {loading ? (
                 <div className="py-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+              ) : libraryError ? (
+                <p role="alert" className="py-8 text-sm text-destructive">{libraryError}</p>
               ) : filtered.length === 0 ? (
                 <div className="py-8 text-center text-sm text-muted-foreground">{t("musicPicker.emptyTracks")}</div>
               ) : filtered.map(track => (

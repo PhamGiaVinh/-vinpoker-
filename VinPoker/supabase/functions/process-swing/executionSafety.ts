@@ -1,5 +1,18 @@
 import { classifyPostgrestError } from "../_shared/postgrestError.ts";
 
+/** A failed authority read must never become permission to run automatic Swing. */
+export async function fetchAutoSwingSettings(admin: {
+  from(name: string): { select(columns: string): PromiseLike<{
+    data: Array<{ club_id: string; auto_swing_enabled: unknown }> | null;
+    error: unknown;
+  }> };
+}): Promise<Map<string, boolean>> {
+  const { data, error } = await admin.from("club_settings")
+    .select("club_id, auto_swing_enabled");
+  if (error || !Array.isArray(data)) throw new Error("auto_swing_state_unverified");
+  return new Map(data.map(row => [row.club_id, row.auto_swing_enabled === true]));
+}
+
 export type ProcessSwingDispatchState =
   | "completed"
   | "partial"

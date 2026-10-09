@@ -29,13 +29,13 @@ describe("Q1 workspace lifetime", () => {
     client.setQueryData(key("club-a"), "prior-actor-initial");
     const tree = (clubId: string) => <QueryClientProvider client={client}><OpsIntelligenceWorkspaceQ1 clubId={clubId} clubName={clubId} /></QueryClientProvider>;
     const view = render(tree("club-a"));
-    fireEvent.click(screen.getByRole("button", { name: "QUANT", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "QUANT" }));
     expect(state.observations).not.toContain("prior-actor-initial");
     client.setQueryData(key("club-b"), "prior-actor-destination");
     state.user = { id: "owner-b" };
     state.observations = [];
     view.rerender(tree("club-b"));
-    fireEvent.click(screen.getByRole("button", { name: "QUANT", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "QUANT" }));
     expect(state.observations).not.toContain("prior-actor-destination");
     expect(client.getQueryData(key("club-b"))).toBeUndefined();
   });
@@ -45,7 +45,7 @@ describe("Q1 workspace lifetime", () => {
     const view = render(tree());
     expect(screen.getByText("Overview only")).toBeVisible();
     expect(screen.queryByLabelText("draft")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "QUANT", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "QUANT" }));
     fireEvent.change(screen.getByLabelText("draft"), { target: { value: "200" } });
     fireEvent.click(screen.getByRole("button", { name: "DATA HEALTH" }));
     expect(screen.queryByLabelText("draft")).toBeNull();
@@ -56,7 +56,7 @@ describe("Q1 workspace lifetime", () => {
     state.user = { id: "owner-b" };
     view.rerender(tree());
     expect(screen.getByText("Overview only")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "QUANT", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "QUANT" }));
     expect(screen.getByLabelText("draft")).toHaveValue("");
     expect(state.observations).not.toContain("old-private-observation");
     expect(client.getQueryData(["ops", "club-a", "intelligence", "pulse"])).toBeUndefined();
@@ -66,10 +66,10 @@ describe("Q1 workspace lifetime", () => {
     const client = new QueryClient();
     const tree = (clubId: string) => <QueryClientProvider client={client}><OpsIntelligenceWorkspaceQ1 clubId={clubId} clubName={clubId} /></QueryClientProvider>;
     const view = render(tree("club-a"));
-    fireEvent.click(screen.getByRole("button", { name: "QUANT", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "QUANT" }));
     fireEvent.change(screen.getByLabelText("draft"), { target: { value: "80" } });
     view.rerender(tree("club-b"));
-    fireEvent.click(screen.getByRole("button", { name: "QUANT", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "QUANT" }));
     expect(screen.getByLabelText("draft")).toHaveValue("");
     client.setQueryData(["ops", "club-b", "intelligence", "pulse"], "private");
     state.user = null;

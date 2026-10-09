@@ -178,7 +178,7 @@ function parseEnvelope<T>(schema: z.ZodType<T>, value: unknown): SeriesCandidate
 
 export function parseSeriesCandidateAuthoringSources(value: unknown): SeriesCandidateAuthoringRpcResult<ReadonlyArray<SeriesCandidateAuthoringSource>> {
   const parsed = parseEnvelope(sourcesEnvelopeSchema, value);
-  return parsed.ok ? { ok: true, value: Object.freeze([...parsed.value.sources]) } : parsed;
+  return parsed.ok === true ? { ok: true, value: Object.freeze([...parsed.value.sources]) } : parsed;
 }
 
 export function parseSeriesCandidateAuthoringPreview(value: unknown): SeriesCandidateAuthoringRpcResult<SeriesCandidateAuthoringPreview> {
@@ -191,7 +191,7 @@ export async function listSeriesCandidateAuthoringSources(clubId: string): Promi
     const { data, error } = await candidateAuthoringClient.rpc(SERIES_CANDIDATE_AUTHORING_RPC.listSources, { p_club_id: clubId });
     if (error) return classifyRpcError(error);
     const parsed = parseEnvelope(sourcesEnvelopeSchema, data);
-    if (!parsed.ok || parsed.value.clubId !== clubId || !parsed.value.sources.every((source) => source.tournamentId && source.optionId.startsWith("tournament:"))) {
+    if (parsed.ok === false || parsed.value.clubId !== clubId || !parsed.value.sources.every((source) => source.tournamentId && source.optionId.startsWith("tournament:"))) {
       return { ok: false, error: "malformed_response", retryable: false };
     }
     return { ok: true, value: Object.freeze([...parsed.value.sources]) };
@@ -212,7 +212,7 @@ export async function getSeriesCandidateAuthoringPreview(
     });
     if (error) return classifyRpcError(error);
     const parsed = parseSeriesCandidateAuthoringPreview(data);
-    return parsed.ok && parsed.value.clubId === clubId && parsed.value.tournamentId === tournamentId
+    return parsed.ok === true && parsed.value.clubId === clubId && parsed.value.tournamentId === tournamentId
       ? parsed
       : { ok: false, error: "malformed_response", retryable: false };
   } catch (caught) {
@@ -247,7 +247,7 @@ export async function approveSeriesCandidateFromTournament(
     });
     if (error) return classifyRpcError(error);
     const approval = parseEnvelope(approvalSchema, data);
-    if (!approval.ok) return approval;
+    if (approval.ok === false) return approval;
 
     const { data: readbackData, error: readbackError } = await candidateAuthoringClient.rpc(SERIES_CANDIDATE_AUTHORING_RPC.approvedReadback, {
       p_club_id: request.clubId,
@@ -255,7 +255,7 @@ export async function approveSeriesCandidateFromTournament(
     });
     if (readbackError) return classifyRpcError(readbackError);
     const readback = parseEnvelope(approvedReadbackSchema, readbackData);
-    if (!readback.ok) return readback;
+    if (readback.ok === false) return readback;
     const matching = readback.value.candidateOptions.filter((candidate) => candidate.optionId === approval.value.optionId);
     if (readback.value.clubId !== request.clubId || matching.length !== 1) {
       return { ok: false, error: "readback_mismatch", retryable: false };

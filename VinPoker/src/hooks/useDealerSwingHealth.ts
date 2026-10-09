@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
  * Read-only swing-ENGINE health for the operator console (C2). Calls the access-scoped
- * `get_dealer_swing_health` RPC and polls. Degrades gracefully: if the RPC is not applied
- * yet (or errors), `unavailable` flips true and the infra-health strip hides — so this can
- * merge before the migration is applied with zero console regression.
+ * `get_dealer_swing_health` RPC and polls only while foregrounded.
+ * Errors remain explicit and cached data never crosses club scopes.
  */
 export interface ClubSwingHealth {
   club_id: string;
@@ -25,32 +24,31 @@ export interface ClubSwingHealth {
 }
 
 export function useDealerSwingHealth(clubIds: string[], pollMs = 30_000) {
-  const [data, setData] = useState<ClubSwingHealth[] | null>(null);
-  const [unavailable, setUnavailable] = useState(false);
-  const key = [...clubIds].sort().join(",");
-
-  const load = useCallback(async () => {
-    if (!clubIds.length) { setData([]); return; }
-    try {
-      // RPC is not in the generated Database types until applied + regenerated → cast.
-      const { data: d, error } = await (supabase as { rpc: (n: string, a: unknown) => Promise<{ data: unknown; error: unknown }> })
-        .rpc("get_dealer_swing_health", { p_club_ids: clubIds });
-      if (error) { setUnavailable(true); return; }
-      setUnavailable(false);
-      setData(Array.isArray(d) ? (d as ClubSwingHealth[]) : []);
-    } catch {
-      setUnavailable(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
-  useEffect(() => {
-    load();
-    if (!clubIds.length) return;
-    const id = setInterval(load, pollMs);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load, pollMs, key]);
-
-  return { data, unavailable, refetch: load };
+  const scope = [...new Set(clubIds)].sort();
+  const query = useQuery({
+    queryKey: ["dealer-swing-engine-health", scope],
+    enabled: scope.length > 0,
+    refetchInterval: pollMs,
+    refetchIntervalInBackground: false,
+    retry: false,
+    queryFn: async (): Promise<ClubSwingHealth[]> => {
+      const { data: d, error } = await supabase.rpc("get_dealer_swing_health", { p_club_ids: scope });
+      if (error) throw error;
+      const valid = (value: unknown): value is ClubSwingHealth => {
+        if (!value || typeof value !== "object") return false;
+        const row = value as Partial<ClubSwingHealth>;
+        return typeof row.club_id === "string" && scope.includes(row.club_id)
+          && typeof row.lock?.held === "boolean" && typeof row.overdue_now === "number"
+          && typeof row.pre_announce?.pending === "number" && typeof row.pre_announce?.processing === "number"
+          && typeof row.pre_announce?.failed_recent === "number";
+      };
+      if (!Array.isArray(d)) {
+        throw new Error("Invalid dealer swing health response");
+      }
+      const rows: unknown[] = d;
+      if (!rows.every(valid)) throw new Error("Invalid dealer swing health response");
+      return rows;
+    },
+  });
+  return { data: scope.length ? query.data ?? null : [], unavailable: query.isError, refetch: query.refetch };
 }

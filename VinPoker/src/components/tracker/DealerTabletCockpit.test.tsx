@@ -30,17 +30,17 @@ const props = { hook, header: null, orphan: null, progress: null, felt: <p>Bàn<
 describe("Dealer tablet modes", () => {
   it("does not mount any writer when Floor permission is absent", () => {
     render(<DealerTabletLayout {...props} trackerAllowed={false} />);
-    expect(screen.getByRole("button", { name: "Tracker", exact: true }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Tracker" }).hasAttribute("disabled")).toBe(true);
     expect(screen.queryByText("Manual writer")).toBeNull();
     expect(screen.queryByText("Voice mounted")).toBeNull();
   });
   it("unmounts Voice when switching to normal or when authority is lost", () => {
     const { rerender } = render(<DealerTabletLayout {...props} trackerAllowed />);
-    fireEvent.click(screen.getByRole("button", { name: "Voice Assist", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Voice Assist" }));
     expect(screen.getByText("Voice mounted")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Thường", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Thường" }));
     expect(screen.queryByText("Voice mounted")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Tracker", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Tracker" }));
     expect(screen.getByText("Voice mounted")).toBeTruthy();
     rerender(<DealerTabletLayout {...props} trackerAllowed={false} />);
     expect(screen.queryByText("Voice mounted")).toBeNull();
@@ -54,9 +54,9 @@ describe("Dealer tablet modes", () => {
       tournamentId: "tournament",
       tournamentTableId: "table",
       currentStreet: "preflop",
-      engineActor: { player_id: "player-1", seat_number: 1 },
+      engineActor: { player_id: "player-1", seat_number: 1, toCall: 10, minRaiseTo: 20, legal: { fold: true, check: false, call: true, bet: false, raise: true, allIn: true } },
       playerName: () => "Test 1",
-      actions: [{ action_order: 1 }],
+      actions: [{ action_order: 1, street: "preflop", player_id: "player-1", display_name: "Test 1", seat_number: 1, action_type: "call", amount: 10 }],
       canUndo: false,
     } as StandaloneHandInput;
     render(<DealerTabletLayout {...props} hook={activeHook} trackerAllowed floorAlertsEnabled />);

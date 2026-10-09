@@ -1,0 +1,8 @@
+-- REMOTE HISTORY RECEIPT (source-only catalog reconciliation).
+-- Remote ledger version: 20260924165219
+-- Remote ledger name: centerpoint_tournament_ops_release_v1
+-- Read-only evidence: orlesggcjamwuknxwcpk ledger inspected 2026-10-09.
+-- Normalized live SQL SHA256: e5245838c2314b782ad7c40ab28e792103f081dd6eea6cd21960c114c8749740
+-- Already applied remotely; never replay this receipt on a fresh database.
+-- Not executable source and not proof of current database object parity.
+-- Preserved non-active source: supabase/pending-migrations/20260924165219_centerpoint_tournament_ops_release_v1.sql

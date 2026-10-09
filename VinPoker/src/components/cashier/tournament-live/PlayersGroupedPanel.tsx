@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 import { ManualFloorBustConfirmDialog } from "./ManualFloorBustConfirmDialog";
 import { parseFloorTableControlMode } from "@/lib/floorTableControlMode";
 import { floorOpsErrorMessage } from "@/lib/floorOpsErrors";
+import { RestoreBustDialog } from "./RestoreBustDialog";
 
 interface SeatRow {
   seat_id: string;
@@ -78,6 +80,7 @@ export function PlayersGroupedPanel({
   refreshTrigger: number;
 }) {
   const tid = tournament.id;
+  const { user } = useAuth();
   const [seats, setSeats] = useState<SeatRow[] | null>(null);
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [entryBySeat, setEntryBySeat] = useState<Record<string, string>>({});
@@ -94,6 +97,7 @@ export function PlayersGroupedPanel({
   const [receipt, setReceipt] = useState<SeatReceiptData | null>(null);
   const [busting, setBusting] = useState(false);
   const [manualBustTarget, setManualBustTarget] = useState<SeatRow | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<{ entryId: string; name: string } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -365,12 +369,16 @@ export function PlayersGroupedPanel({
                   <div className="truncate text-sm font-medium line-through decoration-muted-foreground/40">{e.player_name || e.player_id.slice(0, 8)}</div>
                   <div className="text-xs text-destructive">Đã loại</div>
                 </div>
+                {canMove && <Button variant="outline" className="min-h-11 shrink-0" onClick={() => setRestoreTarget({ entryId: e.id, name: e.player_name || e.player_id })}>
+                  Hoàn tác bust nhầm
+                </Button>}
               </div>
             ))}
           </div>
         )
       )}
 
+      <RestoreBustDialog actorId={user?.id ?? null} tournamentId={tid} target={restoreTarget} onClose={() => setRestoreTarget(null)} onRestored={() => { void load(); }} />
       <PlayerActionSheet
         open={selected !== null}
         onOpenChange={(v) => { if (!v) setSelected(null); }}

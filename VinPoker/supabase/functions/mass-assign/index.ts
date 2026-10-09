@@ -3,6 +3,7 @@ import { corsHeaders, jsonResponse, fillEmptyTables, computeSwingDuration } from
 import { formatMassAssignMessage, sendTelegramNotification, getClubTelegramChatId } from "../_shared/telegram.ts";
 import { idempotentResponse } from "../_shared/idempotency.ts";
 import { authenticateUser } from "../_shared/staking-common.ts";
+import { manualDealerIntentHeaders } from "../_shared/dealerMutationIntent.ts";
 import { fillOpenOperation } from "../_shared/fillOpenOperation.ts";
 import {
   legacyFillFailureContract,
@@ -19,11 +20,10 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
-    const admin = createClient(supabaseUrl, serviceKey);
-
     const authResult = await authenticateUser(req);
     if (authResult instanceof Response) return authResult;
     const uid = authResult.uid;
+    const admin = createClient(supabaseUrl, serviceKey, { global: { headers: manualDealerIntentHeaders(uid) } });
 
     const body = await req.json().catch(() => ({}));
     const { club_id, shift_id, operation_id } = body ?? {};

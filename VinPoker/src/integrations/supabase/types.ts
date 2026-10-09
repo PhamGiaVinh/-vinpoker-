@@ -317,9 +317,6 @@ export type Database = {
         Row: {
           buyin: number | null
           created_at: string
-          delete_reason: string | null
-          deleted_at: string | null
-          deleted_by: string | null
           entries: number | null
           entry_date: string
           game_type: string
@@ -330,16 +327,12 @@ export type Database = {
           profit_loss: number | null
           rake: number | null
           stakes: string | null
-          purge_after: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           buyin?: number | null
           created_at?: string
-          delete_reason?: string | null
-          deleted_at?: string | null
-          deleted_by?: string | null
           entries?: number | null
           entry_date?: string
           game_type: string
@@ -350,16 +343,12 @@ export type Database = {
           profit_loss?: number | null
           rake?: number | null
           stakes?: string | null
-          purge_after?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           buyin?: number | null
           created_at?: string
-          delete_reason?: string | null
-          deleted_at?: string | null
-          deleted_by?: string | null
           entries?: number | null
           entry_date?: string
           game_type?: string
@@ -370,7 +359,6 @@ export type Database = {
           profit_loss?: number | null
           rake?: number | null
           stakes?: string | null
-          purge_after?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -517,6 +505,318 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      cashier_buyin_movements: {
+        Row: {
+          actor_id: string
+          amount: number
+          applied_amount: number
+          bank_transaction_id: string | null
+          club_id: string
+          created_at: string
+          direction: string
+          id: string
+          idempotency_key: string
+          method: string
+          purpose: string
+          reason: string | null
+          refund_id: string | null
+          registration_id: string | null
+          satellite_funding_phase: string | null
+          shift_id: string | null
+          tournament_id: string | null
+        }
+        Insert: {
+          actor_id: string
+          amount: number
+          applied_amount: number
+          bank_transaction_id?: string | null
+          club_id: string
+          created_at?: string
+          direction: string
+          id?: string
+          idempotency_key: string
+          method: string
+          purpose: string
+          reason?: string | null
+          refund_id?: string | null
+          registration_id?: string | null
+          satellite_funding_phase?: string | null
+          shift_id?: string | null
+          tournament_id?: string | null
+        }
+        Update: {
+          actor_id?: string
+          amount?: number
+          applied_amount?: number
+          bank_transaction_id?: string | null
+          club_id?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          idempotency_key?: string
+          method?: string
+          purpose?: string
+          reason?: string | null
+          refund_id?: string | null
+          registration_id?: string | null
+          satellite_funding_phase?: string | null
+          shift_id?: string | null
+          tournament_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cashier_buyin_movements_bank_transaction_id_fkey"
+            columns: ["bank_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "bank_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashier_buyin_movements_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashier_buyin_movements_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashier_buyin_movements_refund_id_fkey"
+            columns: ["refund_id"]
+            isOneToOne: false
+            referencedRelation: "cashier_refund_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashier_buyin_movements_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashier_buyin_movements_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "cashier_till_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashier_buyin_movements_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "cashier_buyin_movements_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cashier_refund_requests: {
+        Row: {
+          amount: number
+          bank_reference: string | null
+          club_id: string
+          evidence: string | null
+          floor_at: string | null
+          floor_by: string | null
+          id: string
+          paid_at: string | null
+          paid_by: string | null
+          reason: string
+          registration_id: string
+          requested_at: string
+          requested_by: string
+          status: string
+          tournament_id: string
+        }
+        Insert: {
+          amount: number
+          bank_reference?: string | null
+          club_id: string
+          evidence?: string | null
+          floor_at?: string | null
+          floor_by?: string | null
+          id?: string
+          paid_at?: string | null
+          paid_by?: string | null
+          reason: string
+          registration_id: string
+          requested_at?: string
+          requested_by: string
+          status?: string
+          tournament_id: string
+        }
+        Update: {
+          amount?: number
+          bank_reference?: string | null
+          club_id?: string
+          evidence?: string | null
+          floor_at?: string | null
+          floor_by?: string | null
+          id?: string
+          paid_at?: string | null
+          paid_by?: string | null
+          reason?: string
+          registration_id?: string
+          requested_at?: string
+          requested_by?: string
+          status?: string
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cashier_refund_requests_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashier_refund_requests_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashier_refund_requests_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashier_refund_requests_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "cashier_refund_requests_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cashier_till_shifts: {
+        Row: {
+          closed_at: string | null
+          closed_by: string | null
+          club_id: string
+          counted_cash: number | null
+          expected_cash: number | null
+          id: string
+          opened_at: string
+          opened_by: string
+          opening_cash: number
+          variance_cash: number | null
+        }
+        Insert: {
+          closed_at?: string | null
+          closed_by?: string | null
+          club_id: string
+          counted_cash?: number | null
+          expected_cash?: number | null
+          id?: string
+          opened_at?: string
+          opened_by: string
+          opening_cash: number
+          variance_cash?: number | null
+        }
+        Update: {
+          closed_at?: string | null
+          closed_by?: string | null
+          club_id?: string
+          counted_cash?: number | null
+          expected_cash?: number | null
+          id?: string
+          opened_at?: string
+          opened_by?: string
+          opening_cash?: number
+          variance_cash?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cashier_till_shifts_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashier_till_shifts_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cashier_tour_settings: {
+        Row: {
+          club_id: string
+          enabled: boolean
+        }
+        Insert: {
+          club_id: string
+          enabled?: boolean
+        }
+        Update: {
+          club_id?: string
+          enabled?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cashier_tour_settings_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashier_tour_settings_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      centerpoint_tournament_ops_release: {
+        Row: {
+          allowed_club_ids: string[]
+          enabled: boolean
+          id: boolean
+          updated_at: string
+        }
+        Insert: {
+          allowed_club_ids?: string[]
+          enabled?: boolean
+          id?: boolean
+          updated_at?: string
+        }
+        Update: {
+          allowed_club_ids?: string[]
+          enabled?: boolean
+          id?: boolean
+          updated_at?: string
+        }
+        Relationships: []
       }
       chat_group_invites: {
         Row: {
@@ -714,6 +1014,9 @@ export type Database = {
           created_by: string | null
           day_number: number
           id: string
+          multi_day_revision: number
+          multi_day_roster_hash: string | null
+          multi_day_sealed_version: number | null
           player_id: string
           player_name: string | null
           sealed: boolean
@@ -731,6 +1034,9 @@ export type Database = {
           created_by?: string | null
           day_number: number
           id?: string
+          multi_day_revision?: number
+          multi_day_roster_hash?: string | null
+          multi_day_sealed_version?: number | null
           player_id: string
           player_name?: string | null
           sealed?: boolean
@@ -748,6 +1054,9 @@ export type Database = {
           created_by?: string | null
           day_number?: number
           id?: string
+          multi_day_revision?: number
+          multi_day_roster_hash?: string | null
+          multi_day_sealed_version?: number | null
           player_id?: string
           player_name?: string | null
           sealed?: boolean
@@ -2024,6 +2333,130 @@ export type Database = {
         }
         Relationships: []
       }
+      club_operator_invite_events: {
+        Row: {
+          actor_id: string | null
+          auth_user_id: string | null
+          club_id: string
+          created_at: string
+          detail: Json
+          event_type: string
+          id: string
+          invite_id: string
+          operator_role: string
+        }
+        Insert: {
+          actor_id?: string | null
+          auth_user_id?: string | null
+          club_id: string
+          created_at?: string
+          detail?: Json
+          event_type: string
+          id?: string
+          invite_id: string
+          operator_role: string
+        }
+        Update: {
+          actor_id?: string | null
+          auth_user_id?: string | null
+          club_id?: string
+          created_at?: string
+          detail?: Json
+          event_type?: string
+          id?: string
+          invite_id?: string
+          operator_role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_operator_invite_events_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_operator_invite_events_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_operator_invite_events_invite_id_fkey"
+            columns: ["invite_id"]
+            isOneToOne: false
+            referencedRelation: "club_operator_invites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_operator_invites: {
+        Row: {
+          accepted_at: string | null
+          auth_user_id: string | null
+          club_id: string
+          created_at: string
+          email_normalized: string
+          id: string
+          invitation_sent_at: string | null
+          invited_by: string
+          last_delivery_outcome: string
+          operator_role: string
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          auth_user_id?: string | null
+          club_id: string
+          created_at?: string
+          email_normalized: string
+          id?: string
+          invitation_sent_at?: string | null
+          invited_by: string
+          last_delivery_outcome?: string
+          operator_role: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          auth_user_id?: string | null
+          club_id?: string
+          created_at?: string
+          email_normalized?: string
+          id?: string
+          invitation_sent_at?: string | null
+          invited_by?: string
+          last_delivery_outcome?: string
+          operator_role?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_operator_invites_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_operator_invites_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_payment_config: {
         Row: {
           api_token_vault_key: string | null
@@ -2325,6 +2758,7 @@ export type Database = {
           status: Database["public"]["Enums"]["club_status"]
           tv_bg_url: string | null
           tv_brand_name: string | null
+          tv_layout_config: Json
           tv_logo_url: string | null
           updated_at: string
           weekly_schedule_image_url: string | null
@@ -2350,6 +2784,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["club_status"]
           tv_bg_url?: string | null
           tv_brand_name?: string | null
+          tv_layout_config?: Json
           tv_logo_url?: string | null
           updated_at?: string
           weekly_schedule_image_url?: string | null
@@ -2375,6 +2810,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["club_status"]
           tv_bg_url?: string | null
           tv_brand_name?: string | null
+          tv_layout_config?: Json
           tv_logo_url?: string | null
           updated_at?: string
           weekly_schedule_image_url?: string | null
@@ -2903,6 +3339,7 @@ export type Database = {
           swing_processed_at: string | null
           swing_retry_count: number
           table_id: string
+          table_session_id: string | null
           updated_at: string
           version: number
         }
@@ -2936,6 +3373,7 @@ export type Database = {
           swing_processed_at?: string | null
           swing_retry_count?: number
           table_id: string
+          table_session_id?: string | null
           updated_at?: string
           version?: number
         }
@@ -2969,6 +3407,7 @@ export type Database = {
           swing_processed_at?: string | null
           swing_retry_count?: number
           table_id?: string
+          table_session_id?: string | null
           updated_at?: string
           version?: number
         }
@@ -3037,10 +3476,24 @@ export type Database = {
             referencedColumns: ["attendance_id"]
           },
           {
+            foreignKeyName: "dealer_assignments_session_game_table_v3_fkey"
+            columns: ["table_session_id", "table_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id", "game_table_id"]
+          },
+          {
             foreignKeyName: "dealer_assignments_table_id_fkey"
             columns: ["table_id"]
             isOneToOne: false
             referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_assignments_table_session_id_v3_fkey"
+            columns: ["table_session_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -3669,6 +4122,33 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_mass_open_rollout: {
+        Row: {
+          all_clubs_enabled: boolean
+          allowed_club_ids: string[]
+          enabled: boolean
+          id: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          all_clubs_enabled?: boolean
+          allowed_club_ids?: string[]
+          enabled?: boolean
+          id?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          all_clubs_enabled?: boolean
+          allowed_club_ids?: string[]
+          enabled?: boolean
+          id?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       dealer_meal_breaks: {
         Row: {
           attendance_id: string
@@ -3756,6 +4236,144 @@ export type Database = {
             columns: ["dealer_id"]
             isOneToOne: false
             referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_open_operation_targets: {
+        Row: {
+          assigned_at: string | null
+          assignment_id: string | null
+          initial_status: string
+          operation_id: string
+          outcome_code: string
+          table_id: string
+          target_state: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_at?: string | null
+          assignment_id?: string | null
+          initial_status: string
+          operation_id: string
+          outcome_code?: string
+          table_id: string
+          target_state?: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_at?: string | null
+          assignment_id?: string | null
+          initial_status?: string
+          operation_id?: string
+          outcome_code?: string
+          table_id?: string
+          target_state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_open_operation_targets_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_open_operation_targets_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "v_stuck_assignment_version_history"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_open_operation_targets_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_open_operations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_open_operation_targets_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_open_operations: {
+        Row: {
+          assigned_count: number
+          club_id: string
+          completed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          last_error_code: string | null
+          remaining_count: number
+          request_fingerprint: string
+          requested_by: string
+          requested_count: number
+          shift_id: string | null
+          status: string
+          table_type: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_count?: number
+          club_id: string
+          completed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id: string
+          last_error_code?: string | null
+          remaining_count: number
+          request_fingerprint: string
+          requested_by: string
+          requested_count: number
+          shift_id?: string | null
+          status?: string
+          table_type: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_count?: number
+          club_id?: string
+          completed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          last_error_code?: string | null
+          remaining_count?: number
+          request_fingerprint?: string
+          requested_by?: string
+          requested_count?: number
+          shift_id?: string | null
+          status?: string
+          table_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_open_operations_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_open_operations_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_open_operations_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_shifts"
             referencedColumns: ["id"]
           },
         ]
@@ -4137,8 +4755,632 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_payroll_delivery_attempts: {
+        Row: {
+          attempt_no: number
+          attempted_at: string
+          channel: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          idempotency_key: string
+          operation_id: string | null
+          pdf_hash: string | null
+          provider_code: string | null
+          statement_id: string
+          status: string
+          target_id: string | null
+        }
+        Insert: {
+          attempt_no: number
+          attempted_at?: string
+          channel: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          operation_id?: string | null
+          pdf_hash?: string | null
+          provider_code?: string | null
+          statement_id: string
+          status: string
+          target_id?: string | null
+        }
+        Update: {
+          attempt_no?: number
+          attempted_at?: string
+          channel?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          operation_id?: string | null
+          pdf_hash?: string | null
+          provider_code?: string | null
+          statement_id?: string
+          status?: string
+          target_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_payroll_delivery_attempts_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_payroll_delivery_operations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_delivery_attempts_statement_id_fkey"
+            columns: ["statement_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_payroll_statements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_delivery_attempts_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_payroll_delivery_targets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_payroll_delivery_operations: {
+        Row: {
+          club_id: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          payroll_period_id: string
+          request_id: string
+          requested_by: string
+          started_at: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          club_id: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          payroll_period_id: string
+          request_id: string
+          requested_by: string
+          started_at?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          club_id?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          payroll_period_id?: string
+          request_id?: string
+          requested_by?: string
+          started_at?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_payroll_delivery_operations_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_delivery_operations_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_delivery_operations_payroll_period_id_fkey"
+            columns: ["payroll_period_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_periods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_payroll_delivery_targets: {
+        Row: {
+          attempt_count: number
+          channel: string
+          club_id: string
+          created_at: string
+          dealer_id: string
+          delivery_state: string
+          dispatch_started_at: string | null
+          dispatch_token: string | null
+          id: string
+          idempotency_key: string
+          operation_id: string
+          provider_code: string | null
+          retry_after_at: string | null
+          sent_at: string | null
+          statement_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          channel?: string
+          club_id: string
+          created_at?: string
+          dealer_id: string
+          delivery_state?: string
+          dispatch_started_at?: string | null
+          dispatch_token?: string | null
+          id?: string
+          idempotency_key: string
+          operation_id: string
+          provider_code?: string | null
+          retry_after_at?: string | null
+          sent_at?: string | null
+          statement_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          channel?: string
+          club_id?: string
+          created_at?: string
+          dealer_id?: string
+          delivery_state?: string
+          dispatch_started_at?: string | null
+          dispatch_token?: string | null
+          id?: string
+          idempotency_key?: string
+          operation_id?: string
+          provider_code?: string | null
+          retry_after_at?: string | null
+          sent_at?: string | null
+          statement_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_payroll_delivery_targets_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_delivery_targets_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_delivery_targets_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_delivery_targets_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_payroll_delivery_operations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_delivery_targets_statement_id_fkey"
+            columns: ["statement_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_payroll_statements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_payroll_statement_delivery_rollout: {
+        Row: {
+          all_clubs_enabled: boolean
+          allowed_club_ids: string[]
+          id: boolean
+          master_enabled: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          all_clubs_enabled?: boolean
+          allowed_club_ids?: string[]
+          id?: boolean
+          master_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          all_clubs_enabled?: boolean
+          allowed_club_ids?: string[]
+          id?: boolean
+          master_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      dealer_payroll_statement_lines: {
+        Row: {
+          amount_vnd: number
+          created_at: string
+          id: string
+          label: string
+          line_code: string
+          line_no: number
+          line_type: string
+          quantity: number | null
+          source_snapshot: Json
+          statement_id: string
+          unit: string | null
+          unit_rate_vnd: number | null
+        }
+        Insert: {
+          amount_vnd: number
+          created_at?: string
+          id?: string
+          label: string
+          line_code: string
+          line_no: number
+          line_type: string
+          quantity?: number | null
+          source_snapshot?: Json
+          statement_id: string
+          unit?: string | null
+          unit_rate_vnd?: number | null
+        }
+        Update: {
+          amount_vnd?: number
+          created_at?: string
+          id?: string
+          label?: string
+          line_code?: string
+          line_no?: number
+          line_type?: string
+          quantity?: number | null
+          source_snapshot?: Json
+          statement_id?: string
+          unit?: string | null
+          unit_rate_vnd?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_payroll_statement_lines_statement_id_fkey"
+            columns: ["statement_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_payroll_statements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_payroll_statement_rollout: {
+        Row: {
+          all_clubs_enabled: boolean
+          allowed_club_ids: string[]
+          id: boolean
+          master_enabled: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          all_clubs_enabled?: boolean
+          allowed_club_ids?: string[]
+          id?: boolean
+          master_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          all_clubs_enabled?: boolean
+          allowed_club_ids?: string[]
+          id?: boolean
+          master_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      dealer_payroll_statements: {
+        Row: {
+          club_id: string
+          club_snapshot: Json
+          cutoff_at: string | null
+          dealer_id: string
+          dealer_snapshot: Json
+          deduction_amount_vnd: number
+          finalized_at: string
+          finalized_by: string
+          financial_snapshot: Json
+          gross_amount_vnd: number
+          id: string
+          net_amount_vnd: number
+          payment_record_id: string | null
+          payroll_period_id: string | null
+          pdf_failed_at: string | null
+          pdf_failure_code: string | null
+          pdf_generation_request_id: string | null
+          pdf_generation_started_at: string | null
+          pdf_generation_token: string | null
+          pdf_hash: string | null
+          pdf_render_version: string | null
+          pdf_rendered_at: string | null
+          pdf_status: string
+          pdf_storage_path: string | null
+          pt_wage_payment_id: string | null
+          replaced_by_statement_id: string | null
+          replaces_statement_id: string | null
+          request_id: string
+          source_dealer_payroll_id: string | null
+          source_fingerprint: string
+          source_snapshot: Json
+          state: string
+          statement_hash: string
+          statement_kind: string
+          statement_version: number
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          club_id: string
+          club_snapshot: Json
+          cutoff_at?: string | null
+          dealer_id: string
+          dealer_snapshot: Json
+          deduction_amount_vnd?: number
+          finalized_at?: string
+          finalized_by: string
+          financial_snapshot: Json
+          gross_amount_vnd?: number
+          id?: string
+          net_amount_vnd: number
+          payment_record_id?: string | null
+          payroll_period_id?: string | null
+          pdf_failed_at?: string | null
+          pdf_failure_code?: string | null
+          pdf_generation_request_id?: string | null
+          pdf_generation_started_at?: string | null
+          pdf_generation_token?: string | null
+          pdf_hash?: string | null
+          pdf_render_version?: string | null
+          pdf_rendered_at?: string | null
+          pdf_status?: string
+          pdf_storage_path?: string | null
+          pt_wage_payment_id?: string | null
+          replaced_by_statement_id?: string | null
+          replaces_statement_id?: string | null
+          request_id: string
+          source_dealer_payroll_id?: string | null
+          source_fingerprint: string
+          source_snapshot: Json
+          state?: string
+          statement_hash: string
+          statement_kind: string
+          statement_version?: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          club_id?: string
+          club_snapshot?: Json
+          cutoff_at?: string | null
+          dealer_id?: string
+          dealer_snapshot?: Json
+          deduction_amount_vnd?: number
+          finalized_at?: string
+          finalized_by?: string
+          financial_snapshot?: Json
+          gross_amount_vnd?: number
+          id?: string
+          net_amount_vnd?: number
+          payment_record_id?: string | null
+          payroll_period_id?: string | null
+          pdf_failed_at?: string | null
+          pdf_failure_code?: string | null
+          pdf_generation_request_id?: string | null
+          pdf_generation_started_at?: string | null
+          pdf_generation_token?: string | null
+          pdf_hash?: string | null
+          pdf_render_version?: string | null
+          pdf_rendered_at?: string | null
+          pdf_status?: string
+          pdf_storage_path?: string | null
+          pt_wage_payment_id?: string | null
+          replaced_by_statement_id?: string | null
+          replaces_statement_id?: string | null
+          request_id?: string
+          source_dealer_payroll_id?: string | null
+          source_fingerprint?: string
+          source_snapshot?: Json
+          state?: string
+          statement_hash?: string
+          statement_kind?: string
+          statement_version?: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_payroll_statements_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_statements_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_statements_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_statements_payment_record_id_fkey"
+            columns: ["payment_record_id"]
+            isOneToOne: false
+            referencedRelation: "payment_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_statements_payroll_period_id_fkey"
+            columns: ["payroll_period_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_periods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_statements_pt_wage_payment_id_fkey"
+            columns: ["pt_wage_payment_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_pt_wage_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_statements_replaced_by_statement_id_fkey"
+            columns: ["replaced_by_statement_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_payroll_statements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_statements_replaces_statement_id_fkey"
+            columns: ["replaces_statement_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_payroll_statements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_payroll_statements_source_dealer_payroll_id_fkey"
+            columns: ["source_dealer_payroll_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_payroll"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_phone_close_requests: {
+        Row: {
+          actor_id: string
+          club_id: string
+          completed_at: string | null
+          created_at: string
+          payload_hash: string
+          request_id: string
+          response: Json | null
+          status: string
+        }
+        Insert: {
+          actor_id: string
+          club_id: string
+          completed_at?: string | null
+          created_at?: string
+          payload_hash: string
+          request_id: string
+          response?: Json | null
+          status?: string
+        }
+        Update: {
+          actor_id?: string
+          club_id?: string
+          completed_at?: string | null
+          created_at?: string
+          payload_hash?: string
+          request_id?: string
+          response?: Json | null
+          status?: string
+        }
+        Relationships: []
+      }
+      dealer_pt_wage_accrual_global_policy: {
+        Row: {
+          future_club_enabled: boolean
+          id: string
+          reason: string | null
+          singleton: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          future_club_enabled?: boolean
+          id?: string
+          reason?: string | null
+          singleton?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          future_club_enabled?: boolean
+          id?: string
+          reason?: string | null
+          singleton?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      dealer_pt_wage_accrual_policies: {
+        Row: {
+          club_id: string
+          effective_from: string | null
+          id: string
+          reason: string | null
+          standby_accrual_enabled: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          club_id: string
+          effective_from?: string | null
+          id?: string
+          reason?: string | null
+          standby_accrual_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          club_id?: string
+          effective_from?: string | null
+          id?: string
+          reason?: string | null
+          standby_accrual_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_pt_wage_accrual_policies_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_pt_wage_accrual_policies_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_pt_wage_payments: {
         Row: {
+          accrual_policy_snapshot: Json | null
           amount_vnd: number
           club_id: string
           covered_from: string
@@ -4155,10 +5397,12 @@ export type Database = {
           paid_by: string
           payment_method: string | null
           payment_reference: string | null
+          statement_id: string | null
           voided_at: string | null
           voided_by: string | null
         }
         Insert: {
+          accrual_policy_snapshot?: Json | null
           amount_vnd: number
           club_id: string
           covered_from: string
@@ -4175,10 +5419,12 @@ export type Database = {
           paid_by: string
           payment_method?: string | null
           payment_reference?: string | null
+          statement_id?: string | null
           voided_at?: string | null
           voided_by?: string | null
         }
         Update: {
+          accrual_policy_snapshot?: Json | null
           amount_vnd?: number
           club_id?: string
           covered_from?: string
@@ -4195,6 +5441,7 @@ export type Database = {
           paid_by?: string
           payment_method?: string | null
           payment_reference?: string | null
+          statement_id?: string | null
           voided_at?: string | null
           voided_by?: string | null
         }
@@ -4218,6 +5465,147 @@ export type Database = {
             columns: ["dealer_id"]
             isOneToOne: false
             referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_pt_wage_payments_statement_id_fkey"
+            columns: ["statement_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_payroll_statements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_pt_wage_rate_history: {
+        Row: {
+          changed_by: string | null
+          created_at: string
+          dealer_id: string
+          effective_from: string
+          hourly_rate_vnd: number
+          id: string
+          pt_eligible: boolean
+        }
+        Insert: {
+          changed_by?: string | null
+          created_at?: string
+          dealer_id: string
+          effective_from: string
+          hourly_rate_vnd: number
+          id?: string
+          pt_eligible?: boolean
+        }
+        Update: {
+          changed_by?: string | null
+          created_at?: string
+          dealer_id?: string
+          effective_from?: string
+          hourly_rate_vnd?: number
+          id?: string
+          pt_eligible?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_pt_wage_rate_history_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_pt_wage_settlements: {
+        Row: {
+          accrual_policy_snapshot: Json
+          amount_vnd: number
+          club_id: string
+          covered_from: string
+          covered_to: string
+          dealer_id: string
+          finalized_at: string
+          finalized_by: string
+          hourly_rate_vnd_snapshot: number
+          id: string
+          minutes_reserved: number
+          payment_id: string | null
+          statement_id: string
+          status: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          accrual_policy_snapshot: Json
+          amount_vnd: number
+          club_id: string
+          covered_from: string
+          covered_to: string
+          dealer_id: string
+          finalized_at?: string
+          finalized_by: string
+          hourly_rate_vnd_snapshot: number
+          id?: string
+          minutes_reserved: number
+          payment_id?: string | null
+          statement_id: string
+          status: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          accrual_policy_snapshot?: Json
+          amount_vnd?: number
+          club_id?: string
+          covered_from?: string
+          covered_to?: string
+          dealer_id?: string
+          finalized_at?: string
+          finalized_by?: string
+          hourly_rate_vnd_snapshot?: number
+          id?: string
+          minutes_reserved?: number
+          payment_id?: string | null
+          statement_id?: string
+          status?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_pt_wage_settlements_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_pt_wage_settlements_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_pt_wage_settlements_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_pt_wage_settlements_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: true
+            referencedRelation: "dealer_pt_wage_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_pt_wage_settlements_statement_id_fkey"
+            columns: ["statement_id"]
+            isOneToOne: true
+            referencedRelation: "dealer_payroll_statements"
             referencedColumns: ["id"]
           },
         ]
@@ -4791,6 +6179,93 @@ export type Database = {
           },
         ]
       }
+      dealer_shortage_alert_incidents: {
+        Row: {
+          classification: string
+          club_id: string
+          created_at: string
+          error_code: string | null
+          first_detected_at: string
+          id: string
+          incident_key: string
+          last_detected_at: string
+          last_notification_attempt_at: string | null
+          last_notified_at: string | null
+          notification_claim_id: string | null
+          notification_claim_kind: string | null
+          notification_claimed_at: string | null
+          notification_count: number
+          resolution_notified_at: string | null
+          resolution_pending_at: string | null
+          resolved_at: string | null
+          severity: number
+          snapshot: Json
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          classification: string
+          club_id: string
+          created_at?: string
+          error_code?: string | null
+          first_detected_at?: string
+          id?: string
+          incident_key: string
+          last_detected_at?: string
+          last_notification_attempt_at?: string | null
+          last_notified_at?: string | null
+          notification_claim_id?: string | null
+          notification_claim_kind?: string | null
+          notification_claimed_at?: string | null
+          notification_count?: number
+          resolution_notified_at?: string | null
+          resolution_pending_at?: string | null
+          resolved_at?: string | null
+          severity?: number
+          snapshot?: Json
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          classification?: string
+          club_id?: string
+          created_at?: string
+          error_code?: string | null
+          first_detected_at?: string
+          id?: string
+          incident_key?: string
+          last_detected_at?: string
+          last_notification_attempt_at?: string | null
+          last_notified_at?: string | null
+          notification_claim_id?: string | null
+          notification_claim_kind?: string | null
+          notification_claimed_at?: string | null
+          notification_count?: number
+          resolution_notified_at?: string | null
+          resolution_pending_at?: string | null
+          resolved_at?: string | null
+          severity?: number
+          snapshot?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_shortage_alert_incidents_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_shortage_alert_incidents_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_skills: {
         Row: {
           certified_at: string
@@ -4902,6 +6377,115 @@ export type Database = {
           snapshot?: Json
           tour_id?: string
           tour_name?: string | null
+        }
+        Relationships: []
+      }
+      dealer_swing_operator_requests: {
+        Row: {
+          actor_user_id: string
+          assignment_id: string
+          club_id: string
+          completed_at: string | null
+          created_at: string
+          expected_version: number
+          request_id: string
+          response: Json | null
+          table_id: string
+          table_session_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          assignment_id: string
+          club_id: string
+          completed_at?: string | null
+          created_at?: string
+          expected_version: number
+          request_id: string
+          response?: Json | null
+          table_id: string
+          table_session_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          assignment_id?: string
+          club_id?: string
+          completed_at?: string | null
+          created_at?: string
+          expected_version?: number
+          request_id?: string
+          response?: Json | null
+          table_id?: string
+          table_session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_swing_operator_requests_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_swing_operator_requests_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "v_stuck_assignment_version_history"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_swing_operator_requests_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_swing_operator_requests_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_swing_operator_requests_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_swing_operator_requests_table_session_id_fkey"
+            columns: ["table_session_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_swing_phone_rollout: {
+        Row: {
+          all_clubs_enabled: boolean
+          allowed_club_ids: string[]
+          enabled: boolean
+          id: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          all_clubs_enabled?: boolean
+          allowed_club_ids?: string[]
+          enabled?: boolean
+          id?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          all_clubs_enabled?: boolean
+          allowed_club_ids?: string[]
+          enabled?: boolean
+          id?: boolean
+          updated_at?: string
+          updated_by?: string | null
         }
         Relationships: []
       }
@@ -5440,6 +7024,276 @@ export type Database = {
             columns: ["event_id"]
             isOneToOne: false
             referencedRelation: "player_upcoming_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feed_post_comments: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          is_deleted: boolean
+          post_id: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          is_deleted?: boolean
+          post_id: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          is_deleted?: boolean
+          post_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feed_post_comments_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "feed_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feed_post_likes: {
+        Row: {
+          created_at: string
+          post_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          post_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          post_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feed_post_likes_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "feed_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feed_posts: {
+        Row: {
+          author_id: string
+          comment_count: number
+          content: string
+          created_at: string
+          id: string
+          is_deleted: boolean
+          like_count: number
+          media_urls: string[]
+          poker_hand: Json | null
+          post_type: string
+        }
+        Insert: {
+          author_id: string
+          comment_count?: number
+          content?: string
+          created_at?: string
+          id?: string
+          is_deleted?: boolean
+          like_count?: number
+          media_urls?: string[]
+          poker_hand?: Json | null
+          post_type?: string
+        }
+        Update: {
+          author_id?: string
+          comment_count?: number
+          content?: string
+          created_at?: string
+          id?: string
+          is_deleted?: boolean
+          like_count?: number
+          media_urls?: string[]
+          poker_hand?: Json | null
+          post_type?: string
+        }
+        Relationships: []
+      }
+      feed_stories: {
+        Row: {
+          author_id: string
+          caption: string | null
+          created_at: string
+          id: string
+          media_type: string
+          media_url: string
+        }
+        Insert: {
+          author_id: string
+          caption?: string | null
+          created_at?: string
+          id?: string
+          media_type: string
+          media_url: string
+        }
+        Update: {
+          author_id?: string
+          caption?: string | null
+          created_at?: string
+          id?: string
+          media_type?: string
+          media_url?: string
+        }
+        Relationships: []
+      }
+      feed_story_views: {
+        Row: {
+          story_id: string
+          viewed_at: string
+          viewer_id: string
+        }
+        Insert: {
+          story_id: string
+          viewed_at?: string
+          viewer_id: string
+        }
+        Update: {
+          story_id?: string
+          viewed_at?: string
+          viewer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feed_story_views_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: false
+            referencedRelation: "feed_stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      floor_pending_tracker_moves: {
+        Row: {
+          destination_control_epoch: number
+          destination_seat_number: number
+          destination_table_session_id: string
+          destination_tournament_table_id: string
+          entry_id: string
+          id: string
+          request_id: string
+          requested_at: string
+          requested_by: string
+          resolution_reason: string | null
+          resolved_at: string | null
+          source_control_epoch: number
+          source_seat_id: string
+          source_table_session_id: string
+          source_tournament_table_id: string
+          status: string
+          tournament_id: string
+        }
+        Insert: {
+          destination_control_epoch: number
+          destination_seat_number: number
+          destination_table_session_id: string
+          destination_tournament_table_id: string
+          entry_id: string
+          id?: string
+          request_id: string
+          requested_at?: string
+          requested_by: string
+          resolution_reason?: string | null
+          resolved_at?: string | null
+          source_control_epoch: number
+          source_seat_id: string
+          source_table_session_id: string
+          source_tournament_table_id: string
+          status?: string
+          tournament_id: string
+        }
+        Update: {
+          destination_control_epoch?: number
+          destination_seat_number?: number
+          destination_table_session_id?: string
+          destination_tournament_table_id?: string
+          entry_id?: string
+          id?: string
+          request_id?: string
+          requested_at?: string
+          requested_by?: string
+          resolution_reason?: string | null
+          resolved_at?: string | null
+          source_control_epoch?: number
+          source_seat_id?: string
+          source_table_session_id?: string
+          source_tournament_table_id?: string
+          status?: string
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "floor_pending_tracker_moves_destination_table_session_id_fkey"
+            columns: ["destination_table_session_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "floor_pending_tracker_moves_destination_tournament_table_i_fkey"
+            columns: ["destination_tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "floor_pending_tracker_moves_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "floor_pending_tracker_moves_source_seat_id_fkey"
+            columns: ["source_seat_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_seats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "floor_pending_tracker_moves_source_table_session_id_fkey"
+            columns: ["source_table_session_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "floor_pending_tracker_moves_source_tournament_table_id_fkey"
+            columns: ["source_tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "floor_pending_tracker_moves_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "floor_pending_tracker_moves_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
         ]
@@ -6190,12 +8044,16 @@ export type Database = {
           club_id: string
           created_at: string
           current_blind_level: number
+          dealer_open_operation_id: string | null
           down_count: number
           game_type: string
           id: string
+          opened_at: string | null
+          operational_status: string | null
           shift_id: string | null
           status: string
           table_name: string
+          table_number: number | null
           table_priority: number
           table_type: string
           tour_tier: string
@@ -6204,12 +8062,16 @@ export type Database = {
           club_id: string
           created_at?: string
           current_blind_level?: number
+          dealer_open_operation_id?: string | null
           down_count?: number
           game_type?: string
           id?: string
+          opened_at?: string | null
+          operational_status?: string | null
           shift_id?: string | null
           status?: string
           table_name: string
+          table_number?: number | null
           table_priority?: number
           table_type?: string
           tour_tier?: string
@@ -6218,12 +8080,16 @@ export type Database = {
           club_id?: string
           created_at?: string
           current_blind_level?: number
+          dealer_open_operation_id?: string | null
           down_count?: number
           game_type?: string
           id?: string
+          opened_at?: string | null
+          operational_status?: string | null
           shift_id?: string | null
           status?: string
           table_name?: string
+          table_number?: number | null
           table_priority?: number
           table_type?: string
           tour_tier?: string
@@ -6241,6 +8107,13 @@ export type Database = {
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_tables_dealer_open_operation_id_fkey"
+            columns: ["dealer_open_operation_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_open_operations"
             referencedColumns: ["id"]
           },
           {
@@ -6395,8 +8268,10 @@ export type Database = {
           id: string
           idempotency_key: string | null
           player_id: string
+          source: string
           street: string | null
           trace_id: string | null
+          voice_event_id: string | null
         }
         Insert: {
           action_amount?: number | null
@@ -6408,8 +8283,10 @@ export type Database = {
           id?: string
           idempotency_key?: string | null
           player_id: string
+          source?: string
           street?: string | null
           trace_id?: string | null
+          voice_event_id?: string | null
         }
         Update: {
           action_amount?: number | null
@@ -6421,8 +8298,10 @@ export type Database = {
           id?: string
           idempotency_key?: string | null
           player_id?: string
+          source?: string
           street?: string | null
           trace_id?: string | null
+          voice_event_id?: string | null
         }
         Relationships: [
           {
@@ -6430,6 +8309,13 @@ export type Database = {
             columns: ["hand_id"]
             isOneToOne: false
             referencedRelation: "tournament_hands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hand_actions_voice_event_id_fkey"
+            columns: ["voice_event_id"]
+            isOneToOne: false
+            referencedRelation: "tracker_voice_events"
             referencedColumns: ["id"]
           },
         ]
@@ -6493,6 +8379,7 @@ export type Database = {
       }
       hand_players: {
         Row: {
+          avatar_url: string | null
           created_at: string
           ending_stack: number | null
           entry_number: number
@@ -6501,12 +8388,14 @@ export type Database = {
           id: string
           is_eliminated: boolean
           player_id: string
+          player_name: string | null
           seat_number: number
           side_pots: Json | null
           starting_stack: number
           tournament_id: string
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
           ending_stack?: number | null
           entry_number?: number
@@ -6515,12 +8404,14 @@ export type Database = {
           id?: string
           is_eliminated?: boolean
           player_id: string
+          player_name?: string | null
           seat_number: number
           side_pots?: Json | null
           starting_stack: number
           tournament_id: string
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
           ending_stack?: number | null
           entry_number?: number
@@ -6529,6 +8420,7 @@ export type Database = {
           id?: string
           is_eliminated?: boolean
           player_id?: string
+          player_name?: string | null
           seat_number?: number
           side_pots?: Json | null
           starting_stack?: number
@@ -6962,6 +8854,1248 @@ export type Database = {
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      multi_day_bag_requests_v1: {
+        Row: {
+          action: string
+          actor_id: string
+          bag_id: string
+          created_at: string
+          flight_tournament_id: string
+          payload_hash: string
+          player_id: string
+          receipt: Json
+          request_id: string
+          result_revision: number
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          bag_id: string
+          created_at?: string
+          flight_tournament_id: string
+          payload_hash: string
+          player_id: string
+          receipt: Json
+          request_id: string
+          result_revision: number
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          bag_id?: string
+          created_at?: string
+          flight_tournament_id?: string
+          payload_hash?: string
+          player_id?: string
+          receipt?: Json
+          request_id?: string
+          result_revision?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_bag_requests_v1_bag_id_fkey"
+            columns: ["bag_id"]
+            isOneToOne: false
+            referencedRelation: "chip_bag"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_bag_requests_v1_flight_tournament_id_fkey"
+            columns: ["flight_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_flight_ends_v1"
+            referencedColumns: ["flight_tournament_id"]
+          },
+        ]
+      }
+      multi_day_close_requests_v1: {
+        Row: {
+          actor_id: string
+          created_at: string
+          expected_day_version: number
+          flight_tournament_id: string
+          receipt: Json
+          request_id: string
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          expected_day_version: number
+          flight_tournament_id: string
+          receipt: Json
+          request_id: string
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          expected_day_version?: number
+          flight_tournament_id?: string
+          receipt?: Json
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_close_requests_v1_flight_tournament_id_fkey"
+            columns: ["flight_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_flight_ends_v1"
+            referencedColumns: ["flight_tournament_id"]
+          },
+        ]
+      }
+      multi_day_final_adjustments_v1: {
+        Row: {
+          actor_id: string
+          created_at: string
+          delta_chips: number
+          evidence_ref: string
+          participation_id: string
+          payload_hash: string
+          prior_seed_stack: number
+          proposed_seed_stack: number
+          reason: string
+          request_id: string
+          seating_participation_id: string
+          seed_revision: number
+          source_bags: Json
+          status: string
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          delta_chips: number
+          evidence_ref: string
+          participation_id: string
+          payload_hash: string
+          prior_seed_stack: number
+          proposed_seed_stack: number
+          reason: string
+          request_id: string
+          seating_participation_id: string
+          seed_revision: number
+          source_bags: Json
+          status?: string
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          delta_chips?: number
+          evidence_ref?: string
+          participation_id?: string
+          payload_hash?: string
+          prior_seed_stack?: number
+          proposed_seed_stack?: number
+          reason?: string
+          request_id?: string
+          seating_participation_id?: string
+          seed_revision?: number
+          source_bags?: Json
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_final_adjustments_v1_participation_id_fkey"
+            columns: ["participation_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_final_participations_v1"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_final_adjustments_v1_seating_participation_id_fkey"
+            columns: ["seating_participation_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_final_seatings_v1"
+            referencedColumns: ["participation_id"]
+          },
+        ]
+      }
+      multi_day_final_participations_v1: {
+        Row: {
+          carried_stack: number
+          created_at: string
+          event_id: string
+          final_tournament_id: string
+          id: string
+          participation_floor_vnd: number
+          player_id: string
+          policy: string
+          selected_bag_id: string | null
+          source_bags: Json
+        }
+        Insert: {
+          carried_stack: number
+          created_at?: string
+          event_id: string
+          final_tournament_id: string
+          id?: string
+          participation_floor_vnd: number
+          player_id: string
+          policy: string
+          selected_bag_id?: string | null
+          source_bags: Json
+        }
+        Update: {
+          carried_stack?: number
+          created_at?: string
+          event_id?: string
+          final_tournament_id?: string
+          id?: string
+          participation_floor_vnd?: number
+          player_id?: string
+          policy?: string
+          selected_bag_id?: string | null
+          source_bags?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_final_participations_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_qualification_locks_v1"
+            referencedColumns: ["event_id"]
+          },
+          {
+            foreignKeyName: "multi_day_final_participations_v1_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "multi_day_final_participations_v1_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_final_participations_v1_selected_bag_id_fkey"
+            columns: ["selected_bag_id"]
+            isOneToOne: false
+            referencedRelation: "chip_bag"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      multi_day_final_player_fences_v1: {
+        Row: {
+          final_tournament_id: string
+          player_id: string
+        }
+        Insert: {
+          final_tournament_id: string
+          player_id: string
+        }
+        Update: {
+          final_tournament_id?: string
+          player_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_final_player_fences_v1_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "multi_day_final_player_fences_v1_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      multi_day_final_requests_v1: {
+        Row: {
+          actor_id: string
+          created_at: string
+          kind: string
+          participation_id: string
+          payload_hash: string
+          receipt: Json
+          request_id: string
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          kind: string
+          participation_id: string
+          payload_hash: string
+          receipt: Json
+          request_id: string
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          kind?: string
+          participation_id?: string
+          payload_hash?: string
+          receipt?: Json
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_final_requests_v1_participation_id_fkey"
+            columns: ["participation_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_final_participations_v1"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      multi_day_final_seatings_v1: {
+        Row: {
+          entry_id: string
+          final_tournament_id: string
+          participation_id: string
+          player_id: string
+          receipt_id: string
+          seat_id: string
+          seated_at: string
+          seated_by: string
+          seed_revision: number
+          seed_stack: number
+          source_bags: Json
+          source_hash: string
+        }
+        Insert: {
+          entry_id: string
+          final_tournament_id: string
+          participation_id: string
+          player_id: string
+          receipt_id: string
+          seat_id: string
+          seated_at?: string
+          seated_by: string
+          seed_revision: number
+          seed_stack: number
+          source_bags: Json
+          source_hash: string
+        }
+        Update: {
+          entry_id?: string
+          final_tournament_id?: string
+          participation_id?: string
+          player_id?: string
+          receipt_id?: string
+          seat_id?: string
+          seated_at?: string
+          seated_by?: string
+          seed_revision?: number
+          seed_stack?: number
+          source_bags?: Json
+          source_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_final_seatings_v1_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_final_seatings_v1_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "multi_day_final_seatings_v1_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_final_seatings_v1_participation_id_fkey"
+            columns: ["participation_id"]
+            isOneToOne: true
+            referencedRelation: "multi_day_final_participations_v1"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_final_seatings_v1_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: true
+            referencedRelation: "seat_draw_receipts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_final_seatings_v1_seat_id_fkey"
+            columns: ["seat_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_seats"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      multi_day_final_stack_revisions_v1: {
+        Row: {
+          actor_id: string
+          created_at: string
+          evidence_ref: string
+          participation_id: string
+          payload_hash: string
+          prior_stack: number
+          reason: string
+          request_id: string
+          revised_stack: number
+          revision: number
+          source_bags: Json
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          evidence_ref: string
+          participation_id: string
+          payload_hash: string
+          prior_stack: number
+          reason: string
+          request_id: string
+          revised_stack: number
+          revision: number
+          source_bags: Json
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          evidence_ref?: string
+          participation_id?: string
+          payload_hash?: string
+          prior_stack?: number
+          reason?: string
+          request_id?: string
+          revised_stack?: number
+          revision?: number
+          source_bags?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_final_stack_revisions_v1_participation_id_fkey"
+            columns: ["participation_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_final_participations_v1"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      multi_day_flight_ends_v1: {
+        Row: {
+          club_id: string
+          day_number: number
+          end_request_id: string
+          ended_at: string
+          ended_by: string
+          event_id: string
+          flight_tournament_id: string
+          locked_at: string | null
+          roster_count: number
+          roster_hash: string
+          status: string
+        }
+        Insert: {
+          club_id: string
+          day_number: number
+          end_request_id: string
+          ended_at?: string
+          ended_by: string
+          event_id: string
+          flight_tournament_id: string
+          locked_at?: string | null
+          roster_count: number
+          roster_hash: string
+          status?: string
+        }
+        Update: {
+          club_id?: string
+          day_number?: number
+          end_request_id?: string
+          ended_at?: string
+          ended_by?: string
+          event_id?: string
+          flight_tournament_id?: string
+          locked_at?: string | null
+          roster_count?: number
+          roster_hash?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_flight_ends_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_flight_ends_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_flight_ends_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_flight_ends_v1_flight_tournament_id_fkey"
+            columns: ["flight_tournament_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "multi_day_flight_ends_v1_flight_tournament_id_fkey"
+            columns: ["flight_tournament_id"]
+            isOneToOne: true
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      multi_day_flight_roster_v1: {
+        Row: {
+          captured_at: string
+          dealer_assignment_id: string
+          dealer_assignment_version: number
+          dealer_user_id: string | null
+          entry_id: string
+          flight_tournament_id: string
+          latest_hand_id: string | null
+          latest_hand_source_revision: number | null
+          player_id: string
+          seat_id: string
+          seat_number: number
+          snapshot_hash: string
+          table_session_id: string
+          table_session_revision: number
+          tournament_table_id: string
+          tracked_stack: number
+          tracker_count_updated_at: string
+        }
+        Insert: {
+          captured_at?: string
+          dealer_assignment_id: string
+          dealer_assignment_version: number
+          dealer_user_id?: string | null
+          entry_id: string
+          flight_tournament_id: string
+          latest_hand_id?: string | null
+          latest_hand_source_revision?: number | null
+          player_id: string
+          seat_id: string
+          seat_number: number
+          snapshot_hash: string
+          table_session_id: string
+          table_session_revision: number
+          tournament_table_id: string
+          tracked_stack: number
+          tracker_count_updated_at: string
+        }
+        Update: {
+          captured_at?: string
+          dealer_assignment_id?: string
+          dealer_assignment_version?: number
+          dealer_user_id?: string | null
+          entry_id?: string
+          flight_tournament_id?: string
+          latest_hand_id?: string | null
+          latest_hand_source_revision?: number | null
+          player_id?: string
+          seat_id?: string
+          seat_number?: number
+          snapshot_hash?: string
+          table_session_id?: string
+          table_session_revision?: number
+          tournament_table_id?: string
+          tracked_stack?: number
+          tracker_count_updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_flight_roster_v1_dealer_assignment_id_fkey"
+            columns: ["dealer_assignment_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_flight_roster_v1_dealer_assignment_id_fkey"
+            columns: ["dealer_assignment_id"]
+            isOneToOne: false
+            referencedRelation: "v_stuck_assignment_version_history"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_flight_roster_v1_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_flight_roster_v1_flight_tournament_id_fkey"
+            columns: ["flight_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_flight_ends_v1"
+            referencedColumns: ["flight_tournament_id"]
+          },
+          {
+            foreignKeyName: "multi_day_flight_roster_v1_latest_hand_id_fkey"
+            columns: ["latest_hand_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_hands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_flight_roster_v1_seat_id_fkey"
+            columns: ["seat_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_seats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_flight_roster_v1_table_session_id_fkey"
+            columns: ["table_session_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_flight_roster_v1_tournament_table_id_fkey"
+            columns: ["tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      multi_day_nonselected_min_cash_v1: {
+        Row: {
+          amount_vnd: number
+          bag_id: string
+          bag_version: number
+          created_at: string
+          id: string
+          participation_id: string
+          source_entry_id: string
+          status: string
+        }
+        Insert: {
+          amount_vnd: number
+          bag_id: string
+          bag_version: number
+          created_at?: string
+          id?: string
+          participation_id: string
+          source_entry_id: string
+          status?: string
+        }
+        Update: {
+          amount_vnd?: number
+          bag_id?: string
+          bag_version?: number
+          created_at?: string
+          id?: string
+          participation_id?: string
+          source_entry_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_nonselected_min_cash_v1_bag_id_fkey"
+            columns: ["bag_id"]
+            isOneToOne: true
+            referencedRelation: "chip_bag"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_nonselected_min_cash_v1_participation_id_fkey"
+            columns: ["participation_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_final_participations_v1"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_nonselected_min_cash_v1_source_entry_id_fkey"
+            columns: ["source_entry_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      multi_day_overlay_funding_v1: {
+        Row: {
+          actor_id: string
+          adjusts_id: string | null
+          amount_vnd: number
+          bank_transaction_id: string | null
+          club_id: string
+          created_at: string
+          event_id: string
+          evidence_ref: string
+          id: string
+          kind: string
+          payload_hash: string
+          reason: string
+          request_id: string
+          reverses_id: string | null
+          status: string
+        }
+        Insert: {
+          actor_id: string
+          adjusts_id?: string | null
+          amount_vnd: number
+          bank_transaction_id?: string | null
+          club_id: string
+          created_at?: string
+          event_id: string
+          evidence_ref: string
+          id?: string
+          kind: string
+          payload_hash: string
+          reason: string
+          request_id: string
+          reverses_id?: string | null
+          status: string
+        }
+        Update: {
+          actor_id?: string
+          adjusts_id?: string | null
+          amount_vnd?: number
+          bank_transaction_id?: string | null
+          club_id?: string
+          created_at?: string
+          event_id?: string
+          evidence_ref?: string
+          id?: string
+          kind?: string
+          payload_hash?: string
+          reason?: string
+          request_id?: string
+          reverses_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_overlay_funding_v1_adjusts_id_fkey"
+            columns: ["adjusts_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_overlay_funding_v1"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_overlay_funding_v1_bank_transaction_id_fkey"
+            columns: ["bank_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "bank_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_overlay_funding_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_overlay_funding_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_overlay_funding_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_overlay_funding_v1_reverses_id_fkey"
+            columns: ["reverses_id"]
+            isOneToOne: true
+            referencedRelation: "multi_day_overlay_funding_v1"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      multi_day_package_release_v1: {
+        Row: {
+          allowed_club_ids: string[]
+          enabled: boolean
+          id: boolean
+          updated_at: string
+        }
+        Insert: {
+          allowed_club_ids?: string[]
+          enabled?: boolean
+          id?: boolean
+          updated_at?: string
+        }
+        Update: {
+          allowed_club_ids?: string[]
+          enabled?: boolean
+          id?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      multi_day_payout_adjustment_requests_v1: {
+        Row: {
+          actor_id: string
+          category: string
+          created_at: string
+          event_id: string
+          evidence_ref: string
+          payload_hash: string
+          proposed_delta_vnd: number
+          reason: string
+          request_id: string
+          status: string
+        }
+        Insert: {
+          actor_id: string
+          category: string
+          created_at?: string
+          event_id: string
+          evidence_ref: string
+          payload_hash: string
+          proposed_delta_vnd: number
+          reason: string
+          request_id: string
+          status?: string
+        }
+        Update: {
+          actor_id?: string
+          category?: string
+          created_at?: string
+          event_id?: string
+          evidence_ref?: string
+          payload_hash?: string
+          proposed_delta_vnd?: number
+          reason?: string
+          request_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_payout_adjustment_requests_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_payout_finalizations_v1"
+            referencedColumns: ["event_id"]
+          },
+        ]
+      }
+      multi_day_payout_correction_requests_v1: {
+        Row: {
+          actor_id: string
+          created_at: string
+          delta_vnd: number
+          event_id: string
+          evidence_ref: string
+          expected_revision: string
+          kind: string
+          original_payment_id: string | null
+          participation_id: string
+          payload_hash: string
+          reason: string
+          request_id: string
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          delta_vnd: number
+          event_id: string
+          evidence_ref: string
+          expected_revision: string
+          kind: string
+          original_payment_id?: string | null
+          participation_id: string
+          payload_hash: string
+          reason: string
+          request_id: string
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          delta_vnd?: number
+          event_id?: string
+          evidence_ref?: string
+          expected_revision?: string
+          kind?: string
+          original_payment_id?: string | null
+          participation_id?: string
+          payload_hash?: string
+          reason?: string
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_payout_correction_requests_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_payout_finalizations_v1"
+            referencedColumns: ["event_id"]
+          },
+          {
+            foreignKeyName: "multi_day_payout_correction_requests_v1_participation_id_fkey"
+            columns: ["participation_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_final_participations_v1"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      multi_day_payout_corrections_v1: {
+        Row: {
+          actor_id: string
+          approval_hash: string
+          approval_request_id: string
+          approval_seq: number
+          club_id: string
+          created_at: string
+          delta_vnd: number
+          event_id: string
+          id: string
+          kind: string
+          original_payment_id: string | null
+          participation_id: string
+          previous_revision: string
+          request_id: string
+          resulting_paid_vnd: number
+          resulting_revision: string
+          resulting_unallocated_vnd: number
+          resulting_unpaid_vnd: number
+        }
+        Insert: {
+          actor_id: string
+          approval_hash: string
+          approval_request_id: string
+          approval_seq?: never
+          club_id: string
+          created_at?: string
+          delta_vnd: number
+          event_id: string
+          id?: string
+          kind: string
+          original_payment_id?: string | null
+          participation_id: string
+          previous_revision: string
+          request_id: string
+          resulting_paid_vnd: number
+          resulting_revision: string
+          resulting_unallocated_vnd: number
+          resulting_unpaid_vnd: number
+        }
+        Update: {
+          actor_id?: string
+          approval_hash?: string
+          approval_request_id?: string
+          approval_seq?: never
+          club_id?: string
+          created_at?: string
+          delta_vnd?: number
+          event_id?: string
+          id?: string
+          kind?: string
+          original_payment_id?: string | null
+          participation_id?: string
+          previous_revision?: string
+          request_id?: string
+          resulting_paid_vnd?: number
+          resulting_revision?: string
+          resulting_unallocated_vnd?: number
+          resulting_unpaid_vnd?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_payout_corrections_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_payout_corrections_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_payout_corrections_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_payout_finalizations_v1"
+            referencedColumns: ["event_id"]
+          },
+          {
+            foreignKeyName: "multi_day_payout_corrections_v1_participation_id_fkey"
+            columns: ["participation_id"]
+            isOneToOne: false
+            referencedRelation: "multi_day_final_participations_v1"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_payout_corrections_v1_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: true
+            referencedRelation: "multi_day_payout_correction_requests_v1"
+            referencedColumns: ["request_id"]
+          },
+        ]
+      }
+      multi_day_payout_finalizations_v1: {
+        Row: {
+          actor_id: string
+          club_id: string
+          club_retained_tie_vnd: number
+          direct_pool_vnd: number
+          event_id: string
+          fee_vnd: number
+          final_tournament_id: string
+          finalized_at: string
+          funding_revision: string
+          obligations: Json
+          paid_player_vnd: number
+          payout_input_hash: string
+          qualification_revision: string
+          receipt: Json
+          recorded_overlay_vnd: number
+          request_hash: string
+          request_id: string
+          required_shortfall_vnd: number
+          rules_version: string
+          source_snapshot: Json
+          tie_batches: Json
+          transfer_pool_vnd: number
+          unallocated_pool_vnd: number
+          unpaid_obligation_vnd: number
+        }
+        Insert: {
+          actor_id: string
+          club_id: string
+          club_retained_tie_vnd: number
+          direct_pool_vnd: number
+          event_id: string
+          fee_vnd: number
+          final_tournament_id: string
+          finalized_at?: string
+          funding_revision: string
+          obligations: Json
+          paid_player_vnd?: number
+          payout_input_hash: string
+          qualification_revision: string
+          receipt: Json
+          recorded_overlay_vnd: number
+          request_hash: string
+          request_id: string
+          required_shortfall_vnd?: number
+          rules_version: string
+          source_snapshot: Json
+          tie_batches: Json
+          transfer_pool_vnd: number
+          unallocated_pool_vnd: number
+          unpaid_obligation_vnd: number
+        }
+        Update: {
+          actor_id?: string
+          club_id?: string
+          club_retained_tie_vnd?: number
+          direct_pool_vnd?: number
+          event_id?: string
+          fee_vnd?: number
+          final_tournament_id?: string
+          finalized_at?: string
+          funding_revision?: string
+          obligations?: Json
+          paid_player_vnd?: number
+          payout_input_hash?: string
+          qualification_revision?: string
+          receipt?: Json
+          recorded_overlay_vnd?: number
+          request_hash?: string
+          request_id?: string
+          required_shortfall_vnd?: number
+          rules_version?: string
+          source_snapshot?: Json
+          tie_batches?: Json
+          transfer_pool_vnd?: number
+          unallocated_pool_vnd?: number
+          unpaid_obligation_vnd?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_payout_finalizations_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_payout_finalizations_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_payout_finalizations_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_payout_finalizations_v1_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "multi_day_payout_finalizations_v1_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      multi_day_qualification_locks_v1: {
+        Row: {
+          actor_id: string
+          event_id: string
+          flight_ids: string[]
+          locked_at: string
+          participation_count: number
+          receipt: Json
+          request_id: string
+          selection_hash: string
+          source_hash: string
+        }
+        Insert: {
+          actor_id: string
+          event_id: string
+          flight_ids: string[]
+          locked_at?: string
+          participation_count: number
+          receipt: Json
+          request_id: string
+          selection_hash: string
+          source_hash: string
+        }
+        Update: {
+          actor_id?: string
+          event_id?: string
+          flight_ids?: string[]
+          locked_at?: string
+          participation_count?: number
+          receipt?: Json
+          request_id?: string
+          selection_hash?: string
+          source_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_qualification_locks_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "multi_day_qualification_rules_v1"
+            referencedColumns: ["event_id"]
+          },
+        ]
+      }
+      multi_day_qualification_rules_v1: {
+        Row: {
+          buy_in_vnd: number
+          club_id: string
+          configured_at: string
+          configured_by: string
+          day2_percent: number
+          event_id: string
+          final_tournament_id: string
+          itm_percent: number
+          min_cash_x: number
+          policy: string
+          rake_vnd: number
+        }
+        Insert: {
+          buy_in_vnd: number
+          club_id: string
+          configured_at?: string
+          configured_by: string
+          day2_percent: number
+          event_id: string
+          final_tournament_id: string
+          itm_percent: number
+          min_cash_x: number
+          policy: string
+          rake_vnd: number
+        }
+        Update: {
+          buy_in_vnd?: number
+          club_id?: string
+          configured_at?: string
+          configured_by?: string
+          day2_percent?: number
+          event_id?: string
+          final_tournament_id?: string
+          itm_percent?: number
+          min_cash_x?: number
+          policy?: string
+          rake_vnd?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "multi_day_qualification_rules_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_qualification_rules_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_qualification_rules_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "multi_day_qualification_rules_v1_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "multi_day_qualification_rules_v1_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
         ]
@@ -7498,6 +10632,204 @@ export type Database = {
           },
           {
             foreignKeyName: "online_poker_tables_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operator_dealer_checkin_requests: {
+        Row: {
+          actor_id: string
+          club_id: string
+          created_at: string
+          expires_at: string
+          request_hash: string
+          request_id: string
+          response: Json | null
+          status: string
+        }
+        Insert: {
+          actor_id: string
+          club_id: string
+          created_at?: string
+          expires_at?: string
+          request_hash: string
+          request_id: string
+          response?: Json | null
+          status?: string
+        }
+        Update: {
+          actor_id?: string
+          club_id?: string
+          created_at?: string
+          expires_at?: string
+          request_hash?: string
+          request_id?: string
+          response?: Json | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operator_dealer_checkin_requests_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operator_dealer_checkin_requests_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ops_cashier_mutation_idempotency: {
+        Row: {
+          actor_user_id: string
+          created_at: string
+          idempotency_key: string
+          operation: string
+          request_hash: string
+          response: Json | null
+          updated_at: string
+        }
+        Insert: {
+          actor_user_id: string
+          created_at?: string
+          idempotency_key: string
+          operation: string
+          request_hash: string
+          response?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          actor_user_id?: string
+          created_at?: string
+          idempotency_key?: string
+          operation?: string
+          request_hash?: string
+          response?: Json | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      owner_daily_digest_club_admin_scopes: {
+        Row: {
+          club_id: string
+          created_at: string
+          granted_by: string
+          user_id: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          granted_by: string
+          user_id: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          granted_by?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owner_daily_digest_club_admin_scopes_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "owner_daily_digest_club_admin_scopes_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      owner_daily_digest_reports: {
+        Row: {
+          action_codes: string[]
+          artifact_id: string
+          attendance: number
+          business_date: string
+          club_id: string
+          content_sha256: string
+          created_at: string
+          entries: number
+          event_id: string
+          expires_at: string
+          fnb_net_revenue_vnd: number
+          freshness_state: string
+          generated_at: string
+          money_state: string
+          payroll_provisional_vnd: number
+          pending_liabilities_vnd: number
+          rake_retained_vnd: number
+          registrations: number
+          staff_count: number
+          warning_codes: string[]
+        }
+        Insert: {
+          action_codes?: string[]
+          artifact_id: string
+          attendance: number
+          business_date: string
+          club_id: string
+          content_sha256: string
+          created_at?: string
+          entries: number
+          event_id: string
+          expires_at: string
+          fnb_net_revenue_vnd: number
+          freshness_state: string
+          generated_at: string
+          money_state: string
+          payroll_provisional_vnd: number
+          pending_liabilities_vnd: number
+          rake_retained_vnd: number
+          registrations: number
+          staff_count: number
+          warning_codes?: string[]
+        }
+        Update: {
+          action_codes?: string[]
+          artifact_id?: string
+          attendance?: number
+          business_date?: string
+          club_id?: string
+          content_sha256?: string
+          created_at?: string
+          entries?: number
+          event_id?: string
+          expires_at?: string
+          fnb_net_revenue_vnd?: number
+          freshness_state?: string
+          generated_at?: string
+          money_state?: string
+          payroll_provisional_vnd?: number
+          pending_liabilities_vnd?: number
+          rake_retained_vnd?: number
+          registrations?: number
+          staff_count?: number
+          warning_codes?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owner_daily_digest_reports_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "owner_daily_digest_reports_club_id_fkey"
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public"
@@ -8463,6 +11795,173 @@ export type Database = {
         }
         Relationships: []
       }
+      process_swing_cron_runs: {
+        Row: {
+          enqueue_state: string
+          error_code: string | null
+          id: number
+          request_id: number | null
+          requested_at: string
+          response_observed_at: string | null
+          response_status: number | null
+          result_state: string | null
+        }
+        Insert: {
+          enqueue_state: string
+          error_code?: string | null
+          id?: never
+          request_id?: number | null
+          requested_at?: string
+          response_observed_at?: string | null
+          response_status?: number | null
+          result_state?: string | null
+        }
+        Update: {
+          enqueue_state?: string
+          error_code?: string | null
+          id?: never
+          request_id?: number | null
+          requested_at?: string
+          response_observed_at?: string | null
+          response_status?: number | null
+          result_state?: string | null
+        }
+        Relationships: []
+      }
+      process_swing_dispatch_events: {
+        Row: {
+          club_id: string
+          created_at: string
+          diagnostics: Json | null
+          error_code: string | null
+          id: number
+          request_id: string
+          run_id: string
+          state: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          diagnostics?: Json | null
+          error_code?: string | null
+          id?: never
+          request_id: string
+          run_id: string
+          state: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          diagnostics?: Json | null
+          error_code?: string | null
+          id?: never
+          request_id?: string
+          run_id?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "process_swing_dispatch_events_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "process_swing_dispatch_runs"
+            referencedColumns: ["run_id"]
+          },
+        ]
+      }
+      process_swing_dispatch_runs: {
+        Row: {
+          business_completed_at: string | null
+          business_diagnostics: Json | null
+          business_error_code: string | null
+          business_state: string | null
+          club_id: string
+          enqueue_state: string
+          enqueued_at: string | null
+          lease_expires_at: string
+          lease_token: string
+          net_request_id: number | null
+          received_at: string | null
+          request_fingerprint: string
+          request_id: string
+          requested_at: string
+          response_observed_at: string | null
+          response_status: number | null
+          run_id: string
+          started_at: string | null
+          tick_at: string
+          timeout_ms: number
+          transport_error_code: string | null
+          transport_state: string
+          updated_at: string
+        }
+        Insert: {
+          business_completed_at?: string | null
+          business_diagnostics?: Json | null
+          business_error_code?: string | null
+          business_state?: string | null
+          club_id: string
+          enqueue_state?: string
+          enqueued_at?: string | null
+          lease_expires_at: string
+          lease_token: string
+          net_request_id?: number | null
+          received_at?: string | null
+          request_fingerprint: string
+          request_id: string
+          requested_at?: string
+          response_observed_at?: string | null
+          response_status?: number | null
+          run_id: string
+          started_at?: string | null
+          tick_at: string
+          timeout_ms?: number
+          transport_error_code?: string | null
+          transport_state?: string
+          updated_at?: string
+        }
+        Update: {
+          business_completed_at?: string | null
+          business_diagnostics?: Json | null
+          business_error_code?: string | null
+          business_state?: string | null
+          club_id?: string
+          enqueue_state?: string
+          enqueued_at?: string | null
+          lease_expires_at?: string
+          lease_token?: string
+          net_request_id?: number | null
+          received_at?: string | null
+          request_fingerprint?: string
+          request_id?: string
+          requested_at?: string
+          response_observed_at?: string | null
+          response_status?: number | null
+          run_id?: string
+          started_at?: string | null
+          tick_at?: string
+          timeout_ms?: number
+          transport_error_code?: string | null
+          transport_state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "process_swing_dispatch_runs_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_swing_dispatch_runs_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -8594,6 +12093,693 @@ export type Database = {
           tournament_id?: string
         }
         Relationships: []
+      }
+      satellite_award_issues: {
+        Row: {
+          cash_total_vnd: number
+          club_id: string
+          issue_request_hash: string | null
+          issue_request_id: string | null
+          issued_at: string
+          issued_by: string
+          locked_results: Json
+          source_preview_revision: string | null
+          source_tournament_id: string
+          ticket_total: number
+        }
+        Insert: {
+          cash_total_vnd: number
+          club_id: string
+          issue_request_hash?: string | null
+          issue_request_id?: string | null
+          issued_at?: string
+          issued_by: string
+          locked_results: Json
+          source_preview_revision?: string | null
+          source_tournament_id: string
+          ticket_total: number
+        }
+        Update: {
+          cash_total_vnd?: number
+          club_id?: string
+          issue_request_hash?: string | null
+          issue_request_id?: string | null
+          issued_at?: string
+          issued_by?: string
+          locked_results?: Json
+          source_preview_revision?: string | null
+          source_tournament_id?: string
+          ticket_total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "satellite_award_issues_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_award_issues_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_award_issues_source_tournament_id_fkey"
+            columns: ["source_tournament_id"]
+            isOneToOne: true
+            referencedRelation: "satellite_award_plans"
+            referencedColumns: ["source_tournament_id"]
+          },
+        ]
+      }
+      satellite_award_plans: {
+        Row: {
+          award_lines: Json
+          cash_total_vnd: number
+          club_id: string
+          funding_state: string | null
+          lock_request_hash: string | null
+          lock_request_id: string | null
+          locked_at: string
+          locked_by: string
+          obligation_shortfall_vnd: number | null
+          source_fee_vnd: number | null
+          source_pool_vnd: number | null
+          source_preview_revision: string | null
+          source_snapshot: Json | null
+          source_tournament_id: string
+          target_buy_in_vnd: number | null
+          target_entry_price_vnd: number
+          target_fee_vnd: number | null
+          target_rake_vnd: number | null
+          target_service_fee_vnd: number | null
+          target_tournament_id: string
+          ticket_total: number
+          total_liability_vnd: number
+        }
+        Insert: {
+          award_lines: Json
+          cash_total_vnd: number
+          club_id: string
+          funding_state?: string | null
+          lock_request_hash?: string | null
+          lock_request_id?: string | null
+          locked_at?: string
+          locked_by: string
+          obligation_shortfall_vnd?: number | null
+          source_fee_vnd?: number | null
+          source_pool_vnd?: number | null
+          source_preview_revision?: string | null
+          source_snapshot?: Json | null
+          source_tournament_id: string
+          target_buy_in_vnd?: number | null
+          target_entry_price_vnd: number
+          target_fee_vnd?: number | null
+          target_rake_vnd?: number | null
+          target_service_fee_vnd?: number | null
+          target_tournament_id: string
+          ticket_total: number
+          total_liability_vnd: number
+        }
+        Update: {
+          award_lines?: Json
+          cash_total_vnd?: number
+          club_id?: string
+          funding_state?: string | null
+          lock_request_hash?: string | null
+          lock_request_id?: string | null
+          locked_at?: string
+          locked_by?: string
+          obligation_shortfall_vnd?: number | null
+          source_fee_vnd?: number | null
+          source_pool_vnd?: number | null
+          source_preview_revision?: string | null
+          source_snapshot?: Json | null
+          source_tournament_id?: string
+          target_buy_in_vnd?: number | null
+          target_entry_price_vnd?: number
+          target_fee_vnd?: number | null
+          target_rake_vnd?: number | null
+          target_service_fee_vnd?: number | null
+          target_tournament_id?: string
+          ticket_total?: number
+          total_liability_vnd?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "satellite_award_plans_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_award_plans_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_award_plans_source_tournament_id_fkey"
+            columns: ["source_tournament_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "satellite_award_plans_source_tournament_id_fkey"
+            columns: ["source_tournament_id"]
+            isOneToOne: true
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_award_plans_target_tournament_id_fkey"
+            columns: ["target_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "satellite_award_plans_target_tournament_id_fkey"
+            columns: ["target_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      satellite_redemption_correction_requests: {
+        Row: {
+          actor_id: string
+          created_at: string
+          reason: string
+          request_id: string
+          status: string
+          ticket_id: string
+          transfer_id: string
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          reason: string
+          request_id: string
+          status?: string
+          ticket_id: string
+          transfer_id: string
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          reason?: string
+          request_id?: string
+          status?: string
+          ticket_id?: string
+          transfer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "satellite_redemption_correction_requests_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "satellite_tickets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_redemption_correction_requests_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "satellite_ticket_value_transfers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      satellite_redemption_requests: {
+        Row: {
+          actor_id: string
+          created_at: string
+          redeemed_for_player_id: string
+          request_hash: string
+          request_id: string
+          response: Json
+          ticket_id: string
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          redeemed_for_player_id: string
+          request_hash: string
+          request_id: string
+          response: Json
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          redeemed_for_player_id?: string
+          request_hash?: string
+          request_id?: string
+          response?: Json
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "satellite_redemption_requests_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: true
+            referencedRelation: "satellite_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      satellite_redemption_reversals: {
+        Row: {
+          actor_id: string
+          approved_reason: string
+          club_id: string
+          correction_request_id: string
+          created_at: string
+          entry_id: string
+          original_transfer_id: string
+          receipt_id: string
+          registration_id: string
+          request_id: string
+          seat_id: string
+          source_credit_vnd: number
+          source_tournament_id: string
+          target_debit_vnd: number
+          target_tournament_id: string
+          ticket_id: string
+        }
+        Insert: {
+          actor_id: string
+          approved_reason: string
+          club_id: string
+          correction_request_id: string
+          created_at?: string
+          entry_id: string
+          original_transfer_id: string
+          receipt_id: string
+          registration_id: string
+          request_id: string
+          seat_id: string
+          source_credit_vnd: number
+          source_tournament_id: string
+          target_debit_vnd: number
+          target_tournament_id: string
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string
+          approved_reason?: string
+          club_id?: string
+          correction_request_id?: string
+          created_at?: string
+          entry_id?: string
+          original_transfer_id?: string
+          receipt_id?: string
+          registration_id?: string
+          request_id?: string
+          seat_id?: string
+          source_credit_vnd?: number
+          source_tournament_id?: string
+          target_debit_vnd?: number
+          target_tournament_id?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "satellite_redemption_reversals_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_redemption_reversals_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_redemption_reversals_correction_request_id_fkey"
+            columns: ["correction_request_id"]
+            isOneToOne: true
+            referencedRelation: "satellite_redemption_correction_requests"
+            referencedColumns: ["request_id"]
+          },
+          {
+            foreignKeyName: "satellite_redemption_reversals_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_redemption_reversals_original_transfer_id_fkey"
+            columns: ["original_transfer_id"]
+            isOneToOne: true
+            referencedRelation: "satellite_ticket_value_transfers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_redemption_reversals_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: true
+            referencedRelation: "seat_draw_receipts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_redemption_reversals_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_redemption_reversals_seat_id_fkey"
+            columns: ["seat_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_seats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_redemption_reversals_source_tournament_id_fkey"
+            columns: ["source_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "satellite_redemption_reversals_source_tournament_id_fkey"
+            columns: ["source_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_redemption_reversals_target_tournament_id_fkey"
+            columns: ["target_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "satellite_redemption_reversals_target_tournament_id_fkey"
+            columns: ["target_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_redemption_reversals_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: true
+            referencedRelation: "satellite_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      satellite_ticket_secret_events: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          id: string
+          new_code_hash: string | null
+          old_code_hash: string
+          reason: string
+          request_hash: string
+          request_id: string
+          ticket_id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          created_at?: string
+          id?: string
+          new_code_hash?: string | null
+          old_code_hash: string
+          reason: string
+          request_hash: string
+          request_id: string
+          ticket_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          id?: string
+          new_code_hash?: string | null
+          old_code_hash?: string
+          reason?: string
+          request_hash?: string
+          request_id?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "satellite_ticket_secret_events_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "satellite_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      satellite_ticket_value_transfers: {
+        Row: {
+          actor_id: string
+          club_id: string
+          created_at: string
+          id: string
+          redeemed_for_player_id: string
+          registration_id: string
+          request_id: string
+          source_debit_vnd: number
+          source_tournament_id: string
+          target_buy_in_vnd: number
+          target_credit_vnd: number
+          target_rake_vnd: number
+          target_service_fee_vnd: number
+          target_tournament_id: string
+          ticket_id: string
+        }
+        Insert: {
+          actor_id: string
+          club_id: string
+          created_at?: string
+          id?: string
+          redeemed_for_player_id: string
+          registration_id: string
+          request_id: string
+          source_debit_vnd: number
+          source_tournament_id: string
+          target_buy_in_vnd: number
+          target_credit_vnd: number
+          target_rake_vnd: number
+          target_service_fee_vnd: number
+          target_tournament_id: string
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string
+          club_id?: string
+          created_at?: string
+          id?: string
+          redeemed_for_player_id?: string
+          registration_id?: string
+          request_id?: string
+          source_debit_vnd?: number
+          source_tournament_id?: string
+          target_buy_in_vnd?: number
+          target_credit_vnd?: number
+          target_rake_vnd?: number
+          target_service_fee_vnd?: number
+          target_tournament_id?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "satellite_ticket_value_transfers_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_ticket_value_transfers_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_ticket_value_transfers_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_ticket_value_transfers_source_tournament_id_fkey"
+            columns: ["source_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "satellite_ticket_value_transfers_source_tournament_id_fkey"
+            columns: ["source_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_ticket_value_transfers_target_tournament_id_fkey"
+            columns: ["target_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "satellite_ticket_value_transfers_target_tournament_id_fkey"
+            columns: ["target_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_ticket_value_transfers_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: true
+            referencedRelation: "satellite_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      satellite_tickets: {
+        Row: {
+          award_position: number
+          club_id: string
+          id: string
+          issued_at: string
+          redeemed_at: string | null
+          redeemed_by: string | null
+          redeemed_for_player_id: string | null
+          redemption_code: string
+          registration_id: string | null
+          serial_no: number
+          source_tournament_id: string
+          status: string
+          target_buy_in_vnd: number | null
+          target_entry_price_vnd: number
+          target_fee_vnd: number | null
+          target_rake_vnd: number | null
+          target_service_fee_vnd: number | null
+          target_tournament_id: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+          winner_player_id: string
+        }
+        Insert: {
+          award_position: number
+          club_id: string
+          id?: string
+          issued_at?: string
+          redeemed_at?: string | null
+          redeemed_by?: string | null
+          redeemed_for_player_id?: string | null
+          redemption_code?: string
+          registration_id?: string | null
+          serial_no: number
+          source_tournament_id: string
+          status?: string
+          target_buy_in_vnd?: number | null
+          target_entry_price_vnd: number
+          target_fee_vnd?: number | null
+          target_rake_vnd?: number | null
+          target_service_fee_vnd?: number | null
+          target_tournament_id: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+          winner_player_id: string
+        }
+        Update: {
+          award_position?: number
+          club_id?: string
+          id?: string
+          issued_at?: string
+          redeemed_at?: string | null
+          redeemed_by?: string | null
+          redeemed_for_player_id?: string | null
+          redemption_code?: string
+          registration_id?: string | null
+          serial_no?: number
+          source_tournament_id?: string
+          status?: string
+          target_buy_in_vnd?: number | null
+          target_entry_price_vnd?: number
+          target_fee_vnd?: number | null
+          target_rake_vnd?: number | null
+          target_service_fee_vnd?: number | null
+          target_tournament_id?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+          winner_player_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "satellite_tickets_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_tickets_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_tickets_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_tickets_source_tournament_id_fkey"
+            columns: ["source_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "satellite_award_issues"
+            referencedColumns: ["source_tournament_id"]
+          },
+          {
+            foreignKeyName: "satellite_tickets_target_tournament_id_fkey"
+            columns: ["target_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "satellite_tickets_target_tournament_id_fkey"
+            columns: ["target_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       seat_assignment_history: {
         Row: {
@@ -8944,6 +13130,54 @@ export type Database = {
           },
         ]
       }
+      series_copilot_rate_limit_requests_v1: {
+        Row: {
+          actor_id: string
+          allowed: boolean
+          club_id: string
+          created_at: string
+          expires_at: string
+          policy_version: string
+          request_id: string
+          retry_after_seconds: number
+        }
+        Insert: {
+          actor_id: string
+          allowed: boolean
+          club_id: string
+          created_at: string
+          expires_at: string
+          policy_version?: string
+          request_id: string
+          retry_after_seconds?: number
+        }
+        Update: {
+          actor_id?: string
+          allowed?: boolean
+          club_id?: string
+          created_at?: string
+          expires_at?: string
+          policy_version?: string
+          request_id?: string
+          retry_after_seconds?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "series_copilot_rate_limit_requests_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_copilot_rate_limit_requests_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       series_decision_logs: {
         Row: {
           actual_entries: number | null
@@ -9039,6 +13273,571 @@ export type Database = {
             columns: ["forecast_snapshot_id"]
             isOneToOne: false
             referencedRelation: "series_forecast_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      series_decision_packets_v1: {
+        Row: {
+          alternatives: Json
+          as_of_ts: string
+          assumptions: Json
+          campaign_observation_count: number | null
+          campaign_slice_hash: string | null
+          campaign_slice_manifest: Json | null
+          club_id: string
+          content_hash: string | null
+          correction_reason: string | null
+          created_at: string
+          created_by: string
+          decision_horizon: string
+          decision_reason: string | null
+          draft_version: number
+          event_id: string
+          forecast_snapshot_id: string | null
+          forecast_state: string
+          frozen_at: string | null
+          frozen_by: string | null
+          id: string
+          idempotency_key: string
+          known_information: Json
+          known_information_hash: string
+          manual_expectation: number | null
+          owner_decision: string | null
+          packet_state: string
+          public_action: string | null
+          public_evidence_manifest: Json
+          public_evidence_manifest_hash: string
+          recommendation_source_kind: string | null
+          recommendation_source_ref: string | null
+          recommended_action: string | null
+          registration_observation_count: number | null
+          registration_slice_hash: string | null
+          registration_slice_manifest: Json | null
+          request_hash: string
+          schema_version: string
+          source_cutoff: string
+          supersedes_packet_id: string | null
+          target_event_ts: string
+          target_metric: string
+          uncertainty_notes: string | null
+        }
+        Insert: {
+          alternatives?: Json
+          as_of_ts: string
+          assumptions?: Json
+          campaign_observation_count?: number | null
+          campaign_slice_hash?: string | null
+          campaign_slice_manifest?: Json | null
+          club_id: string
+          content_hash?: string | null
+          correction_reason?: string | null
+          created_at?: string
+          created_by?: string
+          decision_horizon: string
+          decision_reason?: string | null
+          draft_version?: number
+          event_id: string
+          forecast_snapshot_id?: string | null
+          forecast_state: string
+          frozen_at?: string | null
+          frozen_by?: string | null
+          id?: string
+          idempotency_key: string
+          known_information?: Json
+          known_information_hash: string
+          manual_expectation?: number | null
+          owner_decision?: string | null
+          packet_state?: string
+          public_action?: string | null
+          public_evidence_manifest?: Json
+          public_evidence_manifest_hash: string
+          recommendation_source_kind?: string | null
+          recommendation_source_ref?: string | null
+          recommended_action?: string | null
+          registration_observation_count?: number | null
+          registration_slice_hash?: string | null
+          registration_slice_manifest?: Json | null
+          request_hash: string
+          schema_version?: string
+          source_cutoff: string
+          supersedes_packet_id?: string | null
+          target_event_ts: string
+          target_metric: string
+          uncertainty_notes?: string | null
+        }
+        Update: {
+          alternatives?: Json
+          as_of_ts?: string
+          assumptions?: Json
+          campaign_observation_count?: number | null
+          campaign_slice_hash?: string | null
+          campaign_slice_manifest?: Json | null
+          club_id?: string
+          content_hash?: string | null
+          correction_reason?: string | null
+          created_at?: string
+          created_by?: string
+          decision_horizon?: string
+          decision_reason?: string | null
+          draft_version?: number
+          event_id?: string
+          forecast_snapshot_id?: string | null
+          forecast_state?: string
+          frozen_at?: string | null
+          frozen_by?: string | null
+          id?: string
+          idempotency_key?: string
+          known_information?: Json
+          known_information_hash?: string
+          manual_expectation?: number | null
+          owner_decision?: string | null
+          packet_state?: string
+          public_action?: string | null
+          public_evidence_manifest?: Json
+          public_evidence_manifest_hash?: string
+          recommendation_source_kind?: string | null
+          recommendation_source_ref?: string | null
+          recommended_action?: string | null
+          registration_observation_count?: number | null
+          registration_slice_hash?: string | null
+          registration_slice_manifest?: Json | null
+          request_hash?: string
+          schema_version?: string
+          source_cutoff?: string
+          supersedes_packet_id?: string | null
+          target_event_ts?: string
+          target_metric?: string
+          uncertainty_notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sdp_v1_parent_fk"
+            columns: [
+              "supersedes_packet_id",
+              "club_id",
+              "event_id",
+              "decision_horizon",
+            ]
+            isOneToOne: false
+            referencedRelation: "series_decision_packets_v1"
+            referencedColumns: ["id", "club_id", "event_id", "decision_horizon"]
+          },
+          {
+            foreignKeyName: "series_decision_packets_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_decision_packets_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_decision_packets_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "series_decision_packets_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_decision_packets_v1_forecast_snapshot_id_fkey"
+            columns: ["forecast_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "series_forecast_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      series_event_actual_native_sources_v1: {
+        Row: {
+          club_id: string
+          counting_contract_version: string
+          created_at: string
+          economics_contract_version: string
+          event_id: string
+          native_event_status: string
+          outcome_scope: string
+          revision_id: string
+          source_fingerprint: string
+          source_observed_at: string
+          source_payload_hash: string
+        }
+        Insert: {
+          club_id: string
+          counting_contract_version: string
+          created_at?: string
+          economics_contract_version: string
+          event_id: string
+          native_event_status: string
+          outcome_scope: string
+          revision_id: string
+          source_fingerprint: string
+          source_observed_at: string
+          source_payload_hash: string
+        }
+        Update: {
+          club_id?: string
+          counting_contract_version?: string
+          created_at?: string
+          economics_contract_version?: string
+          event_id?: string
+          native_event_status?: string
+          outcome_scope?: string
+          revision_id?: string
+          source_fingerprint?: string
+          source_observed_at?: string
+          source_payload_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seas_v1_identity_fk"
+            columns: ["revision_id", "club_id", "event_id", "outcome_scope"]
+            isOneToOne: false
+            referencedRelation: "series_event_actual_revisions_v1"
+            referencedColumns: ["id", "club_id", "event_id", "outcome_scope"]
+          },
+          {
+            foreignKeyName: "series_event_actual_native_sources_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_event_actual_native_sources_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_event_actual_native_sources_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "series_event_actual_native_sources_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_event_actual_native_sources_v1_revision_id_fkey"
+            columns: ["revision_id"]
+            isOneToOne: true
+            referencedRelation: "series_event_actual_revisions_v1"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      series_event_actual_reconciliations_v1: {
+        Row: {
+          auto_revision_id: string
+          club_id: string
+          created_at: string
+          event_id: string
+          manual_revision_id: string
+          outcome_scope: string
+          owner_reason: string | null
+          resolution: Json
+          resolution_hash: string
+          revision_id: string
+        }
+        Insert: {
+          auto_revision_id: string
+          club_id: string
+          created_at?: string
+          event_id: string
+          manual_revision_id: string
+          outcome_scope: string
+          owner_reason?: string | null
+          resolution: Json
+          resolution_hash: string
+          revision_id: string
+        }
+        Update: {
+          auto_revision_id?: string
+          club_id?: string
+          created_at?: string
+          event_id?: string
+          manual_revision_id?: string
+          outcome_scope?: string
+          owner_reason?: string | null
+          resolution?: Json
+          resolution_hash?: string
+          revision_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "searx_v1_auto_fk"
+            columns: [
+              "auto_revision_id",
+              "club_id",
+              "event_id",
+              "outcome_scope",
+            ]
+            isOneToOne: false
+            referencedRelation: "series_event_actual_revisions_v1"
+            referencedColumns: ["id", "club_id", "event_id", "outcome_scope"]
+          },
+          {
+            foreignKeyName: "searx_v1_identity_fk"
+            columns: ["revision_id", "club_id", "event_id", "outcome_scope"]
+            isOneToOne: false
+            referencedRelation: "series_event_actual_revisions_v1"
+            referencedColumns: ["id", "club_id", "event_id", "outcome_scope"]
+          },
+          {
+            foreignKeyName: "searx_v1_manual_fk"
+            columns: [
+              "manual_revision_id",
+              "club_id",
+              "event_id",
+              "outcome_scope",
+            ]
+            isOneToOne: false
+            referencedRelation: "series_event_actual_revisions_v1"
+            referencedColumns: ["id", "club_id", "event_id", "outcome_scope"]
+          },
+          {
+            foreignKeyName: "series_event_actual_reconciliations_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_event_actual_reconciliations_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_event_actual_reconciliations_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "series_event_actual_reconciliations_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_event_actual_reconciliations_v1_revision_id_fkey"
+            columns: ["revision_id"]
+            isOneToOne: true
+            referencedRelation: "series_event_actual_revisions_v1"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      series_event_actual_revisions_v1: {
+        Row: {
+          captured_at: string
+          captured_by: string
+          club_id: string
+          content_hash: string
+          correction_reason: string | null
+          entries_availability: string
+          entries_value: number | null
+          event_id: string
+          finality: string
+          id: string
+          idempotency_key: string
+          outcome_scope: string
+          overlay_amount_minor: number | null
+          overlay_availability: string
+          overlay_currency: string | null
+          overlay_scale: number | null
+          paid_places_availability: string
+          paid_places_value: number | null
+          prize_pool_amount_minor: number | null
+          prize_pool_availability: string
+          prize_pool_currency: string | null
+          prize_pool_scale: number | null
+          reconciles_auto_revision_id: string | null
+          reconciles_manual_revision_id: string | null
+          reconciliation_status: string
+          reentries_availability: string
+          reentries_value: number | null
+          registration_records_availability: string
+          registration_records_value: number | null
+          request_hash: string
+          schema_version: string
+          source_kind: string
+          source_timestamp: string | null
+          source_timestamp_state: string
+          supersedes_revision_id: string | null
+          total_bullets_availability: string
+          total_bullets_value: number | null
+          unique_players_availability: string
+          unique_players_value: number | null
+        }
+        Insert: {
+          captured_at?: string
+          captured_by: string
+          club_id: string
+          content_hash: string
+          correction_reason?: string | null
+          entries_availability: string
+          entries_value?: number | null
+          event_id: string
+          finality: string
+          id?: string
+          idempotency_key: string
+          outcome_scope: string
+          overlay_amount_minor?: number | null
+          overlay_availability: string
+          overlay_currency?: string | null
+          overlay_scale?: number | null
+          paid_places_availability: string
+          paid_places_value?: number | null
+          prize_pool_amount_minor?: number | null
+          prize_pool_availability: string
+          prize_pool_currency?: string | null
+          prize_pool_scale?: number | null
+          reconciles_auto_revision_id?: string | null
+          reconciles_manual_revision_id?: string | null
+          reconciliation_status: string
+          reentries_availability: string
+          reentries_value?: number | null
+          registration_records_availability: string
+          registration_records_value?: number | null
+          request_hash: string
+          schema_version?: string
+          source_kind: string
+          source_timestamp?: string | null
+          source_timestamp_state: string
+          supersedes_revision_id?: string | null
+          total_bullets_availability: string
+          total_bullets_value?: number | null
+          unique_players_availability: string
+          unique_players_value?: number | null
+        }
+        Update: {
+          captured_at?: string
+          captured_by?: string
+          club_id?: string
+          content_hash?: string
+          correction_reason?: string | null
+          entries_availability?: string
+          entries_value?: number | null
+          event_id?: string
+          finality?: string
+          id?: string
+          idempotency_key?: string
+          outcome_scope?: string
+          overlay_amount_minor?: number | null
+          overlay_availability?: string
+          overlay_currency?: string | null
+          overlay_scale?: number | null
+          paid_places_availability?: string
+          paid_places_value?: number | null
+          prize_pool_amount_minor?: number | null
+          prize_pool_availability?: string
+          prize_pool_currency?: string | null
+          prize_pool_scale?: number | null
+          reconciles_auto_revision_id?: string | null
+          reconciles_manual_revision_id?: string | null
+          reconciliation_status?: string
+          reentries_availability?: string
+          reentries_value?: number | null
+          registration_records_availability?: string
+          registration_records_value?: number | null
+          request_hash?: string
+          schema_version?: string
+          source_kind?: string
+          source_timestamp?: string | null
+          source_timestamp_state?: string
+          supersedes_revision_id?: string | null
+          total_bullets_availability?: string
+          total_bullets_value?: number | null
+          unique_players_availability?: string
+          unique_players_value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sear_v1_auto_ref_fk"
+            columns: [
+              "reconciles_auto_revision_id",
+              "club_id",
+              "event_id",
+              "outcome_scope",
+            ]
+            isOneToOne: false
+            referencedRelation: "series_event_actual_revisions_v1"
+            referencedColumns: ["id", "club_id", "event_id", "outcome_scope"]
+          },
+          {
+            foreignKeyName: "sear_v1_manual_ref_fk"
+            columns: [
+              "reconciles_manual_revision_id",
+              "club_id",
+              "event_id",
+              "outcome_scope",
+            ]
+            isOneToOne: false
+            referencedRelation: "series_event_actual_revisions_v1"
+            referencedColumns: ["id", "club_id", "event_id", "outcome_scope"]
+          },
+          {
+            foreignKeyName: "sear_v1_parent_fk"
+            columns: [
+              "supersedes_revision_id",
+              "club_id",
+              "event_id",
+              "outcome_scope",
+            ]
+            isOneToOne: false
+            referencedRelation: "series_event_actual_revisions_v1"
+            referencedColumns: ["id", "club_id", "event_id", "outcome_scope"]
+          },
+          {
+            foreignKeyName: "series_event_actual_revisions_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_event_actual_revisions_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_event_actual_revisions_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "series_event_actual_revisions_v1_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
         ]
@@ -9363,6 +14162,109 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tournaments"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      series_schedule_candidates_v1: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          archived_at: string | null
+          buy_in_vnd: number
+          capacity_state: string
+          club_id: string
+          collision_state: string
+          created_at: string
+          created_by: string
+          evidence_manifest: Json
+          expected_duration_minutes: number | null
+          flights: number
+          gtd_vnd: number
+          id: string
+          label_vi: string
+          lifecycle: string
+          option_id: string
+          prize_contribution_per_entry_vnd: number | null
+          revision: number
+          schema_version: string
+          source_fingerprint: string
+          source_kind: string
+          structure_state: string
+          supersedes_candidate_id: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          archived_at?: string | null
+          buy_in_vnd: number
+          capacity_state?: string
+          club_id: string
+          collision_state?: string
+          created_at?: string
+          created_by?: string
+          evidence_manifest: Json
+          expected_duration_minutes?: number | null
+          flights: number
+          gtd_vnd: number
+          id?: string
+          label_vi: string
+          lifecycle?: string
+          option_id: string
+          prize_contribution_per_entry_vnd?: number | null
+          revision: number
+          schema_version?: string
+          source_fingerprint: string
+          source_kind: string
+          structure_state: string
+          supersedes_candidate_id?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          archived_at?: string | null
+          buy_in_vnd?: number
+          capacity_state?: string
+          club_id?: string
+          collision_state?: string
+          created_at?: string
+          created_by?: string
+          evidence_manifest?: Json
+          expected_duration_minutes?: number | null
+          flights?: number
+          gtd_vnd?: number
+          id?: string
+          label_vi?: string
+          lifecycle?: string
+          option_id?: string
+          prize_contribution_per_entry_vnd?: number | null
+          revision?: number
+          schema_version?: string
+          source_fingerprint?: string
+          source_kind?: string
+          structure_state?: string
+          supersedes_candidate_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "series_schedule_candidates_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_schedule_candidates_v1_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_v_candidate_parent_fk"
+            columns: ["supersedes_candidate_id", "club_id", "option_id"]
+            isOneToOne: false
+            referencedRelation: "series_schedule_candidates_v1"
+            referencedColumns: ["id", "club_id", "option_id"]
           },
         ]
       }
@@ -9710,6 +14612,8 @@ export type Database = {
           full_name: string
           hourly_rate_vnd: number | null
           id: string
+          link_code: string | null
+          link_code_expires_at: string | null
           manual_bhxh_vnd: number | null
           manual_tax_vnd: number | null
           monthly_salary_vnd: number | null
@@ -9728,6 +14632,8 @@ export type Database = {
           full_name: string
           hourly_rate_vnd?: number | null
           id?: string
+          link_code?: string | null
+          link_code_expires_at?: string | null
           manual_bhxh_vnd?: number | null
           manual_tax_vnd?: number | null
           monthly_salary_vnd?: number | null
@@ -9746,6 +14652,8 @@ export type Database = {
           full_name?: string
           hourly_rate_vnd?: number | null
           id?: string
+          link_code?: string | null
+          link_code_expires_at?: string | null
           manual_bhxh_vnd?: number | null
           manual_tax_vnd?: number | null
           monthly_salary_vnd?: number | null
@@ -9809,6 +14717,55 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "staff_attendance_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_link_audit: {
+        Row: {
+          actor: string
+          club_id: string
+          created_at: string
+          id: string
+          staff_id: string
+          user_id: string
+        }
+        Insert: {
+          actor: string
+          club_id: string
+          created_at?: string
+          id?: string
+          staff_id: string
+          user_id: string
+        }
+        Update: {
+          actor?: string
+          club_id?: string
+          created_at?: string
+          id?: string
+          staff_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_link_audit_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_link_audit_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_link_audit_staff_id_fkey"
             columns: ["staff_id"]
             isOneToOne: false
             referencedRelation: "staff"
@@ -11123,6 +16080,244 @@ export type Database = {
           },
         ]
       }
+      table_operation_receipts: {
+        Row: {
+          actor_id: string
+          created_at: string
+          operation_type: string
+          request_fingerprint: string
+          request_id: string
+          result: Json
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          operation_type: string
+          request_fingerprint: string
+          request_id: string
+          result: Json
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          operation_type?: string
+          request_fingerprint?: string
+          request_id?: string
+          result?: Json
+        }
+        Relationships: []
+      }
+      table_session_seat_locks: {
+        Row: {
+          created_at: string
+          id: string
+          locked_at: string
+          locked_by: string
+          reason: string
+          seat_number: number
+          table_session_id: string
+          tournament_id: string
+          tournament_table_id: string
+          unlock_reason: string | null
+          unlocked_at: string | null
+          unlocked_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          locked_at?: string
+          locked_by: string
+          reason: string
+          seat_number: number
+          table_session_id: string
+          tournament_id: string
+          tournament_table_id: string
+          unlock_reason?: string | null
+          unlocked_at?: string | null
+          unlocked_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          locked_at?: string
+          locked_by?: string
+          reason?: string
+          seat_number?: number
+          table_session_id?: string
+          tournament_id?: string
+          tournament_table_id?: string
+          unlock_reason?: string | null
+          unlocked_at?: string | null
+          unlocked_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "table_session_seat_locks_table_scope_v1_fkey"
+            columns: ["tournament_table_id", "table_session_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id", "table_session_id"]
+          },
+          {
+            foreignKeyName: "table_session_seat_locks_table_session_id_fkey"
+            columns: ["table_session_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_session_seat_locks_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "table_session_seat_locks_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_session_seat_locks_tournament_scope_v1_fkey"
+            columns: ["tournament_table_id", "tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id", "tournament_id"]
+          },
+          {
+            foreignKeyName: "table_session_seat_locks_tournament_table_id_fkey"
+            columns: ["tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      table_sessions: {
+        Row: {
+          audit_correlation_id: string | null
+          close_reason: string | null
+          closed_at: string | null
+          closed_by: string | null
+          club_id: string
+          control_epoch: number
+          control_mode: string
+          created_at: string
+          game_table_id: string
+          id: string
+          opened_at: string
+          opened_by: string | null
+          redraw_hold_at: string | null
+          redraw_hold_batch_id: string | null
+          redraw_hold_revision: number | null
+          revision: number
+          session_type: string
+          tournament_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          audit_correlation_id?: string | null
+          close_reason?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          club_id: string
+          control_epoch?: number
+          control_mode?: string
+          created_at?: string
+          game_table_id: string
+          id?: string
+          opened_at?: string
+          opened_by?: string | null
+          redraw_hold_at?: string | null
+          redraw_hold_batch_id?: string | null
+          redraw_hold_revision?: number | null
+          revision?: number
+          session_type: string
+          tournament_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          audit_correlation_id?: string | null
+          close_reason?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          club_id?: string
+          control_epoch?: number
+          control_mode?: string
+          created_at?: string
+          game_table_id?: string
+          id?: string
+          opened_at?: string
+          opened_by?: string | null
+          redraw_hold_at?: string | null
+          redraw_hold_batch_id?: string | null
+          redraw_hold_revision?: number | null
+          revision?: number
+          session_type?: string
+          tournament_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "table_sessions_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_sessions_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_sessions_game_table_club_v3_fkey"
+            columns: ["game_table_id", "club_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id", "club_id"]
+          },
+          {
+            foreignKeyName: "table_sessions_game_table_id_fkey"
+            columns: ["game_table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_sessions_redraw_hold_batch_v1_fkey"
+            columns: ["redraw_hold_batch_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_redraw_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_sessions_tournament_club_v3_fkey"
+            columns: ["tournament_id", "club_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id", "club_id"]
+          },
+          {
+            foreignKeyName: "table_sessions_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "table_sessions_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournament_chip_counts: {
         Row: {
           chip_count: number
@@ -11724,9 +16919,23 @@ export type Database = {
           locked_by_user_id: string | null
           pot_size: number | null
           side_pots: Json | null
+          source_revision: number
           status: string
-          table_id: string
+          table_id: string | null
+          table_session_id: string | null
           tournament_id: string
+          tournament_table_id: string | null
+          tracker_bb_position: number | null
+          tracker_bba: number | null
+          tracker_big_blind: number | null
+          tracker_blind_evidence: Json | null
+          tracker_context_version: string | null
+          tracker_is_break: boolean | null
+          tracker_level_id: string | null
+          tracker_level_number: number | null
+          tracker_lock_version: number
+          tracker_sb_position: number | null
+          tracker_small_blind: number | null
           updated_at: string | null
         }
         Insert: {
@@ -11742,9 +16951,23 @@ export type Database = {
           locked_by_user_id?: string | null
           pot_size?: number | null
           side_pots?: Json | null
+          source_revision?: number
           status?: string
-          table_id: string
+          table_id?: string | null
+          table_session_id?: string | null
           tournament_id: string
+          tournament_table_id?: string | null
+          tracker_bb_position?: number | null
+          tracker_bba?: number | null
+          tracker_big_blind?: number | null
+          tracker_blind_evidence?: Json | null
+          tracker_context_version?: string | null
+          tracker_is_break?: boolean | null
+          tracker_level_id?: string | null
+          tracker_level_number?: number | null
+          tracker_lock_version?: number
+          tracker_sb_position?: number | null
+          tracker_small_blind?: number | null
           updated_at?: string | null
         }
         Update: {
@@ -11760,9 +16983,23 @@ export type Database = {
           locked_by_user_id?: string | null
           pot_size?: number | null
           side_pots?: Json | null
+          source_revision?: number
           status?: string
-          table_id?: string
+          table_id?: string | null
+          table_session_id?: string | null
           tournament_id?: string
+          tournament_table_id?: string | null
+          tracker_bb_position?: number | null
+          tracker_bba?: number | null
+          tracker_big_blind?: number | null
+          tracker_blind_evidence?: Json | null
+          tracker_context_version?: string | null
+          tracker_is_break?: boolean | null
+          tracker_level_id?: string | null
+          tracker_level_number?: number | null
+          tracker_lock_version?: number
+          tracker_sb_position?: number | null
+          tracker_small_blind?: number | null
           updated_at?: string | null
         }
         Relationships: [
@@ -11772,6 +17009,27 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tournament_tables"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_hands_table_session_id_v3_fkey"
+            columns: ["table_session_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_hands_table_session_match_v3_fkey"
+            columns: ["tournament_table_id", "table_session_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id", "table_session_id"]
+          },
+          {
+            foreignKeyName: "tournament_hands_table_tournament_v3_fkey"
+            columns: ["tournament_table_id", "tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id", "tournament_id"]
           },
           {
             foreignKeyName: "tournament_hands_tournament_id_fkey"
@@ -11785,6 +17043,13 @@ export type Database = {
             columns: ["tournament_id"]
             isOneToOne: false
             referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_hands_tournament_table_id_v3_fkey"
+            columns: ["tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
             referencedColumns: ["id"]
           },
         ]
@@ -12108,12 +17373,224 @@ export type Database = {
           },
         ]
       }
+      tournament_redraw_batches: {
+        Row: {
+          applied_at: string | null
+          applied_by: string | null
+          apply_result: Json | null
+          clock_revision_after_pause: number | null
+          clock_was_running: boolean | null
+          hold_completed_at: string | null
+          hold_completed_by: string | null
+          id: string
+          pause_owner: string | null
+          pause_reason: string | null
+          planned_at: string
+          planned_by: string
+          presentation_started_at: string | null
+          redraw_revision: number
+          snapshot_fingerprint: string
+          stale_reason: string | null
+          status: string
+          target_game_table_ids: string[]
+          target_max_seats: number
+          tournament_id: string
+          updated_at: string
+        }
+        Insert: {
+          applied_at?: string | null
+          applied_by?: string | null
+          apply_result?: Json | null
+          clock_revision_after_pause?: number | null
+          clock_was_running?: boolean | null
+          hold_completed_at?: string | null
+          hold_completed_by?: string | null
+          id?: string
+          pause_owner?: string | null
+          pause_reason?: string | null
+          planned_at?: string
+          planned_by: string
+          presentation_started_at?: string | null
+          redraw_revision?: number
+          snapshot_fingerprint: string
+          stale_reason?: string | null
+          status?: string
+          target_game_table_ids: string[]
+          target_max_seats: number
+          tournament_id: string
+          updated_at?: string
+        }
+        Update: {
+          applied_at?: string | null
+          applied_by?: string | null
+          apply_result?: Json | null
+          clock_revision_after_pause?: number | null
+          clock_was_running?: boolean | null
+          hold_completed_at?: string | null
+          hold_completed_by?: string | null
+          id?: string
+          pause_owner?: string | null
+          pause_reason?: string | null
+          planned_at?: string
+          planned_by?: string
+          presentation_started_at?: string | null
+          redraw_revision?: number
+          snapshot_fingerprint?: string
+          stale_reason?: string | null
+          status?: string
+          target_game_table_ids?: string[]
+          target_max_seats?: number
+          tournament_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_redraw_batches_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_redraw_batches_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournament_redraw_moves: {
+        Row: {
+          applied_table_session_id: string | null
+          applied_tournament_table_id: string | null
+          batch_id: string
+          chip_count: number
+          created_at: string
+          entry_id: string
+          entry_number: number
+          from_game_table_id: string
+          from_seat_number: number
+          from_table_number: number
+          from_table_session_id: string
+          from_tournament_table_id: string
+          id: string
+          ordinal: number
+          player_display_name: string
+          player_id: string
+          to_game_table_id: string
+          to_seat_number: number
+          to_table_number: number
+        }
+        Insert: {
+          applied_table_session_id?: string | null
+          applied_tournament_table_id?: string | null
+          batch_id: string
+          chip_count: number
+          created_at?: string
+          entry_id: string
+          entry_number: number
+          from_game_table_id: string
+          from_seat_number: number
+          from_table_number: number
+          from_table_session_id: string
+          from_tournament_table_id: string
+          id?: string
+          ordinal: number
+          player_display_name: string
+          player_id: string
+          to_game_table_id: string
+          to_seat_number: number
+          to_table_number: number
+        }
+        Update: {
+          applied_table_session_id?: string | null
+          applied_tournament_table_id?: string | null
+          batch_id?: string
+          chip_count?: number
+          created_at?: string
+          entry_id?: string
+          entry_number?: number
+          from_game_table_id?: string
+          from_seat_number?: number
+          from_table_number?: number
+          from_table_session_id?: string
+          from_tournament_table_id?: string
+          id?: string
+          ordinal?: number
+          player_display_name?: string
+          player_id?: string
+          to_game_table_id?: string
+          to_seat_number?: number
+          to_table_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_redraw_moves_applied_table_session_id_fkey"
+            columns: ["applied_table_session_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_redraw_moves_applied_tournament_table_id_fkey"
+            columns: ["applied_tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_redraw_moves_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_redraw_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_redraw_moves_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_redraw_moves_from_game_table_id_fkey"
+            columns: ["from_game_table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_redraw_moves_from_table_session_id_fkey"
+            columns: ["from_table_session_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_redraw_moves_from_tournament_table_id_fkey"
+            columns: ["from_tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_redraw_moves_to_game_table_id_fkey"
+            columns: ["to_game_table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournament_registrations: {
         Row: {
           buy_in: number
           cancellation_reason: string | null
           cancelled_at: string | null
           cancelled_by: string | null
+          cashier_paid_at: string | null
+          cashier_seating_error: string | null
           club_id: string | null
           committed_at: string
           confirmed_at: string | null
@@ -12122,6 +17599,7 @@ export type Database = {
           id: string
           platform_fixed_fee: number
           player_id: string
+          price_snapshot: Json | null
           reference_code: string
           source_entry_id: string | null
           status: string
@@ -12137,6 +17615,8 @@ export type Database = {
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
+          cashier_paid_at?: string | null
+          cashier_seating_error?: string | null
           club_id?: string | null
           committed_at?: string
           confirmed_at?: string | null
@@ -12145,6 +17625,7 @@ export type Database = {
           id?: string
           platform_fixed_fee?: number
           player_id: string
+          price_snapshot?: Json | null
           reference_code: string
           source_entry_id?: string | null
           status?: string
@@ -12160,6 +17641,8 @@ export type Database = {
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
+          cashier_paid_at?: string | null
+          cashier_seating_error?: string | null
           club_id?: string | null
           committed_at?: string
           confirmed_at?: string | null
@@ -12168,6 +17651,7 @@ export type Database = {
           id?: string
           platform_fixed_fee?: number
           player_id?: string
+          price_snapshot?: Json | null
           reference_code?: string
           source_entry_id?: string | null
           status?: string
@@ -12204,8 +17688,10 @@ export type Database = {
           reserved_until: string | null
           seat_number: number
           status: string
-          table_id: string
+          table_id: string | null
+          table_session_id: string | null
           tournament_id: string
+          tournament_table_id: string | null
         }
         Insert: {
           assigned_at?: string | null
@@ -12222,8 +17708,10 @@ export type Database = {
           reserved_until?: string | null
           seat_number: number
           status?: string
-          table_id: string
+          table_id?: string | null
+          table_session_id?: string | null
           tournament_id: string
+          tournament_table_id?: string | null
         }
         Update: {
           assigned_at?: string | null
@@ -12240,8 +17728,10 @@ export type Database = {
           reserved_until?: string | null
           seat_number?: number
           status?: string
-          table_id?: string
+          table_id?: string | null
+          table_session_id?: string | null
           tournament_id?: string
+          tournament_table_id?: string | null
         }
         Relationships: [
           {
@@ -12250,6 +17740,27 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tournament_tables"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_seats_table_session_id_v3_fkey"
+            columns: ["table_session_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_seats_table_session_match_v3_fkey"
+            columns: ["tournament_table_id", "table_session_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id", "table_session_id"]
+          },
+          {
+            foreignKeyName: "tournament_seats_table_tournament_v3_fkey"
+            columns: ["tournament_table_id", "tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id", "tournament_id"]
           },
           {
             foreignKeyName: "tournament_seats_tournament_id_fkey"
@@ -12263,6 +17774,13 @@ export type Database = {
             columns: ["tournament_id"]
             isOneToOne: false
             referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_seats_tournament_table_id_v3_fkey"
+            columns: ["tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
             referencedColumns: ["id"]
           },
         ]
@@ -12320,6 +17838,91 @@ export type Database = {
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournament_settlement_outcomes: {
+        Row: {
+          actor_kind: string
+          actor_user_id: string
+          correction_reason: string | null
+          created_at: string
+          hand_id: string
+          id: string
+          idempotency_key: string
+          outcome_hash: string
+          public_outcome: Json
+          request_hash: string
+          rule_version: string
+          settlement_revision: number
+          source_chain_hash: string
+          source_revision: number
+          status: string
+          tournament_id: string
+          updated_at: string
+          verification_scope: string
+        }
+        Insert: {
+          actor_kind?: string
+          actor_user_id: string
+          correction_reason?: string | null
+          created_at?: string
+          hand_id: string
+          id?: string
+          idempotency_key: string
+          outcome_hash: string
+          public_outcome: Json
+          request_hash: string
+          rule_version?: string
+          settlement_revision: number
+          source_chain_hash: string
+          source_revision: number
+          status?: string
+          tournament_id: string
+          updated_at?: string
+          verification_scope?: string
+        }
+        Update: {
+          actor_kind?: string
+          actor_user_id?: string
+          correction_reason?: string | null
+          created_at?: string
+          hand_id?: string
+          id?: string
+          idempotency_key?: string
+          outcome_hash?: string
+          public_outcome?: Json
+          request_hash?: string
+          rule_version?: string
+          settlement_revision?: number
+          source_chain_hash?: string
+          source_revision?: number
+          status?: string
+          tournament_id?: string
+          updated_at?: string
+          verification_scope?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_settlement_outcomes_hand_id_fkey"
+            columns: ["hand_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_hands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_settlement_outcomes_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_settlement_outcomes_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
         ]
@@ -12420,43 +18023,119 @@ export type Database = {
         }
         Relationships: []
       }
+      tournament_table_appearance: {
+        Row: {
+          felt_color: string
+          logo_url: string | null
+          rail_color: string
+          tournament_id: string
+        }
+        Insert: {
+          felt_color?: string
+          logo_url?: string | null
+          rail_color?: string
+          tournament_id: string
+        }
+        Update: {
+          felt_color?: string
+          logo_url?: string | null
+          rail_color?: string
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_table_appearance_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_table_appearance_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: true
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournament_tables: {
         Row: {
           created_at: string | null
+          floor_control_mode: string
+          floor_control_revision: number
+          game_table_id: string | null
           id: string
           max_seats: number
           status: string
           table_id: string | null
           table_name: string
           table_number: number | null
+          table_session_id: string | null
           tournament_id: string
         }
         Insert: {
           created_at?: string | null
+          floor_control_mode?: string
+          floor_control_revision?: number
+          game_table_id?: string | null
           id?: string
           max_seats?: number
           status?: string
           table_id?: string | null
           table_name?: string
           table_number?: number | null
+          table_session_id?: string | null
           tournament_id: string
         }
         Update: {
           created_at?: string | null
+          floor_control_mode?: string
+          floor_control_revision?: number
+          game_table_id?: string | null
           id?: string
           max_seats?: number
           status?: string
           table_id?: string | null
           table_name?: string
           table_number?: number | null
+          table_session_id?: string | null
           tournament_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tournament_tables_game_table_id_v3_fkey"
+            columns: ["game_table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_tables_session_game_table_v3_fkey"
+            columns: ["table_session_id", "game_table_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id", "game_table_id"]
+          },
+          {
+            foreignKeyName: "tournament_tables_session_tournament_v3_fkey"
+            columns: ["table_session_id", "tournament_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id", "tournament_id"]
+          },
           {
             foreignKeyName: "tournament_tables_table_id_fkey"
             columns: ["table_id"]
             isOneToOne: false
             referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_tables_table_session_id_v3_fkey"
+            columns: ["table_session_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
             referencedColumns: ["id"]
           },
           {
@@ -12480,6 +18159,7 @@ export type Database = {
           average_stack: number | null
           bust_seq: number
           buy_in: number
+          clock_control_revision: number
           clock_paused_at: string | null
           clock_started_at: string | null
           club_id: string
@@ -12505,6 +18185,7 @@ export type Database = {
           location: string | null
           minutes_per_level: number
           name: string
+          operations_mode: string
           pause_accumulated: number | null
           phase: string | null
           planned_itm_percent: number | null
@@ -12515,6 +18196,8 @@ export type Database = {
           prize_pool: number | null
           rake_amount: number
           registration_closed_at: string | null
+          satellite_cutoff_fenced_at: string | null
+          satellite_payout: Json | null
           service_fee_amount: number
           start_time: string | null
           starting_stack: number
@@ -12527,6 +18210,7 @@ export type Database = {
           average_stack?: number | null
           bust_seq?: number
           buy_in?: number
+          clock_control_revision?: number
           clock_paused_at?: string | null
           clock_started_at?: string | null
           club_id: string
@@ -12552,6 +18236,7 @@ export type Database = {
           location?: string | null
           minutes_per_level?: number
           name: string
+          operations_mode?: string
           pause_accumulated?: number | null
           phase?: string | null
           planned_itm_percent?: number | null
@@ -12562,6 +18247,8 @@ export type Database = {
           prize_pool?: number | null
           rake_amount?: number
           registration_closed_at?: string | null
+          satellite_cutoff_fenced_at?: string | null
+          satellite_payout?: Json | null
           service_fee_amount?: number
           start_time?: string | null
           starting_stack?: number
@@ -12574,6 +18261,7 @@ export type Database = {
           average_stack?: number | null
           bust_seq?: number
           buy_in?: number
+          clock_control_revision?: number
           clock_paused_at?: string | null
           clock_started_at?: string | null
           club_id?: string
@@ -12599,6 +18287,7 @@ export type Database = {
           location?: string | null
           minutes_per_level?: number
           name?: string
+          operations_mode?: string
           pause_accumulated?: number | null
           phase?: string | null
           planned_itm_percent?: number | null
@@ -12609,6 +18298,8 @@ export type Database = {
           prize_pool?: number | null
           rake_amount?: number
           registration_closed_at?: string | null
+          satellite_cutoff_fenced_at?: string | null
+          satellite_payout?: Json | null
           service_fee_amount?: number
           start_time?: string | null
           starting_stack?: number
@@ -12637,6 +18328,855 @@ export type Database = {
             columns: ["event_id"]
             isOneToOne: false
             referencedRelation: "tournament_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracker_correction_operations: {
+        Row: {
+          actor_user_id: string
+          created_at: string
+          hand_id: string
+          id: string
+          idempotency_key: string
+          operation: string
+          receipt: Json
+          request_hash: string
+          tournament_id: string
+          tournament_table_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          created_at?: string
+          hand_id: string
+          id?: string
+          idempotency_key: string
+          operation: string
+          receipt: Json
+          request_hash: string
+          tournament_id: string
+          tournament_table_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          created_at?: string
+          hand_id?: string
+          id?: string
+          idempotency_key?: string
+          operation?: string
+          receipt?: Json
+          request_hash?: string
+          tournament_id?: string
+          tournament_table_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracker_correction_operations_hand_id_fkey"
+            columns: ["hand_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_hands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_correction_operations_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tracker_correction_operations_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_correction_operations_tournament_table_id_fkey"
+            columns: ["tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracker_correction_uat_scopes: {
+        Row: {
+          capability: string
+          club_id: string
+          created_at: string
+          enabled: boolean
+          expires_at: string | null
+          id: string
+          tournament_id: string
+          tournament_table_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          capability: string
+          club_id: string
+          created_at?: string
+          enabled?: boolean
+          expires_at?: string | null
+          id?: string
+          tournament_id: string
+          tournament_table_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          capability?: string
+          club_id?: string
+          created_at?: string
+          enabled?: boolean
+          expires_at?: string | null
+          id?: string
+          tournament_id?: string
+          tournament_table_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracker_correction_uat_scopes_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_correction_uat_scopes_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_correction_uat_scopes_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tracker_correction_uat_scopes_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_correction_uat_scopes_tournament_table_id_fkey"
+            columns: ["tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracker_floor_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          alert_kind: string
+          assignment_id: string | null
+          club_id: string
+          correction_required: boolean
+          created_at: string
+          dealer_id: string | null
+          hand_id: string | null
+          id: string
+          message: string | null
+          physical_table_id: string
+          priority: string
+          reported_by: string
+          request_id: string | null
+          request_payload: Json | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          source_action_id: string | null
+          source_action_snapshot: Json | null
+          source_revision: number | null
+          source_state_fingerprint: string | null
+          status: string
+          title: string
+          tournament_id: string
+          tournament_table_id: string
+          transition_receipts: Json
+          updated_at: string
+          version: number
+          voice_event_id: string | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_kind: string
+          assignment_id?: string | null
+          club_id: string
+          correction_required?: boolean
+          created_at?: string
+          dealer_id?: string | null
+          hand_id?: string | null
+          id?: string
+          message?: string | null
+          physical_table_id: string
+          priority: string
+          reported_by: string
+          request_id?: string | null
+          request_payload?: Json | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source_action_id?: string | null
+          source_action_snapshot?: Json | null
+          source_revision?: number | null
+          source_state_fingerprint?: string | null
+          status?: string
+          title: string
+          tournament_id: string
+          tournament_table_id: string
+          transition_receipts?: Json
+          updated_at?: string
+          version?: number
+          voice_event_id?: string | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_kind?: string
+          assignment_id?: string | null
+          club_id?: string
+          correction_required?: boolean
+          created_at?: string
+          dealer_id?: string | null
+          hand_id?: string | null
+          id?: string
+          message?: string | null
+          physical_table_id?: string
+          priority?: string
+          reported_by?: string
+          request_id?: string | null
+          request_payload?: Json | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source_action_id?: string | null
+          source_action_snapshot?: Json | null
+          source_revision?: number | null
+          source_state_fingerprint?: string | null
+          status?: string
+          title?: string
+          tournament_id?: string
+          tournament_table_id?: string
+          transition_receipts?: Json
+          updated_at?: string
+          version?: number
+          voice_event_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracker_floor_alerts_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_floor_alerts_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "v_stuck_assignment_version_history"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_floor_alerts_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_floor_alerts_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_floor_alerts_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_floor_alerts_hand_id_fkey"
+            columns: ["hand_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_hands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_floor_alerts_physical_table_id_fkey"
+            columns: ["physical_table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_floor_alerts_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tracker_floor_alerts_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_floor_alerts_tournament_table_id_fkey"
+            columns: ["tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_floor_alerts_voice_event_id_fkey"
+            columns: ["voice_event_id"]
+            isOneToOne: false
+            referencedRelation: "tracker_voice_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracker_hand_blind_correction_audit: {
+        Row: {
+          actor_user_id: string
+          after_snapshot: Json
+          before_snapshot: Json
+          created_at: string
+          evidence: Json
+          expected_source_revision: number
+          hand_id: string
+          id: string
+          idempotency_key: string
+          reason: string
+          resulting_source_revision: number
+          selected_level_id: string | null
+          selected_snapshot: Json | null
+          source_kind: string | null
+        }
+        Insert: {
+          actor_user_id: string
+          after_snapshot: Json
+          before_snapshot: Json
+          created_at?: string
+          evidence: Json
+          expected_source_revision: number
+          hand_id: string
+          id?: string
+          idempotency_key: string
+          reason: string
+          resulting_source_revision: number
+          selected_level_id?: string | null
+          selected_snapshot?: Json | null
+          source_kind?: string | null
+        }
+        Update: {
+          actor_user_id?: string
+          after_snapshot?: Json
+          before_snapshot?: Json
+          created_at?: string
+          evidence?: Json
+          expected_source_revision?: number
+          hand_id?: string
+          id?: string
+          idempotency_key?: string
+          reason?: string
+          resulting_source_revision?: number
+          selected_level_id?: string | null
+          selected_snapshot?: Json | null
+          source_kind?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracker_hand_blind_correction_audit_hand_id_fkey"
+            columns: ["hand_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_hands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracker_historical_display_queue: {
+        Row: {
+          attempts: number
+          completed_at: string | null
+          enqueued_at: string
+          hand_id: string
+          last_error_code: string | null
+          lease_token: string | null
+          lease_until: string | null
+          next_attempt_at: string
+          source_revision: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          completed_at?: string | null
+          enqueued_at?: string
+          hand_id: string
+          last_error_code?: string | null
+          lease_token?: string | null
+          lease_until?: string | null
+          next_attempt_at?: string
+          source_revision: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          completed_at?: string | null
+          enqueued_at?: string
+          hand_id?: string
+          last_error_code?: string | null
+          lease_token?: string | null
+          lease_until?: string | null
+          next_attempt_at?: string
+          source_revision?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracker_historical_display_queue_hand_id_fkey"
+            columns: ["hand_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_hands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracker_unified_ops_receipts: {
+        Row: {
+          actor_user_id: string
+          created_at: string
+          id: string
+          idempotency_key: string
+          operation: string
+          request_hash: string
+          response: Json
+          tournament_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          operation: string
+          request_hash: string
+          response: Json
+          tournament_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          operation?: string
+          request_hash?: string
+          response?: Json
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracker_unified_ops_receipts_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tracker_unified_ops_receipts_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracker_voice_configs: {
+        Row: {
+          amount_unit_confirmed: boolean
+          auto_capability_version: string | null
+          auto_turn_order_compatible: boolean
+          auto_validation_mode: string
+          club_id: string
+          configured_mode: string
+          control_epoch: number | null
+          correction_alert_id: string | null
+          correction_state: string
+          created_at: string
+          enabled: boolean
+          id: string
+          physical_table_id: string
+          provider_confidence_threshold: number | null
+          provider_model: string
+          server_auto_allowed: boolean
+          spoken_amount_unit: number
+          table_session_id: string | null
+          tournament_id: string
+          tournament_table_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          amount_unit_confirmed?: boolean
+          auto_capability_version?: string | null
+          auto_turn_order_compatible?: boolean
+          auto_validation_mode?: string
+          club_id: string
+          configured_mode?: string
+          control_epoch?: number | null
+          correction_alert_id?: string | null
+          correction_state?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          physical_table_id: string
+          provider_confidence_threshold?: number | null
+          provider_model?: string
+          server_auto_allowed?: boolean
+          spoken_amount_unit?: number
+          table_session_id?: string | null
+          tournament_id: string
+          tournament_table_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          amount_unit_confirmed?: boolean
+          auto_capability_version?: string | null
+          auto_turn_order_compatible?: boolean
+          auto_validation_mode?: string
+          club_id?: string
+          configured_mode?: string
+          control_epoch?: number | null
+          correction_alert_id?: string | null
+          correction_state?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          physical_table_id?: string
+          provider_confidence_threshold?: number | null
+          provider_model?: string
+          server_auto_allowed?: boolean
+          spoken_amount_unit?: number
+          table_session_id?: string | null
+          tournament_id?: string
+          tournament_table_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracker_voice_configs_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_configs_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_configs_correction_alert_id_fkey"
+            columns: ["correction_alert_id"]
+            isOneToOne: false
+            referencedRelation: "tracker_floor_alerts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_configs_physical_table_id_fkey"
+            columns: ["physical_table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_configs_session_game_table_fkey"
+            columns: ["table_session_id", "physical_table_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id", "game_table_id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_configs_session_tournament_fkey"
+            columns: ["table_session_id", "tournament_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id", "tournament_id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_configs_table_session_id_fkey"
+            columns: ["table_session_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_configs_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_configs_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_configs_tournament_table_id_fkey"
+            columns: ["tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracker_voice_events: {
+        Row: {
+          actor_player_id: string | null
+          actor_user_id: string
+          assignment_id: string
+          capability_version: string | null
+          club_id: string
+          created_at: string
+          dealer_id: string
+          event_kind: string
+          execution_mode: string
+          execution_result: string
+          final_transcript: string | null
+          hand_id: string | null
+          id: string
+          idempotency_key: string
+          normalized_command: Json
+          physical_table_id: string
+          provider_confidence: number | null
+          provider_event_id: string | null
+          provider_model: string
+          provider_name: string
+          receipt: Json
+          request_hash: string
+          root_event_id: string | null
+          state_version: string
+          tournament_id: string
+          tournament_table_id: string
+          trace_id: string
+          turn_order_enforced: boolean
+          validation_mode: string
+        }
+        Insert: {
+          actor_player_id?: string | null
+          actor_user_id: string
+          assignment_id: string
+          capability_version?: string | null
+          club_id: string
+          created_at?: string
+          dealer_id: string
+          event_kind: string
+          execution_mode: string
+          execution_result: string
+          final_transcript?: string | null
+          hand_id?: string | null
+          id?: string
+          idempotency_key: string
+          normalized_command?: Json
+          physical_table_id: string
+          provider_confidence?: number | null
+          provider_event_id?: string | null
+          provider_model: string
+          provider_name?: string
+          receipt?: Json
+          request_hash: string
+          root_event_id?: string | null
+          state_version: string
+          tournament_id: string
+          tournament_table_id: string
+          trace_id: string
+          turn_order_enforced?: boolean
+          validation_mode?: string
+        }
+        Update: {
+          actor_player_id?: string | null
+          actor_user_id?: string
+          assignment_id?: string
+          capability_version?: string | null
+          club_id?: string
+          created_at?: string
+          dealer_id?: string
+          event_kind?: string
+          execution_mode?: string
+          execution_result?: string
+          final_transcript?: string | null
+          hand_id?: string | null
+          id?: string
+          idempotency_key?: string
+          normalized_command?: Json
+          physical_table_id?: string
+          provider_confidence?: number | null
+          provider_event_id?: string | null
+          provider_model?: string
+          provider_name?: string
+          receipt?: Json
+          request_hash?: string
+          root_event_id?: string | null
+          state_version?: string
+          tournament_id?: string
+          tournament_table_id?: string
+          trace_id?: string
+          turn_order_enforced?: boolean
+          validation_mode?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracker_voice_events_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_events_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "v_stuck_assignment_version_history"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_events_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_events_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_events_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_events_hand_id_fkey"
+            columns: ["hand_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_hands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_events_physical_table_id_fkey"
+            columns: ["physical_table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_events_root_event_id_fkey"
+            columns: ["root_event_id"]
+            isOneToOne: false
+            referencedRelation: "tracker_voice_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_events_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_events_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_events_tournament_table_id_fkey"
+            columns: ["tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracker_voice_session_limits: {
+        Row: {
+          actor_user_id: string
+          request_count: number
+          tournament_id: string
+          tournament_table_id: string
+          updated_at: string
+          window_started_at: string
+        }
+        Insert: {
+          actor_user_id: string
+          request_count?: number
+          tournament_id: string
+          tournament_table_id: string
+          updated_at?: string
+          window_started_at: string
+        }
+        Update: {
+          actor_user_id?: string
+          request_count?: number
+          tournament_id?: string
+          tournament_table_id?: string
+          updated_at?: string
+          window_started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracker_voice_session_limits_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_session_limits_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_voice_session_limits_tournament_table_id_fkey"
+            columns: ["tournament_table_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_tables"
             referencedColumns: ["id"]
           },
         ]
@@ -12732,6 +19272,128 @@ export type Database = {
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tv_tournament_layout_versions: {
+        Row: {
+          background_url: string | null
+          brand_name: string | null
+          id: string
+          layout: Json
+          layout_id: string
+          logo_url: string | null
+          published_at: string
+          published_by: string
+          revision: number
+        }
+        Insert: {
+          background_url?: string | null
+          brand_name?: string | null
+          id?: string
+          layout: Json
+          layout_id: string
+          logo_url?: string | null
+          published_at?: string
+          published_by: string
+          revision: number
+        }
+        Update: {
+          background_url?: string | null
+          brand_name?: string | null
+          id?: string
+          layout?: Json
+          layout_id?: string
+          logo_url?: string | null
+          published_at?: string
+          published_by?: string
+          revision?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tv_tournament_layout_versions_layout_id_fkey"
+            columns: ["layout_id"]
+            isOneToOne: false
+            referencedRelation: "tv_tournament_layouts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tv_tournament_layouts: {
+        Row: {
+          background_url: string | null
+          brand_name: string | null
+          club_id: string
+          event_id: string | null
+          id: string
+          layout: Json
+          logo_url: string | null
+          revision: number
+          tournament_id: string | null
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          background_url?: string | null
+          brand_name?: string | null
+          club_id: string
+          event_id?: string | null
+          id?: string
+          layout: Json
+          logo_url?: string | null
+          revision?: number
+          tournament_id?: string | null
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          background_url?: string | null
+          brand_name?: string | null
+          club_id?: string
+          event_id?: string | null
+          id?: string
+          layout?: Json
+          logo_url?: string | null
+          revision?: number
+          tournament_id?: string | null
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tv_tournament_layouts_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tv_tournament_layouts_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tv_tournament_layouts_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tv_tournament_layouts_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tv_tournament_layouts_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
         ]
@@ -13561,6 +20223,22 @@ export type Database = {
         Args: { p_dealer_id: string; p_table_id: string }
         Returns: boolean
       }
+      _assert_dealer_payroll_statement_actor: {
+        Args: { p_club_id: string }
+        Returns: string
+      }
+      _assert_dealer_payroll_statement_delivery_rollout: {
+        Args: { p_club_id: string }
+        Returns: undefined
+      }
+      _assert_dealer_payroll_statement_finalizer: {
+        Args: { p_club_id: string }
+        Returns: string
+      }
+      _assert_dealer_payroll_statement_rollout: {
+        Args: { p_club_id: string }
+        Returns: undefined
+      }
       _assign_reentry_seat: {
         Args: {
           p_actor_user_id: string
@@ -13573,19 +20251,80 @@ export type Database = {
         }
         Returns: Json
       }
+      _build_full_time_payroll_statement_snapshot: {
+        Args: {
+          p_club_id: string
+          p_dealer_id: string
+          p_payroll_period_id: string
+          p_require_locked?: boolean
+        }
+        Returns: Json
+      }
       _dealer_feature_can_manage: {
         Args: { p_actor: string; p_club_id: string }
         Returns: boolean
+      }
+      _dealer_mass_open_actor_allowed: {
+        Args: { p_actor_id: string; p_club_id: string }
+        Returns: boolean
+      }
+      _dealer_mass_open_runtime_allowed: {
+        Args: { p_club_id: string }
+        Returns: boolean
+      }
+      _dealer_open_operation_result: {
+        Args: { p_idempotent_replay?: boolean; p_operation_id: string }
+        Returns: Json
       }
       _dealer_owns_assignment: {
         Args: { p_assignment_id: string }
         Returns: boolean
       }
+      _dealer_payroll_statement_delivery_allowed: {
+        Args: { p_club_id: string }
+        Returns: boolean
+      }
+      _dealer_payroll_statement_rollout_allowed: {
+        Args: { p_club_id: string }
+        Returns: boolean
+      }
+      _dealer_payroll_statement_sha256: {
+        Args: { p_payload: Json }
+        Returns: string
+      }
+      _dealer_phone_close_state: {
+        Args: { p_club_id: string; p_table_ids: string[] }
+        Returns: Json
+      }
+      _dealer_phone_parse_uuid: { Args: { p_value: string }; Returns: string }
       _dealer_record_checkin: {
         Args: { p_assignment_id: string; p_source: string }
         Returns: Json
       }
       _dealer_scheduled_pool_enabled: { Args: never; Returns: boolean }
+      _dealer_swing_assert_exact_context: {
+        Args: {
+          p_assignment_id: string
+          p_expected_version: number
+          p_next_attendance_id?: string
+          p_table_id: string
+          p_table_session_id: string
+        }
+        Returns: string
+      }
+      _dealer_swing_bind_result_session: {
+        Args: {
+          p_club_id: string
+          p_result: Json
+          p_table_id: string
+          p_table_session_id: string
+        }
+        Returns: Json
+      }
+      _dealer_swing_phone_actor_allowed: {
+        Args: { p_actor_id: string; p_club_id: string }
+        Returns: boolean
+      }
       _dealer_user_owns: { Args: { p_dealer_id: string }; Returns: boolean }
       _enter_dealer_pool: {
         Args: {
@@ -13595,13 +20334,282 @@ export type Database = {
         }
         Returns: boolean
       }
+      _is_payroll_accountant: { Args: { p_club_id: string }; Returns: boolean }
       _pt_wage_balance: { Args: { p_dealer_id: string }; Returns: Json }
+      _refresh_dealer_open_operation: {
+        Args: { p_operation_id: string }
+        Returns: Json
+      }
+      _refresh_dealer_payroll_delivery_operation: {
+        Args: { p_operation_id: string }
+        Returns: Json
+      }
+      _series_canonical_json_v1: { Args: { p_value: Json }; Returns: string }
+      _series_canonical_jsonb_v1: { Args: { p_value: Json }; Returns: Json }
+      _series_canonical_timestamptz_v1: {
+        Args: { p_value: string }
+        Returns: string
+      }
+      _series_count_metric_valid_v1: {
+        Args: { p_availability: string; p_value: number }
+        Returns: boolean
+      }
+      _series_d2a_normalize_bounded_text_v1: {
+        Args: { p_max_length: number; p_value: string }
+        Returns: string
+      }
+      _series_d2a_normalize_evidence_manifest_v1: {
+        Args: { p_packet_cutoff: string; p_value: Json }
+        Returns: Json
+      }
+      _series_d2a_normalize_slice_manifest_v1: {
+        Args: {
+          p_observation_count: number
+          p_packet_cutoff: string
+          p_value: Json
+        }
+        Returns: Json
+      }
+      _series_d2a_normalize_text_set_v1: {
+        Args: { p_max_length: number; p_value: Json }
+        Returns: Json
+      }
+      _series_d2b_actual_metrics_json_v1: {
+        Args: {
+          p_actual: Database["public"]["Tables"]["series_event_actual_revisions_v1"]["Row"]
+        }
+        Returns: Json
+      }
+      _series_d2b_actual_truth_state_v1: {
+        Args: { p_event_id: string; p_scope?: string }
+        Returns: Json
+      }
+      _series_d2b_count_resolution_valid_v1: {
+        Args: {
+          p_auto_availability: string
+          p_auto_value: number
+          p_field: Json
+          p_manual_availability: string
+          p_manual_value: number
+        }
+        Returns: boolean
+      }
+      _series_d2b_exact_keys_v1: {
+        Args: { p_keys: string[]; p_value: Json }
+        Returns: boolean
+      }
+      _series_d2b_money_resolution_valid_v1: {
+        Args: {
+          p_auto_amount: number
+          p_auto_availability: string
+          p_auto_currency: string
+          p_auto_scale: number
+          p_field: Json
+          p_manual_amount: number
+          p_manual_availability: string
+          p_manual_currency: string
+          p_manual_scale: number
+        }
+        Returns: boolean
+      }
+      _series_d2b_resolution_fields_valid_v1: {
+        Args: {
+          p_auto: Database["public"]["Tables"]["series_event_actual_revisions_v1"]["Row"]
+          p_manual: Database["public"]["Tables"]["series_event_actual_revisions_v1"]["Row"]
+          p_resolution: Json
+        }
+        Returns: boolean
+      }
+      _series_d2b_safe_actual_json_v1: {
+        Args: {
+          p_actual: Database["public"]["Tables"]["series_event_actual_revisions_v1"]["Row"]
+        }
+        Returns: Json
+      }
+      _series_decision_packet_content_hash_v1: {
+        Args: {
+          p_packet: Database["public"]["Tables"]["series_decision_packets_v1"]["Row"]
+        }
+        Returns: string
+      }
+      _series_decision_packet_content_payload_v1: {
+        Args: {
+          p_packet: Database["public"]["Tables"]["series_decision_packets_v1"]["Row"]
+        }
+        Returns: Json
+      }
+      _series_decision_packet_request_payload_v1: {
+        Args: {
+          p_packet: Database["public"]["Tables"]["series_decision_packets_v1"]["Row"]
+        }
+        Returns: Json
+      }
+      _series_event_actual_content_payload_v1: {
+        Args: {
+          p_actual: Database["public"]["Tables"]["series_event_actual_revisions_v1"]["Row"]
+        }
+        Returns: Json
+      }
+      _series_event_actual_request_payload_v1: {
+        Args: {
+          p_actual: Database["public"]["Tables"]["series_event_actual_revisions_v1"]["Row"]
+        }
+        Returns: Json
+      }
+      _series_jsonb_has_forbidden_packet_key_v1: {
+        Args: { p_value: Json }
+        Returns: boolean
+      }
+      _series_jsonb_is_string_array_v1: {
+        Args: { p_value: Json }
+        Returns: boolean
+      }
+      _series_money_metric_valid_v1: {
+        Args: {
+          p_amount_minor: number
+          p_availability: string
+          p_currency: string
+          p_scale: number
+        }
+        Returns: boolean
+      }
+      _series_packet_evidence_manifest_valid_v1: {
+        Args: { p_packet_cutoff: string; p_value: Json }
+        Returns: boolean
+      }
+      _series_packet_normalize_information_key_v1: {
+        Args: { p_key: string }
+        Returns: string
+      }
+      _series_packet_reference_text_valid_v1: {
+        Args: { p_max_length: number; p_value: Json }
+        Returns: boolean
+      }
+      _series_packet_research_artifact_reference_valid_v1: {
+        Args: { p_evidence: Json; p_reference_id: string }
+        Returns: boolean
+      }
+      _series_packet_slice_manifest_valid_v1: {
+        Args: {
+          p_observation_count: number
+          p_packet_cutoff: string
+          p_value: Json
+        }
+        Returns: boolean
+      }
+      _series_packet_source_cutoff_valid_v1: {
+        Args: { p_packet_cutoff: string; p_value: Json }
+        Returns: boolean
+      }
+      _series_sha256_jsonb_v1: { Args: { p_payload: Json }; Returns: string }
+      _series_v_evidence_manifest_valid_v1: {
+        Args: { p_value: Json }
+        Returns: boolean
+      }
       _staff_pt_wage_balance: { Args: { p_staff_id: string }; Returns: Json }
       _staff_salary_authorised: {
         Args: { p_club_id: string; p_uid: string }
         Returns: boolean
       }
+      _tracker_correction_uat_context: {
+        Args: {
+          p_capability: string
+          p_hand_id: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      _tracker_unified_ops_context_v2: {
+        Args: {
+          p_actor?: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      _tracker_unified_ops_request_hash_v2: {
+        Args: { p_payload: Json }
+        Returns: string
+      }
+      _tracker_voice_assignment_context: {
+        Args: {
+          p_actor: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      _tracker_voice_canonical_json_v2: {
+        Args: { p_value: Json }
+        Returns: string
+      }
+      _tracker_voice_consume_session_rate_limit: {
+        Args: {
+          p_actor_user_id: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      _tracker_voice_hand_state_version: {
+        Args: { p_hand_id: string }
+        Returns: string
+      }
+      _tracker_voice_register_validated_board_event: {
+        Args: {
+          p_actor_user_id: string
+          p_execution_mode: string
+          p_expected_state_version: string
+          p_final_transcript: string
+          p_hand_id: string
+          p_idempotency_key: string
+          p_normalized_command: Json
+          p_provider_event_id: string
+          p_provider_model: string
+          p_provider_name: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+          p_trace_id: string
+        }
+        Returns: Json
+      }
+      _tracker_voice_register_validated_event: {
+        Args: {
+          p_actor_user_id: string
+          p_capability_version: string
+          p_execution_mode: string
+          p_expected_state_version: string
+          p_final_transcript: string
+          p_hand_id: string
+          p_idempotency_key: string
+          p_normalized_command: Json
+          p_provider_confidence: number
+          p_provider_event_id: string
+          p_provider_model: string
+          p_provider_name: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+          p_trace_id: string
+          p_turn_order_enforced: boolean
+          p_validation_mode: string
+        }
+        Returns: Json
+      }
+      _tracker_voice_request_hash: {
+        Args: { p_payload: Json }
+        Returns: string
+      }
+      _tracker_voice_runout_reveal_authoritative_v1: {
+        Args: { p_hand_id: string }
+        Returns: boolean
+      }
+      _tracker_voice_sha256_jsonb_v2: {
+        Args: { p_payload: Json }
+        Returns: string
+      }
       accept_group_invite: { Args: { _token: string }; Returns: string }
+      accept_my_club_operator_invites: { Args: never; Returns: Json }
       add_player_with_reentry:
         | {
             Args: {
@@ -13624,9 +20632,43 @@ export type Database = {
             }
             Returns: Json
           }
+      administrative_close_stale_dealer_attendance: {
+        Args: { p_actor_id: string; p_attendance_ids: string[] }
+        Returns: Json
+      }
+      advance_dealer_shortage_alert_incident: {
+        Args: {
+          p_classification: string
+          p_club_id: string
+          p_cooldown_seconds?: number
+          p_error_code: string
+          p_incident_key: string
+          p_notify_enabled: boolean
+          p_resolution_debounce_seconds?: number
+          p_severity: number
+          p_snapshot: Json
+        }
+        Returns: Json
+      }
       advance_flight_qualifiers: {
         Args: { p_flight_id: string; p_player_ids: string[] }
         Returns: Json
+      }
+      apply_club_operator_invite: {
+        Args: {
+          p_actor_id: string
+          p_auth_user_id: string
+          p_club_id: string
+          p_delivery_outcome?: string
+          p_email_normalized: string
+          p_invitation_sent: boolean
+          p_operator_role: string
+        }
+        Returns: {
+          invite_id: string
+          invite_status: string
+          outcome: string
+        }[]
       }
       apply_payout_run: {
         Args: {
@@ -13668,6 +20710,11 @@ export type Database = {
         Args: { p_club_id: string; p_tour_id: string }
         Returns: Json
       }
+      assert_dealer_pt_wage_global_activation_ready: {
+        Args: { p_activation_boundary: string }
+        Returns: undefined
+      }
+      assert_payroll_actor: { Args: { p_club_id: string }; Returns: string }
       assign_dealer_to_table: {
         Args: {
           p_actor?: string
@@ -13687,6 +20734,18 @@ export type Database = {
         Args: { p_attendance_id: string; p_club_id: string }
         Returns: Json
       }
+      authorize_tournament_live_resettle: {
+        Args: { p_tournament_id: string }
+        Returns: boolean
+      }
+      authorize_tracker_completed_hand_correction_uat_v1: {
+        Args: { p_hand_id: string; p_tournament_id: string }
+        Returns: Json
+      }
+      authorize_tracker_player_analytics: {
+        Args: { p_player_id: string; p_tournament_id: string }
+        Returns: Json
+      }
       auto_cancel_expired_commits: { Args: never; Returns: number }
       auto_cancel_expired_tournament_regs: { Args: never; Returns: number }
       auto_close_expired_deals: { Args: never; Returns: number }
@@ -13699,10 +20758,6 @@ export type Database = {
       }
       auto_soft_delete_old_tournaments: { Args: never; Returns: number }
       bridge_shift_checkins_to_pool: { Args: never; Returns: number }
-      purge_deleted_bankroll_entries: { Args: never; Returns: number }
-      restore_bankroll_entry: { Args: { p_entry_id: string }; Returns: boolean }
-      soft_delete_all_bankroll_entries: { Args: { p_reason?: string }; Returns: number }
-      soft_delete_bankroll_entry: { Args: { p_entry_id: string; p_reason?: string }; Returns: number }
       bulk_update_stacks: {
         Args: { p_tournament_id: string; p_updates: Json }
         Returns: Json
@@ -13725,6 +20780,14 @@ export type Database = {
         Returns: number
       }
       calculate_pit_vn: { Args: { p_taxable_income: number }; Returns: number }
+      can_edit_tv_tournament_layout_v1: {
+        Args: { p_tournament_id: string }
+        Returns: boolean
+      }
+      can_read_owner_daily_digest: {
+        Args: { p_club_id: string; p_user_id: string }
+        Returns: boolean
+      }
       can_upload_seat_avatar: {
         Args: { _name: string; _uid: string }
         Returns: boolean
@@ -13738,7 +20801,100 @@ export type Database = {
         Args: { p_reason: string; p_schedule_id: string }
         Returns: Json
       }
+      cashier_adjust_shift_v1: {
+        Args: {
+          p_amount: number
+          p_direction: string
+          p_reason: string
+          p_request_id: string
+          p_shift_id: string
+        }
+        Returns: Json
+      }
+      cashier_cashflow_range_v1: {
+        Args: { p_club_id: string; p_from: string; p_to: string }
+        Returns: Json
+      }
+      cashier_close_shift_v1: {
+        Args: { p_counted_cash: number; p_shift_id: string }
+        Returns: Json
+      }
       cashier_club_ids: { Args: { _user_id: string }; Returns: string[] }
+      cashier_complete_refund_v1: {
+        Args: {
+          p_bank_amount: number
+          p_bank_reference: string
+          p_cash_amount: number
+          p_evidence: string
+          p_refund_id: string
+        }
+        Returns: Json
+      }
+      cashier_create_app_registration_v1: {
+        Args: { p_player_id: string; p_tournament_id: string }
+        Returns: Json
+      }
+      cashier_floor_clear_refund_v1: {
+        Args: { p_refund_id: string }
+        Returns: Json
+      }
+      cashier_floor_refunds_v1: {
+        Args: { p_tournament_id: string }
+        Returns: Json
+      }
+      cashier_lookup_tour_v1: {
+        Args: {
+          p_club_id: string
+          p_query: string
+          p_serving_tournament_id: string
+        }
+        Returns: Json
+      }
+      cashier_open_shift_v1: {
+        Args: { p_club_id: string; p_opening_cash: number }
+        Returns: Json
+      }
+      cashier_record_cash_buyin_v1: {
+        Args: {
+          p_amount: number
+          p_registration_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      cashier_record_verified_bank_v1: {
+        Args: { p_auto_confirm?: boolean; p_bank_transaction_id: string }
+        Returns: Json
+      }
+      cashier_request_refund_v1: {
+        Args: { p_reason: string; p_registration_id: string }
+        Returns: Json
+      }
+      cashier_retry_paid_seating_v1: {
+        Args: { p_auto_confirm?: boolean; p_limit?: number }
+        Returns: Json
+      }
+      cashier_shift_summary_v1: { Args: { p_shift_id: string }; Returns: Json }
+      cashier_tour_active_v1: { Args: { p_club_id: string }; Returns: boolean }
+      cashier_tour_issues_v1: {
+        Args: { p_club_id: string; p_tournament_id?: string }
+        Returns: Json
+      }
+      cashier_tour_worklist_v1: {
+        Args: {
+          p_bucket?: string
+          p_club_id: string
+          p_limit?: number
+          p_page?: number
+          p_query?: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      cashier_try_seat_paid_v1: {
+        Args: { p_actor_id: string; p_registration_id: string }
+        Returns: Json
+      }
       chip_ops_add_denomination: {
         Args: {
           p_chip_set_id: string
@@ -13895,15 +21051,90 @@ export type Database = {
         Returns: Json
       }
       ci_dataset_readiness: { Args: { _dataset_id: string }; Returns: Json }
+      claim_dealer_payroll_statement_delivery_target: {
+        Args: { p_operation_id: string }
+        Returns: Json
+      }
+      claim_dealer_payroll_statement_pdf: {
+        Args: { p_request_id: string; p_statement_id: string }
+        Returns: Json
+      }
+      claim_process_swing_dispatch: {
+        Args: { p_club_id: string; p_request_id: string; p_run_id: string }
+        Returns: Json
+      }
+      claim_public_spectator_projection_v2: {
+        Args: { p_limit?: number }
+        Returns: Json
+      }
+      claim_tracker_historical_display_jobs: {
+        Args: { p_limit?: number }
+        Returns: {
+          hand_id: string
+          lease_token: string
+          source_revision: number
+        }[]
+      }
+      cleanup_cron_job_run_details: {
+        Args: { p_batch_size?: number }
+        Returns: Json
+      }
+      cleanup_cron_metrics: {
+        Args: { p_batch_size?: number; p_cron_name: string }
+        Returns: Json
+      }
+      cleanup_dealer_rotation_schedule: {
+        Args: { p_batch_size?: number; p_club_id: string }
+        Returns: Json
+      }
+      cleanup_diagnostic_logs: {
+        Args: { p_batch_size?: number }
+        Returns: Json
+      }
       cleanup_expired_club_locks: { Args: never; Returns: undefined }
+      cleanup_next_cron_metrics: {
+        Args: { p_batch_size?: number }
+        Returns: Json
+      }
+      cleanup_next_dealer_rotation_schedule: {
+        Args: { p_batch_size?: number }
+        Returns: Json
+      }
       cleanup_old_diagnostic_logs: { Args: never; Returns: undefined }
       cleanup_orphan_hands: { Args: { p_older_than?: string }; Returns: Json }
       cleanup_stale_attendance: {
         Args: { p_club_id?: string; p_stale_threshold_hours?: number }
         Returns: Json
       }
-      close_dealer_tables: {
-        Args: { p_club_id: string; p_shift_id?: string; p_table_ids?: string[] }
+      close_dealer_tables:
+        | {
+            Args: {
+              p_club_id: string
+              p_shift_id?: string
+              p_table_ids?: string[]
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_dry_run?: boolean
+              p_expected_club_id: string
+              p_expected_state?: Json
+              p_request_id: string
+              p_shift_id: string
+              p_table_ids: string[]
+            }
+            Returns: Json
+          }
+      close_dealer_tables_phone_v1: {
+        Args: {
+          p_dry_run?: boolean
+          p_expected_club_id: string
+          p_expected_state?: Json
+          p_request_id: string
+          p_shift_id: string
+          p_table_ids: string[]
+        }
         Returns: Json
       }
       close_shift_assignment: {
@@ -13916,65 +21147,164 @@ export type Database = {
       }
       close_tournament_table: {
         Args: {
-          p_draw_mode?: string | null
-          p_reason?: string | null
+          p_draw_mode?: string
+          p_reason?: string
           p_tournament_table_id: string
         }
         Returns: Json
       }
-      ops_create_tournament: {
+      close_tournament_table_v3: {
         Args: {
-          p_buy_in: number
-          p_club_id: string
-          p_game_type?: string
-          p_late_reg_close_level?: number
-          p_minutes_per_level: number
-          p_name: string
-          p_start_time: string
-          p_starting_stack: number
+          p_expected_revision: number
+          p_request_id: string
+          p_tournament_table_id: string
         }
         Returns: Json
       }
-      ops_update_tournament: {
+      close_tournament_table_v4: {
         Args: {
-          p_buy_in: number
-          p_late_reg_close_level?: number
-          p_minutes_per_level: number
-          p_name: string
-          p_start_time: string
-          p_starting_stack: number
-          p_tournament_id: string
-        }
-        Returns: Json
-      }
-      ops_update_tournament_live: {
-        Args: {
-          p_blinds?: string | null
-          p_level: number
-          p_players_remaining: number
-          p_reason?: string | null
-          p_status: string
-          p_tournament_id: string
-        }
-        Returns: Json
-      }
-      ops_delete_tournament_safe: {
-        Args: { p_reason?: string | null; p_tournament_id: string }
-        Returns: Json
-      }
-      ops_create_offline_buyin_and_seat: {
-        Args: {
-          p_draw_mode?: string
-          p_idempotency_key: string
-          p_phone?: string | null
-          p_player_name: string
-          p_tournament_id: string
+          p_expected_revision: number
+          p_request_id: string
+          p_tournament_table_id: string
         }
         Returns: Json
       }
       club_local_date: { Args: { p_club_id: string }; Returns: string }
+      commit_historical_tournament_settlement_display_outcome: {
+        Args: {
+          p_actor_user_id: string
+          p_expected_source_chain_hash: string
+          p_expected_source_revision: number
+          p_hand_id: string
+          p_idempotency_key: string
+          p_outcome_hash: string
+          p_public_outcome: Json
+          p_request_hash: string
+        }
+        Returns: Json
+      }
+      commit_tournament_settlement_outcome: {
+        Args: {
+          p_actor_user_id: string
+          p_edit: Json
+          p_expected_source_chain_hash: string
+          p_expected_source_revision: number
+          p_final_stacks: Json
+          p_hand_changes: Json
+          p_hand_id: string
+          p_idempotency_key: string
+          p_outcome_hash: string
+          p_public_outcome: Json
+          p_request_hash: string
+          p_settlement_revision: number
+        }
+        Returns: Json
+      }
+      commit_tracker_hand_correction_outcome: {
+        Args: {
+          p_actor_user_id: string
+          p_correction_reason: string
+          p_edit: Json
+          p_expected_source_chain_hash: string
+          p_expected_source_revision: number
+          p_final_stacks: Json
+          p_hand_changes: Json
+          p_hand_id: string
+          p_idempotency_key: string
+          p_outcome_hash: string
+          p_public_outcome: Json
+          p_request_hash: string
+          p_settlement_revision: number
+        }
+        Returns: Json
+      }
+      commit_tracker_historical_display_outcome_v2: {
+        Args: {
+          p_actor_kind: string
+          p_actor_user_id: string
+          p_expected_source_chain_hash: string
+          p_expected_source_revision: number
+          p_hand_id: string
+          p_idempotency_key: string
+          p_lease_token?: string
+          p_outcome_hash: string
+          p_public_outcome: Json
+          p_request_hash: string
+        }
+        Returns: Json
+      }
+      commit_tracker_voice_board_v0: {
+        Args: {
+          p_idempotency_key: string
+          p_trace_id: string
+          p_voice_event_id: string
+        }
+        Returns: Json
+      }
+      commit_tracker_voice_finish_v0: {
+        Args: {
+          p_actor_user_id: string
+          p_expected_state_version: string
+          p_final_transcript: string
+          p_hand_id: string
+          p_idempotency_key: string
+          p_provider_event_id: string
+          p_provider_model: string
+          p_provider_name: string
+          p_record_payload: Json
+          p_settlement_digest: string
+          p_settlement_origin: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+          p_trace_id: string
+        }
+        Returns: Json
+      }
+      commit_tracker_voice_hole_cards_v0: {
+        Args: {
+          p_actor_user_id: string
+          p_expected_state_version: string
+          p_hand_id: string
+          p_hole_cards: Json
+          p_idempotency_key: string
+          p_provider_event_id: string
+          p_provider_model: string
+          p_provider_name: string
+          p_seat_number: number
+          p_tournament_id: string
+          p_tournament_table_id: string
+          p_trace_id: string
+        }
+        Returns: Json
+      }
       complete_dealer_break: {
         Args: { p_attendance_id: string }
+        Returns: Json
+      }
+      complete_dealer_payroll_statement_delivery_target: {
+        Args: {
+          p_dispatch_token: string
+          p_pdf_hash: string
+          p_provider_code?: string
+          p_target_id: string
+        }
+        Returns: Json
+      }
+      complete_dealer_payroll_statement_pdf: {
+        Args: {
+          p_generation_token: string
+          p_pdf_hash: string
+          p_render_version: string
+          p_statement_id: string
+        }
+        Returns: Json
+      }
+      complete_dealer_shortage_alert_notification: {
+        Args: {
+          p_claim_id: string
+          p_delivered: boolean
+          p_incident_id: string
+        }
         Returns: Json
       }
       complete_rotation_slot: {
@@ -14009,7 +21339,31 @@ export type Database = {
         }
         Returns: Json
       }
+      correct_tracker_historical_hand_blinds: {
+        Args: {
+          p_actor_user_id: string
+          p_ante: number
+          p_big_blind: number
+          p_evidence: Json
+          p_expected_source_revision: number
+          p_hand_id: string
+          p_idempotency_key: string
+          p_level_id: string
+          p_level_number: number
+          p_reason: string
+          p_small_blind: number
+        }
+        Returns: Json
+      }
       count_available_dealers: { Args: { p_club_id: string }; Returns: number }
+      create_dealer_payroll_statement_delivery_operation: {
+        Args: {
+          p_club_id: string
+          p_payroll_period_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       create_offline_buyin_and_seat: {
         Args: {
           p_buy_in: number
@@ -14043,6 +21397,18 @@ export type Database = {
       dealer_check_out: { Args: { p_assignment_id: string }; Returns: Json }
       dealer_confirm_shift: { Args: { p_assignment_id: string }; Returns: Json }
       dealer_control_club_ids: { Args: { _user_id: string }; Returns: string[] }
+      dealer_phone_reconcile_room_state: {
+        Args: {
+          p_admin_override?: boolean
+          p_corrections: Json
+          p_displaced?: Json
+          p_dry_run?: boolean
+          p_effective_at: string
+          p_expected_club_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
       dealer_request_leave_or_swap: {
         Args: {
           p_dealer_id: string
@@ -14085,6 +21451,7 @@ export type Database = {
         Args: { p_stale_after_hours?: number }
         Returns: number
       }
+      dispatch_public_spectator_projection_v2: { Args: never; Returns: number }
       edit_completed_hand: {
         Args: {
           p_actions?: Json
@@ -14101,6 +21468,20 @@ export type Database = {
       enable_audit_for_stuck_rows: {
         Args: { p_club_id: string; p_min_overdue_min?: number }
         Returns: number
+      }
+      end_breaks_on_demand: {
+        Args: {
+          p_club_id: string
+          p_max_count?: number
+          p_min_rest_minutes?: number
+        }
+        Returns: {
+          attendance_id: string
+          break_id: string
+          break_start: string
+          dealer_name: string
+          rested_minutes: number
+        }[]
       }
       end_dealer_break: {
         Args: { p_attendance_id: string; p_break_id: string }
@@ -14149,11 +21530,60 @@ export type Database = {
         }
         Returns: boolean
       }
+      fail_dealer_payroll_statement_delivery_target: {
+        Args: {
+          p_dispatch_token: string
+          p_outcome?: string
+          p_provider_code: string
+          p_retry_after_seconds?: number
+          p_target_id: string
+        }
+        Returns: Json
+      }
+      fail_dealer_payroll_statement_pdf: {
+        Args: {
+          p_error_code: string
+          p_generation_token: string
+          p_statement_id: string
+        }
+        Returns: Json
+      }
+      fail_public_spectator_projection_v2: {
+        Args: {
+          p_component: string
+          p_error: string
+          p_fencing_token: string
+          p_group_key: string
+          p_tournament_id: string
+        }
+        Returns: undefined
+      }
       fill_dealer_id: {
         Args: {
           p_assignment_id: string
           p_expected_version: number
           p_new_attendance_id?: string
+        }
+        Returns: Json
+      }
+      finalize_full_time_payroll_statement: {
+        Args: {
+          p_club_id: string
+          p_dealer_id: string
+          p_payroll_period_id: string
+          p_reason?: string
+          p_replaces_statement_id?: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      finalize_part_time_payroll_statement: {
+        Args: {
+          p_club_id: string
+          p_dealer_id: string
+          p_reason?: string
+          p_replaces_statement_id?: string
+          p_request_id: string
         }
         Returns: Json
       }
@@ -14170,11 +21600,84 @@ export type Database = {
         }
         Returns: Json
       }
+      finish_process_swing_dispatch: {
+        Args: {
+          p_business_state: string
+          p_club_id: string
+          p_diagnostics?: Json
+          p_error_code?: string
+          p_request_id: string
+          p_run_id: string
+        }
+        Returns: Json
+      }
+      finish_tracker_historical_display_job: {
+        Args: {
+          p_error_code?: string
+          p_hand_id: string
+          p_lease_token: string
+          p_source_revision: number
+          p_status: string
+        }
+        Returns: boolean
+      }
+      floor_apply_tournament_redraw_v1: {
+        Args: { p_batch_id: string; p_request_id: string }
+        Returns: Json
+      }
+      floor_assign_entry_to_seat: {
+        Args: {
+          p_entry_id: string
+          p_expected_revision: number
+          p_request_id: string
+          p_seat_number: number
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      floor_assign_entry_to_seat_v4: {
+        Args: {
+          p_entry_id: string
+          p_expected_revision: number
+          p_request_id: string
+          p_seat_number: number
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
       floor_assign_player_to_seat: {
         Args: {
           p_player_name: string
           p_seat_number: number
           p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      floor_break_table_v3: {
+        Args: {
+          p_draw_mode?: string
+          p_expected_revision: number
+          p_request_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      floor_break_table_v4: {
+        Args: {
+          p_draw_mode?: string
+          p_expected_revision: number
+          p_request_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      floor_break_table_v5: {
+        Args: {
+          p_draw_mode?: string
+          p_expected_revision: number
+          p_plan_hash?: string
+          p_request_id: string
           p_tournament_table_id: string
         }
         Returns: Json
@@ -14188,9 +21691,157 @@ export type Database = {
         }
         Returns: Json
       }
+      floor_bust_player_v3: {
+        Args: {
+          p_entry_id: string
+          p_expected_chip_count: number
+          p_expected_control_epoch: number
+          p_expected_revision: number
+          p_reason?: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      floor_cancel_pending_tracker_move_v1: {
+        Args: { p_pending_move_id: string }
+        Returns: Json
+      }
       floor_club_ids: { Args: { _user_id: string }; Returns: string[] }
+      floor_continue_tournament_redraw_v1: {
+        Args: {
+          p_batch_id: string
+          p_expected_redraw_revision: number
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      floor_control_tournament_clock: {
+        Args: {
+          p_action: string
+          p_delta_seconds?: number
+          p_expected_control_revision?: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      floor_free_sit_player_v1: {
+        Args: {
+          p_entry_id: string
+          p_expected_chip_count: number
+          p_expected_control_epoch: number
+          p_expected_revision: number
+          p_reason?: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      floor_open_tournament_table_v2: {
+        Args: {
+          p_control_mode: string
+          p_table_number: number
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      floor_open_tournament_table_v3: {
+        Args: {
+          p_control_mode: string
+          p_game_table_id: string
+          p_request_id: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      floor_plan_break_table_v1: {
+        Args: {
+          p_draw_mode?: string
+          p_expected_revision: number
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      floor_plan_tournament_redraw_v1: {
+        Args: {
+          p_game_table_ids: string[]
+          p_request_id: string
+          p_target_max_seats: number
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      floor_queue_tracker_move_v1: {
+        Args: {
+          p_destination_seat_number: number
+          p_destination_tournament_table_id: string
+          p_entry_id: string
+          p_expected_destination_revision: number
+          p_expected_source_revision: number
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      floor_restore_busted_player_to_seat_v3: {
+        Args: {
+          p_entry_id: string
+          p_expected_control_epoch: number
+          p_expected_revision: number
+          p_request_id: string
+          p_to_seat_number: number
+          p_to_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      floor_restore_busted_player_to_seat_v4: {
+        Args: {
+          p_entry_id: string
+          p_expected_control_epoch: number
+          p_expected_revision: number
+          p_request_id: string
+          p_to_seat_number: number
+          p_to_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      floor_set_table_control_mode: {
+        Args: {
+          p_control_mode: string
+          p_expected_control_revision: number
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      floor_set_table_control_mode_v3: {
+        Args: {
+          p_control_mode: string
+          p_expected_revision: number
+          p_request_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      floor_set_table_seat_lock_v1: {
+        Args: {
+          p_expected_revision: number
+          p_locked: boolean
+          p_reason: string
+          p_request_id: string
+          p_seat_number: number
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
       floor_start_tournament_clock: {
         Args: { p_tournament_id: string }
+        Returns: Json
+      }
+      floor_update_tournament_seat_chip: {
+        Args: {
+          p_chip_count: number
+          p_expected_chip_count: number
+          p_seat_id: string
+          p_tournament_id: string
+        }
         Returns: Json
       }
       fn_compute_staking_payouts: {
@@ -14375,6 +22026,10 @@ export type Database = {
         Returns: Json
       }
       gen_escrow_reference: { Args: never; Returns: string }
+      get_accountant_capabilities: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
       get_audit_log_count: { Args: { p_club_id: string }; Returns: number }
       get_available_attendance: {
         Args: { p_club_id: string }
@@ -14394,17 +22049,6 @@ export type Database = {
       get_club_finance_summary: {
         Args: { p_club_id?: string; p_from: string; p_to: string }
         Returns: Json
-      }
-      get_latest_owner_daily_digest_artifact: {
-        Args: { p_business_date?: string; p_club_id: string }
-        Returns: Json
-      }
-      list_owner_daily_digest_clubs: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          club_id: string
-          club_name: string
-        }[]
       }
       get_club_payout_liability: {
         Args: { p_club_id?: string; p_from: string; p_to: string }
@@ -14436,6 +22080,25 @@ export type Database = {
         }
         Returns: Json
       }
+      get_club_table_inventory: {
+        Args: { p_club_id: string }
+        Returns: {
+          active_dealer_assignment_id: string
+          availability_status: string
+          control_epoch: number
+          control_mode: string
+          game_table_id: string
+          operational_status: string
+          revision: number
+          session_type: string
+          table_name: string
+          table_number: number
+          table_session_id: string
+          tournament_id: string
+          tournament_table_id: string
+          tournament_table_status: string
+        }[]
+      }
       get_color_up_history: { Args: { p_tournament_id: string }; Returns: Json }
       get_current_chip_inventory: {
         Args: { p_tournament_id: string }
@@ -14462,6 +22125,14 @@ export type Database = {
           table_id: string
         }[]
       }
+      get_dealer_mass_open_rollout: {
+        Args: { p_expected_club_id: string }
+        Returns: Json
+      }
+      get_dealer_open_operation: {
+        Args: { p_expected_club_id: string; p_operation_id: string }
+        Returns: Json
+      }
       get_dealer_payroll: {
         Args: { p_club_id: string; p_from_date: string; p_to_date: string }
         Returns: {
@@ -14482,11 +22153,36 @@ export type Database = {
           total_swings: number
         }[]
       }
+      get_dealer_payroll_statement: {
+        Args: { p_statement_id: string }
+        Returns: Json
+      }
+      get_dealer_payroll_statement_delivery_operation: {
+        Args: { p_operation_id: string }
+        Returns: Json
+      }
+      get_dealer_payroll_statement_delivery_rollout: {
+        Args: { p_expected_club_id: string }
+        Returns: Json
+      }
+      get_dealer_payroll_statement_rollout: {
+        Args: { p_expected_club_id: string }
+        Returns: Json
+      }
       get_dealer_pool_snapshot: {
         Args: { p_club_id: string; p_table_type?: string }
         Returns: Json
       }
+      get_dealer_pt_wage_global_accrual_policy: { Args: never; Returns: Json }
       get_dealer_swing_health: { Args: { p_club_ids: string[] }; Returns: Json }
+      get_dealer_swing_phone_rollout: {
+        Args: { p_expected_club_id: string }
+        Returns: Json
+      }
+      get_dealer_tour_close_readiness_v1: {
+        Args: { p_club_id: string; p_tour_id: string }
+        Returns: Json
+      }
       get_dealer_worked_times: {
         Args: { p_shift_date: string }
         Returns: {
@@ -14518,6 +22214,123 @@ export type Database = {
           tier_3_skip_fatigue_cap: boolean
         }[]
       }
+      get_floor_pending_tracker_moves_v1: {
+        Args: { p_tournament_id: string }
+        Returns: {
+          destination_seat_number: number
+          destination_tournament_table_id: string
+          entry_id: string
+          pending_move_id: string
+          requested_at: string
+          resolution_reason: string
+          source_tournament_table_id: string
+          status: string
+        }[]
+      }
+      get_floor_restorable_entries_v3: {
+        Args: { p_tournament_id: string }
+        Returns: {
+          current_stack: number
+          display_name: string
+          entry_id: string
+          entry_no: number
+          player_id: string
+        }[]
+      }
+      get_floor_seatable_entries: {
+        Args: { p_tournament_id: string }
+        Returns: {
+          current_stack: number
+          display_name: string
+          entry_id: string
+          entry_no: number
+          player_id: string
+          registration_id: string
+        }[]
+      }
+      get_floor_table_v3_preflight: {
+        Args: { p_club_id: string }
+        Returns: {
+          details: Json
+          entity_id: string
+          entity_type: string
+          finding_code: string
+        }[]
+      }
+      get_floor_tournament_table_inventory_v1: {
+        Args: { p_tournament_id: string }
+        Returns: {
+          availability_status: string
+          control_epoch: number
+          control_mode: string
+          game_table_id: string
+          max_seats: number
+          operational_status: string
+          revision: number
+          table_name: string
+          table_number: number
+          table_session_id: string
+          tournament_table_id: string
+        }[]
+      }
+      get_floor_tournament_table_roster_v3: {
+        Args: { p_tournament_id: string }
+        Returns: {
+          active_dealer_assignment_id: string
+          control_epoch: number
+          control_mode: string
+          game_table_id: string
+          seats: Json
+          session_closed_at: string
+          session_revision: number
+          table_name: string
+          table_number: number
+          table_session_id: string
+          tournament_id: string
+          tournament_table_id: string
+          tournament_table_status: string
+        }[]
+      }
+      get_floor_tournament_table_roster_v4: {
+        Args: { p_tournament_id: string }
+        Returns: {
+          active_dealer_assignment_id: string
+          control_epoch: number
+          control_mode: string
+          game_table_id: string
+          max_seats: number
+          seat_locks: Json
+          seats: Json
+          session_closed_at: string
+          session_revision: number
+          table_name: string
+          table_number: number
+          table_session_id: string
+          tournament_id: string
+          tournament_table_id: string
+          tournament_table_status: string
+        }[]
+      }
+      get_floor_tournament_table_roster_v5: {
+        Args: { p_tournament_id: string }
+        Returns: {
+          active_dealer_assignment_id: string
+          control_epoch: number
+          control_mode: string
+          game_table_id: string
+          max_seats: number
+          seat_locks: Json
+          seats: Json
+          session_closed_at: string
+          session_revision: number
+          table_name: string
+          table_number: number
+          table_session_id: string
+          tournament_id: string
+          tournament_table_id: string
+          tournament_table_status: string
+        }[]
+      }
       get_invite_preview: {
         Args: { _token: string }
         Returns: {
@@ -14534,6 +22347,10 @@ export type Database = {
         Args: { p_tournament_id: string }
         Returns: Json
       }
+      get_latest_owner_daily_digest_artifact: {
+        Args: { p_business_date?: string; p_club_id: string }
+        Returns: Json
+      }
       get_member_history: { Args: { p_member_id: string }; Returns: Json }
       get_my_dealer_payroll: {
         Args: { p_dealer_id: string; p_month?: number; p_year?: number }
@@ -14548,15 +22365,122 @@ export type Database = {
           club_id: string
         }[]
       }
+      get_my_ops_capability_scope: {
+        Args: never
+        Returns: {
+          can_accountant: boolean
+          can_cashier: boolean
+          can_chip_master: boolean
+          can_dealer_control: boolean
+          can_floor: boolean
+          can_fnb_cashier: boolean
+          can_fnb_kitchen: boolean
+          can_fnb_server: boolean
+          can_marketer: boolean
+          can_owner: boolean
+          can_tracker: boolean
+          club_id: string
+        }[]
+      }
+      get_my_ops_global_capability: {
+        Args: never
+        Returns: {
+          is_super_admin: boolean
+        }[]
+      }
       get_my_pt_wage: { Args: { p_dealer_id: string }; Returns: Json }
       get_my_staff_salary: { Args: { p_staff_id: string }; Returns: Json }
       get_next_hand_number: {
         Args: { p_table_id: string; p_tournament_id: string }
         Returns: number
       }
+      get_ops_intelligence_context_v1: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
+      get_ops_intelligence_timeline_v1: {
+        Args: { p_club_id: string; p_tournament_id: string }
+        Returns: Json
+      }
+      get_ops_registration_pace_q0: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
+      get_ops_sepay_read_state_q0: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
       get_player_intelligence: { Args: { p_player_id?: string }; Returns: Json }
+      get_process_swing_due_club_ids: { Args: never; Returns: string[] }
+      get_public_spectator_projection_source_v2: {
+        Args: {
+          p_component: string
+          p_fencing_token: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      get_public_tournament_event_snapshot: {
+        Args: { p_tournament_id: string }
+        Returns: Json
+      }
+      get_public_tournament_hand_catalog_v2: {
+        Args: {
+          p_limit?: number
+          p_tournament_id: string
+          p_tournament_table_id?: string
+        }
+        Returns: Json
+      }
+      get_public_tournament_hand_v2: {
+        Args: { p_hand_id: string; p_tournament_id: string }
+        Returns: Json
+      }
+      get_public_tournament_redraw_v1: {
+        Args: { p_tournament_id: string }
+        Returns: Json
+      }
+      get_public_tournament_settlement: {
+        Args: { p_hand_id: string }
+        Returns: Json
+      }
+      get_public_tournament_table_hand_v2: {
+        Args: {
+          p_hand_id: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      get_public_tournament_table_history_v2: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_limit?: number
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      get_public_tournament_table_live_or_last_hand_v2: {
+        Args: { p_tournament_id: string; p_tournament_table_id: string }
+        Returns: Json
+      }
+      get_public_tournament_viewer_snapshot_v2: {
+        Args: {
+          p_known_revisions?: Json
+          p_sections?: string[]
+          p_table_ids?: string[]
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
       get_rotation_board: { Args: { p_club_id: string }; Returns: Json }
       get_seats_for_draw: { Args: { p_tournament_id: string }; Returns: Json }
+      get_series_club_live_pulse_v1: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
       get_shift_payroll_summary: {
         Args: { p_club_id: string; p_shift_date: string }
         Returns: {
@@ -14601,6 +22525,17 @@ export type Database = {
         Returns: Json
       }
       get_tournament_clock: { Args: { p_tournament_id: string }; Returns: Json }
+      get_tournament_close_readiness_v1: {
+        Args: { p_tournament_id: string }
+        Returns: Json
+      }
+      get_tournament_historical_display_source_hash: {
+        Args: { p_hand_id: string }
+        Returns: {
+          source_chain_hash: string
+          source_revision: number
+        }[]
+      }
       get_tournament_leaderboard: {
         Args: { p_tournament_id: string }
         Returns: Json
@@ -14617,15 +22552,87 @@ export type Database = {
         Args: { p_tournament_id: string }
         Returns: Json
       }
+      get_tournament_settlement_source_hash: {
+        Args: { p_hand_id: string }
+        Returns: {
+          affected_hand_count: number
+          source_chain_hash: string
+          source_revision: number
+        }[]
+      }
       get_tournament_state: { Args: { p_tournament_id: string }; Returns: Json }
       get_tournament_tables: {
         Args: { p_tournament_id: string }
         Returns: Json
       }
+      get_tracker_hand_input_tables_v3: {
+        Args: { p_tournament_id: string }
+        Returns: Json
+      }
+      get_tracker_historical_display_commit_receipt: {
+        Args: {
+          p_actor_user_id: string
+          p_expected_outcome_hash: string
+          p_expected_source_chain_hash: string
+          p_expected_source_revision: number
+          p_hand_id: string
+          p_idempotency_key: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      get_tracker_historical_display_queue_status: {
+        Args: { p_tournament_id: string }
+        Returns: {
+          enqueued_at: string
+          hand_id: string
+          hand_number: number
+          last_error_code: string
+          queue_status: string
+          source_revision: number
+          updated_at: string
+        }[]
+      }
+      get_tracker_historical_display_snapshot: {
+        Args: { p_hand_id: string; p_tournament_id: string }
+        Returns: Json
+      }
+      get_tracker_table_context_v2: {
+        Args: { p_tournament_id: string; p_tournament_table_id: string }
+        Returns: Json
+      }
+      get_tracker_voice_runtime_context: {
+        Args: { p_tournament_id: string; p_tournament_table_id: string }
+        Returns: Json
+      }
+      get_tracker_voice_validation_snapshot: {
+        Args: {
+          p_hand_id: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
       get_tv_display_state: { Args: { p_display_token: string }; Returns: Json }
+      get_tv_display_state_v2: {
+        Args: { p_display_token: string }
+        Returns: Json
+      }
+      get_tv_display_state_v3: {
+        Args: { p_display_token: string }
+        Returns: Json
+      }
+      get_tv_tournament_branding_v1: {
+        Args: { p_tournament_id: string }
+        Returns: Json
+      }
       grant_club_accountant: {
         Args: { p_club_id: string; p_user_id: string }
         Returns: Json
+      }
+      grant_owner_daily_digest_club_admin_scope: {
+        Args: { p_club_id: string; p_user_id: string }
+        Returns: undefined
       }
       has_role: {
         Args: {
@@ -14728,6 +22735,38 @@ export type Database = {
         Args: { p_tournament_id: string }
         Returns: boolean
       }
+      is_valid_tv_layout_config: { Args: { p_value: Json }; Returns: boolean }
+      list_full_time_payroll_statements_for_period: {
+        Args: { p_club_id: string; p_payroll_period_id: string }
+        Returns: Json
+      }
+      list_ops_clubs_for_super_admin: {
+        Args: {
+          p_after_id?: string
+          p_after_name?: string
+          p_limit?: number
+          p_search?: string
+        }
+        Returns: {
+          club_id: string
+          club_name: string
+        }[]
+      }
+      list_owner_daily_digest_clubs: {
+        Args: never
+        Returns: {
+          club_id: string
+          club_name: string
+        }[]
+      }
+      list_tracker_floor_alerts: {
+        Args: { p_status?: string; p_tournament_id: string }
+        Returns: Json
+      }
+      list_tracker_tables_v2: {
+        Args: { p_tournament_id: string }
+        Returns: Json
+      }
       lock_rotation_slot: {
         Args: { p_schedule_id: string; p_schedule_version: number }
         Returns: Json
@@ -14744,6 +22783,15 @@ export type Database = {
         }
         Returns: Json
       }
+      mark_dealer_payroll_statement_pdf_rendered: {
+        Args: {
+          p_pdf_hash: string
+          p_render_version: string
+          p_statement_id: string
+          p_storage_path: string
+        }
+        Returns: Json
+      }
       mark_payroll_paid: {
         Args: {
           p_note?: string
@@ -14751,6 +22799,15 @@ export type Database = {
           p_payment_ref: string
           p_period_id: string
           p_user_id: string
+        }
+        Returns: boolean
+      }
+      mark_payroll_paid_secure: {
+        Args: {
+          p_note?: string
+          p_paid_at?: string
+          p_payment_ref: string
+          p_period_id: string
         }
         Returns: boolean
       }
@@ -14924,7 +22981,7 @@ export type Database = {
       }
       move_player_seat: {
         Args: {
-          p_actor_user_id: string
+          p_actor_user_id?: string
           p_entry_id: string
           p_reason?: string
           p_to_seat_number: number
@@ -14932,8 +22989,204 @@ export type Database = {
         }
         Returns: Json
       }
+      move_player_seat_v2: {
+        Args: {
+          p_entry_id: string
+          p_expected_destination_revision: number
+          p_expected_source_revision: number
+          p_request_id: string
+          p_to_seat_number: number
+          p_to_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      move_player_seat_v3: {
+        Args: {
+          p_entry_id: string
+          p_expected_destination_revision: number
+          p_expected_source_revision: number
+          p_request_id: string
+          p_to_seat_number: number
+          p_to_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      multi_day_approve_payout_correction_v1: {
+        Args: { p_approval_request_id: string; p_request_id: string }
+        Returns: Json
+      }
+      multi_day_bagging_state_v1: {
+        Args: { p_flight_tournament_id: string }
+        Returns: Json
+      }
+      multi_day_close_bagging_v1: {
+        Args: {
+          p_expected_day_version: number
+          p_flight_tournament_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      multi_day_correct_final_seed_v1: {
+        Args: {
+          p_corrected_stack: number
+          p_event_id: string
+          p_evidence_ref: string
+          p_expected_revision: number
+          p_player_id: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      multi_day_end_flight_v1: {
+        Args: {
+          p_day_number: number
+          p_flight_tournament_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      multi_day_equal_tie_entitlement_v1: {
+        Args: {
+          p_occupied_rank_amounts_vnd: number[]
+          p_tied_player_count: number
+        }
+        Returns: Json
+      }
+      multi_day_finalize_payout_v1: {
+        Args: {
+          p_event_id: string
+          p_expected_funding_revision: string
+          p_expected_payout_input_hash: string
+          p_expected_qualification_revision: string
+          p_expected_rules_version: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      multi_day_floor_read_v1: { Args: { p_event_id: string }; Returns: Json }
+      multi_day_lock_qualification_v1: {
+        Args: {
+          p_bag_ids: string[]
+          p_event_id: string
+          p_expected_source_hash: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      multi_day_payout_postfinal_state_v1: {
+        Args: { p_event_id: string }
+        Returns: Json
+      }
+      multi_day_payout_preview_v1: {
+        Args: { p_event_id: string }
+        Returns: Json
+      }
+      multi_day_qualification_preview_v1: {
+        Args: { p_event_id: string }
+        Returns: Json
+      }
+      multi_day_record_bag_v1: {
+        Args: {
+          p_bag_code: string
+          p_expected_revision: number
+          p_flight_tournament_id: string
+          p_player_id: string
+          p_request_id: string
+          p_total_value: number
+        }
+        Returns: Json
+      }
+      multi_day_record_overlay_v1:
+        | {
+            Args: {
+              p_adjusts_id: string
+              p_amount_vnd: number
+              p_event_id: string
+              p_evidence_ref: string
+              p_kind: string
+              p_reason: string
+              p_request_id: string
+              p_reverses_id: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_adjusts_id: string
+              p_amount_vnd: number
+              p_bank_transaction_id: string
+              p_event_id: string
+              p_evidence_ref: string
+              p_kind: string
+              p_reason: string
+              p_request_id: string
+              p_reverses_id: string
+            }
+            Returns: Json
+          }
+      multi_day_request_payout_adjustment_v1: {
+        Args: {
+          p_category: string
+          p_event_id: string
+          p_evidence_ref: string
+          p_proposed_delta_vnd: number
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      multi_day_request_payout_correction_v1: {
+        Args: {
+          p_delta_vnd: number
+          p_event_id: string
+          p_evidence_ref: string
+          p_expected_revision: string
+          p_kind: string
+          p_original_payment_id: string
+          p_participation_id: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      multi_day_seal_bag_v1: {
+        Args: {
+          p_expected_revision: number
+          p_flight_tournament_id: string
+          p_player_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      multi_day_seat_final_v1: {
+        Args: {
+          p_event_id: string
+          p_expected_seed_revision: number
+          p_player_id: string
+          p_request_id: string
+          p_seat_number: number
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      multi_day_set_qualification_rules_v1: {
+        Args: { p_event_id: string; p_min_cash_x: number; p_policy: string }
+        Returns: Json
+      }
+      multi_day_set_qualification_rules_v2: {
+        Args: {
+          p_day2_percent: number
+          p_event_id: string
+          p_min_cash_x: number
+          p_policy: string
+        }
+        Returns: Json
+      }
       normalize_phone: { Args: { p: string }; Returns: string }
       notify_expiring_commits: { Args: never; Returns: number }
+      observe_process_swing_cron: { Args: { p_limit?: number }; Returns: Json }
       op_claim_daily_chips: { Args: never; Returns: Json }
       op_create_open_table: {
         Args: {
@@ -15019,9 +23272,113 @@ export type Database = {
       }
       open_tournament_table: {
         Args: {
-          p_max_seats?: number | null
-          p_table_number?: number | null
+          p_max_seats?: number
+          p_table_number?: number
           p_tournament_id: string
+        }
+        Returns: Json
+      }
+      operator_check_in_dealers: {
+        Args: {
+          p_entries: Json
+          p_expected_club_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      operator_close_club_table_v2: {
+        Args: {
+          p_expected_revision: number
+          p_request_id: string
+          p_table_session_id: string
+        }
+        Returns: Json
+      }
+      operator_open_club_tables_v2: {
+        Args: {
+          p_game_table_ids: string[]
+          p_request_id: string
+          p_session_type: string
+        }
+        Returns: Json
+      }
+      operator_open_dealer_tables: {
+        Args: {
+          p_expected_club_id: string
+          p_request_id: string
+          p_shift_id: string
+          p_table_ids: string[]
+          p_table_type?: string
+        }
+        Returns: Json
+      }
+      operator_perform_swing: {
+        Args: {
+          p_assignment_id: string
+          p_expected_version: number
+          p_request_id: string
+          p_table_id: string
+          p_table_session_id: string
+        }
+        Returns: Json
+      }
+      ops_create_offline_buyin_and_seat: {
+        Args: {
+          p_draw_mode?: string
+          p_idempotency_key: string
+          p_phone?: string
+          p_player_name: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      ops_create_tournament: {
+        Args: {
+          p_buy_in: number
+          p_club_id: string
+          p_game_type?: string
+          p_late_reg_close_level?: number
+          p_minutes_per_level: number
+          p_name: string
+          p_start_time: string
+          p_starting_stack: number
+        }
+        Returns: Json
+      }
+      ops_delete_tournament_safe: {
+        Args: { p_reason?: string; p_tournament_id: string }
+        Returns: Json
+      }
+      ops_update_tournament: {
+        Args: {
+          p_buy_in: number
+          p_late_reg_close_level?: number
+          p_minutes_per_level: number
+          p_name: string
+          p_start_time: string
+          p_starting_stack: number
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      ops_update_tournament_live: {
+        Args: {
+          p_blinds?: string
+          p_level: number
+          p_players_remaining: number
+          p_reason?: string
+          p_status: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      pay_finalized_part_time_payroll_statement: {
+        Args: {
+          p_idempotency_key?: string
+          p_note?: string
+          p_payment_method: string
+          p_payment_reference?: string
+          p_statement_id: string
         }
         Returns: Json
       }
@@ -15135,6 +23492,29 @@ export type Database = {
         }
         Returns: string
       }
+      prepare_payroll_payment_secure: {
+        Args: { p_note?: string; p_payment_method: string; p_period_id: string }
+        Returns: string
+      }
+      preview_full_time_payroll_statement: {
+        Args: {
+          p_club_id: string
+          p_dealer_id: string
+          p_payroll_period_id: string
+        }
+        Returns: Json
+      }
+      publish_public_spectator_projection_v2: {
+        Args: {
+          p_component: string
+          p_fencing_token: string
+          p_group_key: string
+          p_payload: Json
+          p_source_vector: Json
+          p_tournament_id: string
+        }
+        Returns: boolean
+      }
       publish_shift_run: { Args: { p_run_id: string }; Returns: Json }
       re_enter_tournament: {
         Args: {
@@ -15178,6 +23558,19 @@ export type Database = {
         }
         Returns: boolean
       }
+      reconcile_payroll_payment_secure: {
+        Args: {
+          p_note?: string
+          p_period_id: string
+          p_reconciliation_ref?: string
+        }
+        Returns: boolean
+      }
+      reconcile_tracker_voice_floor_config: {
+        Args: { p_table_session_id: string }
+        Returns: Json
+      }
+      reconcile_tracker_voice_floor_configs: { Args: never; Returns: Json }
       record_action: {
         Args: {
           p_action_amount?: number
@@ -15250,22 +23643,12 @@ export type Database = {
       }
       redraw_tournament: {
         Args: {
-          p_draw_mode?: string | null
+          p_draw_mode?: string
           p_dry_run?: boolean
-          p_eligible_entry_ids?: string[] | null
+          p_eligible_entry_ids?: string[]
           p_mode: string
-          p_target_table_count?: number | null
+          p_target_table_count?: number
           p_tournament_id: string
-        }
-        Returns: Json
-      }
-      restore_busted_player_to_seat: {
-        Args: {
-          p_actor_user_id?: string | null
-          p_entry_id: string
-          p_reason?: string
-          p_to_seat_number: number
-          p_to_tournament_table_id: string
         }
         Returns: Json
       }
@@ -15307,12 +23690,77 @@ export type Database = {
         Args: { p_released_by?: string; p_table_id: string }
         Returns: Json
       }
+      report_tracker_floor_operational_alert: {
+        Args: {
+          p_action_id: string
+          p_hand_id: string
+          p_kind: string
+          p_message: string
+          p_request_id: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      report_tracker_floor_operational_alert_v2: {
+        Args: {
+          p_action_id: string
+          p_expected_action: Json
+          p_hand_id: string
+          p_kind: string
+          p_message: string
+          p_request_id: string
+          p_source_revision: number
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      report_tracker_wrong_action_v1: {
+        Args: {
+          p_action_id: string
+          p_expected_action: Json
+          p_expected_source_revision: number
+          p_hand_id: string
+          p_request_id: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      report_tracker_wrong_hand_v1: {
+        Args: {
+          p_expected_source_revision: number
+          p_hand_id: string
+          p_request_id: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
       reserve_empty_table_for_dealer: {
         Args: {
           p_attendance_id: string
           p_club_id: string
           p_predicted_arrival: string
           p_table_id: string
+        }
+        Returns: Json
+      }
+      resolve_sepay_account_club_v1: {
+        Args: { p_account_number: string }
+        Returns: {
+          resolution_state: string
+          resolved_club_id: string
+        }[]
+      }
+      restore_busted_player_to_seat: {
+        Args: {
+          p_actor_user_id?: string
+          p_entry_id: string
+          p_reason?: string
+          p_to_seat_number: number
+          p_to_tournament_table_id: string
         }
         Returns: Json
       }
@@ -15329,6 +23777,128 @@ export type Database = {
         Args: { p_club_id: string; p_user_id: string }
         Returns: Json
       }
+      revoke_club_operator_invite: {
+        Args: { p_actor_id: string; p_invite_id: string }
+        Returns: {
+          invite_id: string
+          invite_status: string
+          outcome: string
+        }[]
+      }
+      revoke_owner_daily_digest_club_admin_scope: {
+        Args: { p_club_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      run_process_swing_cron: { Args: never; Returns: number }
+      satellite_approve_redemption_reversal_v1: {
+        Args: {
+          p_approved_reason: string
+          p_correction_request_id: string
+          p_request_id: string
+          p_ticket_id: string
+        }
+        Returns: Json
+      }
+      satellite_award_plan_v1: {
+        Args: {
+          p_awards: Json
+          p_lock?: boolean
+          p_source_tournament_id: string
+          p_target_tournament_id: string
+        }
+        Returns: Json
+      }
+      satellite_award_plan_v2: {
+        Args: {
+          p_awards: Json
+          p_lock?: boolean
+          p_source_tournament_id: string
+          p_target_tournament_id: string
+        }
+        Returns: Json
+      }
+      satellite_change_ticket_secret_v1: {
+        Args: {
+          p_action: string
+          p_current_code: string
+          p_reason: string
+          p_request_id: string
+          p_ticket_id: string
+        }
+        Returns: Json
+      }
+      satellite_get_award_candidates_v1: {
+        Args: { p_source_tournament_id: string }
+        Returns: Json
+      }
+      satellite_get_award_plan_v1: {
+        Args: { p_source_tournament_id: string }
+        Returns: Json
+      }
+      satellite_get_issuance_v1: {
+        Args: { p_source_tournament_id: string }
+        Returns: Json
+      }
+      satellite_get_redemption_receipt_v1: {
+        Args: { p_request_id: string }
+        Returns: Json
+      }
+      satellite_issue_tickets_v1: {
+        Args: { p_results: Json; p_source_tournament_id: string }
+        Returns: Json
+      }
+      satellite_issue_tickets_v2: {
+        Args: {
+          p_request_id: string
+          p_results: Json
+          p_source_tournament_id: string
+        }
+        Returns: Json
+      }
+      satellite_lock_award_plan_v1: {
+        Args: {
+          p_awards: Json
+          p_expected_preview_revision: string
+          p_request_id: string
+          p_source_tournament_id: string
+          p_target_tournament_id: string
+        }
+        Returns: Json
+      }
+      satellite_redeem_ticket_v1: {
+        Args: {
+          p_current_code: string
+          p_redeemed_for_player_id: string
+          p_request_id: string
+          p_source_entry_id?: string
+        }
+        Returns: Json
+      }
+      satellite_request_redemption_correction_v1: {
+        Args: { p_reason: string; p_request_id: string; p_ticket_id: string }
+        Returns: Json
+      }
+      satellite_single_ticket_awards_v2: {
+        Args: { p_awards: Json }
+        Returns: boolean
+      }
+      satellite_source_funding_preview_v1: {
+        Args: {
+          p_awards: Json
+          p_source_tournament_id: string
+          p_target_tournament_id: string
+        }
+        Returns: Json
+      }
+      satellite_source_funding_preview_v2: {
+        Args: {
+          p_awards: Json
+          p_source_tournament_id: string
+          p_target_tournament_id: string
+        }
+        Returns: Json
+      }
+      satellite_verify_ticket_v1: { Args: { p_code: string }; Returns: Json }
       save_payroll_period: {
         Args: {
           p_club_id: string
@@ -15337,6 +23907,17 @@ export type Database = {
           p_payroll_rows: Json
           p_start_date: string
           p_user_id: string
+          p_year: number
+        }
+        Returns: string
+      }
+      save_payroll_period_secure: {
+        Args: {
+          p_club_id: string
+          p_end_date: string
+          p_month: number
+          p_payroll_rows: Json
+          p_start_date: string
           p_year: number
         }
         Returns: string
@@ -15353,6 +23934,42 @@ export type Database = {
       }
       save_tournament_prizes_v2: {
         Args: { p_reason: string; p_rows: Json; p_tournament_id: string }
+        Returns: Json
+      }
+      save_tv_branding_layout_v1: {
+        Args: {
+          p_bg_url: string
+          p_brand_name: string
+          p_club_id: string
+          p_layout: Json
+          p_logo_url: string
+        }
+        Returns: Json
+      }
+      save_tv_display_config_v1: {
+        Args: {
+          p_announcement: string
+          p_assigned_tournament_id: string
+          p_display_id: string
+          p_layout: string
+          p_name: string
+          p_zone: string
+        }
+        Returns: Json
+      }
+      save_tv_tournament_layout_v1: {
+        Args: {
+          p_bg_url: string
+          p_brand_name: string
+          p_expected_revision: number
+          p_layout: Json
+          p_logo_url: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      search_staff_link_candidates: {
+        Args: { p_club_id: string; p_limit?: number; p_query: string }
         Returns: Json
       }
       seat_day2_qualifiers: {
@@ -15425,6 +24042,35 @@ export type Database = {
         Returns: Json
       }
       sepay_set_system_actor: { Args: { p_actor_id: string }; Returns: Json }
+      series_approve_schedule_candidate_from_tournament_v1: {
+        Args: {
+          p_club_id: string
+          p_expected_duration_minutes: number
+          p_flights: number
+          p_gtd_vnd: number
+          p_prize_contribution_per_entry_vnd: number
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      series_approve_schedule_candidate_v1: {
+        Args: {
+          p_buy_in_vnd: number
+          p_capacity_state: string
+          p_club_id: string
+          p_collision_state: string
+          p_evidence_manifest: Json
+          p_expected_duration_minutes: number
+          p_flights: number
+          p_gtd_vnd: number
+          p_label_vi: string
+          p_option_id: string
+          p_prize_contribution_per_entry_vnd: number
+          p_source_kind: string
+          p_structure_state: string
+        }
+        Returns: Json
+      }
       series_capture_autosync: { Args: never; Returns: undefined }
       series_capture_autosync_club: {
         Args: { p_club_id: string }
@@ -15434,13 +24080,273 @@ export type Database = {
         Args: { p_club_id: string; p_limit?: number }
         Returns: Record<string, unknown>
       }
+      series_consume_copilot_rate_limit_v1: {
+        Args: { p_club_id: string; p_request_id: string }
+        Returns: Json
+      }
+      series_create_decision_packet_v1: {
+        Args: {
+          p_alternatives: Json
+          p_as_of_ts: string
+          p_assumptions: Json
+          p_campaign_observation_count: number
+          p_campaign_slice_manifest: Json
+          p_correction_reason: string
+          p_decision_horizon: string
+          p_decision_reason: string
+          p_event_id: string
+          p_forecast_snapshot_id: string
+          p_forecast_state: string
+          p_idempotency_key: string
+          p_known_information: Json
+          p_manual_expectation: number
+          p_owner_decision: string
+          p_public_action: string
+          p_public_evidence_manifest: Json
+          p_recommendation_source_kind: string
+          p_recommendation_source_ref: string
+          p_recommended_action: string
+          p_registration_observation_count: number
+          p_registration_slice_manifest: Json
+          p_source_cutoff: string
+          p_supersedes_packet_id: string
+          p_target_event_ts: string
+          p_target_metric: string
+          p_uncertainty_notes: string
+        }
+        Returns: {
+          alternatives: Json
+          as_of_ts: string
+          assumptions: Json
+          campaign_observation_count: number | null
+          campaign_slice_hash: string | null
+          campaign_slice_manifest: Json | null
+          club_id: string
+          content_hash: string | null
+          correction_reason: string | null
+          created_at: string
+          created_by: string
+          decision_horizon: string
+          decision_reason: string | null
+          draft_version: number
+          event_id: string
+          forecast_snapshot_id: string | null
+          forecast_state: string
+          frozen_at: string | null
+          frozen_by: string | null
+          id: string
+          idempotency_key: string
+          known_information: Json
+          known_information_hash: string
+          manual_expectation: number | null
+          owner_decision: string | null
+          packet_state: string
+          public_action: string | null
+          public_evidence_manifest: Json
+          public_evidence_manifest_hash: string
+          recommendation_source_kind: string | null
+          recommendation_source_ref: string | null
+          recommended_action: string | null
+          registration_observation_count: number | null
+          registration_slice_hash: string | null
+          registration_slice_manifest: Json | null
+          request_hash: string
+          schema_version: string
+          source_cutoff: string
+          supersedes_packet_id: string | null
+          target_event_ts: string
+          target_metric: string
+          uncertainty_notes: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "series_decision_packets_v1"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       series_event_in_club: {
         Args: { _club: string; _event: string }
         Returns: boolean
       }
+      series_freeze_decision_packet_v1: {
+        Args: { p_expected_draft_version: number; p_packet_id: string }
+        Returns: {
+          alternatives: Json
+          as_of_ts: string
+          assumptions: Json
+          campaign_observation_count: number | null
+          campaign_slice_hash: string | null
+          campaign_slice_manifest: Json | null
+          club_id: string
+          content_hash: string | null
+          correction_reason: string | null
+          created_at: string
+          created_by: string
+          decision_horizon: string
+          decision_reason: string | null
+          draft_version: number
+          event_id: string
+          forecast_snapshot_id: string | null
+          forecast_state: string
+          frozen_at: string | null
+          frozen_by: string | null
+          id: string
+          idempotency_key: string
+          known_information: Json
+          known_information_hash: string
+          manual_expectation: number | null
+          owner_decision: string | null
+          packet_state: string
+          public_action: string | null
+          public_evidence_manifest: Json
+          public_evidence_manifest_hash: string
+          recommendation_source_kind: string | null
+          recommendation_source_ref: string | null
+          recommended_action: string | null
+          registration_observation_count: number | null
+          registration_slice_hash: string | null
+          registration_slice_manifest: Json | null
+          request_hash: string
+          schema_version: string
+          source_cutoff: string
+          supersedes_packet_id: string | null
+          target_event_ts: string
+          target_metric: string
+          uncertainty_notes: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "series_decision_packets_v1"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      series_get_approved_schedule_candidates_v1: {
+        Args: { p_club_id: string; p_option_ids?: string[] }
+        Returns: Json
+      }
+      series_get_decision_event_state_v1: {
+        Args: { p_event_id: string }
+        Returns: Json
+      }
+      series_list_schedule_candidate_sources_v1: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
+      series_preview_schedule_candidate_v1: {
+        Args: { p_club_id: string; p_tournament_id: string }
+        Returns: Json
+      }
+      series_promote_native_event_actual_v1: {
+        Args: { p_event_id: string; p_idempotency_key: string }
+        Returns: Json
+      }
+      series_reconcile_event_actual_v1: {
+        Args: {
+          p_auto_revision_id: string
+          p_idempotency_key: string
+          p_manual_revision_id: string
+          p_reason: string
+          p_resolution: Json
+        }
+        Returns: Json
+      }
+      series_record_event_actual_v1: {
+        Args: {
+          p_correction_reason: string
+          p_entries_availability: string
+          p_entries_value: number
+          p_event_id: string
+          p_finality: string
+          p_idempotency_key: string
+          p_outcome_scope: string
+          p_overlay_amount_minor: number
+          p_overlay_availability: string
+          p_overlay_currency: string
+          p_overlay_scale: number
+          p_paid_places_availability: string
+          p_paid_places_value: number
+          p_prize_pool_amount_minor: number
+          p_prize_pool_availability: string
+          p_prize_pool_currency: string
+          p_prize_pool_scale: number
+          p_reentries_availability: string
+          p_reentries_value: number
+          p_registration_records_availability: string
+          p_registration_records_value: number
+          p_source_timestamp: string
+          p_source_timestamp_state: string
+          p_supersedes_revision_id: string
+          p_total_bullets_availability: string
+          p_total_bullets_value: number
+          p_unique_players_availability: string
+          p_unique_players_value: number
+        }
+        Returns: {
+          captured_at: string
+          captured_by: string
+          club_id: string
+          content_hash: string
+          correction_reason: string | null
+          entries_availability: string
+          entries_value: number | null
+          event_id: string
+          finality: string
+          id: string
+          idempotency_key: string
+          outcome_scope: string
+          overlay_amount_minor: number | null
+          overlay_availability: string
+          overlay_currency: string | null
+          overlay_scale: number | null
+          paid_places_availability: string
+          paid_places_value: number | null
+          prize_pool_amount_minor: number | null
+          prize_pool_availability: string
+          prize_pool_currency: string | null
+          prize_pool_scale: number | null
+          reconciles_auto_revision_id: string | null
+          reconciles_manual_revision_id: string | null
+          reconciliation_status: string
+          reentries_availability: string
+          reentries_value: number | null
+          registration_records_availability: string
+          registration_records_value: number | null
+          request_hash: string
+          schema_version: string
+          source_kind: string
+          source_timestamp: string | null
+          source_timestamp_state: string
+          supersedes_revision_id: string | null
+          total_bullets_availability: string
+          total_bullets_value: number | null
+          unique_players_availability: string
+          unique_players_value: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "series_event_actual_revisions_v1"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       series_snapshot_in_club: {
         Args: { _club: string; _snapshot: string }
         Returns: boolean
+      }
+      set_all_approved_dealer_pt_wage_accrual: {
+        Args: { p_reason: string; p_standby_accrual_enabled: boolean }
+        Returns: Json
+      }
+      set_dealer_pt_wage_accrual_policy: {
+        Args: {
+          p_club_id: string
+          p_effective_from?: string
+          p_reason?: string
+          p_standby_accrual_enabled: boolean
+        }
+        Returns: Json
       }
       set_rotation_slot_dealer: {
         Args: {
@@ -15498,10 +24404,12 @@ export type Database = {
         Args: { p_stale_threshold_hours?: number }
         Returns: Json
       }
+      staff_generate_link_code: { Args: { p_staff_id: string }; Returns: Json }
       staff_link_user: {
         Args: { p_staff_id: string; p_user_id: string }
         Returns: Json
       }
+      staff_redeem_link_code: { Args: { p_code: string }; Returns: Json }
       staff_upsert: {
         Args: {
           p_club_id: string
@@ -15530,6 +24438,29 @@ export type Database = {
         }
         Returns: Json
       }
+      start_tracker_hand_v2: {
+        Args: {
+          p_button_seat: number
+          p_expected_context_version: string
+          p_idempotency_key: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
+      start_tracker_hand_v3: {
+        Args: {
+          p_button_seat: number
+          p_control_epoch: number
+          p_created_by: string
+          p_hand_number: number
+          p_hand_time: string
+          p_table_session_id: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
       submit_staff_salary_month: {
         Args: {
           p_club_id: string
@@ -15544,6 +24475,10 @@ export type Database = {
         Args: { p_club_id: string; p_hours_back?: number }
         Returns: Json
       }
+      takeover_hand_lock: {
+        Args: { p_actor_user_id?: string; p_force?: boolean; p_hand_id: string }
+        Returns: Json
+      }
       tournament_break_all_tables: {
         Args: {
           p_club_id: string
@@ -15553,11 +24488,23 @@ export type Database = {
         Returns: Json
       }
       tracker_club_ids: { Args: { _user_id: string }; Returns: string[] }
+      tracker_enqueue_historical_display: {
+        Args: { p_hand_id: string }
+        Returns: undefined
+      }
       tracker_lock_blocks: {
         Args: { p_locked_at: string; p_locked_by: string; p_user_id: string }
         Returns: boolean
       }
       tracker_lock_ttl: { Args: never; Returns: string }
+      tracker_mark_prior_settlements_stale: {
+        Args: { p_changed_hand_id: string }
+        Returns: undefined
+      }
+      tracker_unified_ops_lock_tournament: {
+        Args: { p_tournament_id: string }
+        Returns: undefined
+      }
       transition_dealer_state: {
         Args: {
           p_attendance_id: string
@@ -15575,6 +24522,25 @@ export type Database = {
           p_user_id: string
         }
         Returns: boolean
+      }
+      transition_payroll_status_secure: {
+        Args: {
+          p_expected_status: string
+          p_new_status: string
+          p_period_id: string
+          p_rejection_reason?: string
+        }
+        Returns: boolean
+      }
+      transition_tracker_floor_alert: {
+        Args: {
+          p_alert_id: string
+          p_expected_version: number
+          p_idempotency_key: string
+          p_note: string
+          p_transition: string
+        }
+        Returns: Json
       }
       try_acquire_club_lock:
         | { Args: { p_club_id: string }; Returns: boolean }
@@ -15603,6 +24569,17 @@ export type Database = {
       tv_pair_begin: { Args: never; Returns: Json }
       tv_revoke_display: { Args: { p_display_id: string }; Returns: Json }
       undo_last_action: { Args: { p_hand_id: string }; Returns: Json }
+      undo_tracker_last_action_v1: {
+        Args: {
+          p_expected_action_id: string
+          p_expected_source_revision: number
+          p_hand_id: string
+          p_idempotency_key: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
       update_blind_structure: {
         Args: { p_levels: Json; p_tournament_id: string }
         Returns: Json
@@ -15642,8 +24619,50 @@ export type Database = {
         Returns: Json
       }
       validate_cards: { Args: { p_cards: Json }; Returns: string }
+      validate_tracker_table_writer_context_v3: {
+        Args: {
+          p_control_epoch: number
+          p_table_session_id: string
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
       verify_swing_queries: { Args: { p_club_id?: string }; Returns: Json }
+      void_dealer_payroll_statement: {
+        Args: { p_reason: string; p_statement_id: string }
+        Returns: Json
+      }
       void_last_hand: { Args: { p_hand_id: string }; Returns: Json }
+      worker_execute_pre_assigned_swing: {
+        Args: {
+          p_break_duration_minutes?: number
+          p_duration_minutes: number
+          p_expected_version: number
+          p_next_attendance_id: string
+          p_old_assignment_id: string
+          p_send_to_break?: boolean
+          p_swing_due_at: string
+          p_table_id: string
+          p_table_session_id: string
+        }
+        Returns: Json
+      }
+      worker_perform_swing: {
+        Args: {
+          p_assignment_id: string
+          p_break_duration_minutes?: number
+          p_duration_minutes?: number
+          p_expected_version?: number
+          p_max_break_minutes?: number
+          p_next_attendance_id?: string
+          p_rest_deficit_minutes?: number
+          p_send_to_break?: boolean
+          p_table_id: string
+          p_table_session_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role:
@@ -15803,12 +24822,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -15832,11 +24851,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -15857,11 +24876,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -15882,11 +24901,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -15899,11 +24918,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

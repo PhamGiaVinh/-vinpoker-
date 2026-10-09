@@ -10,11 +10,39 @@ import {
   assessShortageNotifySetting,
   assessSwingExecutionFailure,
   ensureLockOwnership,
+  fetchAutoSwingSettings,
   LockOwnershipLost,
   mergeDispatchOutcome,
 } from "./executionSafety.ts";
 
 const CLUB_ID = "22222222-2222-2222-2222-222222222222";
+
+Deno.test("automatic Swing settings fail closed on read failure or absent response", async () => {
+  for (const response of [{ data: null, error: { code: "503" } }, { data: null, error: null }]) {
+    await assertRejects(() => fetchAutoSwingSettings({
+      from: (name) => {
+        assertEquals(name, "club_settings");
+        return { select: async columns => {
+          assertEquals(columns, "club_id, auto_swing_enabled");
+          return response;
+        } };
+      },
+    }), Error, "auto_swing_state_unverified");
+  }
+});
+
+Deno.test("only explicit server ON permits automatic Swing", async () => {
+  for (const enabled of [true, false, null, undefined, "true", 1]) {
+    const settings = await fetchAutoSwingSettings({ from: () => ({
+      select: async () => ({ data: [{ club_id: CLUB_ID, auto_swing_enabled: enabled }], error: null }),
+    }) });
+    assertEquals(settings.get(CLUB_ID), enabled === true);
+    assertEquals(settings.get("missing-club") === true, false);
+  }
+  assertEquals((await fetchAutoSwingSettings({ from: () => ({
+    select: async () => ({ data: [], error: null }),
+  }) })).size, 0);
+});
 
 Deno.test("a reclaimed lease aborts remaining passes without a completed dispatch outcome", async () => {
   const passes: string[] = [];

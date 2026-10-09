@@ -187,7 +187,7 @@ function seriesEvent(eventId: string, eventDate: string, entries: number): Serie
 
 function operationInput(running: boolean): OpsLiveOperationInputV1 {
   return Object.freeze({ observedAt: "2026-06-01T00:00:00.000Z", asOf: null, availability: "exact", reasonCode: null, rows: Object.freeze([
-    { tableId: "table-1", tableName: "T1", tableStatus: "active", tournamentId: TARGET_ID, tournamentName: "Main", currentLevel: 4, averageStack: 30_000, dealerName: "Dealer A", dealerAssignmentState: "assigned", sourceAvailability: "exact" },
-    { tableId: "table-2", tableName: "T2", tableStatus: "active", tournamentId: TARGET_ID, tournamentName: "Main", currentLevel: 4, averageStack: 30_000, dealerName: null, dealerAssignmentState: "missing", sourceAvailability: "exact" },
+    { tableId: "table-1", tableName: "T1", tableStatus: "active", tournamentId: TARGET_ID, tournamentName: "Main", currentLevel: 4, averageStack: 30_000, dealerName: "Dealer A", dealerAssignmentState: "assigned" as const, sourceAvailability: "exact" as const },
+    { tableId: "table-2", tableName: "T2", tableStatus: "active", tournamentId: TARGET_ID, tournamentName: "Main", currentLevel: 4, averageStack: 30_000, dealerName: null, dealerAssignmentState: "missing" as const, sourceAvailability: "exact" as const },
   ]), runningTournamentIds: Object.freeze(running ? [TARGET_ID] : []), openTableCount: 18, configuredTableCount: 40, operationalTableCount: 2, dealersOnDutyCount: 20, countComparisonEligible: true });
 }

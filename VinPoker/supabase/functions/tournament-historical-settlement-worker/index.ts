@@ -5,9 +5,11 @@ import {
   verifyHistoricalDisplaySettlement,
 } from "../_shared/trackerSettlement/historicalDisplayVerification.ts";
 import { canonicalJsonV1 } from "../_shared/trackerSettlement/outcomeV1.ts";
+import { isUuid } from "../_shared/internal-trigger-auth.ts";
 import {
   historicalWorkerFailureStatus,
   TRACKER_HISTORY_WORKER_MAX_BATCH,
+  parseHistoryWorkerHandIds,
 } from "../_shared/trackerSettlement/historyWorkerPolicy.ts";
 import {
   normalizeSettlementSourceRpcResult,
@@ -38,20 +40,38 @@ Deno.serve(async (req) => {
     return jsonResp(req, { ok: false, message: "Unauthorized" }, 401);
   }
   try {
-    const body = await req.json().catch(() => ({})) as { limit?: unknown };
+    let parsed: unknown;
+    try { parsed = await req.json(); }
+    catch { return jsonResp(req, { ok: false, code: "invalid_worker_request" }, 400); }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return jsonResp(req, { ok: false, code: "invalid_worker_request" }, 400);
+    }
+    const body = parsed as { limit?: unknown; hand_ids?: unknown };
+    let handIds: string[] | undefined;
+    try { handIds = parseHistoryWorkerHandIds(body.hand_ids); }
+    catch { return jsonResp(req, { ok: false, code: "invalid_hand_scope" }, 400); }
     const limit = body.limit === undefined ? TRACKER_HISTORY_WORKER_MAX_BATCH : Number(body.limit);
     if (!Number.isInteger(limit) || limit < 1 || limit > TRACKER_HISTORY_WORKER_MAX_BATCH) {
       return jsonResp(req, { ok: false, code: "invalid_batch_limit" }, 400);
     }
     const service = createClient(url, serviceKey);
-    const { data: claimed, error: claimError } = await service.rpc("claim_tracker_historical_display_jobs", {
+    const { data: claimed, error: claimError } = await service.rpc(handIds
+      ? "claim_tracker_historical_display_jobs_scoped_v1" : "claim_tracker_historical_display_jobs", {
       p_limit: limit,
+      ...(handIds ? { p_hand_ids: handIds } : {}),
     });
     if (claimError) throw claimError;
-    const jobs = (claimed ?? []) as ClaimedJob[];
+    if (!Array.isArray(claimed) || claimed.length > limit || claimed.some(job =>
+      !job || !isUuid(job.hand_id) || !isUuid(job.lease_token)
+      || !Number.isSafeInteger(job.source_revision) || job.source_revision < 1
+      || (handIds && !handIds.includes(job.hand_id.toLowerCase())))) {
+      throw new Error("historical_claim_unverified");
+    }
+    const jobs = claimed as ClaimedJob[];
     let completed = 0;
     let retried = 0;
     let needsAttention = 0;
+    let unresolved = 0;
 
     for (const job of jobs) {
       try {
@@ -98,7 +118,7 @@ Deno.serve(async (req) => {
           settlementRevision,
           outcomeHash: result.privateOutcome.outcomeHash,
         }));
-        const { error: commitError } = await service.rpc("commit_tracker_historical_display_outcome_v2", {
+        const { data: receipt, error: commitError } = await service.rpc("commit_tracker_historical_display_outcome_v2", {
           p_hand_id: job.hand_id,
           p_actor_user_id: SYSTEM_ACTOR,
           p_actor_kind: "system_worker",
@@ -111,6 +131,10 @@ Deno.serve(async (req) => {
           p_lease_token: job.lease_token,
         });
         if (commitError) throw commitError;
+        if (receipt?.ok !== true || receipt.outcome_hash !== result.privateOutcome.outcomeHash
+          || !Number.isSafeInteger(receipt.settlement_revision) || receipt.settlement_revision < 1) {
+          throw new Error("worker_commit_response_unverified");
+        }
         completed += 1;
       } catch (error) {
         const code = error instanceof HistoricalDisplayVerificationError
@@ -129,9 +153,11 @@ Deno.serve(async (req) => {
         if (finishError) throw finishError;
         if (finished === true && status === "needs_attention") needsAttention += 1;
         if (finished === true && status === "pending") retried += 1;
+        if (finished !== true) unresolved += 1;
       }
     }
-    return jsonResp(req, { ok: true, claimed: jobs.length, completed, retried, needs_attention: needsAttention });
+    return jsonResp(req, { ok: unresolved === 0, claimed: jobs.length, completed, retried,
+      needs_attention: needsAttention, unresolved }, unresolved === 0 ? 200 : 503);
   } catch {
     console.error("[tournament-historical-settlement-worker] batch_failed");
     return jsonResp(req, { ok: false, code: "worker_batch_failed" }, 503);

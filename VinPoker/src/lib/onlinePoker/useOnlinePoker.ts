@@ -196,7 +196,7 @@ export function useTableHand(tableId: string): TableHandState {
     snapRef.current = { handNo: snap.handNo, stateVersion: snap.stateVersion };
     // Opponent-action sound cues, derived purely from prev->next (skips my own seat, which
     // sounds on submit; [] on the first snapshot). Never allowed to break the table.
-    try { derivePokerSounds(prevSoundHandRef.current, view, view.mySeat ?? null).forEach(playPokerLiveSound); } catch { /* audio must never break the felt */ }
+    try { derivePokerSounds(prevSoundHandRef.current, view, view.mySeat ?? null).forEach((sound) => playPokerLiveSound(sound)); } catch { /* audio must never break the felt */ }
     prevSoundHandRef.current = view;
     // Deal-animation trigger: a KNOWN previous handId transitioning to a NEW empty-board
     // hand with ≥2 players. Advances the ref exactly once per accepted snapshot.

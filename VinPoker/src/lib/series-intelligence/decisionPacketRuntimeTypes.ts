@@ -141,7 +141,14 @@ function asRevision(value: unknown): DecisionEventStateActualRevision | null {
 function asPacket(value: unknown): DecisionEventStatePacket | null {
   const keys = ["asOfTs", "contentHash", "forecastSnapshotId", "forecastState", "frozenAt", "horizon", "packetId", "packetState", "sourceCutoff", "supersedesPacketId", "targetMetric"];
   if (!isObject(value) || !exactKeys(value, keys) || !isText(value.packetId) || !isText(value.contentHash) || !isNullableText(value.forecastSnapshotId) || !isNullableText(value.frozenAt) || !isNullableText(value.supersedesPacketId) || !isIsoInstant(value.asOfTs) || !isIsoInstant(value.sourceCutoff) || !isIsoInstant(value.frozenAt, true) || !isText(value.horizon) || !HORIZONS.has(value.horizon as DecisionPacketHorizon) || !isText(value.targetMetric) || !TARGETS.has(value.targetMetric as DecisionTargetMetric) || !isText(value.forecastState) || !FORECAST_STATES.has(value.forecastState as DecisionForecastState) || (value.packetState !== "draft" && value.packetState !== "frozen")) return null;
-  return value as DecisionEventStatePacket;
+  return {
+    packetId: value.packetId, contentHash: value.contentHash,
+    forecastSnapshotId: value.forecastSnapshotId as string | null,
+    frozenAt: value.frozenAt as string | null, supersedesPacketId: value.supersedesPacketId as string | null,
+    asOfTs: value.asOfTs as string, sourceCutoff: value.sourceCutoff as string,
+    horizon: value.horizon as DecisionPacketHorizon, targetMetric: value.targetMetric as DecisionTargetMetric,
+    forecastState: value.forecastState as DecisionForecastState, packetState: value.packetState,
+  };
 }
 
 export function parseDecisionEventStateResponse(value: unknown): DecisionEventStateParseResult {

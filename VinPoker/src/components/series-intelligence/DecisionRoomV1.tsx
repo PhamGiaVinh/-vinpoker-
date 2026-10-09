@@ -227,7 +227,7 @@ export function DecisionRoomV1() {
     setStateError(null);
     const result = await getDecisionEventState(eventId);
     setLoadingState(false);
-    if (!result.ok) {
+    if (result.ok === false) {
       setState(null);
       setStateError(result.error);
       return;
@@ -249,7 +249,7 @@ export function DecisionRoomV1() {
     setSaving(true);
     const result = await action();
     setSaving(false);
-    if (!result.ok) {
+    if (result.ok === false) {
       toast.error(errorLabel(result.error ?? "rpc_error"));
       return false;
     }

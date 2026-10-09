@@ -138,7 +138,9 @@ export async function evaluateForecastActualV1(input: ForecastEvaluationInput): 
   });
   if (pair.eligibility === "blocked") return blockFromD2b(input, pair.blockReasons);
 
-  const packet = pair.packet;
+  // The eligibility resolver returns this same packet with a narrower interface;
+  // retain the supplied persisted packet ID for hashing and the result receipt.
+  const packet = input.packet;
   const forecast = input.forecast;
   const actualRevision = pair.actual;
   if (!packet || !forecast || !actualRevision) return blocked(input, ["no_actual_revision"]);
