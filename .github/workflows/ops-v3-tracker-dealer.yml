@@ -16,6 +16,9 @@ on:
       - "VinPoker/src/i18n/locales/**"
       - "VinPoker/tests/viewerHub/tournamentLiveViewBlindContext.test.tsx"
       - "VinPoker/tests/viewerHub/tournamentLiveViewInitialization.test.tsx"
+      - "VinPoker/src/pages/TrackerDashboard.tsx"
+      - "VinPoker/src/pages/TrackerDashboard.test.tsx"
+      - "VinPoker/tests/floorProduction/createdTournamentSelection.render.test.tsx"
       - "VinPoker/tsconfig.ops-v3-tracker-dealer.json"
   workflow_dispatch:
 
@@ -58,6 +61,8 @@ jobs:
           src/ops/registry/opsModuleRegistry.test.ts
           tests/viewerHub/tournamentLiveViewBlindContext.test.tsx
           tests/viewerHub/tournamentLiveViewInitialization.test.tsx
+          src/pages/TrackerDashboard.test.tsx
+          tests/floorProduction/createdTournamentSelection.render.test.tsx
           --maxWorkers=1 --minWorkers=1
 
       - name: Lint targeted read-only source and tests
