@@ -8,7 +8,6 @@ import { floorOpsErrorMessage } from "@/lib/floorOpsErrors";
 import type { FloorTableControlMode } from "@/lib/floorTableControlMode";
 import { FloorTableModePicker } from "@/components/ops/shared/FloorTableModePicker";
 import { createFloorTableControlV3Client, type FloorTableControlV3Rpc } from "@/lib/floorTableControlV3";
-import { useAuth } from "@/hooks/useAuth";
 import { readPendingFloorModeIntent, savePendingFloorModeIntent, clearPendingFloorModeIntent,
   type PendingFloorModeIntent } from "@/lib/floorPendingModeIntent";
 
@@ -22,12 +21,14 @@ type ControlTable = {
 };
 
 export function FloorTableControlModeControl({
+  actorId,
   tournamentId,
   table,
   onChanged,
   disabledReason,
   expanded = true,
 }: {
+  actorId: string | null;
   tournamentId: string;
   table: ControlTable;
   onChanged: () => void | boolean | Promise<void | boolean>;
@@ -35,14 +36,13 @@ export function FloorTableControlModeControl({
   expanded?: boolean;
 }) {
   const supabase = useSupabaseClient();
-  const { user } = useAuth();
   const client = useMemo(() => createFloorTableControlV3Client(
     supabase.rpc.bind(supabase) as unknown as FloorTableControlV3Rpc,
   ), [supabase]);
-  const scope = JSON.stringify([user?.id, tournamentId, table.tt_id, table.table_session_id]);
+  const scope = JSON.stringify([actorId, tournamentId, table.tt_id, table.table_session_id]);
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
-  const validReadContext = Boolean(user?.id && table.table_session_id
+  const validReadContext = Boolean(actorId && table.table_session_id
     && Number.isSafeInteger(table.control_epoch) && (table.control_epoch ?? -1) >= 0
     && Number.isSafeInteger(table.floor_control_revision) && table.floor_control_revision >= 0);
   const changedRef = useRef(onChanged);

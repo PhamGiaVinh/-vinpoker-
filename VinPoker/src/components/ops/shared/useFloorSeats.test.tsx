@@ -4,7 +4,7 @@ import { SupabaseClientProvider } from "@/integrations/supabase/SupabaseClientCo
 import { useFloorSeats } from "./useFloorSeats";
 
 const auth = vi.hoisted(() => ({ actor: "actor-A" }));
-vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: auth.actor ? { id: auth.actor } : null }) }));
+vi.mock("@/ops/auth/OpsAuthProvider", () => ({ useOpsAuth: () => ({ user: auth.actor ? { id: auth.actor } : null }) }));
 // Model the established inventory client boundary; participation parser and hook are real.
 vi.mock("@/lib/floorTableControlV3", () => ({ createFloorTableControlV3Client: (rpc: Function) => ({
   getTournamentTableInventory: async (id: string) => {

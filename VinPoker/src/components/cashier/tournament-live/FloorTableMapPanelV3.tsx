@@ -463,7 +463,7 @@ function ScopedFloorTableMapPanelV3({
                 </details>
               </SheetHeader>
               <div className="mt-5 space-y-4">
-                <FloorTableControlModeControl
+                <FloorTableControlModeControl actorId={actorId}
                   key={JSON.stringify([actorId, tournament.id, selectedTable.tournamentTableId, selectedTable.tableSessionId])}
                   tournamentId={tournament.id}
                   table={{

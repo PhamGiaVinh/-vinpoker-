@@ -664,7 +664,7 @@ export default function OpsTournamentCockpit({ section }: { section: FloorTourna
             <SheetTitle className="text-[#f2ece6]">{tableSheetVm?.name ?? "Bàn"}</SheetTitle>
           </SheetHeader>
           {tableSheetVm && id && (
-            <FloorTableControlModeControl
+            <FloorTableControlModeControl actorId={user?.id ?? null}
               tournamentId={id}
               table={tableSheetVm.raw}
               onChanged={floor.reload}

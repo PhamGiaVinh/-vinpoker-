@@ -4,7 +4,6 @@ import { SupabaseClientProvider } from "@/integrations/supabase/SupabaseClientCo
 import { readPendingFloorModeIntent } from "@/lib/floorPendingModeIntent";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: "actor" } }) }));
 vi.mock("@/lib/featureFlags", () => ({ FEATURES: { floorTableControlV3: true } }));
 
 import { FloorTableControlModeControl } from "./FloorTableControlMode";
@@ -16,6 +15,14 @@ describe("FloorTableControlModeControl", () => {
   const canonicalTable = { tt_id: "table-1", table_name: "Bàn 2",
     floor_control_mode: "manual" as const, floor_control_revision: 3,
     table_session_id: "session-1", control_epoch: 7 };
+  it("does not read or mutate canonical mode while actor context is unknown", async () => {
+    const rpc = vi.fn();
+    render(<SupabaseClientProvider client={{ rpc } as never}>
+      <FloorTableControlModeControl actorId={null} tournamentId="tour" table={canonicalTable} onChanged={vi.fn()} />
+    </SupabaseClientProvider>);
+    expect(screen.getByTestId("floor-table-control-mode-save")).toBeDisabled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
   const confirmTracker = async () => {
     await waitFor(() => expect(screen.getByTestId("floor-table-control-mode-tracker")).toBeEnabled());
     fireEvent.click(screen.getByTestId("floor-table-control-mode-tracker"));
@@ -38,7 +45,7 @@ describe("FloorTableControlModeControl", () => {
       return { error: null, data: { ok: true, outcome: "pending", request_id: "pending-new", blockers: ["active_hand"] } };
     });
     const rendered = render(<SupabaseClientProvider client={{ rpc } as never}>
-      <FloorTableControlModeControl tournamentId="tour" table={canonicalTable} onChanged={vi.fn()} />
+      <FloorTableControlModeControl actorId={"actor"} tournamentId="tour" table={canonicalTable} onChanged={vi.fn()} />
     </SupabaseClientProvider>);
     try {
       await waitFor(() => expect(screen.getByTestId("floor-table-control-mode-tracker")).toBeEnabled());
@@ -58,7 +65,7 @@ describe("FloorTableControlModeControl", () => {
         : { ok: true, outcome: "pending", request_id: "pending-1", blockers: ["active_hand"] },
     }));
     render(<SupabaseClientProvider client={{ rpc } as never}>
-      <FloorTableControlModeControl tournamentId="tour" table={canonicalTable} onChanged={vi.fn()} />
+      <FloorTableControlModeControl actorId={"actor"} tournamentId="tour" table={canonicalTable} onChanged={vi.fn()} />
     </SupabaseClientProvider>);
     await confirmTracker();
     await screen.findByText("Đang chờ chuyển sang Live Tracker.");
@@ -79,7 +86,7 @@ describe("FloorTableControlModeControl", () => {
     });
     const changed = vi.fn();
     render(<SupabaseClientProvider client={{ rpc } as never}>
-      <FloorTableControlModeControl tournamentId="tour" table={canonicalTable} onChanged={changed} />
+      <FloorTableControlModeControl actorId={"actor"} tournamentId="tour" table={canonicalTable} onChanged={changed} />
     </SupabaseClientProvider>);
     await confirmTracker();
     await waitFor(() => expect(screen.getByTestId("floor-table-control-mode-confirm")).toBeEnabled());
@@ -98,7 +105,7 @@ describe("FloorTableControlModeControl", () => {
     });
     const changed = vi.fn();
     const view = () => <SupabaseClientProvider client={{ rpc } as never}>
-      <FloorTableControlModeControl tournamentId="tour" table={canonicalTable} onChanged={changed} />
+      <FloorTableControlModeControl actorId={"actor"} tournamentId="tour" table={canonicalTable} onChanged={changed} />
     </SupabaseClientProvider>;
     const first = render(view());
     await confirmTracker();
@@ -116,7 +123,7 @@ describe("FloorTableControlModeControl", () => {
   it("disables legacy contexts instead of falling back to the table-only RPC", () => {
     const rpc = vi.fn();
     render(<SupabaseClientProvider client={{ rpc } as never}>
-      <FloorTableControlModeControl tournamentId="tour" table={{ ...canonicalTable,
+      <FloorTableControlModeControl actorId={"actor"} tournamentId="tour" table={{ ...canonicalTable,
         table_session_id: undefined, control_epoch: undefined }} onChanged={vi.fn()} />
     </SupabaseClientProvider>);
     expect(screen.getByRole("alert")).toHaveTextContent("Không xác minh được phiên bàn");
@@ -132,13 +139,13 @@ describe("FloorTableControlModeControl", () => {
     });
     const changed = vi.fn();
     const first = render(<SupabaseClientProvider client={{ rpc } as never}>
-      <FloorTableControlModeControl tournamentId="tour" table={canonicalTable} onChanged={changed} />
+      <FloorTableControlModeControl actorId={"actor"} tournamentId="tour" table={canonicalTable} onChanged={changed} />
     </SupabaseClientProvider>);
     await confirmTracker();
     await waitFor(() => expect(screen.getByTestId("floor-table-control-mode-confirm")).toBeEnabled());
     first.unmount();
     render(<SupabaseClientProvider client={{ rpc } as never}>
-      <FloorTableControlModeControl tournamentId="tour" table={{ ...canonicalTable,
+      <FloorTableControlModeControl actorId={"actor"} tournamentId="tour" table={{ ...canonicalTable,
         floor_control_mode: "tracker", floor_control_revision: 4, control_epoch: 8 }} onChanged={changed} />
     </SupabaseClientProvider>);
     await waitFor(() => expect(screen.getByRole("button", { name: "Đối chiếu yêu cầu đã lưu" })).toBeEnabled());
@@ -152,7 +159,7 @@ describe("FloorTableControlModeControl", () => {
     const rpc = vi.fn().mockResolvedValue({ data: { ok: true, request: null }, error: null });
     const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {});
     render(<SupabaseClientProvider client={{ rpc } as never}>
-      <FloorTableControlModeControl tournamentId="tour" table={canonicalTable} onChanged={vi.fn()} />
+      <FloorTableControlModeControl actorId={"actor"} tournamentId="tour" table={canonicalTable} onChanged={vi.fn()} />
     </SupabaseClientProvider>);
     try {
       await confirmTracker();
@@ -167,7 +174,7 @@ describe("FloorTableControlModeControl", () => {
     }));
     const changed = vi.fn();
     render(<SupabaseClientProvider client={{ rpc } as never}>
-      <FloorTableControlModeControl tournamentId="tour" table={canonicalTable} onChanged={changed} />
+      <FloorTableControlModeControl actorId={"actor"} tournamentId="tour" table={canonicalTable} onChanged={changed} />
     </SupabaseClientProvider>);
     await confirmTracker();
     await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
@@ -182,31 +189,33 @@ describe("FloorTableControlModeControl", () => {
     }));
     const changed = vi.fn();
     render(<SupabaseClientProvider client={{ rpc } as never}>
-      <FloorTableControlModeControl tournamentId="tour" table={canonicalTable} onChanged={changed} />
+      <FloorTableControlModeControl actorId={"actor"} tournamentId="tour" table={canonicalTable} onChanged={changed} />
     </SupabaseClientProvider>);
     await confirmTracker();
     await waitFor(() => expect(screen.getByTestId("floor-table-control-mode-confirm")).toBeEnabled());
     expect(changed).not.toHaveBeenCalled();
     expect(readPendingFloorModeIntent(JSON.stringify(["actor", "tour", "table-1", "session-1"]))).not.toBeNull();
   });
-  it("ignores a mutation response from the previous incarnation after close/reopen", async () => {
+  it.each(["session", "actor"])("ignores a mutation response after the %s context is replaced", async (boundary) => {
     let finish!: (value: unknown) => void;
     const delayed = new Promise((resolve) => { finish = resolve; });
     const rpc = vi.fn().mockImplementation(async (name) => name === "floor_get_table_control_mode_request_v1"
       ? { error: null, data: { ok: true, request: null } } : delayed);
     const changed = vi.fn();
     const client = { rpc } as never;
-    const view = (session: string) => <SupabaseClientProvider client={client}>
-      <FloorTableControlModeControl tournamentId="tour" table={{ ...canonicalTable, table_session_id: session }} onChanged={changed} />
+    const view = (session: string, actor = "actor") => <SupabaseClientProvider client={client}>
+      <FloorTableControlModeControl actorId={actor} tournamentId="tour" table={{ ...canonicalTable, table_session_id: session }} onChanged={changed} />
     </SupabaseClientProvider>;
     const rendered = render(view("session-1"));
     await confirmTracker();
     await waitFor(() => expect(rpc.mock.calls.some(([name]) => name === "floor_request_table_control_mode_v4")).toBe(true));
-    rendered.rerender(view("session-2"));
+    const nextActor = boundary === "actor" ? "actor-2" : "actor";
+    const nextSession = boundary === "session" ? "session-2" : "session-1";
+    rendered.rerender(view(nextSession, nextActor));
     await act(async () => { finish({ error: null, data: { ok: true, outcome: "applied" } }); });
     expect(changed).not.toHaveBeenCalled();
     expect(readPendingFloorModeIntent(JSON.stringify(["actor", "tour", "table-1", "session-1"]))).not.toBeNull();
-    expect(readPendingFloorModeIntent(JSON.stringify(["actor", "tour", "table-1", "session-2"]))).toBeNull();
+    expect(readPendingFloorModeIntent(JSON.stringify([nextActor, "tour", "table-1", nextSession]))).toBeNull();
   });
   it("submits an exact-session mode intent instead of the legacy table-only mutation", async () => {
     const rpc = vi.fn().mockImplementation(async (name) => ({
@@ -220,7 +229,7 @@ describe("FloorTableControlModeControl", () => {
     };
     render(
       <SupabaseClientProvider client={{ rpc } as never}>
-        <FloorTableControlModeControl tournamentId="tournament-1" table={table} onChanged={vi.fn()} />
+        <FloorTableControlModeControl actorId={"actor"} tournamentId="tournament-1" table={table} onChanged={vi.fn()} />
       </SupabaseClientProvider>,
     );
     await waitFor(() => expect(screen.getByTestId("floor-table-control-mode-tracker")).toBeEnabled());
@@ -242,7 +251,7 @@ describe("FloorTableControlModeControl", () => {
     const client = { rpc: vi.fn().mockResolvedValue({ data: { ok: true, request: null }, error: null }) } as never;
     render(
       <SupabaseClientProvider client={client}>
-        <FloorTableControlModeControl
+        <FloorTableControlModeControl actorId={"actor"}
           tournamentId="tournament-1"
           table={{
             tt_id: "table-1",

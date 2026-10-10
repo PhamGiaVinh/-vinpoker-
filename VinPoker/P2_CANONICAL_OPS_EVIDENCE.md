@@ -1,5 +1,15 @@
 # P2 canonical Ops session integration — IN PROGRESS
 
+## CI correction checkpoint — 2026-10-10 21:50 local
+
+Follow-up21:52: full tsc44536 terminalexit0; it predates the last actor parametrization test only. Shared controller14 tests terminalPASS including late actor mutation response; release runner/plan8 tests terminalPASS. Read-only critical delta reviewerPASS bust/auth/atomic transport; reviewer did not execute tests or live checks. Build launched sequentially after full tsc terminal result; record its terminal status before packaging. These results do not prove cron daemon or production web acceptance.
+
+Follow-up21:54: build54978 terminalPASS1m38s (existing large-chunk and mixed-import warnings retained); Cashier roster11206 terminalPASS35. Ops money boundaryPASS, Ops shell textPASS21files, migration catalogPASS. Generated public version marker restored to committed baseline, not a release. Package follow-up can be committed for exact-head CI; live49/50, workflow bootstrap, daemon proof and hostname canary remain mandatory.
+
+Fresh origin/main remains4a0120aa377221e9266cff3b4e7812be7bbf6645. PR1452 head944f078146ccbfa0aac5cd67b6d0db8a56193ff5 remains Draft/UNSTABLE with three failed checks. Corrections are not yet pushed: shared mode controller receives host actorId rather than importing legacy auth; Ops useFloorSeats uses OpsAuthProvider; legacy static contract now asserts exact-session canonical request/revision/epoch and absence of legacy writer. Linux atomic fixture transport explicitly requires loopback PostgreSQL connection settings instead of assuming Docker server inet_server_addr is loopback. Remote/alternate transport rejection unitPASS; actual PG test skipped without dedicated fixture environment, not runtimePASS.
+
+Bust preflight/write/info races were reproduced with three failing regressions, then fixed using incarnation and run fences across awaits. Latest four-file suite terminalPASS48 (controller13, player actions16, hook5, DB/Edge contract14), including unknown actor refusing read/write. Ops boundary terminalPASS211files; diff checkPASS. Full typecheck44536 is still running at this checkpoint; do not restart it solely for silence. No production migration, Edge, frontend, flag or merge action occurred. P2 and full campaign remain incomplete.
+
 ## Exact package check checkpoint — 2026-10-10 21:39 local
 
 Fresh origin/main fetch unchanged4a0120aa377221e9266cff3b4e7812be7bbf6645. Full current seven-file focused suite17508 terminalPASS78tests, including Ops incarnation fix, mixed-session read-only and Cashier regressions. Prior tsc61151 terminalPASS; final tsc87159 active after all latest test/source, resume handle. Build80193 predates latest Ops incarnation fix, rerun sequentially after final typecheck. Graph directory exists but contains only.gitignore, no index; direct source/test evidence used. Preparing Draft sourcePR, not declaring release-ready or live. RequiredCI and protected workflow bootstrap/atomic50/runtime scheduler/hostname canary remain. GoalP0–P7active, Daybreak/oldAuto unchanged.

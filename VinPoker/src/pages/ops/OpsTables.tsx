@@ -559,7 +559,7 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
           )}
 
           {openVM && tourId && (
-            <FloorTableControlModeControl
+            <FloorTableControlModeControl actorId={user?.id ?? null}
               tournamentId={tourId}
               table={openVM.raw}
               onChanged={floor.reload}

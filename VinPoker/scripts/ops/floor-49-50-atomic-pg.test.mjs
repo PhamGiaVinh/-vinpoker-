@@ -6,17 +6,33 @@ import {loadPackage as load37to47} from './floor-37-47-release-plan.mjs';
 import {loadMigration as load48} from './floor-48-release-plan.mjs';
 import {receiptSql} from './floor-37-47-protected-apply.mjs';
 import {postcheckSql} from './floor-49-50-protected-apply.mjs';
+export function assertLocalTransport(database,platform=process.platform,env=process.env){
+ assert.match(database,/^vinpoker_ops_atomic49_[a-z0-9_]+$/);
+ if(platform!=='win32'){
+  assert.equal(env.PGHOST,'127.0.0.1');assert.equal(String(env.PGPORT),'5432');
+  assert.equal(env.PGUSER,'postgres');assert.equal(env.PGDATABASE,database);
+  for(const key of ['PGHOSTADDR','PGSERVICE','PGSERVICEFILE','PGOPTIONS'])assert.ok(!env[key],`${key} override forbidden`);
+ }
+}
+test('Linux atomic test transport rejects remote/alternate targets',()=>{
+ const database='vinpoker_ops_atomic49_ci';
+ const env={PGHOST:'127.0.0.1',PGPORT:'5432',PGUSER:'postgres',PGDATABASE:database};
+ assertLocalTransport(database,'linux',env);
+ for(const changed of [{PGHOST:'remote.example'},{PGPORT:'6543'},{PGUSER:'other'},{PGDATABASE:'postgres'},{PGHOSTADDR:'remote'},{PGOPTIONS:'override'}])assert.throws(()=>assertLocalTransport(database,'linux',{...env,...changed}));
+});
 test('PG17 exact49 receipt failure rolls back all objects; commit/replay and50 guard',{
  skip:!process.env.FLOOR49_LOCAL_DATABASE,
 },()=>{
  const database=process.env.FLOOR49_LOCAL_DATABASE;
- assert.match(database,/^vinpoker_ops_atomic49_[a-z0-9_]+$/);
+ assertLocalTransport(database);
  const args=['-d',database,'-X','-qAt','-v','ON_ERROR_STOP=1'];
  const query=sql=>process.platform==='win32'
   ? spawnSync('wsl',['sudo','-n','-u','postgres','psql',...args],{input:sql,encoding:'utf8',maxBuffer:2*1024*1024})
   : spawnSync('psql',args,{input:sql,encoding:'utf8',maxBuffer:2*1024*1024});
  const check=sql=>{const r=query(sql);assert.equal(r.status,0,r.stderr);return r.stdout.trim();};
- const intactSql=`SELECT (inet_server_addr() IS NULL OR inet_server_addr()='127.0.0.1'::inet) AND current_user='postgres' AND current_setting('server_version_num')::integer BETWEEN 170000 AND 179999
+ // Docker port forwarding keeps the client target loopback, but the server
+ // reports its internal bridge address. Transport is constrained above.
+ const intactSql=`SELECT current_database()='${database}' AND current_user='postgres' AND current_setting('server_version_num')::integer BETWEEN 170000 AND 179999
  AND to_regprocedure('floor_private.resolve_pending_table_modes_v1(integer)') IS NULL
  AND to_regclass('floor_private.table_mode_retry_cursor_v1') IS NULL
  AND NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='trg_mode_tournament_lifecycle_v1')

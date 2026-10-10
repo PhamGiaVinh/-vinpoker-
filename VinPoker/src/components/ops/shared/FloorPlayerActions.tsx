@@ -51,7 +51,10 @@ export function FloorPlayerActions({
   currentMoveScope.current = moveScope;
   const moveRun = useRef<object | null>(null);
   const receiptRun = useRef<object | null>(null);
-  useEffect(() => () => { moveRun.current = null; receiptRun.current = null; }, [moveScope]);
+  const bustInfoRun = useRef<object | null>(null);
+  const bustWriteRun = useRef<object | null>(null);
+  useEffect(() => () => { moveRun.current = null; receiptRun.current = null;
+    bustInfoRun.current = null; bustWriteRun.current = null; }, [moveScope]);
   const untypedFloorRpc = useMemo(
     () => supabase.rpc.bind(supabase) as unknown as (
       name: string,
@@ -144,6 +147,10 @@ export function FloorPlayerActions({
   // Loại qua Edge/RPC nguyên tử, audit-only: luồng này không gọi payout dù một
   // feature flag khác có thay đổi trong tương lai.
   const openBust = useCallback(async (): Promise<boolean> => {
+    if (readOnlyRef.current) return false;
+    const operation = {}; bustInfoRun.current = operation;
+    const isCurrent = () => currentMoveScope.current === moveScope
+      && bustInfoRun.current === operation && !readOnlyRef.current;
     if (!real || !tournamentId) return false;
     if (!bustTable) {
       toast.error("Không xác minh được chế độ bàn. Hãy tải lại trước khi loại.");
@@ -154,27 +161,33 @@ export function FloorPlayerActions({
       return false;
     }
     if (!await verifyActiveEntry()) return false;
+    if (!isCurrent()) return false;
     setBustInfo({ loading: true, place: null, prize: null });
     try {
       const [seatsRes, prizeRes] = await Promise.all([
         supabase.functions.invoke("tournament-live-draw", { body: { tournament_id: tournamentId, action: "get_seats" } }),
         supabase.from("tournament_prizes").select("position, amount").eq("tournament_id", tournamentId),
       ]);
+      if (!isCurrent()) return false;
       const active = (((seatsRes.data as { data?: MapSeat[] } | null)?.data ?? []) as MapSeat[]).filter((x) => x.is_active).length;
       const place = active > 0 ? active : null;
       const prize = place != null ? (((prizeRes.data ?? []) as { position: number; amount: number }[]).find((p) => p.position === place)?.amount ?? null) : null;
       setBustInfo({ loading: false, place, prize });
       return true;
     } catch {
+      if (!isCurrent()) return false;
       setBustInfo({ loading: false, place: null, prize: null });
       return true;
     }
-  }, [real, tournamentId, bustTable, supabase, verifyActiveEntry]);
+  }, [real, tournamentId, bustTable, supabase, verifyActiveEntry, moveScope]);
   const bustPlayer = useCallback(async (): Promise<boolean> => {
     if (readOnlyRef.current) { toast.error(readOnlyRef.current); return false; }
     if (!real || !tournamentId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
+    const operation = {}; bustWriteRun.current = operation;
+    const isCurrent = () => currentMoveScope.current === moveScope && bustWriteRun.current === operation;
     try {
       if (!await verifyActiveEntry()) return false;
+      if (!isCurrent()) return false;
       if (readOnlyRef.current) { toast.error(readOnlyRef.current); return false; }
       const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
         body: {
@@ -187,13 +200,15 @@ export function FloorPlayerActions({
           }],
         },
       });
+      if (!isCurrent()) return false;
       const code = await floorOpsFunctionErrorCode(data, error);
+      if (!isCurrent()) return false;
       if (code) { toast.error(floorOpsErrorMessage(code, "Loại thất bại")); return false; }
       toast.success(`Đã loại ${real.player_name || "người chơi"}`);
       floor.reload();
       return true;
-    } catch (e) { toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Loại thất bại"); return false; }
-  }, [real, tournamentId, floor, supabase, verifyActiveEntry]);
+    } catch (e) { if (isCurrent()) toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Loại thất bại"); return false; }
+  }, [real, tournamentId, floor, supabase, verifyActiveEntry, moveScope]);
 
   // Handoff only: canonical dialog re-reads authoritative source/destination before writing.
   const openMove = useCallback(async (): Promise<void> => {

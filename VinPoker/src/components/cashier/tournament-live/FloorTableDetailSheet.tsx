@@ -125,7 +125,7 @@ export function FloorTableDetailSheet({
 
             <div className="min-w-0 lg:self-start">
               {canManageTableControl ? (
-                <FloorTableControlModeControl
+                <FloorTableControlModeControl actorId={user?.id ?? null}
                   tournamentId={tournamentId}
                   table={table}
                   onChanged={onChanged}

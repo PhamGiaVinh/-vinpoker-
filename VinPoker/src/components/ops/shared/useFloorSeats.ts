@@ -7,7 +7,7 @@ import {
 } from "@/components/ops/shared/floorAdapter";
 import { createFloorTableControlV3Client, type FloorTableControlV3Rpc } from "@/lib/floorTableControlV3";
 import { parseTournamentParticipation } from "@/lib/tournamentParticipation";
-import { useAuth } from "@/hooks/useAuth";
+import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
 
 export interface FloorState {
   loading: boolean;
@@ -26,7 +26,7 @@ export type UseFloorSeats = FloorState & { reload: () => void };
  */
 export function useFloorSeats(tournamentId: string | null, opts?: { enabled?: boolean }): UseFloorSeats {
   const supabase = useSupabaseClient();
-  const { user } = useAuth();
+  const { user } = useOpsAuth();
   const actorId = user?.id ?? null;
   const canonical = useMemo(() => createFloorTableControlV3Client(
     supabase.rpc.bind(supabase) as unknown as FloorTableControlV3Rpc,
