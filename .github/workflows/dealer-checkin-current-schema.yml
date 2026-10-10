@@ -81,6 +81,7 @@ on:
       - 'VinPoker/tests/floorProduction/package37_47.readonly-postcheck.sql'
       - 'VinPoker/scripts/ops/floor-37-47-release-plan.mjs'
       - 'VinPoker/scripts/ops/floor-37-47-release-plan.test.mjs'
+      - 'VinPoker/scripts/ops/floor-37-47-release-plan.pg17.mjs'
       - 'VinPoker/tests/floorProduction/breakDrawPolicy.pg17.sql'
       - 'VinPoker/tests/floorProduction/floorPlayerActions.move.test.tsx'
       - 'VinPoker/tests/floorProduction/opsTables.close.test.tsx'
@@ -161,6 +162,9 @@ jobs:
           done
           test "$ready" = true
           test "$(psql -X -qAt -v ON_ERROR_STOP=1 -c "SELECT inet_server_addr()='127.0.0.1'::inet AND current_database()='vinpoker_ops_checkin' AND current_user='postgres' AND current_setting('server_version_num')::int BETWEEN 170000 AND 179999")" = t
+      - name: Floor package atomic ledger and receipt-failure rollback (isolated database)
+        working-directory: VinPoker
+        run: node scripts/ops/floor-37-47-release-plan.pg17.mjs
       - name: Restore current schema and apply exact new migration
         working-directory: VinPoker
         run: |
