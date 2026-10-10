@@ -18,6 +18,11 @@ on:
       - "VinPoker/tests/viewerHub/tournamentLiveViewInitialization.test.tsx"
       - "VinPoker/src/pages/TrackerDashboard.tsx"
       - "VinPoker/src/pages/TrackerDashboard.test.tsx"
+      - "VinPoker/src/hooks/useNotifications.tsx"
+      - "VinPoker/src/hooks/useNotifications.test.tsx"
+      - "VinPoker/src/components/NotificationBell.tsx"
+      - "VinPoker/src/components/NotificationBell.test.tsx"
+      - "VinPoker/src/pages/Notifications.tsx"
       - "VinPoker/tests/floorProduction/createdTournamentSelection.render.test.tsx"
       - "VinPoker/tsconfig.ops-v3-tracker-dealer.json"
   workflow_dispatch:
@@ -62,6 +67,8 @@ jobs:
           tests/viewerHub/tournamentLiveViewBlindContext.test.tsx
           tests/viewerHub/tournamentLiveViewInitialization.test.tsx
           src/pages/TrackerDashboard.test.tsx
+          src/hooks/useNotifications.test.tsx
+          src/components/NotificationBell.test.tsx
           tests/floorProduction/createdTournamentSelection.render.test.tsx
           --maxWorkers=1 --minWorkers=1
 
@@ -77,6 +84,11 @@ jobs:
           scripts/security/check-ops-v3-shell-text.mjs
           e2e/ops-v3-tracker-dealer.mock.spec.ts
           tests/opsTrackerDealer
+          src/hooks/useNotifications.tsx
+          src/hooks/useNotifications.test.tsx
+          src/components/NotificationBell.tsx
+          src/components/NotificationBell.test.tsx
+          src/pages/Notifications.tsx
 
       - name: Type-check Tracker and Dealer Control workspaces
         working-directory: VinPoker

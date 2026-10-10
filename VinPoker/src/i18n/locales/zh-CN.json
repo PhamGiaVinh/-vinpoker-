@@ -1002,6 +1002,8 @@
     "finance": "财务"
   },
   "notifications": {
+    "loadError": "无法验证通知。显示的数据可能已过时。",
+    "retry": "重试",
     "title": "通知",
     "markAllRead": "全部标为已读",
     "tabAll": "全部 ({{n}})",

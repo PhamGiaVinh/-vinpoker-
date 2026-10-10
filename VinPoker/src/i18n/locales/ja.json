@@ -987,6 +987,8 @@
     "finance": "財務"
   },
   "notifications": {
+    "loadError": "通知を確認できません。表示データが古い可能性があります。",
+    "retry": "再試行",
     "title": "通知",
     "markAllRead": "すべてを既読にする",
     "tabAll": "すべて（{{n}}）",

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { playSuccessSound, playErrorSound, playWarningSound, playInfoSound, playAlertSound } from "@/lib/notifySound";
@@ -37,12 +37,12 @@ export interface NotificationRow {
   type: NotificationType;
   title: string;
   body: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   is_read: boolean;
   created_at: string;
 }
 
-const ROUTE_FOR: Record<NotificationType, (data: any) => string> = {
+const ROUTE_FOR: Record<NotificationType, (data: Record<string, unknown>) => string> = {
   deal_committed: () => "/staking/my-deals",
   deal_funded: () => "/staking/my-deals",
   purchase_funded: () => "/staking/my-deals",
@@ -127,49 +127,101 @@ export function routeForNotification(n: Pick<NotificationRow, "type" | "data">) 
   return ROUTE_FOR[n.type]?.(n.data) ?? "/";
 }
 
-export function useNotifications(limit = 20) {
+export function useNotifications(limit = 20, onNewNotification?: (notification: NotificationRow) => void) {
   const { user } = useAuth();
+  const userId = user?.id ?? null;
+  const scopeRef = useRef({ userId });
+  if (scopeRef.current.userId !== userId) scopeRef.current = { userId };
+  const actorScope = scopeRef.current;
+  const announced = useRef({ scope: actorScope, ids: new Set<string>() });
+  if (announced.current.scope !== actorScope) announced.current = { scope: actorScope, ids: new Set<string>() };
+  const lifetime = useRef({ mounted: false, generation: 0 });
+  const isCurrentScope = useCallback((generation = lifetime.current.generation) =>
+    lifetime.current.mounted && lifetime.current.generation === generation && scopeRef.current === actorScope,
+  [actorScope]);
+  const readGeneration = useRef(0);
+  const [snapshotScope, setSnapshotScope] = useState<typeof actorScope | null>(null);
+  const [failure, setFailure] = useState<{ scope: typeof actorScope; message: string } | null>(null);
   const [items, setItems] = useState<NotificationRow[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    const currentLifetime = lifetime.current;
+    currentLifetime.mounted = true;
+    currentLifetime.generation += 1;
+    return () => {
+      currentLifetime.mounted = false;
+      currentLifetime.generation += 1;
+    };
+  }, []);
+
   const fetchAll = useCallback(async () => {
-    if (!user) {
+    // A response belongs to both its actor and its request generation.
+    if (!isCurrentScope()) return;
+    const capturedLifetime = lifetime.current.generation;
+    const generation = ++readGeneration.current;
+    if (!userId) {
       setItems([]);
       setUnreadCount(0);
+      setSnapshotScope(null);
+      setFailure(null);
+      setLoading(false);
       return;
     }
     setLoading(true);
+    setFailure(null);
+    try {
     const [list, count] = await Promise.all([
       supabase
         .from("notifications")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(limit),
       supabase
         .from("notifications")
         .select("id", { count: "exact", head: true })
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .eq("is_read", false),
     ]);
+    if (!isCurrentScope(capturedLifetime) || generation !== readGeneration.current) return;
+    if (list.error || count.error) throw list.error ?? count.error;
     setItems((list.data ?? []) as NotificationRow[]);
     setUnreadCount(count.count ?? 0);
-    setLoading(false);
-  }, [user, limit]);
+    setSnapshotScope(actorScope);
+    } catch (reason) {
+      if (isCurrentScope(capturedLifetime) && generation === readGeneration.current) {
+        setFailure({ scope: actorScope, message: reason instanceof Error ? reason.message : String((reason as { message?: string })?.message ?? "Không tải được thông báo") });
+      }
+    } finally {
+      if (isCurrentScope(capturedLifetime) && generation === readGeneration.current) setLoading(false);
+    }
+  }, [userId, limit, actorScope, isCurrentScope]);
 
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
+    let active = true;
     const ch = supabase
-      .channel(`notifications:${user.id}`)
+      .channel(`notifications:${userId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+        { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
         (payload) => {
+          if (!active || !isCurrentScope() || payload.new?.user_id !== userId) return;
+          const notificationId = payload.new?.id;
+          if (typeof notificationId !== "string") return;
+          if (announced.current.ids.has(notificationId)) { void fetchAll(); return; }
+          announced.current.ids.add(notificationId);
+          if (announced.current.ids.size > 512) {
+            const oldest = announced.current.ids.values().next().value;
+            if (oldest !== undefined) announced.current.ids.delete(oldest);
+          }
+          onNewNotification?.(payload.new as NotificationRow);
           const newType = payload.new?.type as string;
           (SOUND_FOR[newType] ?? playAlertSound)();
           fetchAll();
@@ -177,39 +229,58 @@ export function useNotifications(limit = 20) {
       )
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
-        () => fetchAll(),
+        { event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
+        () => { if (active) void fetchAll(); },
       )
       .on(
         "postgres_changes",
-        { event: "DELETE", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
-        () => fetchAll(),
+        { event: "DELETE", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
+        () => { if (active) void fetchAll(); },
       )
       .subscribe();
     return () => {
+      active = false;
       supabase.removeChannel(ch);
     };
-  }, [user, fetchAll]);
+  }, [userId, fetchAll, onNewNotification, isCurrentScope]);
 
   const markRead = useCallback(async (id: string) => {
-    if (!user) return;
-    await supabase.from("notifications").update({ is_read: true }).eq("id", id).eq("user_id", user.id);
-    setItems((p) => p.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-    setUnreadCount((c) => Math.max(0, c - 1));
-  }, [user]);
+    if (!userId || !isCurrentScope()) return false;
+    const capturedLifetime = lifetime.current.generation;
+    try {
+      const result = await supabase.from("notifications").update({ is_read: true }).eq("id", id).eq("user_id", userId);
+      if (!isCurrentScope(capturedLifetime)) return false;
+      if (result.error) throw result.error;
+      await fetchAll();
+      return isCurrentScope(capturedLifetime);
+    } catch (reason) {
+      if (isCurrentScope(capturedLifetime)) setFailure({ scope: actorScope, message: reason instanceof Error ? reason.message : String((reason as { message?: string })?.message ?? "Không đánh dấu được thông báo") });
+      return false;
+    }
+  }, [userId, fetchAll, isCurrentScope, actorScope]);
 
   const markAllRead = useCallback(async () => {
-    if (!user) return;
-    await supabase
+    if (!userId || !isCurrentScope()) return false;
+    const capturedLifetime = lifetime.current.generation;
+    try {
+    const result = await supabase
       .from("notifications")
       .update({ is_read: true })
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("is_read", false);
-    setItems((p) => p.map((n) => ({ ...n, is_read: true })));
-    setUnreadCount(0);
-  }, [user]);
+    if (!isCurrentScope(capturedLifetime)) return false;
+    if (result.error) throw result.error;
+    await fetchAll();
+    return isCurrentScope(capturedLifetime);
+    } catch (reason) {
+      if (isCurrentScope(capturedLifetime)) setFailure({ scope: actorScope, message: reason instanceof Error ? reason.message : String((reason as { message?: string })?.message ?? "Không đánh dấu được thông báo") });
+      return false;
+    }
+  }, [userId, fetchAll, isCurrentScope, actorScope]);
 
-  return { items, unreadCount, loading, markRead, markAllRead, refresh: fetchAll };
+  const sameScope = snapshotScope === actorScope;
+  const error = failure?.scope === actorScope ? failure.message : null;
+  return { items: sameScope ? items : [], unreadCount: sameScope ? unreadCount : 0, loading: loading || (Boolean(userId) && !sameScope && !error), error, markRead, markAllRead, refresh: fetchAll };
 }
 
 export function timeAgo(iso: string) {

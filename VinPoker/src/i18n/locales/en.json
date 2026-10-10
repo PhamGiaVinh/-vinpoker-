@@ -1121,6 +1121,8 @@
     "finance": "Finance"
   },
   "notifications": {
+    "loadError": "Unable to verify notifications. Displayed data may be outdated.",
+    "retry": "Retry",
     "title": "Notifications",
     "markAllRead": "Mark all read",
     "tabAll": "All ({{n}})",
