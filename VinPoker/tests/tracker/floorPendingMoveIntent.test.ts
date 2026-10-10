@@ -32,10 +32,22 @@ describe("pending floor move recovery boundary", () => {
     clearPendingFloorMove(pending());
     expect(readPendingFloorMove(pending().scope)).toBeNull();
   });
+  it("preserves endpoint identity and refuses conversion of an unresolved journal", () => {
+    const legacy = pending();
+    savePendingFloorMove(legacy);
+    expect(readPendingFloorMove(legacy.scope)?.operation).toBeUndefined();
+    expect(() => savePendingFloorMove({ ...legacy, operation: "move_player_seat_v5" })).toThrow("chưa xác minh");
+    clearPendingFloorMove(legacy);
+    const current: PendingFloorMove = { ...legacy, operation: "move_player_seat_v5" };
+    savePendingFloorMove(current);
+    expect(readPendingFloorMove(current.scope)).toEqual(current);
+    expect(() => savePendingFloorMove({ ...current, operation: "move_player_seat_v4" })).toThrow("chưa xác minh");
+  });
   it("does not silently discard corrupt or out-of-range journals", () => {
     const storageKey = `vp:floor-move-intent:v1:${encodeURIComponent(pending().scope)}`;
     for (const value of ["{invalid", JSON.stringify({ ...pending(), scope: "another-scope" }),
-      JSON.stringify({ ...pending(), stack: -1 }), JSON.stringify({ ...pending(), intent: { ...pending().intent, toSeatNumber: 0 } })]) {
+      JSON.stringify({ ...pending(), stack: -1 }), JSON.stringify({ ...pending(), operation: "unknown-writer" }),
+      JSON.stringify({ ...pending(), intent: { ...pending().intent, toSeatNumber: 0 } })]) {
       sessionStorage.setItem(storageKey, value);
       expect(() => readPendingFloorMove(pending().scope)).toThrow();
       expect(sessionStorage.getItem(storageKey)).toBe(value);

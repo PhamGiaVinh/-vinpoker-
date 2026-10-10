@@ -31,6 +31,7 @@ export type FloorTableControlV3RpcName =
   | "move_player_seat_v2"
   | "move_player_seat_v3"
   | "move_player_seat_v4"
+  | "move_player_seat_v5"
   | "close_tournament_table_v3"
   | "close_tournament_table_v4"
   | "floor_break_table_v3"
@@ -915,6 +916,21 @@ export function createFloorTableControlV3Client(
       }).then(mutationFromResponse),
 
     movePlayerSeatExact: (args: FloorExactMoveIntent) => call("move_player_seat_v4", {
+      p_entry_id: args.entryId,
+      p_from_tournament_table_id: args.fromTournamentTableId,
+      p_from_table_session_id: args.fromTableSessionId,
+      p_to_tournament_table_id: args.toTournamentTableId,
+      p_to_table_session_id: args.toTableSessionId,
+      p_to_seat_number: args.toSeatNumber,
+      p_expected_source_revision: args.expectedSourceRevision,
+      p_expected_destination_revision: args.expectedDestinationRevision,
+      p_expected_source_epoch: args.expectedSourceEpoch,
+      p_expected_destination_epoch: args.expectedDestinationEpoch,
+      p_reason: args.reason,
+      p_request_id: args.requestId,
+    }).then(mutationFromResponse),
+
+    movePlayerSeatOrQueueExact: (args: FloorExactMoveIntent) => call("move_player_seat_v5", {
       p_entry_id: args.entryId,
       p_from_tournament_table_id: args.fromTournamentTableId,
       p_from_table_session_id: args.fromTableSessionId,

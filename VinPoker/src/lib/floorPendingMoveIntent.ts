@@ -3,6 +3,8 @@ import type { FloorExactMoveIntent } from "@/lib/floorTableControlV3";
 /** Recovery journal only; never a source of permission, occupancy or ticket validity. */
 export type PendingFloorMove = {
   scope: string;
+  /** Undefined identifies legacy v4 journals; never reinterpret them as v5. */
+  operation?: "move_player_seat_v4" | "move_player_seat_v5";
   intent: FloorExactMoveIntent;
   sourceSeat: number;
   stack: number;
@@ -22,7 +24,8 @@ export function readPendingFloorMove(scope: string): PendingFloorMove | null {
   if (!stored || typeof stored !== "object") throw new Error("Mã yêu cầu đã lưu không hợp lệ.");
   const value = stored as Partial<PendingFloorMove>;
   const intent = value.intent;
-  if (value.scope !== scope || !intent
+  if (value.scope !== scope || (value.operation !== undefined
+    && value.operation !== "move_player_seat_v4" && value.operation !== "move_player_seat_v5") || !intent
     || ![intent.entryId, intent.fromTournamentTableId, intent.fromTableSessionId,
       intent.toTournamentTableId, intent.toTableSessionId, intent.reason, intent.requestId].every(text)
     || ![intent.expectedSourceRevision, intent.expectedDestinationRevision,

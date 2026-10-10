@@ -172,14 +172,14 @@ describe("Floor V3 critical consistency contract", () => {
     expect(rpc).toHaveBeenCalledWith("get_floor_tournament_table_roster_v3", { p_tournament_id: "tour-1" });
   });
 
-  it("sends exact move incarnation, epoch, reason and retry identity without an actor override", async () => {
+  it.each(["movePlayerSeatExact", "movePlayerSeatOrQueueExact"] as const)("%s sends exact move incarnation, epoch, reason and retry identity without an actor override", async (operation) => {
     const rpc = vi.fn().mockResolvedValue({ data: { ok: true, request_id: "request-1" }, error: null });
     const client = createFloorTableControlV3Client(rpc, { enabled: true, redrawSeatLockEnabled: true });
-    await client.movePlayerSeatExact({ entryId: "entry-1", fromTournamentTableId: "table-1", fromTableSessionId: "session-1",
+    await client[operation]({ entryId: "entry-1", fromTournamentTableId: "table-1", fromTableSessionId: "session-1",
       toTournamentTableId: "table-2", toTableSessionId: "session-2", toSeatNumber: 3,
       expectedSourceRevision: 7, expectedDestinationRevision: 8, expectedSourceEpoch: 4, expectedDestinationEpoch: 5,
       reason: "Cân bàn", requestId: "request-1" });
-    expect(rpc).toHaveBeenCalledExactlyOnceWith("move_player_seat_v4", {
+    expect(rpc).toHaveBeenCalledExactlyOnceWith(operation === "movePlayerSeatExact" ? "move_player_seat_v4" : "move_player_seat_v5", {
       p_entry_id: "entry-1", p_from_tournament_table_id: "table-1", p_from_table_session_id: "session-1",
       p_to_tournament_table_id: "table-2", p_to_table_session_id: "session-2", p_to_seat_number: 3,
       p_expected_source_revision: 7, p_expected_destination_revision: 8, p_expected_source_epoch: 4,
@@ -187,10 +187,10 @@ describe("Floor V3 critical consistency contract", () => {
     });
   });
 
-  it("never falls back to a weaker move RPC when the exact writer is disabled", async () => {
+  it.each(["movePlayerSeatExact", "movePlayerSeatOrQueueExact"] as const)("%s never falls back to a weaker move RPC when the exact writer is disabled", async (operation) => {
     const rpc = vi.fn();
     const client = createFloorTableControlV3Client(rpc, { enabled: false });
-    expect(await client.movePlayerSeatExact({ entryId: "entry-1", fromTournamentTableId: "table-1", fromTableSessionId: "session-1",
+    expect(await client[operation]({ entryId: "entry-1", fromTournamentTableId: "table-1", fromTableSessionId: "session-1",
       toTournamentTableId: "table-2", toTableSessionId: "session-2", toSeatNumber: 3,
       expectedSourceRevision: 7, expectedDestinationRevision: 8, expectedSourceEpoch: 4, expectedDestinationEpoch: 5,
       reason: "Cân bàn", requestId: "request-1" })).toEqual({ ok: false, error: "FLOOR_TABLE_CONTROL_V3_DISABLED" });

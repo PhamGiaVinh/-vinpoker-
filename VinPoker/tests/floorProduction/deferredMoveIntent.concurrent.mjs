@@ -65,3 +65,41 @@ for(const canonical of [false,true]) for(const breakFirst of [true,false]){
  }
 }
 console.log('DEFERRED_BREAK_TRUE_OVERLAP_PASS');
+
+if(process.env.EXACT_QUEUE_RECOVERY_CASE==='1'){
+ const prefix=randomUUID().slice(0,8),tour=`${prefix}-0000-4000-8000-000000000003`,actor=`${prefix}-0000-4000-8000-000000000001`;
+ const marker=' -- DEFERRED_CONCURRENCY_FIXTURE_READY';
+ const fixture=readFileSync('tests/floorProduction/deferredMoveIntent.pg17.sql','utf8');
+ assert.equal(fixture.split(marker).length,2);
+ sql(fixture.replaceAll('f7290000',prefix).replace(marker,' RETURN;\n'+marker).replace('ROLLBACK;','COMMIT;'));
+ const table=number=>JSON.parse(sql(`SELECT row_to_json(x) FROM (SELECT t.id,t.table_session_id,s.revision,s.control_epoch FROM public.tournament_tables t JOIN public.table_sessions s ON s.id=t.table_session_id WHERE t.tournament_id='${tour}' AND t.table_number=${number})x;`));
+ const source=table(81),destination=table(82);
+ const entry=sql(`SELECT entry_id FROM public.tournament_seats WHERE tournament_table_id='${source.id}' AND is_active;`);
+ const request=randomUUID();
+ const invoke=`SELECT public.move_player_seat_v5('${entry}','${source.id}','${source.table_session_id}','${destination.id}','${destination.table_session_id}',3,${source.revision},${destination.revision},${source.control_epoch},${destination.control_epoch},'Queued recovery TEST','${request}');`;
+ const auth=`SELECT set_config('request.jwt.claim.sub','${actor}',true);SET LOCAL ROLE authenticated;`;
+ const foreign=randomUUID(),foreignClub=randomUUID();
+ sql(`INSERT INTO auth.users(id) VALUES('${foreign}');INSERT INTO public.clubs(id,owner_id,name,region) VALUES('${foreignClub}','${foreign}','Foreign exact queue TEST','TEST');`);
+ const denied=JSON.parse(sql(`BEGIN;SELECT set_config('request.jwt.claim.sub','${foreign}',true);SET LOCAL ROLE authenticated;${invoke}COMMIT;`).split('\n').find(line=>line.startsWith('{')));
+ assert.equal(denied.error,'actor_not_allowed');
+ assert.equal(sql(`SELECT count(*) FROM public.floor_pending_tracker_moves WHERE tournament_id='${tour}';`),'0');
+ for(const role of ['anon','service_role'])assert.equal(sql(`SELECT has_function_privilege('${role}','public.move_player_seat_v5(uuid,uuid,uuid,uuid,uuid,integer,bigint,bigint,bigint,bigint,text,uuid)','EXECUTE');`),'f');
+ const first=tx(`exact_queue_first_${prefix}`,auth+invoke,true);
+ try{await barrier(`exact_queue_first_${prefix}`,"state='idle in transaction'");}
+ catch(e){first.commit();throw new Error(`${e.message}: ${(await first.result).error}`);}
+ const second=tx(`exact_queue_retry_${prefix}`,auth+invoke);
+ try{await barrier(`exact_queue_retry_${prefix}`,"wait_event_type='Lock'");}finally{first.commit();}
+ const [lost,retry]=await Promise.all([first.result,second.result]);
+ assert.equal(lost.code,0,lost.error);assert.equal(retry.code,0,retry.error);
+ // Ignore first response after COMMIT. Recover from durable receipt through a new connection.
+ const receipt=JSON.parse(sql(`SELECT result FROM floor_private.floor_table_v3_existing_receipt('${actor}','move_player_seat_v5','${request}');`));
+ const parse=result=>JSON.parse(result.split('\n').find(line=>line.startsWith('{')));
+ assert.equal(receipt.queued,true);assert.equal(receipt.request_id,request);assert.equal(receipt.receipt_code,undefined);
+ assert.deepEqual(parse(retry.out),receipt);
+ assert.deepEqual(parse(sql(`BEGIN;${auth}${invoke}COMMIT;`)),receipt);
+ assert.equal(sql(`SELECT count(*) FROM public.floor_pending_tracker_moves WHERE tournament_id='${tour}' AND entry_id='${entry}';`),'1');
+ assert.equal(sql(`SELECT count(*) FROM public.seat_draw_receipts WHERE entry_id='${entry}';`),'0');
+ assert.equal(sql(`SELECT sum(chip_count) FROM public.tournament_seats WHERE tournament_id='${tour}' AND is_active;`),'60000');
+ assert.equal(sql(`SELECT table_session_id FROM public.tournament_seats WHERE entry_id='${entry}' AND is_active;`),source.table_session_id);
+ console.log('EXACT_QUEUE_TRUE_OVERLAP_COMMITTED_RESPONSE_LOSS_RECOVERY_AND_FOREIGN_CLUB_ACL_PASS');
+}

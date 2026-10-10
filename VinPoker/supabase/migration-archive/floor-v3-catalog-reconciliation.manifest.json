@@ -7623,6 +7623,7 @@
     {"version":"20270128000045","filename":"20270128000045_floor_seat_ticket_select_scope_v1.sql","sha256":"46bdb1ee2dc1ce684e766c1d762265453cfb0f440e7c86f1227c543e422b8e59","domain":"floor-session-ticket-campaign"},
     {"version":"20270128000046","filename":"20270128000046_dealer_inventory_canonical_table_link_v1.sql","sha256":"70d5c8ace517321fb2a7ac0a26c7098619391fa2cdc504d7436a9d1225426358","domain":"floor-session-ticket-campaign"},
     {"version":"20270128000047","filename":"20270128000047_floor_closed_session_attendance_v1.sql","sha256":"68f37a501ee80408770f437553295271198222804bc58e978d6296eb54e61ad0","domain":"floor-session-ticket-campaign"},
+    {"version":"20270128000048","filename":"20270128000048_floor_move_or_queue_exact_intent_v1.sql","sha256":"7ee0538bcd42c45ab746dba5dd8d9f91e2b01d655fa351930ee409f78f4488ae","domain":"floor-session-ticket-campaign"},
     {
       "version": "20270128000036",
       "filename": "20270128000036_floor_manual_entry_roundtrip_v1.sql",

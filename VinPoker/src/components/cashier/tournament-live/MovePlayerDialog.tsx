@@ -40,6 +40,8 @@ type MoveResult = {
   ok: boolean;
   error?: string;
   already_there?: boolean;
+  queued?: boolean;
+  pending_move_id?: string;
   player_name?: string;
   to_table_number?: number | null;
   to_seat_number?: number;
@@ -255,7 +257,8 @@ export function MovePlayerDialog({
     if (!attempt.current) {
       const sourceSeat = sourceContext?.seats.find((seat) => seat.entryId === entryId);
       if (!sourceContext || !sourceSeat || !targetTable || targetSeat == null || seatBlocked || !reason || readError) return;
-      attempt.current = { scope, intent: { entryId, fromTournamentTableId: sourceContext.tournamentTableId,
+      attempt.current = { scope, operation: canonical.deferredTrackerMoveEnabled ? "move_player_seat_v5" : "move_player_seat_v4",
+        intent: { entryId, fromTournamentTableId: sourceContext.tournamentTableId,
         fromTableSessionId: sourceContext.tableSessionId, toTournamentTableId: targetTable.id,
         toTableSessionId: targetTable.tableSessionId, toSeatNumber: targetSeat,
         expectedSourceRevision: sourceContext.sessionRevision, expectedDestinationRevision: targetTable.sessionRevision,
@@ -273,12 +276,15 @@ export function MovePlayerDialog({
     setWriteError(null);
     try {
       savePendingFloorMove(frozen);
-      const response = await canonical.movePlayerSeatExact(frozen.intent);
+      const response = frozen.operation === "move_player_seat_v5"
+        ? await canonical.movePlayerSeatOrQueueExact(frozen.intent)
+        : await canonical.movePlayerSeatExact(frozen.intent);
       if (!isCurrent()) return;
       if (response.ok === false) {
         const definitive = ["STALE_STATE", "STALE_CONTROL_EPOCH", "actor_not_allowed", "entry_not_found", "entry_not_seated",
           "no_active_v3_seat", "table_session_mismatch", "table_session_not_active", "seat_occupied", "seat_locked",
-          "table_has_active_hand", "invalid_seat_number", "tournament_not_open", "invalid_request"].includes(response.error);
+          "table_has_active_hand", "destination_table_has_active_hand", "source_table_busy", "destination_hand_not_active",
+          "pending_move_conflict", "invalid_seat_number", "tournament_not_open", "invalid_request"].includes(response.error);
         if (!definitive) throw new Error(response.error);
         clearPendingFloorMove(frozen);
         attempt.current = null;
@@ -291,6 +297,25 @@ export function MovePlayerDialog({
       const intent = frozen.intent;
       const commonValid = raw.ok === true && raw.entry_id === intent.entryId
         && raw.reason === intent.reason.trim() && raw.request_id === intent.requestId;
+      if (raw.queued === true) {
+        const queuedValid = frozen.operation === "move_player_seat_v5" && commonValid && raw.already_there !== true
+          && typeof raw.pending_move_id === "string" && !!raw.pending_move_id.trim()
+          && raw.from_tournament_table_id === intent.fromTournamentTableId
+          && raw.from_table_session_id === intent.fromTableSessionId
+          && raw.to_tournament_table_id === intent.toTournamentTableId
+          && raw.to_table_session_id === intent.toTableSessionId
+          && raw.from_seat_number === frozen.sourceSeat && raw.to_seat_number === intent.toSeatNumber
+          && raw.receipt_code == null;
+        if (!queuedValid) throw new Error("Kết quả đặt chờ không khớp thao tác chuyển ghế.");
+        clearPendingFloorMove(frozen);
+        setResult(raw as MoveResult);
+        setReceipt(null);
+        setPhase("done");
+        attempt.current = null;
+        toast.success("Đã đặt chờ chuyển; người chơi giữ ghế hiện tại đến khi server áp dụng.");
+        onMoved();
+        return;
+      }
       const unchanged = raw.already_there === true;
       const valid = commonValid && (unchanged
         ? intent.fromTournamentTableId === intent.toTournamentTableId && intent.fromTableSessionId === intent.toTableSessionId
@@ -428,7 +453,7 @@ export function MovePlayerDialog({
                 {playerName}: {confirmationSourceSeat != null ? `Ghế ${confirmationSourceSeat}` : "ghế đang xác minh"} → {confirmationTargetName} · Ghế {confirmationTargetSeat}
               </div>
               <div className="text-xs text-muted-foreground">Lý do: {confirmationReason}</div>
-              <div className="text-xs text-muted-foreground">Phiếu cũ sẽ bị thay thế bằng phiếu mới — in lại cho người chơi.</div>
+              <div className="text-xs text-muted-foreground">Server kiểm tra trước khi chuyển. Nếu bàn đích đang chơi ván, yêu cầu có thể được đặt chờ; chỉ có phiếu mới khi chuyển hoàn tất.</div>
             </div>
           )}
 
@@ -441,7 +466,9 @@ export function MovePlayerDialog({
           {phase === "done" && result && (
             <div className="rounded-md border border-emerald-600/40 bg-emerald-950/20 p-3 text-sm flex items-center gap-2 text-emerald-300">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
-              {result.already_there
+              {result.queued
+                ? "Đã đặt chờ chuyển. Người chơi vẫn ở ghế nguồn; chưa có phiếu mới cho đến khi chuyển hoàn tất."
+                : result.already_there
                 ? "Người chơi đã ở đúng ghế này — không có gì thay đổi."
                 : <>Đã chuyển → Bàn {result.to_table_number ?? "?"} · Ghế {result.to_seat_number}. Phiếu mới: <span className="font-mono">{result.receipt_code}</span></>}
             </div>
