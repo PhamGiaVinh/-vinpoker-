@@ -20,6 +20,8 @@ Current-schema authenticated both-order overlap passed on an isolated clone with
 
 Owner Voice board and hole wrapper suites passed on captured schema with56: original proposal/confirm/replay/conflict/redaction/receipt-failure oracles retained; config/global flag and synthetic prerequisite action roll back. This is Owner-path compatibility, not canonical gameplay, Dealer-path or microphone proof. Readonly reviewer passed this test-only delta.
 
-Outstanding: stale-session/epoch, latest affected dependency parity, fresh restorable recovery point, exact atomic allowlist runner/ledger receipt and rollback rehearsal, authorized scoped web acceptance. Draft is NOT RELEASE READY until these requirements are qualified. Do not broadly push the migration catalog or disable guards.
+Exact56 runner local qualification: five unit tests and actual PG17 injected-ledger-failure rollback, exact successful receipt/object postcheck, replay rejection passed. Independent readonly review passed; postcheck transport failure test also verifies no success markers. This is not recovery restore or production workflow provenance.
+
+Outstanding: stale-session/epoch, latest affected dependency parity, fresh restorable recovery point, protected production workflow/check/recovery binding, forward rollback rehearsal, authorized scoped web acceptance. Draft is NOT RELEASE READY until these requirements are qualified. Do not broadly push the migration catalog or disable guards.
 
 Recovery: capture reviewed pre-56 function definitions and authority metadata in private recovery storage, restore them only through a new compensating migration after approval. This fixes function definitions, not poker data: never undo validated card writes or rewrite history. Record source hash, recovery snapshot time and postcheck. Function postcheck does not substitute for migration ledger receipt verification.

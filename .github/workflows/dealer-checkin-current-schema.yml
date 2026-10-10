@@ -350,6 +350,9 @@ jobs:
           createdb --template="$PGDATABASE" vinpoker_ops_card56_overlap_20261011
           PGDATABASE=vinpoker_ops_card56_overlap_20261011 node tests/trackerVoice/cardBatchIntegrity.currentSchema.mjs --fixture-only
           PGDATABASE=vinpoker_ops_card56_overlap_20261011 node tests/trackerVoice/cardBatchIntegrity.concurrent.mjs
+          node --test scripts/ops/tracker-card-56-protected-apply.test.mjs
+          createdb --template="$PGDATABASE" vinpoker_ops_card56_atomic_20261011
+          PGDATABASE=vinpoker_ops_card56_atomic_20261011 CARD56_PG_TEST=1 node --test scripts/ops/tracker-card-56-atomic-pg.test.mjs
       - name: Private backup cron contract with isolated network doubles (not live scheduler proof)
         working-directory: VinPoker
         run: |
