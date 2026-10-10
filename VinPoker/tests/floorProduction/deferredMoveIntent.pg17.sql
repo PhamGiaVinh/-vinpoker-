@@ -7,12 +7,31 @@
 -- Current-schema TEST only. Public producers and actual terminal-hand trigger.
 -- Direct void transition below tests the DB consumer, not the full finish RPC.
 BEGIN;
+\if :{?EXACT_QUEUE_CASE}
+SELECT set_config('test.exact_queue','true',true);
+\else
+SELECT set_config('test.exact_queue','false',true);
+\endif
 SELECT set_config('test.read_policy', :'TEST_READ_POLICY', true);
 DO $$ BEGIN
  IF current_database() NOT LIKE 'vinpoker_ops_%' OR inet_server_addr()<>'127.0.0.1'::inet THEN
   RAISE EXCEPTION 'isolated loopback DB required';
  END IF;
 END $$;
+\if :{?QUEUE_REASON_FAILURE_CASE}
+SELECT set_config('test.queue_reason_failure','true',true);
+CREATE FUNCTION pg_temp.fail_pending_reason() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NEW.tournament_id='f7290000-0000-4000-8000-000000000003'::uuid THEN
+  RAISE EXCEPTION 'forced_pending_reason_failure';
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER test_pending_reason_failure BEFORE UPDATE OF requested_reason ON public.floor_pending_tracker_moves
+FOR EACH ROW EXECUTE FUNCTION pg_temp.fail_pending_reason();
+\else
+SELECT set_config('test.queue_reason_failure','false',true);
+\endif
 \if :{?TICKET_FAILURE_CASE}
 SELECT set_config('test.ticket_failure','true',true);
 CREATE FUNCTION pg_temp.fail_deferred_ticket_audit() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -78,7 +97,7 @@ INSERT INTO public.game_tables(id,club_id,table_name,table_number,table_type,sta
  ('f7290000-0000-4000-8000-000000000011','f7290000-0000-4000-8000-000000000002','Source TEST',81,'tournament','inactive','available'),
  ('f7290000-0000-4000-8000-000000000012','f7290000-0000-4000-8000-000000000002','Destination TEST',82,'tournament','inactive','available');
 SELECT set_config('request.jwt.claim.sub','f7290000-0000-4000-8000-000000000001',true);
-DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e uuid; h uuid; ep bigint; sr bigint; dr bigint; token text; ticket_code text; operator_actor uuid; BEGIN
+DO $$ DECLARE s jsonb; d jsonb; r jsonb; original jsonb; req uuid; se bigint; de bigint; st uuid; dt uuid; ss uuid; ds uuid; e uuid; h uuid; ep bigint; sr bigint; dr bigint; token text; ticket_code text; operator_actor uuid; BEGIN
  IF current_setting('test.ticket_read')='true' THEN
   PERFORM pg_temp.assert_true(current_setting('test.deferred_seat_ticket')='true'
     AND current_setting('test.real_finish_case')='true','ticket reader proof requires seat tickets and real public finish');
@@ -157,7 +176,43 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
    IF SQLERRM<>'source_break_pending' THEN RAISE; END IF;
   END;
  ELSE
-  r:=public.floor_queue_tracker_move_v1(e,dt,3,sr,dr,gen_random_uuid());
+  IF current_setting('test.exact_queue')='true' THEN
+   req:=gen_random_uuid();
+   SELECT control_epoch INTO se FROM public.table_sessions WHERE id=ss;
+   SELECT control_epoch INTO de FROM public.table_sessions WHERE id=ds;
+   r:=public.move_player_seat_v5(e,st,ss,dt,ds,3,sr,dr,se,de+1,'TEST exact reason',req);
+   PERFORM pg_temp.assert_true(r->>'error'='STALE_CONTROL_EPOCH','wrong epoch denies before queue');
+   PERFORM pg_temp.assert_true(NOT EXISTS(SELECT 1 FROM public.floor_pending_tracker_moves WHERE entry_id=e),'denial creates no pending move');
+   IF current_setting('test.queue_reason_failure')='true' THEN
+    BEGIN
+     r:=public.move_player_seat_v5(e,st,ss,dt,ds,3,sr,dr,se,de,'TEST exact reason',req);
+     RAISE EXCEPTION 'reason failure unexpectedly committed';
+    EXCEPTION WHEN SQLSTATE 'P0001' THEN
+     IF SQLERRM<>'forced_pending_reason_failure' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert_true(NOT EXISTS(SELECT 1 FROM public.floor_pending_tracker_moves WHERE entry_id=e),
+      'failed reason update rolls back pending row');
+    PERFORM pg_temp.assert_true((SELECT revision=dr FROM public.table_sessions WHERE id=ds),'failed reason update rolls back revision');
+    PERFORM pg_temp.assert_true(NOT EXISTS(SELECT 1 FROM floor_private.floor_table_v3_existing_receipt(
+      'f7290000-0000-4000-8000-000000000001','move_player_seat_v5',req)),'failed reason update leaves no outer success receipt');
+    PERFORM pg_temp.assert_true(NOT EXISTS(SELECT 1 FROM floor_private.floor_table_v3_existing_receipt(
+      'f7290000-0000-4000-8000-000000000001','floor_queue_tracker_move_v1',req)),'failed reason update leaves no child success receipt');
+    RETURN;
+   END IF;
+   r:=public.move_player_seat_v5(e,st,ss,dt,ds,3,sr,dr,se,de,'TEST exact reason',req);
+   PERFORM pg_temp.assert_true(r->>'queued'='true' AND r->>'reason'='TEST exact reason'
+     AND r->>'from_table_session_id'=ss::text AND r->>'to_table_session_id'=ds::text
+     AND r->>'request_id'=req::text AND NOT(r ? 'receipt_code'),'queued receipt proves exact intent without a ticket: '||r::text);
+   original:=r;
+   r:=public.move_player_seat_v5(e,st,ss,dt,ds,3,sr,dr,se,de,'TEST exact reason',req);
+   PERFORM pg_temp.assert_true(r=original,'lost response replay returns identical queued receipt despite revision bump');
+   r:=public.move_player_seat_v5(e,st,ss,dt,ds,3,sr,dr,se,de,'Different reason',req);
+   PERFORM pg_temp.assert_true(r->>'error'='IDEMPOTENCY_CONFLICT','changed reason conflicts');
+   PERFORM pg_temp.assert_true((SELECT count(*)=1 FROM public.floor_pending_tracker_moves WHERE entry_id=e),'one pending effect');
+   r:=original;
+  ELSE
+   r:=public.floor_queue_tracker_move_v1(e,dt,3,sr,dr,gen_random_uuid());
+  END IF;
   PERFORM pg_temp.assert_true((r->>'ok')::boolean,'ordinary last-player move queues');
  END IF;
  IF current_setting('test.ticket_read')='true' THEN
@@ -212,6 +267,12 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
  ELSE
  RAISE NOTICE 'queue result: %', (SELECT jsonb_build_object('status',status,'reason',resolution_reason) FROM public.floor_pending_tracker_moves WHERE entry_id=e);
  PERFORM pg_temp.assert_true((SELECT status='applied' FROM public.floor_pending_tracker_moves WHERE entry_id=e),'queued move applies');
+ IF current_setting('test.exact_queue')='true' THEN
+  PERFORM pg_temp.assert_true((SELECT count(*)=1 FROM public.seat_assignment_history WHERE entry_id=e AND reason='TEST exact reason'),
+    'user reason survives deferred application');
+  PERFORM pg_temp.assert_true((SELECT count(*)=1 FROM public.seat_draw_receipts WHERE entry_id=e AND qr_payload->>'reason'='TEST exact reason'),
+    'issued ticket retains user reason');
+ END IF;
  IF current_setting('test.deferred_seat_ticket')='true' THEN
   PERFORM pg_temp.assert_true((SELECT count(*)=1 FROM public.seat_draw_receipts receipt
    JOIN public.tournament_entries entry ON entry.id=receipt.entry_id

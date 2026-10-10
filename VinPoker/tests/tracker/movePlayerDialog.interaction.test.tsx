@@ -2,11 +2,12 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MovePlayerDialog } from "@/components/cashier/tournament-live/MovePlayerDialog";
 
-const fixture = vi.hoisted(() => ({ actor: "owner-a", move: vi.fn(), pending: vi.fn(), roster: vi.fn(), client: { rpc: vi.fn(), from: vi.fn() } }));
+const fixture = vi.hoisted(() => ({ actor: "owner-a", move: vi.fn(), legacyMove: vi.fn(), deferred: true, pending: vi.fn(), roster: vi.fn(), client: { rpc: vi.fn(), from: vi.fn() } }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: fixture.client }));
 vi.mock("@/integrations/supabase/SupabaseClientContext", () => ({ useSupabaseClient: () => fixture.client }));
 vi.mock("@/lib/floorTableControlV3", () => ({ createFloorTableControlV3Client: () => ({
-  getTournamentTableRoster: fixture.roster, getPendingTrackerMoves: fixture.pending, movePlayerSeatExact: fixture.move,
+  getTournamentTableRoster: fixture.roster, getPendingTrackerMoves: fixture.pending, movePlayerSeatExact: fixture.legacyMove,
+  movePlayerSeatOrQueueExact: fixture.move, deferredTrackerMoveEnabled: fixture.deferred,
 }) }));
 vi.mock("@/components/tournament/seat/SeatReceiptDialog", () => ({ SeatReceiptDialog: () => null }));
 
@@ -28,6 +29,7 @@ describe("move dialog exact-session read model", () => {
     vi.resetAllMocks();
     sessionStorage.clear();
     fixture.actor = "owner-a";
+    fixture.deferred = true;
     fixture.pending.mockResolvedValue({ ok: true, data: [] });
     fixture.roster.mockResolvedValue({ ok: true, data: [sourceTable(), destinationTable()] });
     fixture.client.rpc.mockResolvedValue({ data: null, error: null });
@@ -36,6 +38,95 @@ describe("move dialog exact-session read model", () => {
         single: () => Promise.resolve({ data: { name: "TEST", start_time: null }, error: null }) };
       return query;
     });
+  });
+  it("replays a legacy journal through v4, never reinterpreting it as deferred v5", async () => {
+    fixture.move.mockResolvedValueOnce({ ok: false, error: "Failed to fetch" });
+    const props = dialogProps();
+    const first = render(<MovePlayerDialog {...props} />);
+    await screen.findByText(/Canonical B1/);
+    fireEvent.click(screen.getByRole("button", { name: "Bàn kế" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận chuyển" }));
+    await screen.findByRole("alert");
+    const intent = fixture.move.mock.calls[0][0];
+    first.unmount();
+    const key = `vp:floor-move-intent:v1:${encodeURIComponent("owner-a:tour-1:entry-1")}`;
+    const stored = JSON.parse(sessionStorage.getItem(key)!);
+    delete stored.operation;
+    sessionStorage.setItem(key, JSON.stringify(stored));
+    fixture.legacyMove.mockResolvedValue({ ok: true, data: moveAck(intent.requestId) });
+    const recovered = render(<MovePlayerDialog {...props} />);
+    try {
+      fireEvent.click(await screen.findByRole("button", { name: "Xác nhận chuyển" }));
+      expect(await screen.findByText("SERVER-TICKET")).toBeInTheDocument();
+      expect(fixture.legacyMove).toHaveBeenCalledWith(intent);
+      expect(fixture.move).toHaveBeenCalledTimes(1);
+    } finally { recovered.unmount(); }
+  });
+  it("keeps the v4 immediate path when deferred production is OFF", async () => {
+    fixture.deferred = false;
+    fixture.legacyMove.mockImplementation(async (intent) => ({ ok: true, data: moveAck(intent.requestId) }));
+    const view = render(<MovePlayerDialog {...dialogProps()} />);
+    try {
+      await screen.findByText(/Canonical B1/);
+      fireEvent.click(screen.getByRole("button", { name: "Bàn kế" }));
+      fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+      fireEvent.click(screen.getByRole("button", { name: "Xác nhận chuyển" }));
+      expect(await screen.findByText("SERVER-TICKET")).toBeInTheDocument();
+      expect(fixture.legacyMove).toHaveBeenCalledTimes(1);
+      expect(fixture.move).not.toHaveBeenCalled();
+    } finally { view.unmount(); }
+  });
+  it("acknowledges an exact queued intent without inventing a completed move ticket", async () => {
+    fixture.move.mockImplementation(async (intent) => ({ ok: true, data: {
+      ok: true, queued: true, pending_move_id: "pending-1", entry_id: intent.entryId,
+      request_id: intent.requestId, reason: intent.reason,
+      from_tournament_table_id: intent.fromTournamentTableId, from_table_session_id: intent.fromTableSessionId,
+      to_tournament_table_id: intent.toTournamentTableId, to_table_session_id: intent.toTableSessionId,
+      from_seat_number: 1, to_seat_number: intent.toSeatNumber,
+    } }));
+    const props = dialogProps();
+    const view = render(<MovePlayerDialog {...props} />);
+    try {
+      await screen.findByText(/Canonical B1/);
+      fireEvent.click(screen.getByRole("button", { name: "Bàn kế" }));
+      fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+      fireEvent.click(screen.getByRole("button", { name: "Xác nhận chuyển" }));
+      expect(await screen.findByText(/Đã đặt chờ chuyển/)).toBeInTheDocument();
+      expect(screen.queryByText("SERVER-TICKET")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Xem phiếu mới" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(props.onMoved).toHaveBeenCalledTimes(1);
+      expect(fixture.move).toHaveBeenCalledTimes(1);
+      expect(sessionStorage.length).toBe(0);
+    } finally { view.unmount(); }
+  });
+  it.each([
+    { to_table_session_id: "old-session" },
+    { request_id: "other-request" },
+    { receipt_code: "UNISSUED-TICKET" },
+    { pending_move_id: "" },
+  ])("rejects mismatched or printable queued acknowledgements: %j", async (invalid) => {
+    fixture.move.mockImplementation(async (intent) => ({ ok: true, data: {
+      ok: true, queued: true, pending_move_id: "pending-1", entry_id: intent.entryId,
+      request_id: intent.requestId, reason: intent.reason,
+      from_tournament_table_id: intent.fromTournamentTableId, from_table_session_id: intent.fromTableSessionId,
+      to_tournament_table_id: intent.toTournamentTableId, to_table_session_id: intent.toTableSessionId,
+      from_seat_number: 1, to_seat_number: intent.toSeatNumber, ...invalid,
+    } }));
+    const props = dialogProps();
+    const view = render(<MovePlayerDialog {...props} />);
+    try {
+      await screen.findByText(/Canonical B1/);
+      fireEvent.click(screen.getByRole("button", { name: "Bàn kế" }));
+      fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+      fireEvent.click(screen.getByRole("button", { name: "Xác nhận chuyển" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Chưa xác minh");
+      expect(props.onMoved).not.toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Xem phiếu mới" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Sửa lại" })).toBeDisabled();
+      expect(sessionStorage.length).toBe(1);
+    } finally { view.unmount(); }
   });
   it("writes a reasoned exact-session intent and shows only the returned server ticket", async () => {
     fixture.move.mockImplementation(async (args: { requestId: string }) => ({ ok: true, data: moveAck(args.requestId) }));
@@ -99,6 +190,37 @@ describe("move dialog exact-session read model", () => {
       expect(fixture.move.mock.calls[1][0]).toEqual(frozen);
       expect(await screen.findByText("SERVER-TICKET")).toBeInTheDocument();
     } finally { recoveredView.unmount(); }
+  });
+  it("recovers a lost queued response through v5 after remount even when the flag changes", async () => {
+    fixture.move.mockResolvedValueOnce({ ok: false, error: "Failed to fetch" });
+    const props = dialogProps();
+    const first = render(<MovePlayerDialog {...props} />);
+    await screen.findByText(/Canonical B1/);
+    fireEvent.click(screen.getByRole("button", { name: "Bàn kế" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận chuyển" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Chưa xác minh");
+    const frozen = fixture.move.mock.calls[0][0];
+    first.unmount();
+    fixture.deferred = false;
+    fixture.move.mockResolvedValueOnce({ ok: true, data: {
+      ok: true, queued: true, pending_move_id: "pending-1", entry_id: frozen.entryId,
+      request_id: frozen.requestId, reason: frozen.reason,
+      from_tournament_table_id: frozen.fromTournamentTableId, from_table_session_id: frozen.fromTableSessionId,
+      to_tournament_table_id: frozen.toTournamentTableId, to_table_session_id: frozen.toTableSessionId,
+      from_seat_number: 1, to_seat_number: frozen.toSeatNumber,
+    } });
+    const recovered = render(<MovePlayerDialog {...props} />);
+    try {
+      fireEvent.click(await screen.findByRole("button", { name: "Xác nhận chuyển" }));
+      expect(await screen.findByText(/Đã đặt chờ chuyển/)).toBeInTheDocument();
+      expect(fixture.move).toHaveBeenCalledTimes(2);
+      expect(fixture.move.mock.calls[1][0]).toEqual(frozen);
+      expect(fixture.legacyMove).not.toHaveBeenCalled();
+      expect(props.onMoved).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("button", { name: "Xem phiếu mới" })).not.toBeInTheDocument();
+      expect(sessionStorage.length).toBe(0);
+    } finally { recovered.unmount(); }
   });
   it("shows the frozen destination on recovery even when fresh roster is unavailable", async () => {
     fixture.move.mockResolvedValueOnce({ ok: false, error: "Failed to fetch" });

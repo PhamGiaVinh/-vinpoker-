@@ -34,6 +34,7 @@ import type { Tournament } from "@/types/tournament";
 import { OpenTableDialog } from "./OpenTableDialog";
 import { FloorRedrawDialogV1 } from "./FloorRedrawDialogV1";
 import { RestoreBustDialog } from "./RestoreBustDialog";
+import { MovePlayerDialog } from "./MovePlayerDialog";
 import { FEATURES } from "@/lib/featureFlags";
 import { parseCanonicalCloseResult } from "./closeTableResponse";
 
@@ -116,9 +117,8 @@ export function FloorTableMapPanelV3({
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [selectedSeatNumber, setSelectedSeatNumber] = useState<number | null>(null);
   const [entrySelection, setEntrySelection] = useState<FloorEntrySelection | null>(null);
-  const [moveDestinationId, setMoveDestinationId] = useState("");
-  const [moveSeatNumber, setMoveSeatNumber] = useState<number | null>(null);
   const [moveOpen, setMoveOpen] = useState(false);
+  const [moveTarget, setMoveTarget] = useState<{ scope: string; entryId: string; tableId: string; seatNumber: number; playerName: string } | null>(null);
   const [modeOpen, setModeOpen] = useState(false);
   const [nextMode, setNextMode] = useState<"manual" | "tracker">("manual");
   const [modeRequest, setModeRequest] = useState<{ id: string; targetMode: string; blockers: string[] } | null>(null);
@@ -151,18 +151,6 @@ export function FloorTableMapPanelV3({
     return Array.from({ length: selectedTable.maxSeats }, (_, index) => index + 1)
       .filter((seat) => !occupied.has(seat) && !locked.has(seat));
   }, [selectedTable]);
-  const moveDestination = useMemo(
-    () => tables.find((table) => table.tournamentTableId === moveDestinationId) ?? null,
-    [moveDestinationId, tables],
-  );
-  const destinationSeatNumbers = useMemo(() => {
-    if (!moveDestination) return [] as number[];
-    const occupied = new Set(moveDestination.seats.map((seat) => seat.seatNumber));
-    const locked = new Set(moveDestination.seatLocks.map((seatLock) => seatLock.seatNumber));
-    const reserved = new Set(pendingMoves.filter((move) => move.status === "pending" && move.destinationTournamentTableId === moveDestination.tournamentTableId).map((move) => move.destinationSeatNumber));
-    return Array.from({ length: moveDestination.maxSeats }, (_, index) => index + 1)
-      .filter((seat) => !occupied.has(seat) && !locked.has(seat) && !reserved.has(seat));
-  }, [moveDestination, pendingMoves]);
 
   const readScope = `${actorId ?? ""}:${tournament.id}`;
   const currentReadScope = useRef(readScope);
@@ -244,9 +232,6 @@ export function FloorTableMapPanelV3({
 
   useEffect(() => {
     setEntrySelection(null);
-    setMoveDestinationId("");
-    setMoveSeatNumber(null);
-    setMoveOpen(false);
     setPendingBustSeat(null);
     setPendingFreeSitSeat(null);
     setPendingTableAction(null);
@@ -302,10 +287,6 @@ export function FloorTableMapPanelV3({
     setModeOpen(false);
   }, [selectedTableSessionId, selectedTableControlMode]);
 
-  useEffect(() => {
-    if (!moveDestination) return;
-    setMoveSeatNumber(destinationSeatNumbers[0] ?? null);
-  }, [destinationSeatNumbers, moveDestination]);
 
   const run = async (successMessage: string | ((data: Record<string, unknown>) => string), mutation: Mutation): Promise<boolean> => {
     if (busy) return false;
@@ -375,7 +356,9 @@ export function FloorTableMapPanelV3({
           <p className="text-xs text-muted-foreground">Ghế {seat.seatNumber} · Entry {seat.entryNo} · {formatStack(seat.chipCount)} chip</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
-          <Button data-ops-action="floor.player.open_move" className="min-h-12" disabled={busy || Boolean(pendingForEntry)} aria-expanded={moveOpen} onClick={() => setMoveOpen((open) => !open)}>
+          <Button data-ops-action="floor.player.open_move" className="min-h-12" disabled={!actorId || busy || Boolean(pendingForEntry)} aria-expanded={moveOpen && moveTarget?.scope === readScope}
+            onClick={() => { setMoveTarget({ scope: readScope, entryId: seat.entryId, tableId: selectedTable.tournamentTableId,
+              seatNumber: seat.seatNumber, playerName: seat.displayName }); setMoveOpen(true); }}>
             <ArrowRightLeft className="mr-2 h-4 w-4" /> Chuyển người
           </Button>
           {FEATURES.floorFreeSitV1 && (
@@ -396,51 +379,6 @@ export function FloorTableMapPanelV3({
         )}
         {staleForEntry && !pendingForEntry && (
           <p role="status" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs">Yêu cầu chuyển trước không còn hợp lệ. Hãy tải lại và chọn ghế mới.</p>
-        )}
-        {moveOpen && (
-          <div className="grid min-w-0 gap-3 rounded-lg border border-border bg-background/50 p-3" aria-label="Chọn vị trí chuyển đến">
-            <div className="grid min-w-0 gap-2 sm:grid-cols-2">
-              <label className="grid min-w-0 gap-1 text-xs text-muted-foreground">
-                Bàn đích
-                <select className="h-12 min-w-0 w-full rounded-md border border-input bg-background px-2 text-base text-foreground" value={moveDestinationId} onChange={(event) => setMoveDestinationId(event.target.value)}>
-                  <option value="">Chọn bàn</option>
-                  {tables.filter((table) => table.tournamentTableId !== selectedTable.tournamentTableId && table.seats.length + table.seatLocks.length < table.maxSeats).map((table) => (
-                    <option key={table.tournamentTableId} value={table.tournamentTableId}>Bàn {table.tableNumber} · {table.seats.length}/{table.maxSeats}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid min-w-0 gap-1 text-xs text-muted-foreground">
-                Ghế đích
-                <select className="h-12 min-w-0 w-full rounded-md border border-input bg-background px-2 text-base text-foreground" value={moveSeatNumber ?? ""} onChange={(event) => setMoveSeatNumber(event.target.value ? Number(event.target.value) : null)} disabled={!moveDestination}>
-                  <option value="">Chọn ghế</option>
-                  {destinationSeatNumbers.map((seatNumber) => <option key={seatNumber} value={seatNumber}>Ghế {seatNumber}</option>)}
-                </select>
-              </label>
-            </div>
-            {v3.deferredTrackerMoveEnabled && moveDestination?.controlMode === "tracker" && (
-              <p className="text-xs text-muted-foreground">Nếu bàn Tracker đang có ván, ghế này sẽ được giữ và người chơi chỉ chuyển sau khi ván kết thúc.</p>
-            )}
-            <Button data-ops-action="floor.player.move" className="min-h-12" disabled={busy || !moveDestination || moveSeatNumber == null} onClick={() => {
-              if (!moveDestination || moveSeatNumber == null) return;
-              const args = {
-                entryId: seat.entryId,
-                toTournamentTableId: moveDestination.tournamentTableId,
-                toSeatNumber: moveSeatNumber,
-                expectedSourceRevision: selectedTable.sessionRevision,
-                expectedDestinationRevision: moveDestination.sessionRevision,
-                requestId: crypto.randomUUID(),
-              };
-              void run((data) => data.queued ? "Đã giữ ghế; sẽ chuyển khi ván Tracker kết thúc." : "Đã chuyển người chơi.", async () => {
-                const direct = await v3.movePlayerSeat(args);
-                if (direct.ok !== false) return direct;
-                if (direct.error !== "table_has_active_hand" && direct.error !== "destination_table_has_active_hand") return direct;
-                if (moveDestination.controlMode !== "tracker" || !v3.deferredTrackerMoveEnabled) return direct;
-                return v3.queueTrackerMove(args);
-              }).then((ok) => { if (ok) setMoveOpen(false); });
-            }}>
-              Chuyển đến Bàn {moveDestination?.tableNumber ?? "—"} · Ghế {moveSeatNumber ?? "—"}
-            </Button>
-          </div>
         )}
         {trackerChipBlocked && (
           <p className="rounded-xl border border-amber-400/25 bg-amber-400/5 px-3 py-2 text-xs leading-5 text-amber-100/90">
@@ -492,6 +430,12 @@ export function FloorTableMapPanelV3({
         Live Tracker chỉ nhận thao tác khi đúng phiên bàn hiện tại. Floor không tự chuyển sang writer cũ nếu phiên đã thay đổi.
       </p>
 
+      {actorId && moveTarget?.scope === readScope && (
+        <MovePlayerDialog actorId={actorId} open={moveOpen}
+          onOpenChange={setMoveOpen} tournamentId={tournament.id} entryId={moveTarget.entryId}
+          playerName={moveTarget.playerName} currentTournamentTableId={moveTarget.tableId}
+          currentSeatNumber={moveTarget.seatNumber} onMoved={() => void load(true)} />
+      )}
       <OpenTableDialog open={openTable} onOpenChange={setOpenTable} tournamentId={tournament.id} onDone={() => void load()} />
       <RestoreBustDialog actorId={actorId} tournamentId={tournament.id} target={restoreTarget}
         onClose={() => setRestoreTarget(null)}

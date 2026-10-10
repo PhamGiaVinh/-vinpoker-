@@ -4,6 +4,8 @@ import {spawn,spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 assert.equal(process.env.PGHOST,'127.0.0.1');
 assert.ok(process.env.PGDATABASE?.startsWith('vinpoker_ops_'));
+const exactVersion=Number(process.env.EXACT_MOVE_VERSION??4);
+assert.ok([4,5].includes(exactVersion),'only reviewed exact-session endpoints');
 function sql(query){
  const r=spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{input:query,encoding:'utf8'});
  assert.equal(r.status,0,r.stderr);return r.stdout.trim();
@@ -33,7 +35,7 @@ for(const moveFirst of [true,false]){
  const dest=JSON.parse(sql(`SELECT row_to_json(x) FROM (SELECT t.id,t.table_session_id,s.revision,s.control_epoch FROM public.tournament_tables t JOIN public.table_sessions s ON s.id=t.table_session_id WHERE t.tournament_id='${tour}' AND t.table_number=93)x;`));
  const auth=`SELECT set_config('request.jwt.claim.sub','${actor}',true);SET LOCAL ROLE authenticated;`;
  const moveRequest=randomUUID();
- const move=`${auth} SELECT public.move_player_seat_v4('${entry}','${source.id}','${source.table_session_id}','${dest.id}','${dest.table_session_id}',1,${source.revision},${dest.revision},${source.control_epoch},${dest.control_epoch},'Concurrency TEST','${moveRequest}');`;
+ const move=`${auth} SELECT public.move_player_seat_v${exactVersion}('${entry}','${source.id}','${source.table_session_id}','${dest.id}','${dest.table_session_id}',1,${source.revision},${dest.revision},${source.control_epoch},${dest.control_epoch},'Concurrency TEST','${moveRequest}');`;
  const closeRequest=randomUUID();
  const close=`${auth} SELECT public.close_tournament_table_v4('${dest.id}',${dest.revision},'${closeRequest}');`;
  const first=tx(`move_close_first_${prefix}`,moveFirst?move:close,true);
@@ -77,7 +79,7 @@ for(const moveFirst of [true,false]){
 }
 // Old callable writers must serialize with the exact-session v4 writer too.
 // Distinct keys intentionally challenge integrity, not merely receipt replay.
-if(process.env.MIXED_MOVE_CASE==='1')for(const legacyVersion of [2,3])for(const legacyFirst of [true,false]){
+if(process.env.MIXED_MOVE_CASE==='1')for(const legacyVersion of (exactVersion===5?[2,3,4]:[2,3]))for(const legacyFirst of [true,false]){
  const prefix=randomUUID().slice(0,8),tour=`${prefix}-0000-4000-8000-000000000003`,actor=`${prefix}-0000-4000-8000-000000000001`,entry=`${prefix}-0000-4000-8000-000000000031`;
  const marker=' -- MOVE_CLOSE_CONCURRENCY_FIXTURE_READY';
  const fixture=readFileSync('tests/floorProduction/breakDrawPolicy.pg17.sql','utf8');
@@ -86,8 +88,10 @@ if(process.env.MIXED_MOVE_CASE==='1')for(const legacyVersion of [2,3])for(const 
  const table=number=>JSON.parse(sql(`SELECT row_to_json(x) FROM (SELECT t.id,t.table_session_id,s.revision,s.control_epoch FROM public.tournament_tables t JOIN public.table_sessions s ON s.id=t.table_session_id WHERE t.tournament_id='${tour}' AND t.table_number=${number})x;`));
  const source=table(91),dest=table(93);
  const auth=`SELECT set_config('request.jwt.claim.sub','${actor}',true);SET LOCAL ROLE authenticated;`;
- const legacy=`${auth} SELECT public.move_player_seat_v${legacyVersion}('${entry}','${dest.id}',1,${source.revision},${dest.revision},'${randomUUID()}');`;
- const exact=`${auth} SELECT public.move_player_seat_v4('${entry}','${source.id}','${source.table_session_id}','${dest.id}','${dest.table_session_id}',2,${source.revision},${dest.revision},${source.control_epoch},${dest.control_epoch},'Mixed writer TEST','${randomUUID()}');`;
+ const legacy=legacyVersion===4
+   ? `${auth} SELECT public.move_player_seat_v4('${entry}','${source.id}','${source.table_session_id}','${dest.id}','${dest.table_session_id}',1,${source.revision},${dest.revision},${source.control_epoch},${dest.control_epoch},'Legacy v4 TEST','${randomUUID()}');`
+   : `${auth} SELECT public.move_player_seat_v${legacyVersion}('${entry}','${dest.id}',1,${source.revision},${dest.revision},'${randomUUID()}');`;
+ const exact=`${auth} SELECT public.move_player_seat_v${exactVersion}('${entry}','${source.id}','${source.table_session_id}','${dest.id}','${dest.table_session_id}',2,${source.revision},${dest.revision},${source.control_epoch},${dest.control_epoch},'Mixed writer TEST','${randomUUID()}');`;
  const first=tx(`mixed_first_${prefix}`,legacyFirst?legacy:exact,true);
  try{await barrier(`mixed_first_${prefix}`,"state='idle in transaction'");}
  catch(e){first.commit();throw new Error(`${e.message}: ${(await first.result).error}`);}

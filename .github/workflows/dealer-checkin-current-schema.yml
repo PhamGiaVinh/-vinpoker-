@@ -75,6 +75,8 @@ on:
       - 'VinPoker/supabase/migrations/2027012800004[0-5]_*.sql'
       - 'VinPoker/supabase/migrations/20270128000046_dealer_inventory_canonical_table_link_v1.sql'
       - 'VinPoker/supabase/migrations/20270128000047_floor_closed_session_attendance_v1.sql'
+      - 'VinPoker/supabase/migrations/20270128000048_floor_move_or_queue_exact_intent_v1.sql'
+      - 'VinPoker/scripts/ops/floor-48-*'
       - 'VinPoker/tests/floorProduction/legacySessionLifecycle.pg17.sql'
       - 'VinPoker/tests/floorProduction/legacyCloseOpen.concurrent.mjs'
       - 'VinPoker/tests/floorProduction/moveClose.concurrent.mjs'
@@ -121,7 +123,7 @@ jobs:
         with: { deno-version: v2.x }
       - name: Exact Floor package preparation rejects drift (offline only)
         working-directory: VinPoker
-        run: node --test scripts/ops/floor-37-47-release-plan.test.mjs scripts/ops/floor-37-47-protected-apply.test.mjs
+        run: node --test scripts/ops/floor-37-47-release-plan.test.mjs scripts/ops/floor-37-47-protected-apply.test.mjs scripts/ops/floor-48-release-plan.test.mjs scripts/ops/floor-48-protected-apply.test.mjs
       - name: Install locked Node types required by the existing Supabase import graph
         working-directory: VinPoker
         run: npm ci --ignore-scripts
@@ -276,6 +278,18 @@ jobs:
           node tests/floorProduction/deferredMoveIntent.concurrent.mjs
           MIXED_MOVE_CASE=1 DEALER_ASSIGN_CLOSE_CASE=1 node tests/floorProduction/moveClose.concurrent.mjs
           node node_modules/vitest/vitest.mjs run tests/floorProduction/floorPlayerActions.move.test.tsx tests/floorProduction/opsTables.close.test.tsx tests/floorProduction/playerActionSheets.render.test.tsx tests/tracker/closeTableDialog.interaction.test.tsx tests/tracker/movePlayerDialog.interaction.test.tsx tests/tracker/floorPendingCloseIntent.test.ts tests/tracker/floorPendingMoveIntent.test.ts tests/tracker/closeTableResponse.test.ts src/components/tournament/seat/floorSeatTicketCore.test.ts src/components/tournament/seat/SeatReceiptDialog.test.tsx tests/floorTableControlV3/criticalConsistency.contract.test.ts tests/floorFreeSitV1/rosterActions.interaction.test.tsx
+      - name: Exact move or queue48 atomic release and canonical consumer recovery
+        working-directory: VinPoker
+        run: |
+          createdb -T "$PGDATABASE" vinpoker_ops_through47
+          FLOOR48_PG_TEST=1 node --test scripts/ops/floor-48-release-plan.test.mjs scripts/ops/floor-48-protected-apply.test.mjs
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000048_floor_move_or_queue_exact_intent_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -v EXACT_QUEUE_CASE=1 -v REAL_FINISH_CASE=1 -v SEAT_TICKET_CASE=1 -v READ_TICKET_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v EXACT_QUEUE_CASE=1 -v QUEUE_REASON_FAILURE_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v EXACT_QUEUE_CASE=1 -v TICKET_FAILURE_CASE=1 -v REAL_FINISH_CASE=1 -v SEAT_TICKET_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -v REAL_FINISH_CASE=1 -v SEAT_TICKET_CASE=1 -v READ_TICKET_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
+          EXACT_QUEUE_RECOVERY_CASE=1 node tests/floorProduction/deferredMoveIntent.concurrent.mjs
+          EXACT_MOVE_VERSION=5 MIXED_MOVE_CASE=1 node tests/floorProduction/moveClose.concurrent.mjs
       - name: OFF-at-commit true-overlap with isolated acquisition fixture (not live worker proof)
         working-directory: VinPoker
         run: |

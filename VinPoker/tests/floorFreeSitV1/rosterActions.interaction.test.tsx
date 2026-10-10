@@ -6,6 +6,7 @@ import type { Tournament } from "@/types/tournament";
 const fixture = vi.hoisted(() => ({
   successToast: vi.fn(),
   errorToast: vi.fn(),
+  moveDialog: vi.fn(),
   longName: "CODEX_FLOOR_UAT_20260724114346_7ff93193_CASHIER",
   client: {
     enabled: true,
@@ -40,6 +41,13 @@ vi.mock("@/components/ops/shared/FloorSeatRoster", () => ({
 }));
 vi.mock("@/components/cashier/tournament-live/OpenTableDialog", () => ({ OpenTableDialog: () => null }));
 vi.mock("@/components/cashier/tournament-live/FloorRedrawDialogV1", () => ({ FloorRedrawDialogV1: () => null }));
+vi.mock("@/components/cashier/tournament-live/MovePlayerDialog", () => ({ MovePlayerDialog: (props: {
+  open: boolean; entryId: string; actorId: string | null; onMoved: () => void;
+}) => {
+  fixture.moveDialog(props);
+  return props.open ? <div data-testid="canonical-move-host">{props.actorId}:{props.entryId}
+    <button onClick={props.onMoved}>Đặt chờ canonical</button></div> : null;
+} }));
 
 function setup(options: { pendingNetworkFailure?: boolean } = {}) {
   vi.clearAllMocks();
@@ -278,14 +286,17 @@ describe("Floor roster mobile actions", () => {
     expect(secondIntent.requestId).not.toBe(firstIntent.requestId);
   });
 
-  it("reveals destination controls only after Move is selected", async () => {
+  it("hands the scoped entry to the canonical dialog instead of inline legacy writers", async () => {
     setup();
     fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
     fireEvent.click(screen.getByRole("button", { name: "Mở Ghế 1" }));
     expect(screen.queryByLabelText("Bàn đích")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Chuyển người" }));
-    expect(screen.getByLabelText("Bàn đích")).toBeTruthy();
-    expect(screen.getByLabelText("Ghế đích")).toBeTruthy();
+    expect(screen.getByTestId("canonical-move-host")).toHaveTextContent("owner-a:entry-1");
+    expect(fixture.moveDialog).toHaveBeenLastCalledWith(expect.objectContaining({ actorId: "owner-a",
+      tournamentId: "tour-1", entryId: "entry-1", currentTournamentTableId: "table-1", currentSeatNumber: 1 }));
+    expect(fixture.client.movePlayerSeat).not.toHaveBeenCalled();
+    expect(fixture.client.queueTrackerMove).not.toHaveBeenCalled();
   });
 
   it("keeps long names inside Vietnamese action dialogs", async () => {
@@ -303,28 +314,51 @@ describe("Floor roster mobile actions", () => {
     expect(within(screen.getByRole("alertdialog")).getByText(/giữ nguyên chip và trở về danh sách chờ/)).toBeTruthy();
   });
 
-  it("queues a move into a running Tracker table and shows the reserved seat", async () => {
+  it("refreshes and displays the reserved seat after the canonical dialog acknowledges pending", async () => {
     setup();
-    fixture.client.movePlayerSeat.mockResolvedValue({ ok: false, error: "destination_table_has_active_hand" });
-    fixture.client.queueTrackerMove.mockResolvedValue({ ok: true, data: { queued: true, pending_move_id: "pending-1" } });
     fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
     fireEvent.click(screen.getByRole("button", { name: "Mở Ghế 1" }));
     fireEvent.click(screen.getByRole("button", { name: "Chuyển người" }));
-    fireEvent.change(screen.getByLabelText("Bàn đích"), { target: { value: "table-2" } });
-    fireEvent.change(screen.getByLabelText("Ghế đích"), { target: { value: "2" } });
     fixture.client.getPendingTrackerMoves.mockResolvedValue({ ok: true, data: [{
       pendingMoveId: "pending-1", entryId: "entry-1", sourceTournamentTableId: "table-1",
       destinationTournamentTableId: "table-2", destinationSeatNumber: 2,
       status: "pending", resolutionReason: null, requestedAt: "2026-09-24T00:00:00Z",
     }] });
-    fireEvent.click(screen.getByRole("button", { name: "Chuyển đến Bàn 5 · Ghế 2" }));
-    await waitFor(() => expect(fixture.client.queueTrackerMove).toHaveBeenCalledWith(expect.objectContaining({
-      entryId: "entry-1", toTournamentTableId: "table-2", toSeatNumber: 2,
-    })));
-    expect(fixture.client.movePlayerSeat).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(screen.getByTestId("canonical-move-host")).getByRole("button", { name: "Đặt chờ canonical", hidden: true }));
+    expect(fixture.client.queueTrackerMove).not.toHaveBeenCalled();
+    expect(fixture.client.movePlayerSeat).not.toHaveBeenCalled();
     expect(await screen.findByText("Chờ hết ván · Bàn 5 · Ghế 2")).toBeTruthy();
   });
 
+  it("keeps the result dialog mounted when the moved player leaves the source roster", async () => {
+    const view = setup();
+    try {
+      fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+      fireEvent.click(screen.getByRole("button", { name: "Mở Ghế 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Chuyển người" }));
+      const initial = await fixture.client.getTournamentTableRoster.mock.results[0].value;
+      fixture.client.getTournamentTableRoster.mockResolvedValue({ ...initial,
+        data: initial.data.map((table: { tournamentTableId: string }) => table.tournamentTableId === "table-1"
+          ? { ...table, seats: [] } : table) });
+      fireEvent.click(within(screen.getByTestId("canonical-move-host")).getByRole("button", { name: "Đặt chờ canonical", hidden: true }));
+      await waitFor(() => expect(fixture.client.getTournamentTableRoster).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.queryByLabelText("Thao tác người chơi")).toBeNull());
+      expect(screen.getByTestId("canonical-move-host")).toHaveTextContent("owner-a:entry-1");
+    } finally { view.unmount(); }
+  });
+  it("does not carry an open move dialog across an actor change", async () => {
+    const view = setup();
+    try {
+      fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+      fireEvent.click(screen.getByRole("button", { name: "Mở Ghế 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Chuyển người" }));
+      expect(screen.getByTestId("canonical-move-host")).toHaveTextContent("owner-a:entry-1");
+      view.rerender(<FloorTableMapPanelV3 actorId="owner-b" tournament={{ id: "tour-1" } as Tournament} refreshTrigger={0} />);
+      expect(screen.queryByTestId("canonical-move-host")).toBeNull();
+      expect(fixture.client.movePlayerSeat).not.toHaveBeenCalled();
+      expect(fixture.client.queueTrackerMove).not.toHaveBeenCalled();
+    } finally { view.unmount(); }
+  });
   it("keeps the roster usable when a secondary request fails", async () => {
     setup({ pendingNetworkFailure: true });
     expect(await screen.findByRole("button", { name: "Mở Bàn 4" })).toBeTruthy();
