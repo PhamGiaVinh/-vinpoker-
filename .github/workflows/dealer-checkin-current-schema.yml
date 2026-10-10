@@ -10,6 +10,7 @@ on:
       - 'VinPoker/tests/trackerVoice/cardBoardIntegrity*'
       - 'VinPoker/supabase/migrations/20270128000057_dealer_pt_policy_tenant_integrity_v1.sql'
       - 'VinPoker/tests/dealerSwing/accrualTenant*'
+      - 'VinPoker/scripts/ops/dealer-policy-57-*'
       - 'VinPoker/scripts/ops/restore-schema-test-baseline.mjs'
       - 'VinPoker/supabase/migrations/20270128000014_dealer_checkin_club_shift_receipt_v1.sql'
       - 'VinPoker/tests/dealerSwing/checkin*'
@@ -360,11 +361,14 @@ jobs:
       - name: Dealer policy57 tenant boundary and committed overlap on qualified schema
         working-directory: VinPoker
         run: |
+          node --test scripts/ops/dealer-policy-57-protected-apply.test.mjs
           PGDATABASE=vinpoker_ops_card56_overlap_20261011 psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000057_dealer_pt_policy_tenant_integrity_v1.sql
           PGDATABASE=vinpoker_ops_card56_overlap_20261011 psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/accrualTenant.pg17.sql
           PGDATABASE=vinpoker_ops_card56_overlap_20261011 psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/accrualTenant.readonly-postcheck.sql
           createdb --template=vinpoker_ops_card56_overlap_20261011 vinpoker_ops_policy57_overlap_20261011
           PGDATABASE=vinpoker_ops_policy57_overlap_20261011 node tests/dealerSwing/accrualTenant.concurrent.mjs
+          createdb --template=vinpoker_ops_card56_overlap_20261011 vinpoker_ops_policy57_atomic_20261011
+          PGDATABASE=vinpoker_ops_policy57_atomic_20261011 POLICY57_PG_TEST=1 node --test scripts/ops/dealer-policy-57-atomic-pg.test.mjs
       - name: Private backup cron contract with isolated network doubles (not live scheduler proof)
         working-directory: VinPoker
         run: |
