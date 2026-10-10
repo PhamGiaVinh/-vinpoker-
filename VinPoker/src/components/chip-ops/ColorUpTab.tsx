@@ -51,8 +51,10 @@ interface HistoryOp {
 
 export function ColorUpTab({ tournamentId, clubId }: { tournamentId: string; clubId: string | null }) {
   const { user } = useAuth();
+  const [journalGeneration, setJournalGeneration] = useState(0);
   const scope = `${user?.id ?? "anonymous"}:${clubId}:${tournamentId}`;
-  return <ScopedColorUpTab key={scope} scope={scope} tournamentId={tournamentId} clubId={clubId} />;
+  return <ScopedColorUpTab key={`${scope}:${journalGeneration}`} scope={scope} actorId={user?.id ?? null} tournamentId={tournamentId} clubId={clubId}
+    onRereadJournal={() => setJournalGeneration((value) => value + 1)} />;
 }
 
 interface MutationIntent {
@@ -60,7 +62,7 @@ interface MutationIntent {
   args: Record<string, unknown>;
 }
 
-function ScopedColorUpTab({ tournamentId, clubId, scope }: { tournamentId: string; clubId: string | null; scope: string }) {
+function ScopedColorUpTab({ tournamentId, clubId, scope, actorId, onRereadJournal }: { tournamentId: string; clubId: string | null; scope: string; actorId: string | null; onRereadJournal: () => void }) {
   const storageKey = `vinpoker:color-up-pending:${scope}`;
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -71,18 +73,39 @@ function ScopedColorUpTab({ tournamentId, clubId, scope }: { tournamentId: strin
   const [removedId, setRemovedId] = useState("");
   const [targetId, setTargetId] = useState("");
   const [added, setAdded] = useState("");
-  const [uncertain, setUncertain] = useState<MutationIntent | null>(() => {
+  const [savedRequest] = useState<{ intent: MutationIntent | null; error: boolean }>(() => {
     try {
-      const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? "null");
-      if (!saved || !saved.args || typeof saved.args.p_idempotency_key !== "string") return null;
-      if (saved.fn === "chip_ops_color_up" && saved.args.p_tournament_id === tournamentId) return saved;
-      if (saved.fn === "chip_ops_reverse_color_up" && typeof saved.args.p_operation_id === "string") return saved;
-    } catch { /* Storage is optional; the in-memory fence still protects this tab. */ }
-    return null;
+      const raw = sessionStorage.getItem(storageKey);
+      if (raw === null) return { intent: null, error: false };
+      const saved = JSON.parse(raw);
+      const args = saved?.args;
+      const nonempty = (value: unknown) => typeof value === "string" && value.trim().length > 0;
+      if (!args || Array.isArray(args) || !nonempty(args.p_idempotency_key) || args.p_idempotency_key.length > 128) throw new Error("invalid_intent");
+      const expectedKeys = saved.fn === "chip_ops_color_up"
+        ? ["p_tournament_id", "p_denom_removed", "p_denom_target", "p_target_added", "p_level_number", "p_idempotency_key"]
+        : saved.fn === "chip_ops_reverse_color_up" ? ["p_operation_id", "p_idempotency_key"] : [];
+      if (Object.keys(args).length !== expectedKeys.length || !expectedKeys.every((key) => Object.prototype.hasOwnProperty.call(args, key))) throw new Error("invalid_intent");
+      if (saved.fn === "chip_ops_color_up" && (args.p_tournament_id !== tournamentId
+        || !nonempty(args.p_denom_removed) || !nonempty(args.p_denom_target) || args.p_denom_removed === args.p_denom_target
+        || !Number.isSafeInteger(args.p_target_added) || args.p_target_added < 0
+        || (args.p_level_number !== null && (!Number.isSafeInteger(args.p_level_number) || args.p_level_number < 0)))) throw new Error("invalid_intent");
+      if (saved.fn === "chip_ops_reverse_color_up" && !nonempty(args.p_operation_id)) throw new Error("invalid_intent");
+      return { intent: saved, error: false };
+    } catch { return { intent: null, error: true }; }
   });
+  const [uncertain, setUncertain] = useState<MutationIntent | null>(savedRequest.intent);
+  const [journalError, setJournalError] = useState(savedRequest.error);
   const clearIntent = () => {
+    try {
+      sessionStorage.removeItem(storageKey);
+      if (sessionStorage.getItem(storageKey) !== null) throw new Error("intent_clear_unverified");
+    } catch {
+      setJournalError(true);
+      return false;
+    }
     setUncertain(null);
-    try { sessionStorage.removeItem(storageKey); } catch { /* Keep server receipts authoritative. */ }
+    setJournalError(false);
+    return true;
   };
   const writing = useRef(false);
   const alive = useRef(true);
@@ -153,12 +176,77 @@ function ScopedColorUpTab({ tournamentId, clubId, scope }: { tournamentId: strin
   const withinTol = targetVal > 0 && Math.abs(rounding) < targetVal && !!removed && removed.current_count > 0;
   const step = !removed || !target ? 0 : !withinTol ? 1 : 2;
 
+  const acceptResult = (intent: MutationIntent, data: any) => {
+    if (data?.status === "cancelled") {
+      const args = intent.args;
+      const operation = intent.fn === "chip_ops_color_up" ? "color_up" : "reverse_color_up";
+      const payload: Record<string, unknown> = intent.fn === "chip_ops_color_up"
+        ? { tournament: args.p_tournament_id, removed: args.p_denom_removed, target: args.p_denom_target, added: args.p_target_added, level: args.p_level_number }
+        : { operation: args.p_operation_id };
+      if (data.error !== "REQUEST_CANCELLED" || data.actor_id !== actorId || data.operation !== operation
+        || data.request_key !== args.p_idempotency_key || !data.payload
+        || Object.keys(data.payload).length !== Object.keys(payload).length
+        || !Object.entries(payload).every(([key, value]) => data.payload[key] === value)) return false;
+      if (!clearIntent()) return false;
+      toast.success("Đã hủy yêu cầu chưa chốt. Không thay đổi tồn chip.");
+      void reload();
+      return true;
+    }
+    if (data?.status !== "ok" || data?.error
+      || typeof data.color_up_operation_id !== "string" || data.color_up_operation_id.trim().length === 0
+      || !(intent.fn === "chip_ops_color_up"
+        ? Number.isSafeInteger(data.removed_count) && data.removed_count > 0
+          && Number.isSafeInteger(data.target_added) && data.target_added === intent.args.p_target_added
+        : data.color_up_operation_id === intent.args.p_operation_id && (data.reversed === true || data.idempotent === true))) return false;
+    if (!clearIntent()) return false;
+    toast.success(intent.fn === "chip_ops_color_up" ? "Đã color-up." : "Đã hoàn tác color-up.");
+    setRemovedId(""); setTargetId(""); setAdded("");
+    void reload();
+    return true;
+  };
+  const reconcileIntent = async (intent: MutationIntent, cancel = false) => {
+    if (writing.current || (cancel && journalError)) return;
+    writing.current = true;
+    setBusy(true);
+    const args = intent.args;
+    try {
+      const { data, error } = await sb.rpc(cancel ? "cancel_chip_color_up_request_v1" : "get_chip_color_up_receipt_v1", {
+        p_tournament_id: tournamentId,
+        p_operation: intent.fn === "chip_ops_color_up" ? "color_up" : "reverse_color_up",
+        p_request_key: args.p_idempotency_key,
+        p_payload: intent.fn === "chip_ops_color_up"
+          ? { tournament: args.p_tournament_id, removed: args.p_denom_removed, target: args.p_denom_target, added: args.p_target_added, level: args.p_level_number }
+          : { operation: args.p_operation_id },
+      });
+      if (!alive.current) return;
+      if (error) toast.error(chipOpsRpcErrorMessage(error));
+      else if (data?.error) toast.error(ERR[data.error] ?? data.error);
+      else if (data?.status !== "committed" || !acceptResult(intent, data.result)) {
+        toast.error("Chưa xác minh được receipt đã chốt. Giữ nguyên yêu cầu; không tạo mã mới.");
+      }
+    } catch (error) {
+      if (alive.current) toast.error(chipOpsRpcErrorMessage(error));
+    } finally {
+      writing.current = false;
+      if (alive.current) setBusy(false);
+    }
+  };
   const submitIntent = async (intent: MutationIntent) => {
-    if (writing.current) return;
+    if (writing.current || journalError) return;
     writing.current = true;
     setBusy(true);
     // Persist before sending: browser reload may follow an already committed mutation.
-    try { sessionStorage.setItem(storageKey, JSON.stringify(intent)); } catch { /* No secret is stored. */ }
+    try {
+      const serialized = JSON.stringify(intent);
+      sessionStorage.setItem(storageKey, serialized);
+      if (sessionStorage.getItem(storageKey) !== serialized) throw new Error("intent_storage_unverified");
+    } catch {
+      writing.current = false;
+      setBusy(false);
+      toast.error("Không lưu được mã yêu cầu an toàn. Chưa gửi thao tác chip; hãy kiểm tra bộ nhớ trình duyệt.");
+      return;
+    }
+    setUncertain(intent);
     try {
       const { data, error } = await sb.rpc(intent.fn, intent.args);
       if (!alive.current) return;
@@ -166,14 +254,11 @@ function ScopedColorUpTab({ tournamentId, clubId, scope }: { tournamentId: strin
         setUncertain(intent);
         toast.error(chipOpsRpcErrorMessage(error));
       } else if (data?.error) {
-        clearIntent();
+        // Authorization and business checks can precede receipt lookup. A later
+        // rejection does not establish whether an earlier attempt committed.
+        setUncertain(intent);
         toast.error(ERR[data.error] ?? data.error);
-      } else if (data?.status === "ok") {
-        clearIntent();
-        toast.success(intent.fn === "chip_ops_color_up" ? "Đã color-up." : "Đã hoàn tác color-up.");
-        setRemovedId(""); setTargetId(""); setAdded("");
-        void reload();
-      } else {
+      } else if (!acceptResult(intent, data)) {
         // A malformed/empty reply is not proof of rejection or success.
         setUncertain(intent);
         toast.error("Chưa xác minh được kết quả. Kiểm tra lại cùng mã thao tác, không tạo lần mới.");
@@ -200,22 +285,33 @@ function ScopedColorUpTab({ tournamentId, clubId, scope }: { tournamentId: strin
   if (!tournamentId || !clubId) {
     return <Card className="border-border"><CardContent className="py-8 text-sm text-muted-foreground">Chọn một giải để color-up.</CardContent></Card>;
   }
+  if (journalError) {
+    return <Card><CardContent className="py-6 text-sm" role="alert">
+      Không xác minh được yêu cầu chip đã lưu. Chưa cho phép thao tác mới; cần đối chiếu yêu cầu trước khi tiếp tục.
+      {uncertain && <Button disabled={busy} onClick={() => void reconcileIntent(uncertain)}>Đối chiếu thao tác</Button>}
+      <Button disabled={busy} onClick={onRereadJournal}>Đọc lại yêu cầu đã lưu</Button>
+    </CardContent></Card>;
+  }
   if (loading) {
     return <Card className="border-border"><CardContent className="space-y-3 py-6"><Skeleton className="h-6 w-1/3" /><Skeleton className="h-24 w-full" /></CardContent></Card>;
   }
+  const pendingRecovery = uncertain && <Card><CardContent className="space-y-2 py-4" role="alert">
+    <p className="text-sm">Chưa xác minh được thao tác vừa gửi. Đang giữ nguyên mã và dữ liệu; chưa được tạo thao tác chip mới.</p>
+    <Button disabled={busy} onClick={() => void reconcileIntent(uncertain)}>Đối chiếu thao tác</Button>
+    <Button disabled={busy} onClick={() => void submitIntent(uncertain)}>Gửi lại cùng yêu cầu</Button>
+    <p className="text-sm">Hủy chỉ chặn yêu cầu chưa chốt, không hoàn tác thao tác đã chốt.</p>
+    <Button disabled={busy} onClick={() => void reconcileIntent(uncertain, true)}>Hủy yêu cầu đang chờ</Button>
+  </CardContent></Card>;
   if (readError) {
-    return <Card><CardContent className="space-y-3 py-6" role="alert">
+    return <div className="space-y-4">{pendingRecovery}<Card><CardContent className="space-y-3 py-6" role="alert">
       <p className="text-sm">{readError}</p>
       <Button onClick={() => void reload()}>Tải lại</Button>
-    </CardContent></Card>;
+    </CardContent></Card></div>;
   }
 
   return (
     <div className="space-y-4">
-      {uncertain && <Card><CardContent className="space-y-2 py-4" role="alert">
-        <p className="text-sm">Chưa xác minh được thao tác vừa gửi. Đang giữ nguyên mã và dữ liệu; chưa được tạo thao tác chip mới.</p>
-        <Button disabled={busy} onClick={() => void submitIntent(uncertain)}>Kiểm tra lại cùng thao tác</Button>
-      </CardContent></Card>}
+      {pendingRecovery}
       <Card className="border-border">
         <CardHeader className="pb-3"><CardTitle className="text-base text-foreground">Color-Up / Chip race {currentLevel != null && <span className="text-sm text-muted-foreground">· Level {currentLevel}{bigBlind ? ` · BB ${fmt(bigBlind)}` : ""}</span>}</CardTitle></CardHeader>
         <CardContent className="space-y-4">

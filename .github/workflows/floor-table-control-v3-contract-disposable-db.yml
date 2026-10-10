@@ -23,6 +23,8 @@ on:
       - "VinPoker/supabase/migrations/20270128000015_floor_restore_bust_integrity_v1.sql"
       - "VinPoker/supabase/migrations/20270128000049_floor_mode_tombstone_guard_v1.sql"
       - "VinPoker/supabase/migrations/20270128000050_floor_mode_retry_schedule_v1.sql"
+      - "VinPoker/supabase/migrations/20270128000052_floor_restore_receipt_reconciliation_v1.sql"
+      - "VinPoker/supabase/migrations/20270128000054_restore_pending_cancellation_v1.sql"
       - "VinPoker/scripts/ops/floor-49-50-*.mjs"
       - ".github/workflows/floor-49-50-protected-apply.yml"
       - "VinPoker/scripts/production/repairs/repair_tracker_test_roster_entries_ban5.sql"
@@ -131,6 +133,10 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/criticalConsistency.disposable.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/tableModeRequest.disposable.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/restoreBustIntegrity.disposable.sql
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/restoreReceipt.disposable.sql
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/restoreCancellation.disposable.sql
+          createdb -T "$PGDATABASE" vinpoker_ops_restore_cancel_ci
+          PGDATABASE=vinpoker_ops_restore_cancel_ci RESTORE_CANCEL_TEST_PORT=5432 node tests/floorTableControlV3/restoreCancellation.concurrent.mjs
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000049_floor_mode_tombstone_guard_v1.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/tableModeTombstone.disposable.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/tableModeQueuedTombstone.disposable.sql
