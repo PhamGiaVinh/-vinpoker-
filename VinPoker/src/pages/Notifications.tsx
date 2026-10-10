@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 export default function Notifications() {
   const { t } = useTranslation();
-  const { items, unreadCount, markRead, markAllRead } = useNotifications(100);
+  const { items, unreadCount, loading, error, markRead, markAllRead, refresh } = useNotifications(100);
   const [tab, setTab] = useState<"all" | "unread">("all");
   const nav = useNavigate();
 
@@ -18,18 +18,23 @@ export default function Notifications() {
     <div className="max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">{t("notifications.title")}</h1>
-        <Button variant="outline" size="sm" onClick={markAllRead} disabled={unreadCount === 0}>
+        <Button variant="outline" size="sm" onClick={markAllRead} disabled={unreadCount === 0 || loading || Boolean(error)}>
           {t("notifications.markAllRead")}
         </Button>
       </div>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+      <Tabs value={tab} onValueChange={(v) => { if (v === "all" || v === "unread") setTab(v); }}>
         <TabsList>
           <TabsTrigger value="all">{t("notifications.tabAll", { n: items.length })}</TabsTrigger>
           <TabsTrigger value="unread">{t("notifications.tabUnread", { n: unreadCount })}</TabsTrigger>
         </TabsList>
         <TabsContent value={tab} className="mt-4">
-          {list.length === 0 ? (
+          {error && <div role="alert" className="py-3 text-sm text-destructive">
+            {t("notifications.loadError")}
+            <Button variant="ghost" size="sm" onClick={() => void refresh()} disabled={loading}>{t("notifications.retry")}</Button>
+          </div>}
+          {loading && <div role="status" className="py-3 text-muted-foreground">{t("common.loading")}</div>}
+          {list.length === 0 && !loading && !error ? (
             <div className="py-16 text-center text-muted-foreground">{t("notifications.empty")}</div>
           ) : (
             <ul className="border border-border rounded-lg overflow-hidden">
@@ -37,7 +42,7 @@ export default function Notifications() {
                 <li
                   key={n.id}
                   onClick={async () => {
-                    if (!n.is_read) await markRead(n.id);
+                    if (!n.is_read && !(await markRead(n.id))) return;
                     nav(routeForNotification(n));
                   }}
                   className={cn(

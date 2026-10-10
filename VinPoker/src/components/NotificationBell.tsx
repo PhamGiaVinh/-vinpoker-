@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { Bell } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -11,22 +11,16 @@ import { toast } from "sonner";
 
 export const NotificationBell = () => {
   const { t } = useTranslation();
-  const { items, unreadCount, markRead, markAllRead } = useNotifications(15);
+  const notify = useCallback((notification: NotificationRow) => {
+    if (!notification.is_read) toast(notification.title, { description: notification.body });
+  }, []);
+  const { items, unreadCount, loading, error, markRead, markAllRead, refresh } = useNotifications(15, notify);
   const [open, setOpen] = useState(false);
   const nav = useNavigate();
-  const [prevUnread, setPrevUnread] = useState(unreadCount);
-
-  useEffect(() => {
-    if (unreadCount > prevUnread && items[0] && !items[0].is_read) {
-      toast(items[0].title, { description: items[0].body });
-    }
-    setPrevUnread(unreadCount);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unreadCount]);
 
   const handleClick = async (n: NotificationRow) => {
+    if (!n.is_read && !(await markRead(n.id))) return;
     setOpen(false);
-    if (!n.is_read) await markRead(n.id);
     nav(routeForNotification(n));
   };
 
@@ -46,19 +40,24 @@ export const NotificationBell = () => {
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[380px] p-0">
+      <PopoverContent align="end" className="w-[380px] max-w-[calc(100vw-2rem)] p-0">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="font-semibold">{t("notifications.title")}</div>
           <button
             onClick={markAllRead}
-            disabled={unreadCount === 0}
+            disabled={unreadCount === 0 || loading || Boolean(error)}
             className="text-xs text-primary hover:underline disabled:opacity-40 disabled:no-underline"
           >
             {t("notifications.markAllRead")}
           </button>
         </div>
         <ScrollArea className="max-h-[420px]">
-          {items.length === 0 ? (
+          {error && <div role="alert" className="px-4 py-3 text-sm text-destructive">
+            {t("notifications.loadError")}
+            <Button variant="ghost" size="sm" onClick={() => void refresh()} disabled={loading}>{t("notifications.retry")}</Button>
+          </div>}
+          {loading && <div role="status" className="px-4 py-3 text-sm text-muted-foreground">{t("common.loading")}</div>}
+          {items.length === 0 && !loading && !error ? (
             <div className="px-4 py-12 text-center text-sm text-muted-foreground">
               {t("notifications.none")}
             </div>

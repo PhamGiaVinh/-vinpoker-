@@ -1121,6 +1121,8 @@
     "finance": "Tài chính"
   },
   "notifications": {
+    "loadError": "Không xác minh được thông báo. Dữ liệu đang hiển thị có thể đã cũ.",
+    "retry": "Thử lại",
     "title": "Thông báo",
     "markAllRead": "Đọc tất cả",
     "tabAll": "Tất cả ({{n}})",
