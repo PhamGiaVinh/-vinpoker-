@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
   user: { id: "user-a" } as { id: string } | null,
   read: vi.fn(),
   write: vi.fn(),
+  subscriptions: new Map<string, boolean>(),
   listeners: [] as Array<{ event: string; callback: (payload: { new: Record<string, unknown> }) => void }>,
 }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: state.user }) }));
@@ -28,8 +29,19 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: {
     };
     return query;
   },
-  channel: () => { const channel = { on: (_kind: string, filter: { event: string }, callback: (payload: { new: Record<string, unknown> }) => void) => { state.listeners.push({ event: filter.event, callback }); return channel; }, subscribe: () => channel }; return channel; },
-  removeChannel: vi.fn(),
+  channel: (name: string) => {
+    const channel = {
+      name,
+      on: (_kind: string, filter: { event: string }, callback: (payload: { new: Record<string, unknown> }) => void) => {
+        if (state.subscriptions.get(name)) throw new Error("Cannot add callbacks after subscribe");
+        state.listeners.push({ event: filter.event, callback });
+        return channel;
+      },
+      subscribe: () => { state.subscriptions.set(name, true); return channel; },
+    };
+    return channel;
+  },
+  removeChannel: vi.fn((channel: { name: string }) => { state.subscriptions.delete(channel.name); }),
 } }));
 
 import { useNotifications } from "./useNotifications";
@@ -47,6 +59,7 @@ describe("notification read scope", () => {
     state.write.mockReset();
     state.write.mockResolvedValue({ error: null });
     state.listeners = [];
+    state.subscriptions.clear();
     state.read.mockImplementation((userId: string, count: boolean) => count
       ? { count: 1, error: null }
       : { data: [{ id: `notification-${userId}`, user_id: userId, title: userId, is_read: false }], error: null });
@@ -65,6 +78,18 @@ describe("notification read scope", () => {
     await act(async () => { old.resolve({ data: [{ id: "old", user_id: "user-a" }], count: 9, error: null }); });
     expect(hook.result.current.items[0]?.id).toBe("new");
     expect(hook.result.current.unreadCount).toBe(1);
+  });
+
+  it("supports simultaneous bell and page hooks without reusing a subscribed channel", async () => {
+    const bell = renderHook(() => useNotifications(15));
+    await waitFor(() => expect(bell.result.current.items).toHaveLength(1));
+    const page = renderHook(() => useNotifications(100));
+    await waitFor(() => expect(page.result.current.items).toHaveLength(1));
+    expect(state.subscriptions.size).toBe(2);
+    page.unmount();
+    expect(state.subscriptions.size).toBe(1);
+    await act(async () => { await bell.result.current.refresh(); });
+    expect(bell.result.current.items).toHaveLength(1);
   });
 
   it("does not replace a valid snapshot with an empty success on read error", async () => {

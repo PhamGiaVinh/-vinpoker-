@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useId } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { playSuccessSound, playErrorSound, playWarningSound, playInfoSound, playAlertSound } from "@/lib/notifySound";
@@ -128,6 +128,8 @@ export function routeForNotification(n: Pick<NotificationRow, "type" | "data">) 
 }
 
 export function useNotifications(limit = 20, onNewNotification?: (notification: NotificationRow) => void) {
+  const instanceId = useId();
+  const subscriptionGeneration = useRef(0);
   const { user } = useAuth();
   const userId = user?.id ?? null;
   const scopeRef = useRef({ userId });
@@ -207,7 +209,7 @@ export function useNotifications(limit = 20, onNewNotification?: (notification: 
     if (!userId) return;
     let active = true;
     const ch = supabase
-      .channel(`notifications:${userId}`)
+      .channel(`notifications:${userId}:${instanceId}:${++subscriptionGeneration.current}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
@@ -242,7 +244,7 @@ export function useNotifications(limit = 20, onNewNotification?: (notification: 
       active = false;
       supabase.removeChannel(ch);
     };
-  }, [userId, fetchAll, onNewNotification, isCurrentScope]);
+  }, [userId, fetchAll, onNewNotification, isCurrentScope, instanceId]);
 
   const markRead = useCallback(async (id: string) => {
     if (!userId || !isCurrentScope()) return false;
