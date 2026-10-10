@@ -10,6 +10,9 @@ on:
       - 'VinPoker/tests/trackerVoice/cardBoardIntegrity*'
       - 'VinPoker/supabase/migrations/20270128000057_dealer_pt_policy_tenant_integrity_v1.sql'
       - 'VinPoker/tests/dealerSwing/accrualTenant*'
+      - 'VinPoker/supabase/migrations/20270128000058_tracker_hand_identity_revision_v1.sql'
+      - 'VinPoker/tests/trackerSettlement/handIdentityRevision*'
+      - 'VinPoker/tests/trackerSettlement/handTournamentRevision*'
       - 'VinPoker/scripts/ops/dealer-policy-57-*'
       - 'VinPoker/scripts/ops/restore-schema-test-baseline.mjs'
       - 'VinPoker/supabase/migrations/20270128000014_dealer_checkin_club_shift_receipt_v1.sql'
@@ -369,6 +372,17 @@ jobs:
           PGDATABASE=vinpoker_ops_policy57_overlap_20261011 node tests/dealerSwing/accrualTenant.concurrent.mjs
           createdb --template=vinpoker_ops_card56_overlap_20261011 vinpoker_ops_policy57_atomic_20261011
           PGDATABASE=vinpoker_ops_policy57_atomic_20261011 POLICY57_PG_TEST=1 node --test scripts/ops/dealer-policy-57-atomic-pg.test.mjs
+      - name: History identity58 revision and queue generation on qualified schema
+        working-directory: VinPoker
+        env:
+          PGDATABASE: vinpoker_ops_card56_overlap_20261011
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000058_tracker_hand_identity_revision_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/trackerSettlement/handIdentityRevision.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/trackerSettlement/handTournamentRevision.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/trackerSettlement/handIdentityRevision.readonly-postcheck.sql
+          createdb --template="$PGDATABASE" vinpoker_ops_identity58_overlap_20261011
+          PGDATABASE=vinpoker_ops_identity58_overlap_20261011 node tests/trackerSettlement/handIdentityRevision.concurrent.mjs
       - name: Private backup cron contract with isolated network doubles (not live scheduler proof)
         working-directory: VinPoker
         run: |

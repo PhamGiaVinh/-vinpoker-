@@ -7612,6 +7612,7 @@
     }
   ],
   "ownerGatedActiveAllowlist": [
+    {"version":"20270128000058","filename":"20270128000058_tracker_hand_identity_revision_v1.sql","sha256":"7a3b1effb4f78dab39ec32cc4b8ba35141f7e1ec0d12c21ad7891ae1c9b9d749","domain":"tracker-history-identity-revision-campaign"},
     {"version":"20270128000057","filename":"20270128000057_dealer_pt_policy_tenant_integrity_v1.sql","sha256":"0b5c774899b6e933049a74be985b1f72e96b2501e5daf15a087e6fc784e80d20","domain":"dealer-policy-tenant-campaign"},
     {"version":"20270128000056","filename":"20270128000056_tracker_card_batch_integrity_v1.sql","sha256":"bfdd54961f66da91b54fafa825926c9f6b362917fb8b7b315c897c676d4bf4e1","domain":"tracker-card-integrity-campaign"},
     {"version":"20270128000055","filename":"20270128000055_chip_pending_cancellation_v1.sql","sha256":"c78099b9a34d5a7887f7d4b01901579ac39f3609c24836ba75ed4b7774cdc052","domain":"restore-chip-recovery-campaign"},
