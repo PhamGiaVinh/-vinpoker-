@@ -4940,7 +4940,7 @@ min_duration_minutes: Math.max(5, Math.min((cfg as any).min_duration_minutes ?? 
               className="h-8 font-mono text-xs"
               value={v.min_inter_swing_rest_minutes ?? 10}
               onChange={(e) => update(type, "min_inter_swing_rest_minutes", Number(e.target.value))} />
-            <p className="text-[10px] text-muted-foreground mt-1">Dealer phải nghỉ tối thiểu 10 phút trước khi được xếp ca mới.</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Giá trị cấu hình không hạ mức sàn của máy chủ. Tự động gán dealer luôn yêu cầu nghỉ ít nhất 15 phút. Gán thủ công giữ quy tắc riêng hiện hành.</p>
           </div>
         </div>
       </div>

@@ -56,4 +56,11 @@ describe("desktop Swing authoritative read state", () => {
     await act(async () => { view.rerender(<SwingPanel {...props} />); });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+  it("distinguishes the configured rest preference from the automatic server floor", async () => {
+    state.error = null;
+    await act(async () => { render(<SwingPanel clubIds={["club"]} clubs={[{ id: "club", name: "TEST" }]} />); });
+    fireEvent.click(screen.getByRole("button", { name: /^Cấu hình Swing$/ }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Tự động gán dealer luôn yêu cầu nghỉ ít nhất 15 phút");
+    expect(screen.getByRole("dialog")).not.toHaveTextContent("Dealer phải nghỉ tối thiểu 10 phút trước khi được xếp ca mới.");
+  });
 });
