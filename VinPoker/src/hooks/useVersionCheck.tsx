@@ -34,7 +34,7 @@ export function useVersionCheck(
   onNewVersion: () => void,
   intervalMs: number = 60_000,
 ) {
-  const initialVersionRef = useRef<string | null>(null);
+  const initialVersionRef = useRef<Partial<Record<VersionMarker["source"], string>>>({});
   const notifiedRef = useRef(false);
   const cbRef = useRef(onNewVersion);
   cbRef.current = onNewVersion;
@@ -53,6 +53,7 @@ export function useVersionCheck(
     if (isPreviewOrDev) return;
 
     let cancelled = false;
+    let checking = false;
 
     const fetchVersion = async (): Promise<VersionMarker | null> => {
       // 1) Exact deployment marker. It is also compiled into the running bundle,
@@ -97,26 +98,29 @@ export function useVersionCheck(
     };
 
     const check = async () => {
-      const marker = await fetchVersion();
-      if (cancelled || !marker) return;
+      // Focus, visibility and the timer can fire together. Do not let a late
+      // response from an overlapping probe become a deployment signal.
+      if (cancelled || checking || notifiedRef.current) return;
+      checking = true;
+      try {
+        const marker = await fetchVersion();
+        if (cancelled || !marker) return;
 
-      const markerKey = `${marker.source}:${marker.value}`;
-      if (initialVersionRef.current === null) {
-        initialVersionRef.current = markerKey;
-        if (
-          marker.source === "build" &&
-          isRemoteBuildNewer(currentBuildVersion(), marker.value) &&
-          !notifiedRef.current
-        ) {
+        // A build marker and an asset fingerprint are different evidence types.
+        // Switching to the fallback during an outage is not a new deployment.
+        const baseline = initialVersionRef.current[marker.source];
+        if (baseline === undefined) {
+          initialVersionRef.current[marker.source] = marker.value;
+        }
+        const changed = baseline !== undefined && marker.value !== baseline;
+        const staleBuild = marker.source === "build" &&
+          isRemoteBuildNewer(currentBuildVersion(), marker.value);
+        if ((changed || staleBuild) && !notifiedRef.current) {
           notifiedRef.current = true;
           cbRef.current();
         }
-        return;
-      }
-
-      if (markerKey !== initialVersionRef.current && !notifiedRef.current) {
-        notifiedRef.current = true;
-        cbRef.current();
+      } finally {
+        checking = false;
       }
     };
 
