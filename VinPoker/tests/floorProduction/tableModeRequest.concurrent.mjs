@@ -161,4 +161,37 @@ for (const canonical of [false, true]) for (const cancelFirst of [true, false]) 
   assert.equal(sql(`SELECT count(*) FROM floor_private.table_mode_requests_v1 WHERE table_session_id='${reopened}';`), '0');
   assert.match(sql(`BEGIN; ${request(f, 'tracker', randomUUID(), revision, epoch)} COMMIT;`), /table_session_mismatch/);
 }
+for (const otherAlertPending of [false, true]) {
+  // Only fixture setup uses INSERT; blocker resolution goes through the public RPC.
+  const f = fixture(), alert = randomUUID(), config = randomUUID(), otherAlert = randomUUID(), hand = randomUUID();
+  sql(`BEGIN;
+    INSERT INTO public.club_floors(club_id,user_id) VALUES('${f.club}','${f.actor}');
+    INSERT INTO public.tracker_floor_alerts(id,club_id,tournament_id,tournament_table_id,physical_table_id,reported_by,alert_kind,priority,status,correction_required,title)
+      VALUES('${alert}','${f.club}','${f.tour}','${f.table}','${f.physical}','${f.actor}','wrong_action','urgent','acknowledged',true,'Mode correction TEST');
+    INSERT INTO public.tracker_voice_configs(id,club_id,tournament_id,tournament_table_id,physical_table_id,table_session_id,correction_state,correction_alert_id)
+      VALUES('${config}','${f.club}','${f.tour}','${f.table}','${f.physical}','${f.session}','correction_pending','${alert}'); COMMIT;`);
+  if (otherAlertPending) sql(`BEGIN;
+    INSERT INTO public.tournament_hands(id,tournament_id,table_id,tournament_table_id,table_session_id,status,hand_number)
+      VALUES('${hand}','${f.tour}','${f.table}','${f.table}','${f.session}','completed',1);
+    INSERT INTO public.tracker_floor_alerts(id,club_id,tournament_id,tournament_table_id,physical_table_id,hand_id,reported_by,alert_kind,priority,status,correction_required,title)
+      VALUES('${otherAlert}','${f.club}','${f.tour}','${f.table}','${f.physical}','${hand}','${f.actor}','wrong_action','urgent','acknowledged',true,'Other correction TEST'); COMMIT;`);
+  const [revision, epoch] = sql(`SELECT revision||','||control_epoch FROM public.table_sessions WHERE id='${f.session}';`).split(',');
+  assert.match(sql(`BEGIN; ${request(f, 'tracker', randomUUID(), revision, epoch)} COMMIT;`), /"outcome": "pending"/);
+  const resolve = `SELECT set_config('request.jwt.claim.sub','${f.actor}',true);
+    SELECT public.transition_tracker_floor_alert('${alert}',1,'resolve','Canonical Floor resolution','mode-correction-resolve-01');`;
+  assert.match(sql(`BEGIN; ${resolve} COMMIT;`), /"ok": true/);
+  if (otherAlertPending) {
+    assert.equal(sql(`SELECT status FROM floor_private.table_mode_requests_v1 WHERE table_session_id='${f.session}';`), 'pending');
+    assert.equal(sql(`SELECT control_mode||','||(control_epoch=${epoch})::text FROM public.table_sessions WHERE id='${f.session}';`), 'manual,true');
+    assert.match(sql(`BEGIN; SELECT set_config('request.jwt.claim.sub','${f.actor}',true);
+      SELECT public.transition_tracker_floor_alert('${otherAlert}',1,'resolve','Other canonical resolution','mode-other-resolve-01'); COMMIT;`), /"ok": true/);
+  }
+  assert.equal(sql(`SELECT status FROM floor_private.table_mode_requests_v1 WHERE table_session_id='${f.session}';`), 'applied');
+  assert.equal(sql(`SELECT control_mode||','||(control_epoch=${epoch}+1)::text FROM public.table_sessions WHERE id='${f.session}';`), 'tracker,true');
+  assert.match(sql(`BEGIN; ${resolve} COMMIT;`), /"duplicate": true/);
+  assert.equal(sql(`SELECT control_epoch=${epoch}+1 FROM public.table_sessions WHERE id='${f.session}';`), 't');
+  assert.equal(sql(`SELECT count(*) FROM public.audit_logs WHERE entity_id='${alert}' AND action='tracker_floor_alert_transition';`), '1');
+  assert.equal(sql(`SELECT correction_state||','||(correction_alert_id IS NULL)::text FROM public.tracker_voice_configs WHERE id='${config}';`), 'ready,true');
+}
+console.log('TABLE_MODE_PUBLIC_CORRECTION_RESOLVE_REPLAY_PASS');
 console.log('TABLE_MODE_REQUEST_TRUE_OVERLAP_PASS (receipt/tenant/stale; cancel versus correction/terminal/canonical finish; close/reopen request expiry)');
