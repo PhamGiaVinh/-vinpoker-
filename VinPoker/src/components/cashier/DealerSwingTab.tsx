@@ -1498,8 +1498,12 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   }, [selectedTour, tours, tables, assignments, nowMs]);
 
   // This is a candidate read, not an eligibility decision. The RPC validates shifts.
-  const checkinScope = useRef("");
-  checkinScope.current = [user?.id, activeClubId].join(":");
+  const checkinScope = useRef({ key: "" });
+  const checkinScopeKey = [user?.id, activeClubId].join(":");
+  if (checkinScope.current.key !== checkinScopeKey) {
+    checkinScope.current = { key: checkinScopeKey };
+  }
+  useEffect(() => () => { checkinScope.current = { key: "" }; }, []);
   const loadCheckinDealers = async () => {
     const scope = checkinScope.current;
     if (!activeClubId) { setCheckinDealers([]); return; }
@@ -1515,11 +1519,103 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   // One server intent for initial check-in and re-check-in; preserve unknown retries.
   const checkinKeys = useRef(new Map<string, string>());
   const [checkinShiftId, setCheckinShiftId] = useState("");
+  useEffect(() => {
+    setCheckinShiftId("");
+    setCheckinDealerIds([]);
+    setCheckinDealers([]);
+    setCheckinOpen(false);
+    setProcessing(current => current === "checkin" ? null : current);
+  }, [checkinScopeKey]);
   const eligibleCheckinShifts = (tours ?? []).filter((shift) =>
     shift.club_id === activeClubId && !shift.closed_at && !shift.archived_at);
-  const doCheckin = async () => {
-    if (!activeClubId || !eligibleCheckinShifts.some((shift) => shift.id === checkinShiftId) || !checkinDealerIds.length || processing) return;
+  const recoverableCheckinShiftIds = (() => {
+    const shifts = new Set<string>();
+    if (!user?.id || !activeClubId || !checkinDealerIds.length) return [];
+    try {
+      const prefix = "vp:dealer-checkin-intent:v1:";
+      for (let index = 0; index < sessionStorage.length; index++) {
+        const storageKey = sessionStorage.key(index);
+        if (!storageKey?.startsWith(prefix)) continue;
+        const parts = decodeURIComponent(storageKey.slice(prefix.length)).split(":");
+        if (parts.length === 4 && parts[0] === user.id && parts[1] === activeClubId
+          && checkinDealerIds.includes(parts[2]) && parts[3]
+          && !eligibleCheckinShifts.some(shift => shift.id === parts[3])) shifts.add(parts[3]);
+      }
+    } catch { return []; }
+    return [...shifts];
+  })();
+  const checkinSubmission = useRef<{ scope: object } | null>(null);
+  const pendingCheckinIntents = (() => {
+    const intents: { dealerId: string; shiftId: string; requestId: string; storageKey: string }[] = [];
+    if (!user?.id || !activeClubId) return intents;
+    try {
+      const prefix = "vp:dealer-checkin-intent:v1:";
+      for (let index = 0; index < sessionStorage.length; index++) {
+        const storageKey = sessionStorage.key(index);
+        if (!storageKey?.startsWith(prefix)) continue;
+        const parts = decodeURIComponent(storageKey.slice(prefix.length)).split(":");
+        const requestId = sessionStorage.getItem(storageKey);
+        if (parts.length === 4 && parts[0] === user.id && parts[1] === activeClubId
+          && parts[2] && parts[3] && requestId
+          && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(requestId)) {
+          intents.push({ dealerId: parts[2], shiftId: parts[3], requestId, storageKey });
+        }
+      }
+    } catch { /* Check-in dispatch fails closed if storage cannot be read. */ }
+    return intents;
+  })();
+  const reconcileCheckin = async (intent: typeof pendingCheckinIntents[number], retrySameIntent = false) => {
+    if (!user?.id || !activeClubId || processing) return;
     const scope = checkinScope.current;
+    if (checkinSubmission.current?.scope === scope) return;
+    const submission = { scope };
+    checkinSubmission.current = submission;
+    setProcessing("checkin");
+    try {
+      const key = [user.id, activeClubId, intent.dealerId, intent.shiftId].join(":");
+      if (intent.storageKey !== `vp:dealer-checkin-intent:v1:${encodeURIComponent(key)}`
+        || sessionStorage.getItem(intent.storageKey) !== intent.requestId) throw new Error("Intent changed");
+      const { data, error } = await dealerMassOpenRpc<{
+        ok: boolean; status?: string; error?: string;
+        outcome?: string; attendance_id?: string; shift_date?: string;
+        result?: { ok: boolean; outcome?: string; attendance_id?: string; shift_date?: string };
+      }>(retrySameIntent ? "operator_check_in_dealer_v1" : "get_dealer_checkin_receipt_v1", {
+        p_dealer_id: intent.dealerId, p_club_id: activeClubId,
+        p_shift_id: intent.shiftId, p_request_id: intent.requestId,
+      });
+      if (scope !== checkinScope.current) return;
+      const result = retrySameIntent ? data : data?.result;
+      if (error || !data?.ok || (!retrySameIntent && data.status !== "committed") || !result?.ok
+        || !["checked_in", "already_checked_in"].includes(result.outcome ?? "")
+        || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(result.attendance_id ?? "")
+        || !/^\d{4}-\d{2}-\d{2}$/.test(result.shift_date ?? "")) {
+        toast.warning(data?.error === "actor_not_allowed"
+          ? "Quyền hiện tại không cho phép đối chiếu. Giữ yêu cầu cũ để người có quyền kiểm tra."
+          : "Chưa xác nhận được kết quả. Giữ mã yêu cầu; không tạo check-in mới.");
+        return;
+      }
+      if (sessionStorage.getItem(intent.storageKey) !== intent.requestId) throw new Error("Intent changed");
+      sessionStorage.removeItem(intent.storageKey);
+      if (sessionStorage.getItem(intent.storageKey) !== null) throw new Error("Intent not cleared");
+      checkinKeys.current.delete(key);
+      toast.success("Đã xác minh yêu cầu check-in cũ thành công");
+      refetchDealers();
+      refetchCheckedOut();
+    } catch {
+      if (scope === checkinScope.current) toast.warning("Không đối chiếu được; giữ mã yêu cầu cũ, không gửi check-in mới.");
+    } finally {
+      if (checkinSubmission.current === submission) {
+        checkinSubmission.current = null;
+        if (scope === checkinScope.current) setProcessing(null);
+      }
+    }
+  };
+  const doCheckin = async () => {
+    if (!user?.id || !activeClubId || !checkinShiftId || !checkinDealerIds.length || processing) return;
+    const scope = checkinScope.current;
+    if (checkinSubmission.current?.scope === scope) return;
+    const submission = { scope };
+    checkinSubmission.current = submission;
     setProcessing("checkin");
     const failed: string[] = [];
     const remaining: string[] = [];
@@ -1528,20 +1624,57 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       for (const dealerId of checkinDealerIds) {
         if (scope !== checkinScope.current) return;
         const key = [user?.id, activeClubId, dealerId, checkinShiftId].join(":");
-        const requestId = checkinKeys.current.get(key) ?? crypto.randomUUID();
-        checkinKeys.current.set(key, requestId);
+        const storageKey = `vp:dealer-checkin-intent:v1:${encodeURIComponent(key)}`;
+        let dispatched = false;
+        let beforeDispatchReason = "Chưa gửi check-in: không lưu/đọc được mã yêu cầu an toàn. Không tạo thao tác mới; hãy đối chiếu yêu cầu đã lưu.";
         try {
-          const { data, error } = await dealerMassOpenRpc<{ ok: boolean; error?: string; outcome?: string }>(
-            "operator_check_in_dealer_v1", {
+          const dealerPrefix = `vp:dealer-checkin-intent:v1:${encodeURIComponent([user?.id, activeClubId, dealerId, ""].join(":"))}`;
+          for (let index = 0; index < sessionStorage.length; index++) {
+            const pendingKey = sessionStorage.key(index);
+            if (pendingKey?.startsWith(dealerPrefix) && pendingKey !== storageKey) {
+              beforeDispatchReason = "Chưa gửi check-in: dealer còn yêu cầu ở ca khác chưa xác minh. Chọn lại ca của yêu cầu cũ để đối chiếu trước.";
+              throw new Error("Unresolved check-in for another shift");
+            }
+          }
+          const stored = sessionStorage.getItem(storageKey);
+          if (!stored && !eligibleCheckinShifts.some(shift => shift.id === checkinShiftId)) {
+            beforeDispatchReason = "Chưa gửi check-in: ca không còn hợp lệ và không có yêu cầu đã lưu để đối chiếu.";
+            throw new Error("Closed shift has no persisted exact intent");
+          }
+          if (stored !== null && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(stored)) {
+            throw new Error("Invalid stored check-in identity");
+          }
+          const existing = checkinKeys.current.get(key);
+          if (stored && existing && stored !== existing) throw new Error("Conflicting check-in identity");
+          const requestId = stored ?? existing ?? crypto.randomUUID();
+          sessionStorage.setItem(storageKey, requestId);
+          if (sessionStorage.getItem(storageKey) !== requestId) throw new Error("Check-in identity not persisted");
+          checkinKeys.current.set(key, requestId);
+          dispatched = true;
+          const { data: response, error } = await dealerMassOpenRpc<{
+            ok: boolean; error?: string; outcome?: string; attendance_id?: string; shift_date?: string;
+            status?: string; result?: { ok: boolean; error?: string; outcome?: string; attendance_id?: string; shift_date?: string };
+          }>(stored ? "get_dealer_checkin_receipt_v1" : "operator_check_in_dealer_v1", {
               p_dealer_id: dealerId, p_club_id: activeClubId,
               p_shift_id: checkinShiftId, p_request_id: requestId,
             });
+          if (scope !== checkinScope.current) return;
+          const data = stored ? (response?.ok && response.status === "committed" ? response.result : null) : response;
           const dealerName = checkinDealers.find((dealer) => dealer.id === dealerId)?.full_name ?? dealerId;
-          if (error || !data || typeof data.ok !== "boolean") {
+          if (error || !data || typeof data.ok !== "boolean"
+            || (data.ok && (!["checked_in", "already_checked_in"].includes(data.outcome ?? "")
+              || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(data.attendance_id ?? "")
+              || !/^\d{4}-\d{2}-\d{2}$/.test(data.shift_date ?? "")))
+            // Migration14 checks actor/dealer before receipt lookup. Those rejections,
+            // and payload conflicts, cannot settle an earlier response-lost request.
+            || (!data.ok && !["shift_not_eligible", "ambiguous_active_attendance", "previous_shift_open", "assignment_needs_repair"].includes(data.error ?? ""))) {
             failed.push(`${dealerName}: chưa xác minh check-in, hãy thử lại (giữ mã yêu cầu)`);
             remaining.push(dealerId);
             continue;
           }
+          if (sessionStorage.getItem(storageKey) !== requestId) throw new Error("Check-in identity changed");
+          sessionStorage.removeItem(storageKey);
+          if (sessionStorage.getItem(storageKey) !== null) throw new Error("Check-in identity not cleared");
           checkinKeys.current.delete(key);
           if (!data.ok) {
             const reasons: Record<string, string> = {
@@ -1557,7 +1690,8 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
             remaining.push(dealerId);
           } else success++;
         } catch {
-          failed.push("Mất kết nối; chưa biết server đã check-in hay chưa. Thử lại giữ nguyên mã.");
+          if (scope !== checkinScope.current) return;
+          failed.push(dispatched ? "Đã gửi nhưng chưa xác minh được check-in. Thử lại giữ nguyên mã, không tạo yêu cầu mới." : beforeDispatchReason);
           remaining.push(dealerId);
         }
       }
@@ -1568,11 +1702,18 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       if (!remaining.length) setCheckinOpen(false);
       refetchDealers();
       refetchCheckedOut();
-    } finally { setProcessing(null); }
+    } finally {
+      if (checkinSubmission.current === submission) {
+        checkinSubmission.current = null;
+        if (scope === checkinScope.current) setProcessing(null);
+      }
+    }
   };
   const doReCheckin = async (dealerId: string) => {
     // Require an explicit current club/shift, never inherit an old attendance's shift.
+    const scope = checkinScope.current;
     await loadCheckinDealers();
+    if (scope !== checkinScope.current) return;
     setCheckinDealerIds([dealerId]);
     setCheckinShiftId("");
     setCheckinOpen(true);
@@ -2445,11 +2586,29 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       <Dialog open={checkinOpen} onOpenChange={(o) => { setCheckinOpen(o); if (o) { loadCheckinDealers(); setCheckinDealerIds([]); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Check-in thủ công</DialogTitle></DialogHeader>
+          {pendingCheckinIntents.length > 0 && (
+            <section aria-label="Yêu cầu check-in chưa xác nhận" className="space-y-2 border border-border rounded p-2">
+              <p className="text-sm font-medium">Yêu cầu chưa xác nhận</p>
+              <p className="text-xs text-muted-foreground">Đối chiếu kết quả cũ, không gửi thêm check-in.</p>
+              {pendingCheckinIntents.map(intent => (
+                <div key={intent.storageKey} className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="min-w-0 break-all flex-1">
+                    {checkinDealers.find(dealer => dealer.id === intent.dealerId)?.full_name ?? `Dealer ${intent.dealerId}`}
+                    {" · "}{tours?.find(shift => shift.id === intent.shiftId)?.tour_name ?? `Ca ${intent.shiftId}`}
+                  </span>
+                  <Button size="sm" variant="outline" disabled={!!processing} onClick={() => reconcileCheckin(intent)}>Đối chiếu</Button>
+                  <Button size="sm" variant="outline" disabled={!!processing} onClick={() => reconcileCheckin(intent, true)}>Gửi lại cùng yêu cầu</Button>
+                </div>
+              ))}
+            </section>
+          )}
           {!activeClubId ? <p role="alert">Chọn một CLB trước khi check-in.</p> : (
             <Select value={checkinShiftId} onValueChange={setCheckinShiftId}>
               <SelectTrigger aria-label="Ca check-in"><SelectValue placeholder="Chọn ca làm việc" /></SelectTrigger>
               <SelectContent>{eligibleCheckinShifts.map((shift) => (
                 <SelectItem key={shift.id} value={shift.id}>{shift.tour_name} · {shift.start_time}–{shift.end_time}</SelectItem>
+              ))}{recoverableCheckinShiftIds.map(shiftId => (
+                <SelectItem key={shiftId} value={shiftId}>Đối chiếu yêu cầu cũ · {shiftId}</SelectItem>
               ))}</SelectContent>
             </Select>
           )}
@@ -2538,7 +2697,8 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
           </div>
           <DialogFooter>
             <Button onClick={doCheckin} disabled={!activeClubId || !checkinShiftId || !checkinDealerIds.length || processing === "checkin"}>
-              {processing === "checkin" ? <Loader2 className="w-3 h-3 animate-spin" /> : `Check-in (${checkinDealerIds.length})`}
+              {processing === "checkin" ? <Loader2 className="w-3 h-3 animate-spin" />
+                : recoverableCheckinShiftIds.includes(checkinShiftId) ? "Đối chiếu yêu cầu cũ" : `Check-in (${checkinDealerIds.length})`}
             </Button>
           </DialogFooter>
         </DialogContent>

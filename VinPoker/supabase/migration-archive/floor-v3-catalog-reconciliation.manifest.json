@@ -7612,6 +7612,7 @@
     }
   ],
   "ownerGatedActiveAllowlist": [
+    {"version":"20270128000051","filename":"20270128000051_dealer_checkin_receipt_reconciliation_v1.sql","sha256":"d53efa3e45942142c0aaac8148e116272294b4b2ff1d871ae38f1a672642ff9d","domain":"dealer-checkin-recovery-campaign"},
     {"version":"20270128000037","filename":"20270128000037_floor_legacy_close_session_fence_v1.sql","sha256":"13766d88de0765d7fdebb0edf89f250af2ecf34e226c2e2146148bd85e497c3c","domain":"floor-session-ticket-campaign"},
     {"version":"20270128000038","filename":"20270128000038_floor_break_lowest_number_policy_v1.sql","sha256":"657c1db3b3773dad47f070aa1a5d4757dfe2b30077f602075499bd81814b4721","domain":"floor-session-ticket-campaign"},
     {"version":"20270128000039","filename":"20270128000039_floor_break_ticket_audit_v1.sql","sha256":"451788264693a09342660306a58806853b269a2aca08c3415ce2506865359f4a","domain":"floor-session-ticket-campaign"},

@@ -6,6 +6,7 @@ on:
       - 'VinPoker/scripts/ops/restore-schema-test-baseline.mjs'
       - 'VinPoker/supabase/migrations/20270128000014_dealer_checkin_club_shift_receipt_v1.sql'
       - 'VinPoker/tests/dealerSwing/checkin*'
+      - 'VinPoker/supabase/migrations/20270128000051_dealer_checkin_receipt_reconciliation_v1.sql'
       - 'VinPoker/src/components/cashier/DealerSwingTab.tsx'
       - 'VinPoker/supabase/migrations/20270128000016_chip_color_up_serialized_integrity_v1.sql'
       - 'VinPoker/tests/chipOps/colorUpCurrentSchema.pg17.sql'
@@ -127,6 +128,11 @@ jobs:
       - name: Install locked Node types required by the existing Supabase import graph
         working-directory: VinPoker
         run: npm ci --ignore-scripts
+      - name: Check-in retry identity and React lifecycle regressions
+        working-directory: VinPoker
+        run: |
+          node --test tests/dealerSwing/checkinHandler.repro.mjs
+          node node_modules/vitest/vitest.mjs run tests/dealerSwing/checkinReactLifecycle.test.tsx tests/dealerSwing/attentionCoverage.test.tsx tests/dealerSwing/floorV3InventoryConvergence.test.ts tests/dealerSwing/closeDealerTablesRpcLineage.test.ts --maxWorkers=1 --minWorkers=1
       - name: Backup worker rejects unauthenticated privileged execution
         working-directory: VinPoker
         run: |
@@ -176,6 +182,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000013_floor_mode_request_safe_boundary_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000014_dealer_checkin_club_shift_receipt_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/checkin.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000051_dealer_checkin_receipt_reconciliation_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -v receipt_reconciliation_case=true -f tests/dealerSwing/checkin.pg17.sql
           node tests/dealerSwing/checkin.concurrent.mjs
       - name: Chip integrity on exact current schema
         working-directory: VinPoker
