@@ -75,6 +75,36 @@ for(const moveFirst of [true,false]){
  }
  console.log(`MOVE_DESTINATION_CLOSE_TRUE_OVERLAP_PASS moveFirst=${moveFirst} denied=${b.out.trim().split('\n').at(-1)}`);
 }
+// Old callable writers must serialize with the exact-session v4 writer too.
+// Distinct keys intentionally challenge integrity, not merely receipt replay.
+if(process.env.MIXED_MOVE_CASE==='1')for(const legacyVersion of [2,3])for(const legacyFirst of [true,false]){
+ const prefix=randomUUID().slice(0,8),tour=`${prefix}-0000-4000-8000-000000000003`,actor=`${prefix}-0000-4000-8000-000000000001`,entry=`${prefix}-0000-4000-8000-000000000031`;
+ const marker=' -- MOVE_CLOSE_CONCURRENCY_FIXTURE_READY';
+ const fixture=readFileSync('tests/floorProduction/breakDrawPolicy.pg17.sql','utf8');
+ assert.equal(fixture.split(marker).length,2);
+ sql(fixture.replaceAll('f7470000',prefix).replace(marker,' RETURN;\n'+marker).replace('ROLLBACK;','COMMIT;'));
+ const table=number=>JSON.parse(sql(`SELECT row_to_json(x) FROM (SELECT t.id,t.table_session_id,s.revision,s.control_epoch FROM public.tournament_tables t JOIN public.table_sessions s ON s.id=t.table_session_id WHERE t.tournament_id='${tour}' AND t.table_number=${number})x;`));
+ const source=table(91),dest=table(93);
+ const auth=`SELECT set_config('request.jwt.claim.sub','${actor}',true);SET LOCAL ROLE authenticated;`;
+ const legacy=`${auth} SELECT public.move_player_seat_v${legacyVersion}('${entry}','${dest.id}',1,${source.revision},${dest.revision},'${randomUUID()}');`;
+ const exact=`${auth} SELECT public.move_player_seat_v4('${entry}','${source.id}','${source.table_session_id}','${dest.id}','${dest.table_session_id}',2,${source.revision},${dest.revision},${source.control_epoch},${dest.control_epoch},'Mixed writer TEST','${randomUUID()}');`;
+ const first=tx(`mixed_first_${prefix}`,legacyFirst?legacy:exact,true);
+ try{await barrier(`mixed_first_${prefix}`,"state='idle in transaction'");}
+ catch(e){first.commit();throw new Error(`${e.message}: ${(await first.result).error}`);}
+ const second=tx(`mixed_second_${prefix}`,legacyFirst?exact:legacy,false);
+ try{await barrier(`mixed_second_${prefix}`,"wait_event_type='Lock'");}finally{first.commit();}
+ const [a,b]=await Promise.all([first.result,second.result]);
+ assert.equal(a.code,0,a.error);assert.equal(b.code,0,b.error);
+ const receipt=result=>JSON.parse(result.out.trim().split('\n').at(-1));
+ assert.equal(receipt(a).ok,true,JSON.stringify(receipt(a)));
+ assert.equal(receipt(b).ok,false,JSON.stringify(receipt(b)));
+ assert.equal(sql(`SELECT count(*) FROM public.tournament_seats WHERE entry_id='${entry}' AND is_active;`),'1');
+ assert.equal(sql(`SELECT seat_number FROM public.tournament_seats WHERE entry_id='${entry}' AND is_active;`),legacyFirst?'1':'2');
+ assert.equal(sql(`SELECT sum(chip_count) FROM public.tournament_seats WHERE tournament_id='${tour}' AND is_active;`),'40000');
+ assert.equal(sql(`SELECT count(*) FROM public.seat_draw_receipts WHERE entry_id='${entry}' AND status='issued';`),'1');
+ assert.equal(sql(`SELECT count(*) FROM public.seat_assignment_history WHERE entry_id='${entry}';`),'1');
+ console.log(`MIXED_MOVE_TRUE_OVERLAP_PASS legacyVersion=${legacyVersion} legacyFirst=${legacyFirst} denial=${receipt(b).error}`);
+}
 if(process.env.DEALER_ASSIGN_CLOSE_CASE==='1')for(const assignFirst of [true,false]){
  const prefix=randomUUID().slice(0,8),tour=`${prefix}-0000-4000-8000-000000000003`,actor=`${prefix}-0000-4000-8000-000000000001`,club=`${prefix}-0000-4000-8000-000000000002`;
  const marker=' -- MOVE_CLOSE_CONCURRENCY_FIXTURE_READY';

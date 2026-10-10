@@ -263,7 +263,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -v require_move_ticket=true -v move_check=exact_intent -v move_audit_failure=true -f tests/floorProduction/breakDrawPolicy.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=true -v REAL_FINISH_CASE=true -v SEAT_TICKET_CASE=true -v READ_TICKET_CASE=true -v READ_POLICY_CASE=true -f tests/floorProduction/deferredMoveIntent.pg17.sql
           node tests/floorProduction/deferredMoveIntent.concurrent.mjs
-          DEALER_ASSIGN_CLOSE_CASE=1 node tests/floorProduction/moveClose.concurrent.mjs
+          MIXED_MOVE_CASE=1 DEALER_ASSIGN_CLOSE_CASE=1 node tests/floorProduction/moveClose.concurrent.mjs
           node node_modules/vitest/vitest.mjs run tests/floorProduction/floorPlayerActions.move.test.tsx tests/floorProduction/opsTables.close.test.tsx tests/floorProduction/playerActionSheets.render.test.tsx tests/tracker/closeTableDialog.interaction.test.tsx tests/tracker/movePlayerDialog.interaction.test.tsx tests/tracker/floorPendingCloseIntent.test.ts tests/tracker/floorPendingMoveIntent.test.ts tests/tracker/closeTableResponse.test.ts src/components/tournament/seat/floorSeatTicketCore.test.ts src/components/tournament/seat/SeatReceiptDialog.test.tsx tests/floorTableControlV3/criticalConsistency.contract.test.ts tests/floorFreeSitV1/rosterActions.interaction.test.tsx
       - name: OFF-at-commit true-overlap with isolated acquisition fixture (not live worker proof)
         working-directory: VinPoker
