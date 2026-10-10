@@ -6,7 +6,7 @@ import {loadPackage} from './restore-chip-52-53-release-plan.mjs';
 const ready={database:'postgres',actor:'postgres',existing:0,absent:true,baseline:true};
 test('workflow preserves exact owner/source/checks/recovery/protected release gates',()=>{
  const yaml=readFileSync(new URL('../../../.github/workflows/restore-chip-52-53-protected-apply.yml',import.meta.url),'utf8');
- for(const required of ["github.ref == 'refs/heads/main'",'APPLY_RESTORE_CHIP_52_53_',
+ for(const required of ["github.ref == 'refs/heads/main'",'APPLY_RESTORE_CHIP_52_55_',
   'environment: dealer-swing-production-critical','vinpoker-production-database-release','cancel-in-progress: false',
   'floor-v3-recovery-backup.yml','floor-v3-restore-verification-',
   'test "$INITIAL_ACTOR" = "$GITHUB_REPOSITORY_OWNER"',
@@ -21,7 +21,7 @@ test('every wrong target/collision/baseline fails preflight',()=>{
 test('both commits require exact receipts and object postchecks',()=>{
  const writes=[],reports=[];
  executePackage({execute:sql=>writes.push(sql),json:sql=>sql.includes("'existing'")?ready:sql.includes("'count'")?{count:1,exact:true}:{function:true}},x=>reports.push(x));
- assert.equal(writes.length,2);assert.equal(reports.filter(x=>x.startsWith('COMMITTED_EXACT')).length,2);
+ assert.equal(writes.length,4);assert.equal(reports.filter(x=>x.startsWith('COMMITTED_EXACT')).length,4);
 });
 test('unknown outcome stops without retry or downstream mutation',()=>{
  for(const receipt of [{count:1,exact:true},{count:0,exact:false},{count:1,exact:false}]){
@@ -40,7 +40,7 @@ test('receipt and function failures stop before53',()=>{
 test('postchecks pin body, owner, volatility, search path and denied roles',()=>{
  for(const item of loadPackage()){
   const sql=postcheckSql(item);
-  for(const expected of [item.bodyHash,"p.provolatile='s'","pg_get_userbyid(p.proowner)='postgres'","NOT has_function_privilege('anon'","NOT has_function_privilege('service_role'"])assert.ok(sql.includes(expected));
+  for(const expected of [item.bodyHash,`p.provolatile='${item.volatility}'`,"pg_get_userbyid(p.proowner)='postgres'","NOT has_function_privilege('anon'","NOT has_function_privilege('service_role'"])assert.ok(sql.includes(expected));
  }
  assert.throws(()=>postcheckSql({version:'other'}),/allowlist mismatch/);
 });

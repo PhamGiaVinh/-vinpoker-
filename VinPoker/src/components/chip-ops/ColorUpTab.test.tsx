@@ -8,6 +8,67 @@ const key = "vinpoker:color-up-pending:owner-a:club-a:tour-a";
 const intent = { fn: "chip_ops_color_up", args: { p_tournament_id: "tour-a", p_denom_removed: "low", p_denom_target: "high", p_target_added: 1, p_level_number: 2, p_idempotency_key: "original-request" } };
 const readerArgs = { p_tournament_id: "tour-a", p_operation: "color_up", p_request_key: "original-request",
   p_payload: { tournament: "tour-a", removed: "low", target: "high", added: 1, level: 2 } };
+it("re-reads a temporarily inaccessible saved journal without losing its identity", async () => {
+  sessionStorage.setItem(key, JSON.stringify(intent));
+  const get = vi.spyOn(Storage.prototype, "getItem").mockImplementationOnce(() => { throw new Error("temporary storage access failure"); });
+  render(<ColorUpTab tournamentId="tour-a" clubId="club-a" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Đọc lại yêu cầu đã lưu" }));
+  await screen.findByRole("button", { name: "Đối chiếu thao tác" });
+  expect(JSON.parse(sessionStorage.getItem(key)!)).toEqual(intent);
+  expect(h.rpc.mock.calls.filter(([name]) => name === intent.fn)).toHaveLength(0);
+  get.mockRestore();
+});
+it("does not discard a malformed journal when explicitly re-reading it", async () => {
+  sessionStorage.setItem(key, "malformed");
+  render(<ColorUpTab tournamentId="tour-a" clubId="club-a" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Đọc lại yêu cầu đã lưu" }));
+  await screen.findByRole("button", { name: "Đọc lại yêu cầu đã lưu" });
+  expect(sessionStorage.getItem(key)).toBe("malformed");
+  expect(h.rpc.mock.calls.filter(([name]) => name === intent.fn)).toHaveLength(0);
+});
+it.each([true, false])("requires exact actor and payload cancellation proof (valid=%s)", async (valid) => {
+  sessionStorage.setItem(key, JSON.stringify(intent));
+  h.rpc.mockImplementation(async (name: string) => ({ data: name === "get_current_chip_inventory" ? { denominations: [] }
+    : name === "get_color_up_history" ? { operations: [] }
+    : { status: "committed", result: { status: "cancelled", error: "REQUEST_CANCELLED", actor_id: valid ? "owner-a" : "owner-b",
+      request_key: "original-request", operation: "color_up", payload: readerArgs.p_payload } }, error: null }));
+  render(<ColorUpTab tournamentId="tour-a" clubId="club-a" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Hủy yêu cầu đang chờ" }));
+  await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("cancel_chip_color_up_request_v1", readerArgs));
+  if (valid) await waitFor(() => expect(sessionStorage.getItem(key)).toBeNull());
+  else {
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hủy yêu cầu đang chờ" })).toBeEnabled());
+    expect(JSON.parse(sessionStorage.getItem(key)!)).toEqual(intent);
+  }
+  expect(h.rpc.mock.calls.filter(([name]) => name === intent.fn)).toHaveLength(0);
+});
+it("keeps read-only recovery available after journal removal fails and later recovers", async () => {
+  sessionStorage.setItem(key, JSON.stringify(intent));
+  const remove = vi.spyOn(Storage.prototype, "removeItem").mockImplementationOnce(() => { throw new Error("temporary storage failure"); });
+  h.rpc.mockImplementation(async (name: string) => ({ data: name === "get_current_chip_inventory" ? { denominations: [] }
+    : name === "get_color_up_history" ? { operations: [] }
+    : { status: "committed", result: { status: "ok", color_up_operation_id: "op-a", removed_count: 10, target_added: 1 } }, error: null }));
+  render(<ColorUpTab tournamentId="tour-a" clubId="club-a" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Đối chiếu thao tác" }));
+  await screen.findByText(/Không xác minh được yêu cầu chip đã lưu/);
+  expect(screen.getByRole("button", { name: "Đối chiếu thao tác" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Đối chiếu thao tác" }));
+  await waitFor(() => expect(sessionStorage.getItem(key)).toBeNull());
+  expect(h.rpc.mock.calls.filter(([name]) => name === intent.fn)).toHaveLength(0);
+  remove.mockRestore();
+});
+it("offers authoritative cancellation after dependency rejection without discarding the request", async () => {
+  const reverse = { fn: "chip_ops_reverse_color_up", args: { p_operation_id: "older-op", p_idempotency_key: "reverse-request" } };
+  sessionStorage.setItem(key, JSON.stringify(reverse));
+  h.rpc.mockImplementation(async (name: string) => ({ data: name === "get_current_chip_inventory" ? { denominations: [] }
+    : name === "get_color_up_history" ? { operations: [] }
+    : name === reverse.fn ? { error: "UNDO_DEPENDENCY" } : { status: "unknown" }, error: null }));
+  render(<ColorUpTab tournamentId="tour-a" clubId="club-a" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Gửi lại cùng yêu cầu" }));
+  await waitFor(() => expect(h.rpc).toHaveBeenCalledWith(reverse.fn, reverse.args));
+  expect(JSON.parse(sessionStorage.getItem(key)!)).toEqual(reverse);
+  expect(await screen.findByRole("button", { name: "Hủy yêu cầu đang chờ" })).toBeEnabled();
+});
 it.each([
   { data: { error: "Forbidden" }, error: null },
   { data: null, error: { status: 503 } },

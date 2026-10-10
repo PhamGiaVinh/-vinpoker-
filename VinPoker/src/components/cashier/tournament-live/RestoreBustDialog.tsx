@@ -53,6 +53,7 @@ function ScopedRestoreBustDialog({ tournamentId, target, onClose, onRestored, ac
   const [verifiedScope, setVerifiedScope] = useState("");
   const [unresolved, setUnresolved] = useState(false);
   const [journalBlocked, setJournalBlocked] = useState(false);
+  const [reloadGeneration, setReloadGeneration] = useState(0);
   const pending = useRef(false);
   useEffect(() => {
     let disposed = false;
@@ -98,12 +99,28 @@ function ScopedRestoreBustDialog({ tournamentId, target, onClose, onRestored, ac
       }).catch(() => { if (!disposed) setError("Không kết nối được server. Hãy đóng và mở lại để thử."); })
       .finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
-  }, [client, target, tournamentId, actorId, scope, storageKey]);
+  }, [client, target, tournamentId, actorId, scope, storageKey, reloadGeneration]);
   const table = tables.find((row) => row.tournamentTableId === tableId);
   const emptySeats = table ? Array.from({ length: table.maxSeats }, (_, i) => i + 1)
     .filter((n) => !table.seats.some((s) => s.seatNumber === n) && !table.seatLocks.some((s) => s.seatNumber === n)) : [];
   function acceptReceipt(intent: RestoreIntent, value: unknown) {
     const receipt = value as Record<string, unknown> | null;
+    if (receipt?.status === "cancelled") {
+      const payload = receipt.payload as Record<string, unknown> | null;
+      if (receipt.ok !== false || receipt.error !== "REQUEST_CANCELLED" || receipt.actor_id !== actorId
+        || receipt.request_id !== intent.requestId || !payload
+        || Object.keys(payload).length !== 6 || payload.entry_id !== intent.entryId
+        || payload.to_tournament_table_id !== intent.toTournamentTableId || payload.to_seat_number !== intent.toSeatNumber
+        || payload.expected_revision !== intent.expectedRevision || payload.expected_control_epoch !== intent.expectedControlEpoch
+        || payload.expected_table_session_id !== intent.expectedTableSessionId) {
+        setError("Chưa xác minh được xác nhận hủy đúng yêu cầu. Giữ nguyên mã để đối chiếu."); return;
+      }
+      sessionStorage.removeItem(storageKey);
+      if (sessionStorage.getItem(storageKey) !== null) throw new Error("restore_journal_clear_failed");
+      attempts.current.delete(scope); setUnresolved(false); setJournalBlocked(false);
+      setReloadGeneration((value) => value + 1);
+      return;
+    }
     if (!receipt || receipt.ok !== true || receipt.entry_id !== intent.entryId
       || receipt.tournament_table_id !== intent.toTournamentTableId
       || receipt.table_session_id !== intent.expectedTableSessionId
@@ -120,7 +137,7 @@ function ScopedRestoreBustDialog({ tournamentId, target, onClose, onRestored, ac
   }
   async function reconcile() {
     const intent = attempts.current.get(scope);
-    if (!intent || pending.current || journalBlocked) return;
+    if (!intent || pending.current) return;
     pending.current = true; setBusy(true); setError(null);
     try {
       const response = await client.getRestoreReceipt(intent);
@@ -130,11 +147,26 @@ function ScopedRestoreBustDialog({ tournamentId, target, onClose, onRestored, ac
         return;
       }
       const data = response.data as Record<string, unknown> | null;
-      if (data?.ok === false) { setError("Server chưa cho phép đối chiếu yêu cầu. Đang giữ nguyên mã."); return; }
+      if (data?.ok !== true) { setError("Server chưa cho phép đối chiếu yêu cầu. Đang giữ nguyên mã."); return; }
       if (data?.status === "committed") acceptReceipt(intent, data.result);
       else setError("Chưa tìm thấy receipt đã commit. Không kết luận yêu cầu thất bại; gửi lại chỉ dùng nguyên mã và dữ liệu.");
     } catch {
       if (alive.current) setError("Không đối chiếu được kết quả. Đang giữ nguyên yêu cầu; chưa tạo thao tác mới.");
+    } finally { pending.current = false; if (alive.current) setBusy(false); }
+  }
+  async function cancelRequest() {
+    const intent = attempts.current.get(scope);
+    if (!intent || pending.current || journalBlocked) return;
+    pending.current = true; setBusy(true); setError(null);
+    try {
+      const response = await client.cancelRestoreRequest(intent);
+      if (!alive.current) return;
+      if (response.ok === false) { setError(messages[response.error] ?? `Chưa xác nhận hủy (${response.error}).`); return; }
+      const proof = response.data as Record<string, unknown> | null;
+      if (proof?.ok === true && proof.status === "committed") acceptReceipt(intent, proof.result);
+      else setError("Chưa xác minh được hủy. Giữ nguyên yêu cầu; không tạo mã mới.");
+    } catch {
+      if (alive.current) setError("Chưa xác nhận được hủy. Đối chiếu lại cùng mã yêu cầu trước khi tiếp tục.");
     } finally { pending.current = false; if (alive.current) setBusy(false); }
   }
   async function restore() {
@@ -190,9 +222,14 @@ function ScopedRestoreBustDialog({ tournamentId, target, onClose, onRestored, ac
         </label>
       </>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {unresolved && <Button variant="outline" className="min-h-12" disabled={busy || journalBlocked} onClick={() => void reconcile()}>
+      {journalBlocked && <Button variant="outline" disabled={busy} onClick={() => setReloadGeneration((value) => value + 1)}>Đọc lại yêu cầu đã lưu</Button>}
+      {unresolved && <Button variant="outline" className="min-h-12" disabled={busy} onClick={() => void reconcile()}>
         Đối chiếu yêu cầu
       </Button>}
+      {unresolved && <>
+        <p className="text-sm text-muted-foreground">Hủy chỉ chặn yêu cầu chưa chốt. Nếu đã chốt, server trả kết quả đã lưu; không hoàn nguyên chip.</p>
+        <Button variant="outline" className="min-h-12" disabled={busy || journalBlocked} onClick={() => void cancelRequest()}>Hủy yêu cầu đang chờ</Button>
+      </>}
       <Button className="min-h-12" disabled={busy || journalBlocked || (!unresolved && (loading || verifiedScope !== scope || stack === null || !table || !seat))} onClick={() => void restore()}>
         {busy ? "Đang xác nhận…" : unresolved ? "Kiểm tra lại yêu cầu đã gửi" : "Xác nhận hoàn tác bust"}
       </Button>

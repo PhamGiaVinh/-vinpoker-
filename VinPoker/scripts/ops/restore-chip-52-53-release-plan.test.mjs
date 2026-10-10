@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {loadPackage,atomicSql,dependencyPredicate} from './restore-chip-52-53-release-plan.mjs';
 test('only reviewed52/53 exact SQL can enter atomic package',()=>{
  const items=loadPackage();
- assert.deepEqual(items.map(x=>x.version),['20270128000052','20270128000053']);
+ assert.deepEqual(items.map(x=>x.version),['20270128000052','20270128000053','20270128000054','20270128000055']);
  for(const item of items){
   for(const field of Object.keys(item)) assert.throws(()=>atomicSql({...item,[field]:item[field]+'changed'}),/allowlist mismatch/);
   const sql=atomicSql(item);
@@ -18,7 +18,7 @@ test('only reviewed52/53 exact SQL can enter atomic package',()=>{
 });
 test('dependency fence requires all reviewed functions and private receipt protections',()=>{
  const sql=dependencyPredicate();
- assert.match(sql,/count\(\*\)=7/);
+ assert.match(sql,/count\(\*\)=9/);
  assert.match(sql,/LEFT JOIN pg_proc/);
  assert.match(sql,/c.relrowsecurity/);
  for(const role of ['authenticated','anon','service_role'])assert.ok(sql.includes(`NOT has_table_privilege('${role}'`));

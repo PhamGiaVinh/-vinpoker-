@@ -24,9 +24,9 @@ test('PG17 exact52/53 DDL and ledger rollback together, preserve partial receipt
   assert.notEqual(failed.status,0);assert.match(failed.stderr,/injected_restore_chip_receipt_failure/);
   assert.equal(check(`SELECT to_regprocedure('${item.signature}') IS NULL;`),'t','failed receipt rolls back RPC creation');
   assert.deepEqual(JSON.parse(check(receiptSql(item))),{count:0,exact:false});
-  if(index===1){
-   assert.deepEqual(JSON.parse(check(receiptSql(items[0]))),{count:1,exact:true},'failure53 preserves committed52');
-   assert.deepEqual(JSON.parse(check(postcheckSql(items[0]))),{function:true});
+  for(const prior of items.slice(0,index)){
+   assert.deepEqual(JSON.parse(check(receiptSql(prior))),{count:1,exact:true},'failure preserves every predecessor receipt');
+   assert.deepEqual(JSON.parse(check(postcheckSql(prior))),{function:true});
   }
   check(atomicSql(item));
   assert.deepEqual(JSON.parse(check(receiptSql(item))),{count:1,exact:true});
@@ -35,5 +35,5 @@ test('PG17 exact52/53 DDL and ledger rollback together, preserve partial receipt
   assert.deepEqual(JSON.parse(check(receiptSql(item))),{count:1,exact:true});
  }
  check('DROP TRIGGER reject_restore_chip ON supabase_migrations.schema_migrations;DROP FUNCTION public.reject_restore_chip_receipt();');
- console.log('RESTORE_CHIP52_53_ATOMIC_ROLLBACK_RECEIPT_OBJECT_REPLAY_PASS');
+ console.log('RESTORE_CHIP52_55_ATOMIC_ROLLBACK_RECEIPT_OBJECT_REPLAY_PASS');
 });

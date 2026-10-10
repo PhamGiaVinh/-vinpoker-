@@ -1,4 +1,4 @@
-name: Restore chip52/53 exact protected migration apply
+name: Restore chip52–55 exact protected migration apply
 on:
   workflow_dispatch:
     inputs:
@@ -6,7 +6,7 @@ on:
       source_pr: {description: Exact open source PR number, required: true, type: string}
       recovery_run_id: {description: Successful fresh restore-verified recovery run, required: true, type: string}
       recovery_base_sha: {description: Exact main SHA that created recovery, required: true, type: string}
-      confirmation: {description: APPLY_RESTORE_CHIP_52_53_<release_sha>, required: true, type: string}
+      confirmation: {description: APPLY_RESTORE_CHIP_52_55_<release_sha>, required: true, type: string}
 permissions: {actions: read, contents: read, checks: read, pull-requests: read}
 concurrency: {group: vinpoker-production-database-release, cancel-in-progress: false}
 jobs:
@@ -34,7 +34,7 @@ jobs:
           [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]]
           [[ "$SOURCE_PR" =~ ^[0-9]+$ ]]
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          test "$CONFIRMATION" = "APPLY_RESTORE_CHIP_52_53_$RELEASE_SHA"
+          test "$CONFIRMATION" = "APPLY_RESTORE_CHIP_52_55_$RELEASE_SHA"
           pr="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$SOURCE_PR")"
           test "$(jq -r .head.sha <<<"$pr")" = "$RELEASE_SHA"
           test "$(jq -r .state <<<"$pr")" = open
@@ -84,7 +84,7 @@ jobs:
           echo "RECOVERY_RECEIPT_PATH=$RUNNER_TEMP/restore-chip52-53-recovery-receipt/recovery-verification.json" >>"$GITHUB_ENV"
           active="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" --jq '.workflow_runs[]|select((.id|tostring)!=env.GITHUB_RUN_ID)|select(.event=="workflow_dispatch")|select(.status=="in_progress" or .status=="waiting" or .status=="queued")|select(.name|test("database|migration|recovery|protected.*apply|release";"i"))|.id')"
           test -z "$active"
-      - name: Plan then exact atomic52/53 apply
+      - name: Plan then exact atomic52–55 apply
         working-directory: VinPoker
         env:
           RELEASE_SHA: '${{ inputs.release_sha }}'

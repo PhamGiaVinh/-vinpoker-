@@ -21,6 +21,9 @@ on:
       - 'VinPoker/tests/chipOps/colorUpIntegrity.pg17.test.mjs'
       - 'VinPoker/tests/chipOps/colorUpReceipt.pg17.sql'
       - 'VinPoker/supabase/migrations/20270128000053_chip_color_up_receipt_reconciliation_v1.sql'
+      - 'VinPoker/supabase/migrations/20270128000054_restore_pending_cancellation_v1.sql'
+      - 'VinPoker/supabase/migrations/20270128000055_chip_pending_cancellation_v1.sql'
+      - 'VinPoker/tests/chipOps/colorUpCancellation*'
       - 'VinPoker/supabase/migrations/20270128000017_dealer_operational_inventory_exact_session_v1.sql'
       - 'VinPoker/tests/dealerSwing/operationalInventory*'
       - 'VinPoker/tests/dealerSwing/closedSessionAttendance.currentSchema.mjs'
@@ -214,6 +217,8 @@ jobs:
           createdb vinpoker_chip_concurrency
           PGDATABASE=vinpoker_chip_concurrency node --test tests/chipOps/colorUpIntegrity.pg17.test.mjs
           PGDATABASE=vinpoker_chip_concurrency psql -X -v ON_ERROR_STOP=1 -f tests/chipOps/colorUpReceipt.pg17.sql
+          PGDATABASE=vinpoker_chip_concurrency psql -X -v ON_ERROR_STOP=1 -f tests/chipOps/colorUpCancellation.pg17.sql
+          PGDATABASE=vinpoker_chip_concurrency node tests/chipOps/colorUpCancellation.concurrent.mjs
       - name: Exact-session dealer inventory and true-overlap assignment
         working-directory: VinPoker
         run: |

@@ -1,11 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FloorTournamentTableRoster } from "@/lib/floorTableControlV3";
-const state = vi.hoisted(() => ({ user: { id: "owner-a" }, roster: vi.fn(), entries: vi.fn(), restore: vi.fn(), receipt: vi.fn(), supabase: {} }));
+const state = vi.hoisted(() => ({ user: { id: "owner-a" }, roster: vi.fn(), entries: vi.fn(), restore: vi.fn(), receipt: vi.fn(), cancel: vi.fn(), supabase: {} }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: state.user }) }));
 vi.mock("@/integrations/supabase/SupabaseClientContext", () => ({ useSupabaseClient: () => state.supabase }));
 vi.mock("@/lib/floorTableControlV3", () => ({ createFloorTableControlV3Client: () => ({
-  getTournamentTableRoster: state.roster, getRestorableEntries: state.entries, restoreBustedPlayer: state.restore, getRestoreReceipt: state.receipt,
+  getTournamentTableRoster: state.roster, getRestorableEntries: state.entries, restoreBustedPlayer: state.restore, getRestoreReceipt: state.receipt, cancelRestoreRequest: state.cancel,
 }) }));
 import { RestoreBustDialog } from "./RestoreBustDialog";
 const target = { entryId: "entry-a", name: "TEST Alice" };
@@ -37,6 +37,67 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("mistaken-bust restore", () => {
+  it.each(["other-actor", "wrong-request", "unknown", "network"])("retains the frozen intent on cancellation %s", async (failure) => {
+    state.restore.mockResolvedValue({ ok: false, error: "STALE_STATE" });
+    state.cancel.mockImplementation(async (intent) => {
+      if (failure === "network") throw new TypeError("Failed to fetch");
+      return { ok: true, data: { ok: true, status: failure === "unknown" ? "unknown" : "committed", result: {
+        ok: false, status: "cancelled", error: "REQUEST_CANCELLED",
+        actor_id: failure === "other-actor" ? "owner-b" : "owner-a",
+        request_id: failure === "wrong-request" ? "other-request" : intent.requestId,
+        payload: { entry_id: intent.entryId, to_tournament_table_id: intent.toTournamentTableId, to_seat_number: intent.toSeatNumber,
+          expected_revision: intent.expectedRevision, expected_control_epoch: intent.expectedControlEpoch, expected_table_session_id: intent.expectedTableSessionId },
+      } } };
+    });
+    const view = mount(); await choose();
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận hoàn tác bust" }));
+    await screen.findByRole("alert");
+    const saved = sessionStorage.getItem(sessionStorage.key(0)!);
+    fireEvent.click(screen.getByRole("button", { name: "Hủy yêu cầu đang chờ" }));
+    await waitFor(() => expect(state.cancel).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hủy yêu cầu đang chờ" })).toBeEnabled());
+    expect(sessionStorage.getItem(sessionStorage.key(0)!)).toBe(saved);
+    expect(screen.getByLabelText("Bàn khôi phục")).toBeDisabled();
+    expect(view.onRestored).not.toHaveBeenCalled();
+  });
+  it("accepts an already committed restore instead of pretending cancellation undid it", async () => {
+    state.restore.mockRejectedValueOnce(new Error("commit response lost"));
+    state.cancel.mockResolvedValue({ ok: true, data: { ok: true, status: "committed", result: canonicalReceipt } });
+    const view = mount(); await choose();
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận hoàn tác bust" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Hủy yêu cầu đang chờ" }));
+    await waitFor(() => expect(view.onRestored).toHaveBeenCalledOnce());
+    expect(state.restore).toHaveBeenCalledOnce();
+    expect(sessionStorage.length).toBe(0);
+  });
+  it("clears only an exact server cancellation and allows a freshly verified destination", async () => {
+    state.restore.mockResolvedValue({ ok: false, error: "STALE_STATE" });
+    state.cancel.mockImplementation(async (intent) => ({ ok: true, data: { ok: true, status: "committed", result: {
+      ok: false, status: "cancelled", error: "REQUEST_CANCELLED", actor_id: "owner-a", request_id: intent.requestId,
+      payload: { entry_id: intent.entryId, to_tournament_table_id: intent.toTournamentTableId, to_seat_number: intent.toSeatNumber,
+        expected_revision: intent.expectedRevision, expected_control_epoch: intent.expectedControlEpoch, expected_table_session_id: intent.expectedTableSessionId },
+    } } }));
+    const view = mount(); await choose();
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận hoàn tác bust" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Hủy yêu cầu đang chờ" }));
+    await waitFor(() => expect(screen.getByLabelText("Bàn khôi phục")).toBeEnabled());
+    expect(state.cancel).toHaveBeenCalledWith(state.restore.mock.calls[0][0]);
+    expect(sessionStorage.length).toBe(0);
+    expect(view.onRestored).not.toHaveBeenCalled();
+    expect(view.onClose).not.toHaveBeenCalled();
+  });
+  it("offers server cancellation for a stale rejected restore while retaining its frozen identity", async () => {
+    state.restore.mockResolvedValue({ ok: false, error: "STALE_STATE" });
+    const view = mount(); await choose();
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận hoàn tác bust" }));
+    await waitFor(() => expect(state.restore).toHaveBeenCalledOnce());
+    await screen.findByRole("alert");
+    expect(screen.getByLabelText("Bàn khôi phục")).toBeDisabled();
+    expect(view.onRestored).not.toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: "Hủy yêu cầu đang chờ" })).toBeEnabled();
+  });
   it("verifies the Floor-selected destination before restoring without a second selection", async () => {
     const onRestored = vi.fn();
     render(<RestoreBustDialog actorId="owner-a" tournamentId="tour-a" target={{ ...target, destination: { tableId: "tt-a", seatNumber: 1 } }}
@@ -129,7 +190,7 @@ describe("mistaken-bust restore", () => {
   });
   it("accepts a matching committed receipt without repeating the restore write", async () => {
     state.restore.mockRejectedValueOnce(new Error("response lost"));
-    state.receipt.mockResolvedValueOnce({ ok: true, data: { status: "committed", result: canonicalReceipt } });
+    state.receipt.mockResolvedValueOnce({ ok: true, data: { ok: true, status: "committed", result: canonicalReceipt } });
     const view = mount(); await choose();
     fireEvent.click(screen.getByRole("button", { name: "Xác nhận hoàn tác bust" }));
     await screen.findByRole("alert");

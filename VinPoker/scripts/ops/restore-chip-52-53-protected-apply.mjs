@@ -17,7 +17,7 @@ export function postcheckSql(item){
  const pinned=loadPackage().find(x=>x.version===item?.version);
  if(!pinned||Object.keys(pinned).some(k=>pinned[k]!==item[k]))throw Error('Exact52/53 postcheck allowlist mismatch');
  return `BEGIN READ ONLY;SET LOCAL statement_timeout='10s';SELECT json_build_object('function',COALESCE((SELECT
- md5(replace(pg_get_functiondef(p.oid),chr(13),''))='${item.bodyHash}' AND p.prosecdef AND p.provolatile='s'
+ md5(replace(pg_get_functiondef(p.oid),chr(13),''))='${item.bodyHash}' AND p.prosecdef AND p.provolatile='${item.volatility}'
  AND pg_get_userbyid(p.proowner)='postgres' AND p.proconfig=ARRAY['search_path=""']::text[]
  AND has_function_privilege('authenticated',p.oid,'EXECUTE')
  AND NOT has_function_privilege('anon',p.oid,'EXECUTE') AND NOT has_function_privilege('service_role',p.oid,'EXECUTE')
@@ -48,8 +48,8 @@ function main(){
   if(r.status!==0)throw Error('psql failed; raw output withheld');return r.stdout.trim();
  };
  const transport={execute:query,json:sql=>JSON.parse(query(sql).split('\n').find(x=>x.startsWith('{')))};
- if(mode==='plan'){classifyPreflight(transport.json(preflightSql()));console.log('EXACT_MIGRATIONS_PENDING 52 53');return;}
- if(process.env.CONFIRM_FLOOR_PACKAGE!==`APPLY_RESTORE_CHIP_52_53_${process.env.RELEASE_SHA}`)throw Error('Exact52/53 confirmation missing');
+ if(mode==='plan'){classifyPreflight(transport.json(preflightSql()));console.log('EXACT_MIGRATIONS_PENDING 52 53 54 55');return;}
+ if(process.env.CONFIRM_FLOOR_PACKAGE!==`APPLY_RESTORE_CHIP_52_55_${process.env.RELEASE_SHA}`)throw Error('Exact52–55 confirmation missing');
  executePackage(transport,x=>console.log(x));
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){

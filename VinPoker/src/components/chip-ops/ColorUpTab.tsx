@@ -51,8 +51,10 @@ interface HistoryOp {
 
 export function ColorUpTab({ tournamentId, clubId }: { tournamentId: string; clubId: string | null }) {
   const { user } = useAuth();
+  const [journalGeneration, setJournalGeneration] = useState(0);
   const scope = `${user?.id ?? "anonymous"}:${clubId}:${tournamentId}`;
-  return <ScopedColorUpTab key={scope} scope={scope} tournamentId={tournamentId} clubId={clubId} />;
+  return <ScopedColorUpTab key={`${scope}:${journalGeneration}`} scope={scope} actorId={user?.id ?? null} tournamentId={tournamentId} clubId={clubId}
+    onRereadJournal={() => setJournalGeneration((value) => value + 1)} />;
 }
 
 interface MutationIntent {
@@ -60,7 +62,7 @@ interface MutationIntent {
   args: Record<string, unknown>;
 }
 
-function ScopedColorUpTab({ tournamentId, clubId, scope }: { tournamentId: string; clubId: string | null; scope: string }) {
+function ScopedColorUpTab({ tournamentId, clubId, scope, actorId, onRereadJournal }: { tournamentId: string; clubId: string | null; scope: string; actorId: string | null; onRereadJournal: () => void }) {
   const storageKey = `vinpoker:color-up-pending:${scope}`;
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -102,6 +104,7 @@ function ScopedColorUpTab({ tournamentId, clubId, scope }: { tournamentId: strin
       return false;
     }
     setUncertain(null);
+    setJournalError(false);
     return true;
   };
   const writing = useRef(false);
@@ -174,6 +177,21 @@ function ScopedColorUpTab({ tournamentId, clubId, scope }: { tournamentId: strin
   const step = !removed || !target ? 0 : !withinTol ? 1 : 2;
 
   const acceptResult = (intent: MutationIntent, data: any) => {
+    if (data?.status === "cancelled") {
+      const args = intent.args;
+      const operation = intent.fn === "chip_ops_color_up" ? "color_up" : "reverse_color_up";
+      const payload: Record<string, unknown> = intent.fn === "chip_ops_color_up"
+        ? { tournament: args.p_tournament_id, removed: args.p_denom_removed, target: args.p_denom_target, added: args.p_target_added, level: args.p_level_number }
+        : { operation: args.p_operation_id };
+      if (data.error !== "REQUEST_CANCELLED" || data.actor_id !== actorId || data.operation !== operation
+        || data.request_key !== args.p_idempotency_key || !data.payload
+        || Object.keys(data.payload).length !== Object.keys(payload).length
+        || !Object.entries(payload).every(([key, value]) => data.payload[key] === value)) return false;
+      if (!clearIntent()) return false;
+      toast.success("Đã hủy yêu cầu chưa chốt. Không thay đổi tồn chip.");
+      void reload();
+      return true;
+    }
     if (data?.status !== "ok" || data?.error
       || typeof data.color_up_operation_id !== "string" || data.color_up_operation_id.trim().length === 0
       || !(intent.fn === "chip_ops_color_up"
@@ -186,13 +204,13 @@ function ScopedColorUpTab({ tournamentId, clubId, scope }: { tournamentId: strin
     void reload();
     return true;
   };
-  const reconcileIntent = async (intent: MutationIntent) => {
-    if (writing.current || journalError) return;
+  const reconcileIntent = async (intent: MutationIntent, cancel = false) => {
+    if (writing.current || (cancel && journalError)) return;
     writing.current = true;
     setBusy(true);
     const args = intent.args;
     try {
-      const { data, error } = await sb.rpc("get_chip_color_up_receipt_v1", {
+      const { data, error } = await sb.rpc(cancel ? "cancel_chip_color_up_request_v1" : "get_chip_color_up_receipt_v1", {
         p_tournament_id: tournamentId,
         p_operation: intent.fn === "chip_ops_color_up" ? "color_up" : "reverse_color_up",
         p_request_key: args.p_idempotency_key,
@@ -270,6 +288,8 @@ function ScopedColorUpTab({ tournamentId, clubId, scope }: { tournamentId: strin
   if (journalError) {
     return <Card><CardContent className="py-6 text-sm" role="alert">
       Không xác minh được yêu cầu chip đã lưu. Chưa cho phép thao tác mới; cần đối chiếu yêu cầu trước khi tiếp tục.
+      {uncertain && <Button disabled={busy} onClick={() => void reconcileIntent(uncertain)}>Đối chiếu thao tác</Button>}
+      <Button disabled={busy} onClick={onRereadJournal}>Đọc lại yêu cầu đã lưu</Button>
     </CardContent></Card>;
   }
   if (loading) {
@@ -279,6 +299,8 @@ function ScopedColorUpTab({ tournamentId, clubId, scope }: { tournamentId: strin
     <p className="text-sm">Chưa xác minh được thao tác vừa gửi. Đang giữ nguyên mã và dữ liệu; chưa được tạo thao tác chip mới.</p>
     <Button disabled={busy} onClick={() => void reconcileIntent(uncertain)}>Đối chiếu thao tác</Button>
     <Button disabled={busy} onClick={() => void submitIntent(uncertain)}>Gửi lại cùng yêu cầu</Button>
+    <p className="text-sm">Hủy chỉ chặn yêu cầu chưa chốt, không hoàn tác thao tác đã chốt.</p>
+    <Button disabled={busy} onClick={() => void reconcileIntent(uncertain, true)}>Hủy yêu cầu đang chờ</Button>
   </CardContent></Card>;
   if (readError) {
     return <div className="space-y-4">{pendingRecovery}<Card><CardContent className="space-y-3 py-6" role="alert">
