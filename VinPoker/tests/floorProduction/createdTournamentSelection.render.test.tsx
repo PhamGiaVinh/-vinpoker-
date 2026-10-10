@@ -1,11 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useCallback, useMemo, useState } from "react";
 
-const state = vi.hoisted(() => ({ reads: vi.fn(), pick: "new-tour" }));
+const state = vi.hoisted(() => ({ reads: vi.fn(), channels: vi.fn(), removed: vi.fn(), pick: "new-tour" }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {
-  from: () => ({ select: () => ({ in: () => ({ order: () => ({ in: state.reads }) }) }) }),
-  channel: () => { const channel = { on: () => channel, subscribe: () => channel }; return channel; },
-  removeChannel: vi.fn(),
+  from: () => ({ select: () => ({ is: () => ({ in: () => ({ order: () => ({ in: state.reads }) }) }) }) }),
+  channel: (name: string) => { state.channels(name); const channel = { on: () => channel, subscribe: () => channel }; return channel; },
+  removeChannel: state.removed,
 } }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: "owner" } }) }));
 vi.mock("@/components/floor/FloorTournamentsLanding", () => ({
@@ -23,10 +24,30 @@ const scope = ["club"];
 const clubs = [{ id: "club", name: "TEST" }];
 const oldTour = { id: "old-tour", club_id: "club", name: "Old TEST", status: "live" };
 const newTour = { id: "new-tour", club_id: "club", name: "New TEST", status: "active" };
-beforeEach(() => { state.reads.mockReset(); state.pick = "new-tour"; });
+beforeEach(() => { state.reads.mockReset(); state.channels.mockReset(); state.removed.mockReset(); state.pick = "new-tour"; });
 afterEach(cleanup);
 
 describe("Floor resolves a newly created tournament against the canonical server list", () => {
+  it("keeps the real panel's list read and subscription stable during parent selection updates", async () => {
+    state.pick = "old-tour";
+    state.reads.mockResolvedValue({ data: [oldTour], error: null });
+    function Parent() {
+      const [selected, setSelected] = useState<string | null>(null);
+      const stableScope = useMemo(() => clubs.map((club) => club.id), []);
+      const onSelection = useCallback((id: string | null) => setSelected(id), []);
+      return <><span data-testid="parent-selection">{selected}</span><TournamentLivePanel clubIds={stableScope} clubs={clubs} mode="floor" onSelectedTournamentChange={onSelection} /></>;
+    }
+    render(<Parent />);
+    await waitFor(() => expect(state.reads).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Vào tour TEST vừa tạo" }));
+    expect(await screen.findByText("Bàn của old-tour")).toBeVisible();
+    expect(screen.getByTestId("parent-selection")).toHaveTextContent("old-tour");
+    expect(state.reads).toHaveBeenCalledTimes(1);
+    expect(state.channels).toHaveBeenCalledTimes(1);
+    expect(state.channels).toHaveBeenCalledWith("tournament-live:old-tour");
+    expect(state.removed).not.toHaveBeenCalled();
+  });
+
   it("refreshes a missing selection and opens its operational tabs without reloading the page", async () => {
     state.reads.mockResolvedValueOnce({ data: [oldTour], error: null });
     let finish!: (value: unknown) => void;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -50,6 +50,9 @@ export default function TrackerDashboard() {
   const userId = user?.id ?? null;
   const nav = useNavigate();
   const [clubs, setClubs] = useState<ClubRow[] | null>(null);
+  // TournamentLivePanel keys its read/subscription effects on this reference.
+  // A selected-tour update must not look like a different verified club scope.
+  const clubIds = useMemo(() => (clubs ?? []).map((club) => club.id), [clubs]);
   const [clubsError, setClubsError] = useState<string | null>(null);
   const [clubsForUserId, setClubsForUserId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -164,8 +167,6 @@ export default function TrackerDashboard() {
       </div>
     );
   }
-
-  const clubIds = clubs.map((c) => c.id);
 
   return (
     <div className="container mx-auto p-3 md:p-6">

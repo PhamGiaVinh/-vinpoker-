@@ -19,6 +19,7 @@ const state = vi.hoisted(() => ({
   clubs: [{ id: "club-a", name: "Club A" }] as Array<{ id: string; name: string }>,
   scopeRequest: null as ((userId: string) => Promise<{ data: string[] | null; error: unknown | null }>) | null,
   rpc: vi.fn(),
+  panelScopes: [] as string[][],
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -45,7 +46,10 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 vi.mock("@/components/cashier/TournamentLivePanel", () => ({
-  default: () => <div data-testid="tracker-live-panel" />,
+  default: ({ clubIds, onSelectedTournamentChange }: { clubIds: string[]; onSelectedTournamentChange?: (id: string) => void }) => {
+    state.panelScopes.push(clubIds);
+    return <div data-testid="tracker-live-panel"><button onClick={() => onSelectedTournamentChange?.("tour-a")}>Select test tour</button></div>;
+  },
 }));
 
 import TrackerDashboard from "./TrackerDashboard";
@@ -70,7 +74,35 @@ describe("TrackerDashboard club read state", () => {
     state.clubs = [{ id: "club-a", name: "Club A" }];
     state.scopeRequest = null;
     state.rpc.mockReset();
+    state.panelScopes = [];
     state.rpc.mockResolvedValue({ data: ["club-a"], error: null });
+  });
+
+  it("keeps the verified club scope reference stable when selecting a tournament", async () => {
+    renderTracker();
+    await screen.findByTestId("tracker-live-panel");
+    const scope = state.panelScopes.at(-1);
+    fireEvent.click(screen.getByRole("button", { name: "Select test tour" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Lịch sử & sửa hand" })).toBeInTheDocument());
+    expect(state.panelScopes.at(-1)).toBe(scope);
+    expect(state.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("replaces the memoized scope when a different account's clubs are verified", async () => {
+    const view = renderTracker();
+    await screen.findByTestId("tracker-live-panel");
+    const previousScope = state.panelScopes.at(-1);
+    state.userId = "tracker-b";
+    state.clubs = [{ id: "club-b", name: "Club B" }];
+    state.rpc.mockResolvedValue({ data: ["club-b"], error: null });
+    view.rerender(<MemoryRouter initialEntries={["/tracker"]}><Routes>
+      <Route path="/tracker" element={<TrackerDashboard />} />
+    </Routes></MemoryRouter>);
+    await screen.findByText("Club B");
+    expect(state.panelScopes.at(-1)).toEqual(["club-b"]);
+    expect(state.panelScopes.at(-1)).not.toBe(previousScope);
+    expect(screen.queryByText("Club A")).not.toBeInTheDocument();
+    expect(state.rpc).toHaveBeenCalledTimes(2);
   });
 
   it("turns a thrown fetch failure into a retryable error instead of an endless skeleton or empty permission", async () => {
