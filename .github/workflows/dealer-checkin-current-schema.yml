@@ -50,6 +50,8 @@ on:
       - 'VinPoker/supabase/functions/_shared/trackerSettlement/historyWorkerPolicy.ts'
       - 'VinPoker/tests/trackerSettlement/scopedClaim*'
       - 'VinPoker/tests/trackerSettlement/historyWorkerPolicy.test.ts'
+      - 'VinPoker/tests/trackerSettlement/historicalDisplayMigration.contract.test.ts'
+      - 'VinPoker/deno.lock'
       - 'VinPoker/supabase/migrations/20270128000024_tracker_history_scoped_canary_claim_v1.sql'
       - 'VinPoker/supabase/migrations/20270128000025_dealer_automatic_rest_history_fence_v1.sql'
       - 'VinPoker/tests/dealerSwing/restHistory*'
@@ -165,6 +167,7 @@ jobs:
           deno test --allow-env supabase/functions/tournament-historical-settlement-worker/runtime.test.ts supabase/functions/tournament-historical-settlement-dispatcher/runtime.test.ts
           deno test --allow-read supabase/functions/_shared/trackerSettlement/historyWorkerAuth.test.ts supabase/functions/_shared/trackerSettlement/historyWorkerHandler.test.ts
           node node_modules/vitest/vitest.mjs run tests/trackerSettlement/historyWorkerPolicy.test.ts
+          node node_modules/vitest/vitest.mjs run tests/trackerSettlement/historicalDisplayMigration.contract.test.ts
           node node_modules/vitest/vitest.mjs run tests/handinput/readHandBlindLevel.test.ts tests/trackerSettlement/historicalDisplayVerification.test.ts
           node node_modules/vitest/vitest.mjs run src/lib/tournamentParticipation.test.ts
       - name: Download exact owner-authorized current schema (not a pre-release replay baseline)
