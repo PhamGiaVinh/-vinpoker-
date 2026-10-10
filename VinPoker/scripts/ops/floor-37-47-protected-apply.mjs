@@ -8,7 +8,7 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
 export function validateContext(env,receipt,now=Date.now()){
  if(['PGHOSTADDR','PGSERVICE','PGSERVICEFILE','PGOPTIONS'].some(key=>env[key]))throw Error('Alternate libpq target/options rejected');
  const sha=env.RELEASE_SHA;
- if(!/^[a-f0-9]{40}$/.test(sha??'')||sha!==env.GITHUB_SHA||env.GITHUB_ACTIONS!=='true'
+ if(!/^[a-f0-9]{40}$/.test(sha??'')||sha!==env.SOURCE_CHECKOUT_SHA||! /^[a-f0-9]{40}$/.test(env.GITHUB_SHA??'')||env.GITHUB_REF!=='refs/heads/main'||env.GITHUB_ACTIONS!=='true'
   ||env.INITIAL_ACTOR!==env.REPOSITORY_OWNER||env.TRIGGERING_ACTOR!==env.REPOSITORY_OWNER
   ||!env.REPOSITORY_OWNER||env.SUPABASE_PROJECT_REF!==project
   ||env.PGHOST!=='aws-1-ap-southeast-2.pooler.supabase.com'||String(env.PGPORT)!=='5432'
