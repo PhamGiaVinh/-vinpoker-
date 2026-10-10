@@ -1,0 +1,37 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {atomicSql,loadMigration,dependencyPredicate,postcheckSql} from './dealer-checkin-51-protected-apply.mjs';
+import {receiptSql} from './floor-37-47-protected-apply.mjs';
+const seed=JSON.parse(readFileSync(new URL('./fixtures/dealer-checkin-14-ledger.json',import.meta.url),'utf8'));
+test('reviewed predecessor fixture binds live ledger body, not version only',()=>{
+ assert.equal(seed.statements.length,8);
+ assert.equal(createHash('md5').update(seed.statements.join('\n')).digest('hex'),'5dda1a1cd93336752e08247fb1e98aaa');
+});
+test('PG17 exact51 atomic rollback, receipt, object and replay rejection', {skip:process.env.DEALER51_PG_TEST!=='1'},()=>{
+ assert.equal(process.env.PGHOST,'127.0.0.1');assert.equal(process.env.PGUSER,'postgres');
+ assert.match(process.env.PGDATABASE??'',/^vinpoker_ops_/);
+ for(const key of ['PGHOSTADDR','PGSERVICE','PGSERVICEFILE','PGOPTIONS'])assert.ok(!process.env[key]);
+ const query=sql=>spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{input:sql,encoding:'utf8'});
+ const check=sql=>{const r=query(sql);assert.equal(r.status,0,r.stderr);return r.stdout.trim();};
+ assert.equal(check("SELECT current_database()<>'postgres' AND current_user='postgres' AND current_setting('server_version_num')::int BETWEEN 170000 AND 179999;"),'t');
+ assert.equal(check("SELECT to_regprocedure('public.get_dealer_checkin_receipt_v1(uuid,uuid,uuid,uuid)') IS NULL AND to_regclass('supabase_migrations.schema_migrations') IS NULL;"),'t','fresh isolated predecessor required');
+ assert.ok(!seed.statements.some(s=>s.includes('$seed14$')));
+ check(`CREATE SCHEMA supabase_migrations;CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY,name text,statements text[]);
+ INSERT INTO supabase_migrations.schema_migrations VALUES('${seed.version}','${seed.name}',ARRAY[${seed.statements.map(s=>`$seed14$${s}$seed14$`).join(',')}]);`);
+ assert.equal(check(`SELECT ${dependencyPredicate()};`),'t');
+ check(`CREATE FUNCTION public.reject51_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version='20270128000051' THEN RAISE EXCEPTION 'injected51_receipt_failure';END IF;RETURN NEW;END $$;
+ CREATE TRIGGER reject51 BEFORE INSERT ON supabase_migrations.schema_migrations FOR EACH ROW EXECUTE FUNCTION public.reject51_receipt();`);
+ const failed=query(atomicSql());assert.notEqual(failed.status,0);assert.match(failed.stderr,/injected51_receipt_failure/);
+ assert.equal(check("SELECT to_regprocedure('public.get_dealer_checkin_receipt_v1(uuid,uuid,uuid,uuid)') IS NULL;"),'t','RPC creation rolled back with failed ledger insert');
+ assert.deepEqual(JSON.parse(check(receiptSql(loadMigration()))),{count:0,exact:false});
+ check('DROP TRIGGER reject51 ON supabase_migrations.schema_migrations;DROP FUNCTION public.reject51_receipt();');
+ check(atomicSql());
+ assert.deepEqual(JSON.parse(check(receiptSql(loadMigration()))),{count:1,exact:true});
+ assert.deepEqual(JSON.parse(check(postcheckSql())),{function:true});
+ const replay=query(atomicSql());assert.notEqual(replay.status,0);assert.match(replay.stderr,/dealer51_precondition_drift/);
+ assert.deepEqual(JSON.parse(check(receiptSql(loadMigration()))),{count:1,exact:true});
+ console.log('DEALER51_ATOMIC_ROLLBACK_RECEIPT_OBJECT_REPLAY_PASS');
+});

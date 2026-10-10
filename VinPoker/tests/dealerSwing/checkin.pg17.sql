@@ -33,4 +33,27 @@ SELECT public.operator_check_in_dealer_v1('e1000000-0000-4000-8000-000000000005'
 RESET ROLE;
 SELECT pg_temp.assert_true(:'denied_payload'::jsonb->>'error'='actor_not_allowed','outsider denied');
 SELECT pg_temp.assert_true(NOT has_function_privilege('anon','public.operator_check_in_dealer_v1(uuid,uuid,uuid,uuid)','EXECUTE'),'anonymous denied');
+\if :{?receipt_reconciliation_case}
+SELECT set_config('request.jwt.claim.sub','e1000000-0000-4000-8000-000000000001',true);
+UPDATE public.dealers SET status='inactive' WHERE id='e1000000-0000-4000-8000-000000000005';
+UPDATE public.dealer_shifts SET closed_at=now() WHERE id='e1000000-0000-4000-8000-000000000003';
+CREATE TEMP TABLE receipt_counts AS SELECT
+  (SELECT count(*) FROM public.dealer_attendance) AS attendance,
+  (SELECT count(*) FROM public.table_operation_receipts) AS receipts;
+SET LOCAL ROLE authenticated;
+SELECT public.get_dealer_checkin_receipt_v1('e1000000-0000-4000-8000-000000000005','e1000000-0000-4000-8000-000000000002','e1000000-0000-4000-8000-000000000003','e1000000-0000-4000-8000-000000000011')::text AS payload \gset read_
+SELECT public.get_dealer_checkin_receipt_v1('e1000000-0000-4000-8000-000000000005','e1000000-0000-4000-8000-000000000002','e1000000-0000-4000-8000-000000000004','e1000000-0000-4000-8000-000000000011')::text AS payload \gset read_conflict_
+SELECT public.get_dealer_checkin_receipt_v1('e1000000-0000-4000-8000-000000000005','e1000000-0000-4000-8000-000000000002','e1000000-0000-4000-8000-000000000003','e1000000-0000-4000-8000-000000000099')::text AS payload \gset read_unknown_
+RESET ROLE;
+SELECT pg_temp.assert_true(:'read_payload'::jsonb->>'status'='committed' AND :'read_payload'::jsonb->'result'=:'first_payload'::jsonb,'inactive dealer and closed shift retain exact committed receipt');
+SELECT pg_temp.assert_true(:'read_conflict_payload'::jsonb->>'error'='IDEMPOTENCY_CONFLICT','read rejects changed payload');
+SELECT pg_temp.assert_true(:'read_unknown_payload'::jsonb->>'status'='unknown','missing receipt is unknown not uncommitted');
+SELECT pg_temp.assert_true((SELECT attendance=(SELECT count(*) FROM public.dealer_attendance) AND receipts=(SELECT count(*) FROM public.table_operation_receipts) FROM receipt_counts),'receipt read changes no attendance or receipts');
+SELECT set_config('request.jwt.claim.sub','e1000000-0000-4000-8000-000000000099',true);
+SET LOCAL ROLE authenticated;
+SELECT public.get_dealer_checkin_receipt_v1('e1000000-0000-4000-8000-000000000005','e1000000-0000-4000-8000-000000000002','e1000000-0000-4000-8000-000000000003','e1000000-0000-4000-8000-000000000011')::text AS payload \gset read_denied_
+RESET ROLE;
+SELECT pg_temp.assert_true(:'read_denied_payload'::jsonb->>'error'='actor_not_allowed','outsider cannot read another actor receipt');
+SELECT pg_temp.assert_true(NOT has_function_privilege('anon','public.get_dealer_checkin_receipt_v1(uuid,uuid,uuid,uuid)','EXECUTE') AND NOT has_function_privilege('service_role','public.get_dealer_checkin_receipt_v1(uuid,uuid,uuid,uuid)','EXECUTE'),'no anonymous or service API grant');
+\endif
 ROLLBACK;
