@@ -1824,6 +1824,8 @@
       "actionTimeline": "アクション履歴",
       "noActions": "アクションなし",
       "tableStats": "テーブル統計",
+      "currentTournamentClock": "現在のトーナメントクロック",
+      "handBlindsContext": "テーブルは表示中のハンドのブラインドを使用し、現在のクロックと異なる場合があります。",
       "playersRemaining": "残りプレイヤー",
       "averageStack": "平均スタック",
       "currentPot": "現在のポット",

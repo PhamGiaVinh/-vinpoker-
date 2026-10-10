@@ -2083,6 +2083,8 @@
       "actionTimeline": "Diễn biến",
       "noActions": "Chưa có action nào",
       "tableStats": "Thống kê bàn",
+      "currentTournamentClock": "Clock hiện tại của giải",
+      "handBlindsContext": "Blind trên bàn thuộc hand đang hiển thị, có thể khác clock hiện tại.",
       "playersRemaining": "Người chơi còn lại",
       "averageStack": "Stack trung bình",
       "currentPot": "Pot hiện tại",

@@ -2261,7 +2261,15 @@ function TournamentLiveViewContent({
               </div>
               {clockData && (
                 <>
-                  <div className="flex justify-between text-muted-foreground pt-1.5 border-t border-border/20">
+                  <div className="pt-1.5 border-t border-border/20 text-muted-foreground">
+                    <p className="font-semibold">{t("tournamentLive.liveView.currentTournamentClock")}</p>
+                    {feltBlinds && (
+                      <p className="mt-1 text-[10px] leading-relaxed">
+                        {t("tournamentLive.liveView.handBlindsContext")}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
                     <span>{t("tournamentLive.liveView.level")}</span>
                     <span className="text-emerald-400 font-semibold">
                       {clockData.current_level || "—"}

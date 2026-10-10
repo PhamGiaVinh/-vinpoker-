@@ -2083,6 +2083,8 @@
       "actionTimeline": "Action Timeline",
       "noActions": "No actions yet",
       "tableStats": "Table Stats",
+      "currentTournamentClock": "Current tournament clock",
+      "handBlindsContext": "The felt uses the displayed hand's blinds, which may differ from the current clock.",
       "playersRemaining": "Players Remaining",
       "averageStack": "Average Stack",
       "currentPot": "Current Pot",
