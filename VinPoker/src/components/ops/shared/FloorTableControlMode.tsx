@@ -260,7 +260,7 @@ export function FloorTableControlModeControl({
       {pending && <div role="status" className="mt-2 text-sm">
         <p>Đang chờ chuyển sang {pending.mode === "tracker" ? "Live Tracker" : "Manual Floor"}.</p>
         <ul>{pending.blockers.map((reason) => <li key={reason}>{({ active_hand: "Ván đang chạy", pending_move: "Chuyển ghế chưa hoàn tất", correction_pending: "Đang chờ sửa hand", correction_session_unknown: "Chưa xác minh phiên sửa hand" } as Record<string, string>)[reason] ?? reason}</li>)}</ul>
-        <Button type="button" variant="outline" disabled={busy || !validContext || !currentRequest?.loaded} onClick={() => { void cancelPending(); }}>Hủy yêu cầu đổi chế độ</Button>
+        <Button data-ops-action="floor.tables.cancel_pending_control_mode" type="button" variant="outline" disabled={busy || !validContext || !currentRequest?.loaded} onClick={() => { void cancelPending(); }}>Hủy yêu cầu đổi chế độ</Button>
       </div>}
 
       <Button
