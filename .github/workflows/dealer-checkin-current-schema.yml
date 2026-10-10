@@ -78,6 +78,7 @@ on:
       - 'VinPoker/tests/floorProduction/legacySessionLifecycle.pg17.sql'
       - 'VinPoker/tests/floorProduction/legacyCloseOpen.concurrent.mjs'
       - 'VinPoker/tests/floorProduction/moveClose.concurrent.mjs'
+      - 'VinPoker/tests/floorProduction/package37_47.readonly-postcheck.sql'
       - 'VinPoker/tests/floorProduction/breakDrawPolicy.pg17.sql'
       - 'VinPoker/tests/floorProduction/floorPlayerActions.move.test.tsx'
       - 'VinPoker/tests/floorProduction/opsTables.close.test.tsx'
@@ -254,6 +255,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000045_floor_seat_ticket_select_scope_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000046_dealer_inventory_canonical_table_link_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000047_floor_closed_session_attendance_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/package37_47.readonly-postcheck.sql
           node tests/dealerSwing/closedSessionAttendance.currentSchema.mjs
           psql -X -v ON_ERROR_STOP=1 -v require_seat_ticket=true -v require_ticket_read=true -f tests/floorProduction/breakDrawPolicy.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -v draw_mode=redraw_balanced -v balanced_multi=true -v require_seat_ticket=true -f tests/floorProduction/breakDrawPolicy.pg17.sql
