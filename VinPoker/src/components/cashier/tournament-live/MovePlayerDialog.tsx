@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
+import { createFloorTableControlV3Client, type FloorTournamentTableRoster, type FloorTableControlV3Rpc } from "@/lib/floorTableControlV3";
+import { readPendingFloorMove, savePendingFloorMove, clearPendingFloorMove, type PendingFloorMove } from "@/lib/floorPendingMoveIntent";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter,
 } from "@/components/ui/sheet";
@@ -18,7 +19,10 @@ const REASON_PRESETS = ["Cân bàn", "Bàn đóng", "Yêu cầu người chơi",
 type ReasonPreset = (typeof REASON_PRESETS)[number];
 
 interface TargetTable {
-  id: string;            // tournament_tables.id — the id move_player_seat expects
+  id: string;
+  tableSessionId: string;
+  sessionRevision: number;
+  controlEpoch: number;
   tableName: string;
   tableNumber: number | null;
   maxSeats: number;
@@ -28,6 +32,8 @@ interface TargetTable {
 interface OccupiedSeat {
   seat_number: number;
   player_name: string | null;
+  entry_id?: string | null;
+  locked?: boolean;
 }
 
 type MoveResult = {
@@ -59,28 +65,40 @@ function mapError(res: MoveResult | null, rawMessage?: string): string {
 }
 
 /**
- * Move a System-A (entry-backed) player through move_player_seat — the ONLY
- * seat-change path that keeps receipts + seat_assignment_history consistent
- * (old receipt superseded, new receipt draw_type='manual_move', audited reason).
- * Self-loads fresh table/occupancy state on every open; occupied targets are
- * disabled client-side and the server's partial unique index is the real guard
- * (seat_occupied → reload + retry).
+ * Canonical entry/session move. The server owns seat, stack, reason audit and
+ * printable ticket. Unknown outcomes retain the exact intent for explicit replay.
  */
 export function MovePlayerDialog({
-  open, onOpenChange, tournamentId,
-  entryId, playerName, currentTournamentTableId, currentSeatNumber, onMoved,
+  actorId, open, onOpenChange, tournamentId,
+  entryId, playerName, onMoved,
 }: {
+  actorId: string | null;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   tournamentId: string;
   entryId: string;
   playerName: string;
-  /** tournament_tables.id of the player's current table (highlighting only). */
+  /** Legacy caller hints; current source is always resolved from the canonical roster. */
   currentTournamentTableId: string | null;
   currentSeatNumber: number | null;
   onMoved: () => void;
 }) {
-  const { user } = useAuth();
+  const supabase = useSupabaseClient();
+  const canonical = useMemo(() => createFloorTableControlV3Client(
+    (async (name, args) => supabase.rpc(name as never, args as never)) as FloorTableControlV3Rpc,
+  ), [supabase]);
+  const loadSequence = useRef(0);
+  const scope = `${actorId ?? ""}:${tournamentId}:${entryId}`;
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
+  const busy = useRef(false);
+  const activeRun = useRef<object | null>(null);
+  const currentOpen = useRef(open);
+  currentOpen.current = open;
+  const attempt = useRef<PendingFloorMove | null>(null);
+  const [sourceContext, setSourceContext] = useState<FloorTournamentTableRoster | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
+  const [writeError, setWriteError] = useState<string | null>(null);
   const [tournamentMeta, setTournamentMeta] = useState<{ name: string; start_time: string | null }>({ name: "Giải đấu", start_time: null });
   const [tables, setTables] = useState<TargetTable[] | null>(null);
   const [occupied, setOccupied] = useState<Record<string, OccupiedSeat[]>>({});
@@ -93,55 +111,83 @@ export function MovePlayerDialog({
   const [receipt, setReceipt] = useState<SeatReceiptData | null>(null);
   const [receiptOpen, setReceiptOpen] = useState(false);
 
-  const loadState = async () => {
-    const [{ data: tt }, { data: seats }, { data: tour }] = await Promise.all([
-      supabase.from("tournament_tables")
-        .select("id, table_name, table_number, max_seats, status, table_id")
-        .eq("tournament_id", tournamentId),
-      supabase.from("tournament_seats")
-        .select("table_id, seat_number, player_name, is_active")
-        .eq("tournament_id", tournamentId)
-        .eq("is_active", true),
-      supabase.from("tournaments")
-        .select("name, start_time")
-        .eq("id", tournamentId)
-        .single(),
-    ]);
-    if (tour) setTournamentMeta({ name: (tour as any).name ?? "Giải đấu", start_time: (tour as any).start_time ?? null });
-    const occ: Record<string, OccupiedSeat[]> = {};
-    for (const s of (seats ?? []) as any[]) {
-      (occ[s.table_id] ??= []).push({ seat_number: s.seat_number, player_name: s.player_name });
+  const loadState = useCallback(async () => {
+    const sequence = ++loadSequence.current;
+    setTables(null);
+    setReadError(null);
+    setSourceContext(null);
+    setOccupied({});
+    setTargetTableId("");
+    setTargetSeat(null);
+    if (!actorId) { setReadError("Bạn cần đăng nhập lại trước khi chuyển ghế."); return; }
+    try {
+      const [roster, reservations, metadata] = await Promise.all([
+        canonical.getTournamentTableRoster(tournamentId),
+        canonical.getPendingTrackerMoves(tournamentId),
+        supabase.from("tournaments").select("name, start_time").eq("id", tournamentId).single(),
+      ]);
+      if (sequence !== loadSequence.current || currentScope.current !== scope) return;
+      if (roster.ok === false) throw new Error(roster.error);
+      if (reservations.ok === false) throw new Error(reservations.error);
+      if (metadata.error) throw new Error(metadata.error.message);
+      if (metadata.data) setTournamentMeta({ name: metadata.data.name ?? "Giải đấu", start_time: metadata.data.start_time });
+      const occ: Record<string, OccupiedSeat[]> = {};
+      const scopedRoster = roster.data.filter((table) => table.tournamentId === tournamentId);
+      const sourceSeats = scopedRoster.flatMap((table) => table.seats
+        .filter((seat) => seat.entryId === entryId && seat.integrityStatus === "valid")
+        .map((seat) => ({ table, seat })));
+      if (sourceSeats.length !== 1) throw new Error("Không xác minh được ghế nguồn của entry.");
+      const source = sourceSeats[0].table;
+      if (reservations.data.some((move) => move.entryId === entryId && move.status === "pending")) {
+        throw new Error("Người chơi đang có yêu cầu chuyển ghế chờ xử lý.");
+      }
+      setSourceContext(source);
+      const built = scopedRoster.map((table) => {
+        occ[table.tournamentTableId] = [
+          ...table.seats.map((seat) => ({ seat_number: seat.seatNumber, player_name: seat.displayName, entry_id: seat.entryId })),
+          ...table.seatLocks.map((lock) => ({ seat_number: lock.seatNumber, player_name: "Ghế đang khóa", locked: true })),
+          ...reservations.data.filter((move) => move.status === "pending" && move.destinationTournamentTableId === table.tournamentTableId)
+            .map((move) => ({ seat_number: move.destinationSeatNumber, player_name: "Ghế đang giữ cho lượt chuyển", locked: true })),
+        ];
+        return { id: table.tournamentTableId, tableName: table.tableName, tableNumber: table.tableNumber,
+          tableSessionId: table.tableSessionId, sessionRevision: table.sessionRevision, controlEpoch: table.controlEpoch,
+          maxSeats: table.maxSeats, activeCount: table.seats.length };
+      }).sort((a, b) => a.tableNumber - b.tableNumber);
+      setOccupied(occ);
+      setTables(built);
+      if (built.length) setTargetTableId(attempt.current?.scope === scope
+        ? attempt.current.intent.toTournamentTableId : source.tournamentTableId);
+    } catch (cause) {
+      if (sequence !== loadSequence.current || currentScope.current !== scope) return;
+      setReadError(`Không xác minh được phiên bàn. Chưa thể chuyển ghế (${cause instanceof Error ? cause.message : "lỗi tải dữ liệu"}).`);
     }
-    setOccupied(occ);
-    const built = ((tt ?? []) as any[])
-      // mirror the RPC's destination filter: active + linked to a game table
-      .filter((t) => t.status === "active" && t.table_id !== null)
-      .map((t) => ({
-        id: t.id,
-        tableName: t.table_name ?? (t.table_number != null ? `Bàn ${t.table_number}` : "Bàn ?"),
-        tableNumber: t.table_number,
-        maxSeats: t.max_seats ?? 9,
-        activeCount: (occ[t.id] ?? []).length,
-      }))
-      .sort((a, b) => (a.tableNumber ?? 1e9) - (b.tableNumber ?? 1e9));
-    setTables(built);
-    // Default the stepper to the player's current table if eligible, else the first.
-    if (built.length) {
-      const start = built.find((t) => t.id === currentTournamentTableId) ?? built[0];
-      setTargetTableId(start.id);
-    }
-  };
+  }, [canonical, supabase, scope, actorId, tournamentId, entryId]);
 
   useEffect(() => {
+    activeRun.current = null;
+    busy.current = false;
+    if (attempt.current?.scope !== scope) attempt.current = null;
+    setWriteError(null);
     if (!open) {
-      setPhase("pick"); setResult(null); setTables(null);
+      loadSequence.current++;
+      setPhase("pick"); setResult(null); setTables(null); setReceipt(null); setReceiptOpen(false);
       setTargetTableId(""); setTargetSeat(null);
       setReasonPreset("Cân bàn"); setReasonText("");
       return;
     }
-    loadState();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, tournamentId]);
+    try {
+      attempt.current = readPendingFloorMove(scope) ?? attempt.current;
+      if (attempt.current && attempt.current.intent.entryId !== entryId) throw new Error("Mã đã lưu không thuộc entry này.");
+    } catch (cause) {
+      setReadError(cause instanceof Error ? cause.message : "Không đọc được mã yêu cầu đã lưu.");
+      setTables(null); setPhase("pick");
+      return;
+    }
+    if (attempt.current) setWriteError("Chưa xác minh kết quả yêu cầu trước. Xác nhận chỉ gửi lại đúng mã và payload đã lưu.");
+    setPhase(attempt.current ? "confirm" : "pick"); setResult(null); setReceipt(null); setReceiptOpen(false);
+    void loadState();
+    return () => { loadSequence.current++; activeRun.current = null; busy.current = false; };
+  }, [open, loadState]);
 
   const targetTable = useMemo(
     () => (tables ?? []).find((t) => t.id === targetTableId) ?? null,
@@ -159,19 +205,19 @@ export function MovePlayerDialog({
   // stepper never lands on one (owner 2026-06-16: hide occupied seats, don't warn).
   const selectableSeats = useMemo(() => {
     if (!targetTable) return [] as number[];
-    const ownHere = targetTable.id === currentTournamentTableId;
     const list: number[] = [];
     for (let n = 1; n <= targetTable.maxSeats; n++) {
-      if (!occupantBySeat.has(n) || (ownHere && n === currentSeatNumber)) list.push(n);
+      const occupant = occupantBySeat.get(n);
+      if (!occupant || (!occupant.locked && occupant.entry_id === entryId)) list.push(n);
     }
     return list;
-  }, [targetTable, occupantBySeat, currentTournamentTableId, currentSeatNumber]);
+  }, [targetTable, occupantBySeat, entryId]);
 
   // When the target table changes, default the seat to the first selectable (free) one.
   // null = the table is full (no selectable seat) → "Tiếp tục" stays disabled.
   useEffect(() => {
     if (!targetTable) return;
-    setTargetSeat(selectableSeats[0] ?? null);
+    setTargetSeat(attempt.current?.scope === scope ? attempt.current.intent.toSeatNumber : selectableSeats[0] ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetTableId, tables]);
 
@@ -192,53 +238,107 @@ export function MovePlayerDialog({
   // Occupant on the chosen seat that is NOT the player being moved (their own
   // current seat is fine = no-op move). Blocks "Tiếp tục" + warns.
   const seatOccupant = targetSeat != null ? occupantBySeat.get(targetSeat) : undefined;
-  const isOwnSeat = targetTable?.id === currentTournamentTableId && targetSeat === currentSeatNumber;
+  const isOwnSeat = !!seatOccupant && !seatOccupant.locked && seatOccupant.entry_id === entryId;
   const seatBlocked = !!seatOccupant && !isOwnSeat;
 
   const reason = reasonPreset === "Khác" ? reasonText.trim() : reasonPreset;
+  const confirmationReason = attempt.current?.scope === scope ? attempt.current.intent.reason : reason;
+  const confirmationSourceSeat = attempt.current?.scope === scope ? attempt.current.sourceSeat
+    : sourceContext?.seats.find((seat) => seat.entryId === entryId)?.seatNumber;
+  const confirmationTargetName = attempt.current?.scope === scope
+    ? `Bàn ${attempt.current.toTableNumber ?? "?"}` : targetTable?.tableName;
+  const confirmationTargetSeat = attempt.current?.scope === scope
+    ? attempt.current.intent.toSeatNumber : targetSeat;
 
   const runMove = async () => {
-    if (!user || !targetTable || targetSeat == null) return;
-    setPhase("moving");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC source: supabase/migrations/20260807000002 (+ guard v2 20260818000000, pending apply)
-    const { data, error } = await (supabase.rpc as any)("move_player_seat", {
-      p_entry_id: entryId,
-      p_to_tournament_table_id: targetTable.id,
-      p_to_seat_number: targetSeat,
-      p_actor_user_id: user.id,
-      p_reason: reason,
-    });
-    const res = (data ?? null) as MoveResult | null;
-    if (error || !res?.ok) {
-      toast.error(mapError(res, error?.message));
-      if (res?.error === "seat_occupied") await loadState(); // somebody won the race — refresh occupancy
-      setPhase("pick");
-      return;
+    if (busy.current || !actorId || !open) return;
+    if (!attempt.current) {
+      const sourceSeat = sourceContext?.seats.find((seat) => seat.entryId === entryId);
+      if (!sourceContext || !sourceSeat || !targetTable || targetSeat == null || seatBlocked || !reason || readError) return;
+      attempt.current = { scope, intent: { entryId, fromTournamentTableId: sourceContext.tournamentTableId,
+        fromTableSessionId: sourceContext.tableSessionId, toTournamentTableId: targetTable.id,
+        toTableSessionId: targetTable.tableSessionId, toSeatNumber: targetSeat,
+        expectedSourceRevision: sourceContext.sessionRevision, expectedDestinationRevision: targetTable.sessionRevision,
+        expectedSourceEpoch: sourceContext.controlEpoch, expectedDestinationEpoch: targetTable.controlEpoch,
+        reason, requestId: crypto.randomUUID() }, sourceSeat: sourceSeat.seatNumber, stack: sourceSeat.chipCount,
+        fromTableNumber: sourceContext.tableNumber, toTableNumber: targetTable.tableNumber, meta: tournamentMeta };
     }
+    const frozen = attempt.current;
+    if (frozen.scope !== scope) return;
+    const operation = {};
+    activeRun.current = operation;
+    busy.current = true;
+    const isCurrent = () => activeRun.current === operation && currentScope.current === scope && currentOpen.current;
+    setPhase("moving");
+    setWriteError(null);
+    try {
+      savePendingFloorMove(frozen);
+      const response = await canonical.movePlayerSeatExact(frozen.intent);
+      if (!isCurrent()) return;
+      if (response.ok === false) {
+        const definitive = ["STALE_STATE", "STALE_CONTROL_EPOCH", "actor_not_allowed", "entry_not_found", "entry_not_seated",
+          "no_active_v3_seat", "table_session_mismatch", "table_session_not_active", "seat_occupied", "seat_locked",
+          "table_has_active_hand", "invalid_seat_number", "tournament_not_open", "invalid_request"].includes(response.error);
+        if (!definitive) throw new Error(response.error);
+        clearPendingFloorMove(frozen);
+        attempt.current = null;
+        setWriteError(mapError(null, response.error));
+        setPhase("pick");
+        await loadState();
+        return;
+      }
+      const raw = response.data;
+      const intent = frozen.intent;
+      const commonValid = raw.ok === true && raw.entry_id === intent.entryId
+        && raw.reason === intent.reason.trim() && raw.request_id === intent.requestId;
+      const unchanged = raw.already_there === true;
+      const valid = commonValid && (unchanged
+        ? intent.fromTournamentTableId === intent.toTournamentTableId && intent.fromTableSessionId === intent.toTableSessionId
+          && raw.tournament_table_id === intent.fromTournamentTableId && raw.table_session_id === intent.fromTableSessionId
+          && raw.seat_number === intent.toSeatNumber && frozen.sourceSeat === intent.toSeatNumber
+          && raw.revision === intent.expectedSourceRevision
+        : raw.from_tournament_table_id === intent.fromTournamentTableId && raw.from_table_session_id === intent.fromTableSessionId
+          && raw.to_tournament_table_id === intent.toTournamentTableId && raw.to_table_session_id === intent.toTableSessionId
+          && raw.from_seat_number === frozen.sourceSeat && raw.to_seat_number === intent.toSeatNumber
+          && raw.from_table_number === frozen.fromTableNumber && raw.to_table_number === frozen.toTableNumber
+          && raw.current_stack === frozen.stack && typeof raw.receipt_code === "string" && !!raw.receipt_code.trim()
+          && typeof raw.player_name === "string" && !!raw.player_name.trim());
+      if (!valid) throw new Error("Phiếu trả về không khớp thao tác chuyển ghế.");
+      clearPendingFloorMove(frozen);
+      const res = raw as MoveResult;
     setResult(res);
     if (res.receipt_code) {
       setReceipt({
-        tournamentName: tournamentMeta.name,
-        tournamentDate: tournamentMeta.start_time,
+        floorSeatContext: { actorId, tournamentId, entryId },
+        tournamentName: frozen.meta.name,
+        tournamentDate: frozen.meta.start_time,
         playerName: res.player_name ?? playerName,
-        tableNumber: res.to_table_number ?? targetTable.tableNumber,
-        seatNumber: res.to_seat_number ?? targetSeat,
+        tableNumber: res.to_table_number ?? frozen.toTableNumber,
+        seatNumber: res.to_seat_number ?? frozen.intent.toSeatNumber,
         receiptCode: res.receipt_code,
         startingStack: res.current_stack ?? null,
         qrValue: res.receipt_code,
       });
     }
     setPhase("done");
+    attempt.current = null;
     toast.success(
       res.already_there
         ? "Người chơi đã ở đúng ghế này."
         : `Đã chuyển ${res.player_name ?? playerName} → Bàn ${res.to_table_number ?? "?"} · Ghế ${res.to_seat_number}`,
     );
     onMoved();
+    } catch (cause) {
+      if (!isCurrent()) return;
+      setWriteError(`Chưa xác minh được kết quả chuyển ghế. Thử lại giữ nguyên mã yêu cầu (${cause instanceof Error ? cause.message : "lỗi kết nối"}).`);
+      setPhase("confirm");
+    } finally {
+      if (isCurrent()) { activeRun.current = null; busy.current = false; }
+    }
   };
 
   const close = (v: boolean) => {
-    if (phase === "moving") return;
+    if (busy.current) return;
     onOpenChange(v);
   };
 
@@ -255,9 +355,12 @@ export function MovePlayerDialog({
             </SheetDescription>
           </SheetHeader>
 
+          {writeError && <div role="alert" className="text-sm text-destructive">{writeError}</div>}
+          {readError && <div role="alert" className="text-sm text-destructive">{readError}</div>}
+
           {phase === "pick" && (
             <div className="space-y-3">
-              {tables === null ? (
+              {readError ? null : tables === null ? (
                 <Skeleton className="h-40" />
               ) : tables.length === 0 ? (
                 <div className="py-6 text-center text-sm text-muted-foreground">Không có bàn active để chuyển tới.</div>
@@ -319,12 +422,12 @@ export function MovePlayerDialog({
             </div>
           )}
 
-          {phase === "confirm" && targetTable && targetSeat != null && (
+          {phase === "confirm" && confirmationTargetName && confirmationTargetSeat != null && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 space-y-1 text-sm">
               <div className="font-medium">
-                {playerName}: {currentSeatNumber != null ? `Ghế ${currentSeatNumber}` : "ghế hiện tại"} → {targetTable.tableName} · Ghế {targetSeat}
+                {playerName}: {confirmationSourceSeat != null ? `Ghế ${confirmationSourceSeat}` : "ghế đang xác minh"} → {confirmationTargetName} · Ghế {confirmationTargetSeat}
               </div>
-              <div className="text-xs text-muted-foreground">Lý do: {reason}</div>
+              <div className="text-xs text-muted-foreground">Lý do: {confirmationReason}</div>
               <div className="text-xs text-muted-foreground">Phiếu cũ sẽ bị thay thế bằng phiếu mới — in lại cho người chơi.</div>
             </div>
           )}
@@ -349,7 +452,7 @@ export function MovePlayerDialog({
               <>
                 <Button variant="outline" onClick={() => close(false)}>Quay lại</Button>
                 <Button
-                  disabled={!targetTable || targetSeat == null || !reason || seatBlocked}
+                  disabled={!sourceContext || !!readError || !targetTable || targetSeat == null || !reason || seatBlocked}
                   onClick={() => setPhase("confirm")}
                 >
                   Tiếp tục
@@ -358,7 +461,7 @@ export function MovePlayerDialog({
             )}
             {phase === "confirm" && (
               <>
-                <Button variant="outline" onClick={() => setPhase("pick")}>Sửa lại</Button>
+                <Button variant="outline" disabled={!!attempt.current} onClick={() => setPhase("pick")}>Sửa lại</Button>
                 <Button onClick={runMove}>
                   <ArrowRightLeft className="w-3.5 h-3.5 mr-1.5" /> Xác nhận chuyển
                 </Button>
@@ -376,7 +479,8 @@ export function MovePlayerDialog({
         </SheetContent>
       </Sheet>
 
-      <SeatReceiptDialog open={receiptOpen} onOpenChange={setReceiptOpen} receipt={receipt} />
+      <SeatReceiptDialog open={receiptOpen} onOpenChange={setReceiptOpen}
+        receipt={actorId && receipt?.floorSeatContext?.actorId === actorId ? receipt : null} />
     </>
   );
 }

@@ -42,6 +42,7 @@ export function PlayerActionSheets({
   bustInfo,
   moveTargets,
   onMovePlayer,
+  onOpenMove,
   onOpenReceipt,
   infoLive,
   bustControlMode,
@@ -60,7 +61,9 @@ export function PlayerActionSheets({
   /** Nút "Chuyển" mở chọn bàn/ghế thật: bàn đích + ghế trống lấy từ moveTargets; xác nhận
    *  gọi onMovePlayer(tt_id, seat, lý do) (màn chủ tra entry_id + gọi move_player_seat). */
   moveTargets: { tt_id: string; table_number: number | null; freeSeats: number[] }[];
-  onMovePlayer: (toTtId: string, toSeat: number, reason: string) => Promise<boolean>;
+  onMovePlayer?: (toTtId: string, toSeat: number, reason: string) => Promise<boolean>;
+  /** Canonical host owns current roster, exact-session intent and recovery. */
+  onOpenMove?: () => Promise<void>;
   /** Nút "Phiếu" mở SeatReceiptDialog server-backed ở màn chủ rồi đóng sheet này. */
   onOpenReceipt: () => void;
   /** Marker bắt buộc: thông tin người chơi đến từ snapshot server đã xác minh. */
@@ -110,6 +113,11 @@ export function PlayerActionSheets({
         })
         .catch(() => toast.error("Không kiểm tra được dữ liệu người chơi. Hãy tải lại trước khi loại."))
         .finally(() => setBustPreparing(false));
+      return;
+    }
+    if (next === "move" && onOpenMove) {
+      void onOpenMove();
+      close();
       return;
     }
     if (next === "move" && onMovePlayer) {
@@ -262,7 +270,7 @@ export function PlayerActionSheets({
                     onClick={async () => {
                       if (moveTableId === null || moveSeat === null) return;
                       setMoveBusy(true);
-                      const ok = await onMovePlayer(moveTableId, moveSeat, moveReason);
+                      const ok = await onMovePlayer?.(moveTableId, moveSeat, moveReason);
                       setMoveBusy(false);
                       if (ok) close();            // refetch do màn chủ lo; không optimistic
                     }}

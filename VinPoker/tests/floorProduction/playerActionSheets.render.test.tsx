@@ -8,6 +8,19 @@ afterEach(() => {
 });
 
 describe("PlayerActionSheets", () => {
+  it("routes Chuyển to the canonical host without opening the legacy picker", () => {
+    const openMove = vi.fn().mockResolvedValue(undefined);
+    const legacyMove = vi.fn(); const close = vi.fn();
+    render(<PlayerActionSheets target={{ seat: { seat: 1, name: "TEST", chip: "20000" }, tableNo: 1, chipCount: 20000 }}
+      onClose={close} onSaveChip={async () => false} onBustPlayer={async () => false}
+      onOpenBust={async () => false} bustInfo={null} moveTargets={[]}
+      onMovePlayer={legacyMove} onOpenMove={openMove} onOpenReceipt={vi.fn()} infoLive bustControlMode="manual" />);
+    fireEvent.click(screen.getByRole("button", { name: /Chuyển.*bàn/ }));
+    expect(openMove).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(legacyMove).not.toHaveBeenCalled();
+    expect(screen.queryByText("Xác nhận chuyển")).toBeNull();
+  });
   it("renders its closed receipt sheet without a missing icon reference", () => {
     expect(() => render(
       <PlayerActionSheets

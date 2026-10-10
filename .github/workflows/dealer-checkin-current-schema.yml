@@ -12,6 +12,7 @@ on:
       - 'VinPoker/tests/chipOps/colorUpIntegrity.pg17.test.mjs'
       - 'VinPoker/supabase/migrations/20270128000017_dealer_operational_inventory_exact_session_v1.sql'
       - 'VinPoker/tests/dealerSwing/operationalInventory*'
+      - 'VinPoker/tests/dealerSwing/closedSessionAttendance.currentSchema.mjs'
       - 'VinPoker/supabase/migrations/20270128000018_dealer_mass_open_canonical_sessions_v1.sql'
       - 'VinPoker/tests/dealerSwing/massOpenSessions.pg17.sql'
       - 'VinPoker/supabase/migrations/20270128000019_dealer_manual_assignment_receipt_read_v1.sql'
@@ -70,22 +71,44 @@ on:
       - 'VinPoker/supabase/functions/assign-dealer/**'
       - 'VinPoker/supabase/functions/mass-assign/**'
       - 'VinPoker/supabase/functions/checkout-dealer/**'
+      - 'VinPoker/supabase/migrations/2027012800003[7-9]_*.sql'
+      - 'VinPoker/supabase/migrations/2027012800004[0-5]_*.sql'
+      - 'VinPoker/supabase/migrations/20270128000046_dealer_inventory_canonical_table_link_v1.sql'
+      - 'VinPoker/supabase/migrations/20270128000047_floor_closed_session_attendance_v1.sql'
+      - 'VinPoker/tests/floorProduction/legacySessionLifecycle.pg17.sql'
+      - 'VinPoker/tests/floorProduction/legacyCloseOpen.concurrent.mjs'
+      - 'VinPoker/tests/floorProduction/moveClose.concurrent.mjs'
+      - 'VinPoker/tests/floorProduction/package37_47.readonly-postcheck.sql'
+      - 'VinPoker/scripts/ops/floor-37-47-release-plan.mjs'
+      - 'VinPoker/scripts/ops/floor-37-47-release-plan.test.mjs'
+      - 'VinPoker/scripts/ops/floor-37-47-release-plan.pg17.mjs'
+      - 'VinPoker/scripts/ops/floor-37-47-protected-apply.mjs'
+      - 'VinPoker/scripts/ops/floor-37-47-protected-apply.test.mjs'
+      - 'VinPoker/tests/floorProduction/breakDrawPolicy.pg17.sql'
+      - 'VinPoker/tests/floorProduction/floorPlayerActions.move.test.tsx'
+      - 'VinPoker/tests/floorProduction/opsTables.close.test.tsx'
+      - 'VinPoker/tests/floorProduction/playerActionSheets.render.test.tsx'
+      - 'VinPoker/tests/tracker/*close*'
+      - 'VinPoker/tests/tracker/*move*'
+      - 'VinPoker/tests/tracker/floorPending*'
+      - 'VinPoker/tests/floorTableControlV3/criticalConsistency.contract.test.ts'
+      - 'VinPoker/tests/floorFreeSitV1/rosterActions.interaction.test.tsx'
+      - 'VinPoker/src/components/cashier/tournament-live/*Table*'
+      - 'VinPoker/src/components/cashier/tournament-live/MovePlayerDialog.tsx'
+      - 'VinPoker/src/components/ops/shared/FloorPlayerActions.tsx'
+      - 'VinPoker/src/components/ops/shared/PlayerActionSheets.tsx'
+      - 'VinPoker/src/pages/ops/OpsTables.tsx'
+      - 'VinPoker/src/components/tournament/seat/*'
+      - 'VinPoker/src/lib/floorTableControlV3.ts'
+      - 'VinPoker/src/lib/floorPending*'
 permissions: { actions: read, contents: read }
 jobs:
   runtime:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    services:
-      postgres:
-        image: postgres:17
-        env: { POSTGRES_HOST_AUTH_METHOD: trust, POSTGRES_DB: vinpoker_ops_checkin }
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       PGHOST: 127.0.0.1
-      PGPORT: 5432
+      PGPORT: 55441
       PGUSER: postgres
       PGDATABASE: vinpoker_ops_checkin
       SCHEMA_ARTIFACT_DIR: /tmp/vinpoker-current-schema
@@ -96,6 +119,9 @@ jobs:
         with: { node-version: 22 }
       - uses: denoland/setup-deno@v2
         with: { deno-version: v2.x }
+      - name: Exact Floor package preparation rejects drift (offline only)
+        working-directory: VinPoker
+        run: node --test scripts/ops/floor-37-47-release-plan.test.mjs scripts/ops/floor-37-47-protected-apply.test.mjs
       - name: Install locked Node types required by the existing Supabase import graph
         working-directory: VinPoker
         run: npm ci --ignore-scripts
@@ -126,6 +152,21 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/schema.zip"
           unzip -q "$RUNNER_TEMP/schema.zip" -d "$SCHEMA_ARTIFACT_DIR"
           node VinPoker/scripts/deploy/validate-live-public-schema-artifact.mjs --artifact-directory "$SCHEMA_ARTIFACT_DIR"
+      - name: Start isolated PostgreSQL 17 on actual loopback (no bridge address exception)
+        run: |
+          docker run --detach --name vinpoker-current-schema-pg17 --network host \
+            --env POSTGRES_HOST_AUTH_METHOD=trust --env POSTGRES_DB=vinpoker_ops_checkin \
+            postgres:17 -c listen_addresses=127.0.0.1 -c port=55441
+          ready=false
+          for attempt in $(seq 1 30); do
+            if pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER"; then ready=true; break; fi
+            sleep 1
+          done
+          test "$ready" = true
+          test "$(psql -X -qAt -v ON_ERROR_STOP=1 -c "SELECT inet_server_addr()='127.0.0.1'::inet AND current_database()='vinpoker_ops_checkin' AND current_user='postgres' AND current_setting('server_version_num')::int BETWEEN 170000 AND 179999")" = t
+      - name: Floor package atomic ledger and receipt-failure rollback (isolated database)
+        working-directory: VinPoker
+        run: node scripts/ops/floor-37-47-release-plan.pg17.mjs
       - name: Restore current schema and apply exact new migration
         working-directory: VinPoker
         run: |
@@ -209,6 +250,32 @@ jobs:
           node tests/floorProduction/deferredMoveIntent.concurrent.mjs
           node tests/floorProduction/tableModeRequest.concurrent.mjs
           psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=1 -v BAD_RECEIPT_CASE=1 -f tests/floorProduction/deferredMoveIntent.pg17.sql
+      - name: Floor session, move, ticket and scoped read on exact forward chain
+        working-directory: VinPoker
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000037_floor_legacy_close_session_fence_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/legacySessionLifecycle.pg17.sql
+          node tests/floorProduction/legacyCloseOpen.concurrent.mjs
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000038_floor_break_lowest_number_policy_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000039_floor_break_ticket_audit_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000040_floor_break_balanced_plan_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000041_floor_deferred_move_ticket_audit_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000042_floor_canonical_move_ticket_integrity_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000043_floor_move_exact_intent_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000044_floor_seat_ticket_read_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000045_floor_seat_ticket_select_scope_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000046_dealer_inventory_canonical_table_link_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000047_floor_closed_session_attendance_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/floorProduction/package37_47.readonly-postcheck.sql
+          node tests/dealerSwing/closedSessionAttendance.currentSchema.mjs
+          psql -X -v ON_ERROR_STOP=1 -v require_seat_ticket=true -v require_ticket_read=true -f tests/floorProduction/breakDrawPolicy.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v draw_mode=redraw_balanced -v balanced_multi=true -v require_seat_ticket=true -f tests/floorProduction/breakDrawPolicy.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v require_move_ticket=true -v move_check=exact_intent -v require_ticket_read=true -f tests/floorProduction/breakDrawPolicy.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v require_move_ticket=true -v move_check=exact_intent -v move_audit_failure=true -f tests/floorProduction/breakDrawPolicy.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -v TRACKER_BREAK_CASE=true -v REAL_FINISH_CASE=true -v SEAT_TICKET_CASE=true -v READ_TICKET_CASE=true -v READ_POLICY_CASE=true -f tests/floorProduction/deferredMoveIntent.pg17.sql
+          node tests/floorProduction/deferredMoveIntent.concurrent.mjs
+          MIXED_MOVE_CASE=1 DEALER_ASSIGN_CLOSE_CASE=1 node tests/floorProduction/moveClose.concurrent.mjs
+          node node_modules/vitest/vitest.mjs run tests/floorProduction/floorPlayerActions.move.test.tsx tests/floorProduction/opsTables.close.test.tsx tests/floorProduction/playerActionSheets.render.test.tsx tests/tracker/closeTableDialog.interaction.test.tsx tests/tracker/movePlayerDialog.interaction.test.tsx tests/tracker/floorPendingCloseIntent.test.ts tests/tracker/floorPendingMoveIntent.test.ts tests/tracker/closeTableResponse.test.ts src/components/tournament/seat/floorSeatTicketCore.test.ts src/components/tournament/seat/SeatReceiptDialog.test.tsx tests/floorTableControlV3/criticalConsistency.contract.test.ts tests/floorFreeSitV1/rosterActions.interaction.test.tsx
       - name: OFF-at-commit true-overlap with isolated acquisition fixture (not live worker proof)
         working-directory: VinPoker
         run: |

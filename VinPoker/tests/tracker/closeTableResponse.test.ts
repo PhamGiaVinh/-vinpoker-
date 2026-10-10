@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closeTableErrorMessage, parseCloseTableResult, parseCloseTableRpcResult } from "@/components/cashier/tournament-live/closeTableResponse";
+import { closeTableErrorMessage, parseCanonicalBreakTickets, parseCanonicalCloseResult, parseCloseTableResult, parseCloseTableRpcResult } from "@/components/cashier/tournament-live/closeTableResponse";
 
 const move = {
   player_name: "Player A",
@@ -8,6 +8,57 @@ const move = {
   to_seat_number: 5,
   receipt_code: "T2-S5-ABC123",
 };
+
+describe("canonical server-issued break tickets", () => {
+  const expected = [{ entryId: "entry-a", sourceSeatNumber: 3, destinationTableNumber: 2,
+    destinationSeatNumber: 5, transferMode: "immediate" as const }];
+  const ticket = { ...move, entry_id: "entry-a" };
+  it("maps a verified stored ticket and never manufactures a code", () => {
+    expect(parseCanonicalBreakTickets({ issued_tickets: [ticket] }, expected)).toEqual([ticket]);
+    expect(parseCanonicalBreakTickets({ issued_tickets: [] }, expected)).toBeNull();
+    expect(parseCanonicalBreakTickets({ issued_tickets: [{ ...ticket, receipt_code: "" }] }, expected)).toBeNull();
+  });
+  it("rejects wrong entry, wrong destination and duplicate ticket", () => {
+    expect(parseCanonicalBreakTickets({ issued_tickets: [{ ...ticket, entry_id: "other" }] }, expected)).toBeNull();
+    expect(parseCanonicalBreakTickets({ issued_tickets: [{ ...ticket, to_seat_number: 6 }] }, expected)).toBeNull();
+    expect(parseCanonicalBreakTickets({ issued_tickets: [ticket, ticket] }, [...expected, { ...expected[0], entryId: "entry-b" }])).toBeNull();
+  });
+  it("does not accept an issued ticket for a still-pending move", () => {
+    const pending = [{ ...expected[0], transferMode: "after_current_hand" as const }];
+    expect(parseCanonicalBreakTickets({ issued_tickets: [] }, pending)).toEqual([]);
+    expect(parseCanonicalBreakTickets({ issued_tickets: [ticket] }, pending)).toBeNull();
+  });
+});
+
+describe("canonical close/break acknowledgement", () => {
+  const scope = { tournamentTableId: "logical-table", tableSessionId: "session-A", activeSeatCount: 2 };
+  const pending = { ok: true, closed: false, break_pending: true, moved_count: 1, pending_count: 1,
+    tournament_table_id: scope.tournamentTableId, table_session_id: scope.tableSessionId };
+
+  it("does not present accepted deferred moves as an already closed table", () => {
+    expect(parseCanonicalCloseResult(pending, scope)).toEqual({ kind: "pending", movedCount: 1, pendingCount: 1 });
+  });
+  it("accepts completed break only when all source occupants are accounted for", () => {
+    expect(parseCanonicalCloseResult({ ...pending, closed: true, break_pending: false, moved_count: 2, pending_count: 0 }, scope))
+      .toEqual({ kind: "closed", movedCount: 2, pendingCount: 0 });
+    expect(parseCanonicalCloseResult({ ...pending, closed: true, break_pending: false, pending_count: 0 }, scope).kind).toBe("error");
+  });
+  it("supports empty canonical close without inventing legacy seat ticket receipts", () => {
+    expect(parseCanonicalCloseResult({ ok: true, closed: true, tournament_table_id: "logical-table", table_session_id: "session-A" },
+      { ...scope, activeSeatCount: 0 })).toEqual({ kind: "closed", movedCount: 0, pendingCount: 0 });
+  });
+  it("rejects another incarnation and contradictory or malformed acknowledgements", () => {
+    for (const changed of [{ table_session_id: "session-B" }, { tournament_table_id: "other" },
+      { closed: true }, { pending_count: -1 }, { moved_count: "1" }, { pending_count: 0 }, { ok: "true" }]) {
+      expect(parseCanonicalCloseResult({ ...pending, ...changed }, scope).kind).toBe("error");
+    }
+    expect(parseCanonicalCloseResult(null, scope).kind).toBe("error");
+  });
+  it("keeps explicit business failure distinct from unknown success", () => {
+    expect(parseCanonicalCloseResult({ ok: false, error: "STALE_STATE" }, scope))
+      .toEqual({ kind: "error", code: "STALE_STATE" });
+  });
+});
 
 describe("close-table client containment", () => {
   it("accepts only a complete server success receipt", () => {

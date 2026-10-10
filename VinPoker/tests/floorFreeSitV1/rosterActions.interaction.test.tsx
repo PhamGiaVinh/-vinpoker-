@@ -4,6 +4,8 @@ import { FloorTableMapPanelV3 } from "@/components/cashier/tournament-live/Floor
 import type { Tournament } from "@/types/tournament";
 
 const fixture = vi.hoisted(() => ({
+  successToast: vi.fn(),
+  errorToast: vi.fn(),
   longName: "CODEX_FLOOR_UAT_20260724114346_7ff93193_CASHIER",
   client: {
     enabled: true,
@@ -23,6 +25,8 @@ const fixture = vi.hoisted(() => ({
     deferredTrackerMoveEnabled: true,
   },
 }));
+
+vi.mock("sonner", () => ({ toast: { success: fixture.successToast, error: fixture.errorToast } }));
 
 vi.mock("@/integrations/supabase/SupabaseClientContext", () => ({ useSupabaseClient: () => ({}) }));
 vi.mock("@/lib/floorTableControlV3", () => ({ createFloorTableControlV3Client: () => fixture.client }));
@@ -76,6 +80,33 @@ function setup(options: { pendingNetworkFailure?: boolean } = {}) {
 }
 
 describe("Floor roster mobile actions", () => {
+  it.each(["pending", "closed", "wrong-session"])("validates a %s break receipt before announcing closure", async (outcome) => {
+    const view = setup();
+    try {
+      fixture.client.breakTournamentTable.mockResolvedValue({ ok: true, data: {
+        ok: true, tournament_table_id: "table-1",
+        table_session_id: outcome === "wrong-session" ? "old-session" : "session-1",
+        closed: outcome === "closed", break_pending: outcome !== "closed",
+        moved_count: outcome === "closed" ? 1 : 0, pending_count: outcome === "closed" ? 0 : 1,
+      } });
+      fireEvent.click(await screen.findByRole("button", { name: "Mở Bàn 4" }));
+      fireEvent.click(screen.getByRole("button", { name: "Đóng & chuyển người" }));
+      const confirm = await screen.findByRole("button", { name: "Xác nhận đóng & chuyển" });
+      await waitFor(() => expect(confirm).not.toBeDisabled());
+      fireEvent.click(confirm);
+      await waitFor(() => expect(fixture.client.breakTournamentTable).toHaveBeenCalledTimes(1));
+      if (outcome === "wrong-session") {
+        await waitFor(() => expect(fixture.errorToast).toHaveBeenCalled());
+        expect(screen.getByRole("button", { name: "Xác nhận đóng & chuyển" })).not.toBeDisabled();
+        expect(fixture.successToast).not.toHaveBeenCalled();
+      } else {
+        await waitFor(() => expect(fixture.successToast).toHaveBeenCalledWith(outcome === "pending"
+          ? "Đã lưu yêu cầu chuyển người. Bàn còn mở đến khi các lượt chuyển hoàn tất."
+          : "Đã đóng và chuyển người chơi."));
+      }
+    } finally { view.unmount(); }
+  });
+
   it("ignores an earlier actor's delayed roster after the account changes", async () => {
     const view = setup();
     try {

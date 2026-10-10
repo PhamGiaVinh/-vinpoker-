@@ -1,4 +1,5 @@
 export interface CloseTableMove {
+  entry_id?: string;
   player_name: string;
   from_seat: number;
   to_table_number: number | null;
@@ -33,6 +34,67 @@ export interface CloseTableRpcError {
 export type CloseTableResult =
   | { kind: "success"; response: Required<Pick<CloseTableResponse, "moved_count" | "moved">> & CloseTableResponse }
   | { kind: "error"; response: CloseTableResponse | null; code: string; rpcError?: CloseTableRpcError };
+
+export type CanonicalCloseResult =
+  | { kind: "closed" | "pending"; movedCount: number; pendingCount: number }
+  | { kind: "error"; code: string };
+
+/** Printable tickets must be server-issued and match the immediate preview. */
+export function parseCanonicalBreakTickets(value: unknown, expected: {
+  entryId: string; sourceSeatNumber: number; destinationTableNumber: number;
+  destinationSeatNumber: number; transferMode: "immediate" | "after_current_hand";
+}[]): CloseTableMove[] | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const tickets = (value as Record<string, unknown>).issued_tickets;
+  const immediate = expected.filter((move) => move.transferMode === "immediate");
+  if (!Array.isArray(tickets) || tickets.length !== immediate.length) return null;
+  const entries = new Set<string>();
+  const codes = new Set<string>();
+  const result: CloseTableMove[] = [];
+  for (const ticket of tickets) {
+    if (!ticket || typeof ticket !== "object" || Array.isArray(ticket)) return null;
+    const row = ticket as Record<string, unknown>;
+    const match = immediate.find((move) => move.entryId === row.entry_id);
+    if (!match || entries.has(match.entryId) || typeof row.receipt_code !== "string" || !row.receipt_code.trim()
+      || codes.has(row.receipt_code) || typeof row.player_name !== "string" || !row.player_name.trim()
+      || row.from_seat !== match.sourceSeatNumber || row.to_table_number !== match.destinationTableNumber
+      || row.to_seat_number !== match.destinationSeatNumber) return null;
+    entries.add(match.entryId);
+    codes.add(row.receipt_code);
+    result.push({ entry_id: match.entryId, player_name: row.player_name, from_seat: match.sourceSeatNumber,
+      to_table_number: match.destinationTableNumber, to_seat_number: match.destinationSeatNumber,
+      receipt_code: row.receipt_code });
+  }
+  return result;
+}
+
+/** Canonical close/break receipts do not contain legacy seat-ticket arrays.
+ * Scope and count checks prevent a deferred break or another session's reply
+ * from being displayed as a completed close. Never manufacture a ticket.
+ */
+export function parseCanonicalCloseResult(value: unknown, scope: {
+  tournamentTableId: string; tableSessionId: string; activeSeatCount: number;
+}): CanonicalCloseResult {
+  const invalid = { kind: "error", code: "invalid_response" } as const;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return invalid;
+  const row = value as Record<string, unknown>;
+  if (row.ok === false && typeof row.error === "string") return { kind: "error", code: row.error };
+  if (row.ok !== true || row.tournament_table_id !== scope.tournamentTableId
+    || row.table_session_id !== scope.tableSessionId) return invalid;
+  if (!Number.isSafeInteger(scope.activeSeatCount) || scope.activeSeatCount < 0) return invalid;
+  const moved = row.moved_count ?? (scope.activeSeatCount === 0 ? 0 : undefined);
+  const pending = row.pending_count ?? (scope.activeSeatCount === 0 ? 0 : undefined);
+  if (typeof moved !== "number" || !Number.isSafeInteger(moved) || moved < 0
+    || typeof pending !== "number" || !Number.isSafeInteger(pending) || pending < 0
+    || moved + pending !== scope.activeSeatCount) return invalid;
+  if (row.closed === true && row.break_pending !== true && pending === 0) {
+    return { kind: "closed", movedCount: moved, pendingCount: pending };
+  }
+  if (row.closed === false && row.break_pending === true && pending > 0) {
+    return { kind: "pending", movedCount: moved, pendingCount: pending };
+  }
+  return invalid;
+}
 
 function normalizeRpcError(value: unknown): CloseTableRpcError | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;

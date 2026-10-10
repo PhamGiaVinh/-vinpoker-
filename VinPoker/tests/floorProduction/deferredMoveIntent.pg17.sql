@@ -1,7 +1,42 @@
 \set ON_ERROR_STOP on
+\if :{?READ_POLICY_CASE}
+\set TEST_READ_POLICY true
+\else
+\set TEST_READ_POLICY false
+\endif
 -- Current-schema TEST only. Public producers and actual terminal-hand trigger.
 -- Direct void transition below tests the DB consumer, not the full finish RPC.
 BEGIN;
+SELECT set_config('test.read_policy', :'TEST_READ_POLICY', true);
+DO $$ BEGIN
+ IF current_database() NOT LIKE 'vinpoker_ops_%' OR inet_server_addr()<>'127.0.0.1'::inet THEN
+  RAISE EXCEPTION 'isolated loopback DB required';
+ END IF;
+END $$;
+\if :{?TICKET_FAILURE_CASE}
+SELECT set_config('test.ticket_failure','true',true);
+CREATE FUNCTION pg_temp.fail_deferred_ticket_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NEW.tournament_id='f7290000-0000-4000-8000-000000000003'::uuid THEN
+  RAISE EXCEPTION 'forced_ticket_audit_test';
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER test_deferred_ticket_audit_failure BEFORE INSERT ON public.seat_assignment_history
+FOR EACH ROW EXECUTE FUNCTION pg_temp.fail_deferred_ticket_audit();
+\else
+SELECT set_config('test.ticket_failure','false',true);
+\endif
+\if :{?SEAT_TICKET_CASE}
+SELECT set_config('test.deferred_seat_ticket','true',true);
+\else
+SELECT set_config('test.deferred_seat_ticket','false',true);
+\endif
+\if :{?READ_TICKET_CASE}
+SELECT set_config('test.ticket_read','true',true);
+\else
+SELECT set_config('test.ticket_read','false',true);
+\endif
 \if :{?MOVE_NAME_CASE}
 SELECT set_config('test.move_name','true',true);
 \endif
@@ -43,7 +78,11 @@ INSERT INTO public.game_tables(id,club_id,table_name,table_number,table_type,sta
  ('f7290000-0000-4000-8000-000000000011','f7290000-0000-4000-8000-000000000002','Source TEST',81,'tournament','inactive','available'),
  ('f7290000-0000-4000-8000-000000000012','f7290000-0000-4000-8000-000000000002','Destination TEST',82,'tournament','inactive','available');
 SELECT set_config('request.jwt.claim.sub','f7290000-0000-4000-8000-000000000001',true);
-DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e uuid; h uuid; ep bigint; sr bigint; dr bigint; token text; BEGIN
+DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e uuid; h uuid; ep bigint; sr bigint; dr bigint; token text; ticket_code text; operator_actor uuid; BEGIN
+ IF current_setting('test.ticket_read')='true' THEN
+  PERFORM pg_temp.assert_true(current_setting('test.deferred_seat_ticket')='true'
+    AND current_setting('test.real_finish_case')='true','ticket reader proof requires seat tickets and real public finish');
+ END IF;
  s:=public.floor_open_tournament_table_v3('f7290000-0000-4000-8000-000000000003','f7290000-0000-4000-8000-000000000011','manual',gen_random_uuid());
  d:=public.floor_open_tournament_table_v3('f7290000-0000-4000-8000-000000000003','f7290000-0000-4000-8000-000000000012','manual',gen_random_uuid());
  PERFORM pg_temp.assert_true((s->>'ok')::boolean AND (d->>'ok')::boolean,'both sessions open');
@@ -59,6 +98,9 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
  PERFORM set_config('request.headers','{"x-vinpoker-dealer-intent":"manual","x-vinpoker-dealer-actor":"f7290000-0000-4000-8000-000000000001"}',true);
  INSERT INTO public.dealer_assignments(table_id,table_session_id,attendance_id,dealer_id,club_id,status,assigned_at)
  VALUES('f7290000-0000-4000-8000-000000000011',ss,'f7290000-0000-4000-8000-000000000041','f7290000-0000-4000-8000-000000000031','f7290000-0000-4000-8000-000000000002','assigned',now());
+ IF current_setting('test.read_policy')='true' THEN
+   UPDATE public.dealer_attendance SET current_state='assigned' WHERE id='f7290000-0000-4000-8000-000000000041';
+ END IF;
  SELECT control_epoch INTO ep FROM public.table_sessions WHERE id=ss;
  r:=public.set_tracker_table_roster_seat_v2('f7290000-0000-4000-8000-000000000003',st,ss,ep,gen_random_uuid(),1,'Source TEST',20000);
  PERFORM pg_temp.assert_true((r->>'ok')::boolean,'source roster');
@@ -90,6 +132,7 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
  UPDATE public.table_sessions SET control_mode='tracker' WHERE id=ds RETURNING control_epoch INTO ep;
  r:=public.start_tracker_hand_v3('f7290000-0000-4000-8000-000000000003',dt,ds,ep,1,now(),'f7290000-0000-4000-8000-000000000001',1);
  PERFORM pg_temp.assert_true(r->>'status'='success','destination hand starts'); h:=(r->>'hand_id')::uuid;
+ -- DEFERRED_CONCURRENCY_FIXTURE_READY
  SELECT revision INTO sr FROM public.table_sessions WHERE id=ss;
  SELECT revision INTO dr FROM public.table_sessions WHERE id=ds;
  IF current_setting('test.tracker_break_case')='true' THEN
@@ -99,6 +142,9 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
   PERFORM pg_temp.assert_true((s->>'ok')::boolean AND (s->>'complete')::boolean,'idle Tracker break plan is complete');
   r:=public.floor_break_table_v5(st,sr,gen_random_uuid(),'fill_lowest_table',s->>'plan_hash');
   PERFORM pg_temp.assert_true((r->>'ok')::boolean AND (r->>'break_pending')::boolean,'Tracker break queues');
+  IF current_setting('test.deferred_seat_ticket')='true' THEN
+   PERFORM pg_temp.assert_true(r->'issued_tickets'='[]'::jsonb,'queued break has no issued destination ticket yet');
+  END IF;
   -- Attempt a legacy/direct writer, exercising the common DB trust boundary.
   BEGIN
    INSERT INTO public.tournament_hands
@@ -113,6 +159,14 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
  ELSE
   r:=public.floor_queue_tracker_move_v1(e,dt,3,sr,dr,gen_random_uuid());
   PERFORM pg_temp.assert_true((r->>'ok')::boolean,'ordinary last-player move queues');
+ END IF;
+ IF current_setting('test.ticket_read')='true' THEN
+  PERFORM pg_temp.assert_true(NOT EXISTS(SELECT 1 FROM public.seat_draw_receipts WHERE entry_id=e),
+    'queued deferred move cannot be printed before application');
+  PERFORM set_config('role','authenticated',true);
+  r:=public.get_floor_seat_ticket_v1('f7290000-0000-4000-8000-000000000003',e,'NOT-ISSUED');
+  PERFORM set_config('role','none',true);
+  PERFORM pg_temp.assert_true(r->>'error'='ticket_not_found','unissued deferred ticket is denied');
  END IF;
  IF current_setting('test.cancel_case')='true' THEN
   SELECT id INTO e FROM public.floor_pending_tracker_moves WHERE entry_id=e;
@@ -147,9 +201,116 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
  ELSIF current_setting('test.stale_epoch_case')='true' OR current_setting('test.bad_receipt_case')='true' THEN
   PERFORM pg_temp.assert_true((SELECT status='stale' AND resolution_reason='control_mode_changed' FROM public.floor_pending_tracker_moves WHERE entry_id=e),'stale epoch rejects move');
   PERFORM pg_temp.assert_true((SELECT closed_at IS NULL FROM public.table_sessions WHERE id=ss),'stale epoch does not close source');
+ ELSIF current_setting('test.ticket_failure')='true' THEN
+  PERFORM pg_temp.assert_true((SELECT status='stale' AND resolution_reason='apply_sqlstate_P0001'
+    FROM public.floor_pending_tracker_moves WHERE entry_id=e),'ticket failure rolls back apply and records stale');
+  PERFORM pg_temp.assert_true((SELECT table_session_id=ss AND chip_count=20000
+    FROM public.tournament_seats WHERE entry_id=e AND is_active),'ticket failure retains original occupied source and stack');
+  PERFORM pg_temp.assert_true((SELECT closed_at IS NULL FROM public.table_sessions WHERE id=ss),'ticket failure does not close source');
+  PERFORM pg_temp.assert_true(NOT EXISTS(SELECT 1 FROM public.seat_draw_receipts WHERE entry_id=e),'ticket failure rolls back newly inserted ticket');
+  PERFORM pg_temp.assert_true(NOT EXISTS(SELECT 1 FROM public.seat_assignment_history WHERE entry_id=e),'ticket failure has no partially committed move audit');
  ELSE
  RAISE NOTICE 'queue result: %', (SELECT jsonb_build_object('status',status,'reason',resolution_reason) FROM public.floor_pending_tracker_moves WHERE entry_id=e);
  PERFORM pg_temp.assert_true((SELECT status='applied' FROM public.floor_pending_tracker_moves WHERE entry_id=e),'queued move applies');
+ IF current_setting('test.deferred_seat_ticket')='true' THEN
+  PERFORM pg_temp.assert_true((SELECT count(*)=1 FROM public.seat_draw_receipts receipt
+   JOIN public.tournament_entries entry ON entry.id=receipt.entry_id
+   WHERE entry.id=e AND receipt.seat_id=entry.seat_id AND receipt.seat_number=entry.seat_number
+     AND receipt.status IN ('issued','printed') AND receipt.receipt_code IS NOT NULL),
+   'applied deferred move must have exactly one server-issued destination ticket');
+  PERFORM pg_temp.assert_true((SELECT count(*)=1 FROM public.seat_assignment_history history
+   JOIN public.floor_pending_tracker_moves move ON move.entry_id=history.entry_id
+   WHERE history.entry_id=e AND history.metadata->>'pending_move_id'=move.id::text),
+   'deferred move has exactly one matching audited move');
+  UPDATE public.tournament_hands SET status=status WHERE id=h;
+  PERFORM pg_temp.assert_true((SELECT count(*)=1 FROM public.seat_draw_receipts receipt
+   JOIN public.tournament_entries entry ON entry.id=receipt.entry_id
+   WHERE entry.id=e AND receipt.seat_id=entry.seat_id AND receipt.status IN ('issued','printed')),
+   'terminal-hand replay does not issue another ticket');
+  IF current_setting('test.ticket_read')='true' THEN
+   SELECT receipt_code INTO ticket_code FROM public.seat_draw_receipts WHERE entry_id=e AND status IN ('issued','printed') AND cancelled_at IS NULL;
+   PERFORM set_config('role','authenticated',true);
+   r:=public.get_floor_seat_ticket_v1('f7290000-0000-4000-8000-000000000003',e,ticket_code);
+   PERFORM set_config('role','none',true);
+   PERFORM pg_temp.assert_true(r->>'ok'='true' AND r->>'receipt_code'=ticket_code
+     AND r->>'table_session_id'=ds::text AND r->>'tournament_table_id'=dt::text
+     AND (r->>'stack_at_issue')::bigint=20000,'deferred ticket reader proves exact destination and immutable moved stack: '||r::text);
+   RAISE NOTICE 'DEFERRED_CURRENT_TICKET_READER_AFTER_PUBLIC_FINISH_PASS';
+   PERFORM set_config('role','authenticated',true);
+   PERFORM pg_temp.assert_true(public.get_current_floor_seat_ticket_v1(
+     'f7290000-0000-4000-8000-000000000003',e,(SELECT seat_id FROM public.tournament_entries WHERE id=e))=r,
+     'current finder delegates identical audited proof');
+   PERFORM pg_temp.assert_true(public.get_current_floor_seat_ticket_v1(
+     'f7290000-0000-4000-8000-000000000003',e,'f7290000-0000-4000-8000-000000000099')->>'error'='ticket_not_current',
+     'current finder rejects wrong exact seat');
+   PERFORM set_config('role','none',true);
+   INSERT INTO auth.users(id) VALUES('f7290000-0000-4000-8000-000000000091');
+   INSERT INTO public.clubs(id,owner_id,name,region) VALUES
+     ('f7290000-0000-4000-8000-000000000092','f7290000-0000-4000-8000-000000000091','Other club finder TEST','TEST');
+   PERFORM set_config('request.jwt.claim.sub','f7290000-0000-4000-8000-000000000091',true);
+   PERFORM set_config('role','authenticated',true);
+   PERFORM pg_temp.assert_true(public.get_current_floor_seat_ticket_v1(
+     'f7290000-0000-4000-8000-000000000003',e,(SELECT seat_id FROM public.tournament_entries WHERE id=e))->>'error'='actor_not_allowed',
+     'valid other-club owner cannot discover current ticket');
+   IF current_setting('test.read_policy')='true' THEN
+     PERFORM pg_temp.assert_true((SELECT count(*)=0 FROM public.seat_draw_receipts
+       WHERE tournament_id='f7290000-0000-4000-8000-000000000003' AND entry_id=e),
+       'valid other-club owner cannot SELECT private ticket rows directly');
+   END IF;
+   PERFORM set_config('role','none',true);
+   PERFORM set_config('request.jwt.claim.sub','f7290000-0000-4000-8000-000000000001',true);
+   IF current_setting('test.read_policy')='true' THEN
+     INSERT INTO auth.users(id) VALUES
+       ('f7290000-0000-4000-8000-000000000093'),('f7290000-0000-4000-8000-000000000094'),('f7290000-0000-4000-8000-000000000095');
+     INSERT INTO public.club_cashiers(club_id,user_id) VALUES
+       ('f7290000-0000-4000-8000-000000000002','f7290000-0000-4000-8000-000000000093');
+     INSERT INTO public.club_floors(club_id,user_id) VALUES
+       ('f7290000-0000-4000-8000-000000000002','f7290000-0000-4000-8000-000000000094');
+     INSERT INTO public.user_roles(user_id,role) VALUES('f7290000-0000-4000-8000-000000000095','super_admin');
+     FOREACH operator_actor IN ARRAY ARRAY['f7290000-0000-4000-8000-000000000001'::uuid,
+       'f7290000-0000-4000-8000-000000000093'::uuid,'f7290000-0000-4000-8000-000000000094'::uuid,'f7290000-0000-4000-8000-000000000095'::uuid] LOOP
+       PERFORM set_config('request.jwt.claim.sub',operator_actor::text,true);
+       PERFORM set_config('role','authenticated',true);
+       PERFORM pg_temp.assert_true((SELECT count(*)=1 FROM public.seat_draw_receipts
+         WHERE tournament_id='f7290000-0000-4000-8000-000000000003' AND entry_id=e),
+         'same-club owner/cashier/floor and superadmin retain ticket SELECT');
+       -- Match the two direct Cashier consumer projections, not only a count.
+       PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM public.seat_draw_receipts
+         WHERE tournament_id='f7290000-0000-4000-8000-000000000003' AND entry_id=e
+           AND status IN ('issued','printed') AND receipt_code=ticket_code
+           AND table_number IS NOT NULL AND seat_number IS NOT NULL AND issued_at IS NOT NULL),
+         'RegistrationQueuePanel current-ticket projection remains visible');
+       PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM public.seat_draw_receipts
+         WHERE entry_id=e AND display_name IS NOT NULL AND issued_at IS NOT NULL),
+         'ReentryPanel entry receipt display projection remains visible');
+       IF operator_actor IN ('f7290000-0000-4000-8000-000000000094'::uuid,
+         'f7290000-0000-4000-8000-000000000095'::uuid) THEN
+         -- SELECT authorization must not expand the existing write policy.
+         UPDATE public.seat_draw_receipts SET status='cancelled'
+           WHERE entry_id=e AND receipt_code=ticket_code;
+         PERFORM pg_temp.assert_true(NOT FOUND,'read-only operator cannot cancel ticket directly');
+       END IF;
+       PERFORM set_config('role','none',true);
+     END LOOP;
+     PERFORM pg_temp.assert_true(NOT has_function_privilege('anon','public.get_floor_seat_ticket_v1(uuid,uuid,text)','EXECUTE')
+       AND NOT has_function_privilege('anon','public.get_current_floor_seat_ticket_v1(uuid,uuid,uuid)','EXECUTE')
+       AND NOT has_function_privilege('anon','public.can_read_floor_seat_tickets_v1(uuid)','EXECUTE'),
+       'anonymous has no ticket reader/helper execute privilege');
+     PERFORM set_config('request.jwt.claim.sub','',true);
+     PERFORM set_config('role','anon',true);
+     BEGIN
+       PERFORM pg_temp.assert_true((SELECT count(*)=0 FROM public.seat_draw_receipts
+         WHERE entry_id=e),'anonymous must not see ticket rows');
+     EXCEPTION WHEN insufficient_privilege THEN
+       NULL; -- Table or predicate execute denial is also a zero-disclosure result.
+     END;
+     PERFORM set_config('role','none',true);
+     PERFORM set_config('request.jwt.claim.sub','f7290000-0000-4000-8000-000000000001',true);
+     RAISE NOTICE 'TICKET_SELECT_TENANT_AND_OPERATOR_ROLES_PASS';
+   END IF;
+   RAISE NOTICE 'CURRENT_TICKET_FINDER_EXACT_SEAT_AND_FOREIGN_CLUB_PASS';
+  END IF;
+ END IF;
  IF current_setting('test.move_name',true)='true' THEN
  PERFORM pg_temp.assert_true((SELECT table_id=dt AND tournament_table_id=dt AND table_session_id=ds
   FROM public.tournament_seats WHERE entry_id=e AND is_active),
@@ -165,9 +326,49 @@ DO $$ DECLARE s jsonb; d jsonb; r jsonb; st uuid; dt uuid; ss uuid; ds uuid; e u
  PERFORM pg_temp.assert_true((SELECT status='active' FROM public.tournament_tables WHERE id=st),'ordinary source logical table remains active');
  END IF;
  END IF;
+ IF current_setting('test.cancel_case')='true' OR current_setting('test.stale_epoch_case')='true'
+    OR current_setting('test.bad_receipt_case')='true' THEN
+  PERFORM pg_temp.assert_true(NOT EXISTS(SELECT 1 FROM public.seat_draw_receipts receipt
+   JOIN public.floor_pending_tracker_moves move ON move.entry_id=receipt.entry_id
+   WHERE move.tournament_id='f7290000-0000-4000-8000-000000000003'),
+   'cancelled/stale reservation must not issue any destination ticket');
+ END IF;
  PERFORM pg_temp.assert_true((SELECT (released_at IS NOT NULL)=
-   (current_setting('test.tracker_break_case')='true' AND current_setting('test.cancel_case')='false' AND current_setting('test.stale_epoch_case')='false' AND current_setting('test.bad_receipt_case')='false')
+   (current_setting('test.tracker_break_case')='true' AND current_setting('test.cancel_case')='false' AND current_setting('test.stale_epoch_case')='false' AND current_setting('test.bad_receipt_case')='false' AND current_setting('test.ticket_failure')='false')
    FROM public.dealer_assignments WHERE table_session_id=ss),'dealer released only by completed explicit break');
+ IF current_setting('test.read_policy')='true' THEN
+   PERFORM pg_temp.assert_true((SELECT current_state='available' FROM public.dealer_attendance
+     WHERE id='f7290000-0000-4000-8000-000000000041'),'real deferred break closure frees its exact dealer attendance');
+ END IF;
  PERFORM pg_temp.assert_true((SELECT sum(chip_count)=60000 FROM public.tournament_seats WHERE tournament_id='f7290000-0000-4000-8000-000000000003' AND is_active),'moves preserve all active chips');
+ IF current_setting('test.ticket_read')='true' AND current_setting('test.cancel_case')='false'
+   AND current_setting('test.stale_epoch_case')='false' AND current_setting('test.bad_receipt_case')='false'
+   AND current_setting('test.ticket_failure')='false' AND current_setting('test.tracker_break_case')='true' THEN
+  -- Reuse the actual physical source through public open, then move all players
+  -- back through canonical break. The earlier deferred ticket is history, not
+  -- current seating; reopening its old destination cannot revive it.
+  PERFORM set_config('role','authenticated',true);
+  s:=public.floor_open_tournament_table_v3('f7290000-0000-4000-8000-000000000003','f7290000-0000-4000-8000-000000000011','manual',gen_random_uuid());
+  PERFORM set_config('role','none',true);
+  PERFORM pg_temp.assert_true(s->>'ok'='true' AND s->>'table_session_id'<>ss::text
+    AND s->>'tournament_table_id'<>st::text,'public source reopen creates a new logical/session incarnation: '||s::text);
+  SELECT revision INTO dr FROM public.table_sessions WHERE id=ds;
+  PERFORM set_config('role','authenticated',true);
+  d:=public.floor_plan_break_table_v1(dt,dr,'fill_lowest_table');
+  PERFORM pg_temp.assert_true(d->>'ok'='true' AND d->>'complete'='true','destination close has a complete real plan: '||d::text);
+  r:=public.floor_break_table_v5(dt,dr,gen_random_uuid(),'fill_lowest_table',d->>'plan_hash');
+  PERFORM pg_temp.assert_true(r->>'ok'='true' AND r->>'closed'='true','public break closes original destination: '||r::text);
+  r:=public.get_floor_seat_ticket_v1('f7290000-0000-4000-8000-000000000003',e,ticket_code);
+  PERFORM pg_temp.assert_true(r->>'error'='ticket_not_current','old deferred ticket cannot direct player after subsequent public move');
+  d:=public.floor_open_tournament_table_v3('f7290000-0000-4000-8000-000000000003','f7290000-0000-4000-8000-000000000012','manual',gen_random_uuid());
+  PERFORM pg_temp.assert_true(d->>'ok'='true' AND d->>'table_session_id'<>ds::text,'public destination reopen creates a new session');
+  r:=public.get_floor_seat_ticket_v1('f7290000-0000-4000-8000-000000000003',e,ticket_code);
+  PERFORM set_config('role','none',true);
+  PERFORM pg_temp.assert_true(r->>'error'='ticket_not_current','reopened physical destination does not revive an obsolete ticket');
+  PERFORM pg_temp.assert_true((SELECT chip_count=20000 AND table_session_id=(s->>'table_session_id')::uuid
+    FROM public.tournament_seats WHERE entry_id=e AND is_active),'same entry stack moves into the exact newly opened source');
+  PERFORM pg_temp.assert_true((SELECT sum(chip_count)=60000 FROM public.tournament_seats WHERE tournament_id='f7290000-0000-4000-8000-000000000003' AND is_active),'close/reopen does not create or lose chips');
+  RAISE NOTICE 'DEFERRED_TICKET_PUBLIC_MOVE_CLOSE_REOPEN_DENIAL_PASS';
+ END IF;
 END $$;
 ROLLBACK;

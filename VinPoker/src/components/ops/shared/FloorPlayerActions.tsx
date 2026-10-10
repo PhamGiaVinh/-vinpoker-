@@ -1,10 +1,12 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MovePlayerDialog } from "@/components/cashier/tournament-live/MovePlayerDialog";
 import { toast } from "sonner";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { PlayerActionSheets } from "@/components/ops/shared/PlayerActionSheets";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
-import { buildEligibleFloorMoveTargets, type MapSeat } from "@/components/ops/shared/floorAdapter";
+import { fetchCurrentFloorSeatTicketWithClient } from "@/components/tournament/seat/floorSeatTicketCore";
+import { type MapSeat } from "@/components/ops/shared/floorAdapter";
 import type { MockSeat } from "@/components/ops/mock/opsData";
 import type { UseFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { preflightFloorSeatEntry } from "@/components/ops/shared/floorSeatEntryPreflight";
@@ -28,8 +30,9 @@ export interface FloorSeatTarget {
 }
 
 export function FloorPlayerActions({
-  tournamentId, tournamentName, tournamentDate, floor, target, onClose,
+  actorId, tournamentId, tournamentName, tournamentDate, floor, target, onClose,
 }: {
+  actorId: string | null;
   tournamentId: string | null;
   tournamentName: string;
   tournamentDate: string | null;
@@ -38,6 +41,13 @@ export function FloorPlayerActions({
   onClose: () => void;
 }) {
   const supabase = useSupabaseClient();
+  const moveScope = `${actorId ?? ""}:${tournamentId ?? ""}`;
+  const currentMoveScope = useRef(moveScope);
+  currentMoveScope.current = moveScope;
+  const moveRun = useRef<object | null>(null);
+  const receiptRun = useRef<object | null>(null);
+  const [moveEntry, setMoveEntry] = useState<{ scope: string; entryId: string; playerName: string; tableId: string; seatNumber: number } | null>(null);
+  useEffect(() => () => { moveRun.current = null; receiptRun.current = null; }, [moveScope]);
   const untypedFloorRpc = useMemo(
     () => supabase.rpc.bind(supabase) as unknown as (
       name: string,
@@ -174,54 +184,52 @@ export function FloorPlayerActions({
     } catch (e) { toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Loại thất bại"); return false; }
   }, [real, tournamentId, floor, supabase, verifyActiveEntry]);
 
-  // Chuyển ghế (move_player_seat). Ghế trống mỗi bàn từ get_seats hiện tại; entry_id KHÔNG có trong
-  // get_seats → tra tournament_seats theo seat_id (đúng cách desktop MovePlayerDialog).
-  const moveTargets = useMemo(
-    () => buildEligibleFloorMoveTargets(floor.tables, floor.seatsByTable),
-    [floor.tables, floor.seatsByTable],
-  );
-  const movePlayer = useCallback(async (toTtId: string, toSeat: number, reason: string): Promise<boolean> => {
-    if (!real || !tournamentId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
+  // Handoff only: canonical dialog re-reads authoritative source/destination before writing.
+  const openMove = useCallback(async (): Promise<void> => {
+    if (!real || !tournamentId || !actorId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return; }
+    const operation = {};
+    moveRun.current = operation;
+    const scope = moveScope;
     try {
       const { data: seatRow, error: seErr } = await supabase.from("tournament_seats")
-        .select("entry_id").eq("id", real.seat_id).maybeSingle();
-      if (seErr || !seatRow?.entry_id) { toast.error("Không tìm được lượt đăng ký (entry) của người chơi."); return false; }
-      const { data, error } = await untypedFloorRpc("move_player_seat", {
-        p_entry_id: seatRow.entry_id,
-        p_to_tournament_table_id: toTtId,
-        p_to_seat_number: toSeat,
-        p_reason: reason,
-      });
-      const res = (data ?? null) as { ok?: boolean; error?: string; max_seats?: number } | null;
-      if (error || !res?.ok) { toast.error(floorOpsErrorMessage(res?.error ?? error?.message, "Chuyển thất bại")); return false; }
-      toast.success(`Đã chuyển ${real.player_name || "người chơi"}`);
-      floor.reload();
-      return true;
-    } catch (e) { toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Chuyển thất bại"); return false; }
-  }, [real, tournamentId, floor, supabase, untypedFloorRpc]);
+        .select("id, entry_id, is_active").eq("id", real.seat_id)
+        .eq("tournament_id", tournamentId).eq("player_id", real.player_id)
+        .eq("entry_number", real.entry_number).eq("is_active", true).maybeSingle();
+      if (currentMoveScope.current !== scope || moveRun.current !== operation) return;
+      if (seErr || !seatRow?.entry_id || seatRow.id !== real.seat_id || !seatRow.is_active) {
+        toast.error("Không xác minh được lượt đăng ký đang ngồi. Hãy tải lại trước khi chuyển."); return;
+      }
+      setMoveEntry({ scope, entryId: seatRow.entry_id, playerName: real.player_name || "Người chơi", tableId: real.table_id, seatNumber: real.seat_number });
+    } catch {
+      if (currentMoveScope.current === scope && moveRun.current === operation)
+        toast.error("Không tải được lượt đăng ký. Hãy thử lại trước khi chuyển.");
+    }
+  }, [real, tournamentId, actorId, moveScope, supabase]);
 
-  // Phiếu (READ-ONLY): tái dùng SeatReceiptDialog desktop. receiptCode/qrValue = entry_id (tra
-  // tournament_seats theo seat_id, fallback seat_id). KHÔNG ghi DB.
+  // Locate one existing current code through the scoped RPC; reader44
+  // then authorizes and proves exact seat incarnation + immutable audited stack.
+  // Never invent a code or adopt the live chip snapshot as a ticket.
   const openReceipt = useCallback(async () => {
     const r = target?.real;
-    const tableNo = target?.tableNo ?? null;   // capture đồng bộ trước await (act() gọi close() ngay sau)
-    if (!r) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return; }
-    let code = r.seat_id;
+    if (!r || !tournamentId || !actorId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return; }
+    const operation = {}; receiptRun.current = operation;
+    const scope = moveScope;
+    setReceiptData(null);
     try {
-      const { data } = await supabase.from("tournament_seats").select("entry_id").eq("id", r.seat_id).maybeSingle();
-      if (data?.entry_id) code = data.entry_id as string;
-    } catch { /* giữ fallback seat_id */ }
-    setReceiptData({
-      tournamentName,
-      tournamentDate,
-      playerName: r.player_name || r.player_id.slice(0, 8),
-      tableNumber: tableNo,
-      seatNumber: r.seat_number,
-      receiptCode: code,
-      startingStack: r.chip_count,
-      qrValue: code,
-    });
-  }, [supabase, target, tournamentName, tournamentDate]);
+      const { data: seat, error: seatError } = await supabase.from("tournament_seats")
+        .select("id, entry_id, is_active").eq("id", r.seat_id).eq("tournament_id", tournamentId)
+        .eq("player_id", r.player_id).eq("entry_number", r.entry_number).eq("is_active", true).maybeSingle();
+      if (currentMoveScope.current !== scope || receiptRun.current !== operation) return;
+      if (seatError || !seat?.entry_id || seat.id !== r.seat_id || !seat.is_active)
+        throw new Error("Không xác minh được lượt đăng ký đang ngồi.");
+      const verified = await fetchCurrentFloorSeatTicketWithClient(supabase,
+        { actorId, tournamentId, entryId: seat.entry_id }, r.seat_id);
+      if (currentMoveScope.current === scope && receiptRun.current === operation) setReceiptData(verified);
+    } catch (error) {
+      if (currentMoveScope.current === scope && receiptRun.current === operation)
+        toast.error(error instanceof Error ? error.message : "Không xác minh được phiếu hiện hành.");
+    }
+  }, [supabase, target, tournamentId, actorId, moveScope]);
 
   return (
     <>
@@ -232,14 +240,22 @@ export function FloorPlayerActions({
         onBustPlayer={bustPlayer}
         onOpenBust={openBust}
         bustInfo={bustInfo}
-        moveTargets={moveTargets}
-        onMovePlayer={movePlayer}
+        moveTargets={[]}
+        onOpenMove={openMove}
         onOpenReceipt={openReceipt}
         infoLive
         bustControlMode={bustTable?.floor_control_mode ?? null}
         chipEditDisabledReason={chipEditDisabledReason}
       />
-      <SeatReceiptDialog open={receiptData !== null} onOpenChange={(v) => { if (!v) setReceiptData(null); }} receipt={receiptData} />
+      <SeatReceiptDialog open={!!actorId && receiptData?.floorSeatContext?.actorId === actorId && receiptData?.floorSeatContext?.tournamentId === tournamentId}
+        onOpenChange={(v) => { if (!v) { receiptRun.current = null; setReceiptData(null); } }}
+        receipt={actorId && receiptData?.floorSeatContext?.actorId === actorId && receiptData?.floorSeatContext?.tournamentId === tournamentId ? receiptData : null} />
+      {moveEntry?.scope === moveScope && tournamentId && <MovePlayerDialog
+        actorId={actorId}
+        open onOpenChange={(open) => { if (!open) setMoveEntry(null); }}
+        tournamentId={tournamentId} entryId={moveEntry.entryId} playerName={moveEntry.playerName}
+        currentTournamentTableId={moveEntry.tableId} currentSeatNumber={moveEntry.seatNumber}
+        onMoved={() => floor.reload()} />}
     </>
   );
 }
