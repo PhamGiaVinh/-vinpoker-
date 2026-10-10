@@ -342,9 +342,13 @@ jobs:
         run: |
           createdb "$PGDATABASE"
           node scripts/ops/restore-schema-test-baseline.mjs
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000013_floor_mode_request_safe_boundary_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000056_tracker_card_batch_integrity_v1.sql
           node tests/trackerVoice/cardBatchIntegrity.currentSchema.mjs
           psql -X -v ON_ERROR_STOP=1 -f tests/trackerVoice/cardBatchIntegrity.readonly-postcheck.sql
+          createdb --template="$PGDATABASE" vinpoker_ops_card56_overlap_20261011
+          PGDATABASE=vinpoker_ops_card56_overlap_20261011 node tests/trackerVoice/cardBatchIntegrity.currentSchema.mjs --fixture-only
+          PGDATABASE=vinpoker_ops_card56_overlap_20261011 node tests/trackerVoice/cardBatchIntegrity.concurrent.mjs
       - name: Private backup cron contract with isolated network doubles (not live scheduler proof)
         working-directory: VinPoker
         run: |

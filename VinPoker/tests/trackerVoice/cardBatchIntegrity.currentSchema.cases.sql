@@ -131,8 +131,28 @@ DO $$ BEGIN
 END $$;
 RESET ROLE;
 -- Complete only this synthetic hand to exercise the real enqueue trigger.
+-- Capture privileged fixture pre-state before switching to the real actor; no table grant.
+SELECT set_config('card_test.mode_revision',revision::text,true),
+ set_config('card_test.mode_epoch',control_epoch::text,true)
+ FROM public.table_sessions WHERE id='83500000-0000-4000-8000-000000000001';
+SELECT set_config('request.jwt.claim.sub','81100000-0000-4000-8000-000000000001',true);
+SELECT set_config('request.jwt.claims','{"sub":"81100000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+SET LOCAL ROLE authenticated;
+DO $$ DECLARE v_result jsonb; BEGIN
+ v_result:=public.floor_request_table_control_mode_v4('84000000-0000-4000-8000-000000000001','83500000-0000-4000-8000-000000000001','manual',current_setting('card_test.mode_revision')::bigint,current_setting('card_test.mode_epoch')::bigint,'85800000-0000-4000-8000-000000000001');
+ IF v_result->>'outcome' IS DISTINCT FROM 'pending' OR (v_result->'blockers' ? 'active_hand') IS DISTINCT FROM true THEN
+  RAISE EXCEPTION 'ACTIVE_HAND_MODE_NOT_PENDING: %',v_result;
+ END IF;
+END $$;
+RESET ROLE;
 UPDATE public.tournament_hands SET status='completed'
  WHERE id='86000000-0000-4000-8000-000000000001';
+-- Production boundary callbacks run at commit; flush them inside this rollback fixture.
+SET CONSTRAINTS ALL IMMEDIATE;
+DO $$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM public.table_sessions WHERE id='83500000-0000-4000-8000-000000000001'
+  AND control_mode='manual' AND control_epoch=current_setting('card_test.mode_epoch')::bigint+1) THEN RAISE EXCEPTION 'MODE_NOT_APPLIED_AT_HAND_BOUNDARY'; END IF;
+END $$;
 CREATE TEMP TABLE card_completed_snapshot AS
  SELECT to_jsonb(h) state FROM public.tournament_hands h WHERE id='86000000-0000-4000-8000-000000000001';
 CREATE TEMP TABLE card_completed_queue_snapshot AS

@@ -3,7 +3,8 @@ import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 
 assert.equal(process.env.PGHOST,'127.0.0.1');
-assert.equal(process.env.PGDATABASE,'vinpoker_ops_card56_20261011');
+const fixtureOnly=process.argv.includes('--fixture-only');
+assert.equal(process.env.PGDATABASE,fixtureOnly?'vinpoker_ops_card56_overlap_20261011':'vinpoker_ops_card56_20261011');
 // Reuse existing Voice identities/session fixture, with real schema-required
 // club names. No helper replacement, trigger disable, or role elevation.
 const fixture=readFileSync('tests/trackerVoice/disposableDb.integration.sql','utf8');
@@ -24,6 +25,6 @@ const result=spawnSync('psql',['-X','-w','-v','ON_ERROR_STOP=1'],
  // Public-only capture omits managed auth schema grants. Read-only live
  // privilege checks verified these three roles have USAGE and uid/jwt EXECUTE.
  // Mirror only in this rollback transaction; no public table grants or bypass.
- {input:`BEGIN;\nGRANT USAGE ON SCHEMA auth TO anon,authenticated,service_role;\nGRANT EXECUTE ON FUNCTION auth.uid(),auth.jwt() TO anon,authenticated,service_role;\n${qualified}\n${readFileSync('tests/trackerVoice/cardBatchIntegrity.currentSchema.cases.sql','utf8')}\nROLLBACK;`,encoding:'utf8'});
+ {input:`BEGIN;\nGRANT USAGE ON SCHEMA auth TO anon,authenticated,service_role;\nGRANT EXECUTE ON FUNCTION auth.uid(),auth.jwt() TO anon,authenticated,service_role;\n${qualified}\n${fixtureOnly?'':readFileSync('tests/trackerVoice/cardBatchIntegrity.currentSchema.cases.sql','utf8')}\n${fixtureOnly?'COMMIT':'ROLLBACK'};`,encoding:'utf8'});
 assert.equal(result.status,0,result.stderr);
-console.log('CURRENT_SCHEMA_CARD_AUTHORITY_REVISION_COMPLETION_QUEUE_PASS');
+console.log(fixtureOnly?'CURRENT_SCHEMA_OVERLAP_FIXTURE_READY':'CURRENT_SCHEMA_CARD_AUTHORITY_REVISION_COMPLETION_QUEUE_PASS');
