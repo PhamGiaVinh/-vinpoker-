@@ -41,12 +41,16 @@ export function FloorPlayerActions({
   onClose: () => void;
 }) {
   const supabase = useSupabaseClient();
-  const moveScope = `${actorId ?? ""}:${tournamentId ?? ""}`;
+  const [moveEntry, setMoveEntry] = useState<{ scope: string; entryId: string; playerName: string; tableId: string; seatNumber: number } | null>(null);
+  // Keep committed-result dialogs across ordinary roster revisions, but never
+  // carry a writer or late lookup into a reopened/reassigned incarnation.
+  const intentTable = findFloorTableControlRow(floor.tables, target?.real.table_id ?? moveEntry?.tableId);
+  const moveScope = JSON.stringify([actorId, tournamentId, intentTable?.tt_id,
+    intentTable?.table_session_id, intentTable?.control_epoch]);
   const currentMoveScope = useRef(moveScope);
   currentMoveScope.current = moveScope;
   const moveRun = useRef<object | null>(null);
   const receiptRun = useRef<object | null>(null);
-  const [moveEntry, setMoveEntry] = useState<{ scope: string; entryId: string; playerName: string; tableId: string; seatNumber: number } | null>(null);
   useEffect(() => () => { moveRun.current = null; receiptRun.current = null; }, [moveScope]);
   const untypedFloorRpc = useMemo(
     () => supabase.rpc.bind(supabase) as unknown as (
@@ -56,6 +60,8 @@ export function FloorPlayerActions({
     [supabase],
   );
   const real = target?.real ?? null;
+  const readOnlyRef = useRef(floor.readOnlyReason);
+  readOnlyRef.current = floor.readOnlyReason;
   const bustTable = useMemo(
     () => findFloorTableControlRow(floor.tables, real?.table_id),
     [floor.tables, real?.table_id],
@@ -69,6 +75,8 @@ export function FloorPlayerActions({
         : null;
   const [bustInfo, setBustInfo] = useState<{ loading: boolean; place: number | null; prize: number | null } | null>(null);
   const [receiptData, setReceiptData] = useState<SeatReceiptData | null>(null);
+  const receiptDataScope = useRef<string | null>(null);
+  useEffect(() => { setMoveEntry(null); setReceiptData(null); setBustInfo(null); }, [moveScope]);
 
   const verifyActiveEntry = useCallback(async (): Promise<boolean> => {
     if (!real || !tournamentId) {
@@ -99,6 +107,7 @@ export function FloorPlayerActions({
 
   // Sửa chip qua Edge với compare-and-set theo chip hiện tại; không cập nhật lạc hậu ở client.
   const saveChip = useCallback(async (newChip: number): Promise<boolean> => {
+    if (readOnlyRef.current) { toast.error(readOnlyRef.current); return false; }
     if (!real || !tournamentId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
     if (!bustTable) {
       toast.error("Không xác minh được chế độ bàn. Hãy tải lại trước khi sửa chip.");
@@ -162,9 +171,11 @@ export function FloorPlayerActions({
     }
   }, [real, tournamentId, bustTable, supabase, verifyActiveEntry]);
   const bustPlayer = useCallback(async (): Promise<boolean> => {
+    if (readOnlyRef.current) { toast.error(readOnlyRef.current); return false; }
     if (!real || !tournamentId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
     try {
       if (!await verifyActiveEntry()) return false;
+      if (readOnlyRef.current) { toast.error(readOnlyRef.current); return false; }
       const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
         body: {
           tournament_id: tournamentId, action: "update_seats",
@@ -224,16 +235,24 @@ export function FloorPlayerActions({
         throw new Error("Không xác minh được lượt đăng ký đang ngồi.");
       const verified = await fetchCurrentFloorSeatTicketWithClient(supabase,
         { actorId, tournamentId, entryId: seat.entry_id }, r.seat_id);
-      if (currentMoveScope.current === scope && receiptRun.current === operation) setReceiptData(verified);
+      if (currentMoveScope.current === scope && receiptRun.current === operation) {
+        receiptDataScope.current = scope;
+        setReceiptData(verified);
+      }
     } catch (error) {
       if (currentMoveScope.current === scope && receiptRun.current === operation)
         toast.error(error instanceof Error ? error.message : "Không xác minh được phiếu hiện hành.");
     }
   }, [supabase, target, tournamentId, actorId, moveScope]);
 
+  if (floor.readOnlyReason) return target ? <div role="alert" className="mt-2 text-sm">
+    {floor.readOnlyReason} <button type="button" onClick={onClose}>Đóng</button>
+  </div> : null;
+
   return (
     <>
       <PlayerActionSheets
+        key={moveScope}
         target={target ? { seat: target.seat, tableNo: target.tableNo, chipCount: target.real.chip_count } : null}
         onClose={() => { setBustInfo(null); onClose(); }}
         onSaveChip={saveChip}
@@ -247,9 +266,9 @@ export function FloorPlayerActions({
         bustControlMode={bustTable?.floor_control_mode ?? null}
         chipEditDisabledReason={chipEditDisabledReason}
       />
-      <SeatReceiptDialog open={!!actorId && receiptData?.floorSeatContext?.actorId === actorId && receiptData?.floorSeatContext?.tournamentId === tournamentId}
+      <SeatReceiptDialog open={receiptDataScope.current === moveScope && !!actorId && receiptData?.floorSeatContext?.actorId === actorId && receiptData?.floorSeatContext?.tournamentId === tournamentId}
         onOpenChange={(v) => { if (!v) { receiptRun.current = null; setReceiptData(null); } }}
-        receipt={actorId && receiptData?.floorSeatContext?.actorId === actorId && receiptData?.floorSeatContext?.tournamentId === tournamentId ? receiptData : null} />
+        receipt={receiptDataScope.current === moveScope && actorId && receiptData?.floorSeatContext?.actorId === actorId && receiptData?.floorSeatContext?.tournamentId === tournamentId ? receiptData : null} />
       {moveEntry?.scope === moveScope && tournamentId && <MovePlayerDialog
         actorId={actorId}
         open onOpenChange={(open) => { if (!open) setMoveEntry(null); }}

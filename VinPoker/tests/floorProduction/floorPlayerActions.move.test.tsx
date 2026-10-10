@@ -16,6 +16,20 @@ const props = () => ({ actorId: f.actor as string | null, tournamentId: "tour", 
     real: { seat_id: "seat", player_id: "player", table_id: "table", seat_number: 1, entry_number: 1, chip_count: 20000, player_name: "TEST" } } as any,
   onClose: vi.fn() });
 beforeEach(() => { vi.resetAllMocks(); f.actor = "owner"; f.read.mockResolvedValue({ data: { id: "seat", entry_id: "entry", is_active: true }, error: null }); });
+it.each(["session", "epoch"])("does not carry an Ops move dialog into another %s", async (boundary) => {
+  const p = props();
+  const table = { table_id: "table", tournament_table_id: "table", table_session_id: "session-A", control_epoch: 1,
+    floor_control_mode: "manual", floor_control_revision: 3 };
+  const v = render(<FloorPlayerActions {...p} floor={{ ...p.floor, tables: [table] }} />);
+  try {
+    fireEvent.click(screen.getByText("Chuyển canonical"));
+    await screen.findByText("canonical-entry:entry");
+    v.rerender(<FloorPlayerActions {...p} floor={{ ...p.floor, tables: [{ ...table,
+      table_session_id: boundary === "session" ? "session-B" : "session-A", control_epoch: 2 }] }} />);
+    expect(screen.queryByText("canonical-entry:entry")).toBeNull();
+    expect(f.rpc).not.toHaveBeenCalled();
+  } finally { v.unmount(); }
+});
 it("does not look up a move or ticket without an authenticated host actor", () => {
   const v = render(<FloorPlayerActions {...props()} actorId={null} />);
   fireEvent.click(screen.getByText("Chuyển canonical"));
@@ -66,6 +80,17 @@ it("hands a verified entry to the canonical dialog without legacy mutation", asy
   fireEvent.click(screen.getByText("Chuyển canonical"));
   expect(await screen.findByText("canonical-entry:entry")).toBeInTheDocument();
   expect(f.rpc).not.toHaveBeenCalled(); v.unmount();
+});
+it("unmounts an existing move writer when its canonical context becomes read-only", async () => {
+  const p = props();
+  const v = render(<FloorPlayerActions {...p} />);
+  fireEvent.click(screen.getByText("Chuyển canonical"));
+  expect(await screen.findByText("canonical-entry:entry")).toBeInTheDocument();
+  v.rerender(<FloorPlayerActions {...p} floor={{ ...p.floor, readOnlyReason: "Cần sửa dữ liệu phiên" }} />);
+  expect(screen.queryByText("canonical-entry:entry")).toBeNull();
+  expect(screen.getByRole("alert")).toHaveTextContent("Cần sửa dữ liệu phiên");
+  expect(f.rpc).not.toHaveBeenCalled();
+  v.unmount();
 });
 it("does not open a move after failed entry verification", async () => {
   f.read.mockResolvedValue({ data: null, error: { message: "503" } });

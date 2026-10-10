@@ -18,7 +18,7 @@ import {
 import { FloorEntryPicker, type FloorEntrySelection } from "@/components/ops/shared/FloorEntryPicker";
 import { FloorSeatRoster } from "@/components/ops/shared/FloorSeatRoster";
 import { FloorTableRosterIndex } from "@/components/ops/shared/FloorTableRosterIndex";
-import { FloorTableModePicker } from "@/components/ops/shared/FloorTableModePicker";
+import { FloorTableControlModeControl } from "@/components/ops/shared/FloorTableControlMode";
 import { formatStack } from "@/lib/format";
 import {
   createFloorTableControlV3Client,
@@ -89,7 +89,14 @@ function v3ErrorMessage(error: string): string {
  * V3-only Floor map.  It never reads a legacy table_id or invokes an Edge
  * writer: all data and mutations pass through the fixed typed V3 adapter.
  */
-export function FloorTableMapPanelV3({
+type FloorPanelProps = { tournament: Tournament; refreshTrigger: number; actorId: string | null };
+
+// Changing actor/tournament invalidates every open writer as well as the roster.
+export function FloorTableMapPanelV3(props: FloorPanelProps) {
+  return <ScopedFloorTableMapPanelV3 key={JSON.stringify([props.actorId, props.tournament.id])} {...props} />;
+}
+
+function ScopedFloorTableMapPanelV3({
   tournament,
   refreshTrigger,
   actorId,
@@ -99,14 +106,13 @@ export function FloorTableMapPanelV3({
   actorId: string | null;
 }) {
   const supabase = useSupabaseClient();
-  const modeAttempts = useRef(new Map<string, Parameters<ReturnType<typeof createFloorTableControlV3Client>["requestTableControlMode"]>[0]>());
   const v3 = useMemo(() => createFloorTableControlV3Client(
     ((name, args) => (supabase.rpc as unknown as FloorTableControlV3Rpc)(name, args)),
   ), [supabase]);
   const [tables, setTables] = useState<FloorTournamentTableRoster[]>([]);
   const [seatableEntries, setSeatableEntries] = useState<FloorSeatableEntry[]>([]);
   const [restorableEntries, setRestorableEntries] = useState<FloorRestorableEntry[]>([]);
-  const [restoreTarget, setRestoreTarget] = useState<{ entryId: string; name: string; destination: { tableId: string; seatNumber: number } } | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<{ scope: string; entryId: string; name: string; destination: { tableId: string; seatNumber: number } } | null>(null);
   const [pendingMoves, setPendingMoves] = useState<FloorPendingTrackerMove[]>([]);
   const [secondaryLoadError, setSecondaryLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,12 +126,10 @@ export function FloorTableMapPanelV3({
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveTarget, setMoveTarget] = useState<{ scope: string; entryId: string; tableId: string; seatNumber: number; playerName: string } | null>(null);
   const [modeOpen, setModeOpen] = useState(false);
-  const [nextMode, setNextMode] = useState<"manual" | "tracker">("manual");
-  const [modeRequest, setModeRequest] = useState<{ id: string; targetMode: string; blockers: string[] } | null>(null);
-  const [modeRequestError, setModeRequestError] = useState<string | null>(null);
   const [pendingBustSeat, setPendingBustSeat] = useState<FloorTableRosterSeat | null>(null);
   const [pendingFreeSitSeat, setPendingFreeSitSeat] = useState<FloorTableRosterSeat | null>(null);
   const [pendingTableAction, setPendingTableAction] = useState<PendingTableAction | null>(null);
+  const [pendingActionScope, setPendingActionScope] = useState<string | null>(null);
   const [breakPlan, setBreakPlan] = useState<FloorBreakPlan | null>(null);
   const [breakPlanLoading, setBreakPlanLoading] = useState(false);
   const [breakPlanError, setBreakPlanError] = useState<string | null>(null);
@@ -153,6 +157,12 @@ export function FloorTableMapPanelV3({
   }, [selectedTable]);
 
   const readScope = `${actorId ?? ""}:${tournament.id}`;
+  const selectedSessionScope = JSON.stringify([readScope, selectedTable?.tournamentTableId,
+    selectedTable?.tableSessionId, selectedTable?.controlEpoch]);
+  const selectedWriteScope = JSON.stringify([selectedSessionScope, selectedTable?.sessionRevision]);
+  const selectedWriteScopeRef = useRef(selectedWriteScope);
+  selectedWriteScopeRef.current = selectedWriteScope;
+  const actionIsCurrent = pendingActionScope === selectedWriteScope && !loading && !loadError;
   const currentReadScope = useRef(readScope);
   currentReadScope.current = readScope;
   const readSequence = useRef(0);
@@ -211,7 +221,10 @@ export function FloorTableMapPanelV3({
     }
   }, [readScope, tournament.id, v3]);
 
-  useEffect(() => { void load(); }, [load, refreshTrigger]);
+  useEffect(() => {
+    void load();
+    return () => { ++readSequence.current; };
+  }, [load, refreshTrigger]);
 
   useEffect(() => {
     if (!pendingMoves.some((move) => move.status === "pending")) return;
@@ -236,56 +249,19 @@ export function FloorTableMapPanelV3({
     setPendingFreeSitSeat(null);
     setPendingTableAction(null);
     setBreakPlan(null);
+    setBreakPlanLoading(false);
     setBreakPlanError(null);
     setLockReason("Giữ ghế cho vận hành");
-  }, [selectedSeatNumber, selectedTableId]);
+  }, [selectedSeatNumber, selectedTableId, selectedWriteScope]);
+
+  useEffect(() => {
+    setMoveTarget(null); setMoveOpen(false); setRestoreTarget(null);
+  }, [selectedSessionScope]);
 
   const selectedTableSessionId = selectedTable?.tableSessionId ?? null;
   const selectedTableControlMode = selectedTable?.controlMode ?? null;
 
-  useEffect(() => {
-    if (!selectedTableSessionId || !selectedTableId) { setModeRequest(null); setModeRequestError(null); return; }
-    let disposed = false;
-    let observedPending = false;
-    const refresh = async () => {
-      if (document.visibilityState !== "visible" || !navigator.onLine) return;
-      let result;
-      try { result = await v3.getTableControlModeRequest({ tournamentTableId: selectedTableId, tableSessionId: selectedTableSessionId }); }
-      catch { if (!disposed) setModeRequestError("Không kết nối được máy chủ. Hãy tải lại trước khi đổi chế độ."); return; }
-      if (disposed) return;
-      if (!result.ok) { setModeRequestError("Không xác minh được yêu cầu đổi chế độ. Hãy tải lại trước khi thao tác."); return; }
-      const request = result.data.request;
-      if (request === null) {
-        setModeRequest(null);
-        setModeRequestError(null);
-        if (observedPending) {
-          // A terminal request does not tell us the resulting mode or stacks.
-          // Read the canonical roster rather than keeping the pre-hand snapshot.
-          const refreshed = await load(true);
-          if (!disposed && refreshed) observedPending = false;
-        }
-        return;
-      }
-      if (!request || typeof request !== "object" || !("id" in request) || !("target_mode" in request) || !("blockers" in request)
-        || typeof request.id !== "string" || (request.target_mode !== "manual" && request.target_mode !== "tracker")
-        || !Array.isArray(request.blockers) || !request.blockers.every((item) => typeof item === "string")) {
-        setModeRequestError("Không đọc được yêu cầu đổi chế độ."); return;
-      }
-      observedPending = true;
-      setModeRequest({ id: request.id, targetMode: request.target_mode, blockers: request.blockers });
-      setModeRequestError(null);
-      void load(true);
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 4000);
-    return () => { disposed = true; window.clearInterval(timer); };
-  }, [load, selectedTableId, selectedTableSessionId, v3]);
-
-  useEffect(() => {
-    if (!selectedTableControlMode) return;
-    setNextMode(selectedTableControlMode);
-    setModeOpen(false);
-  }, [selectedTableSessionId, selectedTableControlMode]);
+  useEffect(() => { setModeOpen(false); }, [selectedTableSessionId, selectedTableControlMode]);
 
 
   const run = async (successMessage: string | ((data: Record<string, unknown>) => string), mutation: Mutation): Promise<boolean> => {
@@ -356,17 +332,17 @@ export function FloorTableMapPanelV3({
           <p className="text-xs text-muted-foreground">Ghế {seat.seatNumber} · Entry {seat.entryNo} · {formatStack(seat.chipCount)} chip</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
-          <Button data-ops-action="floor.player.open_move" className="min-h-12" disabled={!actorId || busy || Boolean(pendingForEntry)} aria-expanded={moveOpen && moveTarget?.scope === readScope}
-            onClick={() => { setMoveTarget({ scope: readScope, entryId: seat.entryId, tableId: selectedTable.tournamentTableId,
+          <Button data-ops-action="floor.player.open_move" className="min-h-12" disabled={!actorId || busy || Boolean(pendingForEntry)} aria-expanded={moveOpen && moveTarget?.scope === selectedSessionScope}
+            onClick={() => { setMoveTarget({ scope: selectedSessionScope, entryId: seat.entryId, tableId: selectedTable.tournamentTableId,
               seatNumber: seat.seatNumber, playerName: seat.displayName }); setMoveOpen(true); }}>
             <ArrowRightLeft className="mr-2 h-4 w-4" /> Chuyển người
           </Button>
           {FEATURES.floorFreeSitV1 && (
-            <Button data-ops-action="floor.player.open_free_sit" variant="outline" className="min-h-12" disabled={busy} onClick={() => setPendingFreeSitSeat(seat)}>
+            <Button data-ops-action="floor.player.open_free_sit" variant="outline" className="min-h-12" disabled={busy} onClick={() => { setPendingActionScope(selectedWriteScope); setPendingFreeSitSeat(seat); }}>
               <UserRoundMinus className="mr-2 h-4 w-4" /> Rời ghế
             </Button>
           )}
-          <Button data-ops-action="floor.player.open_bust" variant="destructive" className="min-h-12" disabled={busy || trackerChipBlocked} onClick={() => setPendingBustSeat(seat)}>
+          <Button data-ops-action="floor.player.open_bust" variant="destructive" className="min-h-12" disabled={busy || trackerChipBlocked} onClick={() => { setPendingActionScope(selectedWriteScope); setPendingBustSeat(seat); }}>
             <UserRoundX className="mr-2 h-4 w-4" /> Loại khỏi giải
           </Button>
         </div>
@@ -422,7 +398,13 @@ export function FloorTableMapPanelV3({
       ) : tables.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Chưa có bàn đang hoạt động. Chọn “Mở bàn” để lấy một bàn vật lý còn trống.</div>
       ) : (
-        <FloorTableRosterIndex tables={tableIndex} onOpen={(tableId) => { setSelectedTableId(tableId); setSelectedSeatNumber(null); }} />
+        <FloorTableRosterIndex tables={tableIndex} onOpen={(tableId) => {
+          // The sheet may have been closed across a server-only mode transition.
+          // Read once at entry; never require a failed write to discover new fences.
+          void load(true).then((verified) => {
+            if (verified) { setSelectedTableId(tableId); setSelectedSeatNumber(null); }
+          });
+        }} />
       )}
 
       <p className="flex items-start gap-2 rounded-xl border border-amber-400/25 bg-amber-400/5 p-3 text-xs leading-5 text-amber-100/90">
@@ -430,14 +412,14 @@ export function FloorTableMapPanelV3({
         Live Tracker chỉ nhận thao tác khi đúng phiên bàn hiện tại. Floor không tự chuyển sang writer cũ nếu phiên đã thay đổi.
       </p>
 
-      {actorId && moveTarget?.scope === readScope && (
+      {actorId && moveTarget?.scope === selectedSessionScope && (
         <MovePlayerDialog actorId={actorId} open={moveOpen}
           onOpenChange={setMoveOpen} tournamentId={tournament.id} entryId={moveTarget.entryId}
           playerName={moveTarget.playerName} currentTournamentTableId={moveTarget.tableId}
           currentSeatNumber={moveTarget.seatNumber} onMoved={() => void load(true)} />
       )}
       <OpenTableDialog open={openTable} onOpenChange={setOpenTable} tournamentId={tournament.id} onDone={() => void load()} />
-      <RestoreBustDialog actorId={actorId} tournamentId={tournament.id} target={restoreTarget}
+      <RestoreBustDialog actorId={actorId} tournamentId={tournament.id} target={restoreTarget?.scope === selectedSessionScope ? restoreTarget : null}
         onClose={() => setRestoreTarget(null)}
         onRestored={() => { setEntrySelection(null); toast.success("Đã khôi phục người chơi vào ghế."); void load(); }} />
       {FEATURES.floorRedrawSeatLockV1 && (
@@ -481,48 +463,20 @@ export function FloorTableMapPanelV3({
                 </details>
               </SheetHeader>
               <div className="mt-5 space-y-4">
-                {modeOpen && (
-                  <section id="floor-v3-mode-panel" className="space-y-3 rounded-xl border border-border bg-card/55 p-3" aria-label="Đổi chế độ bàn">
-                    <FloorTableModePicker value={nextMode} onChange={setNextMode} disabled={busy} testIdPrefix="floor-v3-mode" />
-                    <Button
-                      data-ops-action="floor.tables.save_v3_control_mode"
-                      className="min-h-12 w-full"
-                      disabled={busy || !!modeRequestError || !!modeRequest || nextMode === selectedTable.controlMode}
-                      onClick={() => void run((data) => data.outcome === "pending" ? "Đã lưu yêu cầu. Bàn sẽ đổi chế độ khi đủ điều kiện." : "Đã đổi chế độ bàn.", async () => {
-                        const attemptScope = JSON.stringify([actorId, selectedTable.tableSessionId, nextMode]);
-                        const intent = modeAttempts.current.get(attemptScope) ?? {
-                          tournamentTableId: selectedTable.tournamentTableId,
-                          tableSessionId: selectedTable.tableSessionId,
-                          controlMode: nextMode,
-                          expectedRevision: selectedTable.sessionRevision,
-                          expectedEpoch: selectedTable.controlEpoch,
-                          requestId: crypto.randomUUID(),
-                        };
-                        modeAttempts.current.set(attemptScope, intent);
-                        const result = await v3.requestTableControlMode(intent);
-                        // STALE_STATE is a definitive rejection before the server creates
-                        // a mode request or receipt. A new explicit attempt uses fresh fences;
-                        // ambiguous failures retain the original intent for receipt replay.
-                        if (result.ok === true || result.error === "STALE_STATE") modeAttempts.current.delete(attemptScope);
-                        if (result.ok && result.data.outcome !== "pending") setModeOpen(false);
-                        return result;
-                      })}
-                    >
-                      Lưu chế độ
-                    </Button>
-                    <p className="text-[11px] leading-4 text-muted-foreground">Giữ nguyên người chơi, ghế và chip. Nếu đang chơi ván hoặc có thao tác chưa giải quyết, hệ thống sẽ chờ đến lúc an toàn.</p>
-                    {modeRequestError && <p role="alert" className="text-sm text-destructive">{modeRequestError}</p>}
-                    {modeRequest && <div role="status" className="space-y-2 text-sm">
-                      <p>Đang chờ chuyển sang {modeRequest.targetMode === "tracker" ? "Live Tracker" : "Manual"}.</p>
-                      <p>{modeRequest.blockers.map((reason) => ({ active_hand: "Ván đang chơi", pending_move: "Chuyển ghế đang chờ", correction_pending: "Báo sai hand chưa giải quyết", correction_session_unknown: "Báo sai hand cũ thiếu phiên bàn — cần kiểm tra dữ liệu" })[reason] ?? reason).join(" · ")}</p>
-                      <Button data-ops-action="floor.tables.cancel_pending_control_mode" disabled={busy || !!modeRequestError} variant="outline" onClick={() => void run("Đã hủy yêu cầu đổi chế độ.", async () => {
-                        const result = await v3.cancelTableControlModeRequest({ tournamentTableId: selectedTable.tournamentTableId, tableSessionId: selectedTable.tableSessionId, modeRequestId: modeRequest.id });
-                        if (result.ok) setModeRequest(null);
-                        return result;
-                      })}>Hủy yêu cầu đổi chế độ</Button>
-                    </div>}
-                  </section>
-                )}
+                <FloorTableControlModeControl
+                  key={JSON.stringify([actorId, tournament.id, selectedTable.tournamentTableId, selectedTable.tableSessionId])}
+                  tournamentId={tournament.id}
+                  table={{
+                    tt_id: selectedTable.tournamentTableId, table_name: selectedTable.tableName,
+                    table_session_id: selectedTable.tableSessionId,
+                    floor_control_mode: selectedTable.controlMode,
+                    floor_control_revision: selectedTable.sessionRevision,
+                    control_epoch: selectedTable.controlEpoch,
+                  }}
+                  expanded={modeOpen}
+                  disabledReason={busy || loading || loadError ? (loadError ?? "Đang xác minh dữ liệu bàn.") : null}
+                  onChanged={() => load(true)}
+                />
 
                 <div className="space-y-4">
                   {selectedSeat ? seatAction(selectedSeat) : selectedSeatNumber != null && selectedSeatLock ? (
@@ -596,6 +550,7 @@ export function FloorTableMapPanelV3({
                           className="min-h-12 w-full"
                           disabled={busy}
                           onClick={() => setRestoreTarget({
+                            scope: selectedSessionScope,
                             entryId: entrySelection.entryId,
                             name: restorableEntries.find((entry) => entry.entryId === entrySelection.entryId)?.displayName ?? "Người chơi",
                             destination: { tableId: selectedTable.tournamentTableId, seatNumber: selectedSeatNumber },
@@ -636,13 +591,15 @@ export function FloorTableMapPanelV3({
                 />
 
                 <section className="grid gap-2 sm:grid-cols-2">
-                  <Button data-ops-action="floor.tables.open_close_table" variant="outline" className="min-h-12" disabled={busy || selectedTable.seats.length !== 0} onClick={() => setPendingTableAction("close")}>Đóng bàn trống</Button>
+                  <Button data-ops-action="floor.tables.open_close_table" variant="outline" className="min-h-12" disabled={busy || selectedTable.seats.length !== 0} onClick={() => { setPendingActionScope(selectedWriteScope); setPendingTableAction("close"); }}>Đóng bàn trống</Button>
                   <Button
                     data-ops-action="floor.tables.open_break_v3"
                     variant="outline"
                     className="min-h-12"
                     disabled={busy || breakPlanLoading || selectedTable.seats.length === 0}
                     onClick={async () => {
+                      const planScope = selectedWriteScope;
+                      setPendingActionScope(planScope);
                       setPendingTableAction("break");
                       setBreakPlan(null);
                       setBreakPlanError(null);
@@ -654,12 +611,13 @@ export function FloorTableMapPanelV3({
                           expectedRevision: selectedTable.sessionRevision,
                           drawMode: "fill_lowest_table",
                         });
+                        if (selectedWriteScopeRef.current !== planScope) return;
                         if (plan.ok === true) setBreakPlan(plan.data);
                         else setBreakPlanError(v3ErrorMessage(plan.error));
                       } catch {
-                        setBreakPlanError("Mất kết nối khi lập phương án chuyển. Chưa có thay đổi nào được ghi.");
+                        if (selectedWriteScopeRef.current === planScope) setBreakPlanError("Mất kết nối khi lập phương án chuyển. Chưa có thay đổi nào được ghi.");
                       } finally {
-                        setBreakPlanLoading(false);
+                        if (selectedWriteScopeRef.current === planScope) setBreakPlanLoading(false);
                       }
                     }}
                   >Đóng & chuyển người</Button>
@@ -670,7 +628,7 @@ export function FloorTableMapPanelV3({
         </SheetContent>
       </Sheet>
 
-      <AlertDialog open={pendingFreeSitSeat !== null} onOpenChange={(open) => { if (!open) setPendingFreeSitSeat(null); }}>
+      <AlertDialog open={pendingFreeSitSeat !== null && actionIsCurrent} onOpenChange={(open) => { if (!open) setPendingFreeSitSeat(null); }}>
         <AlertDialogContent className="operations-typography box-border max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-md overflow-y-auto rounded-xl p-4 sm:p-6">
           <AlertDialogHeader>
             <AlertDialogTitle>Cho người chơi rời ghế?</AlertDialogTitle>
@@ -694,7 +652,7 @@ export function FloorTableMapPanelV3({
               disabled={busy || !selectedTable || !pendingFreeSitSeat}
               onClick={async (event) => {
                 event.preventDefault();
-                if (!selectedTable || !pendingFreeSitSeat) return;
+                if (!actionIsCurrent || !selectedTable || !pendingFreeSitSeat) return;
                 const seat = pendingFreeSitSeat;
                 const ok = await run("Đã cho người chơi rời ghế; chip được giữ nguyên.", () => v3.freeSitPlayer({
                   entryId: seat.entryId,
@@ -713,7 +671,7 @@ export function FloorTableMapPanelV3({
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={pendingBustSeat !== null} onOpenChange={(open) => { if (!open) setPendingBustSeat(null); }}>
+      <AlertDialog open={pendingBustSeat !== null && actionIsCurrent} onOpenChange={(open) => { if (!open) setPendingBustSeat(null); }}>
         <AlertDialogContent className="operations-typography box-border max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-md overflow-y-auto rounded-xl p-4 sm:p-6">
           <AlertDialogHeader>
             <AlertDialogTitle>Loại người chơi khỏi giải?</AlertDialogTitle>
@@ -740,7 +698,7 @@ export function FloorTableMapPanelV3({
               disabled={busy || !selectedTable || !pendingBustSeat}
               onClick={async (event) => {
                 event.preventDefault();
-                if (!selectedTable || !pendingBustSeat) return;
+                if (!actionIsCurrent || !selectedTable || !pendingBustSeat) return;
                 const seat = pendingBustSeat;
                 const ok = await run("Đã loại người chơi khỏi giải.", () => v3.bustPlayer({
                   entryId: seat.entryId,
@@ -759,7 +717,7 @@ export function FloorTableMapPanelV3({
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={pendingTableAction !== null} onOpenChange={(open) => { if (!open) setPendingTableAction(null); }}>
+      <AlertDialog open={pendingTableAction !== null && actionIsCurrent} onOpenChange={(open) => { if (!open) setPendingTableAction(null); }}>
         <AlertDialogContent className="operations-typography box-border max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-md overflow-y-auto rounded-xl p-4 sm:p-6">
           <AlertDialogHeader>
             <AlertDialogTitle>{pendingTableAction === "break" ? "Đóng và chuyển toàn bộ người chơi?" : "Đóng bàn trống?"}</AlertDialogTitle>
@@ -802,7 +760,7 @@ export function FloorTableMapPanelV3({
                 disabled={busy || !selectedTable || (v3.redrawSeatLockEnabled && !breakPlan?.complete)}
                  onClick={async (event) => {
                    event.preventDefault();
-                   if (!selectedTable) return;
+                   if (!actionIsCurrent || !selectedTable) return;
                    const ok = await run((data) => data.break_pending === true
                      ? "Đã lưu yêu cầu chuyển người. Bàn còn mở đến khi các lượt chuyển hoàn tất."
                      : "Đã đóng và chuyển người chơi.", async () => {
@@ -833,7 +791,7 @@ export function FloorTableMapPanelV3({
                 disabled={busy || !selectedTable}
                  onClick={async (event) => {
                    event.preventDefault();
-                   if (!selectedTable) return;
+                   if (!actionIsCurrent || !selectedTable) return;
                    const ok = await run("Đã đóng bàn và giải phóng bàn vật lý.", async () => {
                      const result = await v3.closeTournamentTable({
                      tournamentTableId: selectedTable.tournamentTableId,

@@ -21,6 +21,10 @@ on:
       - "VinPoker/supabase/migrations/20270128000007_floor_v3_critical_consistency.sql"
       - "VinPoker/supabase/migrations/20270128000013_floor_mode_request_safe_boundary_v1.sql"
       - "VinPoker/supabase/migrations/20270128000015_floor_restore_bust_integrity_v1.sql"
+      - "VinPoker/supabase/migrations/20270128000049_floor_mode_tombstone_guard_v1.sql"
+      - "VinPoker/supabase/migrations/20270128000050_floor_mode_retry_schedule_v1.sql"
+      - "VinPoker/scripts/ops/floor-49-50-*.mjs"
+      - ".github/workflows/floor-49-50-protected-apply.yml"
       - "VinPoker/scripts/production/repairs/repair_tracker_test_roster_entries_ban5.sql"
       - "VinPoker/scripts/production/repairs/repair_tracker_test_roster_tournament_table_link_ban5.sql"
       - "VinPoker/src/lib/floorTableControlV3.ts"
@@ -91,6 +95,9 @@ jobs:
       - name: Verify server contract source
         working-directory: VinPoker
         run: ./node_modules/.bin/vitest run --config tests/floorTableControlV3/vitest.serverContract.config.ts
+      - name: Verify exact49/50 protected release preparation
+        working-directory: VinPoker
+        run: node --test scripts/ops/floor-49-50-release-plan.test.mjs scripts/ops/floor-49-50-protected-apply.test.mjs
       - name: Verify redraw client, TV timing, and Floor Continue UI
         working-directory: VinPoker
         run: >-
@@ -124,6 +131,36 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/criticalConsistency.disposable.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/tableModeRequest.disposable.sql
           psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/restoreBustIntegrity.disposable.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000049_floor_mode_tombstone_guard_v1.sql
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/tableModeTombstone.disposable.sql
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/tableModeQueuedTombstone.disposable.sql
+          psql -v ON_ERROR_STOP=1 -f tests/floorTableControlV3/tableModeRetryFairness.disposable.sql
+          bash tests/floorTableControlV3/runModeTombstoneRace.sh
+          bash tests/floorTableControlV3/runModeRetryRace.sh
+          bash tests/floorTableControlV3/runModeRequestLockRace.sh
+          bash tests/floorTableControlV3/runModeLockedFairness.sh
+      - name: Verify atomic49 receipt rollback on a fresh PostgreSQL schema
+        working-directory: VinPoker
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGDATABASE: vinpoker_ops_atomic49_ci
+          FLOOR49_LOCAL_DATABASE: vinpoker_ops_atomic49_ci
+        run: |
+          createdb vinpoker_ops_atomic49_ci
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/floorTableControlV3/disposableDb.serverContract.sql \
+            -f tests/floorTableControlV3/disposableDb.serverContract.authenticated.sql \
+            -f tests/floorTableControlV3/repairTrackerTestRoster.fixture.sql \
+            -f tests/floorTableControlV3/repairTrackerTestRosterPartialTableLink.setup.sql \
+            -f tests/floorTableControlV3/rosterActionsRepair.disposable.sql \
+            -f tests/floorTableControlV3/deferredTrackerMove.writerDependencies.sql \
+            -f tests/floorTableControlV3/deferredTrackerMove.disposable.sql \
+            -f tests/floorTableControlV3/redrawClockHold.disposable.sql \
+            -f tests/floorTableControlV3/criticalConsistency.disposable.sql \
+            -f tests/floorTableControlV3/tableModeRequest.disposable.sql
+          node --test scripts/ops/floor-49-50-atomic-pg.test.mjs
       - name: Typecheck the full application
         working-directory: VinPoker
         env:

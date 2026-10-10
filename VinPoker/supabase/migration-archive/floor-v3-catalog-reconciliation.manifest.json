@@ -7624,6 +7624,8 @@
     {"version":"20270128000046","filename":"20270128000046_dealer_inventory_canonical_table_link_v1.sql","sha256":"70d5c8ace517321fb2a7ac0a26c7098619391fa2cdc504d7436a9d1225426358","domain":"floor-session-ticket-campaign"},
     {"version":"20270128000047","filename":"20270128000047_floor_closed_session_attendance_v1.sql","sha256":"68f37a501ee80408770f437553295271198222804bc58e978d6296eb54e61ad0","domain":"floor-session-ticket-campaign"},
     {"version":"20270128000048","filename":"20270128000048_floor_move_or_queue_exact_intent_v1.sql","sha256":"7ee0538bcd42c45ab746dba5dd8d9f91e2b01d655fa351930ee409f78f4488ae","domain":"floor-session-ticket-campaign"},
+    {"version":"20270128000049","filename":"20270128000049_floor_mode_tombstone_guard_v1.sql","sha256":"eabbd6af0738a10d3a492b5e26c173b7e3c4fa3fc0c819ff4df2d06d433586a7","domain":"floor-session-ticket-campaign"},
+    {"version":"20270128000050","filename":"20270128000050_floor_mode_retry_schedule_v1.sql","sha256":"a173187282c167238d204c48d50b23895459f4698afcdfe498bca4ee64d76c2a","domain":"floor-session-ticket-campaign"},
     {
       "version": "20270128000036",
       "filename": "20270128000036_floor_manual_entry_roundtrip_v1.sql",
