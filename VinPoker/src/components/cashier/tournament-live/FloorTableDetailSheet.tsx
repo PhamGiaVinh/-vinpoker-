@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { LiquidButton } from "@/components/kokonutui/liquid-glass-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -70,6 +71,7 @@ export function FloorTableDetailSheet({
   onChanged: () => void;
 }) {
   const [dialog, setDialog] = useState<null | "open" | "add" | "close">(null);
+  const { user } = useAuth();
   const [defaultAddSeat, setDefaultAddSeat] = useState<number | null>(null);
 
   if (!table) return null;
@@ -186,6 +188,8 @@ export function FloorTableDetailSheet({
             onDone={onChanged}
           />
           <CloseTableDialog
+            tournamentId={tournamentId}
+            actorId={user?.id ?? null}
             open={dialog === "close"}
             onOpenChange={(value) => { if (!value) setDialog(null); }}
             tournamentName={tournamentName}

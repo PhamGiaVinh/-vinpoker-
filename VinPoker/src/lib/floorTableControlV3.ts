@@ -30,6 +30,7 @@ export type FloorTableControlV3RpcName =
   | "floor_cancel_table_control_mode_request_v1"
   | "move_player_seat_v2"
   | "move_player_seat_v3"
+  | "move_player_seat_v4"
   | "close_tournament_table_v3"
   | "close_tournament_table_v4"
   | "floor_break_table_v3"
@@ -208,6 +209,21 @@ export type FloorPendingTrackerMove = {
   status: "pending" | "stale";
   resolutionReason: string | null;
   requestedAt: string;
+};
+
+export type FloorExactMoveIntent = {
+  entryId: string;
+  fromTournamentTableId: string;
+  fromTableSessionId: string;
+  toTournamentTableId: string;
+  toTableSessionId: string;
+  toSeatNumber: number;
+  expectedSourceRevision: number;
+  expectedDestinationRevision: number;
+  expectedSourceEpoch: number;
+  expectedDestinationEpoch: number;
+  reason: string;
+  requestId: string;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -898,8 +914,24 @@ export function createFloorTableControlV3Client(
         p_request_id: args.requestId,
       }).then(mutationFromResponse),
 
+    movePlayerSeatExact: (args: FloorExactMoveIntent) => call("move_player_seat_v4", {
+      p_entry_id: args.entryId,
+      p_from_tournament_table_id: args.fromTournamentTableId,
+      p_from_table_session_id: args.fromTableSessionId,
+      p_to_tournament_table_id: args.toTournamentTableId,
+      p_to_table_session_id: args.toTableSessionId,
+      p_to_seat_number: args.toSeatNumber,
+      p_expected_source_revision: args.expectedSourceRevision,
+      p_expected_destination_revision: args.expectedDestinationRevision,
+      p_expected_source_epoch: args.expectedSourceEpoch,
+      p_expected_destination_epoch: args.expectedDestinationEpoch,
+      p_reason: args.reason,
+      p_request_id: args.requestId,
+    }).then(mutationFromResponse),
+
     async getPendingTrackerMoves(tournamentId: string): Promise<FloorTableControlV3Result<FloorPendingTrackerMove[]>> {
-      if (!deferredTrackerMoveEnabled) return { ok: true, data: [] };
+      // Producer OFF does not cancel existing reservations. Always verify the
+      // authoritative read; unavailable must never be shown as an empty seat.
       const response = await call("get_floor_pending_tracker_moves_v1", { p_tournament_id: tournamentId });
       if (response.ok === false) return response;
       if (!Array.isArray(response.data)) return { ok: false, error: "V3_PENDING_MOVES_RESPONSE_MALFORMED" };
@@ -952,7 +984,7 @@ export function createFloorTableControlV3Client(
       ).then(mutationFromResponse);
     },
 
-    async planBreakTable(args: { tournamentTableId: string; expectedRevision: number; drawMode: "fill_lowest_table" }): Promise<FloorTableControlV3Result<FloorBreakPlan>> {
+    async planBreakTable(args: { tournamentTableId: string; expectedRevision: number; drawMode: "fill_lowest_table" | "redraw_balanced" }): Promise<FloorTableControlV3Result<FloorBreakPlan>> {
       const response = await callRedrawSeatLock("floor_plan_break_table_v1", {
         p_tournament_table_id: args.tournamentTableId,
         p_expected_revision: args.expectedRevision,

@@ -18,7 +18,7 @@ import { FloorTableControlModeControl } from "@/components/ops/shared/FloorTable
 import { FloorSeatRoster } from "@/components/ops/shared/FloorSeatRoster";
 import { FloorTableRosterIndex } from "@/components/ops/shared/FloorTableRosterIndex";
 import { FIXED_FLOOR_TABLE_SEATS } from "@/components/ops/shared/floorTablePresentation";
-import { preflightFloorTableEntries } from "@/components/ops/shared/floorSeatEntryPreflight";
+import { CloseTableDialog } from "@/components/cashier/tournament-live/CloseTableDialog";
 import { OpenTableDialog } from "@/components/cashier/tournament-live/OpenTableDialog";
 import { FloorTableMapPanelV3 } from "@/components/cashier/tournament-live/FloorTableMapPanelV3";
 import {
@@ -27,7 +27,6 @@ import {
 } from "@/components/ops/shared/floorAdapter";
 import type { MockSeat, MockTable } from "@/components/ops/mock/opsData";
 import type { Tournament } from "@/types/tournament";
-import { closeTableErrorMessage, parseCloseTableRpcResult } from "@/components/cashier/tournament-live/closeTableResponse";
 import { resolveOpsTablesTournamentId } from "@/pages/ops/opsTablesTournamentSelection";
 
 /**
@@ -351,57 +350,8 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
   // ── Floor-A3: Mở bàn → shared responsive picker + atomic v2 RPC ──
   const [openTableOpen, setOpenTableOpen] = useState(false);
 
-  // ── Floor-A3: Đóng bàn → close_tournament_table (redistribute; gate floorTableOps) ──
-  const [closeTable, setCloseTable] = useState<TableVM | null>(null);
-  const [closeMode, setCloseMode] = useState<CloseDrawMode>("redraw_balanced");
-  const [closeBusy, setCloseBusy] = useState(false);
-  const closeBusyRef = useRef(false);
-  const submitCloseTable = useCallback(async () => {
-    if (!closeTable || !tourId) return;
-    if (closeBusyRef.current) return;
-    closeBusyRef.current = true; setCloseBusy(true);
-    try {
-      const activeSeats = floor.seatsByTable[closeTable.raw.table_id] ?? [];
-      if (activeSeats.length > 0) {
-        const { data: entryRows, error: entryError } = await supabase
-          .from("tournament_seats")
-          .select("id, entry_id, is_active")
-          .eq("tournament_id", tourId)
-          .in("id", activeSeats.map((seat) => seat.seat_id));
-        if (entryError) {
-          toast.error("Không kiểm tra được lượt đăng ký của các ghế. Hãy tải lại trước khi đóng bàn.");
-          return;
-        }
-        const preflight = preflightFloorTableEntries(activeSeats.map((seat) => seat.seat_id), entryRows ?? []);
-        if (preflight.ok === false) {
-          toast.error(
-            `Không thể đóng bàn: ${preflight.blockedSeatCount} ghế đang chơi thiếu hoặc không xác minh được lượt đăng ký. Hãy sửa dữ liệu ghế trước.`,
-          );
-          return;
-        }
-      }
-      const { data, error } = await supabase.rpc("close_tournament_table", {
-        p_tournament_table_id: closeTable.raw.tt_id,
-        p_draw_mode: closeMode,
-        p_reason: "table_break",
-      });
-      const result = parseCloseTableRpcResult(data, error, closeTable.seats.length);
-      if (result.kind === "error") {
-        toast.error(closeTableErrorMessage(
-          result.response,
-          result.rpcError?.message ?? result.code,
-        ));
-        return;
-      }
-      toast.success(`Đã đóng ${closeTable.name} · chuyển ${result.response.moved_count} người`);
-      setCloseTable(null);
-      floor.reload();
-    } catch (e) {
-      toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Đóng bàn thất bại");
-    } finally {
-      closeBusyRef.current = false; setCloseBusy(false);
-    }
-  }, [closeTable, closeMode, floor, supabase, tourId]);
+  // Canonical dialog owns preview, exact-session commit and durable reconciliation.
+  const [closeTable, setCloseTable] = useState<{ table: TableVM; tourId: string; actorId: string } | null>(null);
 
   // ── Floor-A4: Bốc lại → redraw_tournament, 2 bước preview→confirm (gate floorTableOps) ──
   const [redrawOpen, setRedrawOpen] = useState(false);
@@ -622,7 +572,7 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
               className="ios-press ios-fill flex items-center justify-center gap-1 rounded-2xl py-3 text-[13px] font-medium text-amber-300">
               <PauseCircle className="h-4 w-4" /> Đồng hồ
             </button>
-            <button data-ops-action="floor.tables.open_close_table" onClick={() => { if (!ADD_LIVE) return; const vm = openVM; setOpenNo(null); setCloseMode("redraw_balanced"); requestAnimationFrame(() => setCloseTable(vm)); }}
+            <button data-ops-action="floor.tables.open_close_table" onClick={() => { if (!ADD_LIVE || !openVM || !tourId || !user?.id) return; setCloseTable({ table: openVM, tourId, actorId: user.id }); setOpenNo(null); }}
               disabled={!ADD_LIVE} aria-disabled={!ADD_LIVE} title={ADD_LIVE ? undefined : "Cần bật cờ floorTableOps"}
               className={cn("ios-press flex items-center justify-center gap-1 rounded-2xl bg-rose-500/12 py-3 text-[13px] font-semibold text-rose-300", !ADD_LIVE && "opacity-50")}>
               <XCircle className="h-4 w-4" /> Đóng bàn
@@ -692,38 +642,13 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
         />
       )}
 
-      {/* Floor-A3 — Đóng bàn: chọn cách chia người + nhắc lại → close_tournament_table */}
-      <Sheet open={closeTable !== null} onOpenChange={(v) => { if (!v && !closeBusy) setCloseTable(null); }}>
-        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
-          <div className="ios-grabber mb-3 mt-1" />
-          <SheetHeader className="text-center"><SheetTitle className="text-rose-300">Đóng {closeTable?.name}</SheetTitle></SheetHeader>
-          <div className="mt-1 text-center text-[13px] text-[#9b8e97]">
-            {(closeTable?.seats.length ?? 0) > 0
-              ? <>chuyển <b className="text-[#f2ece6]">{closeTable?.seats.length}</b> người sang ghế trống bàn khác rồi đóng · không hoàn tác</>
-              : "bàn trống — đóng ngay, không phải chuyển ai"}
-          </div>
-          {(closeTable?.seats.length ?? 0) > 0 && (
-            <div className="mt-3">
-              <div className="px-1 text-[12px] text-[#9b8e97]">Cách chia người</div>
-              <div className="mt-1.5 space-y-1.5">
-                {([["redraw_balanced", "Bốc ngẫu nhiên, ưu tiên bàn ít người"], ["fill_lowest_table", "Lấp bàn số nhỏ trước"]] as [CloseDrawMode, string][]).map(([m, label]) => (
-                  <button key={m} data-ops-action="floor.tables.select_close_mode" onClick={() => setCloseMode(m)}
-                    className={cn("flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[14px]", closeMode === m ? "bg-[#c9a86a]/15 text-[#f2ece6] ring-1 ring-[#c9a86a]/40" : "ios-fill text-[#9b8e97]")}>
-                    <span className={cn("grid h-4 w-4 place-items-center rounded-full border", closeMode === m ? "border-[#c9a86a] bg-[#c9a86a]" : "border-white/25")} />
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-2 px-1 text-[11px] text-[#7c7079]">thiếu ghế trống → server chặn, không tự mở bàn (mở thêm bàn trước).</div>
-            </div>
-          )}
-          <button data-ops-action="floor.tables.close_table" disabled={closeBusy} onClick={submitCloseTable}
-            className="ios-press mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-rose-500/90 py-3.5 text-[15px] font-bold text-white disabled:opacity-40">
-            {closeBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
-            {closeBusy ? "Đang đóng…" : (closeTable?.seats.length ?? 0) > 0 ? `Đóng & chuyển ${closeTable?.seats.length} người` : "Đóng bàn"}
-          </button>
-        </SheetContent>
-      </Sheet>
+      {closeTable && selectedTour && closeTable.tourId === selectedTour.id && closeTable.actorId === user?.id && (
+        <CloseTableDialog open onOpenChange={(open) => { if (!open) setCloseTable(null); }}
+          actorId={user.id} tournamentId={selectedTour.id} tournamentName={selectedTour.name}
+          tournamentDate={(selectedTour as Tournament & { start_time?: string | null }).start_time ?? null}
+          tableTtId={closeTable.table.raw.tt_id} tableNumber={closeTable.table.raw.table_number}
+          occupiedCount={closeTable.table.seats.length} onDone={floor.reload} />
+      )}
 
       {/* Floor-A4 — Bốc lại: config (chế độ + cách chia) → XEM TRƯỚC (dry_run) → xác nhận (ghi) */}
       <Sheet open={redrawOpen} onOpenChange={(v) => { if (!v && !redrawBusy) setRedrawOpen(false); }}>

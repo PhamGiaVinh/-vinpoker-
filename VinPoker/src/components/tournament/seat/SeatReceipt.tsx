@@ -2,8 +2,11 @@ import { forwardRef } from "react";
 import { useTranslation } from "react-i18next";
 import { QRCodeSVG } from "qrcode.react";
 import { formatDateTime, formatStack } from "@/lib/format";
+import type { FloorSeatTicketContext } from "./floorSeatTicketCore";
 
 export interface SeatReceiptData {
+  /** A seat-transfer ticket is verified separately from the financial buy-in receipt. */
+  floorSeatContext?: FloorSeatTicketContext;
   tournamentName: string;
   /** Kept for call-site compatibility. It is never shown as a buy-in completion time. */
   tournamentDate?: string | null;
@@ -68,6 +71,7 @@ export const SeatReceipt = forwardRef<HTMLDivElement, SeatReceiptData>(
       completedAt,
       completedAtSource,
       confirmationCode,
+      floorSeatContext,
     },
     ref,
   ) => {
@@ -115,8 +119,8 @@ export const SeatReceipt = forwardRef<HTMLDivElement, SeatReceiptData>(
         </header>
 
         <div style={{ textAlign: "center", padding: "17px 0 15px" }}>
-          <div style={{ fontSize: 16, fontWeight: 900, letterSpacing: 0.7 }}>{t("seatReceipt.titleVi")}</div>
-          <div style={{ marginTop: 2, color: "#625d57", fontSize: 10, fontWeight: 700, letterSpacing: 1.15 }}>{t("seatReceipt.titleEn")}</div>
+          <div style={{ fontSize: 16, fontWeight: 900, letterSpacing: 0.7 }}>{floorSeatContext ? "PHIẾU CHUYỂN GHẾ" : t("seatReceipt.titleVi")}</div>
+          <div style={{ marginTop: 2, color: "#625d57", fontSize: 10, fontWeight: 700, letterSpacing: 1.15 }}>{floorSeatContext ? "SEAT TRANSFER" : t("seatReceipt.titleEn")}</div>
           {isConfirmed ? (
             <div style={{ display: "inline-block", marginTop: 9, border: "1px solid #1f6f43", color: "#1f6f43", padding: "3px 7px", fontSize: 10, fontWeight: 800, letterSpacing: 0.45, textTransform: "uppercase" }}>
               {t("seatReceipt.confirmed")}
@@ -134,7 +138,7 @@ export const SeatReceipt = forwardRef<HTMLDivElement, SeatReceiptData>(
           {completedAt ? <ReceiptRow label={completionLabel} value={formatDateTime(completedAt)} /> : null}
           {tournamentName ? <ReceiptRow label={t("seatReceipt.tournament")} value={tournamentName} /> : null}
           {totalPay != null ? <ReceiptRow label={t("seatReceipt.totalPay")} value={receiptVnd(totalPay)} strong /> : null}
-          {startingStack != null ? <ReceiptRow label={t("seatReceipt.startingStack")} value={formatStack(startingStack)} /> : null}
+          {startingStack != null ? <ReceiptRow label={floorSeatContext ? "Stack lúc chuyển" : t("seatReceipt.startingStack")} value={formatStack(startingStack)} /> : null}
         </div>
 
         <div style={{ marginTop: 14, padding: "12px 10px", border: "1px solid #d8d1c7", textAlign: "center" }}>
@@ -166,8 +170,8 @@ export const SeatReceipt = forwardRef<HTMLDivElement, SeatReceiptData>(
         ) : null}
 
         <footer style={{ marginTop: 17, paddingTop: 12, borderTop: "1px solid #e7e3dc", textAlign: "center" }}>
-          <p style={{ margin: 0, color: "#4f4943", fontSize: 10, lineHeight: 1.45 }}>{t("seatReceipt.legalNotice")}</p>
-          <p style={{ margin: "8px 0 0", color: "#625d57", fontSize: 10, lineHeight: 1.45 }}>{t("seatReceipt.footerNote")}</p>
+          <p style={{ margin: 0, color: "#4f4943", fontSize: 10, lineHeight: 1.45 }}>{floorSeatContext ? "Phiếu xếp ghế, không phải chứng từ thu tiền." : t("seatReceipt.legalNotice")}</p>
+          <p style={{ margin: "8px 0 0", color: "#625d57", fontSize: 10, lineHeight: 1.45 }}>{floorSeatContext ? "Hiệu lực theo phiên bàn tại thời điểm xác minh." : t("seatReceipt.footerNote")}</p>
           <p style={{ margin: "9px 0 0", color: "#161310", fontSize: 10, fontWeight: 900, letterSpacing: 0.7 }}>{t("seatReceipt.goodLuck")}</p>
         </footer>
       </section>

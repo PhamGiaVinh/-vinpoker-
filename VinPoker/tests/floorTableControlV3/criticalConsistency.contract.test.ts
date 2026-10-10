@@ -34,6 +34,22 @@ const baseRosterRow = {
 };
 
 describe("Floor V3 critical consistency contract", () => {
+  it("reads existing reservations even when the deferred producer flag is OFF", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: [{ pending_move_id: "pending", entry_id: "entry",
+      source_tournament_table_id: "source", destination_tournament_table_id: "destination",
+      destination_seat_number: 3, status: "pending", resolution_reason: null, requested_at: "2026-10-10T00:00:00Z" }], error: null });
+    const client = createFloorTableControlV3Client(rpc, { enabled: true, deferredTrackerMoveEnabled: false });
+    expect(await client.getPendingTrackerMoves("tour")).toMatchObject({ ok: true, data: [{ pendingMoveId: "pending", destinationSeatNumber: 3 }] });
+    expect(rpc).toHaveBeenCalledWith("get_floor_pending_tracker_moves_v1", { p_tournament_id: "tour" });
+    expect(await client.queueTrackerMove({ entryId: "entry", toTournamentTableId: "destination", toSeatNumber: 3,
+      expectedSourceRevision: 1, expectedDestinationRevision: 2, requestId: "request" })).toMatchObject({ ok: false });
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+  it("does not turn reservation read failure into empty when the producer is OFF", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: { message: "503" } });
+    const client = createFloorTableControlV3Client(rpc, { enabled: true, deferredTrackerMoveEnabled: false });
+    expect(await client.getPendingTrackerMoves("tour")).toEqual({ ok: false, error: "503" });
+  });
   it("keeps orphan sessions visible for repair and legacy seats visible but fail-closed", () => {
     expect(migration).toContain("THEN 'repair_required'");
     expect(migration).toContain("'integrity_status', CASE WHEN e.id IS NULL THEN 'missing_entry' ELSE 'valid' END");
@@ -154,6 +170,31 @@ describe("Floor V3 critical consistency contract", () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.data[0].seats[0].integrityStatus).toBe("valid");
     expect(rpc).toHaveBeenCalledWith("get_floor_tournament_table_roster_v3", { p_tournament_id: "tour-1" });
+  });
+
+  it("sends exact move incarnation, epoch, reason and retry identity without an actor override", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: { ok: true, request_id: "request-1" }, error: null });
+    const client = createFloorTableControlV3Client(rpc, { enabled: true, redrawSeatLockEnabled: true });
+    await client.movePlayerSeatExact({ entryId: "entry-1", fromTournamentTableId: "table-1", fromTableSessionId: "session-1",
+      toTournamentTableId: "table-2", toTableSessionId: "session-2", toSeatNumber: 3,
+      expectedSourceRevision: 7, expectedDestinationRevision: 8, expectedSourceEpoch: 4, expectedDestinationEpoch: 5,
+      reason: "Cân bàn", requestId: "request-1" });
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("move_player_seat_v4", {
+      p_entry_id: "entry-1", p_from_tournament_table_id: "table-1", p_from_table_session_id: "session-1",
+      p_to_tournament_table_id: "table-2", p_to_table_session_id: "session-2", p_to_seat_number: 3,
+      p_expected_source_revision: 7, p_expected_destination_revision: 8, p_expected_source_epoch: 4,
+      p_expected_destination_epoch: 5, p_reason: "Cân bàn", p_request_id: "request-1",
+    });
+  });
+
+  it("never falls back to a weaker move RPC when the exact writer is disabled", async () => {
+    const rpc = vi.fn();
+    const client = createFloorTableControlV3Client(rpc, { enabled: false });
+    expect(await client.movePlayerSeatExact({ entryId: "entry-1", fromTournamentTableId: "table-1", fromTableSessionId: "session-1",
+      toTournamentTableId: "table-2", toTableSessionId: "session-2", toSeatNumber: 3,
+      expectedSourceRevision: 7, expectedDestinationRevision: 8, expectedSourceEpoch: 4, expectedDestinationEpoch: 5,
+      reason: "Cân bàn", requestId: "request-1" })).toEqual({ ok: false, error: "FLOOR_TABLE_CONTROL_V3_DISABLED" });
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it("keeps the exact orphan repair owner-gated and fail-closed", () => {

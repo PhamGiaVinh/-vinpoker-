@@ -25,9 +25,9 @@ async function barrier(name,condition){
 for(const canonical of [false,true]) for(const breakFirst of [true,false]){
  const prefix=randomUUID().slice(0,8);
  let fixture=readFileSync('tests/floorProduction/deferredMoveIntent.pg17.sql','utf8');
- // Unique stop after both rosters and active destination hand are prepared;
- // source revision also appears in optional metadata tests above this point.
- const marker=' SELECT revision INTO dr FROM public.table_sessions WHERE id=ds;';
+ // Explicit boundary after both rosters and active destination hand are prepared.
+ // Later read/reopen assertions may read the same revision, so SQL text is not a marker.
+ const marker=' -- DEFERRED_CONCURRENCY_FIXTURE_READY';
  assert.equal(fixture.split(marker).length,2,'fixture stop must be unique');
  fixture=fixture.replaceAll('f7290000',prefix).replace(marker,' RETURN;\n'+marker).replace('ROLLBACK;','COMMIT;');
  sql(fixture);

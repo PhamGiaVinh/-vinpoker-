@@ -35,6 +35,7 @@ import { OpenTableDialog } from "./OpenTableDialog";
 import { FloorRedrawDialogV1 } from "./FloorRedrawDialogV1";
 import { RestoreBustDialog } from "./RestoreBustDialog";
 import { FEATURES } from "@/lib/featureFlags";
+import { parseCanonicalCloseResult } from "./closeTableResponse";
 
 type Mutation = () => Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }>;
 type PendingTableAction = "close" | "break";
@@ -858,13 +859,24 @@ export function FloorTableMapPanelV3({
                  onClick={async (event) => {
                    event.preventDefault();
                    if (!selectedTable) return;
-                   const ok = await run("Đã đóng và chuyển người chơi.", () => v3.breakTournamentTable({
+                   const ok = await run((data) => data.break_pending === true
+                     ? "Đã lưu yêu cầu chuyển người. Bàn còn mở đến khi các lượt chuyển hoàn tất."
+                     : "Đã đóng và chuyển người chơi.", async () => {
+                     const result = await v3.breakTournamentTable({
                      tournamentTableId: selectedTable.tournamentTableId,
                      expectedRevision: selectedTable.sessionRevision,
                      requestId: crypto.randomUUID(),
                      drawMode: "fill_lowest_table",
                      planHash: breakPlan?.planHash,
-                   }));
+                     });
+                     if (result.ok === false || !v3.redrawSeatLockEnabled) return result;
+                     const receipt = parseCanonicalCloseResult(result.data, {
+                       tournamentTableId: selectedTable.tournamentTableId,
+                       tableSessionId: selectedTable.tableSessionId,
+                       activeSeatCount: selectedTable.seats.length,
+                     });
+                     return receipt.kind === "error" ? { ok: false as const, error: receipt.code } : result;
+                   });
                    if (ok) setPendingTableAction(null);
                  }}
               >
@@ -878,11 +890,21 @@ export function FloorTableMapPanelV3({
                  onClick={async (event) => {
                    event.preventDefault();
                    if (!selectedTable) return;
-                   const ok = await run("Đã đóng bàn và giải phóng bàn vật lý.", () => v3.closeTournamentTable({
+                   const ok = await run("Đã đóng bàn và giải phóng bàn vật lý.", async () => {
+                     const result = await v3.closeTournamentTable({
                      tournamentTableId: selectedTable.tournamentTableId,
                      expectedRevision: selectedTable.sessionRevision,
                      requestId: crypto.randomUUID(),
-                   }));
+                     });
+                     if (result.ok === false) return result;
+                     const receipt = parseCanonicalCloseResult(result.data, {
+                       tournamentTableId: selectedTable.tournamentTableId,
+                       tableSessionId: selectedTable.tableSessionId,
+                       activeSeatCount: 0,
+                     });
+                     return receipt.kind === "closed" ? result
+                       : { ok: false as const, error: receipt.kind === "error" ? receipt.code : "invalid_response" };
+                   });
                    if (ok) setPendingTableAction(null);
                  }}
               >

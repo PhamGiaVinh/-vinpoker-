@@ -7612,6 +7612,17 @@
     }
   ],
   "ownerGatedActiveAllowlist": [
+    {"version":"20270128000037","filename":"20270128000037_floor_legacy_close_session_fence_v1.sql","sha256":"13766d88de0765d7fdebb0edf89f250af2ecf34e226c2e2146148bd85e497c3c","domain":"floor-session-ticket-campaign"},
+    {"version":"20270128000038","filename":"20270128000038_floor_break_lowest_number_policy_v1.sql","sha256":"657c1db3b3773dad47f070aa1a5d4757dfe2b30077f602075499bd81814b4721","domain":"floor-session-ticket-campaign"},
+    {"version":"20270128000039","filename":"20270128000039_floor_break_ticket_audit_v1.sql","sha256":"451788264693a09342660306a58806853b269a2aca08c3415ce2506865359f4a","domain":"floor-session-ticket-campaign"},
+    {"version":"20270128000040","filename":"20270128000040_floor_break_balanced_plan_v1.sql","sha256":"360647f7766261b6f063af6efb07b5b003456f74f842ca035c1e8954dc570d38","domain":"floor-session-ticket-campaign"},
+    {"version":"20270128000041","filename":"20270128000041_floor_deferred_move_ticket_audit_v1.sql","sha256":"377269df73038faf401649c63de2790146d009635228793138a88511b3dc5ba8","domain":"floor-session-ticket-campaign"},
+    {"version":"20270128000042","filename":"20270128000042_floor_canonical_move_ticket_integrity_v1.sql","sha256":"70044e39df48a1515687d912eed1065d7f1c80b0e805a7418616a118a0cce28d","domain":"floor-session-ticket-campaign"},
+    {"version":"20270128000043","filename":"20270128000043_floor_move_exact_intent_v1.sql","sha256":"f545d9cd37e7a6d8a59ad2ee392e3f72c551d3da5441839b2523502dfc6ae7dd","domain":"floor-session-ticket-campaign"},
+    {"version":"20270128000044","filename":"20270128000044_floor_seat_ticket_read_v1.sql","sha256":"ac977694c020afba499abf360902129360aebc9873ec5d40791c85744c122d26","domain":"floor-session-ticket-campaign"},
+    {"version":"20270128000045","filename":"20270128000045_floor_seat_ticket_select_scope_v1.sql","sha256":"46bdb1ee2dc1ce684e766c1d762265453cfb0f440e7c86f1227c543e422b8e59","domain":"floor-session-ticket-campaign"},
+    {"version":"20270128000046","filename":"20270128000046_dealer_inventory_canonical_table_link_v1.sql","sha256":"70d5c8ace517321fb2a7ac0a26c7098619391fa2cdc504d7436a9d1225426358","domain":"floor-session-ticket-campaign"},
+    {"version":"20270128000047","filename":"20270128000047_floor_closed_session_attendance_v1.sql","sha256":"68f37a501ee80408770f437553295271198222804bc58e978d6296eb54e61ad0","domain":"floor-session-ticket-campaign"},
     {
       "version": "20270128000036",
       "filename": "20270128000036_floor_manual_entry_roundtrip_v1.sql",
