@@ -7612,6 +7612,8 @@
     }
   ],
   "ownerGatedActiveAllowlist": [
+    {"version":"20270128000053","filename":"20270128000053_chip_color_up_receipt_reconciliation_v1.sql","sha256":"3284dafe204a92bc33b57221d08093106074796d374a44a29aeeba883a2a0270","domain":"restore-chip-recovery-campaign"},
+    {"version":"20270128000052","filename":"20270128000052_floor_restore_receipt_reconciliation_v1.sql","sha256":"9629ee3543ef8eee2e5f97f61a9236cbdf383ace9fa39064d56e46ecc5d85de4","domain":"restore-chip-recovery-campaign"},
     {"version":"20270128000051","filename":"20270128000051_dealer_checkin_receipt_reconciliation_v1.sql","sha256":"d53efa3e45942142c0aaac8148e116272294b4b2ff1d871ae38f1a672642ff9d","domain":"dealer-checkin-recovery-campaign"},
     {"version":"20270128000037","filename":"20270128000037_floor_legacy_close_session_fence_v1.sql","sha256":"13766d88de0765d7fdebb0edf89f250af2ecf34e226c2e2146148bd85e497c3c","domain":"floor-session-ticket-campaign"},
     {"version":"20270128000038","filename":"20270128000038_floor_break_lowest_number_policy_v1.sql","sha256":"657c1db3b3773dad47f070aa1a5d4757dfe2b30077f602075499bd81814b4721","domain":"floor-session-ticket-campaign"},

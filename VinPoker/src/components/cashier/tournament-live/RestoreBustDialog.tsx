@@ -19,21 +19,30 @@ const messages: Record<string, string> = {
   actor_not_allowed: "Tài khoản không có quyền hoàn tác bust ở CLB này.",
 };
 
-export function RestoreBustDialog({ tournamentId, target, onClose, onRestored, actorId }: {
+type RestoreBustDialogProps = {
   tournamentId: string;
   target: { entryId: string; name: string; destination?: { tableId: string; seatNumber: number } } | null;
   onClose: () => void;
   onRestored: () => void;
   actorId: string | null;
-}) {
+};
+
+export function RestoreBustDialog(props: RestoreBustDialogProps) {
+  // A new actor/entry lifetime must not accept replies from a previous one,
+  // including actor A -> B -> A. Persisted requests remain actor scoped.
+  const scope = JSON.stringify([props.actorId, props.tournamentId, props.target?.entryId ?? null]);
+  return <ScopedRestoreBustDialog key={scope} {...props} scope={scope} />;
+}
+
+function ScopedRestoreBustDialog({ tournamentId, target, onClose, onRestored, actorId, scope }: RestoreBustDialogProps & { scope: string }) {
   const supabase = useSupabaseClient();
   const client = useMemo(() => createFloorTableControlV3Client(
     ((name, args) => (supabase.rpc as unknown as FloorTableControlV3Rpc)(name, args)),
   ), [supabase]);
   const attempts = useRef(new Map<string, RestoreIntent>());
-  const scope = `${actorId ?? ""}:${tournamentId}:${target?.entryId ?? ""}`;
-  const currentScope = useRef(scope);
-  currentScope.current = scope;
+  const storageKey = `vinpoker:restore-bust-pending:${scope}`;
+  const alive = useRef(false);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const [tables, setTables] = useState<FloorTournamentTableRoster[]>([]);
   const [stack, setStack] = useState<number | null>(null);
   const [tableId, setTableId] = useState("");
@@ -43,10 +52,32 @@ export function RestoreBustDialog({ tournamentId, target, onClose, onRestored, a
   const [error, setError] = useState<string | null>(null);
   const [verifiedScope, setVerifiedScope] = useState("");
   const [unresolved, setUnresolved] = useState(false);
+  const [journalBlocked, setJournalBlocked] = useState(false);
   const pending = useRef(false);
   useEffect(() => {
     let disposed = false;
     setTables([]); setStack(null); setTableId(""); setSeat(""); setError(null); setVerifiedScope("");
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      if (raw !== null) {
+        const saved = JSON.parse(raw);
+        const intent = saved?.intent;
+        if (saved.actorId !== actorId || saved.tournamentId !== tournamentId || !intent
+          || intent.entryId !== target?.entryId
+          || ![intent.toTournamentTableId, intent.expectedTableSessionId, intent.requestId].every((value) => typeof value === "string" && value.length > 0)
+          || !Number.isSafeInteger(intent.toSeatNumber) || intent.toSeatNumber < 1
+          || !Number.isSafeInteger(intent.expectedRevision) || intent.expectedRevision < 0
+          || !Number.isSafeInteger(intent.expectedControlEpoch) || intent.expectedControlEpoch < 0) {
+          throw new Error("restore_journal_invalid");
+        }
+        attempts.current.set(scope, intent);
+      }
+      setJournalBlocked(false);
+    } catch {
+      setJournalBlocked(true);
+      setError("Không xác minh được yêu cầu đã lưu. Chưa gửi thao tác mới; cần đối chiếu trước khi tiếp tục.");
+      return;
+    }
     setUnresolved(attempts.current.has(scope));
     if (!target || !actorId) return;
     setLoading(true);
@@ -67,33 +98,76 @@ export function RestoreBustDialog({ tournamentId, target, onClose, onRestored, a
       }).catch(() => { if (!disposed) setError("Không kết nối được server. Hãy đóng và mở lại để thử."); })
       .finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
-  }, [client, target, tournamentId, actorId]);
+  }, [client, target, tournamentId, actorId, scope, storageKey]);
   const table = tables.find((row) => row.tournamentTableId === tableId);
   const emptySeats = table ? Array.from({ length: table.maxSeats }, (_, i) => i + 1)
     .filter((n) => !table.seats.some((s) => s.seatNumber === n) && !table.seatLocks.some((s) => s.seatNumber === n)) : [];
+  function acceptReceipt(intent: RestoreIntent, value: unknown) {
+    const receipt = value as Record<string, unknown> | null;
+    if (!receipt || receipt.ok !== true || receipt.entry_id !== intent.entryId
+      || receipt.tournament_table_id !== intent.toTournamentTableId
+      || receipt.table_session_id !== intent.expectedTableSessionId
+      || receipt.seat_number !== intent.toSeatNumber
+      || typeof receipt.seat_id !== "string" || !receipt.seat_id
+      || typeof receipt.chip_count !== "number" || !Number.isSafeInteger(receipt.chip_count) || receipt.chip_count < 0
+      || typeof receipt.revision !== "number" || !Number.isSafeInteger(receipt.revision) || receipt.revision <= intent.expectedRevision) {
+      setError("Phản hồi chưa xác minh đúng entry và phiên bàn. Đang giữ nguyên yêu cầu để đối chiếu.");
+      return;
+    }
+    sessionStorage.removeItem(storageKey);
+    if (sessionStorage.getItem(storageKey) !== null) throw new Error("restore_journal_clear_failed");
+    attempts.current.delete(scope); setUnresolved(false); onRestored(); onClose();
+  }
+  async function reconcile() {
+    const intent = attempts.current.get(scope);
+    if (!intent || pending.current || journalBlocked) return;
+    pending.current = true; setBusy(true); setError(null);
+    try {
+      const response = await client.getRestoreReceipt(intent);
+      if (!alive.current) return;
+      if (response.ok === false) {
+        setError(messages[response.error] ?? `Chưa đối chiếu được yêu cầu (${response.error}).`);
+        return;
+      }
+      const data = response.data as Record<string, unknown> | null;
+      if (data?.ok === false) { setError("Server chưa cho phép đối chiếu yêu cầu. Đang giữ nguyên mã."); return; }
+      if (data?.status === "committed") acceptReceipt(intent, data.result);
+      else setError("Chưa tìm thấy receipt đã commit. Không kết luận yêu cầu thất bại; gửi lại chỉ dùng nguyên mã và dữ liệu.");
+    } catch {
+      if (alive.current) setError("Không đối chiếu được kết quả. Đang giữ nguyên yêu cầu; chưa tạo thao tác mới.");
+    } finally { pending.current = false; if (alive.current) setBusy(false); }
+  }
   async function restore() {
     const prior = attempts.current.get(scope);
-    if (pending.current || !target || !actorId || (!prior && (verifiedScope !== scope || !table || stack === null || !emptySeats.includes(Number(seat))))) return;
-    const capturedScope = scope;
+    if (pending.current || journalBlocked || !target || !actorId || (!prior && (verifiedScope !== scope || !table || stack === null || !emptySeats.includes(Number(seat))))) return;
     const key = scope;
     const intent = prior ?? {
       entryId: target.entryId, toTournamentTableId: table.tournamentTableId, toSeatNumber: Number(seat),
       expectedRevision: table.sessionRevision, expectedControlEpoch: table.controlEpoch, requestId: crypto.randomUUID(),
       expectedTableSessionId: table.tableSessionId,
     };
+    try {
+      const serialized = JSON.stringify({ actorId, tournamentId, intent });
+      sessionStorage.setItem(storageKey, serialized);
+      if (sessionStorage.getItem(storageKey) !== serialized) throw new Error("restore_journal_unverified");
+    } catch {
+      setError("Không lưu được mã yêu cầu an toàn. Chưa gửi hoàn tác bust; hãy kiểm tra bộ nhớ trình duyệt.");
+      return;
+    }
     attempts.current.set(key, intent); setUnresolved(true);
     pending.current = true; setBusy(true); setError(null);
     try {
       const result = await client.restoreBustedPlayer(intent);
-      if (currentScope.current !== capturedScope) return;
+      if (!alive.current) return;
       if (result.ok === false) {
-        if (result.error in messages) { attempts.current.delete(key); setUnresolved(false); }
+        // A rejection after an unknown attempt need not prove the original
+        // transaction did not commit. Keep the exact intent for reconciliation.
         setError(messages[result.error] ?? `Chưa xác nhận hoàn tác (${result.error}). Thử lại sẽ dùng cùng mã yêu cầu.`); return;
       }
-      attempts.current.delete(key); setUnresolved(false); onRestored(); onClose();
+      acceptReceipt(intent, result.data);
     } catch {
-      if (currentScope.current === capturedScope) setError("Chưa biết server đã hoàn tất hay chưa. Thử lại giữ nguyên mã yêu cầu; không tạo thao tác mới.");
-    } finally { pending.current = false; setBusy(false); }
+      if (alive.current) setError("Chưa biết server đã hoàn tất hay chưa. Thử lại giữ nguyên mã yêu cầu; không tạo thao tác mới.");
+    } finally { pending.current = false; if (alive.current) setBusy(false); }
   }
   return <Dialog open={target !== null} onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
     <DialogContent className="max-w-md">
@@ -116,7 +190,10 @@ export function RestoreBustDialog({ tournamentId, target, onClose, onRestored, a
         </label>
       </>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <Button className="min-h-12" disabled={busy || (!unresolved && (loading || verifiedScope !== scope || stack === null || !table || !seat))} onClick={() => void restore()}>
+      {unresolved && <Button variant="outline" className="min-h-12" disabled={busy || journalBlocked} onClick={() => void reconcile()}>
+        Đối chiếu yêu cầu
+      </Button>}
+      <Button className="min-h-12" disabled={busy || journalBlocked || (!unresolved && (loading || verifiedScope !== scope || stack === null || !table || !seat))} onClick={() => void restore()}>
         {busy ? "Đang xác nhận…" : unresolved ? "Kiểm tra lại yêu cầu đã gửi" : "Xác nhận hoàn tác bust"}
       </Button>
     </DialogContent>

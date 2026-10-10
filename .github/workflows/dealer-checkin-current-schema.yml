@@ -8,12 +8,19 @@ on:
       - 'VinPoker/tests/dealerSwing/checkin*'
       - 'VinPoker/supabase/migrations/20270128000051_dealer_checkin_receipt_reconciliation_v1.sql'
       - 'VinPoker/scripts/ops/dealer-checkin-51-*'
+      - 'VinPoker/scripts/ops/restore-chip-52-53-*'
+      - '.github/workflows/restore-chip-52-53-protected-apply.yml'
+      - 'VinPoker/supabase/migrations/20270128000052_floor_restore_receipt_reconciliation_v1.sql'
+      - 'VinPoker/src/components/chip-ops/ColorUpTab*'
+      - 'VinPoker/src/components/cashier/tournament-live/RestoreBustDialog*'
       - 'VinPoker/scripts/ops/fixtures/dealer-checkin-14-ledger.json'
       - '.github/workflows/dealer-checkin-51-protected-apply.yml'
       - 'VinPoker/src/components/cashier/DealerSwingTab.tsx'
       - 'VinPoker/supabase/migrations/20270128000016_chip_color_up_serialized_integrity_v1.sql'
       - 'VinPoker/tests/chipOps/colorUpCurrentSchema.pg17.sql'
       - 'VinPoker/tests/chipOps/colorUpIntegrity.pg17.test.mjs'
+      - 'VinPoker/tests/chipOps/colorUpReceipt.pg17.sql'
+      - 'VinPoker/supabase/migrations/20270128000053_chip_color_up_receipt_reconciliation_v1.sql'
       - 'VinPoker/supabase/migrations/20270128000017_dealer_operational_inventory_exact_session_v1.sql'
       - 'VinPoker/tests/dealerSwing/operationalInventory*'
       - 'VinPoker/tests/dealerSwing/closedSessionAttendance.currentSchema.mjs'
@@ -136,6 +143,8 @@ jobs:
         run: |
           node --test tests/dealerSwing/checkinHandler.repro.mjs
           node --test scripts/ops/dealer-checkin-51-protected-apply.test.mjs scripts/ops/dealer-checkin-51-atomic-pg.test.mjs
+          node --test scripts/ops/restore-chip-52-53-release-plan.test.mjs scripts/ops/restore-chip-52-53-protected-apply.test.mjs scripts/ops/restore-chip-52-53-atomic-pg.test.mjs
+          node node_modules/vitest/vitest.mjs run src/components/chip-ops/ColorUpTab.test.tsx src/components/cashier/tournament-live/RestoreBustDialog.test.tsx src/lib/floorTableControlV3.test.ts --maxWorkers=1 --minWorkers=1
           node node_modules/vitest/vitest.mjs run tests/dealerSwing/checkinReactLifecycle.test.tsx tests/dealerSwing/attentionCoverage.test.tsx tests/dealerSwing/floorV3InventoryConvergence.test.ts tests/dealerSwing/closeDealerTablesRpcLineage.test.ts --maxWorkers=1 --minWorkers=1
       - name: Backup worker rejects unauthenticated privileged execution
         working-directory: VinPoker
@@ -196,12 +205,15 @@ jobs:
         run: |
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000015_floor_restore_bust_integrity_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000016_chip_color_up_serialized_integrity_v1.sql
+          createdb -T "$PGDATABASE" vinpoker_ops_restore_chip_atomic
+          PGDATABASE=vinpoker_ops_restore_chip_atomic RESTORE_CHIP_PG_TEST=1 node --test scripts/ops/restore-chip-52-53-atomic-pg.test.mjs
           psql -X -v ON_ERROR_STOP=1 -f tests/chipOps/colorUpCurrentSchema.pg17.sql
       - name: Chip concurrency in isolated minimal fixture (not schema parity evidence)
         working-directory: VinPoker
         run: |
           createdb vinpoker_chip_concurrency
           PGDATABASE=vinpoker_chip_concurrency node --test tests/chipOps/colorUpIntegrity.pg17.test.mjs
+          PGDATABASE=vinpoker_chip_concurrency psql -X -v ON_ERROR_STOP=1 -f tests/chipOps/colorUpReceipt.pg17.sql
       - name: Exact-session dealer inventory and true-overlap assignment
         working-directory: VinPoker
         run: |
