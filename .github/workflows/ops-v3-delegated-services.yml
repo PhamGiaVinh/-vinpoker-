@@ -51,6 +51,9 @@ jobs:
           npx vitest run
           tests/opsDelegatedServices/delegatedServices.contract.test.ts
           src/ops/registry/opsModuleRegistry.test.ts
+          src/ops/chip-ops/OpsChipOpsWorkspace.test.tsx
+          src/ops/chip-ops/chipOpsReadAdapter.test.ts
+          src/ops/chip-ops/MultiDayBaggingPanel.test.tsx
           --maxWorkers=1 --minWorkers=1
 
       - name: Lint targeted source and tests
