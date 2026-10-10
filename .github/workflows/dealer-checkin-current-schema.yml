@@ -3,6 +3,11 @@ on:
   pull_request:
     paths:
       - '.github/workflows/dealer-checkin-current-schema.yml'
+      - '.github/workflows/tracker-card-56-protected-apply.yml'
+      - 'VinPoker/scripts/ops/tracker-card-56-*'
+      - 'VinPoker/supabase/migrations/20270128000056_tracker_card_batch_integrity_v1.sql'
+      - 'VinPoker/tests/trackerVoice/cardBatchIntegrity*'
+      - 'VinPoker/tests/trackerVoice/cardBoardIntegrity*'
       - 'VinPoker/scripts/ops/restore-schema-test-baseline.mjs'
       - 'VinPoker/supabase/migrations/20270128000014_dealer_checkin_club_shift_receipt_v1.sql'
       - 'VinPoker/tests/dealerSwing/checkin*'
@@ -332,6 +337,24 @@ jobs:
           PGDATABASE=vinpoker_ops_off_fence psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000022_dealer_assignment_off_commit_fence_v1.sql
           PGDATABASE=vinpoker_ops_off_fence psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/offCommit.pg17.sql
           PGDATABASE=vinpoker_ops_off_fence node tests/dealerSwing/offCommit.concurrent.mjs
+      - name: Card integrity56 on qualified captured schema with real roles and triggers
+        working-directory: VinPoker
+        env:
+          PGDATABASE: vinpoker_ops_card56_20261011
+        run: |
+          createdb "$PGDATABASE"
+          node scripts/ops/restore-schema-test-baseline.mjs
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000013_floor_mode_request_safe_boundary_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000056_tracker_card_batch_integrity_v1.sql
+          node tests/trackerVoice/cardBatchIntegrity.currentSchema.mjs
+          node tests/trackerVoice/cardBatchIntegrity.currentSchema.mjs --voice-holes
+          psql -X -v ON_ERROR_STOP=1 -f tests/trackerVoice/cardBatchIntegrity.readonly-postcheck.sql
+          createdb --template="$PGDATABASE" vinpoker_ops_card56_overlap_20261011
+          PGDATABASE=vinpoker_ops_card56_overlap_20261011 node tests/trackerVoice/cardBatchIntegrity.currentSchema.mjs --fixture-only
+          PGDATABASE=vinpoker_ops_card56_overlap_20261011 node tests/trackerVoice/cardBatchIntegrity.concurrent.mjs
+          node --test scripts/ops/tracker-card-56-protected-apply.test.mjs
+          createdb --template="$PGDATABASE" vinpoker_ops_card56_atomic_20261011
+          PGDATABASE=vinpoker_ops_card56_atomic_20261011 CARD56_PG_TEST=1 node --test scripts/ops/tracker-card-56-atomic-pg.test.mjs
       - name: Private backup cron contract with isolated network doubles (not live scheduler proof)
         working-directory: VinPoker
         run: |
