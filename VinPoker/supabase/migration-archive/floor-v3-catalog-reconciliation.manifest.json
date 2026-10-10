@@ -7612,6 +7612,7 @@
     }
   ],
   "ownerGatedActiveAllowlist": [
+    {"version":"20270128000056","filename":"20270128000056_tracker_card_batch_integrity_v1.sql","sha256":"bfdd54961f66da91b54fafa825926c9f6b362917fb8b7b315c897c676d4bf4e1","domain":"tracker-card-integrity-campaign"},
     {"version":"20270128000055","filename":"20270128000055_chip_pending_cancellation_v1.sql","sha256":"c78099b9a34d5a7887f7d4b01901579ac39f3609c24836ba75ed4b7774cdc052","domain":"restore-chip-recovery-campaign"},
     {"version":"20270128000054","filename":"20270128000054_restore_pending_cancellation_v1.sql","sha256":"db398f93e1d3f26ebca82f329ca8bbe6393cb3c6ba36bc2ab41912136f15312e","domain":"restore-chip-recovery-campaign"},
     {"version":"20270128000053","filename":"20270128000053_chip_color_up_receipt_reconciliation_v1.sql","sha256":"3284dafe204a92bc33b57221d08093106074796d374a44a29aeeba883a2a0270","domain":"restore-chip-recovery-campaign"},

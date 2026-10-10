@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - '.github/workflows/dealer-checkin-current-schema.yml'
+      - 'VinPoker/supabase/migrations/20270128000056_tracker_card_batch_integrity_v1.sql'
+      - 'VinPoker/tests/trackerVoice/cardBatchIntegrity*'
+      - 'VinPoker/tests/trackerVoice/cardBoardIntegrity*'
       - 'VinPoker/scripts/ops/restore-schema-test-baseline.mjs'
       - 'VinPoker/supabase/migrations/20270128000014_dealer_checkin_club_shift_receipt_v1.sql'
       - 'VinPoker/tests/dealerSwing/checkin*'
@@ -332,6 +335,16 @@ jobs:
           PGDATABASE=vinpoker_ops_off_fence psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000022_dealer_assignment_off_commit_fence_v1.sql
           PGDATABASE=vinpoker_ops_off_fence psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/offCommit.pg17.sql
           PGDATABASE=vinpoker_ops_off_fence node tests/dealerSwing/offCommit.concurrent.mjs
+      - name: Card integrity56 on qualified captured schema with real roles and triggers
+        working-directory: VinPoker
+        env:
+          PGDATABASE: vinpoker_ops_card56_20261011
+        run: |
+          createdb "$PGDATABASE"
+          node scripts/ops/restore-schema-test-baseline.mjs
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000056_tracker_card_batch_integrity_v1.sql
+          node tests/trackerVoice/cardBatchIntegrity.currentSchema.mjs
+          psql -X -v ON_ERROR_STOP=1 -f tests/trackerVoice/cardBatchIntegrity.readonly-postcheck.sql
       - name: Private backup cron contract with isolated network doubles (not live scheduler proof)
         working-directory: VinPoker
         run: |
