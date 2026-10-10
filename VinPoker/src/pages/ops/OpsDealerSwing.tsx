@@ -149,7 +149,7 @@ export default function OpsDealerSwing() {
 
   return (
     <DealerSwingClubView
-      key={activeClubId}
+      key={JSON.stringify([user.id, activeClubId])}
       activeClubId={activeClubId}
       clubs={eligibleClubs}
       onSelectClub={setActiveClubId}
@@ -303,6 +303,11 @@ function DealerSwingClubView({
   const reloadAll = () => { tablesQ.refetch(); asgQ.refetch(); rosterQ.refetch(); outQ.refetch(); };
   const runAction = async (fn: () => Promise<void>) => {
     if (!LIVE) { toast.warning("Bản dựng này đang ở chế độ chỉ xem."); return; }
+    if (tablesQ.loading || asgQ.loading || rosterQ.loading || outQ.loading
+      || tablesQ.error || asgQ.error || rosterQ.error || outQ.error) {
+      toast.warning("Dữ liệu Dealer Swing chưa được xác minh. Hãy tải lại trước khi thao tác.");
+      return;
+    }
     if (busyRef.current) return;                   // chống double-tap (ref đồng bộ)
     busyRef.current = true; setBusy(true);
     try { await fn(); } catch (e: any) { toast.error(e?.message ?? "Lỗi mạng"); } finally { busyRef.current = false; setBusy(false); }
@@ -571,6 +576,14 @@ function DealerSwingClubView({
   });
 
   const activeClub = clubs.find((club) => club.id === activeClubId)!;
+
+  if (tablesQ.error || asgQ.error || rosterQ.error || outQ.error) return (
+    <div role="alert" className="ios-in space-y-3 pt-2">
+      <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không xác minh được dữ liệu Dealer Swing" sub="Không dùng dữ liệu cũ để gán, xoay hoặc kết ca dealer. Hãy thử tải lại." onBack={() => navigate("/")} />
+      <button className="ios-press-sm rounded-full px-4 py-2 text-[#c9a86a]" onClick={reloadAll}>Thử lại</button>
+    </div>
+  );
+  if (tablesQ.loading || asgQ.loading || rosterQ.loading || outQ.loading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang xác minh dữ liệu Dealer Swing…" sub="Chờ xác minh bàn, assignment và ca dealer trước khi thao tác." onBack={() => navigate("/")} />;
 
   return (
     <div className="ios-in space-y-4 pt-1">

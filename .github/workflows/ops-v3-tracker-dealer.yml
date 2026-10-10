@@ -23,6 +23,13 @@ on:
       - "VinPoker/src/components/NotificationBell.tsx"
       - "VinPoker/src/components/NotificationBell.test.tsx"
       - "VinPoker/src/pages/Notifications.tsx"
+      - "VinPoker/src/hooks/useDealerSwing.ts"
+      - "VinPoker/src/hooks/useDealerSwing.readScope.test.tsx"
+      - "VinPoker/src/components/cashier/DealerSwingTab.tsx"
+      - "VinPoker/src/components/cashier/DealerSwingTab.readState.test.tsx"
+      - "VinPoker/src/components/cashier/dealer-swing/DealerSwingStopControl*"
+      - "VinPoker/src/pages/ops/OpsToday*"
+      - "VinPoker/src/pages/ops/OpsDealerSwing*"
       - "VinPoker/tests/floorProduction/createdTournamentSelection.render.test.tsx"
       - "VinPoker/tsconfig.ops-v3-tracker-dealer.json"
   workflow_dispatch:
@@ -69,6 +76,11 @@ jobs:
           src/pages/TrackerDashboard.test.tsx
           src/hooks/useNotifications.test.tsx
           src/components/NotificationBell.test.tsx
+          src/hooks/useDealerSwing.readScope.test.tsx
+          src/components/cashier/DealerSwingTab.readState.test.tsx
+          src/components/cashier/dealer-swing/DealerSwingStopControl.test.tsx
+          src/pages/ops/OpsToday.readState.test.tsx
+          src/pages/ops/OpsDealerSwing.readState.test.tsx
           tests/floorProduction/createdTournamentSelection.render.test.tsx
           --maxWorkers=1 --minWorkers=1
 
@@ -89,6 +101,12 @@ jobs:
           src/components/NotificationBell.tsx
           src/components/NotificationBell.test.tsx
           src/pages/Notifications.tsx
+          src/components/cashier/dealer-swing/DealerSwingStopControl.tsx
+          src/components/cashier/dealer-swing/DealerSwingStopControl.test.tsx
+          src/hooks/useDealerSwing.readScope.test.tsx
+          src/components/cashier/DealerSwingTab.readState.test.tsx
+          src/pages/ops/OpsToday.readState.test.tsx
+          src/pages/ops/OpsDealerSwing.readState.test.tsx
 
       - name: Type-check Tracker and Dealer Control workspaces
         working-directory: VinPoker

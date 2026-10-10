@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { useLiveClock } from "@/hooks/useLiveClock";
 import { FEATURES } from "@/lib/featureFlags";
 import {
@@ -167,12 +168,22 @@ function useRealtimeQuery<T>(
   options: UseRealtimeQueryOptions<T>
 ): { data: T[]; loading: boolean; error: string | null; refetch: () => void } {
   const { queryFn, realtimeTables, clubIds, pollFallbackMs = 60_000 } = options;
+  const { user } = useAuth();
+  const actorId = user?.id ?? null;
 
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const pollTimerRef = useRef<number | null>(null);
+  const clubsKey = JSON.stringify([...clubIds].sort());
+  const tablesKey = JSON.stringify([...realtimeTables].sort());
+  const scopeKey = JSON.stringify([actorId, clubsKey]);
+  const scopeRef = useRef({ key: scopeKey });
+  if (scopeRef.current.key !== scopeKey) scopeRef.current = { key: scopeKey };
+  const scope = scopeRef.current;
+  const [snapshotScope, setSnapshotScope] = useState<typeof scope | null>(null);
+  const snapshotScopeRef = useRef<typeof scope | null>(null);
+  const lifetime = useRef({ active: false, generation: 0 });
+  const subscriptionGeneration = useRef(0);
   const generationRef = useRef(0);
   const queryFnRef = useRef<() => Promise<any>>(queryFn);
   /** Unique per-hook-instance id to prevent channel name collision when
@@ -181,35 +192,68 @@ function useRealtimeQuery<T>(
   const instanceId = useRef(Math.random().toString(36).slice(2, 8)).current;
   useEffect(() => { queryFnRef.current = queryFn; }, [queryFn]);
 
+  useEffect(() => {
+    const current = lifetime.current;
+    current.active = true;
+    current.generation += 1;
+    return () => { current.active = false; current.generation += 1; };
+  }, []);
+
   const refetch = useCallback(async () => {
+    if (!lifetime.current.active || !actorId) return;
+    const capturedScope = scopeRef.current;
+    const capturedLifetime = lifetime.current.generation;
     const gen = ++generationRef.current;
+    const isCurrent = () => lifetime.current.active
+      && lifetime.current.generation === capturedLifetime
+      && capturedScope === scopeRef.current && gen === generationRef.current;
+    setLoading(snapshotScopeRef.current !== capturedScope);
     try {
       const result = await queryFnRef.current();
-      if (gen !== generationRef.current) return;
+      if (!isCurrent()) return;
       const rows = Array.isArray(result) ? result : result?.data;
       const error = Array.isArray(result) ? null : result?.error;
       if (error) {
         const msg = (error as any)?.message || JSON.stringify(error);
         console.error("[useRealtimeQuery] error:", msg);
         setError(msg);
-        setData([]);
       } else {
         setError(null);
         setData((rows ?? []) as T[]);
       }
+      setSnapshotScope(capturedScope);
+      snapshotScopeRef.current = capturedScope;
     } catch (e) {
-      if (gen !== generationRef.current) return;
+      if (!isCurrent()) return;
       const msg = (e as Error)?.message || "Unknown error";
       console.error("[useRealtimeQuery] threw:", msg);
       setError(msg);
-      setData([]);
+      setSnapshotScope(capturedScope);
+      snapshotScopeRef.current = capturedScope;
     } finally {
-      if (gen === generationRef.current) setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, []);
+  }, [actorId]);
 
   useEffect(() => {
-    if (clubIds.length === 0) {
+    let active = true;
+    const canRefresh = () => document.visibilityState !== "hidden" && navigator.onLine !== false;
+    let invalidationTimer: number | undefined;
+    const invalidate = () => {
+      if (!active || invalidationTimer !== undefined) return;
+      invalidationTimer = window.setTimeout(() => {
+        invalidationTimer = undefined;
+        if (active && canRefresh()) void refetch();
+      }, 100);
+    };
+    const selectedClubs: string[] = JSON.parse(clubsKey);
+    const selectedTables: string[] = JSON.parse(tablesKey);
+    generationRef.current += 1;
+    setData([]);
+    setError(null);
+    setSnapshotScope(null);
+    snapshotScopeRef.current = null;
+    if (!actorId || selectedClubs.length === 0) {
       generationRef.current += 1;
       setData([]);
       setError(null);
@@ -219,11 +263,11 @@ function useRealtimeQuery<T>(
 
     refetch();
 
-    const ids = [...clubIds].sort().join("+");
-    const tables = [...realtimeTables].sort().join("+");
-    const channel = supabase.channel(`swing:${tables}:${ids}:${instanceId}`);
+    const ids = selectedClubs.join("+");
+    const tables = selectedTables.join("+");
+    const channel = supabase.channel(`swing:${tables}:${ids}:${instanceId}:${++subscriptionGeneration.current}`);
 
-    for (const table of realtimeTables) {
+    for (const table of selectedTables) {
       channel.on(
         "postgres_changes",
         {
@@ -232,35 +276,43 @@ function useRealtimeQuery<T>(
           table,
         },
         () => {
-          refetch();
+          invalidate();
         }
       );
     }
 
     channel.subscribe((status) => {
       if (status === "SUBSCRIBED") {
-        console.debug("[useRealtimeQuery] Realtime connected:", realtimeTables);
+        console.debug("[useRealtimeQuery] Realtime connected:", selectedTables);
       }
       if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
         console.warn("[useRealtimeQuery] Realtime error, falling back to poll");
       }
     });
 
-    channelRef.current = channel;
-
-    pollTimerRef.current = window.setInterval(refetch, pollFallbackMs);
+    const onResume = () => { if (canRefresh()) invalidate(); };
+    document.addEventListener("visibilitychange", onResume);
+    window.addEventListener("online", onResume);
+    const timer = window.setInterval(() => { if (active && canRefresh()) void refetch(); }, pollFallbackMs);
 
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-      }
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-      }
+      active = false;
+      generationRef.current += 1;
+      supabase.removeChannel(channel);
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onResume);
+      window.removeEventListener("online", onResume);
+      if (invalidationTimer !== undefined) window.clearTimeout(invalidationTimer);
     };
-  }, [[...clubIds].sort().join(","), [...realtimeTables].sort().join(",")]);
+  }, [actorId, clubsKey, tablesKey, instanceId, pollFallbackMs, refetch]);
 
-  return { data, loading, error, refetch };
+  const currentSnapshot = snapshotScope === scope;
+  return {
+    data: currentSnapshot ? data : [],
+    loading: Boolean(actorId) && clubIds.length > 0 && (!currentSnapshot || loading),
+    error: currentSnapshot ? error : null,
+    refetch,
+  };
 }
 
 export function useCheckedInDealers(clubIds: string[]) {
