@@ -8,6 +8,9 @@ on:
       - 'VinPoker/supabase/migrations/20270128000056_tracker_card_batch_integrity_v1.sql'
       - 'VinPoker/tests/trackerVoice/cardBatchIntegrity*'
       - 'VinPoker/tests/trackerVoice/cardBoardIntegrity*'
+      - 'VinPoker/supabase/migrations/20270128000057_dealer_pt_policy_tenant_integrity_v1.sql'
+      - 'VinPoker/tests/dealerSwing/accrualTenant*'
+      - 'VinPoker/scripts/ops/dealer-policy-57-*'
       - 'VinPoker/scripts/ops/restore-schema-test-baseline.mjs'
       - 'VinPoker/supabase/migrations/20270128000014_dealer_checkin_club_shift_receipt_v1.sql'
       - 'VinPoker/tests/dealerSwing/checkin*'
@@ -355,6 +358,17 @@ jobs:
           node --test scripts/ops/tracker-card-56-protected-apply.test.mjs
           createdb --template="$PGDATABASE" vinpoker_ops_card56_atomic_20261011
           PGDATABASE=vinpoker_ops_card56_atomic_20261011 CARD56_PG_TEST=1 node --test scripts/ops/tracker-card-56-atomic-pg.test.mjs
+      - name: Dealer policy57 tenant boundary and committed overlap on qualified schema
+        working-directory: VinPoker
+        run: |
+          node --test scripts/ops/dealer-policy-57-protected-apply.test.mjs
+          PGDATABASE=vinpoker_ops_card56_overlap_20261011 psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000057_dealer_pt_policy_tenant_integrity_v1.sql
+          PGDATABASE=vinpoker_ops_card56_overlap_20261011 psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/accrualTenant.pg17.sql
+          PGDATABASE=vinpoker_ops_card56_overlap_20261011 psql -X -v ON_ERROR_STOP=1 -f tests/dealerSwing/accrualTenant.readonly-postcheck.sql
+          createdb --template=vinpoker_ops_card56_overlap_20261011 vinpoker_ops_policy57_overlap_20261011
+          PGDATABASE=vinpoker_ops_policy57_overlap_20261011 node tests/dealerSwing/accrualTenant.concurrent.mjs
+          createdb --template=vinpoker_ops_card56_overlap_20261011 vinpoker_ops_policy57_atomic_20261011
+          PGDATABASE=vinpoker_ops_policy57_atomic_20261011 POLICY57_PG_TEST=1 node --test scripts/ops/dealer-policy-57-atomic-pg.test.mjs
       - name: Private backup cron contract with isolated network doubles (not live scheduler proof)
         working-directory: VinPoker
         run: |
