@@ -27,6 +27,15 @@ export function loadPackage(sourceRoot=root){
   return {version,name,hash,filename,sql};
  });
 }
+export function baseline36Statements(){
+ const sql=canonicalSqlText(readFileSync(resolve(root,'supabase/migrations/20270128000036_floor_manual_entry_roundtrip_v1.sql'),'utf8'));
+ if(createHash('sha256').update(sql).digest('hex')!=='306474110038315a5477b5e712067c831003b26cec60fc34375896c87baa05d5')throw Error('Baseline36 source drift');
+ // Exact reviewed source segmentation matches the six live CLI receipt hashes.
+ const parts=sql.split(/(?<=;)\n(?=SET LOCAL|DO |COMMIT;)/).map(x=>x.trim().replace(/;$/,''));
+ if(parts.length!==6||parts.some(x=>x.includes('$baseline36$')))throw Error('Baseline36 receipt shape');
+ return parts;
+}
+export function baseline36ArraySql(){return `ARRAY[${baseline36Statements().map(x=>`$baseline36$${x}$baseline36$`).join(',')}]::text[]`;}
 export function atomicSql(item){
  const canonical=loadPackage().find(x=>x.version===item.version);
  if(!canonical||canonical.sql!==item.sql||canonical.name!==item.name||canonical.hash!==item.hash)throw Error('Not exact allowlist entry');
@@ -36,9 +45,12 @@ export function atomicSql(item){
  const [suffix,previousName,previousHash]=index===0
   ? ['36','floor_manual_entry_roundtrip_v1','306474110038315a5477b5e712067c831003b26cec60fc34375896c87baa05d5']
   : entries[index-1];
+ const receiptPredicate=index===0
+  ? `cardinality(statements)=6 AND ARRAY(SELECT replace(replace(s,E'\\r\\n',E'\\n'),E'\\r',E'\\n') FROM unnest(statements) WITH ORDINALITY AS x(s,n) ORDER BY n)=${baseline36ArraySql()}`
+  : `cardinality(statements)=1 AND encode(extensions.digest(convert_to(replace(replace(statements[1],E'\\r\\n',E'\\n'),E'\\r',E'\\n'),'UTF8'),'sha256'),'hex')='${previousHash}'`;
  const guard=`SET LOCAL lock_timeout='5s';\nSET LOCAL statement_timeout='120s';\nSELECT pg_advisory_xact_lock(280000,3747);\nDO $floor_37_47_guard$ BEGIN
  IF EXISTS(SELECT 1 FROM supabase_migrations.schema_migrations WHERE version='${item.version}' OR name='${item.name}') THEN RAISE EXCEPTION 'floor_package_receipt_exists_stop'; END IF;
- IF NOT EXISTS(SELECT 1 FROM supabase_migrations.schema_migrations WHERE version='202701280000${suffix}' AND name='${previousName}' AND cardinality(statements)=1 AND encode(extensions.digest(convert_to(replace(replace(statements[1],E'\\r\\n',E'\\n'),E'\\r',E'\\n'),'UTF8'),'sha256'),'hex')='${previousHash}') THEN RAISE EXCEPTION 'floor_package_predecessor_drift'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM supabase_migrations.schema_migrations WHERE version='202701280000${suffix}' AND name='${previousName}' AND ${receiptPredicate}) THEN RAISE EXCEPTION 'floor_package_predecessor_drift'; END IF;
  END $floor_37_47_guard$;\n`;
  const receipt=`INSERT INTO supabase_migrations.schema_migrations(version,name,statements) VALUES('${item.version}','${item.name}',ARRAY[${tag}${item.sql}${tag}]::text[]);\n`;
  return item.sql.slice(0,scan.insertAfterBegin)+'\n'+guard+item.sql.slice(scan.insertAfterBegin,scan.insertBeforeCommit)+receipt+item.sql.slice(scan.insertBeforeCommit);

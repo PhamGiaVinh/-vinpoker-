@@ -4,7 +4,8 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {loadPackage,atomicSql} from './floor-37-47-release-plan.mjs';
+import {loadPackage,atomicSql,baseline36Statements} from './floor-37-47-release-plan.mjs';
+import {createHash} from 'node:crypto';
 import {scanMigrationSource} from './ops-1359-release-gate.mjs';
 test('exact eleven-entry ordered allowlist, no historical replay',()=>{
  const items=loadPackage();
@@ -15,11 +16,15 @@ test('exact eleven-entry ordered allowlist, no historical replay',()=>{
   assert.equal(shape.mode,'outer-transaction');
   assert.equal((sql.match(/INSERT INTO supabase_migrations.schema_migrations/g)||[]).length,1);
   assert.ok(sql.indexOf('floor_package_receipt_exists_stop')<sql.indexOf('INSERT INTO supabase_migrations'));
-  assert.match(sql,/cardinality\(statements\)=1/);
+  assert.ok(sql.includes(`cardinality(statements)=${item.version.endsWith('37')?6:1}`));
   assert.match(sql,/floor_package_predecessor_drift/);
   assert.match(sql,/pg_advisory_xact_lock\(280000,3747\)/);
   assert.ok(sql.slice(shape.insertAfterBegin,shape.insertBeforeCommit).includes('INSERT INTO supabase_migrations'));
  }
+});
+test('baseline36 split statements match each independently observed live hash',()=>{
+ assert.deepEqual(baseline36Statements().map(x=>createHash('sha256').update(x).digest('hex')),[
+ 'b38a1894c0af0e31cd1e63bfd5dbda8af09ccf1ea34180b1e973420b15f2134f','7596f02d47ffbe91c986fc1c3b0e2032254efa50443bebcf654842bc902a1957','8c8042e2ec87518d4078440b876ad478f17373f61718842f440be65945ddfe5f','2ccfb17806c057f7ccb4e4255ed45b1b08ca5629ad14d236a52ced2289a90baf','32d15f0c19325ba0178cc0adc8c9a5a2b8d33d75059254ce90dabc7b7133e122','79663c1d3b43ceaf9ee728e501c64b57ae2e4d6cb36ff5c65eddcda1de27342f']);
 });
 test('reject tampered SQL, hash, identity and outside-package entry',()=>{
  const item=loadPackage()[0];

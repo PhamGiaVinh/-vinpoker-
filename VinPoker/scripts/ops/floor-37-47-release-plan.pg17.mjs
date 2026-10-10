@@ -4,7 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {readFileSync,readdirSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {canonicalSqlText} from './ops-1359-release-gate.mjs';
-import {loadPackage,atomicSql} from './floor-37-47-release-plan.mjs';
+import {loadPackage,atomicSql,baseline36ArraySql} from './floor-37-47-release-plan.mjs';
 assert.equal(process.env.PGHOST,'127.0.0.1');
 assert.ok(process.env.PGDATABASE?.startsWith('vinpoker_ops_'));
 const database=`vinpoker_ops_atomic_${randomUUID().replaceAll('-','').slice(0,12)}`;
@@ -22,11 +22,25 @@ for(const filename of readdirSync('supabase/migrations').filter(f=>/^20270128000
  if(n<13||n>36||[20,21].includes(n))continue;
  query(canonicalSqlText(readFileSync(`supabase/migrations/${filename}`,'utf8')));
 }
-const prior=canonicalSqlText(readFileSync('supabase/migrations/20270128000036_floor_manual_entry_roundtrip_v1.sql','utf8'));
-query(`CREATE SCHEMA supabase_migrations;CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY,name text,statements text[]);INSERT INTO supabase_migrations.schema_migrations VALUES('20270128000036','floor_manual_entry_roundtrip_v1',ARRAY[$seed36$${prior}$seed36$]);`);
+query(`CREATE SCHEMA supabase_migrations;CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY,name text,statements text[]);INSERT INTO supabase_migrations.schema_migrations VALUES('20270128000036','floor_manual_entry_roundtrip_v1',${baseline36ArraySql()});`);
 const items=loadPackage();
 // Receipt failure must roll back the function mutation in the same transaction.
 const before=query("SELECT md5(pg_get_functiondef('public.close_tournament_table(uuid,text,text)'::regprocedure));");
+for(const mutation of [
+ "name='wrong_name'",
+ "statements=ARRAY['wrong hash']::text[]",
+ "statements=statements[1:5]",
+ "statements=ARRAY(SELECT s FROM unnest(statements) WITH ORDINALITY AS x(s,n) ORDER BY n DESC)",
+ "statements[4]=statements[4]||E'\\n-- different source'"
+]){
+ query(`UPDATE supabase_migrations.schema_migrations SET ${mutation} WHERE version='20270128000036';`);
+ const denied=spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{input:atomicSql(items[0]),encoding:'utf8',env});
+ assert.notEqual(denied.status,0);assert.match(denied.stderr,/floor_package_predecessor_drift/);
+ assert.equal(query("SELECT md5(pg_get_functiondef('public.close_tournament_table(uuid,text,text)'::regprocedure));"),before);
+ assert.equal(query('SELECT count(*) FROM supabase_migrations.schema_migrations;'),'1');
+ query(`UPDATE supabase_migrations.schema_migrations SET name='floor_manual_entry_roundtrip_v1',statements=${baseline36ArraySql()} WHERE version='20270128000036';`);
+}
+console.log('BASELINE36_NAME_HASH_CARDINALITY_ORDER_DENIAL_PASS');
 query("ALTER TABLE supabase_migrations.schema_migrations ADD CONSTRAINT injected_receipt_failure CHECK(version<>'20270128000037');");
 const failed=spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{input:atomicSql(items[0]),encoding:'utf8',env});
 assert.notEqual(failed.status,0);assert.match(failed.stderr,/injected_receipt_failure/);
