@@ -51,6 +51,7 @@ import ChangePredictedDealerModal from "./ChangePredictedDealerModal";
 import CorrectWrongTableDealerModal from "./CorrectWrongTableDealerModal";
 import ReconcileRoomWizard from "./ReconcileRoomWizard";
 import DealerSwingSummaryStrip from "./dealer-swing/DealerSwingSummaryStrip";
+import { DealerSwingStopControl } from "./dealer-swing/DealerSwingStopControl";
 import { TierBadge, TableTypeBadge, StatusPill } from "./dealer-swing/SwingBadges";
 import DealerSwingInfraHealth from "./dealer-swing/DealerSwingInfraHealth";
 import {
@@ -228,7 +229,15 @@ const DIAG_LABELS: Record<string, string> = {
   step5c_pre_assigned: "đã pre-assign bàn khác",
 };
 
-export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds: string[]; clubs: ClubRow[]; onOpenPayroll?: () => void }) {
+type SwingPanelProps = { clubIds: string[]; clubs: ClubRow[]; onOpenPayroll?: () => void };
+
+export default function SwingPanel(props: SwingPanelProps) {
+  const { user } = useAuth();
+  // Operator changes discard every operational selection, dialog and local request lifetime.
+  return <SwingPanelSession key={JSON.stringify([user?.id ?? null, [...props.clubIds].sort()])} {...props} />;
+}
+
+function SwingPanelSession({ clubIds, clubs, onOpenPayroll }: SwingPanelProps) {
   const [clubFilter, setClubFilter] = useState<string | null>(clubIds.length === 1 ? clubIds[0] : null);
   const activeClubId = clubFilter ?? (clubIds.length === 1 ? clubIds[0] : null);
   const filteredClubIds = useMemo(() => {
@@ -1989,6 +1998,17 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       </div>
     );
   }
+
+  if (loading || dealersError || tablesError || assignmentsError) return (
+    <div className="space-y-3" role={loading ? "status" : "alert"}>
+      <h2 className="text-base font-semibold">{loading ? "Đang xác minh dữ liệu Dealer Swing…" : "Không xác minh được dữ liệu Dealer Swing"}</h2>
+      <p className="text-sm text-muted-foreground">Chưa thể dùng dữ liệu này để gán, xoay hoặc kết ca dealer. Dừng Swing vẫn khả dụng.</p>
+      <div className="flex items-center gap-3">
+        <Button variant="outline" onClick={() => { refetchDealers(); refetchTables(); refetchAssignments(); }}>Thử lại</Button>
+        <DealerSwingStopControl clubId={activeClubId} onStopped={() => setAutoSwingEnabled(false)} />
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -4328,8 +4348,6 @@ function CommandCenter({
   );
 
   // ── Internal dialogs ────────────────────────────────────────────
-  const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
-  const [stopSaving, setStopSaving] = useState(false);
   const [fullLogOpen, setFullLogOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(true);
   const [massConfirm, setMassConfirm] = useState(false);
@@ -4344,24 +4362,6 @@ function CommandCenter({
     else toast.success("Đã gửi test Telegram");
   };
 
-  const handleStopSwing = async () => {
-    const cid = clubFilter;
-    if (!cid) return;
-    setStopSaving(true);
-    try {
-      const { error } = await supabase
-        .from("club_settings")
-        .upsert({ club_id: cid, auto_swing_enabled: false }, { onConflict: "club_id" });
-      if (error) { toast.error(error.message); return; }
-      onAutoSwingDisabled();
-      setStopConfirmOpen(false);
-      toast.success("Đã tắt Auto-Swing");
-    } catch {
-      toast.error("Không xác minh được trạng thái Swing. Hãy tải lại trước khi thao tác tiếp.");
-    } finally {
-      setStopSaving(false);
-    }
-  };
 
   // ── Computed metrics ────────────────────────────────────────────
   const { activeTables: activeTablesCount, assignedTables: assignedTablesCount } = dealerTableCoverage(tables ?? [], assignments);
@@ -4405,13 +4405,7 @@ function CommandCenter({
             <span className="text-xs font-semibold tracking-wider">CÔNG CỤ ĐIỀU HÀNH</span>
           </div>
           {/* Stop Swing button — small, tucked in header */}
-          <button
-            onClick={() => setStopConfirmOpen(true)}
-            className="text-[9px] text-destructive/60 hover:text-destructive transition-colors px-1 py-0.5"
-            title="Dừng toàn bộ Swing"
-          >
-            ⏹ Dừng
-          </button>
+          <DealerSwingStopControl clubId={clubFilter} onStopped={onAutoSwingDisabled} />
         </div>
 
         {/* (Alerts moved to the full-width Priority Lane on top — see SwingPanel.) */}
@@ -4510,28 +4504,6 @@ function CommandCenter({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ── Stop Swing Confirmation ── */}
-      <AlertDialog open={stopConfirmOpen} onOpenChange={setStopConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Dừng toàn bộ Swing</AlertDialogTitle>
-            <AlertDialogDescription>
-              Thao tác này sẽ tắt Auto-Swing ngay lập tức và dừng cron job xoay dealer.
-              Bạn có chắc chắn muốn dừng?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Huỷ</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive hover:bg-destructive text-destructive-foreground"
-              onClick={handleStopSwing}
-              disabled={stopSaving}
-            >
-              {stopSaving ? "Đang dừng..." : "Dừng"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

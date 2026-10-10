@@ -72,6 +72,13 @@ export default function OpsToday() {
   if (clubs === null) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Lấy câu lạc bộ." />;
   if (clubsError) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi CLB" sub="Không dùng dữ liệu thay thế. Hãy tải lại trang." />;
   if (!activeClub && !isAdmin) return <Guard icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền vận hành." />;
+  if (tablesQ.error || asgQ.error || rosterQ.error) return (
+    <div role="alert">
+      <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không xác minh được tình hình sàn" sub="Dữ liệu bàn hoặc dealer chưa được xác minh. Không kết luận sàn đang ổn từ dữ liệu cũ." />
+      <button className="ios-press-sm mt-3 rounded-full px-4 py-2 text-[#c9a86a]" onClick={() => { tablesQ.refetch(); asgQ.refetch(); rosterQ.refetch(); }}>Thử lại</button>
+    </div>
+  );
+  if (tablesQ.loading || asgQ.loading || rosterQ.loading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang xác minh tình hình sàn…" sub="Đang tải bàn và dealer, chưa có số liệu xác nhận." />;
 
   return (
     <div className="ios-in space-y-6 pt-2">
