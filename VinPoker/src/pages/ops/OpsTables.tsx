@@ -719,6 +719,7 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
 
       {/* S7 — tap người: luồng thao tác + phiếu dùng CHUNG (FloorPlayerActions). */}
       <FloorPlayerActions
+        actorId={user?.id ?? null}
         tournamentId={tourId}
         tournamentName={selectedTour?.name ?? ""}
         tournamentDate={(selectedTour as (Tournament & { start_time?: string | null }) | null)?.start_time ?? null}

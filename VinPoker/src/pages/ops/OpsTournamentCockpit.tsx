@@ -743,6 +743,7 @@ export default function OpsTournamentCockpit({ section }: { section: FloorTourna
       {/* Thao tác người chơi (dùng chung màn Bàn) — chỉ khi cờ ON */}
       {cockpitOn && (
         <FloorPlayerActions
+          actorId={user?.id ?? null}
           tournamentId={id}
           tournamentName={d.tournamentName}
           tournamentDate={null}

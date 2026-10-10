@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
 import { MovePlayerDialog } from "@/components/cashier/tournament-live/MovePlayerDialog";
 import { toast } from "sonner";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
@@ -31,8 +30,9 @@ export interface FloorSeatTarget {
 }
 
 export function FloorPlayerActions({
-  tournamentId, tournamentName, tournamentDate, floor, target, onClose,
+  actorId, tournamentId, tournamentName, tournamentDate, floor, target, onClose,
 }: {
+  actorId: string | null;
   tournamentId: string | null;
   tournamentName: string;
   tournamentDate: string | null;
@@ -41,8 +41,7 @@ export function FloorPlayerActions({
   onClose: () => void;
 }) {
   const supabase = useSupabaseClient();
-  const { user } = useAuth();
-  const moveScope = `${user?.id ?? ""}:${tournamentId ?? ""}`;
+  const moveScope = `${actorId ?? ""}:${tournamentId ?? ""}`;
   const currentMoveScope = useRef(moveScope);
   currentMoveScope.current = moveScope;
   const moveRun = useRef<object | null>(null);
@@ -187,7 +186,7 @@ export function FloorPlayerActions({
 
   // Handoff only: canonical dialog re-reads authoritative source/destination before writing.
   const openMove = useCallback(async (): Promise<void> => {
-    if (!real || !tournamentId || !user?.id) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return; }
+    if (!real || !tournamentId || !actorId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return; }
     const operation = {};
     moveRun.current = operation;
     const scope = moveScope;
@@ -205,14 +204,14 @@ export function FloorPlayerActions({
       if (currentMoveScope.current === scope && moveRun.current === operation)
         toast.error("Không tải được lượt đăng ký. Hãy thử lại trước khi chuyển.");
     }
-  }, [real, tournamentId, user?.id, moveScope, supabase]);
+  }, [real, tournamentId, actorId, moveScope, supabase]);
 
   // Locate one existing current code through the scoped RPC; reader44
   // then authorizes and proves exact seat incarnation + immutable audited stack.
   // Never invent a code or adopt the live chip snapshot as a ticket.
   const openReceipt = useCallback(async () => {
     const r = target?.real;
-    if (!r || !tournamentId || !user?.id) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return; }
+    if (!r || !tournamentId || !actorId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return; }
     const operation = {}; receiptRun.current = operation;
     const scope = moveScope;
     setReceiptData(null);
@@ -224,13 +223,13 @@ export function FloorPlayerActions({
       if (seatError || !seat?.entry_id || seat.id !== r.seat_id || !seat.is_active)
         throw new Error("Không xác minh được lượt đăng ký đang ngồi.");
       const verified = await fetchCurrentFloorSeatTicketWithClient(supabase,
-        { actorId: user.id, tournamentId, entryId: seat.entry_id }, r.seat_id);
+        { actorId, tournamentId, entryId: seat.entry_id }, r.seat_id);
       if (currentMoveScope.current === scope && receiptRun.current === operation) setReceiptData(verified);
     } catch (error) {
       if (currentMoveScope.current === scope && receiptRun.current === operation)
         toast.error(error instanceof Error ? error.message : "Không xác minh được phiếu hiện hành.");
     }
-  }, [supabase, target, tournamentId, user?.id, moveScope]);
+  }, [supabase, target, tournamentId, actorId, moveScope]);
 
   return (
     <>
@@ -248,10 +247,11 @@ export function FloorPlayerActions({
         bustControlMode={bustTable?.floor_control_mode ?? null}
         chipEditDisabledReason={chipEditDisabledReason}
       />
-      <SeatReceiptDialog open={receiptData?.floorSeatContext?.actorId === user?.id && receiptData?.floorSeatContext?.tournamentId === tournamentId}
+      <SeatReceiptDialog open={!!actorId && receiptData?.floorSeatContext?.actorId === actorId && receiptData?.floorSeatContext?.tournamentId === tournamentId}
         onOpenChange={(v) => { if (!v) { receiptRun.current = null; setReceiptData(null); } }}
-        receipt={receiptData?.floorSeatContext?.actorId === user?.id && receiptData?.floorSeatContext?.tournamentId === tournamentId ? receiptData : null} />
+        receipt={actorId && receiptData?.floorSeatContext?.actorId === actorId && receiptData?.floorSeatContext?.tournamentId === tournamentId ? receiptData : null} />
       {moveEntry?.scope === moveScope && tournamentId && <MovePlayerDialog
+        actorId={actorId}
         open onOpenChange={(open) => { if (!open) setMoveEntry(null); }}
         tournamentId={tournamentId} entryId={moveEntry.entryId} playerName={moveEntry.playerName}
         currentTournamentTableId={moveEntry.tableId} currentSeatNumber={moveEntry.seatNumber}

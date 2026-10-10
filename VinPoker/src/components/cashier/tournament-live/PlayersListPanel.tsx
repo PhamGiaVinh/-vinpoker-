@@ -160,6 +160,7 @@ export function PlayersListPanel({
 
       {moveTarget && entryBySeat[moveTarget.seat_id] && (
         <MovePlayerDialog
+          actorId={user?.id ?? null}
           open={moveTarget !== null}
           onOpenChange={(v) => { if (!v) setMoveTarget(null); }}
           tournamentId={tid}

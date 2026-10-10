@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { createFloorTableControlV3Client, type FloorTournamentTableRoster, type FloorTableControlV3Rpc } from "@/lib/floorTableControlV3";
-import { useAuth } from "@/hooks/useAuth";
 import { readPendingFloorMove, savePendingFloorMove, clearPendingFloorMove, type PendingFloorMove } from "@/lib/floorPendingMoveIntent";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter,
@@ -70,9 +69,10 @@ function mapError(res: MoveResult | null, rawMessage?: string): string {
  * printable ticket. Unknown outcomes retain the exact intent for explicit replay.
  */
 export function MovePlayerDialog({
-  open, onOpenChange, tournamentId,
+  actorId, open, onOpenChange, tournamentId,
   entryId, playerName, onMoved,
 }: {
+  actorId: string | null;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   tournamentId: string;
@@ -83,13 +83,12 @@ export function MovePlayerDialog({
   currentSeatNumber: number | null;
   onMoved: () => void;
 }) {
-  const { user } = useAuth();
   const supabase = useSupabaseClient();
   const canonical = useMemo(() => createFloorTableControlV3Client(
     (async (name, args) => supabase.rpc(name as never, args as never)) as FloorTableControlV3Rpc,
   ), [supabase]);
   const loadSequence = useRef(0);
-  const scope = `${user?.id ?? ""}:${tournamentId}:${entryId}`;
+  const scope = `${actorId ?? ""}:${tournamentId}:${entryId}`;
   const currentScope = useRef(scope);
   currentScope.current = scope;
   const busy = useRef(false);
@@ -120,7 +119,7 @@ export function MovePlayerDialog({
     setOccupied({});
     setTargetTableId("");
     setTargetSeat(null);
-    if (!user?.id) { setReadError("Bạn cần đăng nhập lại trước khi chuyển ghế."); return; }
+    if (!actorId) { setReadError("Bạn cần đăng nhập lại trước khi chuyển ghế."); return; }
     try {
       const [roster, reservations, metadata] = await Promise.all([
         canonical.getTournamentTableRoster(tournamentId),
@@ -162,7 +161,7 @@ export function MovePlayerDialog({
       if (sequence !== loadSequence.current || currentScope.current !== scope) return;
       setReadError(`Không xác minh được phiên bàn. Chưa thể chuyển ghế (${cause instanceof Error ? cause.message : "lỗi tải dữ liệu"}).`);
     }
-  }, [canonical, supabase, scope, user?.id, tournamentId, entryId]);
+  }, [canonical, supabase, scope, actorId, tournamentId, entryId]);
 
   useEffect(() => {
     activeRun.current = null;
@@ -252,7 +251,7 @@ export function MovePlayerDialog({
     ? attempt.current.intent.toSeatNumber : targetSeat;
 
   const runMove = async () => {
-    if (busy.current || !user || !open) return;
+    if (busy.current || !actorId || !open) return;
     if (!attempt.current) {
       const sourceSeat = sourceContext?.seats.find((seat) => seat.entryId === entryId);
       if (!sourceContext || !sourceSeat || !targetTable || targetSeat == null || seatBlocked || !reason || readError) return;
@@ -310,7 +309,7 @@ export function MovePlayerDialog({
     setResult(res);
     if (res.receipt_code) {
       setReceipt({
-        floorSeatContext: { actorId: user.id, tournamentId, entryId },
+        floorSeatContext: { actorId, tournamentId, entryId },
         tournamentName: frozen.meta.name,
         tournamentDate: frozen.meta.start_time,
         playerName: res.player_name ?? playerName,
@@ -481,7 +480,7 @@ export function MovePlayerDialog({
       </Sheet>
 
       <SeatReceiptDialog open={receiptOpen} onOpenChange={setReceiptOpen}
-        receipt={receipt?.floorSeatContext?.actorId === user?.id ? receipt : null} />
+        receipt={actorId && receipt?.floorSeatContext?.actorId === actorId ? receipt : null} />
     </>
   );
 }

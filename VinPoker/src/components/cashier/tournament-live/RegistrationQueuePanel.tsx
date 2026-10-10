@@ -365,6 +365,7 @@ export function RegistrationQueuePanel({
 
       {moveRow?.entry_id && (
         <MovePlayerDialog
+          actorId={user?.id ?? null}
           open={moveRow !== null}
           onOpenChange={(v) => { if (!v) setMoveRow(null); }}
           tournamentId={tournamentId}

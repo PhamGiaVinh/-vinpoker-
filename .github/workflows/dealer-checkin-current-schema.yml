@@ -100,17 +100,9 @@ jobs:
   runtime:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    services:
-      postgres:
-        image: postgres:17
-        env: { POSTGRES_HOST_AUTH_METHOD: trust, POSTGRES_DB: vinpoker_ops_checkin }
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       PGHOST: 127.0.0.1
-      PGPORT: 5432
+      PGPORT: 55441
       PGUSER: postgres
       PGDATABASE: vinpoker_ops_checkin
       SCHEMA_ARTIFACT_DIR: /tmp/vinpoker-current-schema
@@ -151,6 +143,18 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/schema.zip"
           unzip -q "$RUNNER_TEMP/schema.zip" -d "$SCHEMA_ARTIFACT_DIR"
           node VinPoker/scripts/deploy/validate-live-public-schema-artifact.mjs --artifact-directory "$SCHEMA_ARTIFACT_DIR"
+      - name: Start isolated PostgreSQL 17 on actual loopback (no bridge address exception)
+        run: |
+          docker run --detach --name vinpoker-current-schema-pg17 --network host \
+            --env POSTGRES_HOST_AUTH_METHOD=trust --env POSTGRES_DB=vinpoker_ops_checkin \
+            postgres:17 -c listen_addresses=127.0.0.1 -c port=55441
+          ready=false
+          for attempt in $(seq 1 30); do
+            if pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER"; then ready=true; break; fi
+            sleep 1
+          done
+          test "$ready" = true
+          test "$(psql -X -qAt -v ON_ERROR_STOP=1 -c "SELECT inet_server_addr()='127.0.0.1'::inet AND current_database()='vinpoker_ops_checkin' AND current_user='postgres' AND current_setting('server_version_num')::int BETWEEN 170000 AND 179999")" = t
       - name: Restore current schema and apply exact new migration
         working-directory: VinPoker
         run: |

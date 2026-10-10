@@ -90,14 +90,16 @@ export function FloorTableMapPanel({
   if (FEATURES.floorTableControlV3) {
     return <FloorTableMapPanelV3 actorId={user?.id ?? null} tournament={tournament} refreshTrigger={refreshTrigger} />;
   }
-  return <FloorTableMapPanelLegacy tournament={tournament} refreshTrigger={refreshTrigger} />;
+  return <FloorTableMapPanelLegacy actorId={user?.id ?? null} tournament={tournament} refreshTrigger={refreshTrigger} />;
 }
 
 function FloorTableMapPanelLegacy({
+  actorId,
   tournament,
   refreshTrigger,
 }: {
   tournament: Tournament;
+  actorId: string | null;
   refreshTrigger: number;
 }) {
   const tid = tournament.id;
@@ -544,6 +546,7 @@ function FloorTableMapPanelLegacy({
 
       {moveTarget && entryBySeat[moveTarget.seat_id] && (
         <MovePlayerDialog
+          actorId={actorId}
           open={moveTarget !== null}
           onOpenChange={(v) => { if (!v) setMoveTarget(null); }}
           tournamentId={tid}

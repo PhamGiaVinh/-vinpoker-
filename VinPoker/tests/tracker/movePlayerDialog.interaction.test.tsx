@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MovePlayerDialog } from "@/components/cashier/tournament-live/MovePlayerDialog";
 
 const fixture = vi.hoisted(() => ({ actor: "owner-a", move: vi.fn(), pending: vi.fn(), roster: vi.fn(), client: { rpc: vi.fn(), from: vi.fn() } }));
-vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: fixture.actor } }) }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: fixture.client }));
 vi.mock("@/integrations/supabase/SupabaseClientContext", () => ({ useSupabaseClient: () => fixture.client }));
 vi.mock("@/lib/floorTableControlV3", () => ({ createFloorTableControlV3Client: () => ({
@@ -17,7 +16,7 @@ const sourceTable = () => ({ tournamentId: "tour-1", tournamentTableId: "table-1
     chipCount: 20000, integrityStatus: "valid", isActive: true }] });
 const destinationTable = () => ({ ...sourceTable(), tournamentTableId: "table-2", gameTableId: "physical-2",
   tableSessionId: "session-2", sessionRevision: 8, controlEpoch: 5, tableName: "Canonical B2", tableNumber: 2, seats: [] });
-const dialogProps = () => ({ open: true, onOpenChange: vi.fn(), tournamentId: "tour-1", entryId: "entry-1",
+const dialogProps = () => ({ actorId: fixture.actor, open: true, onOpenChange: vi.fn(), tournamentId: "tour-1", entryId: "entry-1",
   playerName: "TEST Player", currentTournamentTableId: "table-1", currentSeatNumber: 1, onMoved: vi.fn() });
 const moveAck = (requestId: string) => ({ ok: true, entry_id: "entry-1", from_tournament_table_id: "table-1",
   from_table_session_id: "session-1", from_seat_number: 1, to_tournament_table_id: "table-2", to_table_session_id: "session-2",
@@ -152,7 +151,7 @@ describe("move dialog exact-session read model", () => {
     await screen.findByRole("alert");
     old.unmount();
     fixture.actor = "owner-b";
-    const fresh = render(<MovePlayerDialog {...props} />);
+    const fresh = render(<MovePlayerDialog {...props} actorId={fixture.actor} />);
     try {
       await screen.findByText(/Canonical B1/);
       expect(screen.getByRole("button", { name: "Tiếp tục" })).toBeInTheDocument();
@@ -163,7 +162,7 @@ describe("move dialog exact-session read model", () => {
   });
   it("does not turn a failed roster read into an empty table list or allow a write", async () => {
     fixture.roster.mockResolvedValue({ ok: false, error: "network_error" });
-    const view = render(<MovePlayerDialog open onOpenChange={vi.fn()} tournamentId="tour-1" entryId="entry-1"
+    const view = render(<MovePlayerDialog actorId={fixture.actor} open onOpenChange={vi.fn()} tournamentId="tour-1" entryId="entry-1"
       playerName="TEST Player" currentTournamentTableId="table-1" currentSeatNumber={1} onMoved={vi.fn()} />);
     try {
       expect(await screen.findByRole("alert")).toHaveTextContent("Không xác minh được phiên bàn");
@@ -258,7 +257,7 @@ describe("move dialog exact-session read model", () => {
       await waitFor(() => expect(fixture.move).toHaveBeenCalledTimes(1));
       const old = fixture.move.mock.calls[0][0];
       fixture.actor = "owner-b";
-      view.rerender(<MovePlayerDialog {...props} />);
+      view.rerender(<MovePlayerDialog {...props} actorId={fixture.actor} />);
       await screen.findByText(/Canonical B1/);
       fireEvent.click(screen.getByRole("button", { name: "Bàn kế" }));
       fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
@@ -279,7 +278,7 @@ describe("move dialog exact-session read model", () => {
       gameTableId: "physical-1", tableSessionId: "session-1", sessionRevision: 4, controlEpoch: 2,
       tableName: "Canonical B1", tableNumber: 1, maxSeats: 9, seats: sourceTable().seats,
       seatLocks: Array.from({ length: 9 }, (_, index) => ({ seatNumber: index + 1, reason: "TEST" })) }] });
-    const view = render(<MovePlayerDialog open onOpenChange={vi.fn()} tournamentId="tour-1" entryId="entry-1"
+    const view = render(<MovePlayerDialog actorId={fixture.actor} open onOpenChange={vi.fn()} tournamentId="tour-1" entryId="entry-1"
       playerName="TEST Player" currentTournamentTableId="table-1" currentSeatNumber={1} onMoved={vi.fn()} />);
     try {
       await screen.findAllByText(/Canonical B1/);
@@ -301,7 +300,7 @@ describe("move dialog exact-session read model", () => {
     fixture.roster.mockResolvedValue({ ok: true, data: [sourceTable(), { tournamentId: "tour-1", tournamentTableId: "table-2",
       gameTableId: "physical-2", tableSessionId: "session-2", sessionRevision: 4, controlEpoch: 2,
       tableName: "Canonical B2", tableNumber: 2, maxSeats: 9, seats: [], seatLocks: [], pendingMoves: [] }] });
-    const view = render(<MovePlayerDialog open onOpenChange={vi.fn()} tournamentId="tour-1" entryId="entry-1"
+    const view = render(<MovePlayerDialog actorId={fixture.actor} open onOpenChange={vi.fn()} tournamentId="tour-1" entryId="entry-1"
       playerName="TEST Player" currentTournamentTableId="table-1" currentSeatNumber={1} onMoved={vi.fn()} />);
     try {
       await screen.findByText(/Canonical B1/);

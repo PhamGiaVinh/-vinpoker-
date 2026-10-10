@@ -3,7 +3,6 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { FloorPlayerActions } from "@/components/ops/shared/FloorPlayerActions";
 
 const f = vi.hoisted(() => ({ actor: "owner", read: vi.fn(), tickets: vi.fn(), proof: vi.fn(), rpc: vi.fn() }));
-vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: f.actor } }) }));
 vi.mock("@/integrations/supabase/SupabaseClientContext", () => ({ useSupabaseClient: () => ({ rpc: f.rpc, from: (table: string) => {
   const q = { select: () => q, eq: () => q, in: () => q, is: () => q, limit: f.tickets, maybeSingle: f.read }; return q;
 } }) }));
@@ -11,12 +10,32 @@ vi.mock("@/components/ops/shared/PlayerActionSheets", () => ({ PlayerActionSheet
 vi.mock("@/components/cashier/tournament-live/MovePlayerDialog", () => ({ MovePlayerDialog: (p: any) => p.open ? <div>canonical-entry:{p.entryId}</div> : null }));
 vi.mock("@/components/tournament/seat/floorSeatTicketCore", () => ({ fetchCurrentFloorSeatTicketWithClient: f.proof }));
 vi.mock("@/components/tournament/seat/SeatReceiptDialog", () => ({ SeatReceiptDialog: (p: any) => p.open && p.receipt ? <div>ticket:{p.receipt.receiptCode}</div> : null }));
-const props = () => ({ tournamentId: "tour", tournamentName: "TEST", tournamentDate: null,
+const props = () => ({ actorId: f.actor as string | null, tournamentId: "tour", tournamentName: "TEST", tournamentDate: null,
   floor: { tables: [], seatsByTable: {}, reload: vi.fn() } as any,
   target: { seat: { seat: 1, name: "TEST", chip: "20000" }, tableNo: 1,
     real: { seat_id: "seat", player_id: "player", table_id: "table", seat_number: 1, entry_number: 1, chip_count: 20000, player_name: "TEST" } } as any,
   onClose: vi.fn() });
 beforeEach(() => { vi.resetAllMocks(); f.actor = "owner"; f.read.mockResolvedValue({ data: { id: "seat", entry_id: "entry", is_active: true }, error: null }); });
+it("does not look up a move or ticket without an authenticated host actor", () => {
+  const v = render(<FloorPlayerActions {...props()} actorId={null} />);
+  fireEvent.click(screen.getByText("Chuyển canonical"));
+  fireEvent.click(screen.getByText("Phiếu canonical"));
+  expect(f.read).not.toHaveBeenCalled();
+  expect(f.proof).not.toHaveBeenCalled();
+  expect(f.rpc).not.toHaveBeenCalled();
+  v.unmount();
+});
+it("discards a late entry lookup after the host logs out", async () => {
+  let done!: (r: any) => void;
+  f.read.mockImplementation(() => new Promise(r => { done = r; }));
+  const p = props(); const v = render(<FloorPlayerActions {...p} />);
+  fireEvent.click(screen.getByText("Chuyển canonical"));
+  await waitFor(() => expect(f.read).toHaveBeenCalled());
+  v.rerender(<FloorPlayerActions {...p} actorId={null} />);
+  await act(async () => done({ data: { id: "seat", entry_id: "entry", is_active: true }, error: null }));
+  expect(screen.queryByText(/canonical-entry:/)).toBeNull();
+  expect(f.rpc).not.toHaveBeenCalled(); v.unmount();
+});
 it("opens only the server-issued current ticket after proof verification", async () => {
   f.tickets.mockResolvedValue({ data: [{ receipt_code: "REAL-TICKET" }], error: null });
   f.proof.mockResolvedValue({ receiptCode: "REAL-TICKET", floorSeatContext: { actorId: "owner", tournamentId: "tour", entryId: "entry" } });
@@ -38,7 +57,7 @@ it("discards an old actor's completed receipt proof", async () => {
   const p = props(); const v = render(<FloorPlayerActions {...p} />);
   fireEvent.click(screen.getByText("Phiếu canonical"));
   await waitFor(() => expect(f.proof).toHaveBeenCalled());
-  f.actor = "other"; v.rerender(<FloorPlayerActions {...p} />);
+  f.actor = "other"; v.rerender(<FloorPlayerActions {...p} actorId={f.actor} />);
   await act(async () => done({ receiptCode: "OLD", floorSeatContext: { actorId: "owner", tournamentId: "tour", entryId: "entry" } }));
   expect(screen.queryByText("ticket:OLD")).toBeNull(); v.unmount();
 });
@@ -60,7 +79,7 @@ it("discards a late entry lookup after actor changes", async () => {
   const p = props(); const v = render(<FloorPlayerActions {...p} />);
   fireEvent.click(screen.getByText("Chuyển canonical"));
   await waitFor(() => expect(f.read).toHaveBeenCalled());
-  f.actor = "other"; v.rerender(<FloorPlayerActions {...p} />);
+  f.actor = "other"; v.rerender(<FloorPlayerActions {...p} actorId={f.actor} />);
   await act(async () => done({ data: { id: "seat", entry_id: "entry", is_active: true }, error: null }));
   expect(screen.queryByText(/canonical-entry:/)).toBeNull(); v.unmount();
 });
