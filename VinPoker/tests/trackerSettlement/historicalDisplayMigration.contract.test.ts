@@ -132,10 +132,15 @@ describe("historical settlement display migration contract", () => {
     expect(edge).toContain('get_tracker_historical_display_commit_receipt');
     expect(dispatcher).toContain('TRACKER_HISTORY_COMPLETION_WORKER_ENABLED');
     expect(dispatcher).toContain('tournament-historical-settlement-worker');
-    expect(dispatcher).toContain('req.headers.get("Authorization") !== `Bearer ${serviceKey}`');
+    expect(dispatcher).toContain('authorizeHistoryWorker(req, serviceKey, canarySecret)');
+    expect(dispatcher).toContain('!authority.ok');
+    expect(dispatcher).toContain('authority.scopedOnly && !handIds');
+    expect(dispatcher).toContain('authority.scopedOnly ? canarySecret : serviceKey');
     expect(supabaseConfig).toMatch(/\[functions\.tournament-historical-settlement-dispatcher\]\r?\nverify_jwt = true/);
     expect(dispatcher.indexOf('TRACKER_HISTORY_COMPLETION_WORKER_ENABLED')
-      < dispatcher.indexOf('req.headers.get("Authorization") !== `Bearer ${serviceKey}`')).toBe(true);
+      < dispatcher.indexOf('authorizeHistoryWorker(req, serviceKey, canarySecret)')).toBe(true);
+    expect(dispatcher.indexOf('authority.scopedOnly && !handIds')
+      < dispatcher.indexOf('const response = await fetch')).toBe(true);
     expect(dispatcher).not.toContain('jsonResp(req, { ok: false, serviceKey');
   });
 
