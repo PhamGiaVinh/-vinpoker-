@@ -6,6 +6,7 @@ import {loadPackage,atomicSql,baseline36ArraySql} from './floor-37-47-release-pl
 const project='orlesggcjamwuknxwcpk';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
 export function validateContext(env,receipt,now=Date.now()){
+ if(['PGHOSTADDR','PGSERVICE','PGSERVICEFILE','PGOPTIONS'].some(key=>env[key]))throw Error('Alternate libpq target/options rejected');
  const sha=env.RELEASE_SHA;
  if(!/^[a-f0-9]{40}$/.test(sha??'')||sha!==env.GITHUB_SHA||env.GITHUB_ACTIONS!=='true'
   ||env.INITIAL_ACTOR!==env.REPOSITORY_OWNER||env.TRIGGERING_ACTOR!==env.REPOSITORY_OWNER
@@ -19,6 +20,12 @@ export function validateContext(env,receipt,now=Date.now()){
   ||receipt.isolatedRestore!=='PASS'||receipt.tableCountMatch!=='PASS'||receipt.productionMutation!==false
   ||! /^[a-f0-9]{64}$/.test(receipt.ciphertextSha256??'')||!Number.isFinite(snapshot)||snapshot>now||now-snapshot>3600000)
   throw Error('Fresh restore-verified recovery receipt failed');
+}
+export function psqlEnvironment(env){
+ // Do not inherit libpq service/hostaddr/options/session overrides.
+ const controlled=Object.fromEntries(Object.entries(env).filter(([key])=>!key.startsWith('PG')));
+ for(const key of ['PGHOST','PGPORT','PGUSER','PGDATABASE','PGSSLMODE','PGPASSWORD'])controlled[key]=env[key];
+ return controlled;
 }
 export function preflightSql(){
  return `BEGIN READ ONLY;SET LOCAL statement_timeout='10s';SELECT json_build_object(
@@ -58,7 +65,7 @@ function main(){
  const head=spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'});
  if(head.status!==0||head.stdout.trim()!==process.env.RELEASE_SHA)throw Error('Checkout SHA differs');
  const query=sql=>{
-  const r=spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{input:sql,encoding:'utf8',maxBuffer:2*1024*1024});
+  const r=spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{input:sql,encoding:'utf8',env:psqlEnvironment(process.env),maxBuffer:2*1024*1024});
   if(r.status!==0)throw Error('psql failed; raw output withheld');return r.stdout.trim();
  };
  const transport={execute:query,json:sql=>JSON.parse(query(sql).split('\n').find(x=>x.startsWith('{')))};
