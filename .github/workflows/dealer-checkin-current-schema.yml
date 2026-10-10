@@ -82,6 +82,8 @@ on:
       - 'VinPoker/scripts/ops/floor-37-47-release-plan.mjs'
       - 'VinPoker/scripts/ops/floor-37-47-release-plan.test.mjs'
       - 'VinPoker/scripts/ops/floor-37-47-release-plan.pg17.mjs'
+      - 'VinPoker/scripts/ops/floor-37-47-protected-apply.mjs'
+      - 'VinPoker/scripts/ops/floor-37-47-protected-apply.test.mjs'
       - 'VinPoker/tests/floorProduction/breakDrawPolicy.pg17.sql'
       - 'VinPoker/tests/floorProduction/floorPlayerActions.move.test.tsx'
       - 'VinPoker/tests/floorProduction/opsTables.close.test.tsx'
@@ -119,7 +121,7 @@ jobs:
         with: { deno-version: v2.x }
       - name: Exact Floor package preparation rejects drift (offline only)
         working-directory: VinPoker
-        run: node --test scripts/ops/floor-37-47-release-plan.test.mjs
+        run: node --test scripts/ops/floor-37-47-release-plan.test.mjs scripts/ops/floor-37-47-protected-apply.test.mjs
       - name: Install locked Node types required by the existing Supabase import graph
         working-directory: VinPoker
         run: npm ci --ignore-scripts
