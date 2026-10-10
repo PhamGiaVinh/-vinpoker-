@@ -1,7 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {loadMigration,atomicSql,classifyPreflight,executePackage} from './tracker-card-56-protected-apply.mjs';
 const baseline={database:'postgres',actor:'postgres',existing:0,baseline:true};
+test('production workflow binds owner, exact open PR checks and verified recovery',()=>{
+ const yaml=readFileSync(new URL('../../../.github/workflows/tracker-card-56-protected-apply.yml',import.meta.url),'utf8');
+ for(const required of ["github.ref == 'refs/heads/main'",'APPLY_TRACKER_CARD_56_',
+  'INITIAL_ACTOR','TRIGGERING_ACTOR','GITHUB_REPOSITORY_OWNER','.head.sha','.state','open',
+  'runtime postgres-17-integrated release-runner-postgres-17 collision-guard reject-sensitive-vars-context',
+  'floor-v3-recovery-backup.yml','floor-v3-restore-verification-','RECOVERY_BASE_SHA',
+  'dealer-swing-production-critical','vinpoker-production-database-release',
+  'tracker-card-56-protected-apply.mjs plan','tracker-card-56-protected-apply.mjs apply'])assert.ok(yaml.includes(required),required);
+ assert.ok(!yaml.includes('dealer-checkin-51-protected-apply.mjs'));
+});
 test('exact56 refuses preflight drift and modified allowlist',()=>{
  classifyPreflight(baseline);
  for(const delta of [{database:'test'},{actor:'service_role'},{existing:1},{baseline:false},{baseline:null}])assert.throws(()=>classifyPreflight({...baseline,...delta}));

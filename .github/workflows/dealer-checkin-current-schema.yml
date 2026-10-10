@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/dealer-checkin-current-schema.yml'
+      - '.github/workflows/tracker-card-56-protected-apply.yml'
+      - 'VinPoker/scripts/ops/tracker-card-56-*'
       - 'VinPoker/supabase/migrations/20270128000056_tracker_card_batch_integrity_v1.sql'
       - 'VinPoker/tests/trackerVoice/cardBatchIntegrity*'
       - 'VinPoker/tests/trackerVoice/cardBoardIntegrity*'
