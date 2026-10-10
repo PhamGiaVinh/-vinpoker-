@@ -1824,6 +1824,8 @@
       "actionTimeline": "动作时间线",
       "noActions": "暂无动作",
       "tableStats": "桌面统计",
+      "currentTournamentClock": "当前赛事时钟",
+      "handBlindsContext": "牌桌使用当前显示牌局的盲注，可能与赛事时钟不同。",
       "playersRemaining": "剩余玩家",
       "averageStack": "平均筹码",
       "currentPot": "当前底池",

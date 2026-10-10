@@ -1820,6 +1820,8 @@
       "actionTimeline": "액션 타임라인",
       "noActions": "아직 액션 없음",
       "tableStats": "테이블 통계",
+      "currentTournamentClock": "현재 토너먼트 시계",
+      "handBlindsContext": "테이블은 표시 중인 핸드의 블라인드를 사용하며 현재 시계와 다를 수 있습니다.",
       "playersRemaining": "남은 플레이어",
       "averageStack": "평균 칩",
       "currentPot": "현재 포트",

@@ -1824,6 +1824,8 @@
       "actionTimeline": "ไทม์ไลน์แอ็คชั่น",
       "noActions": "ยังไม่มีแอ็คชั่น",
       "tableStats": "สถิติโต๊ะ",
+      "currentTournamentClock": "นาฬิกาทัวร์นาเมนต์ปัจจุบัน",
+      "handBlindsContext": "โต๊ะใช้บลายด์ของแฮนด์ที่แสดง ซึ่งอาจต่างจากนาฬิกาปัจจุบัน",
       "playersRemaining": "ผู้เล่นที่เหลือ",
       "averageStack": "ชิปเฉลี่ย",
       "currentPot": "พอตปัจจุบัน",

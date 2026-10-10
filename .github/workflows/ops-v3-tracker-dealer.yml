@@ -12,6 +12,10 @@ on:
       - "VinPoker/scripts/security/check-ops-v3-shell-text.mjs"
       - "VinPoker/e2e/ops-v3-tracker-dealer.mock.spec.ts"
       - "VinPoker/tests/opsTrackerDealer/**"
+      - "VinPoker/src/components/cashier/tournament-live/TournamentLiveView.tsx"
+      - "VinPoker/src/i18n/locales/**"
+      - "VinPoker/tests/viewerHub/tournamentLiveViewBlindContext.test.tsx"
+      - "VinPoker/tests/viewerHub/tournamentLiveViewInitialization.test.tsx"
       - "VinPoker/tsconfig.ops-v3-tracker-dealer.json"
   workflow_dispatch:
 
@@ -52,6 +56,8 @@ jobs:
           npx vitest run
           tests/opsTrackerDealer/opsTrackerDealer.contract.test.ts
           src/ops/registry/opsModuleRegistry.test.ts
+          tests/viewerHub/tournamentLiveViewBlindContext.test.tsx
+          tests/viewerHub/tournamentLiveViewInitialization.test.tsx
           --maxWorkers=1 --minWorkers=1
 
       - name: Lint targeted read-only source and tests

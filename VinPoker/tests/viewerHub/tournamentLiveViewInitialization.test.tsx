@@ -1,4 +1,5 @@
 import { renderToString } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
@@ -11,7 +12,9 @@ describe("TournamentLiveView initial render", () => {
   it.each([false, true])("initializes every hook before the loading screen (spectator=%s)", spectator => {
     // Render the real parent, not just LiveFelt/ReplayScrubber. Effects do not run
     // on the server, so this catches initialization errors without network IO.
-    expect(() => renderToString(<TournamentLiveView tournamentId="test-tournament" spectator={spectator}
-      initialReplayTarget={{ handId: "test-hand", tableId: "test-table", handNumber: 2 }} />)).not.toThrow();
+    expect(() => renderToString(<QueryClientProvider client={new QueryClient()}>
+      <TournamentLiveView tournamentId="test-tournament" spectator={spectator}
+        initialReplayTarget={{ handId: "test-hand", tableId: "test-table", handNumber: 2 }} />
+    </QueryClientProvider>)).not.toThrow();
   });
 });
