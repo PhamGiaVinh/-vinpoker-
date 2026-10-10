@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {randomUUID} from 'node:crypto';
 assert.equal(process.env.PGHOST,'127.0.0.1');
 assert.ok(process.env.PGDATABASE?.startsWith('vinpoker_ops_'));
 const base=readFileSync('tests/dealerSwing/operationalInventory.pg17.sql','utf8');
@@ -42,7 +43,11 @@ for(const scenario of ['assigned','on_break','checked_out','pending_preassignmen
  SET LOCAL ROLE authenticated;
  ${closeAssertions}
  ROLLBACK;`;
- const query=base.replace(anchor,`INSERT INTO public.club_settings(club_id,auto_swing_enabled) VALUES('e1700000-0000-4000-8000-000000000002',true) ON CONFLICT(club_id) DO UPDATE SET auto_swing_enabled=true;\n${anchor}`).replace('ROLLBACK;',()=>end);
+ // Other committed concurrency fixtures may already own the source UUIDs.
+ // Remap the complete fixture and assertions together, rather than upserting
+ // another test's identities or deleting them. Each case still rolls back.
+ const prefix=randomUUID().slice(0,8);
+ const query=base.replace(anchor,`INSERT INTO public.club_settings(club_id,auto_swing_enabled) VALUES('e1700000-0000-4000-8000-000000000002',true) ON CONFLICT(club_id) DO UPDATE SET auto_swing_enabled=true;\n${anchor}`).replace('ROLLBACK;',()=>end).replaceAll('e1700000',prefix);
  const r=spawnSync('psql',['-X','-q','-v','ON_ERROR_STOP=1'],{input:query,encoding:'utf8'});
  assert.equal(r.status,0,r.stderr);
  console.log(`CASH_CLOSED_SESSION_ATTENDANCE_POLICY_PASS scenario=${scenario}`);
