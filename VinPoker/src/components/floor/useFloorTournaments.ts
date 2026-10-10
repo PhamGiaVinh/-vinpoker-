@@ -29,6 +29,7 @@ export function useFloorTournaments(clubIds: string[]) {
     const { data, error } = await supabase
       .from("tournaments")
       .select("*")
+      .is("deleted_at", null)
       .in("club_id", clubIds)
       .order("start_time");
     if (error) { setError(error.message); toast.error(error.message); } else { setError(null); }

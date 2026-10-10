@@ -113,6 +113,7 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full", onS
     let q = supabase
       .from("tournaments")
       .select("*")
+      .is("deleted_at", null)
       .in("status", ["upcoming", "registering", "drawing", "active", "live", "break", "final_table"])
       .order("created_at", { ascending: false });
     if (clubIds.length) q = q.in("club_id", clubIds);
