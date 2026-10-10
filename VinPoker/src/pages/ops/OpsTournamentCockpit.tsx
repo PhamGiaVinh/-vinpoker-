@@ -418,6 +418,10 @@ export default function OpsTournamentCockpit({ section }: { section: FloorTourna
       {/* S2 — Bàn: cờ ON → sơ đồ inline (tap bàn → ghế → thao tác); cờ OFF → redirect cũ */}
       {tab === "tables" && (cockpitOn ? (
         <div className="space-y-3">
+          {floor.repairWarnings?.length ? <div role="alert" className="ios-card p-3 text-sm text-amber-200">
+            <p>Cần sửa dữ liệu — chỉ xem, chưa cho thao tác.</p>
+            <ul>{floor.repairWarnings.map((warning, index) => <li key={`${index}:${warning}`}>{warning}</li>)}</ul>
+          </div> : null}
           {floor.loading && cockVms.length === 0 ? (
             <CenterCard icon={<Loader2 className="h-7 w-7 animate-spin text-[#c9a86a]" />} title="Đang tải sơ đồ bàn…" />
           ) : floor.error ? (
@@ -660,10 +664,11 @@ export default function OpsTournamentCockpit({ section }: { section: FloorTourna
             <SheetTitle className="text-[#f2ece6]">{tableSheetVm?.name ?? "Bàn"}</SheetTitle>
           </SheetHeader>
           {tableSheetVm && id && (
-            <FloorTableControlModeControl
+            <FloorTableControlModeControl actorId={user?.id ?? null}
               tournamentId={id}
               table={tableSheetVm.raw}
               onChanged={floor.reload}
+              disabledReason={floor.readOnlyReason}
             />
           )}
           {(() => {
@@ -673,7 +678,7 @@ export default function OpsTournamentCockpit({ section }: { section: FloorTourna
             ) : (
               <div className="ios-group mt-3">
                 {seats.map((s) => (
-                  <button key={s.seat_id} data-ops-action="floor.tables.open_seat" onClick={() => { setTableSheet(null); requestAnimationFrame(() => openSeat(s)); }} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
+                  <button key={s.seat_id} disabled={Boolean(floor.readOnlyReason)} data-ops-action="floor.tables.open_seat" onClick={() => { setTableSheet(null); requestAnimationFrame(() => openSeat(s)); }} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
                     <span className="w-5 font-mono text-[13px] text-[#9b8e97]">{s.seat_number}</span>
                     <span className="flex-1 truncate text-[15px] text-[#f2ece6]">{s.player_name || s.player_id.slice(0, 8)}</span>
                     <span className="font-mono text-[13px] text-[#c9a86a]">{vnd(s.chip_count)}</span>

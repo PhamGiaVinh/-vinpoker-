@@ -305,7 +305,7 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
     requestAnimationFrame(() => setSeatTarget({ seat: s, tableNo, real }));
   };
 
-  const ADD_LIVE = FEATURES.floorTableOps;
+  const ADD_LIVE = FEATURES.floorTableOps && !floor.readOnlyReason;
   const [addTable, setAddTable] = useState<TableVM | null>(null); // bàn đang thêm
   const [addName, setAddName] = useState("");
   const [addSeat, setAddSeat] = useState<number | null>(null);
@@ -324,6 +324,7 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
     return out;
   }, [addTable]);
   const submitAdd = useCallback(async () => {
+    if (floor.readOnlyReason) { toast.error(floor.readOnlyReason); return; }
     if (!addTable || !tourId || addSeat == null || addName.trim().length < 2) return;
     if (addBusyRef.current) return;            // P0-7 synchronous double-tap guard
     addBusyRef.current = true; setAddBusy(true);
@@ -364,6 +365,7 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
   const redrawBusyRef = useRef(false);
   const openRedraw = () => { setRedrawMode("final_table"); setRedrawDraw("redraw_balanced"); setRedrawTarget(""); setRedrawPhase("config"); setRedrawPreview(null); setRedrawOpen(true); };
   const callRedraw = useCallback(async (dryRun: boolean): Promise<RedrawResult | null> => {
+    if (floor.readOnlyReason) { toast.error(floor.readOnlyReason); return null; }
     const { data, error } = await supabase.rpc("redraw_tournament", {
       p_tournament_id: tourId,
       p_mode: redrawMode,
@@ -374,7 +376,7 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
     });
     if (error) { toast.error(redrawError(null, error.message)); return null; }
     return (data ?? null) as RedrawResult | null;
-  }, [supabase, tourId, redrawMode, redrawTarget, redrawDraw]);
+  }, [supabase, tourId, redrawMode, redrawTarget, redrawDraw, floor.readOnlyReason]);
   const runRedrawPreview = useCallback(async () => {
     if (redrawMode === "table_count_threshold" && !redrawTarget.trim()) { toast.error("Nhập số bàn đích."); return; }
     if (redrawBusyRef.current) return;
@@ -440,6 +442,10 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
       )}
 
       {/* ---- vùng dữ liệu: loading → error → empty② → empty③ → grid (KHÔNG BAO GIỜ mock) ---- */}
+      {floor.repairWarnings?.length ? <div role="alert" className="ios-card p-3 text-sm text-amber-200">
+        <p>Cần sửa dữ liệu — chỉ xem, chưa cho thao tác.</p>
+        <ul>{floor.repairWarnings.map((warning, index) => <li key={`${index}:${warning}`}>{warning}</li>)}</ul>
+      </div> : null}
       {toursLoading || (floor.loading && vms.length === 0) ? (
         <div className="ios-card flex flex-col items-center gap-2 py-12 text-center">
           <Loader2 className="h-7 w-7 animate-spin text-[#c9a86a]" />
@@ -534,8 +540,9 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
                 playerName: seat.name ?? "Người chơi",
                 chipsLabel: seat.chip ?? "—",
                 entryNumber: seat.entryNo,
+                integrityStatus: (floor.seatsByTable[openVM.raw.table_id] ?? []).find((row) => row.seat_number === seat.seat)?.integrity_status,
               }))}
-              onSeatTap={(seatNumber) => {
+              onSeatTap={floor.readOnlyReason ? undefined : (seatNumber) => {
                 const seat = openVM.seats.find((candidate) => candidate.seat === seatNumber);
                 if (seat) openPlayer(seat);
               }}
@@ -552,10 +559,11 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
           )}
 
           {openVM && tourId && (
-            <FloorTableControlModeControl
+            <FloorTableControlModeControl actorId={user?.id ?? null}
               tournamentId={tourId}
               table={openVM.raw}
               onChanged={floor.reload}
+              disabledReason={floor.readOnlyReason}
             />
           )}
 
@@ -597,7 +605,7 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
       </Sheet>
 
       {/* Floor-A1 — Thêm người (N4): tên + ghế trống + nhắc lại → floor_assign_player_to_seat */}
-      <Sheet open={addTable !== null} onOpenChange={(v) => { if (!v && !addBusy) setAddTable(null); }}>
+      <Sheet open={addTable !== null && !floor.readOnlyReason} onOpenChange={(v) => { if (!v && !addBusy) setAddTable(null); }}>
         <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Thêm người → {addTable?.name}</SheetTitle></SheetHeader>
@@ -633,7 +641,7 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
         </SheetContent>
       </Sheet>
 
-      {tourId && (
+      {tourId && !floor.readOnlyReason && (
         <OpenTableDialog
           open={openTableOpen}
           onOpenChange={setOpenTableOpen}
@@ -642,7 +650,7 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
         />
       )}
 
-      {closeTable && selectedTour && closeTable.tourId === selectedTour.id && closeTable.actorId === user?.id && (
+      {!floor.readOnlyReason && closeTable && selectedTour && closeTable.tourId === selectedTour.id && closeTable.actorId === user?.id && (
         <CloseTableDialog open onOpenChange={(open) => { if (!open) setCloseTable(null); }}
           actorId={user.id} tournamentId={selectedTour.id} tournamentName={selectedTour.name}
           tournamentDate={(selectedTour as Tournament & { start_time?: string | null }).start_time ?? null}
@@ -651,7 +659,7 @@ function OpsTablesLegacy({ tournamentId }: { tournamentId?: string }) {
       )}
 
       {/* Floor-A4 — Bốc lại: config (chế độ + cách chia) → XEM TRƯỚC (dry_run) → xác nhận (ghi) */}
-      <Sheet open={redrawOpen} onOpenChange={(v) => { if (!v && !redrawBusy) setRedrawOpen(false); }}>
+      <Sheet open={redrawOpen && !floor.readOnlyReason} onOpenChange={(v) => { if (!v && !redrawBusy) setRedrawOpen(false); }}>
         <SheetContent side="bottom" className="max-h-[88vh] overflow-y-auto rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Bốc lại bàn</SheetTitle></SheetHeader>

@@ -25,6 +25,7 @@ export interface MapSeat {
   seat_number: number;
   chip_count: number;
   is_active: boolean;
+  integrity_status?: "valid" | "missing_entry";
 }
 
 export interface MapTable {
@@ -36,6 +37,9 @@ export interface MapTable {
   status: string;
   floor_control_mode: FloorTableControlMode;
   floor_control_revision: number;
+  /** Canonical incarnation; legacy readers must not fabricate this context. */
+  table_session_id?: string;
+  control_epoch?: number;
 }
 
 const TABLE_OPS_LIVE = FEATURES.floorTableOps;
@@ -83,6 +87,7 @@ export function FloorTableDetailSheet({
   const rosterSeats = seats.map((seat) => ({
     seatNumber: seat.seat_number,
     playerName: seat.player_name || seat.player_id.slice(0, 6),
+    integrityStatus: seat.integrity_status,
     chipsLabel: formatStack(seat.chip_count),
     entryNumber: seat.entry_number,
   }));
@@ -120,7 +125,7 @@ export function FloorTableDetailSheet({
 
             <div className="min-w-0 lg:self-start">
               {canManageTableControl ? (
-                <FloorTableControlModeControl
+                <FloorTableControlModeControl actorId={user?.id ?? null}
                   tournamentId={tournamentId}
                   table={table}
                   onChanged={onChanged}

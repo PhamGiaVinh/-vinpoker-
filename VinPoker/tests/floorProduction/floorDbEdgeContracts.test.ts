@@ -187,8 +187,11 @@ describe("Floor V2 DB and Edge contracts", () => {
     expect(tableModePickerUi).toContain('role="radio"');
     expect(tableControlModeUi).toContain('data-testid="floor-table-control-mode-save"');
     expect(tableControlModeUi).toContain('data-testid="floor-table-control-mode-confirm"');
-    expect(tableControlModeUi).toContain("floor_set_table_control_mode");
-    expect(tableControlModeUi).toContain("p_expected_control_revision");
+    expect(tableControlModeUi).toContain("client.requestTableControlMode");
+    expect(tableControlModeUi).toContain("expectedRevision: table.floor_control_revision");
+    expect(tableControlModeUi).toContain("expectedEpoch: table.control_epoch");
+    expect(tableControlModeUi).toContain("tableSessionId: table.table_session_id");
+    expect(tableControlModeUi).not.toContain("floor_set_table_control_mode");
     expect(floorPlayerActions).toContain("Bàn Live Tracker chỉ cho phép loại khi chip đã về 0.");
     expect(playerActionSheets).toContain("Bàn Manual Floor: người chơi còn");
     expect(playerActionSheets).toContain("không tạo payout");

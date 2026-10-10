@@ -51,7 +51,8 @@ const tournament = {
   description: null,
 };
 
-async function installMockOpsSession(page: Page) {
+async function installMockOpsSession(page: Page, modeWrites: { rpc: string; payload: Record<string, unknown> }[] = []) {
+  let pendingMode: { id: string; target_mode: string; blockers: string[] } | null = null;
   await page.addInitScript(({ token, expiry, actor }) => {
     localStorage.setItem("sb-127-auth-token", JSON.stringify({
       access_token: token,
@@ -84,6 +85,15 @@ async function installMockOpsSession(page: Page) {
     if (path.endsWith("/auth/v1/user")) return json(mockUser);
     if (path.endsWith("/rpc/get_my_ops_capability_scope")) return json(operatorScope);
     if (path.endsWith("/rpc/get_my_ops_global_capability")) return json([{ is_super_admin: false }]);
+    if (path.includes("/rpc/") && /floor_.*table_control_mode/u.test(path)
+      && !path.endsWith("/floor_get_table_control_mode_request_v1")) {
+      modeWrites.push({ rpc: path.split("/").at(-1)!, payload: request.postDataJSON() });
+    }
+    if (path.endsWith("/rpc/floor_get_table_control_mode_request_v1")) return json({ ok: true, request: pendingMode });
+    if (path.endsWith("/rpc/floor_request_table_control_mode_v4")) {
+      pendingMode = { id: request.postDataJSON().p_request_id, target_mode: request.postDataJSON().p_control_mode, blockers: ["active_hand"] };
+      return json({ ok: true, outcome: "pending", request_id: pendingMode.id, blockers: pendingMode.blockers });
+    }
     if (path.endsWith("/rpc/get_tournament_participation_counts_v1")) return json({
       tournament_id: tournamentId, average_stack: 40_000,
       counts: { total_entries: 1, re_entries: 0, remaining: 1, seated: 1,
@@ -210,7 +220,7 @@ test("Floor V3 table sheet is compact, uses tournament-chip units and exposes fo
   await expect(page.getByText("40.000 · Lần tham gia 1", { exact: true })).toBeVisible();
   await expect(page.getByText(/40\.000\s*₫/u)).toHaveCount(0);
   await modeButton.click();
-  await expect(page.locator('[data-ops-action="floor.tables.save_v3_control_mode"]')).toBeVisible();
+  await expect(page.locator('[data-ops-action="floor.tables.open_control_mode_confirm"]')).toBeVisible();
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     const sheet = page.getByRole("dialog");
@@ -228,6 +238,28 @@ test("Floor V3 table sheet is compact, uses tournament-chip units and exposes fo
   await page.locator('[data-testid="floor-seat-row-9"]').scrollIntoViewIfNeeded();
   await expect(page.locator('[data-testid="floor-seat-row-9"]')).toBeInViewport();
   expect(pageErrors).toEqual([]);
+});
+
+test("Floor mode confirmation sends canonical session fences and displays pending without changing chips", async ({ page }) => {
+  const modeWrites: { rpc: string; payload: Record<string, unknown> }[] = [];
+  await installMockOpsSession(page, modeWrites);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/ops/floor/tournaments/${tournamentId}/tables?club=${clubId}`);
+  await page.locator('[data-ops-action="floor.tables.open_roster"]').click();
+  await page.locator('[data-ops-action="floor.tables.open_v3_control_mode"]').click();
+  const tracker = page.getByTestId("floor-table-control-mode-tracker");
+  await expect(tracker).toBeEnabled();
+  await tracker.click();
+  await page.getByTestId("floor-table-control-mode-save").click();
+  await page.getByTestId("floor-table-control-mode-confirm").click();
+  await expect(page.getByText("Đang chờ chuyển sang Live Tracker.", { exact: true })).toBeVisible();
+  expect(modeWrites).toEqual([{ rpc: "floor_request_table_control_mode_v4", payload: {
+    p_tournament_table_id: tournamentTableId, p_table_session_id: tableSessionId,
+    p_control_mode: "tracker", p_expected_revision: 7, p_expected_epoch: 1,
+    p_request_id: expect.stringMatching(/^[0-9a-f-]{36}$/u),
+  } }]);
+  await expect(page.getByText("40.000 · Lần tham gia 1", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("floor-table-control-mode-save")).toBeDisabled();
 });
 
 test("Cashier production surface is read-only and selected-club bound", async ({ page }) => {
