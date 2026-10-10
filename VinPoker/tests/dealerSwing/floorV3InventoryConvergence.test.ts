@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const root = resolve(__dirname, "../..");
 const hookSource = readFileSync(resolve(root, "src/hooks/useDealerSwing.ts"), "utf8");
 const panelSource = readFileSync(resolve(root, "src/components/cashier/DealerSwingTab.tsx"), "utf8");
+const stopSource = readFileSync(resolve(root, "src/components/cashier/dealer-swing/DealerSwingStopControl.tsx"), "utf8");
 
 describe("Dealer Swing Floor V3 inventory convergence", () => {
   it("reads the authoritative club table inventory while Floor V3 is enabled", () => {
@@ -27,10 +28,11 @@ describe("Dealer Swing Floor V3 inventory convergence", () => {
   });
 
   it("stops Auto-Swing with an explicit OFF write and never invokes the toggle path", () => {
-    const handler = panelSource.match(/const\s+handleStopSwing\s*=\s*async\s*\(\)\s*=>\s*\{([\s\S]*?)\n\s*\};/)?.[1];
+    expect(panelSource).toContain("<DealerSwingStopControl");
+    const handler = stopSource.match(/const\s+stop\s*=\s*async\s*\(\)\s*=>\s*\{([\s\S]*?)\n\s*\};/)?.[1];
     expect(handler).toBeDefined();
     expect(handler).toContain("auto_swing_enabled: false");
-    expect(handler).toContain("onAutoSwingDisabled()");
+    expect(handler).toContain("onStopped()");
     expect(handler).not.toContain("onToggleAutoSwing()");
     expect(handler).not.toContain("massAssign");
     expect(handler).not.toContain("autoSwingAll");
