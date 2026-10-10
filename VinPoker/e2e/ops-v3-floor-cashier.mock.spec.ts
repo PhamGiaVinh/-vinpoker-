@@ -84,6 +84,20 @@ async function installMockOpsSession(page: Page) {
     if (path.endsWith("/auth/v1/user")) return json(mockUser);
     if (path.endsWith("/rpc/get_my_ops_capability_scope")) return json(operatorScope);
     if (path.endsWith("/rpc/get_my_ops_global_capability")) return json([{ is_super_admin: false }]);
+    if (path.endsWith("/rpc/get_tournament_participation_counts_v1")) return json({
+      tournament_id: tournamentId, average_stack: 40_000,
+      counts: { total_entries: 1, re_entries: 0, remaining: 1, seated: 1,
+        waiting: 0, busted: 0, anomaly_entries: 0, anomaly_seats: 0,
+        live_entry_stack: 40_000, seated_stack: 40_000, waiting_stack: 0 },
+    });
+    if (path.endsWith("/rpc/get_tournament_clock")) return json({
+      tournament_id: tournamentId, remaining_seconds: 1200, is_running: false,
+      current_level: { level_number: 1, small_blind: 100, big_blind: 200,
+        ante: 200, duration_minutes: 20, is_break: false }, next_level: null,
+    });
+    if (path.endsWith("/rpc/get_tv_tournament_branding_v1")) return json({
+      logo_url: null, brand_name: "HSOP TEST", background_url: null, layout: null,
+    });
     if (path.endsWith("/rpc/get_club_table_inventory")) return json([{
       game_table_id: gameTableId,
       table_number: 5,
