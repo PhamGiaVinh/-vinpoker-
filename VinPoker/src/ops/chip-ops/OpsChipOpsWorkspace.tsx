@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useSupabaseClient } from "@/integrations/supabase/SupabaseClientContext";
 import { useOpsCapabilities } from "@/ops/auth/OpsCapabilityProvider";
+import { useOpsAuth } from "@/ops/auth/OpsAuthProvider";
 import {
   loadChipOpsTournamentOptions,
   loadIssuedChipInventory,
@@ -23,6 +24,20 @@ type WorkspaceState = {
 };
 
 export default function OpsChipOpsWorkspace() {
+  const { user, loading } = useOpsAuth();
+  const capabilities = useOpsCapabilities();
+  const { selectedClubId } = useOpsWorkspace();
+  const [params] = useSearchParams();
+  const allowed = Boolean(user && !loading && !capabilities.loading && !capabilities.scopeError
+    && selectedClubId && (capabilities.isSuperAdmin
+      || capabilities.moduleClubIds("chip-ops").includes(selectedClubId)));
+  // A changed scope owns a fresh read lifetime, including A -> B -> A.
+  return <ScopedChipOpsWorkspace key={JSON.stringify([
+    user?.id, allowed, selectedClubId, params.get("t"),
+  ])} allowed={allowed} />;
+}
+
+function ScopedChipOpsWorkspace({ allowed }: { allowed: boolean }) {
   const client = useSupabaseClient();
   const capabilities = useOpsCapabilities();
   const { selectedClubId } = useOpsWorkspace();
@@ -42,37 +57,40 @@ export default function OpsChipOpsWorkspace() {
     errorCode: null,
   });
 
-  const load = useCallback(async () => {
-    if (!clubId) return;
-    setState((current) => ({ ...current, loading: true, errorCode: null }));
-    try {
-      const tournaments = await loadChipOpsTournamentOptions(client, clubId);
-      if (selectedTournamentId && !tournaments.some((row) => row.id === selectedTournamentId)) {
-        setState({ loading: false, tournaments, inventory: null, stacks: null, errorCode: "CHIP_TOURNAMENT_SCOPE_INVALID" });
-        return;
-      }
-      const [inventory, stacks] = selectedTournamentId
-        ? await Promise.all([
-          loadIssuedChipInventory(client, selectedTournamentId),
-          loadIssuedStackSummary(client, selectedTournamentId),
-        ])
-        : [null, null];
-      setState({ loading: false, tournaments, inventory, stacks, errorCode: null });
-    } catch (error) {
-      setState((current) => ({
-        ...current,
-        loading: false,
-        inventory: null,
-        stacks: null,
-        errorCode: safeErrorCode(error),
-      }));
-    }
-  }, [client, clubId, selectedTournamentId]);
-
   useEffect(() => {
-    if (!clubId || capabilities.loading || capabilities.scopeError) return;
+    if (!allowed || !clubId) return;
+    let active = true;
+    const load = async () => {
+      setState((current) => ({ ...current, loading: true, errorCode: null }));
+      try {
+        const tournaments = await loadChipOpsTournamentOptions(client, clubId);
+        if (!active) return;
+        if (selectedTournamentId && !tournaments.some((row) => row.id === selectedTournamentId)) {
+          setState({ loading: false, tournaments, inventory: null, stacks: null, errorCode: "CHIP_TOURNAMENT_SCOPE_INVALID" });
+          return;
+        }
+        const [inventory, stacks] = selectedTournamentId
+          ? await Promise.all([
+            loadIssuedChipInventory(client, selectedTournamentId),
+            loadIssuedStackSummary(client, selectedTournamentId),
+          ])
+          : [null, null];
+        if (!active) return;
+        setState({ loading: false, tournaments, inventory, stacks, errorCode: null });
+      } catch (error) {
+        if (!active) return;
+        setState((current) => ({
+          ...current,
+          loading: false,
+          inventory: null,
+          stacks: null,
+          errorCode: safeErrorCode(error),
+        }));
+      }
+    };
     void load();
-  }, [capabilities.loading, capabilities.scopeError, clubId, load, revision]);
+    return () => { active = false; };
+  }, [allowed, client, clubId, selectedTournamentId, revision]);
 
   const clubName = useMemo(
     () => capabilities.clubs.find((club) => club.id === clubId)?.name ?? "CLB đã chọn",
@@ -90,16 +108,16 @@ export default function OpsChipOpsWorkspace() {
     <div className="space-y-5">
     <ChipOpsWorkspaceView
       clubName={clubName}
-      tournaments={state.tournaments}
+      tournaments={allowed ? state.tournaments : []}
       selectedTournamentId={selectedTournamentId}
-      inventory={clubId ? state.inventory : null}
-      stacks={clubId ? state.stacks : null}
-      loading={capabilities.loading || state.loading}
+      inventory={allowed ? state.inventory : null}
+      stacks={allowed ? state.stacks : null}
+      loading={capabilities.loading || (allowed && state.loading)}
       errorCode={capabilities.scopeError ?? (!clubId ? "CHIP_OPS_CLUB_SCOPE_REQUIRED" : state.errorCode)}
       onSelectTournament={onSelectTournament}
       onRefresh={() => setRevision((value) => value + 1)}
     />
-    {!state.loading && !state.errorCode && selectedTournamentId
+    {allowed && !state.loading && !state.errorCode && selectedTournamentId
       && state.tournaments.find((row) => row.id === selectedTournamentId)?.phase === "flight"
       && <MultiDayBaggingPanel key={selectedTournamentId} tournamentId={selectedTournamentId} />}
     </div>
