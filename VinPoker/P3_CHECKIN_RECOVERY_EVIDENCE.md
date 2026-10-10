@@ -2,6 +2,35 @@
 
 ## Receipt rejection correction after independent review
 
+Source PR1454 open Draft at961c171c58335b96a1c79fc5ff8337f90805b574;
+final local build42714 exit0 (large-chunk/mixed-import warnings only). Exact-SHA
+integrated/release-runner/catalog/collision/security CI passed; current-schema
+runtime38066737446 then completed terminalSUCCESS on the same sourceSHA;
+no duplicate rerun dispatched.
+
+Preparing protected51 runner by reusing existing validateContext/psqlEnvironment/
+receiptSql: fresh restore receipt1h, exact source/actor/target, pinned dependency
+definitions, atomic SQL+ledger, ambiguity stop/no retry, restricted object postcheck.
+Five offline runner tests PASS; runner not committed/reviewed/connected to a workflow
+yet and not a live authorization bypass. Atomic PG17 rollback test and protected
+workflow bootstrap still required before any51 apply. No live write in this turn.
+
+Subsequent exact51 atomic PG17 tests PASS: injected receipt INSERT failure rolls
+back RPC creation; successful SQL+ledger verifies exact receipt/function/grants;
+second apply refuses replay and preserves first receipt. Test uses reviewed public
+migration14 ledger statements fixture (no user rows/secrets), hash-bound and pinned
+three dependency definitions. Replaced ambiguous SQL newline escape in ledger
+comparison with chr(10), validated in real PG execution. Initial test SQL missing
+spaces around BETWEEN failed before execution and was corrected; not counted PASS.
+
+Protected51 workflow preserves existing owner/exact open PR SHA checks, fresh
+restore-verified recovery and protected production environment, no broad db push.
+Runtime CI now clones isolated baseline after14/before51 for atomic test. Offline
+runner/fixture/workflow tests7 PASS, runtime test SKIP in offline mode only; actual
+runtime separately PASS. Credential-context guard PASS. Tooling is under read-only
+critical review and remains uncommitted; workflow bootstrap and fresh recovery
+must complete before any production dispatch.
+
 Final implementation typecheck47453 terminal exit0. Build started sequentially
 after typecheck, no parallel heavy build. Catalog initially rejected51 (correctly);
 registered exact reviewed hash in existing ownerGatedActiveAllowlist without changing
