@@ -34,6 +34,36 @@ FROM pg_trigger WHERE tgrelid='public.table_sessions'::regclass
  AND tgname='trg_reconcile_closed_session_attendance_v1' AND NOT tgisinternal;
 SELECT policyname,roles,cmd,qual,with_check FROM pg_policies
 WHERE schemaname='public' AND tablename='seat_draw_receipts' ORDER BY policyname;
+-- Preserve existing ACL/search-path contracts; do not silently harden or widen
+-- them in a release postcheck. Legacy close's public path/service grant is pinned.
+WITH expected(signature,digest,definer,path,browser,service) AS (VALUES
+ ('public.close_tournament_table(uuid,text,text)','688de2b3c277ac1815539b490ce76e2d',true,'public',true,true),
+ ('floor_private.club_operational_inventory(uuid)','8d75ddb69e4639aabaa9b3347b3cc921',false,'""',false,false),
+ ('floor_private.floor_apply_tracker_moves_after_hand_v1()','90c032eec3b51bac9fc65f746a1824a7',true,'""',false,false),
+ ('floor_private.floor_break_plan_rows_v1(uuid,uuid)','9e888b180b2850979ab0fabdbb7f4844',true,'""',false,false),
+ ('floor_private.floor_break_plan_rows_v2(uuid,uuid,text,bigint)','b3bd7562b512b667c1d848aef3a633d7',true,'""',false,false),
+ ('public.floor_break_table_v5(uuid,bigint,uuid,text,text)','d4d372db955d7144efdd9c954b55b1a5',true,'""',true,false),
+ ('public.floor_plan_break_table_v1(uuid,bigint,text)','7dd167b545248d3b73949e59515546ed',true,'""',true,false),
+ ('public.move_player_seat_v2(uuid,uuid,integer,bigint,bigint,uuid)','37e2a13baad7718380fb6081772e94bf',true,'""',true,false)
+), checks AS (
+ SELECT e.signature,COALESCE(md5(pg_get_functiondef(p.oid))=e.digest
+  AND p.prosecdef=e.definer AND pg_get_userbyid(p.proowner)='postgres'
+  AND p.proconfig=ARRAY['search_path=' || e.path]::text[]
+  AND has_function_privilege('authenticated',p.oid,'EXECUTE')=e.browser
+  AND has_function_privilege('service_role',p.oid,'EXECUTE')=e.service
+  AND NOT has_function_privilege('anon',p.oid,'EXECUTE'),false) AS passed
+ FROM expected e LEFT JOIN pg_proc p ON p.oid=to_regprocedure(e.signature)
+)
+SELECT bool_and(passed) AS patched_pass,
+ jsonb_agg(jsonb_build_object('signature',signature,'passed',passed) ORDER BY signature) AS patched_checks
+FROM checks \gset
+\echo :patched_checks
+\if :patched_pass
+\echo PACKAGE_PATCHED_FUNCTION_CHECKS_PASS
+\else
+\echo PACKAGE_PATCHED_FUNCTION_CHECKS_FAIL
+SELECT 1 / 0 AS postcheck_mismatch;
+\endif
 SELECT (
  (SELECT count(*)=1 FROM pg_trigger
   WHERE tgrelid='public.table_sessions'::regclass
