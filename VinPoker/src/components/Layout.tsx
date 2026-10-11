@@ -103,7 +103,7 @@ export const Layout = () => {
     >
       {!isViewerFocusRoute && (
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-background/85 border-b border-border/60 pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
-        <div className="mx-auto max-w-[1400px] flex items-center justify-between gap-2 md:gap-4 px-3 md:px-6 h-16">
+        <div className="mx-auto max-w-[1400px] flex flex-wrap md:flex-nowrap items-center justify-between gap-2 md:gap-4 px-3 md:px-6 min-h-16 py-2 md:h-16 md:py-0">
           <div className="flex items-center gap-1.5 shrink-0">
             {/* Mobile "☰" secondary-nav menu — holds routes without a bottom-nav slot.
                 On the left so the right action cluster never overflows at 360px. */}
