@@ -72,6 +72,7 @@ export function ChipOpsManager() {
   const { isClubOwner, isChipMaster } = useAuth();
   const allowed = isClubOwner || isChipMaster;
   const [params, setParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState("overview");
 
   const [tours, setTours] = useState<TourRow[]>([]);
   const [tournamentId, setTournamentId] = useState<string>(params.get("t") ?? "");
@@ -184,7 +185,7 @@ export function ChipOpsManager() {
           Chọn một giải đấu để xem tổng quan và cài đặt chip.
         </CardContent></Card>
       ) : (
-        <Tabs defaultValue="overview" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="flex h-auto flex-wrap justify-start gap-1 [&>button]:min-h-11">
             <TabsTrigger value="overview">Tổng quan</TabsTrigger>
             <TabsTrigger value="setup">Setup stack</TabsTrigger>
@@ -232,7 +233,7 @@ export function ChipOpsManager() {
           </TabsContent>
 
           <TabsContent value="colorup" className="mt-4">
-            <ColorUpTab tournamentId={tournamentId} clubId={tour?.club_id ?? null} />
+            <ColorUpTab tournamentId={tournamentId} clubId={tour?.club_id ?? null} onOpenSetup={() => setActiveTab("setup")} />
           </TabsContent>
           <TabsContent value="bagtag" className="mt-4">
             <BagTagTab tournamentId={tournamentId} clubId={tour?.club_id ?? null} />
