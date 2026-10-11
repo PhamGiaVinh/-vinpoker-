@@ -8,6 +8,29 @@ const key = "vinpoker:color-up-pending:owner-a:club-a:tour-a";
 const intent = { fn: "chip_ops_color_up", args: { p_tournament_id: "tour-a", p_denom_removed: "low", p_denom_target: "high", p_target_added: 1, p_level_number: 2, p_idempotency_key: "original-request" } };
 const readerArgs = { p_tournament_id: "tour-a", p_operation: "color_up", p_request_key: "original-request",
   p_payload: { tournament: "tour-a", removed: "low", target: "high", added: 1, level: 2 } };
+it("explains verified empty denominations and navigates to setup without a chip mutation", async () => {
+  const openSetup = vi.fn();
+  render(<ColorUpTab tournamentId="tour-a" clubId="club-a" onOpenSetup={openSetup} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Mở Setup stack" }));
+  expect(openSetup).toHaveBeenCalledOnce();
+  expect(screen.getByText(/Chưa có mệnh giá chip để color-up/)).toBeInTheDocument();
+  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  expect(h.rpc.mock.calls.every(([name]) => name.startsWith("get_"))).toBe(true);
+});
+it("does not describe a failed inventory read as missing setup", async () => {
+  h.rpc.mockResolvedValue({ data: null, error: { status: 503 } });
+  render(<ColorUpTab tournamentId="tour-a" clubId="club-a" onOpenSetup={vi.fn()} />);
+  await screen.findByText(/Không xác minh được tồn chip hoặc lịch sử/);
+  expect(screen.queryByRole("button", { name: "Mở Setup stack" })).not.toBeInTheDocument();
+});
+it("keeps denomination selection for verified nonempty inventory", async () => {
+  h.rpc.mockImplementation(async (name: string) => ({ data: name === "get_current_chip_inventory"
+    ? { denominations: [{ denomination_id: "low", value: 100, color: null, current_count: 10 }] }
+    : { operations: [] }, error: null }));
+  render(<ColorUpTab tournamentId="tour-a" clubId="club-a" onOpenSetup={vi.fn()} />);
+  await waitFor(() => expect(screen.getAllByRole("combobox")).toHaveLength(2));
+  expect(screen.queryByRole("button", { name: "Mở Setup stack" })).not.toBeInTheDocument();
+});
 it("re-reads a temporarily inaccessible saved journal without losing its identity", async () => {
   sessionStorage.setItem(key, JSON.stringify(intent));
   const get = vi.spyOn(Storage.prototype, "getItem").mockImplementationOnce(() => { throw new Error("temporary storage access failure"); });

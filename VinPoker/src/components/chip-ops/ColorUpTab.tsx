@@ -49,12 +49,12 @@ interface HistoryOp {
   removed_count: number; target_added: number; rounding_delta: number;
 }
 
-export function ColorUpTab({ tournamentId, clubId }: { tournamentId: string; clubId: string | null }) {
+export function ColorUpTab({ tournamentId, clubId, onOpenSetup }: { tournamentId: string; clubId: string | null; onOpenSetup?: () => void }) {
   const { user } = useAuth();
   const [journalGeneration, setJournalGeneration] = useState(0);
   const scope = `${user?.id ?? "anonymous"}:${clubId}:${tournamentId}`;
   return <ScopedColorUpTab key={`${scope}:${journalGeneration}`} scope={scope} actorId={user?.id ?? null} tournamentId={tournamentId} clubId={clubId}
-    onRereadJournal={() => setJournalGeneration((value) => value + 1)} />;
+    onOpenSetup={onOpenSetup} onRereadJournal={() => setJournalGeneration((value) => value + 1)} />;
 }
 
 interface MutationIntent {
@@ -62,7 +62,7 @@ interface MutationIntent {
   args: Record<string, unknown>;
 }
 
-function ScopedColorUpTab({ tournamentId, clubId, scope, actorId, onRereadJournal }: { tournamentId: string; clubId: string | null; scope: string; actorId: string | null; onRereadJournal: () => void }) {
+function ScopedColorUpTab({ tournamentId, clubId, scope, actorId, onRereadJournal, onOpenSetup }: { tournamentId: string; clubId: string | null; scope: string; actorId: string | null; onRereadJournal: () => void; onOpenSetup?: () => void }) {
   const storageKey = `vinpoker:color-up-pending:${scope}`;
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -315,6 +315,10 @@ function ScopedColorUpTab({ tournamentId, clubId, scope, actorId, onRereadJourna
       <Card className="border-border">
         <CardHeader className="pb-3"><CardTitle className="text-base text-foreground">Color-Up / Chip race {currentLevel != null && <span className="text-sm text-muted-foreground">· Level {currentLevel}{bigBlind ? ` · BB ${fmt(bigBlind)}` : ""}</span>}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
+          {denoms.length === 0 ? <div className="space-y-3" role="status">
+            <p className="text-sm">Chưa có mệnh giá chip để color-up. Mở Setup stack để kiểm tra bộ chip, mẫu stack và số bộ đã phát của giải.</p>
+            {onOpenSetup && <Button className="min-h-11" onClick={onOpenSetup}>Mở Setup stack</Button>}
+          </div> : <>
           <Stepper steps={["Chọn mệnh giá", "Nhập số chip race", "Xác nhận"]} current={step} />
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -379,6 +383,7 @@ function ScopedColorUpTab({ tournamentId, clubId, scope, actorId, onRereadJourna
               </div>
             </>
           )}
+          </>}
         </CardContent>
       </Card>
 
