@@ -16,6 +16,7 @@ on:
       - 'VinPoker/tests/trackerSettlement/handIdentityCanonicalLock*'
       - 'VinPoker/tests/trackerSettlement/handIdentityReparent*'
       - 'VinPoker/tests/trackerSettlement/handIdentityPublication*'
+      - 'VinPoker/scripts/ops/tracker-history-58-*'
       - 'VinPoker/tests/trackerSettlement/handTournamentRevision*'
       - 'VinPoker/scripts/ops/dealer-policy-57-*'
       - 'VinPoker/scripts/ops/restore-schema-test-baseline.mjs'
@@ -381,6 +382,9 @@ jobs:
         env:
           PGDATABASE: vinpoker_ops_card56_overlap_20261011
         run: |
+          node --test scripts/ops/tracker-history-58-protected-apply.test.mjs
+          createdb --template="$PGDATABASE" vinpoker_ops_identity58_atomic_20261011
+          PGDATABASE=vinpoker_ops_identity58_atomic_20261011 HISTORY58_PG_TEST=1 node --test scripts/ops/tracker-history-58-atomic-pg.test.mjs
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000058_tracker_hand_identity_revision_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/trackerSettlement/handIdentityRevision.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/trackerSettlement/handTournamentRevision.pg17.sql
