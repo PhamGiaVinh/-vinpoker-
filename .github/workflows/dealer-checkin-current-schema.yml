@@ -12,6 +12,10 @@ on:
       - 'VinPoker/tests/dealerSwing/accrualTenant*'
       - 'VinPoker/supabase/migrations/20270128000058_tracker_hand_identity_revision_v1.sql'
       - 'VinPoker/tests/trackerSettlement/handIdentityRevision*'
+      - 'VinPoker/tests/trackerSettlement/handIdentityChainRange*'
+      - 'VinPoker/tests/trackerSettlement/handIdentityCanonicalLock*'
+      - 'VinPoker/tests/trackerSettlement/handIdentityReparent*'
+      - 'VinPoker/tests/trackerSettlement/handIdentityPublication*'
       - 'VinPoker/tests/trackerSettlement/handTournamentRevision*'
       - 'VinPoker/scripts/ops/dealer-policy-57-*'
       - 'VinPoker/scripts/ops/restore-schema-test-baseline.mjs'
@@ -380,9 +384,18 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000058_tracker_hand_identity_revision_v1.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/trackerSettlement/handIdentityRevision.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/trackerSettlement/handTournamentRevision.pg17.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/trackerSettlement/handIdentityChainRange.pg17.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/trackerSettlement/handIdentityRevision.readonly-postcheck.sql
           createdb --template="$PGDATABASE" vinpoker_ops_identity58_overlap_20261011
           PGDATABASE=vinpoker_ops_identity58_overlap_20261011 node tests/trackerSettlement/handIdentityRevision.concurrent.mjs
+          createdb --template="$PGDATABASE" vinpoker_ops_identity58_statement_20261011
+          PGDATABASE=vinpoker_ops_identity58_statement_20261011 node tests/trackerSettlement/handIdentityCanonicalLock.concurrent.mjs --expect-fixed
+          createdb --template="$PGDATABASE" vinpoker_ops_identity58_statement_reparent_20261011
+          PGDATABASE=vinpoker_ops_identity58_statement_reparent_20261011 node tests/trackerSettlement/handIdentityReparent.concurrent.mjs --expect-fixed --statement
+          createdb --template="$PGDATABASE" vinpoker_ops_identity58_history_runtime_20261011
+          PGDATABASE=vinpoker_ops_identity58_history_runtime_20261011 psql -X -v ON_ERROR_STOP=1 -c "UPDATE public.tournament_hands SET status='completed' WHERE id='86000000-0000-4000-8000-000000000001';"
+          PGDATABASE=vinpoker_ops_identity58_history_runtime_20261011 psql -X -v ON_ERROR_STOP=1 -f tests/protectedNineIntegratedUat/history.pg17.sql
+          PGDATABASE=vinpoker_ops_identity58_history_runtime_20261011 node tests/trackerSettlement/handIdentityPublication.concurrent.mjs
       - name: Private backup cron contract with isolated network doubles (not live scheduler proof)
         working-directory: VinPoker
         run: |

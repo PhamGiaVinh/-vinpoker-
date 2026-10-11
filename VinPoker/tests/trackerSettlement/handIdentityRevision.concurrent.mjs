@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
 assert.equal(process.env.PGHOST,'127.0.0.1');
 assert.equal(process.env.PGUSER,'postgres');
-assert.equal(process.env.PGDATABASE,'vinpoker_ops_identity58_overlap_20261011');
+assert.ok(['vinpoker_ops_identity58_overlap_20261011',
+ 'vinpoker_ops_identity58_overlap_v2_20261011'].includes(process.env.PGDATABASE));
 for(const key of ['PGHOSTADDR','PGSERVICE','PGSERVICEFILE','PGOPTIONS'])assert.ok(!process.env[key]);
 const hand='86000000-0000-4000-8000-000000000001';
 const actor='81100000-0000-4000-8000-000000000001';
@@ -10,6 +11,7 @@ function sql(query) {
  const r=spawnSync('psql',['-w','-X','-qAt','-v','ON_ERROR_STOP=1'],{input:query,encoding:'utf8'});
  assert.equal(r.status,0,r.stderr);return r.stdout.trim();
 }
+assert.equal(sql("SELECT count(*) FROM pg_trigger WHERE tgrelid='public.tournament_hands'::regclass AND tgname='trg_tracker_new_hand_identity_chain_v1' AND tgenabled='O';"),'1');
 function tx(marker,hold=false) {
  const child=spawn('psql',['-w','-X','-qAt','-v','ON_ERROR_STOP=1']);let out='',error='';
  const result=new Promise(resolve=>{
