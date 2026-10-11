@@ -34,6 +34,13 @@ const BASE: TvData = {
 };
 
 describe("mapTvDataToClock — owner P0 data-correctness rules", () => {
+  it("preserves the canonical chip total instead of reconstructing a rounded average", () => {
+    const canonical = { ...BASE, playersRemaining: 3, averageStack: 33333, totalChips: 100000 };
+    expect(mapTvDataToClock(canonical).totalChips).toBe("100.000");
+  });
+  it("does not replace a canonical zero with a legacy chip estimate", () => {
+    expect(mapTvDataToClock({ ...BASE, totalChips: 0 }).totalChips).toBe("—");
+  });
   it("prizePool P0-2: uses a real positive prize_pool when present", () => {
     expect(mapTvDataToClock({ ...BASE, prizePool: 120_000_000 }).prizePool).toContain("120.000.000");
   });

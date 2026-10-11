@@ -9,6 +9,10 @@ on:
       - "VinPoker/supabase/pending-migrations/20270118000001_tv_tournament_layout_v2.sql"
       - "VinPoker/supabase/pending-migrations/20270119000000_tv_layout_editor_multiblock_v3.sql"
       - "VinPoker/tests/tvBrandingStorage/**"
+      - "VinPoker/src/lib/tv/**"
+      - "VinPoker/src/types/tv.ts"
+      - "VinPoker/src/hooks/useTournamentTvDataCore.ts"
+      - "VinPoker/src/hooks/useTournamentTvDataCore.test.tsx"
 permissions:
   contents: read
 
@@ -63,3 +67,14 @@ jobs:
       - name: Verify versioned draft upload gate, unaffected paths, and asset immutability
         working-directory: VinPoker
         run: psql -v ON_ERROR_STOP=1 -f tests/tvBrandingStorage/disposableDb.integration.sql
+      - name: Install locked dependencies without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+      - name: Verify canonical TV totals and scope consumers
+        working-directory: VinPoker
+        run: >-
+          ./node_modules/.bin/vitest run
+          src/lib/tv/mapClockData.test.ts
+          src/lib/tv/mapTvData.test.ts
+          src/lib/tv/mapDisplayState.test.ts
+          src/hooks/useTournamentTvDataCore.test.tsx

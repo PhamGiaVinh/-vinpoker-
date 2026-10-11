@@ -22,14 +22,12 @@ export function mapTvDataToClock(d: TvData): TournamentClockData {
   // (or when players_remaining is null/0 pre-start).
   const players = d.playersRemaining || d.totalEntries || 0;
 
-  // P0-1 — Total chips: NO authoritative total-chips column exists. Prefer the in-play
-  // figure (average stack × remaining) when both are real; else the chip-conservation
-  // estimate (entries × starting_stack). Both are estimates, valid because every entry
-  // buys `starting_stack` chips and chips are conserved (no add-on/adjustment modelled).
-  const totalChips =
+  // Canonical participation reads supply the exact total. Reconstructing it from
+  // a rounded average loses chips. Preserve the old estimate for legacy/mock data only.
+  const totalChips = d.totalChips ?? (
     d.averageStack > 0 && d.playersRemaining > 0
       ? d.averageStack * d.playersRemaining
-      : d.totalEntries * (d.startingStack || 0);
+      : d.totalEntries * (d.startingStack || 0));
 
   // P0-2 — Prize pool: tournaments.prize_pool is stale/manual/often 0, so NEVER present it
   // as authoritative. Precedence: a real positive prize_pool → GTD (guarantee) → an estimate
