@@ -46,6 +46,8 @@ on:
       - "VinPoker/src/hooks/useTournamentRedrawTv.test.ts"
       - "VinPoker/src/components/chip-ops/ColorUpTab.tsx"
       - "VinPoker/src/components/chip-ops/ColorUpTab.test.tsx"
+      - "VinPoker/src/components/chip-ops/ChipOpsManager.tsx"
+      - "VinPoker/src/components/chip-ops/ChipOpsManager.test.tsx"
       - "VinPoker/src/lib/floorTableControlV3.ts"
       - "VinPoker/src/lib/floorTableControlV3.test.ts"
       - "VinPoker/src/components/ops/shared/FloorSeatRoster.tsx"
@@ -109,6 +111,7 @@ jobs:
           src/components/cashier/tournament-live/RestoreBustDialog.test.tsx
           src/hooks/useDealerManagement.test.tsx
           src/components/chip-ops/ColorUpTab.test.tsx
+          src/components/chip-ops/ChipOpsManager.test.tsx
           src/hooks/useTournamentRedrawTv.test.ts
           src/components/cashier/tournament-live/FloorRedrawDialogV1.test.tsx
       - name: Run disposable PostgreSQL server contract
