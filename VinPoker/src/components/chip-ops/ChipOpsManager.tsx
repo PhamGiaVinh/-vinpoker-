@@ -69,7 +69,7 @@ async function callRpc(fn: string, args: Record<string, unknown>): Promise<any |
 }
 
 export function ChipOpsManager() {
-  const { isClubOwner, isChipMaster } = useAuth();
+  const { isClubOwner, isChipMaster, loading: authLoading, rolesLoading, authError, rolesError } = useAuth();
   const allowed = isClubOwner || isChipMaster;
   const [params, setParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("overview");
@@ -161,6 +161,18 @@ export function ChipOpsManager() {
     const next = new URLSearchParams(params); next.set("t", id); setParams(next, { replace: true });
   };
 
+  if (authLoading || rolesLoading) {
+    return <div role="status" aria-live="polite" className="space-y-3">
+      <p className="text-sm text-muted-foreground">Đang xác minh quyền Chip Ops…</p>
+      <LoadingCard />
+    </div>;
+  }
+  if (authError || rolesError) {
+    return <Card><CardContent className="space-y-3 py-8" role="alert">
+      <p>Chưa xác minh được quyền Chip Ops. Vui lòng tải lại để thử lại.</p>
+      <Button variant="outline" onClick={() => window.location.reload()}>Thử tải lại</Button>
+    </CardContent></Card>;
+  }
   if (!allowed) {
     return (
       <Card className="border-border"><CardContent className="flex items-center gap-3 py-8 text-muted-foreground">
