@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/dealer-checkin-current-schema.yml'
+      - '.github/workflows/tracker-void-59-protected-apply.yml'
+      - 'VinPoker/scripts/ops/tracker-void-59-*'
       - '.github/workflows/tracker-card-56-protected-apply.yml'
       - 'VinPoker/scripts/ops/tracker-card-56-*'
       - 'VinPoker/supabase/migrations/20270128000056_tracker_card_batch_integrity_v1.sql'
@@ -407,7 +409,11 @@ jobs:
         env:
           PGDATABASE: vinpoker_ops_card56_overlap_20261011
         run: |
+          node --test scripts/ops/tracker-void-59-protected-apply.test.mjs
+          createdb --template="$PGDATABASE" vinpoker_ops_void59_atomic_20261011
+          PGDATABASE=vinpoker_ops_void59_atomic_20261011 VOID59_PG_TEST=1 node --test scripts/ops/tracker-void-59-atomic-pg.test.mjs
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20270128000059_tracker_completed_void_integrity_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/trackerSettlement/completedVoidProjection.readonly-postcheck.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/trackerSettlement/completedVoidProjection.pg17.sql
           for case in test_reentry test_closed_session test_changed_stack test_foreign_actor test_moved_seat test_busted_player test_missing_count test_capacity test_occupied_seat test_payout test_close_report; do
             psql -X -v ON_ERROR_STOP=1 -v "$case=1" -f tests/trackerSettlement/completedVoidProjection.pg17.sql
