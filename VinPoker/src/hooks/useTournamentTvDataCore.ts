@@ -21,6 +21,7 @@ interface RawTvData {
   tournament: TvTournamentRow;
   levels: TvLevelRow[];
   totalEntries: number;
+  totalChips: number;
   totalBuyIns: number | null;
   reEntries: number | null;
   prizes: TvPrizeRow[];
@@ -183,6 +184,7 @@ export function useTournamentTvDataCore(
       tournament: row,
       levels: levelsRes.error ? [] : ((levelsRes.data ?? []) as TvLevelRow[]),
       totalEntries: participation.counts.total_entries,
+      totalChips: participation.counts.live_entry_stack,
       totalBuyIns: regs ? regs.reduce((sum, r) => sum + Number(r.buy_in ?? 0), 0) : null,
       reEntries: participation.counts.re_entries,
       prizes: prizesRes.error ? [] : ((prizesRes.data ?? []) as TvPrizeRow[]),

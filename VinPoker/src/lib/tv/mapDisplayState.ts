@@ -36,7 +36,7 @@ export interface TvDisplayTournament {
 }
 
 export interface TvDisplayStatePayload {
-  participation_counts?: { total_entries: number };
+  participation_counts?: { total_entries: number; live_entry_stack?: number };
   status: TvDisplayStatus;
   display?: TvDisplayConfig;
   tournament?: TvDisplayTournament | null;
@@ -91,6 +91,7 @@ export function mapDisplayStateToTvData(
     totalEntries: payload.participation_counts ? payload.participation_counts.total_entries
       : Math.max(payload.entries?.total_confirmed ?? 0, t.players_remaining ?? 0),
     totalBuyIns: payload.entries ? payload.entries.total_buy_ins : null,
+    totalChips: payload.participation_counts?.live_entry_stack,
     reEntries: payload.re_entries ?? null,
     prizes: payload.prizes ?? [],
     displayRemainingSeconds,

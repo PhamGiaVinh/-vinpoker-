@@ -74,6 +74,12 @@ describe("parseDisplayStatePayload", () => {
 });
 
 describe("mapDisplayStateToTvData", () => {
+  it("carries the exact canonical total independently of the rounded average", () => {
+    const data = mapDisplayStateToTvData({ ...PAIRED,
+      participation_counts: { total_entries: 3, live_entry_stack: 100000 },
+      tournament: { ...PAIRED.tournament!, players_remaining: 3, average_stack: 33333 } }, 100);
+    expect(data?.totalChips).toBe(100000);
+  });
   it("maps a paired+assigned payload into the frozen TvData contract", () => {
     const data = mapDisplayStateToTvData(PAIRED, 1015);
     expect(data).not.toBeNull();

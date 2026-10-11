@@ -50,6 +50,8 @@ export interface TvData {
   totalEntries: number;
   reEntries: number | null;
   averageStack: number;
+  /** Exact canonical live-entry stack total; absent only in legacy/mock data. */
+  totalChips?: number;
   /** Sum of confirmed buy-ins (VND). Null until wired to live data. */
   totalBuyIns: number | null;
   prizePool: number | null;

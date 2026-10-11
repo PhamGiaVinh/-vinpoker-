@@ -72,6 +72,7 @@ export interface TvDataSources {
   levels: TvLevelRow[];
   /** Canonical participation entry count, independent of registration receipts. */
   totalEntries: number;
+  totalChips?: number;
   /** SUM(buy_in) of confirmed registrations; null when the read failed. */
   totalBuyIns: number | null;
   /** Canonical re-entry generation count; null when unavailable. */
@@ -161,6 +162,7 @@ export function mapTvData(sources: TvDataSources): TvData {
     totalEntries: sources.totalEntries,
     reEntries: sources.reEntries,
     averageStack: tournament.average_stack ?? 0,
+    totalChips: sources.totalChips,
     totalBuyIns: sources.totalBuyIns,
     prizePool: tournament.prize_pool != null ? Number(tournament.prize_pool) : null,
     guarantee: tournament.guarantee_amount != null ? Number(tournament.guarantee_amount) : null,

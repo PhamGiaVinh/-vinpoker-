@@ -42,6 +42,7 @@ describe("TV canonical participation and scope", () => {
     expect(JSON.stringify(result.current.data)).not.toContain('"playersRemaining":99');
     expect(result.current.data?.totalEntries).toBe(8);
     expect(result.current.data?.reEntries).toBe(2);
+    expect(result.current.data?.totalChips).toBe(120000);
   });
   it("does not report ready when participation read fails", async () => {
     state.rpc.mockImplementation((name: string) => Promise.resolve(name === "get_tournament_clock"
